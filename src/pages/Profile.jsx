@@ -4,7 +4,7 @@ import { api } from '@/api/expressClient';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { Grid3X3, Bookmark, Heart, ShoppingBag, Play, Star, ArrowLeft, Pencil, Trash2 } from 'lucide-react';
 

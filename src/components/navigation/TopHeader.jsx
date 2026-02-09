@@ -6,7 +6,6 @@ import { useQuery } from '@tanstack/react-query';
 
 import { Button } from "@/components/ui/button";
 
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
 import { Search, Bell, WifiOff, Menu } from 'lucide-react';
 

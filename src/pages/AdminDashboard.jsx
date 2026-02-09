@@ -9,7 +9,6 @@ import ModerationPanel from '@/components/admin/ModerationPanel';
 import AnalyticsPanel from '@/components/admin/AnalyticsPanel';
 import SettingsPanel from '@/components/admin/SettingsPanel';
 import AuditPanel from '@/components/admin/AuditPanel';
-import { Card } from '@/components/ui/card';
 
 const ADMIN_ROLES = ['super_admin', 'admin', 'finance_admin', 'moderation_admin', 'support_admin', 'data_admin'];
 

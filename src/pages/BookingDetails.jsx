@@ -7,9 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { 
   ArrowLeft, Calendar, Clock, MapPin, User, Star, DollarSign, 
-  CheckCircle, XCircle, AlertCircle, Phone, Mail, MessageSquare
+  CheckCircle, XCircle, AlertCircle
 } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { toast } from 'sonner';

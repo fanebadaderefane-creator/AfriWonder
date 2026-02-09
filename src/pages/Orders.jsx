@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Package, Truck, CheckCircle, Clock, Eye, MessageCircle, Star, RotateCcw, WifiOff } from 'lucide-react';
+import { ArrowLeft, Package, Truck, CheckCircle, Clock, Eye, MessageCircle, Star, WifiOff } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";

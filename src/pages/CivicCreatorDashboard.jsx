@@ -3,7 +3,7 @@ import { api } from '@/api/expressClient';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { ArrowLeft, TrendingUp, MapPin, Share2, Target, Loader2 } from 'lucide-react';
+import { ArrowLeft, MapPin, Target, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import BottomNav from '../components/navigation/BottomNav';
 

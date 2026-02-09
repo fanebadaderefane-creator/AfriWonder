@@ -2,7 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, BookOpen, Code, Key } from "lucide-react";
+import { ArrowLeft, BookOpen, Code } from "lucide-react";
 import BottomNav from "@/components/navigation/BottomNav";
 
 export default function DeveloperPortal() {

@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { 
-  ArrowLeft, Shield, Cookie, Download, Trash2, Lock, 
-  Eye, EyeOff, AlertTriangle, CheckCircle, Clock, Key 
+  ArrowLeft, Shield, Cookie, Download, Trash2, 
+  Eye, AlertTriangle, CheckCircle, Key 
 } from 'lucide-react';
 import BottomNav from '../components/navigation/BottomNav';
 import api from '../services/api';

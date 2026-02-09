@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Play, Award, Download, CheckCircle, Heart, FileText, Monitor } from 'lucide-react';
+import { ArrowLeft, Play, Award, Download, CheckCircle, Heart, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -105,17 +105,15 @@ export default function CourseDetailsPage() {
     onError: (e) => toast.error(e?.response?.data?.error?.message || 'Erreur')
   });
 
-  if (!course) return <div className="h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>;
-
-  const currentLesson = course.lessons?.[currentLessonIdx];
+  const currentLesson = course?.lessons?.[currentLessonIdx];
   const progress = enrollment ? (enrollment.progress_percentage ?? enrollment.progress ?? 0) : 0;
   const isCompleted = enrollment?.completed ?? (progress >= 100);
-  const lastLessonIdx = enrollment?.last_lesson_id != null && course.lessons?.length
+  const lastLessonIdx = enrollment?.last_lesson_id != null && course?.lessons?.length
     ? course.lessons.findIndex(l => l.id === enrollment.last_lesson_id)
     : -1;
   const completedLessons = lastLessonIdx >= 0 ? lastLessonIdx + 1 : 0;
   const isLessonCompleted = (idx) => lastLessonIdx >= 0 && idx <= lastLessonIdx;
-  const totalDuration = course.lessons?.reduce((sum, l) => sum + (l.duration_minutes || 0), 0) || 0;
+  const totalDuration = course?.lessons?.reduce((sum, l) => sum + (l.duration_minutes || 0), 0) || 0;
   const hasCertificate = !!enrollment?.certificate_id;
 
   // URL de stream protégée (vérif enrollment) — évite exposition directe
@@ -130,6 +128,8 @@ export default function CourseDetailsPage() {
       .catch(() => { if (!cancelled) setLessonStreamUrl(null); });
     return () => { cancelled = true; };
   }, [enrollment?.id, currentLesson?.id, videoQuality]);
+
+  if (!course) return <div className="h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   const videoSrc = lessonStreamUrl || currentLesson?.video_url;
   const handleDownloadLesson = () => {

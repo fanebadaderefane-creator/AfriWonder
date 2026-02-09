@@ -9,7 +9,6 @@ import {
   TrendingUp, Calendar, DollarSign, Star, Clock, 
   CheckCircle, AlertCircle, Plus, Settings 
 } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { toast } from 'sonner';

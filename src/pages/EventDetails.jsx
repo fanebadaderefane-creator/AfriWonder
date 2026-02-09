@@ -21,7 +21,6 @@ import {
   Mic2,
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { toast } from 'sonner';
@@ -37,6 +36,7 @@ export default function EventDetails() {
   const [commentText, setCommentText] = useState('');
   const [showBooking, setShowBooking] = useState(false);
   const [chatInput, setChatInput] = useState('');
+  const [countdown, setCountdown] = useState(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -136,18 +136,6 @@ export default function EventDetails() {
     onError: (e) => toast.error(e.response?.data?.error || e.message),
   });
 
-  if (isLoading || !event) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
-      </div>
-    );
-  }
-
-  const isFull = event.capacity_remaining !== null && event.capacity_remaining <= 0;
-  const canBook = event.status === 'published' && !isFull && user;
-
-  const [countdown, setCountdown] = useState(null);
   useEffect(() => {
     if (!event?.start_date) return;
     const start = new Date(event.start_date).getTime();
@@ -167,6 +155,17 @@ export default function EventDetails() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [event?.start_date]);
+
+  if (isLoading || !event) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+      </div>
+    );
+  }
+
+  const isFull = event.capacity_remaining !== null && event.capacity_remaining <= 0;
+  const canBook = event.status === 'published' && !isFull && user;
 
   const faqList = Array.isArray(event?.faq) ? event.faq : [];
   const speakersList = Array.isArray(event?.speakers) ? event.speakers : [];

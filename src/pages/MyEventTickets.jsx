@@ -3,7 +3,7 @@ import { api } from '@/api/expressClient';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Ticket, QrCode, Calendar, MapPin, FileDown } from 'lucide-react';
+import { ArrowLeft, Ticket, Calendar, MapPin, FileDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { toast } from 'sonner';

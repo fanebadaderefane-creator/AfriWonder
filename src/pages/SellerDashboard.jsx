@@ -32,7 +32,6 @@ import {
   Package,
   Users,
   DollarSign,
-  Star,
   Download,
   Lightbulb,
   ShoppingCart,

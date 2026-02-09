@@ -3,7 +3,7 @@ import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, MessageCircle, Heart, Eye, Loader2, Send, Share2, Reply, Flag
+  ArrowLeft, MessageCircle, Heart, Eye, Loader2, Send, Share2, Reply
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

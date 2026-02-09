@@ -15,13 +15,13 @@ import { Label } from "@/components/ui/label";
 
 import { 
 
-  Camera, Upload, X, Music2, Type, Sticker, Scissors, 
+  Camera, Upload, X, Music2, 
 
   Sparkles, Check, ArrowLeft, Globe, Users, Lock,
 
-  Radio, Loader2, Hash, RotateCcw, Circle, Square, Mic, MicOff,
+  Radio, Loader2, Hash, Circle, Square, Mic, MicOff,
 
-  FlipHorizontal, Zap, Gift, MessageCircle, Heart, Eye
+  FlipHorizontal, Gift, MessageCircle, Eye
 
 } from 'lucide-react';
 

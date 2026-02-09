@@ -87,6 +87,8 @@ export default function Product() {
     enabled: !!product?.category
   });
 
+  const { formatPrice } = useMarketplaceCurrency();
+
   const createOrderMutation = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error('Vous devez être connecté');
@@ -146,7 +148,6 @@ export default function Product() {
 
   const images = product.images || [product.image_url || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600'];
   const totalPrice = product.price * quantity;
-  const { formatPrice } = useMarketplaceCurrency();
 
   return (
     <div className="min-h-screen bg-gray-50 pb-32">

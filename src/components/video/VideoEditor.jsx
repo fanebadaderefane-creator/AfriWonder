@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 
 import { motion } from 'framer-motion';
 
-import { Scissors, Sparkles, Music2, Type, Sticker, X, Plus, Loader2, Palette, Settings2 } from 'lucide-react';
+import { Scissors, Sparkles, Music2, Type, Sticker, Plus, Loader2 } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
 
@@ -12,7 +12,7 @@ import { api } from '@/api/expressClient';
 
 import { toast } from "sonner";
 
-import { VIDEO_EFFECTS, TRANSITIONS, TEXT_FONTS, getFilterStyle } from './VideoEffects';
+import { VIDEO_EFFECTS, TRANSITIONS, TEXT_FONTS } from './VideoEffects';
 
 const STICKERS = ['😂', '🔥', '❤️', '👍', '🎉', '🎵', '✨', '🌟', '💯', '🚀'];
 

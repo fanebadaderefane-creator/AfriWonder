@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Wifi, WifiOff, Download, RefreshCw, HardDrive } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, HardDrive } from 'lucide-react';
 import { motion } from 'framer-motion';
 import offlineCacheService from '@/services/offlineCache.service.js';
 

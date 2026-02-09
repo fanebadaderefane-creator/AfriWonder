@@ -3,10 +3,9 @@ import { api } from '@/api/expressClient';
 import { useQuery } from '@tanstack/react-query';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
-  Search, Filter, MapPin, SlidersHorizontal, Grid3X3, List, Package,
-  Shirt, Sparkles, Laptop, Home, UtensilsCrossed, Palette, Wrench, MoreHorizontal, ArrowLeft
+  Search, Filter, SlidersHorizontal, Grid3X3, List, Package,
+  Shirt, Sparkles, Laptop, Home, UtensilsCrossed, Palette, Wrench, ArrowLeft
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';

@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, Search, Ticket, Music, Film,
-  Bus, Trophy, Theater, Calendar, MapPin, Clock
+  Bus, Trophy, Theater, Calendar, MapPin
 } from 'lucide-react';
 import BottomNav from '@/components/navigation/BottomNav';
 import CommissionNotice from '@/components/CommissionNotice';
