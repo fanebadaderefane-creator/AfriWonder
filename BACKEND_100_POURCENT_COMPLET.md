@@ -91,7 +91,7 @@
 - **Routes** : 30/30 = **100%** ✅
 - **Services** : 27/27 = **100%** ✅
 - **Entités Prisma** : 82/47 = **174%** ✅ (plus que prévu)
-- **Fonctions Backend** : 0/27 = 0% ⚠️ (à migrer depuis Base44)
+- **Fonctions Backend** : 0/27 = 0% ⚠️ (à migrer depuis l'ancien service)
 
 ## 🎯 SCORE GLOBAL BACKEND
 
@@ -113,7 +113,7 @@
 ## ✅ PROCHAINES ÉTAPES
 
 1. ✅ **Routes & Services** - TERMINÉ
-2. ⚠️ **Migration Fonctions Base44** - Optionnel (fonctionnalités déjà intégrées)
+2. ⚠️ **Migration Fonctions l'ancien service** - Optionnel (fonctionnalités déjà intégrées)
 3. ✅ **Tests Backend** - PRÊT POUR TEST
 4. ✅ **Synchronisation Frontend-Backend** - PRÊT POUR TEST
 

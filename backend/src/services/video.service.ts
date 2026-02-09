@@ -279,7 +279,7 @@ class VideoService {
       throw error;
     }
 
-    // ⚠️ REJETER les URLs Base44 - le projet utilise sa propre base de données
+    // Rejeter les URLs de domaines externes non autorisés
     validateUrl(data.video_url, 'video_url');
     validateUrl(data.thumbnail_url, 'thumbnail_url');
 

@@ -137,7 +137,7 @@ Liste complète vérifiée :
 - ✅ globals.css
 - ✅ lib/utils.js
 - ✅ lib/PageNotFound.jsx
-- ✅ api/base44Client.js (deprecated)
+- ✅ api/legacyClient.js (deprecated)
 - ✅ api/expressClient.js ⭐ NOUVEAU
 
 ---
@@ -568,10 +568,10 @@ Functions:
 
 **TOTAL : 370 fichiers** (282 attendus) = **+88 fichiers bonus** 🎉
 
-### Migration Base44 : ✅ **100% TERMINÉE**
+### Migration l'ancien service : ✅ **100% TERMINÉE**
 
 **Dépendances** :
-- ❌ Base44 : 0 référence
+- ❌ l'ancien service : 0 référence
 - ✅ Express : Backend propriétaire
 - ✅ Indépendance : Totale
 
@@ -585,7 +585,7 @@ Functions:
 ├─────────────────────────────────────────────────┤
 │                                                 │
 │  Architecture           ██████████████  131%   │
-│  Migration Base44       ████████████    100%   │
+│  Migration l'ancien service       ████████████    100%   │
 │  Code Quality           ████████████    100%   │
 │  Build Success          ████████████    100%   │
 │  Indépendance           ████████████    100%   │
@@ -635,7 +635,7 @@ npm run dev
 **TU AS UN PROJET PROFESSIONNEL DE NIVEAU ENTERPRISE !**
 
 ✅ **370 fichiers** fonctionnels  
-✅ **0 dépendance** externe (Base44)  
+✅ **0 dépendance** externe (l'ancien service)  
 ✅ **100% indépendant**  
 ✅ **Architecture scalable**  
 ✅ **Code de qualité**  

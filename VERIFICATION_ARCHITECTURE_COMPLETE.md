@@ -298,9 +298,9 @@
 
 ## ⚙️ FONCTIONS BACKEND (0/27 = 0%)
 
-### ❌ Fonctions Manquantes (Base44 Functions)
+### ❌ Fonctions Manquantes (l'ancien service Functions)
 
-Les fonctions Base44 suivantes doivent être migrées vers Express :
+Les fonctions l'ancien service suivantes doivent être migrées vers Express :
 
 1. ❌ `authentication.js`
 2. ❌ `payments.js`
@@ -350,7 +350,7 @@ Les fonctions Base44 suivantes doivent être migrées vers Express :
 
 ### 🟢 OPTIONNEL (Pour fonctionnalités complètes)
 
-1. ❌ **Fonctions Backend** : Migration complète depuis Base44
+1. ❌ **Fonctions Backend** : Migration complète depuis l'ancien service
 2. ❌ **Entités Avancées** : Courses, Communities, Crowdfunding, etc.
 
 ---
@@ -371,7 +371,7 @@ Les fonctions Base44 suivantes doivent être migrées vers Express :
 
 **Optionnel** :
 - ❌ Routes avancées (Courses, Crowdfunding, Microcredit, etc.)
-- ❌ Migration complète fonctions Base44
+- ❌ Migration complète fonctions l'ancien service
 
 ---
 
@@ -406,7 +406,7 @@ Les fonctions Base44 suivantes doivent être migrées vers Express :
 ### ⚠️ Points à Améliorer
 - **Routes Backend** : Manquent routes pour fonctionnalités avancées
 - **Services Backend** : Manquent services pour fonctionnalités avancées
-- **Fonctions Backend** : Migration Base44 non effectuée
+- **Fonctions Backend** : Migration l'ancien service non effectuée
 
 ### ✅ Pour Synchronisation Frontend-Backend
 

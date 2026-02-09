@@ -73,7 +73,7 @@ Pour chaque route, créer le service correspondant :
 
 ## FONCTIONS BACKEND À MIGRER
 
-Les 27 fonctions Base44 doivent être migrées vers Express :
+Les 27 fonctions l'ancien service doivent être migrées vers Express :
 1. authentication.js → Déjà dans auth.service.ts
 2. payments.js → Déjà dans payment.service.ts
 3. stripeIntegration.js → À intégrer dans payment.service.ts
@@ -141,7 +141,7 @@ Les 27 fonctions Base44 doivent être migrées vers Express :
 - [ ] moderation.routes.ts + moderation.service.ts
 
 ### Phase 8 : Migration Fonctions Backend
-- [ ] Migrer toutes les fonctions Base44 vers services Express
+- [ ] Migrer toutes les fonctions l'ancien service vers services Express
 
 ### Phase 9 : Tests & Validation
 - [ ] Tester toutes les routes

@@ -1,4 +1,4 @@
-import { base44 } from "@/api/base44Client";
+import { legacyApi } from "@/api/legacyClient";
 
 const BADGE_DEFINITIONS = {
   first_upload: {
@@ -81,10 +81,10 @@ export async function awardPoints(userId, action, amount = 0) {
     if (pointsToAward === 0) return { success: false, error: "Action invalide" };
 
     // Get or create user points
-    let userPoints = await base44.entities.UserPoints.filter({ user_id: userId });
+    let userPoints = await legacyApi.entities.UserPoints.filter({ user_id: userId });
     
     if (!userPoints || userPoints.length === 0) {
-      userPoints = await base44.entities.UserPoints.create({
+      userPoints = await legacyApi.entities.UserPoints.create({
         user_id: userId,
         total_points: pointsToAward,
         lifetime_points: pointsToAward,
@@ -105,7 +105,7 @@ export async function awardPoints(userId, action, amount = 0) {
         newCurrent -= userPoints.points_for_next_level;
       }
 
-      await base44.entities.UserPoints.update(userPoints.id, {
+      await legacyApi.entities.UserPoints.update(userPoints.id, {
         total_points: newTotal,
         lifetime_points: newLifetime,
         level: newLevel,
@@ -126,12 +126,12 @@ export async function awardPoints(userId, action, amount = 0) {
 // Check and award badges
 export async function checkBadges(userId) {
   try {
-    const user = await base44.auth.me();
+    const user = await legacyApi.auth.me();
     if (!user || user.id !== userId) return;
 
-    const videos = await base44.entities.Video.filter({ creator_id: userId });
-    const follows = await base44.entities.Follow.filter({ following_id: userId });
-    const orders = await base44.entities.Order.filter({ seller_id: userId });
+    const videos = await legacyApi.entities.Video.filter({ creator_id: userId });
+    const follows = await legacyApi.entities.Follow.filter({ following_id: userId });
+    const orders = await legacyApi.entities.Order.filter({ seller_id: userId });
     const totalViews = videos?.reduce((sum, v) => sum + (v.views_count || 0), 0) || 0;
 
     const badges = [];
@@ -160,14 +160,14 @@ export async function checkBadges(userId) {
       if (!badgeDef) continue;
 
       // Check if user already has badge
-      const existing = await base44.entities.UserBadge.filter({
+      const existing = await legacyApi.entities.UserBadge.filter({
         user_id: userId,
         badge_id: badgeKey
       });
 
       if (!existing || existing.length === 0) {
         // Award badge
-        await base44.entities.UserBadge.create({
+        await legacyApi.entities.UserBadge.create({
           user_id: userId,
           badge_id: badgeKey,
           badge_name: badgeDef.name,
@@ -191,8 +191,8 @@ export async function checkBadges(userId) {
 // Get user stats
 export async function getUserStats(userId) {
   try {
-    const userPoints = await base44.entities.UserPoints.filter({ user_id: userId });
-    const badges = await base44.entities.UserBadge.filter({ user_id: userId });
+    const userPoints = await legacyApi.entities.UserPoints.filter({ user_id: userId });
+    const badges = await legacyApi.entities.UserBadge.filter({ user_id: userId });
 
     const stats = userPoints?.[0] || {
       total_points: 0,
@@ -217,7 +217,7 @@ export async function getUserStats(userId) {
 // Get leaderboard
 export async function getLeaderboard(limit = 50) {
   try {
-    const allPoints = await base44.entities.UserPoints.list();
+    const allPoints = await legacyApi.entities.UserPoints.list();
     
     if (!allPoints) {
       return { success: true, leaderboard: [] };
@@ -229,7 +229,7 @@ export async function getLeaderboard(limit = 50) {
 
     const leaderboard = await Promise.all(
       sorted.map(async (entry, index) => {
-        const user = await base44.entities.User.filter({ id: entry.user_id });
+        const user = await legacyApi.entities.User.filter({ id: entry.user_id });
         return {
           rank: index + 1,
           user_id: entry.user_id,
@@ -251,7 +251,7 @@ export async function getLeaderboard(limit = 50) {
 // Get user badges
 export async function getUserBadges(userId) {
   try {
-    const badges = await base44.entities.UserBadge.filter({ user_id: userId });
+    const badges = await legacyApi.entities.UserBadge.filter({ user_id: userId });
     return { success: true, badges: badges || [] };
   } catch (error) {
     return { success: false, error: error.message };

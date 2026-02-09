@@ -28,7 +28,7 @@ export function fixUrlEncoding(url: string): string {
 }
 
 /**
- * Valide qu'une URL n'est pas une URL Base44
+ * Valide qu'une URL n'est pas un domaine externe non autorisé
  * Le projet utilise sa propre base de données et CDN (R2/Cloudflare)
  */
 export function validateUrl(url: string | null | undefined, fieldName: string = 'URL'): void {
@@ -36,7 +36,7 @@ export function validateUrl(url: string | null | undefined, fieldName: string = 
   
   if (url.includes('base44') || url.includes('base44.com')) {
     throw new Error(
-      `Les URLs Base44 ne sont pas autorisées pour ${fieldName}. Utilisez uniquement les URLs de votre CDN (R2/Cloudflare)`
+      `URLs non autorisées pour ${fieldName}. Utilisez uniquement les URLs de votre CDN (R2/Cloudflare).`
     );
   }
 }
@@ -50,7 +50,7 @@ export function validateUrls(urls: string[] | null | undefined, fieldName: strin
   urls.forEach((url, index) => {
     if (url && (url.includes('base44') || url.includes('base44.com'))) {
       throw new Error(
-        `Les URLs Base44 ne sont pas autorisées pour ${fieldName} (index ${index}). Utilisez uniquement les URLs de votre CDN (R2/Cloudflare)`
+        `URLs non autorisées pour ${fieldName} (index ${index}). Utilisez uniquement les URLs de votre CDN (R2/Cloudflare).`
       );
     }
   });

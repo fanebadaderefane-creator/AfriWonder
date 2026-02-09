@@ -1,22 +1,22 @@
-import { base44 } from "@/api/base44Client";
+import { legacyApi } from "@/api/legacyClient";
 
 export async function recordVideoAnalytics(videoId, creatorId, metrics) {
   try {
     const today = new Date().toISOString().split('T')[0];
     
-    const existing = await base44.entities.VideoAnalytics.filter({
+    const existing = await legacyApi.entities.VideoAnalytics.filter({
       video_id: videoId,
       creator_id: creatorId,
       date: today
     });
 
     if (existing && existing.length > 0) {
-      return await base44.entities.VideoAnalytics.update(existing[0].id, {
+      return await legacyApi.entities.VideoAnalytics.update(existing[0].id, {
         ...metrics,
         engagement_rate: calculateEngagementRate(metrics)
       });
     } else {
-      return await base44.entities.VideoAnalytics.create({
+      return await legacyApi.entities.VideoAnalytics.create({
         video_id: videoId,
         creator_id: creatorId,
         date: today,
@@ -32,8 +32,8 @@ export async function recordVideoAnalytics(videoId, creatorId, metrics) {
 
 export async function getCreatorDashboard(creatorId) {
   try {
-    const videos = await base44.entities.Video.filter({ creator_id: creatorId });
-    const analytics = await base44.entities.VideoAnalytics.filter({
+    const videos = await legacyApi.entities.Video.filter({ creator_id: creatorId });
+    const analytics = await legacyApi.entities.VideoAnalytics.filter({
       creator_id: creatorId
     });
 
@@ -100,7 +100,7 @@ export async function bulkUploadVideos(creatorId, videos) {
 
     for (const video of videos) {
       try {
-        const created = await base44.entities.Video.create({
+        const created = await legacyApi.entities.Video.create({
           creator_id: creatorId,
           creator_name: video.creator_name,
           creator_avatar: video.creator_avatar,
@@ -142,7 +142,7 @@ export async function setupRevenueSharing(videoId, collaborators) {
 
     const created = [];
     for (const collaborator of collaborators) {
-      const share = await base44.entities.CollaboratorRevenue.create({
+      const share = await legacyApi.entities.CollaboratorRevenue.create({
         creator_id: collaborator.creator_id,
         video_id: videoId,
         collaborator_id: collaborator.id,
@@ -164,7 +164,7 @@ export async function setupRevenueSharing(videoId, collaborators) {
 
 export async function getRevenueReport(creatorId) {
   try {
-    const shares = await base44.entities.CollaboratorRevenue.filter({
+    const shares = await legacyApi.entities.CollaboratorRevenue.filter({
       creator_id: creatorId
     });
 
@@ -204,7 +204,7 @@ function calculateEngagementRate(metrics) {
 
 export async function getAudienceDemographics(creatorId) {
   try {
-    const analytics = await base44.entities.VideoAnalytics.filter({
+    const analytics = await legacyApi.entities.VideoAnalytics.filter({
       creator_id: creatorId
     });
 

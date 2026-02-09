@@ -101,7 +101,7 @@ npx prisma validate
 
 ## 📝 Notes
 
-- ✅ Toutes les entités des fonctions Base44 ont été identifiées
+- ✅ Toutes les entités des fonctions l'ancien service ont été identifiées
 - ✅ Toutes les relations sont correctement configurées
 - ✅ Le schéma est validé et prêt pour la migration
 - ✅ Aucun code existant n'a été cassé

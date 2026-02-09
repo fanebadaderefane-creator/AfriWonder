@@ -65,7 +65,7 @@
 ## ❌ NON COMMENCÉ
 
 ### Fonctions Backend (27 fonctions)
-- ❌ Migration complète des fonctions Base44 vers Express
+- ❌ Migration complète des fonctions l'ancien service vers Express
 
 ## 📊 PROGRESSION ACTUELLE
 
@@ -80,7 +80,7 @@
 
 1. ✅ **Schéma Prisma** - TERMINÉ
 2. ⚠️ **Créer routes/services restants** - EN COURS (17 routes à créer)
-3. ❌ **Migrer fonctions Base44** - À FAIRE
+3. ❌ **Migrer fonctions l'ancien service** - À FAIRE
 4. ❌ **Tester toutes les routes** - À FAIRE
 5. ❌ **Valider synchronisation frontend-backend** - À FAIRE
 
@@ -91,7 +91,7 @@ Le backend a maintenant une base solide avec :
 - ✅ Routes et services pour les fonctionnalités principales (Auth, Videos, Products, Orders, Cart, Wishlist, Reviews)
 - ✅ Architecture propre et extensible
 
-Pour atteindre 100%, il reste à créer les routes et services pour les fonctionnalités avancées (Live, Messages, Communities, Courses, etc.) et migrer les fonctions Base44.
+Pour atteindre 100%, il reste à créer les routes et services pour les fonctionnalités avancées (Live, Messages, Communities, Courses, etc.) et migrer les fonctions l'ancien service.
 
 **Le backend est maintenant prêt pour les fonctionnalités de base et peut être étendu progressivement.**
 

@@ -76,7 +76,7 @@ npm run db:migrate
 ### 3. PAGES FRONTEND (CRITIQUE) 🔴
 
 ```bash
-❌ 70+ pages utilisent encore Base44
+❌ 70+ pages utilisent encore l'ancien service
 ❌ Aucune page migrée vers Express API
 ```
 
@@ -105,12 +105,12 @@ npm run db:migrate
 **Action pour chaque page** :
 ```javascript
 // 1. Ouvrir la page
-// 2. Chercher : base44
+// 2. Chercher : legacyApi
 // 3. Remplacer :
 
 // AVANT
-import { base44 } from '@/api/base44Client';
-const data = await base44.entities.Video.list();
+import { legacyApi } from '@/api/legacyClient';
+const data = await legacyApi.entities.Video.list();
 
 // APRÈS
 import { api } from '@/api/expressClient';
@@ -123,7 +123,7 @@ const data = result.videos;
 ### 4. COMPOSANTS (MOYEN) 🟡
 
 ```bash
-❌ Composants avec appels Base44
+❌ Composants avec appels l'ancien service
 ```
 
 **Composants à migrer** :
@@ -137,7 +137,7 @@ const data = result.videos;
 **Rechercher tous les composants** :
 ```bash
 # Windows PowerShell
-Get-ChildItem -Path src/components -Recurse -Filter *.jsx | Select-String -Pattern "base44" | Select-Object -Unique Path
+Get-ChildItem -Path src/components -Recurse -Filter *.jsx | Select-String -Pattern "legacyApi" | Select-Object -Unique Path
 
 # Résultat : Liste des fichiers à migrer
 ```
@@ -302,17 +302,17 @@ npm run test
 ### 9. CODE CLEANUP (FAIBLE PRIORITÉ) 🟢
 
 ```bash
-⚠️ Ancien code Base44 encore présent
+⚠️ Ancien code l'ancien service encore présent
 ```
 
 **Après migration complète** :
 ```bash
-# Supprimer les fichiers Base44 inutiles
-rm src/api/base44Client.js
+# Supprimer les fichiers l'ancien service inutiles
+rm src/api/legacyClient.js
 rm src/lib/app-params.js
 
-# Désinstaller dépendances Base44
-npm uninstall @base44/sdk @base44/vite-plugin
+# Désinstaller dépendances l'ancien service
+npm uninstall @legacyApi/sdk @legacyApi/vite-plugin
 
 # Nettoyer package.json
 ```
@@ -387,7 +387,7 @@ npm uninstall @base44/sdk @base44/vite-plugin
 
 - [ ] 7.1 Tests end-to-end (2h)
 - [ ] 7.2 Tests paiements (1h)
-- [ ] 7.3 Cleanup code Base44 (30min)
+- [ ] 7.3 Cleanup code l'ancien service (30min)
 - [ ] 7.4 Désinstaller dépendances (30min)
 
 ### PHASE 8 : WebSocket (2 heures) 🟢 OPTIONNEL
@@ -501,7 +501,7 @@ Ensuite : Migrer les pages une par une (12h total).
 │  🟢 OPTIONNEL (Nice-to-have)                    │
 │  ⚠️  Tests backend                  (4h)        │
 │  ⚠️  WebSocket migré                (2h)        │
-│  ⚠️  Cleanup Base44                 (1h)        │
+│  ⚠️  Cleanup l'ancien service                 (1h)        │
 │                                                 │
 └─────────────────────────────────────────────────┘
 ```

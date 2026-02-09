@@ -39,13 +39,13 @@ async function checkVideoStatus() {
 
       // Vérifier si l'URL contient des caractères cassés
       const hasBrokenEncoding = /Ã©|Ã¨|Ã |â\u0080\u0099|Ã§|Ãª|Ã®|Ã´|Ã»/i.test(video.video_url);
-      const isBase44 = video.video_url.includes('base44') || video.video_url.includes('base44.com');
+      const isBlockedDomain = video.video_url.includes('base44') || video.video_url.includes('base44.com');
       const isR2Direct = video.video_url.includes('r2.cloudflarestorage.com');
       const isCustomDomain = video.video_url.includes('cdn.afriwonder.com');
 
       console.log(`\n   📋 Analyse:`);
       console.log(`      ${hasBrokenEncoding ? '❌' : '✅'} Encodage: ${hasBrokenEncoding ? 'CASSÉ' : 'Correct'}`);
-      console.log(`      ${isBase44 ? '❌' : '✅'} Base44: ${isBase44 ? 'OUI (interdit)' : 'NON'}`);
+      console.log(`      ${isBlockedDomain ? '❌' : '✅'} Domaine autorisé: ${isBlockedDomain ? 'NON' : 'OUI'}`);
       console.log(`      ${isR2Direct ? '✅' : '⚠️'} URL R2: ${isR2Direct ? 'Directe' : isCustomDomain ? 'Custom domain' : 'Autre'}`);
 
       // Tester l'accessibilité

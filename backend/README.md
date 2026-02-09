@@ -1,6 +1,6 @@
 # 🚀 Backend API - AfriConnect
 
-Backend personnalisé pour remplacer Base44.
+Backend API du projet — Express, Prisma, PostgreSQL (votre propre base de données).
 
 ## 📋 Prérequis
 

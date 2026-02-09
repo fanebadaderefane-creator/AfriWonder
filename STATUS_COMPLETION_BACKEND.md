@@ -49,7 +49,7 @@
 ## ❌ NON COMMENCÉ
 
 ### Fonctions Backend (27 fonctions)
-- ❌ Migration complète des fonctions Base44 vers Express
+- ❌ Migration complète des fonctions l'ancien service vers Express
 
 ## 📊 PROGRESSION
 
@@ -63,7 +63,7 @@
 ## PROCHAINES ÉTAPES
 
 1. Créer toutes les routes et services manquants (Priorité 2-7)
-2. Migrer toutes les fonctions Base44
+2. Migrer toutes les fonctions l'ancien service
 3. Tester toutes les routes
 4. Valider synchronisation frontend-backend
 

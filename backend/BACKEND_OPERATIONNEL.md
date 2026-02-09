@@ -97,7 +97,7 @@ npx prisma validate
 ## 🚀 Prochaines Étapes
 
 1. ✅ **Backend** - OPÉRATIONNEL
-2. ⏳ **Fonctions** - Migrer de Base44 vers Prisma
+2. ⏳ **Fonctions** - Migrer de l'ancien service vers Prisma
 3. ⏳ **Frontend** - Adapter pour le nouveau backend
 4. ⏳ **Tests** - Tester tous les endpoints
 

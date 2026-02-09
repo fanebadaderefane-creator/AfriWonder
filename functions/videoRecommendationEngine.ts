@@ -1,4 +1,4 @@
-import { base44 } from "@/api/base44Client";
+import { legacyApi } from "@/api/legacyClient";
 
 /**
  * Video Recommendation Engine
@@ -16,10 +16,10 @@ export const VideoRecommendationEngine = {
   async getPersonalizedRecommendations(userId, limit = 10) {
     try {
       const [viewHistory, likedVideos, followedCreators, allVideos] = await Promise.all([
-        base44.entities.ViewHistory.filter({ user_id: userId }, "-created_date", 100),
-        base44.entities.Like.filter({ user_id: userId, reference_type: "video" }, "-created_date", 50),
-        base44.entities.Follow.filter({ follower_id: userId }, "-created_date", 50),
-        base44.entities.Video.filter({ status: "published" }, "-views", 500)
+        legacyApi.entities.ViewHistory.filter({ user_id: userId }, "-created_date", 100),
+        legacyApi.entities.Like.filter({ user_id: userId, reference_type: "video" }, "-created_date", 50),
+        legacyApi.entities.Follow.filter({ follower_id: userId }, "-created_date", 50),
+        legacyApi.entities.Video.filter({ status: "published" }, "-views", 500)
       ]);
 
       // Extract categories and creator IDs from user preferences
@@ -71,7 +71,7 @@ export const VideoRecommendationEngine = {
     } catch (error) {
       console.error("Recommendation engine error:", error);
       // Fallback: return trending videos
-      return base44.entities.Video.filter(
+      return legacyApi.entities.Video.filter(
         { status: "published" },
         "-views",
         limit
@@ -87,7 +87,7 @@ export const VideoRecommendationEngine = {
       const dateFilter = this._getDateFilter(timeRange);
 
       const [trendingByViews, analytics] = await Promise.all([
-        base44.entities.Video.filter(
+        legacyApi.entities.Video.filter(
           {
             status: "published",
             created_date: { $gte: dateFilter }
@@ -95,7 +95,7 @@ export const VideoRecommendationEngine = {
           "-views",
           limit * 2
         ),
-        base44.entities.VideoAnalytics.filter(
+        legacyApi.entities.VideoAnalytics.filter(
           { date: { $gte: dateFilter } },
           "-engagement_rate",
           limit * 2
@@ -117,7 +117,7 @@ export const VideoRecommendationEngine = {
         .slice(0, limit);
     } catch (error) {
       console.error("Trending videos error:", error);
-      return base44.entities.Video.filter({ status: "published" }, "-views", limit);
+      return legacyApi.entities.Video.filter({ status: "published" }, "-views", limit);
     }
   },
 
@@ -126,11 +126,11 @@ export const VideoRecommendationEngine = {
    */
   async getSimilarVideos(videoId, limit = 6) {
     try {
-      const video = await base44.entities.Video.filter({ id: videoId });
+      const video = await legacyApi.entities.Video.filter({ id: videoId });
       if (!video.length) return [];
 
       const baseVideo = video[0];
-      const allVideos = await base44.entities.Video.filter(
+      const allVideos = await legacyApi.entities.Video.filter(
         { status: "published", id: { $ne: videoId } },
         "-views",
         100
@@ -175,13 +175,13 @@ export const VideoRecommendationEngine = {
   async trackVideoView(videoId, creatorId, userId, watchTimeSeconds = 0) {
     try {
       // Create/update view history
-      const existingView = await base44.entities.ViewHistory.filter({
+      const existingView = await legacyApi.entities.ViewHistory.filter({
         user_id: userId,
         video_id: videoId
       });
 
       if (!existingView.length) {
-        await base44.entities.ViewHistory.create({
+        await legacyApi.entities.ViewHistory.create({
           user_id: userId,
           video_id: videoId,
           last_watched: new Date().toISOString(),
@@ -189,7 +189,7 @@ export const VideoRecommendationEngine = {
           total_watch_time: watchTimeSeconds
         });
       } else {
-        await base44.entities.ViewHistory.update(existingView[0].id, {
+        await legacyApi.entities.ViewHistory.update(existingView[0].id, {
           watch_count: (existingView[0].watch_count || 0) + 1,
           total_watch_time: (existingView[0].total_watch_time || 0) + watchTimeSeconds,
           last_watched: new Date().toISOString()
@@ -197,9 +197,9 @@ export const VideoRecommendationEngine = {
       }
 
       // Update video view count
-      const video = await base44.entities.Video.filter({ id: videoId });
+      const video = await legacyApi.entities.Video.filter({ id: videoId });
       if (video.length) {
-        await base44.entities.Video.update(videoId, {
+        await legacyApi.entities.Video.update(videoId, {
           views: (video[0].views || 0) + 1,
           average_watch_time: watchTimeSeconds
         });
@@ -207,13 +207,13 @@ export const VideoRecommendationEngine = {
 
       // Log daily analytics
       const today = new Date().toISOString().split('T')[0];
-      const existingAnalytics = await base44.entities.VideoAnalytics.filter({
+      const existingAnalytics = await legacyApi.entities.VideoAnalytics.filter({
         video_id: videoId,
         date: today
       });
 
       if (!existingAnalytics.length) {
-        await base44.entities.VideoAnalytics.create({
+        await legacyApi.entities.VideoAnalytics.create({
           video_id: videoId,
           creator_id: creatorId,
           date: today,
@@ -221,7 +221,7 @@ export const VideoRecommendationEngine = {
           watch_time_minutes: watchTimeSeconds / 60
         });
       } else {
-        await base44.entities.VideoAnalytics.update(existingAnalytics[0].id, {
+        await legacyApi.entities.VideoAnalytics.update(existingAnalytics[0].id, {
           views: (existingAnalytics[0].views || 0) + 1,
           watch_time_minutes: (existingAnalytics[0].watch_time_minutes || 0) + (watchTimeSeconds / 60)
         });
@@ -237,7 +237,7 @@ export const VideoRecommendationEngine = {
   async getVideoAnalytics(videoId, days = 30) {
     try {
       const dateFilter = this._getDateFilter(`${days}d`);
-      const analytics = await base44.entities.VideoAnalytics.filter({
+      const analytics = await legacyApi.entities.VideoAnalytics.filter({
         video_id: videoId,
         date: { $gte: dateFilter }
       });

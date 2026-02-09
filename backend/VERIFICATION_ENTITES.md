@@ -67,7 +67,7 @@ Vérification de toutes les entités visibles dans l'interface et utilisées dan
 
 Ces entités apparaissent dans l'interface mais ne sont **pas utilisées** dans le code actuel. Elles peuvent être :
 - Des entités prévues pour de futures fonctionnalités
-- Des entités de l'ancien système Base44 non migrées
+- Des entités de l'ancien système l'ancien service non migrées
 - Des entités optionnelles
 
 ### Entités Non Essentielles (Optionnelles)

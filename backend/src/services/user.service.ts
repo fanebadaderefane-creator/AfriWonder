@@ -110,7 +110,7 @@ class UserService {
     profile_image?: string;
     country?: string | null;
   }) {
-    // ⚠️ REJETER les URLs Base44 pour les images de profil
+    // Rejeter les URLs de domaines externes non autorisés pour les images de profil
     validateUrl(data.profile_image, 'profile_image');
 
     const payload: { full_name?: string; profile_image?: string; country?: string | null } = {};

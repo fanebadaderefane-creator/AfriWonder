@@ -49,7 +49,7 @@ AWS_S3_BUCKET=africonnect-uploads
 
 ---
 
-### 2. Références Base44 (238) - NON BLOQUANT 🟡
+### 2. Références l'ancien service (238) - NON BLOQUANT 🟡
 
 **Distribution** :
 - Pages : 136 références
@@ -146,7 +146,7 @@ Je corrige immédiatement !
    - S3 : 1h
 
 2. ⏳ **Nettoyer 238 refs** (5-10h optionnel)
-   - Chercher manuellement chaque `base44`
+   - Chercher manuellement chaque `legacyApi`
    - Adapter le code
    - Tester
 

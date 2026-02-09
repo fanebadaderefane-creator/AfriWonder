@@ -28,9 +28,11 @@ La première super-app vidéo africaine - Connectant créateurs, commerçants et
 - **Framer Motion** - Animations fluides
 
 ### Backend
-- **Base44** - Backend-as-a-Service
-- **TypeScript Functions** - Logique métier serveur
-- **WebSockets** - Communication temps réel
+- **Node.js / Express** - API REST
+- **Prisma** - ORM et migrations
+- **PostgreSQL** (Supabase ou autre) - Base de données propre au projet
+- **Socket.io** - Communication temps réel
+- **JWT** - Authentification
 
 ### Outils de Développement
 - **Vitest** - Framework de test
@@ -64,7 +66,7 @@ cp .env.example .env.local
 
 # Remplir les variables dans .env.local
 # VITE_BASE44_APP_ID=your_app_id
-# VITE_BASE44_APP_BASE_URL=https://your-app.base44.app
+# VITE_API_URL=https://votre-api.com/api
 ```
 
 4. **Lancer le serveur de développement**
@@ -137,7 +139,7 @@ AfriConnect/
 
 ## 🔒 Sécurité
 
-- Authentification JWT via Base44
+- Authentification JWT via votre API
 - RBAC (Role-Based Access Control)
 - Validation des entrées avec Zod
 - Chiffrement des données sensibles
@@ -165,7 +167,7 @@ Les contributions sont les bienvenues ! Voir [CONTRIBUTING.md](./docs/CONTRIBUTI
 
 ## 🚀 Déploiement
 
-Le projet est configuré pour être déployé via Base44. Les changements pushés sur la branche `main` sont automatiquement déployés.
+Le projet utilise **votre propre backend** (Express) et **votre propre base de données** (PostgreSQL, ex. Supabase). Les changements pushés sur `main` déclenchent la CI (tests, build) via GitHub Actions.
 
 ### CI/CD
 
@@ -203,7 +205,7 @@ Propriétaire - AfriConnect © 2026
 ## 📧 Contact
 
 - Email : support@africonnect.app
-- Documentation : [docs.base44.com](https://docs.base44.com)
+- Documentation : voir le dossier `docs/`
 
 ---
 

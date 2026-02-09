@@ -7,7 +7,7 @@ Si vous découvrez une vulnérabilité de sécurité, veuillez **NE PAS** ouvrir
 ## Mesures de Sécurité Implémentées
 
 ### Authentification
-- Authentification JWT via Base44
+- Authentification JWT (backend Express)
 - Support 2FA (Two-Factor Authentication)
 - Gestion sécurisée des sessions
 - Expiration automatique des tokens
@@ -16,7 +16,7 @@ Si vous découvrez une vulnérabilité de sécurité, veuillez **NE PAS** ouvrir
 - Validation côté client avec Zod
 - Validation côté serveur dans les functions
 - Sanitization des entrées utilisateur
-- Protection contre les injections SQL (via Base44)
+- Protection contre les injections SQL (Prisma/PostgreSQL)
 
 ### Paiements
 - Conformité PCI DSS pour les données de carte

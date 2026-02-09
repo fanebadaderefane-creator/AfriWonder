@@ -221,7 +221,7 @@ class ProductService {
       throw error;
     }
 
-    // ⚠️ REJETER les URLs Base44 dans les images
+    // Rejeter les URLs de domaines externes non autorisés dans les images
     validateUrls(data.images, 'images');
 
     const sellerProfile = await prisma.sellerProfile.findUnique({
@@ -288,7 +288,7 @@ class ProductService {
     delivery_options: string[] | any;
     video_url: string;
   }>, sellerId: string) {
-    // ⚠️ REJETER les URLs Base44 dans les images
+    // Rejeter les URLs de domaines externes non autorisés dans les images
     if (data.images) {
       validateUrls(data.images, 'images');
     }

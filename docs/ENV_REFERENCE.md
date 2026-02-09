@@ -11,7 +11,7 @@ Document unique listant **toutes** les clés utilisées dans le projet (backend 
 | **`.env.example`** (racine) | Template **frontend** (Vite) — copier en `.env` ou `.env.local` |
 | **`backend/.env.example`** | Template **backend** — copier en `backend/.env` |
 | **`backend/ENV_TEMPLATE.txt`** | Liste détaillée backend avec commentaires |
-| **`env.local.CONFIGURER`** / **`TEMPLATE_ENV.txt`** | Anciens templates Base44 / config |
+| **`env.local.CONFIGURER`** / **`TEMPLATE_ENV.txt`** | Anciens templates / config |
 
 **Ne jamais commiter** les fichiers `.env` ou `.env.local` (ils contiennent des secrets).
 
@@ -198,9 +198,7 @@ Toutes les variables exposées au client doivent être préfixées par **`VITE_`
 
 | Variable | Utilisation |
 |----------|-------------|
-| `VITE_BASE44_APP_ID` | Base44 |
-| `VITE_BASE44_APP_BASE_URL` | Base44 |
-| `VITE_BASE44_FUNCTIONS_VERSION` | Base44 (ex. `v1`) |
+| `VITE_API_URL` | URL de votre API backend (requis) |
 | `VITE_WS_URL` / `REACT_APP_WS_URL` | WebSocket (fallback) |
 | `VITE_VAPID_PUBLIC_KEY` / `REACT_APP_VAPID_PUBLIC_KEY` | Push (clé publique) |
 | `VITE_STRIPE_PUBLISHABLE_KEY` | Stripe (clé publique) |
@@ -229,7 +227,7 @@ Toutes les variables exposées au client doivent être préfixées par **`VITE_`
 À partir de **`.env.example`** (racine) :
 
 - **Requis en prod** : `VITE_API_URL`, `VITE_WS_URL`
-- **Optionnel** : Base44, Stripe pub key, VAPID, Sentry, Orange (éviter les secrets)
+- **Optionnel** : Stripe pub key, VAPID, Sentry, Orange (éviter les secrets)
 
 ---
 

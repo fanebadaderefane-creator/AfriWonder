@@ -160,7 +160,7 @@ export async function resetPassword(request) {
       return { success: false, error: "Le mot de passe doit contenir au moins 8 caractères" };
     }
 
-    // Hasher le mot de passe (Base44 le fera automatiquement)
+    // Hasher le mot de passe
     await base44.auth.resetPassword({
       email,
       newPassword

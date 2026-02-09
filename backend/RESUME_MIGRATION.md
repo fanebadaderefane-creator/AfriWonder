@@ -84,7 +84,7 @@ npm run db:studio
 ## 🚀 Prochaines Étapes
 
 1. ✅ **Base de données** - TERMINÉE
-2. ⏳ **Fonctions backend** - Migrer de Base44 vers Prisma
+2. ⏳ **Fonctions backend** - Migrer de l'ancien service vers Prisma
 3. ⏳ **Frontend** - Adapter pour le nouveau backend
 4. ⏳ **Tests** - Tester toutes les fonctionnalités
 

@@ -19,15 +19,13 @@
 
 ### 3. AuthContext Migré ✅
 - ✅ `src/lib/AuthContext.jsx` - Migrévé vers Express API
-  - Plus de dépendance Base44
-  - Utilise `api.auth.*` au lieu de `base44.auth.*`
+  - Utilise `api.auth.*` (backend Express)
   - JWT stocké dans localStorage
   - Refresh token automatique
 
 ### 4. Scripts & Documentation ✅
 - ✅ `setup-env.js` - Script pour créer .env files
-- ✅ `MIGRATION_STATUS.md` - Statut détaillé
-- ✅ `GUIDE_MIGRATION_BASE44_TO_EXPRESS.md` - Guide complet
+- ✅ Statut détaillé dans les docs du projet
 - ✅ `RAPPORT_AUDIT_COMPLET_DEPLOIEMENT.md` - Audit complet
 
 ---
@@ -83,21 +81,15 @@ npm run dev
 
 ### Pattern de Migration (Simple)
 
-**AVANT** (Base44):
+**AVANT** (ancien client) :
 ```javascript
-import { base44 } from '@/api/base44Client';
-
-// Récupérer utilisateur
-const user = await base44.auth.me();
-
-// Récupérer vidéos
-const videos = await base44.entities.Video.list('-created_date', 50);
-
-// Créer vidéo
-await base44.entities.Video.create({ title, description, video_url });
+import { legacyApi } from '@/api/legacyClient';
+const user = await legacyApi.auth.me();
+const videos = await legacyApi.entities.Video.list('-created_date', 50);
+await legacyApi.entities.Video.create({ title, description, video_url });
 ```
 
-**APRÈS** (Express):
+**APRÈS** (Express) :
 ```javascript
 import { api } from '@/api/expressClient';
 
@@ -116,55 +108,55 @@ await api.videos.create({ title, description, video_url });
 
 #### 1. Profile.jsx (Simple - 30 min)
 ```javascript
-// Chercher : base44.auth.me()
+// Chercher : legacyApi.auth.me()
 // Remplacer : api.auth.me()
 
-// Chercher : base44.entities.Video.filter({ creator_id: user.id })
+// Chercher : legacyApi.entities.Video.filter({ creator_id: user.id })
 // Remplacer : api.videos.list({ userId: user.id })
 
-// Chercher : base44.entities.Follow.filter({ follower_id: user.id })
+// Chercher : legacyApi.entities.Follow.filter({ follower_id: user.id })
 // Remplacer : api.users.getFollowers(user.id)
 ```
 
 #### 2. VideoView.jsx (Moyen - 1h)
 ```javascript
-// Chercher : base44.entities.Video.getById(id)
+// Chercher : legacyApi.entities.Video.getById(id)
 // Remplacer : api.videos.getById(id)
 
-// Chercher : base44.entities.Comment.filter({ video_id })
+// Chercher : legacyApi.entities.Comment.filter({ video_id })
 // Remplacer : api.videos.getComments(videoId)
 
-// Chercher : base44.entities.Like.create(...)
+// Chercher : legacyApi.entities.Like.create(...)
 // Remplacer : api.videos.like(videoId)
 ```
 
 #### 3. Marketplace.jsx (Simple - 30 min)
 ```javascript
-// Chercher : base44.entities.Product.list()
+// Chercher : legacyApi.entities.Product.list()
 // Remplacer : api.products.list()
 
-// Chercher : base44.entities.Product.filter({ category })
+// Chercher : legacyApi.entities.Product.filter({ category })
 // Remplacer : api.products.list({ category })
 ```
 
 #### 4. Product.jsx (Simple - 30 min)
 ```javascript
-// Chercher : base44.entities.Product.getById(id)
+// Chercher : legacyApi.entities.Product.getById(id)
 // Remplacer : api.products.getById(id)
 
-// Chercher : base44.entities.Review.filter({ product_id })
+// Chercher : legacyApi.entities.Review.filter({ product_id })
 // Les reviews sont déjà inclus dans getById()
 ```
 
 #### 5. Cart.jsx (Simple - 20 min)
 ```javascript
-// Chercher : base44.entities.Cart.getById(user.id)
+// Chercher : legacyApi.entities.Cart.getById(user.id)
 // Remplacer : localStorage (le panier peut rester en local)
 ```
 
 #### 6. Checkout.jsx (Moyen - 1h)
 ```javascript
-// Chercher : base44.entities.Order.create(...)
+// Chercher : legacyApi.entities.Order.create(...)
 // Remplacer : api.orders.create(...)
 
 // Chercher : Stripe/Orange Money integration
@@ -173,16 +165,16 @@ await api.videos.create({ title, description, video_url });
 
 #### 7. Orders.jsx (Simple - 30 min)
 ```javascript
-// Chercher : base44.entities.Order.filter({ user_id })
+// Chercher : legacyApi.entities.Order.filter({ user_id })
 // Remplacer : api.orders.list({ page: 1, limit: 20 })
 ```
 
 #### 8. Wallet.jsx (Simple - 30 min)
 ```javascript
-// Chercher : base44.entities.Wallet.getById(user.id)
+// Chercher : legacyApi.entities.Wallet.getById(user.id)
 // Remplacer : api.payments.getWallet()
 
-// Chercher : base44.entities.Transaction.filter({ user_id })
+// Chercher : legacyApi.entities.Transaction.filter({ user_id })
 // Remplacer : api.payments.getTransactions()
 ```
 
@@ -207,18 +199,18 @@ const { data: videos = [], isLoading } = useQuery({
 
 ## 🛠️ Commandes Utiles
 
-### Trouver tous les fichiers utilisant Base44
+### Trouver tous les fichiers utilisant l'ancien service
 ```bash
 # Windows PowerShell
-Get-ChildItem -Path src -Recurse -Filter *.jsx | Select-String -Pattern "base44" | Select-Object -Unique Path
+Get-ChildItem -Path src -Recurse -Filter *.jsx | Select-String -Pattern "legacyApi" | Select-Object -Unique Path
 
 # Ou avec grep
-grep -r "base44" src/ --include="*.jsx" -l
+grep -r "legacyApi" src/ --include="*.jsx" -l
 ```
 
 ### Pattern Search & Replace (VS Code)
 1. Ouvrir Search & Replace (Ctrl+Shift+H)
-2. Chercher : `base44.auth.me()`
+2. Chercher : `legacyApi.auth.me()`
 3. Remplacer : `api.auth.me()`
 4. Remplacer dans tous les fichiers ✅
 
@@ -245,7 +237,7 @@ grep -r "base44" src/ --include="*.jsx" -l
 
 ```
 [ ] 1. Ouvrir le fichier
-[ ] 2. Chercher tous les "base44" (Ctrl+F)
+[ ] 2. Chercher tous les "legacyApi" (Ctrl+F)
 [ ] 3. Remplacer par "api"
 [ ] 4. Adapter les appels (voir patterns ci-dessus)
 [ ] 5. Tester dans le navigateur
@@ -309,12 +301,12 @@ app.use(cors({
 ## 🎯 Objectif Final
 
 ```
-✅ Toutes les pages migrées de Base44 → Express
+✅ Toutes les pages migrées de l'ancien service → Express
 ✅ Authentification fonctionnelle
 ✅ Vidéos fonctionnelles
 ✅ Marketplace fonctionnelle
 ✅ Paiements fonctionnels
-✅ 100% indépendant de Base44
+✅ 100% indépendant de l'ancien service
 ```
 
 **Temps total estimé** : 7 jours de travail concentré

@@ -1,14 +1,14 @@
-# 🔧 Configurations Externes Requises (Non Gérées par Base44)
+# 🔧 Configurations Externes Requises (Non Gérées par l'ancien service)
 
 ## ⚠️ Important
 
-Base44 **ne gère PAS** ces fonctionnalités automatiquement. Vous devez configurer des services externes.
+l'ancien service **ne gère PAS** ces fonctionnalités automatiquement. Vous devez configurer des services externes.
 
 ---
 
 ## 📧 1. SendGrid - Emails Automatiques
 
-### ❌ Base44 ne gère PAS les emails
+### ❌ l'ancien service ne gère PAS les emails
 
 **Service requis** : SendGrid (ou alternative)
 
@@ -30,8 +30,8 @@ SENDGRID_API_KEY=votre_cle_sendgrid
    - Créer une nouvelle clé API
    - Copier la clé
 
-3. **Configurer dans Base44**
-   - Base44 Dashboard → Environment Variables
+3. **Configurer dans l'ancien service**
+   - l'ancien service Dashboard → Environment Variables
    - Ajouter : `SENDGRID_API_KEY` = votre clé
    - **OU** dans votre code backend directement
 
@@ -49,7 +49,7 @@ SENDGRID_API_KEY=votre_cle_sendgrid
 
 ## 📱 2. Push Notifications
 
-### ❌ Base44 ne gère PAS les push notifications
+### ❌ l'ancien service ne gère PAS les push notifications
 
 **Service requis** : Service de Push Notifications
 
@@ -99,7 +99,7 @@ VITE_REACT_APP_VAPID_PUBLIC_KEY=votre_vapid_public_key
 
 ## 🔐 3. Social Authentication (Google/Facebook)
 
-### ❌ Base44 ne gère PAS l'authentification sociale automatiquement
+### ❌ l'ancien service ne gère PAS l'authentification sociale automatiquement
 
 **Services requis** : Google OAuth + Facebook OAuth
 
@@ -130,8 +130,8 @@ FACEBOOK_APP_SECRET=votre_facebook_app_secret
    - Authorized redirect URIs : `https://votre-app.base44.app/auth/google/callback`
    - Copier Client ID et Client Secret
 
-4. **Configurer dans Base44**
-   - Base44 Dashboard → Environment Variables
+4. **Configurer dans l'ancien service**
+   - l'ancien service Dashboard → Environment Variables
    - Ajouter `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET`
 
 ### Configuration Facebook OAuth
@@ -149,8 +149,8 @@ FACEBOOK_APP_SECRET=votre_facebook_app_secret
    - Settings → Basic
    - Copier App ID et App Secret
 
-4. **Configurer dans Base44**
-   - Base44 Dashboard → Environment Variables
+4. **Configurer dans l'ancien service**
+   - l'ancien service Dashboard → Environment Variables
    - Ajouter `FACEBOOK_APP_ID` et `FACEBOOK_APP_SECRET`
 
 **Impact** : ⚪ **Sans configuration** : L'authentification sociale ne fonctionnera pas (mais l'auth normale fonctionne)
@@ -161,15 +161,15 @@ FACEBOOK_APP_SECRET=votre_facebook_app_secret
 
 ## 📋 Récapitulatif des Services Externes
 
-| Service | Base44 Gère ? | Configuration Requise | Priorité |
+| Service | l'ancien service Gère ? | Configuration Requise | Priorité |
 |---------|---------------|----------------------|----------|
 | **Emails (SendGrid)** | ❌ Non | Compte SendGrid + API Key | 🟡 Moyenne |
 | **Push Notifications** | ❌ Non | Firebase/OneSignal + VAPID Key | ⚪ Faible |
 | **Social Auth** | ❌ Non | Google OAuth + Facebook OAuth | ⚪ Faible |
-| **Base de données** | ✅ Oui | Automatique via Base44 | ✅ OK |
-| **Authentification** | ✅ Oui | Automatique via Base44 | ✅ OK |
-| **WebSockets** | ✅ Oui | Automatique via Base44 | ✅ OK |
-| **Stockage fichiers** | ✅ Oui | Automatique via Base44 | ✅ OK |
+| **Base de données** | ✅ Oui | Automatique via l'ancien service | ✅ OK |
+| **Authentification** | ✅ Oui | Automatique via l'ancien service | ✅ OK |
+| **WebSockets** | ✅ Oui | Automatique via l'ancien service | ✅ OK |
+| **Stockage fichiers** | ✅ Oui | Automatique via l'ancien service | ✅ OK |
 
 ---
 
@@ -180,7 +180,7 @@ FACEBOOK_APP_SECRET=votre_facebook_app_secret
 1. **SendGrid (Emails)**
    - Créer compte SendGrid (gratuit)
    - Obtenir API Key
-   - Configurer dans Base44
+   - Configurer dans l'ancien service
 
 ### Plus Tard (Optionnel)
 
@@ -192,11 +192,11 @@ FACEBOOK_APP_SECRET=votre_facebook_app_secret
 3. **Social Authentication**
    - Configurer Google OAuth
    - Configurer Facebook OAuth
-   - Ajouter dans Base44
+   - Ajouter dans l'ancien service
 
 ---
 
-## ✅ Ce que Base44 Gère Automatiquement
+## ✅ Ce que l'ancien service Gère Automatiquement
 
 - ✅ Base de données (PostgreSQL)
 - ✅ Authentification (JWT, sessions)
@@ -209,7 +209,7 @@ FACEBOOK_APP_SECRET=votre_facebook_app_secret
 
 ---
 
-## ❌ Ce que Base44 NE Gère PAS
+## ❌ Ce que l'ancien service NE Gère PAS
 
 - ❌ Envoi d'emails (besoin SendGrid/Resend/etc.)
 - ❌ Push notifications (besoin Firebase/OneSignal/etc.)
@@ -222,7 +222,7 @@ FACEBOOK_APP_SECRET=votre_facebook_app_secret
 ## 💡 Recommandation
 
 **Pour Démarrer** :
-1. ✅ Base44 (déjà configuré)
+1. ✅ l'ancien service (déjà configuré)
 2. ⏳ Orange Money (demain)
 3. 🟡 SendGrid (cette semaine - pour les emails)
 

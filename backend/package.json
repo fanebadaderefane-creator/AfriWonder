@@ -1,7 +1,7 @@
 {
   "name": "afriwonder-backend",
   "version": "1.0.0",
-  "description": "Backend API pour AfriWonder - Migration depuis Base44",
+  "description": "Backend API pour AfriWonder - Express, Prisma, PostgreSQL (base de données propre, indépendant)",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

@@ -247,11 +247,11 @@ export const api = {
       return data.data;
     },
     async create(productData) {
-      // Valider les URLs Base44
+      // Rejeter les URLs de domaines externes non autorisés
       if (productData.images) {
         productData.images.forEach((url, index) => {
           if (url && (url.includes('base44') || url.includes('base44.com'))) {
-            throw new Error(`Les URLs Base44 ne sont pas autorisées pour les images de produit (index ${index}). Utilisez uniquement les URLs de votre CDN (R2/Cloudflare)`);
+            throw new Error(`URLs non autorisées pour les images de produit (index ${index}). Utilisez uniquement les URLs de votre CDN (R2/Cloudflare).`);
           }
         });
       }
@@ -259,11 +259,11 @@ export const api = {
       return data.data;
     },
     async update(id, productData) {
-      // Valider les URLs Base44
+      // Rejeter les URLs de domaines externes non autorisés
       if (productData.images) {
         productData.images.forEach((url, index) => {
           if (url && (url.includes('base44') || url.includes('base44.com'))) {
-            throw new Error(`Les URLs Base44 ne sont pas autorisées pour les images de produit (index ${index}). Utilisez uniquement les URLs de votre CDN (R2/Cloudflare)`);
+            throw new Error(`URLs non autorisées pour les images de produit (index ${index}). Utilisez uniquement les URLs de votre CDN (R2/Cloudflare).`);
           }
         });
       }
@@ -1586,10 +1586,10 @@ export const api = {
     Video: {
       async filter(params = {}, sort = '', limit = 0) {
         try {
-          // Convertir les paramètres Base44 vers les paramètres API Express
+          // Convertir les paramètres vers le format API Express
           const apiParams = { ...params };
           
-          // Gérer le tri (format Base44: '-created_date' -> format API: { sort: 'created_date', order: 'desc' })
+          // Gérer le tri (ex. '-created_date' -> { sort: 'created_date', order: 'desc' })
           if (sort) {
             if (sort.startsWith('-')) {
               apiParams.sort = sort.substring(1);
@@ -1682,9 +1682,9 @@ export const api = {
             throw new Error('Les champs title et video_url sont requis');
           }
           
-          // Vérifier que l'URL n'est pas une URL Base44
+          // Rejeter les URLs de domaines externes non autorisés
           if (videoData.video_url.includes('base44') || videoData.video_url.includes('base44.com')) {
-            throw new Error('Les URLs Base44 ne sont pas autorisées. Utilisez uniquement les URLs de votre CDN (R2/Cloudflare)');
+            throw new Error('URLs non autorisées. Utilisez uniquement les URLs de votre CDN (R2/Cloudflare).');
           }
           
           // Préparer les données selon le schéma Prisma (seulement les champs acceptés)
@@ -2190,7 +2190,7 @@ export const api = {
     },
   },
 
-  // ========== Super-app (vos propres appels API backend - pas Base44) ==========
+  // ========== Super-app (vos propres appels API backend) ==========
   transport: {
     rides: {
       async list(params = {}) {

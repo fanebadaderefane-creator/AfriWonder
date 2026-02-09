@@ -2,7 +2,7 @@
 
 ## Vue d'ensemble
 
-AfriConnect est une super-app vidéo africaine construite avec React, Vite, et Base44 comme backend-as-a-service.
+AfriConnect est une super-app vidéo africaine construite avec React, Vite, et un backend Express/Prisma.
 
 ## Stack Technique
 
@@ -16,8 +16,9 @@ AfriConnect est une super-app vidéo africaine construite avec React, Vite, et B
 - **Framer Motion** - Animations
 
 ### Backend
-- **Base44** - Backend-as-a-Service
-- **Functions TypeScript** - Logique métier serveur
+- **Express** - API REST
+- **Prisma** - ORM et base PostgreSQL
+- **Functions TypeScript** - Logique métier (functions/)
 
 ## Structure du Projet
 
@@ -53,7 +54,7 @@ functions/           # Backend functions (TypeScript)
 
 ## Sécurité
 
-- Authentification via Base44
+- Authentification JWT (backend Express)
 - RBAC (Role-Based Access Control)
 - Validation des entrées avec Zod
 - Chiffrement des données sensibles

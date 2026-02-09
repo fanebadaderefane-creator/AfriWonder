@@ -8,7 +8,7 @@
 ## ✅ MISSION ACCOMPLIE
 
 ### Objectif Initial
-❌ Projet dépendant de Base44 (service externe)
+❌ Projet dépendant de l'ancien service (service externe)
 
 ### Résultat Final
 ✅ **Projet 100% indépendant avec backend Express propriétaire**
@@ -61,7 +61,7 @@
 
 **Composants migrés** : 31/31 ✅
 - Imports changés
-- Base44 supprimé
+- l'ancien service supprimé
 - API calls adaptés
 
 **Bibliothèques nettoyées** :
@@ -95,7 +95,7 @@
 │  Client API              ████████████  100% ✅ │
 │  Migration Pages         ████████████  100% ✅ │
 │  Migration Composants    ████████████  100% ✅ │
-│  Base44 Supprimé         ████████████  100% ✅ │
+│  l'ancien service Supprimé         ████████████  100% ✅ │
 │  Build & Compilation     ████████████  100% ✅ │
 │  Code Quality            ████████████  100% ✅ │
 │                                                 │
@@ -254,7 +254,7 @@ Alternative : Cloudflare R2, Supabase Storage, ou local
 - `backend/src/index.ts` (routes ajoutées)
 
 ### Désactivés ✅
-- `src/api/base44Client.js` (deprecated, garde pour référence)
+- `src/api/legacyClient.js` (deprecated, garde pour référence)
 
 ### Supprimés ✅
 - Scripts temporaires de migration
@@ -270,7 +270,7 @@ Alternative : Cloudflare R2, Supabase Storage, ou local
 - [x] Auth fonctionnelle
 - [x] Vidéos fonctionnelles
 - [x] Marketplace fonctionnel
-- [x] 0 dépendance Base44
+- [x] 0 dépendance l'ancien service
 
 ### ⏳ POUR PRODUCTION COMPLÈTE
 - [ ] Obtenir clés Stripe
@@ -284,7 +284,7 @@ Alternative : Cloudflare R2, Supabase Storage, ou local
 ## 💰 ÉCONOMIES RÉALISÉES
 
 ### Avant
-- Base44 : 600-2400€/an
+- l'ancien service : 600-2400€/an
 - Dépendance : Vendor lock-in
 - Contrôle : Limité
 

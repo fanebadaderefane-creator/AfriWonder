@@ -4,20 +4,20 @@
 
 | Catégorie | Statut | Priorité | Action Requise |
 |-----------|--------|----------|----------------|
-| **Base44** | ✅ **COMPLET** | 🔴 Haute | Aucune |
+| **l'ancien service** | ✅ **COMPLET** | 🔴 Haute | Aucune |
 | **Orange Money Frontend** | ⚠️ **PARTIEL** | 🔴 Haute | Obtenir API_KEY |
 | **Orange Money Backend** | ❌ **MANQUANT** | 🔴 Haute | Obtenir CLIENT_ID + CLIENT_SECRET |
 | **Stripe** | ❌ **MANQUANT** | 🟡 Moyenne | Créer compte Stripe |
 | **Push Notifications** | ❌ **MANQUANT** | ⚪ Faible | Optionnel |
 | **Email (SendGrid)** | ❌ **MANQUANT** | 🟡 Moyenne | Créer compte SendGrid |
 | **Social Auth** | ❌ **MANQUANT** | ⚪ Faible | Optionnel |
-| **WebSocket** | ✅ **OK** | ✅ OK | Utilise Base44 |
+| **WebSocket** | ✅ **OK** | ✅ OK | Utilise l'ancien service |
 
 ---
 
 ## ✅ CONFIGURATIONS COMPLÈTES
 
-### 1. Base44 (Backend-as-a-Service) ✅
+### 1. l'ancien service (Backend-as-a-Service) ✅
 
 **Statut** : ✅ **100% Configuré**
 
@@ -29,7 +29,7 @@ VITE_BASE44_FUNCTIONS_VERSION=v1 ✅
 ```
 
 **Fichiers utilisant** :
-- `src/api/base44Client.js`
+- `src/api/legacyClient.js`
 - `src/lib/app-params.js`
 - Tous les composants utilisant `base44.*`
 
@@ -131,7 +131,7 @@ STRIPE_SECRET_KEY=[À OBTENIR] ❌
 
 **Statut** : ❌ **Non Configuré**
 
-**⚠️ Important** : Base44 **ne gère PAS** les emails automatiquement. Service externe requis.
+**⚠️ Important** : l'ancien service **ne gère PAS** les emails automatiquement. Service externe requis.
 
 **Variables manquantes** :
 ```env
@@ -146,7 +146,7 @@ SENDGRID_API_KEY=[À OBTENIR] ❌
 2. Aller dans "Settings" → "API Keys"
 3. Créer une nouvelle clé API
 4. Copier la clé
-5. **Configurer dans Base44 Dashboard** → Environment Variables (pas dans .env.local)
+5. **Configurer dans l'ancien service Dashboard** → Environment Variables (pas dans .env.local)
 
 **Impact** : ⚠️ Les emails (notifications, confirmations, etc.) ne seront pas envoyés
 
@@ -160,7 +160,7 @@ SENDGRID_API_KEY=[À OBTENIR] ❌
 
 **Statut** : ❌ **Non Configuré**
 
-**⚠️ Important** : Base44 **ne gère PAS** les push notifications. Service externe requis.
+**⚠️ Important** : l'ancien service **ne gère PAS** les push notifications. Service externe requis.
 
 **Variables manquantes** :
 ```env
@@ -195,7 +195,7 @@ VITE_REACT_APP_VAPID_PUBLIC_KEY=[À OBTENIR] ❌
 
 **Statut** : ❌ **Non Configuré**
 
-**⚠️ Important** : Base44 **ne gère PAS** l'authentification sociale automatiquement. Configuration OAuth externe requise.
+**⚠️ Important** : l'ancien service **ne gère PAS** l'authentification sociale automatiquement. Configuration OAuth externe requise.
 
 **Variables manquantes** :
 ```env
@@ -216,7 +216,7 @@ FACEBOOK_APP_SECRET=[À OBTENIR] ❌
 3. Activer Google+ API
 4. Créer des credentials OAuth 2.0
 5. Copier Client ID et Client Secret
-6. **Configurer dans Base44 Dashboard** → Environment Variables
+6. **Configurer dans l'ancien service Dashboard** → Environment Variables
 
 **Facebook OAuth** :
 1. Aller sur [Facebook Developers](https://developers.facebook.com)
@@ -224,7 +224,7 @@ FACEBOOK_APP_SECRET=[À OBTENIR] ❌
 3. Activer Facebook Login
 4. Aller dans "Settings" → "Basic"
 5. Copier App ID et App Secret
-6. **Configurer dans Base44 Dashboard** → Environment Variables
+6. **Configurer dans l'ancien service Dashboard** → Environment Variables
 
 **Impact** : ⚪ L'authentification sociale ne fonctionnera pas (mais l'auth email/mot de passe fonctionne)
 
@@ -234,7 +234,7 @@ FACEBOOK_APP_SECRET=[À OBTENIR] ❌
 
 ### 8. WebSocket ⚪
 
-**Statut** : ✅ **OK** (Utilise Base44 par défaut)
+**Statut** : ✅ **OK** (Utilise l'ancien service par défaut)
 
 **Variables** :
 ```env
@@ -244,9 +244,9 @@ VITE_REACT_APP_WS_URL=[OPTIONNEL] ⚪
 **Fichiers utilisant** :
 - `src/components/realtime/useWebSocket.jsx`
 
-**Note** : Utilise Base44 par défaut, donc pas nécessaire de configurer
+**Note** : Utilise l'ancien service par défaut, donc pas nécessaire de configurer
 
-**Impact** : ✅ Aucun (fonctionne avec Base44)
+**Impact** : ✅ Aucun (fonctionne avec l'ancien service)
 
 **Priorité** : ✅ **AUCUNE** (déjà fonctionnel)
 
@@ -256,7 +256,7 @@ VITE_REACT_APP_WS_URL=[OPTIONNEL] ⚪
 
 ### 🔴 Priorité HAUTE (À Configurer Urgemment)
 
-- [x] ✅ Base44 (APP_ID, APP_BASE_URL, FUNCTIONS_VERSION)
+- [x] ✅ l'ancien service (APP_ID, APP_BASE_URL, FUNCTIONS_VERSION)
 - [ ] ⏳ Orange Money Frontend API_KEY (Email demain)
 - [ ] ⏳ Orange Money Backend (CLIENT_ID, CLIENT_SECRET) - Demander dans l'email
 
@@ -288,7 +288,7 @@ VITE_REACT_APP_WS_URL=[OPTIONNEL] ⚪
 3. **Cette semaine** : Configurer SendGrid
    - Créer compte SendGrid
    - Obtenir API_KEY
-   - Configurer dans Base44 (variables d'environnement backend)
+   - Configurer dans l'ancien service (variables d'environnement backend)
 
 ### Plus Tard (Optionnel)
 
@@ -302,7 +302,7 @@ VITE_REACT_APP_WS_URL=[OPTIONNEL] ⚪
 Une fois toutes les clés obtenues, votre `.env.local` devrait contenir :
 
 ```env
-# Base44 (✅ Déjà configuré)
+# l'ancien service (✅ Déjà configuré)
 VITE_BASE44_APP_ID=697bc0a026fbb0821670a468
 VITE_BASE44_APP_BASE_URL=https://app.base44.com
 VITE_BASE44_FUNCTIONS_VERSION=v1
@@ -319,17 +319,17 @@ VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
 # Push Notifications (❌ Optionnel)
 VITE_REACT_APP_VAPID_PUBLIC_KEY=...
 
-# WebSocket (✅ OK - Base44 gère)
+# WebSocket (✅ OK - l'ancien service gère)
 # VITE_REACT_APP_WS_URL=wss://...
 ```
 
-**Note** : Les variables backend (ORANGE_MONEY_CLIENT_ID, STRIPE_SECRET_KEY, SENDGRID_API_KEY, etc.) doivent être configurées dans Base44, pas dans `.env.local` (elles sont côté serveur).
+**Note** : Les variables backend (ORANGE_MONEY_CLIENT_ID, STRIPE_SECRET_KEY, SENDGRID_API_KEY, etc.) doivent être configurées dans l'ancien service, pas dans `.env.local` (elles sont côté serveur).
 
 ---
 
 ## ✅ État Actuel
 
-**Application Fonctionnelle** : ✅ **OUI** (avec Base44)
+**Application Fonctionnelle** : ✅ **OUI** (avec l'ancien service)
 
 **Fonctionnalités Disponibles** :
 - ✅ Authentification

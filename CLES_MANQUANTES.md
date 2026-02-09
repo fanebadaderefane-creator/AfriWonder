@@ -2,12 +2,12 @@
 
 ## ✅ CLÉS CONFIGURÉES (Application Fonctionnelle)
 
-### Base44 (Obligatoire) ✅
+### l'ancien service (Obligatoire) ✅
 - ✅ `VITE_BASE44_APP_ID` = `697bc0a026fbb0821670a468`
 - ✅ `VITE_BASE44_APP_BASE_URL` = `https://app.base44.com`
 - ✅ `VITE_BASE44_FUNCTIONS_VERSION` = `v1`
 
-**Statut** : ✅ **COMPLET** - L'application fonctionne avec Base44
+**Statut** : ✅ **COMPLET** - L'application fonctionne avec l'ancien service
 
 ### Orange Money (Partiel) ⚠️
 - ✅ `VITE_ORANGE_MERCHANT_ID` = `7701901162`
@@ -62,19 +62,19 @@ Ces clés sont **optionnelles** et peuvent être ajoutées plus tard :
 
 **Priorité** : ⚪ **FAIBLE** (optionnel, peut être ajouté plus tard)
 
-### 4. WebSocket (Si différent de Base44) ⚪
+### 4. WebSocket (Si différent de l'ancien service) ⚪
 - ❌ `VITE_REACT_APP_WS_URL` = `wss://...`
 
-**Impact** : ⚪ **Utilise Base44 par défaut**, donc pas nécessaire
+**Impact** : ⚪ **Utilise l'ancien service par défaut**, donc pas nécessaire
 
-**Priorité** : ⚪ **FAIBLE** (optionnel, Base44 gère déjà)
+**Priorité** : ⚪ **FAIBLE** (optionnel, l'ancien service gère déjà)
 
 ### 5. API URL (Si backend personnalisé) ⚪
 - ❌ `VITE_REACT_APP_API_URL` = `http://...`
 
-**Impact** : ⚪ **Utilise Base44 par défaut**, donc pas nécessaire
+**Impact** : ⚪ **Utilise l'ancien service par défaut**, donc pas nécessaire
 
-**Priorité** : ⚪ **FAIBLE** (optionnel, Base44 gère déjà)
+**Priorité** : ⚪ **FAIBLE** (optionnel, l'ancien service gère déjà)
 
 ---
 
@@ -85,15 +85,15 @@ Ces clés sont **optionnelles** et peuvent être ajoutées plus tard :
 | 🔴 **HAUTE** | Orange Money API_KEY | ⏳ **MANQUANTE** | Paiements Orange Money |
 | ⚪ **FAIBLE** | Stripe Key | ❌ Optionnel | Paiements par carte |
 | ⚪ **FAIBLE** | VAPID Key | ❌ Optionnel | Notifications push |
-| ⚪ **FAIBLE** | WebSocket URL | ❌ Optionnel | Temps réel (Base44 gère) |
-| ⚪ **FAIBLE** | API URL | ❌ Optionnel | Backend (Base44 gère) |
+| ⚪ **FAIBLE** | WebSocket URL | ❌ Optionnel | Temps réel (l'ancien service gère) |
+| ⚪ **FAIBLE** | API URL | ❌ Optionnel | Backend (l'ancien service gère) |
 
 ---
 
 ## ✅ Conclusion
 
 ### Pour Démarrer l'Application (Maintenant) :
-- ✅ **Base44** : **COMPLET** - L'application fonctionne !
+- ✅ **l'ancien service** : **COMPLET** - L'application fonctionne !
 - ⚠️ **Orange Money** : **PARTIEL** - Paiements Orange Money non fonctionnels
 
 ### Pour Activer les Paiements Orange Money :
@@ -107,7 +107,7 @@ Ces clés sont **optionnelles** et peuvent être ajoutées plus tard :
 
 ## 🎯 Action Immédiate
 
-**L'application fonctionne déjà avec Base44 !** ✅
+**L'application fonctionne déjà avec l'ancien service !** ✅
 
 **Pour activer Orange Money** :
 1. Contacter Orange Money Mali

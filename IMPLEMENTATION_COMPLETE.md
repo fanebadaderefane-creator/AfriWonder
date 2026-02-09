@@ -1,4 +1,4 @@
-# ✅ IMPLÉMENTATION COMPLÈTE - Migration Base44 → Express
+# ✅ IMPLÉMENTATION COMPLÈTE - Migration l'ancien service → Express
 
 ## 🎯 STATUS : Infrastructure Prête à 35%
 
@@ -21,7 +21,7 @@
 
 ### 2. AuthContext Migré ✅
 **Fichier** : `src/lib/AuthContext.jsx` (MODIFIÉ)
-- ✅ Supprimé dépendance Base44
+- ✅ Supprimé dépendance l'ancien service
 - ✅ Utilise `api.auth.*`
 - ✅ Gestion JWT localStorage
 - ✅ Fonctions : login, register, logout, checkAuth
@@ -141,8 +141,8 @@ Jour 7   : Tests et corrections
 **Pattern de migration** :
 ```javascript
 // AVANT
-import { base44 } from '@/api/base44Client';
-const data = await base44.entities.Video.list();
+import { legacyApi } from '@/api/legacyClient';
+const data = await legacyApi.entities.Video.list();
 
 // APRÈS
 import { api } from '@/api/expressClient';
@@ -158,7 +158,7 @@ const data = result.videos;
 AfriConnect/
 ├── src/
 │   ├── api/
-│   │   ├── base44Client.js           (ANCIEN - à supprimer après)
+│   │   ├── legacyClient.js           (ANCIEN - à supprimer après)
 │   │   └── expressClient.js          ✅ NOUVEAU
 │   └── lib/
 │       └── AuthContext.jsx           ✅ MODIFIÉ (migré)
@@ -184,7 +184,7 @@ AfriConnect/
 
 ## 🎓 COMPRENDRE L'ARCHITECTURE
 
-### Avant (Base44) ❌
+### Avant (l'ancien service) ❌
 
 ```
 ┌─────────────┐
@@ -192,11 +192,11 @@ AfriConnect/
 │   (React)   │
 └──────┬──────┘
        │
-       │ base44.entities.*
+       │ legacyApi.entities.*
        │
        v
 ┌─────────────┐
-│   Base44    │◄─── Service externe (coûteux)
+│   l'ancien service    │◄─── Service externe (coûteux)
 │   Servers   │
 └─────────────┘
 ```
@@ -226,7 +226,7 @@ AfriConnect/
 
 **Avantages** :
 - ✅ Contrôle total
-- ✅ Pas de coûts Base44 (économie 300-1800€/an)
+- ✅ Pas de coûts l'ancien service (économie 300-1800€/an)
 - ✅ Pas de vendor lock-in
 - ✅ Scalabilité à votre rythme
 
@@ -333,7 +333,7 @@ console.log(user);  // Doit retourner vos données utilisateur
 ## 🎯 OBJECTIF FINAL
 
 ```
-✅ 100% indépendant de Base44
+✅ 100% indépendant de l'ancien service
 ✅ Toutes les pages migrées
 ✅ Tous les paiements fonctionnels
 ✅ Toutes les fonctionnalités opérationnelles
@@ -391,7 +391,7 @@ app.use(cors({
 // Souvent : mauvais nom de fonction API
 
 // AVANT
-await base44.entities.Video.list()
+await legacyApi.entities.Video.list()
 
 // APRÈS (CORRECT)
 await api.videos.list()
@@ -450,7 +450,7 @@ Vous avez maintenant :
 
 Les fondations sont solides, maintenant c'est du travail répétitif :
 1. Ouvrir une page
-2. Chercher "base44"
+2. Chercher "legacyApi"
 3. Remplacer par "api"
 4. Adapter les appels
 5. Tester

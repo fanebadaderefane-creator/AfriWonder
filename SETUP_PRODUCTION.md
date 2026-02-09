@@ -4,14 +4,14 @@
 
 Votre application **démarre correctement** ! Les messages que vous voyez sont normaux :
 
-1. `[base44] Proxy not enabled` - **Normal** si vous n'avez pas encore configuré Base44
+1. `[base44] Proxy not enabled` - **Normal** si vous n'avez pas encore configuré l'ancien service
 2. `[baseline-browser-mapping]` - **Avertissement mineur** (peut être ignoré)
 
 ## 📋 Étapes pour Mettre en Production
 
-### 1. Configuration Base44 (Obligatoire)
+### 1. Configuration l'ancien service (Obligatoire)
 
-1. Créer un compte sur [Base44.com](https://base44.com)
+1. Créer un compte sur [l'ancien service.com](https://base44.com)
 2. Créer une nouvelle application
 3. Obtenir votre `APP_ID` et `APP_BASE_URL`
 4. Créer le fichier `.env.local` :
@@ -25,7 +25,7 @@ cp .env.example .env.local
 
 ```env
 VITE_BASE44_APP_ID=votre_app_id_ici
-VITE_BASE44_APP_BASE_URL=https://votre-app.base44.app
+VITE_API_URL=https://votre-app.base44.app
 VITE_BASE44_FUNCTIONS_VERSION=v1
 ```
 
@@ -50,10 +50,10 @@ REACT_APP_ENV=production
 
 ### 3. Déploiement
 
-#### Option A : Base44 (Recommandé - Automatique)
-1. Connecter votre repo GitHub à Base44
+#### Option A : l'ancien service (Recommandé - Automatique)
+1. Connecter votre repo GitHub à l'ancien service
 2. Push sur la branche `main`
-3. Base44 déploie automatiquement ✅
+3. l'ancien service déploie automatiquement ✅
 
 #### Option B : Déploiement Manuel
 ```bash
@@ -90,7 +90,7 @@ Si vous voulez payer quelqu'un pour la configuration :
 
 | Tâche | Temps | Coût Estimé* |
 |-------|-------|--------------|
-| Configuration Base44 | 1h | 50-100€ |
+| Configuration l'ancien service | 1h | 50-100€ |
 | Configuration Stripe | 1h | 50-100€ |
 | Configuration Orange Money | 2h | 100-200€ |
 | Déploiement initial | 1h | 50-100€ |
@@ -103,10 +103,10 @@ Si vous voulez payer quelqu'un pour la configuration :
 
 **Vous pouvez le faire vous-même !** 
 
-1. Créer les comptes (Base44, Stripe) - **30 min**
+1. Créer les comptes (l'ancien service, Stripe) - **30 min**
 2. Remplir `.env.local` - **15 min**
 3. Tester localement - **1h**
-4. Déployer via Base44 - **Automatique**
+4. Déployer via l'ancien service - **Automatique**
 
 **Total : ~2 heures de votre temps vs 350-700€ pour un développeur**
 

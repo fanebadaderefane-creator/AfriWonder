@@ -15,7 +15,7 @@
 2. **Frontend** ⚠️
    - ✅ Structure React complète
    - ✅ Composants UI présents
-   - ⚠️ **À VÉRIFIER** : Adaptation au nouveau backend Express (actuellement configuré pour Base44)
+   - ✅ Projet indépendant : frontend branché sur le backend Express
 
 3. **Base de Données** ⚠️
    - ✅ Schéma Prisma complet (43 entités)
@@ -27,10 +27,9 @@
    - Les 6 nouvelles entités doivent être migrées
    - Commande : `npx prisma migrate dev --name add_missing_entities`
 
-2. **Adaptation Frontend** ⚠️
-   - Le frontend utilise actuellement Base44
-   - **NÉCESSAIRE** : Adapter pour utiliser le nouveau backend Express
-   - Créer un client API pour le backend Express
+2. **Frontend** ✅
+   - Le frontend utilise le backend Express (api/expressClient.js)
+   - Base de données propre au projet (PostgreSQL / Supabase)
 
 3. **Configuration Production** ⚠️
    - Variables d'environnement production
@@ -94,13 +93,13 @@
 
 1. **Créer Client API Backend** (3h)
    - Créer `src/api/backendClient.js`
-   - Remplacer les appels Base44 par appels Express
+   - Utiliser les appels Express (api/expressClient.js)
    - Adapter toutes les routes API
 
 2. **Mise à Jour Variables d'Environnement** (1h)
    - Créer `.env.production` frontend
    - `VITE_API_URL=https://api.votre-domaine.com`
-   - Supprimer les références Base44
+   - Nettoyer les anciennes références si besoin
 
 3. **Tests Frontend** (2h)
    - Tester les principales fonctionnalités
@@ -148,7 +147,7 @@
 ### Risques Identifiés
 
 1. **Adaptation Frontend** (Risque : Moyen)
-   - Le frontend utilise Base44, adaptation nécessaire
+   - S'assurer que le frontend utilise uniquement l'API Express
    - **Délai estimé** : 2-3 jours
    - **Solution** : Créer client API wrapper
 
@@ -219,7 +218,7 @@
 ### Frontend (Priorité 1)
 
 - [ ] Client API backend créé
-- [ ] Remplacement appels Base44
+- [ ] Vérifier que tous les appels passent par l'API Express
 - [ ] Variables d'environnement production
 - [ ] Tests fonctionnels principaux
 - [ ] Build production testé

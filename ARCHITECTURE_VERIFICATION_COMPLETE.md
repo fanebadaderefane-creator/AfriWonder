@@ -154,7 +154,7 @@ Fonctions vérifiées :
 - ✅ **43 entités** Prisma
 
 ### Migration Réussie ✅
-- ✅ **0 référence Base44** (100% indépendant)
+- ✅ **0 référence l'ancien service** (100% indépendant)
 - ✅ **Build réussi** (frontend + backend)
 - ✅ **Lint 0 erreur**
 - ✅ **TypeScript 0 erreur**
@@ -193,7 +193,7 @@ Les entités suivantes de la liste ne sont pas dans Prisma, mais gérées via fu
 - ✅ Plus de pages que prévu (83 au lieu de 71)
 - ✅ Toutes les fonctions backend (27/27)
 - ✅ Architecture solide et scalable
-- ✅ 100% indépendant de Base44
+- ✅ 100% indépendant de l'ancien service
 
 **Ce qui manque** :
 - ⏳ 1 page doc mineure (DeveloperGuide)
@@ -247,7 +247,7 @@ Tu as :
 - ✅ **100%** des composants
 - ✅ **92%** des entités (autres gérées différemment)
 
-**Migration Base44 → Express** : ✅ **100% TERMINÉE**
+**Migration l'ancien service → Express** : ✅ **100% TERMINÉE**
 
 **Prêt pour tests** : ✅ **OUI !**
 

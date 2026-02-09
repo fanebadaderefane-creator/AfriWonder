@@ -4,18 +4,18 @@
 
 Le message **"Aucune vidéo pour l'instant"** peut avoir plusieurs causes :
 
-### 1. ✅ Configuration Base44 Corrigée
+### 1. ✅ Configuration l'ancien service Corrigée
 
-J'ai mis à jour l'URL Base44 avec votre domaine :
+J'ai mis à jour l'URL l'ancien service avec votre domaine :
 ```env
-VITE_BASE44_APP_BASE_URL=https://afri-vid-link.base44.app
+VITE_API_URL=https://afri-vid-link.votre-domaine.com
 ```
 
-### 2. ⚠️ Cause Probable : Pas de Vidéos dans Base44
+### 2. ⚠️ Cause Probable : Pas de Vidéos dans l'ancien service
 
-Le code charge les vidéos depuis Base44 :
+Le code charge les vidéos depuis l'ancien service :
 ```javascript
-let allVideos = await base44.entities.Video.list('-created_date', 150);
+let allVideos = await legacyApi.entities.Video.list('-created_date', 150);
 ```
 
 **Si cette requête retourne un tableau vide**, c'est normal d'afficher "Aucune vidéo pour l'instant".
@@ -38,35 +38,35 @@ let allVideos = await base44.entities.Video.list('-created_date', 150);
    - Visibilité : **"Public"** (pour qu'elle soit visible)
 5. **Publier**
 
-#### Via Base44 Dashboard
+#### Via l'ancien service Dashboard
 
-1. Aller sur [https://afri-vid-link.base44.app](https://afri-vid-link.base44.app)
+1. Aller sur [https://afri-vid-link.votre-domaine.com](https://afri-vid-link.votre-domaine.com)
 2. Créer une entité "Video" manuellement
 3. Remplir les champs requis
 
-### Solution 2 : Vérifier la Connexion Base44
+### Solution 2 : Vérifier la Connexion l'ancien service
 
 #### Test dans la Console du Navigateur
 
 Ouvrir la console (F12) et tester :
 
 ```javascript
-// Tester la connexion Base44
-const { base44 } = await import('/src/api/base44Client.js');
+// Tester la connexion l'ancien service
+const { legacyApi } = await import('/src/api/legacyClient.js');
 
 // Vérifier l'authentification
-const user = await base44.auth.me();
+const user = await legacyApi.auth.me();
 console.log('User:', user);
 
 // Tester le chargement des vidéos
-const videos = await base44.entities.Video.list('-created_date', 10);
+const videos = await legacyApi.entities.Video.list('-created_date', 10);
 console.log('Videos:', videos);
 console.log('Nombre de vidéos:', videos.length);
 ```
 
 **Si `videos.length === 0`** : Il n'y a vraiment pas de vidéos dans la base.
 
-**Si erreur** : Problème de connexion Base44.
+**Si erreur** : Problème de connexion l'ancien service.
 
 ### Solution 3 : Vérifier les Filtres de Visibilité
 
@@ -101,7 +101,7 @@ type .env.local | findstr "BASE44"
 Devrait afficher :
 ```
 VITE_BASE44_APP_ID=697bc0a026fbb0821670a468
-VITE_BASE44_APP_BASE_URL=https://afri-vid-link.base44.app
+VITE_API_URL=https://afri-vid-link.votre-domaine.com
 VITE_BASE44_FUNCTIONS_VERSION=v1
 ```
 
@@ -114,23 +114,23 @@ npm run dev
 ### 3. Vérifier dans la Console
 
 Ouvrir la console (F12) et vérifier :
-- ✅ Pas d'erreur Base44 404
+- ✅ Pas d'erreur l'ancien service 404
 - ✅ Pas d'erreur CORS
-- ✅ Les requêtes vers Base44 réussissent
+- ✅ Les requêtes vers l'ancien service réussissent
 
 ### 4. Tester le Chargement des Vidéos
 
 Dans la console du navigateur :
 
 ```javascript
-// Après avoir importé base44
-const videos = await base44.entities.Video.list();
+// Après avoir importé legacyApi
+const videos = await legacyApi.entities.Video.list();
 console.log('Videos chargées:', videos);
 ```
 
 ---
 
-## 📝 Structure de l'Entité Video dans Base44
+## 📝 Structure de l'Entité Video dans l'ancien service
 
 Pour qu'une vidéo soit affichée, elle doit avoir au minimum :
 
@@ -160,9 +160,9 @@ Pour qu'une vidéo soit affichée, elle doit avoir au minimum :
 5. **Important** : Mettre la visibilité sur **"Public"**
 6. Publier
 
-### 2. Vérifier dans Base44 Dashboard
+### 2. Vérifier dans l'ancien service Dashboard
 
-1. Aller sur [https://afri-vid-link.base44.app](https://afri-vid-link.base44.app)
+1. Aller sur [https://afri-vid-link.votre-domaine.com](https://afri-vid-link.votre-domaine.com)
 2. Vérifier s'il y a des entités "Video"
 3. Si oui, vérifier qu'elles ont `visibility: 'public'`
 
@@ -172,7 +172,7 @@ Dans la console du navigateur (F12) :
 
 ```javascript
 // Tester
-const videos = await base44.entities.Video.list();
+const videos = await legacyApi.entities.Video.list();
 console.log('Nombre de vidéos:', videos.length);
 ```
 
@@ -183,7 +183,7 @@ console.log('Nombre de vidéos:', videos.length);
 J'ai mis à jour votre `.env.local` avec l'URL correcte :
 
 ```env
-VITE_BASE44_APP_BASE_URL=https://afri-vid-link.base44.app
+VITE_API_URL=https://afri-vid-link.votre-domaine.com
 ```
 
 **Redémarrez l'application** pour appliquer les changements :
@@ -196,11 +196,11 @@ npm run dev
 
 ## 💡 Conclusion
 
-**Le problème n'est probablement PAS Base44**, mais plutôt :
+**Le problème n'est probablement PAS l'ancien service**, mais plutôt :
 
 1. ✅ **Pas de vidéos dans la base de données** (normal pour une nouvelle app)
 2. ✅ **Vidéos avec visibilité "privée"** (non visibles publiquement)
-3. ✅ **URL Base44 incorrecte** (maintenant corrigée)
+3. ✅ **URL l'ancien service incorrecte** (maintenant corrigée)
 
 **Solution** : Créer une vidéo de test avec visibilité "public" et elle devrait apparaître ! 🎥
 

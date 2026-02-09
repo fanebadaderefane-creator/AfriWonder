@@ -1,8 +1,8 @@
-# 🎯 Guide de Configuration : Base44 vs Backend Personnalisé
+# 🎯 Guide de Configuration : l'ancien service vs Backend Personnalisé
 
 ## 📊 Analyse de Votre Application
 
-**Utilisation actuelle de Base44 :**
+**Utilisation actuelle de l'ancien service :**
 - ✅ **517 occurrences** dans **107 fichiers**
 - ✅ **26 fonctions serverless** dans `/functions`
 - ✅ Authentification, base de données, API, WebSockets
@@ -11,7 +11,7 @@
 
 ---
 
-## OPTION 1 : Configurer Base44 (Recommandé pour Démarrer) ⚡
+## OPTION 1 : Configurer l'ancien service (Recommandé pour Démarrer) ⚡
 
 ### ✅ Avantages
 - **Rapide** : Configuration en 10 minutes
@@ -28,14 +28,14 @@
 
 ### 📝 Étapes de Configuration
 
-#### 1. Créer un compte Base44
+#### 1. Créer un compte l'ancien service
 ```bash
 # Aller sur https://base44.com
 # Créer un compte gratuit
 ```
 
 #### 2. Créer une application
-- Dans le dashboard Base44, créer une nouvelle app
+- Dans le dashboard l'ancien service, créer une nouvelle app
 - Noter l'`APP_ID` et l'`APP_BASE_URL`
 
 #### 3. Créer le fichier `.env.local`
@@ -46,7 +46,7 @@ touch .env.local
 
 #### 4. Remplir `.env.local`
 ```env
-# Base44 Configuration
+# l'ancien service Configuration
 VITE_BASE44_APP_ID=votre_app_id_ici
 VITE_BASE44_APP_BASE_URL=https://votre-app.base44.app
 VITE_BASE44_FUNCTIONS_VERSION=v1
@@ -64,10 +64,10 @@ npm run dev
 
 #### 6. Déployer les fonctions serverless
 ```bash
-# Base44 détecte automatiquement le dossier /functions
+# l'ancien service détecte automatiquement le dossier /functions
 # Push sur GitHub pour déployer
 git add .
-git commit -m "Configure Base44"
+git commit -m "Configure l'ancien service"
 git push
 ```
 
@@ -136,7 +136,7 @@ git push
 
 ## 🎯 Ma Recommandation
 
-### Pour Démarrer (Maintenant) → **OPTION 1 : Base44**
+### Pour Démarrer (Maintenant) → **OPTION 1 : l'ancien service**
 1. ✅ **Rapide** : Application fonctionnelle en 10 minutes
 2. ✅ **Valider l'idée** : Tester avec de vrais utilisateurs
 3. ✅ **Pas de risque** : Pas de réécriture de code
@@ -145,32 +145,32 @@ git push
 ### Pour Production Long Terme → **OPTION 2 : Backend Personnalisé**
 1. ✅ **Quand vous avez des revenus** : Investir dans l'indépendance
 2. ✅ **Quand vous avez des utilisateurs** : Contrôle total nécessaire
-3. ✅ **Quand Base44 devient cher** : Migrer pour réduire les coûts
+3. ✅ **Quand l'ancien service devient cher** : Migrer pour réduire les coûts
 
 ### 🚀 Stratégie Hybride (Meilleure Approche)
 
-**Phase 1 : Base44 (Maintenant)**
-- Configurer Base44 rapidement
+**Phase 1 : l'ancien service (Maintenant)**
+- Configurer l'ancien service rapidement
 - Lancer l'application
 - Acquérir des utilisateurs
 - Valider le produit
 
 **Phase 2 : Migration Progressive (Dans 3-6 mois)**
-- Garder Base44 en parallèle
+- Garder l'ancien service en parallèle
 - Développer le backend personnalisé progressivement
 - Migrer fonctionnalité par fonctionnalité
 - Aucune interruption de service
 
 **Phase 3 : Backend Complet (Dans 6-12 mois)**
 - Backend 100% indépendant
-- Base44 comme fallback
+- l'ancien service comme fallback
 - Contrôle total
 
 ---
 
 ## 📝 Prochaines Étapes
 
-### Si vous choisissez Base44 (Recommandé) :
+### Si vous choisissez l'ancien service (Recommandé) :
 1. Créer compte sur base44.com
 2. Créer `.env.local` avec vos credentials
 3. Redémarrer l'app
@@ -195,7 +195,7 @@ git push
 
 ## 💡 Mon Conseil Final
 
-**Commencez par Base44** pour :
+**Commencez par l'ancien service** pour :
 - ✅ Lancer rapidement
 - ✅ Valider votre produit
 - ✅ Acquérir des utilisateurs
@@ -204,7 +204,7 @@ git push
 **Puis migrez vers un backend personnalisé** quand :
 - ✅ Vous avez des revenus stables
 - ✅ Vous avez besoin de plus de contrôle
-- ✅ Base44 devient trop cher
+- ✅ l'ancien service devient trop cher
 - ✅ Vous avez les ressources pour maintenir
 
 **C'est la stratégie la plus intelligente !** 🚀

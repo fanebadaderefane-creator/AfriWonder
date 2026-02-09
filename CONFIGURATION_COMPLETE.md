@@ -1,8 +1,8 @@
-# ✅ Configuration Base44 - Informations Extraites
+# ✅ Configuration l'ancien service - Informations Extraites
 
 ## 📋 Informations Identifiées
 
-D'après votre exemple de code Base44, j'ai extrait :
+D'après votre exemple de code l'ancien service, j'ai extrait :
 
 ### ✅ APP_ID
 ```
@@ -23,7 +23,7 @@ v1 (par défaut)
 ```
 f19c507cfb30466e9f2f1452ab6a7352
 ```
-**Note** : L'API_KEY n'est pas nécessaire dans `.env.local` car le SDK Base44 la gère automatiquement via l'authentification.
+**Note** : L'API_KEY n'est pas nécessaire dans `.env.local` car le SDK l'ancien service la gère automatiquement via l'authentification.
 
 ---
 
@@ -62,7 +62,7 @@ npm run dev
 ### 4. Vérifier la connexion
 
 - Ouvrir http://localhost:5173
-- Les erreurs Base44 404 devraient **disparaître**
+- Les erreurs l'ancien service 404 devraient **disparaître**
 - L'application devrait être **100% fonctionnelle**
 
 ---
@@ -71,8 +71,8 @@ npm run dev
 
 Après redémarrage, vérifiez dans la console du navigateur :
 
-- ❌ **AVANT** : `[Base44 SDK Error] 404`
-- ✅ **APRÈS** : Pas d'erreur Base44
+- ❌ **AVANT** : `[l'ancien service SDK Error] 404`
+- ✅ **APRÈS** : Pas d'erreur l'ancien service
 
 ---
 
@@ -97,7 +97,7 @@ Une fois configuré :
 
 ## 📝 Note sur l'API_KEY
 
-L'API_KEY (`f19c507cfb30466e9f2f1452ab6a7352`) que vous avez dans votre exemple est utilisée pour les appels API directs. Le SDK Base44 (`@base44/sdk`) gère l'authentification automatiquement, donc vous n'avez pas besoin de l'ajouter dans `.env.local`.
+L'API_KEY (`f19c507cfb30466e9f2f1452ab6a7352`) que vous avez dans votre exemple est utilisée pour les appels API directs. Le SDK l'ancien service (`@base44/sdk`) gère l'authentification automatiquement, donc vous n'avez pas besoin de l'ajouter dans `.env.local`.
 
 Si vous avez besoin de faire des appels API directs (en dehors du SDK), vous pouvez l'utiliser dans votre code, mais **ne la mettez jamais dans un fichier commité**.
 
@@ -105,5 +105,5 @@ Si vous avez besoin de faire des appels API directs (en dehors du SDK), vous pou
 
 ## ✅ Configuration Terminée !
 
-Votre application est maintenant configurée avec Base44. Redémarrez l'application et tout devrait fonctionner ! 🚀
+Votre application est maintenant configurée avec l'ancien service. Redémarrez l'application et tout devrait fonctionner ! 🚀
 

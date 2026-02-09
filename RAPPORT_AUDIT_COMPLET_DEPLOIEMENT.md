@@ -36,36 +36,36 @@
 
 #### Description
 - ✅ **Backend Express** : Parfaitement opérationnel (36 routes API)
-- ❌ **Frontend** : Utilise exclusivement **Base44 SDK**
+- ❌ **Frontend** : Utilise exclusivement **l'ancien service SDK**
 - ❌ **Aucune intégration** entre les deux systèmes
 
 #### Preuve du Problème
 ```javascript
-// Frontend utilise Base44 partout :
+// Frontend utilise l'ancien service partout :
 // src/lib/AuthContext.jsx
-import { base44 } from '@/api/base44Client';
-const currentUser = await base44.auth.me();
+import { legacyApi } from '@/api/legacyClient';
+const currentUser = await legacyApi.auth.me();
 
 // src/pages/MobileMoneyPayment.jsx
-await base44.entities.Transaction.create({...});
+await legacyApi.entities.Transaction.create({...});
 
 // src/components/marketplace/ReturnForm.jsx
-const user = await base44.auth.me();
-await base44.entities.Return.create({...});
+const user = await legacyApi.auth.me();
+await legacyApi.entities.Return.create({...});
 ```
 
 #### Impact
 - ❌ Le backend Express n'est **jamais appelé** par le frontend
-- ❌ Toutes les données passent par Base44 (service externe)
+- ❌ Toutes les données passent par l'ancien service (service externe)
 - ❌ Les 36 routes API backend sont **inutilisées**
-- ❌ Le projet a **deux backends séparés** (Base44 + Express)
+- ❌ Le projet a **deux backends séparés** (l'ancien service + Express)
 
 #### Solution Requise
-**Migration complète du frontend** de Base44 vers le backend Express :
+**Migration complète du frontend** de l'ancien service vers le backend Express :
 1. Créer un client API pour communiquer avec Express
-2. Remplacer **TOUS** les appels `base44.*` par des appels HTTP
+2. Remplacer **TOUS** les appels `legacyApi.*` par des appels HTTP
 3. Adapter l'authentification JWT
-4. Migrer les 70+ pages qui utilisent Base44
+4. Migrer les 70+ pages qui utilisent l'ancien service
 5. **Temps estimé** : 7-10 jours de travail
 
 ---
@@ -85,12 +85,12 @@ await base44.entities.Return.create({...});
 
 #### Impact
 - ❌ Backend ne peut pas démarrer (pas de DATABASE_URL)
-- ❌ Frontend ne peut pas se connecter à Base44
+- ❌ Frontend ne peut pas se connecter à l'ancien service
 - ❌ Aucune clé API configurée (Stripe, Orange Money)
 
 #### Solution Requise
 1. Créer `backend/.env` avec toutes les variables
-2. Créer `.env.local` avec la configuration Base44
+2. Créer `.env.local` avec la configuration l'ancien service
 3. Obtenir les clés API nécessaires
 
 ---
@@ -297,7 +297,7 @@ backend/
 ```
 src/
 ├── api/
-│   └── base44Client.js       ⚠️ Utilise Base44 (problème)
+│   └── legacyClient.js       ⚠️ Utilise l'ancien service (problème)
 ├── components/               ✅ 202 composants
 │   ├── ui/                   ✅ 49 composants Shadcn
 │   ├── common/               ✅ Services, Optimizers
@@ -307,7 +307,7 @@ src/
 │   └── ...                   ✅ Autres modules
 ├── pages/                    ✅ 70+ pages
 ├── lib/                      ✅ Utilitaires
-│   ├── AuthContext.jsx       ⚠️ Utilise Base44
+│   ├── AuthContext.jsx       ⚠️ Utilise l'ancien service
 │   ├── logger.js             ✅ Logger
 │   ├── validators.js         ✅ Schémas Zod
 │   └── query-client.js       ✅ TanStack Query
@@ -315,7 +315,7 @@ src/
 ```
 
 #### Problèmes Identifiés
-1. ⚠️ **Dépendance Base44** : Tout passe par Base44 SDK
+1. ⚠️ **Dépendance l'ancien service** : Tout passe par l'ancien service SDK
 2. ⚠️ **Pas d'appels au backend Express** : Backend inutilisé
 3. ⚠️ **Configuration manquante** : `.env.local` absent
 
@@ -383,17 +383,17 @@ AuditLog                ✅ Logs système
 
 | Fonctionnalité | Backend | Frontend | Intégration | Statut |
 |----------------|---------|----------|-------------|--------|
-| **Authentification** | ✅ JWT | ✅ UI | ❌ Base44 | ⚠️ MIGRATION REQUISE |
-| **Vidéos (CRUD)** | ✅ API | ✅ UI | ❌ Base44 | ⚠️ MIGRATION REQUISE |
-| **Likes/Comments** | ✅ API | ✅ UI | ❌ Base44 | ⚠️ MIGRATION REQUISE |
-| **Marketplace** | ✅ API | ✅ UI | ❌ Base44 | ⚠️ MIGRATION REQUISE |
-| **Commandes** | ✅ API | ✅ UI | ❌ Base44 | ⚠️ MIGRATION REQUISE |
+| **Authentification** | ✅ JWT | ✅ UI | ❌ l'ancien service | ⚠️ MIGRATION REQUISE |
+| **Vidéos (CRUD)** | ✅ API | ✅ UI | ❌ l'ancien service | ⚠️ MIGRATION REQUISE |
+| **Likes/Comments** | ✅ API | ✅ UI | ❌ l'ancien service | ⚠️ MIGRATION REQUISE |
+| **Marketplace** | ✅ API | ✅ UI | ❌ l'ancien service | ⚠️ MIGRATION REQUISE |
+| **Commandes** | ✅ API | ✅ UI | ❌ l'ancien service | ⚠️ MIGRATION REQUISE |
 | **Paiements Stripe** | ✅ API | ✅ UI | ❌ Clés | ⚠️ CONFIG REQUISE |
 | **Orange Money** | ✅ API | ✅ UI | ❌ Clés | ⚠️ CONFIG REQUISE |
-| **Wallet** | ✅ API | ✅ UI | ❌ Base44 | ⚠️ MIGRATION REQUISE |
-| **Live Streaming** | ✅ DB | ✅ UI | ❌ Base44 | ⚠️ MIGRATION REQUISE |
-| **Gamification** | ✅ DB | ✅ UI | ❌ Base44 | ⚠️ MIGRATION REQUISE |
-| **Notifications** | ✅ DB | ✅ UI | ❌ Base44 | ⚠️ MIGRATION REQUISE |
+| **Wallet** | ✅ API | ✅ UI | ❌ l'ancien service | ⚠️ MIGRATION REQUISE |
+| **Live Streaming** | ✅ DB | ✅ UI | ❌ l'ancien service | ⚠️ MIGRATION REQUISE |
+| **Gamification** | ✅ DB | ✅ UI | ❌ l'ancien service | ⚠️ MIGRATION REQUISE |
+| **Notifications** | ✅ DB | ✅ UI | ❌ l'ancien service | ⚠️ MIGRATION REQUISE |
 | **WebSocket** | ✅ Socket.io | ✅ Hook | ❌ Séparés | ⚠️ INTÉGRATION REQUISE |
 
 ### Score par Fonctionnalité
@@ -421,7 +421,7 @@ Toutes les dépendances sont installées et à jour :
 - ✅ React 18.2.0
 - ✅ Vite 6.1.0
 - ✅ TanStack Query 5.89.0
-- ✅ Base44 SDK 0.8.18
+- ✅ l'ancien service SDK 0.8.18
 - ✅ Radix UI (tous les composants)
 - ✅ Tailwind CSS 3.4.17
 - ✅ Framer Motion 11.16.4
@@ -502,7 +502,7 @@ VITE_STRIPE_PUBLISHABLE_KEY     ❌ À obtenir
 
 #### 2. Migration Frontend-Backend ❌ CRITIQUE
 - ❌ Créer client API Express
-- ❌ Remplacer tous les appels Base44
+- ❌ Remplacer tous les appels l'ancien service
 - ❌ Adapter l'authentification
 - ❌ Migrer les 70+ pages
 - ⏱️ **Estimation** : 7-10 jours de travail
@@ -553,18 +553,18 @@ VITE_STRIPE_PUBLISHABLE_KEY     ❌ À obtenir
 
 #### Étape 2 : Migrer l'Authentification
 - [ ] Adapter `AuthContext.jsx`
-- [ ] Remplacer `base44.auth.me()` → API Express
-- [ ] Remplacer `base44.auth.login()` → API Express
-- [ ] Remplacer `base44.auth.logout()` → API Express
+- [ ] Remplacer `legacyApi.auth.me()` → API Express
+- [ ] Remplacer `legacyApi.auth.login()` → API Express
+- [ ] Remplacer `legacyApi.auth.logout()` → API Express
 - [ ] Tester login/logout
 
 #### Étape 3 : Migrer les Entités
-- [ ] Videos : Remplacer `base44.entities.Video.*`
-- [ ] Products : Remplacer `base44.entities.Product.*`
-- [ ] Orders : Remplacer `base44.entities.Order.*`
-- [ ] Transactions : Remplacer `base44.entities.Transaction.*`
-- [ ] Wallet : Remplacer `base44.entities.Wallet.*`
-- [ ] Notifications : Remplacer `base44.entities.Notification.*`
+- [ ] Videos : Remplacer `legacyApi.entities.Video.*`
+- [ ] Products : Remplacer `legacyApi.entities.Product.*`
+- [ ] Orders : Remplacer `legacyApi.entities.Order.*`
+- [ ] Transactions : Remplacer `legacyApi.entities.Transaction.*`
+- [ ] Wallet : Remplacer `legacyApi.entities.Wallet.*`
+- [ ] Notifications : Remplacer `legacyApi.entities.Notification.*`
 - [ ] Etc. (37 entités)
 
 #### Étape 4 : Tester l'Intégration
@@ -674,7 +674,7 @@ Pour un déploiement MVP rapide (fonctionnalités essentielles) :
 2. **Migration Backend-Frontend**
    - Temps : 7-10 jours
    - Impact : BLOQUANT
-   - Action : Créer client API Express et remplacer tous les appels Base44
+   - Action : Créer client API Express et remplacer tous les appels l'ancien service
 
 3. **Configuration Paiements**
    - Temps : 1-2 jours
@@ -727,7 +727,7 @@ Pour un déploiement MVP rapide (fonctionnalités essentielles) :
 ✅ **Avantages** :
 - Backend Express propriétaire
 - Contrôle total
-- Pas de dépendance Base44
+- Pas de dépendance l'ancien service
 - Coûts prévisibles
 
 ❌ **Inconvénients** :
@@ -746,12 +746,12 @@ Pour un déploiement MVP rapide (fonctionnalités essentielles) :
 
 ❌ **Inconvénients** :
 - Fonctionnalités limitées
-- Toujours dépendant de Base44
+- Toujours dépendant de l'ancien service
 - Migration future nécessaire
 
-### Option 3 : Rester sur Base44
+### Option 3 : Rester sur l'ancien service
 **Durée** : 3-5 jours (config seulement)  
-**Coût** : Élevé (abonnement Base44)  
+**Coût** : Élevé (abonnement l'ancien service)  
 **Risque** : Faible
 
 ✅ **Avantages** :
@@ -816,7 +816,7 @@ Si vous choisissez la migration (Option 1), votre équipe devra maîtriser :
 ### Bloqueurs Critiques
 
 1. ❌ **Pas de fichiers .env** → Application ne démarre pas
-2. ❌ **Frontend utilise Base44** → Backend Express inutilisé
+2. ❌ **Frontend utilise l'ancien service** → Backend Express inutilisé
 3. ❌ **Pas d'intégration** → Deux systèmes séparés
 4. ⚠️ **Clés API manquantes** → Paiements non fonctionnels
 
@@ -845,7 +845,7 @@ Pour être prêt :
 #### ❌ Ce qui est BLOQUANT
 1. **Fichiers .env manquants** : Impossible de démarrer
 2. **Frontend déconnecté** : N'utilise pas le backend Express
-3. **Migration nécessaire** : Frontend doit migrer de Base44 vers Express
+3. **Migration nécessaire** : Frontend doit migrer de l'ancien service vers Express
 4. **Clés API manquantes** : Paiements non configurés
 5. **Tests backend absents** : Aucun test
 
@@ -871,7 +871,7 @@ Pour être prêt :
 
 **Raisons Principales** :
 1. 🔴 **Configuration manquante** (fichiers .env)
-2. 🔴 **Frontend et Backend déconnectés** (utilise Base44 au lieu d'Express)
+2. 🔴 **Frontend et Backend déconnectés** (utilise l'ancien service au lieu d'Express)
 3. 🟡 **Clés API paiements manquantes**
 4. 🟡 **Tests backend absents**
 
@@ -1056,9 +1056,9 @@ SENDGRID_FROM_EMAIL=noreply@africonnect.app
 
 #### Frontend (.env.local)
 ```env
-# Base44 (actuel)
+# l'ancien service (actuel)
 VITE_BASE44_APP_ID=697bc0a026fbb0821670a468
-VITE_BASE44_APP_BASE_URL=https://app.base44.com/apps/697bc0a026fbb0821670a468
+VITE_BASE44_APP_BASE_URL=https://app.legacyApi.com/apps/697bc0a026fbb0821670a468
 VITE_BASE44_FUNCTIONS_VERSION=v1
 
 # API Backend (pour migration)

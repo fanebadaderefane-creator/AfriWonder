@@ -60,9 +60,9 @@ Ouvrir `NEXT_STEPS.md` pour :
 
 **Pattern simple** :
 ```javascript
-// AVANT
-import { base44 } from '@/api/base44Client';
-await base44.entities.Video.list();
+// AVANT (ancien client)
+import { legacyApi } from '@/api/legacyClient';
+await legacyApi.entities.Video.list();
 
 // APRÈS
 import { api } from '@/api/expressClient';
@@ -77,7 +77,7 @@ await api.videos.list();
 |---------|---------|
 | `IMPLEMENTATION_COMPLETE.md` | ✅ Ce qui est fait |
 | `NEXT_STEPS.md` | ⏳ Ce qu'il reste à faire |
-| `GUIDE_MIGRATION_BASE44_TO_EXPRESS.md` | 📖 Guide complet |
+| `NEXT_STEPS.md` | 📖 Guide migration API |
 | `RAPPORT_AUDIT_COMPLET_DEPLOIEMENT.md` | 🔍 Audit complet |
 
 ---

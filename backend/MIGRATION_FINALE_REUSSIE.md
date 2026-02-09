@@ -68,7 +68,7 @@ D'après les captures d'écran, les tables suivantes sont présentes :
 
 ### Après
 - ✅ **37 entités complètes**
-- ✅ Toutes les entités des fonctions Base44 migrées
+- ✅ Toutes les entités des fonctions l'ancien service migrées
 - ✅ Base de données 100% synchronisée
 - ✅ Prisma Client à jour
 
@@ -113,7 +113,7 @@ Subscription, PlatformSettings, Address
 **TERMINÉE** - Toutes les tables sont créées
 
 ### 2. ⏳ Migration des Fonctions
-Adapter les 24 fonctions dans `functions/` pour utiliser Prisma au lieu de Base44
+Adapter les 24 fonctions dans `functions/` pour utiliser Prisma au lieu de l'ancien service
 
 ### 3. ⏳ Migration du Frontend
 Adapter le frontend pour utiliser le nouveau backend Express
