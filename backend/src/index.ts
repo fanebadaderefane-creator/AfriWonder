@@ -1,0 +1,137 @@
+import dotenv from 'dotenv';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import { initSentry } from './config/sentry.js';
+import app from './app.js';
+import { logger } from './utils/logger.js';
+import messageService from './services/message.service.js';
+import { setMessageIo } from './services/message.service.js';
+import { startAccountDeletionJobs } from './jobs/accountDeletion.job.js';
+import { startDataRetentionJob, initializeRetentionPolicies } from './jobs/dataRetention.job.js';
+import { initRedis } from './utils/cache.js';
+
+const socketToUserId = new Map<string, string>();
+
+dotenv.config();
+
+// Sentry doit être initialisé avant toute création d’app (handlers dans app.ts)
+initSentry();
+
+if (process.env.NODE_ENV === 'production') {
+  const required = ['DATABASE_URL', 'JWT_SECRET'];
+  const missing = required.filter((k) => !process.env[k]?.trim());
+  if (missing.length) {
+    logger.error('Variables d’environnement manquantes en production: ' + missing.join(', '));
+    process.exit(1);
+  }
+}
+
+// Pays CEDEAO (optionnel) – APP_COUNTRY=ML|SN|CI|BF
+try {
+  const { getAppCountry, COUNTRY_NAMES } = await import('./config/region.js');
+  const country = getAppCountry();
+  logger.info({ message: 'Pays actif (CEDEAO)', country, name: COUNTRY_NAMES[country] || country });
+} catch {
+  // region config optionnel
+}
+
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    methods: ['GET', 'POST']
+  }
+});
+
+setMessageIo(io);
+
+const PORT = process.env.PORT || 3000;
+
+// WebSocket connection
+io.on('connection', (socket) => {
+  logger.info('WebSocket client connected', { socketId: socket.id });
+
+  socket.on('user:join', (userId: string) => {
+    if (userId) {
+      socket.join(`user:${userId}`);
+      socketToUserId.set(socket.id, userId);
+      messageService.setPresenceOnline(userId).catch((e) => logger.warn('Presence online', e));
+      logger.info('User joined room', { userId, socketId: socket.id });
+    }
+  });
+
+  socket.on('user:leave', (userId: string) => {
+    if (userId) {
+      socket.leave(`user:${userId}`);
+      socketToUserId.delete(socket.id);
+      messageService.setPresenceOffline(userId).catch((e) => logger.warn('Presence offline', e));
+    }
+  });
+
+  socket.on('disconnect', () => {
+    const userId = socketToUserId.get(socket.id);
+    if (userId) {
+      messageService.setPresenceOffline(userId).catch((e) => logger.warn('Presence offline', e));
+      socketToUserId.delete(socket.id);
+    }
+    logger.info('WebSocket client disconnected', { socketId: socket.id });
+  });
+
+  // Messages: conversation room (new_message, typing, read)
+  socket.on('message:join-conversation', (conversationId: string) => {
+    if (conversationId) socket.join(`conversation:${conversationId}`);
+  });
+
+  socket.on('message:leave-conversation', (conversationId: string) => {
+    if (conversationId) socket.leave(`conversation:${conversationId}`);
+  });
+
+  socket.on('message:typing-start', (payload: { conversationId: string; userId: string; name?: string }) => {
+    if (payload?.conversationId) {
+      socket.to(`conversation:${payload.conversationId}`).emit('message:typing', { userId: payload.userId, name: payload.name, typing: true });
+    }
+  });
+
+  socket.on('message:typing-stop', (payload: { conversationId: string; userId: string }) => {
+    if (payload?.conversationId) {
+      socket.to(`conversation:${payload.conversationId}`).emit('message:typing', { userId: payload.userId, typing: false });
+    }
+  });
+
+  // Live: join stream room (pour recevoir chat, gifts, viewers, like)
+  socket.on('live:join-room', (streamId: string) => {
+    if (streamId) {
+      socket.join(`stream:${streamId}`);
+      logger.info('Socket joined live room', { streamId, socketId: socket.id });
+    }
+  });
+
+  socket.on('live:leave-room', (streamId: string) => {
+    if (streamId) socket.leave(`stream:${streamId}`);
+  });
+});
+
+// Export io for use in routes
+export { io };
+
+// Start server
+httpServer.listen(PORT, async () => {
+  logger.info(`🚀 Server running on port ${PORT}`);
+  logger.info(`📡 WebSocket server ready`);
+  logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  
+  // Initialize Redis cache
+  await initRedis();
+  logger.info('✅ Cache Redis initialisé');
+  
+  // Initialiser les politiques de rétention
+  await initializeRetentionPolicies();
+  
+  // Démarrer les jobs automatiques
+  startAccountDeletionJobs();
+  startDataRetentionJob();
+  
+  logger.info('✅ Jobs automatiques démarrés (suppression comptes, rétention données)');
+  logger.info('🛡️ Sécurité: Rate limiting + Anti-bot + Chiffrement ACTIVÉS');
+});
+

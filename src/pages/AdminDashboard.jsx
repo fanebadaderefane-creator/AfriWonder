@@ -1,0 +1,86 @@
+import React, { useState, useEffect } from 'react';
+import { api } from '@/api/expressClient';
+import { useNavigate } from 'react-router-dom';
+import AdminLayout from '@/components/admin/AdminLayout';
+import OverviewPanel from '@/components/admin/OverviewPanel';
+import UsersPanel from '@/components/admin/UsersPanel';
+import FinancePanel from '@/components/admin/FinancePanel';
+import ModerationPanel from '@/components/admin/ModerationPanel';
+import AnalyticsPanel from '@/components/admin/AnalyticsPanel';
+import SettingsPanel from '@/components/admin/SettingsPanel';
+import AuditPanel from '@/components/admin/AuditPanel';
+import { Card } from '@/components/ui/card';
+
+const ADMIN_ROLES = ['super_admin', 'admin', 'finance_admin', 'moderation_admin', 'support_admin', 'data_admin'];
+
+function ActivePanel({ activeTab, user }) {
+  switch (activeTab) {
+    case 'overview':
+      return <OverviewPanel />;
+    case 'users':
+      return <UsersPanel />;
+    case 'finance':
+      return <FinancePanel />;
+    case 'videos':
+      return <ModerationPanel subTab="videos" />;
+    case 'orders':
+      return <ModerationPanel subTab="orders" />;
+    case 'sellers':
+      return <ModerationPanel subTab="sellers" />;
+    case 'disputes':
+      return <ModerationPanel subTab="disputes" />;
+    case 'reports':
+      return <ModerationPanel subTab="reports" />;
+    case 'analytics':
+      return <AnalyticsPanel />;
+    case 'audit':
+      return <AuditPanel />;
+    case 'settings':
+      return <SettingsPanel userRole={user?.role} />;
+    default:
+      return <OverviewPanel />;
+  }
+}
+
+export default function AdminDashboard() {
+  const navigate = useNavigate();
+  const [user, setUser] = useState(null);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    const getUser = async () => {
+      try {
+        const u = await api.auth.me();
+        if (!u || !ADMIN_ROLES.includes(u.role)) {
+          navigate('/Home');
+          return;
+        }
+        setUser(u);
+      } catch (e) {
+        navigate('/Home');
+      }
+    };
+    getUser();
+  }, [navigate]);
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <AdminLayout
+      user={user}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      searchQuery={searchQuery}
+      onSearchChange={setSearchQuery}
+    >
+      <ActivePanel activeTab={activeTab} user={user} />
+    </AdminLayout>
+  );
+}

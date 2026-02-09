@@ -1,0 +1,23 @@
+-- AlterTable
+ALTER TABLE "Product" ADD COLUMN     "product_type" TEXT DEFAULT 'physical',
+ADD COLUMN     "subcategory" TEXT;
+
+-- CreateTable
+CREATE TABLE "PickupPoint" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "address" TEXT NOT NULL,
+    "city" TEXT NOT NULL,
+    "country" TEXT NOT NULL,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "PickupPoint_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE INDEX "PickupPoint_country_idx" ON "PickupPoint"("country");
+
+-- CreateIndex
+CREATE INDEX "PickupPoint_city_idx" ON "PickupPoint"("city");

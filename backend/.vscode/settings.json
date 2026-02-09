@@ -1,0 +1,5 @@
+{
+  "typescript.tsconfig": "./tsconfig.json",
+  "typescript.enablePromptUseWorkspaceTsdk": false
+}
+

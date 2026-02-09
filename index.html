@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
+    <meta name="description" content="La première Super-app vidéo africaine connectant créateurs, commerçants et communauté, optimisée pour les faibles débits, disponible dans toutes les langues locales avec paiements mobiles intégrés." />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://africonnect.app/" />
+    <meta property="og:title" content="AfriConnect - Super App Africaine" />
+    <meta property="og:description" content="La première Super-app vidéo africaine connectant créateurs, commerçants et communauté, optimisée pour les faibles débits, disponible dans toutes les langues locales avec paiements mobiles intégrés." />
+    <meta property="og:image" content="https://africonnect.app/icon-512.png" />
+    <meta property="og:site_name" content="AfriConnect" />
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://africonnect.app/" />
+    <meta name="twitter:title" content="AfriConnect - Super App Africaine" />
+    <meta name="twitter:description" content="La première Super-app vidéo africaine connectant créateurs, commerçants et communauté, optimisée pour les faibles débits, disponible dans toutes les langues locales avec paiements mobiles intégrés." />
+    <meta name="twitter:image" content="https://africonnect.app/icon-512.png" />
+    
+    <!-- Theme Colors -->
+    <meta name="theme-color" content="#f97316" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    
+    <!-- Mobile Web App -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="AfriConnect" />
+    
+    <!-- iOS / iPhone -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="AfriConnect" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="72x72" href="/icon-72.png" />
+    <link rel="apple-touch-icon" sizes="96x96" href="/icon-96.png" />
+    <link rel="apple-touch-icon" sizes="128x128" href="/icon-128.png" />
+    <link rel="apple-touch-icon" sizes="144x144" href="/icon-144.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icon-152.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="384x384" href="/icon-384.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png" />
+    <link rel="apple-touch-icon" sizes="1024x1024" href="/icon-1024.png" />
+    
+    <!-- iPad -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-touch-fullscreen" content="yes" />
+    
+    <!-- Microsoft / Windows -->
+    <meta name="msapplication-TileColor" content="#f97316" />
+    <meta name="msapplication-TileImage" content="/icon-144.png" />
+    <meta name="msapplication-config" content="/browserconfig.xml" />
+    
+    <!-- Android Chrome -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    
+    <!-- Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icon-192.png" />
+    
+    <title>AfriConnect - Super App Africaine</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Désactiver le service worker en développement -->
+    <script>
+      if ('serviceWorker' in navigator && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for(let registration of registrations) {
+            registration.unregister();
+          }
+        });
+      }
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

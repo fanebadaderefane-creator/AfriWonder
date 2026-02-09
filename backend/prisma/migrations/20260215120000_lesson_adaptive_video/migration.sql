@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Lesson" ADD COLUMN IF NOT EXISTS "video_url_240p" TEXT;
+ALTER TABLE "Lesson" ADD COLUMN IF NOT EXISTS "video_url_720p" TEXT;

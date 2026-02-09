@@ -1,0 +1,114 @@
+# ============================================
+# AFRI CONNECT - Backend Configuration Supabase
+# ============================================
+# INSTRUCTIONS :
+# 1. Copier ce contenu dans un fichier .env dans backend/
+# 2. Le fichier .env sera automatiquement ignoré par Git (sécurité)
+# ============================================
+
+# ============================================
+# DATABASE (Supabase)
+# ============================================
+# URL Supabase: https://tlgpcoeadjhitwirfgrb.supabase.co
+# Project Ref: tlgpcoeadjhitwirfgrb
+# Mot de passe: Mali@202520211215
+# ============================================
+# Format Direct (port 5432) - Pour développement
+# Si cette URL ne fonctionne pas, utiliser le format ci-dessous (Connection Pooling)
+DATABASE_URL="postgresql://postgres:Mali%40202520211215@db.tlgpcoeadjhitwirfgrb.supabase.co:5432/postgres"
+
+# Format Connection Pooling (recommandé - port 6543)
+# Si l'URL directe ne fonctionne pas, décommenter cette ligne et commenter la ligne ci-dessus
+# DATABASE_URL="postgresql://postgres.tlgpcoeadjhitwirfgrb:Mali%40202520211215@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connect_timeout=15"
+
+# IMPORTANT : Si aucune des deux URL ne fonctionne, obtenir la DATABASE_URL depuis :
+# Supabase Dashboard → Settings → Database → Connection string → URI
+# Puis remplacer [YOUR-PASSWORD] par : Mali@202520211215 (le @ sera automatiquement encodé)
+
+# ============================================
+# JWT AUTHENTICATION
+# ============================================
+# Secret généré aléatoirement (32 bytes base64)
+JWT_SECRET="BaIr/jOjyZGmQaN3PoxBl8VBH/mDRN4mgoP+++xA4Ko="
+JWT_EXPIRES_IN="7d"
+JWT_REFRESH_SECRET="BaIr/jOjyZGmQaN3PoxBl8VBH/mDRN4mgoP+++xA4Ko=REFRESH"
+JWT_REFRESH_EXPIRES_IN="30d"
+
+# ============================================
+# SERVER
+# ============================================
+PORT=3000
+NODE_ENV=development
+
+# ============================================
+# CORS
+# ============================================
+# URL du frontend (pour développement)
+CORS_ORIGIN=http://localhost:5173
+
+# ============================================
+# SUPABASE API (Optionnel - pour utiliser Supabase Auth directement)
+# ============================================
+SUPABASE_URL=https://tlgpcoeadjhitwirfgrb.supabase.co
+SUPABASE_ANON_KEY=sb_publishable_6fK4ds91_MCfP60plDLO5A_K5EItLCw
+
+# ============================================
+# EMAIL (SendGrid)
+# ============================================
+# À configurer plus tard
+SENDGRID_API_KEY=
+SENDGRID_FROM_EMAIL=noreply@africonnect.app
+
+# ============================================
+# SOCIAL AUTHENTICATION
+# ============================================
+# Google OAuth
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
+
+# Facebook OAuth
+FACEBOOK_APP_ID=
+FACEBOOK_APP_SECRET=
+FACEBOOK_REDIRECT_URI=http://localhost:3000/api/auth/facebook/callback
+
+# ============================================
+# PAYMENTS
+# ============================================
+# Orange Money
+ORANGE_MONEY_CLIENT_ID=
+ORANGE_MONEY_CLIENT_SECRET=
+ORANGE_MONEY_MERCHANT_ID=7701901162
+ORANGE_MONEY_API_KEY=
+ORANGE_MONEY_ENV=test
+
+# Stripe
+STRIPE_SECRET_KEY=
+STRIPE_PUBLISHABLE_KEY=
+STRIPE_WEBHOOK_SECRET=
+
+# ============================================
+# FILE STORAGE (S3 / Cloudflare R2)
+# ============================================
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_REGION=us-east-1
+AWS_S3_BUCKET=africonnect-uploads
+
+# ============================================
+# PUSH NOTIFICATIONS
+# ============================================
+FCM_SERVER_KEY=
+FCM_PROJECT_ID=
+
+# ============================================
+# MONITORING (Optionnel)
+# ============================================
+SENTRY_DSN=
+
+# ============================================
+# RATE LIMITING
+# ============================================
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+

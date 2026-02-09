@@ -1,0 +1,14 @@
+# Frontend build context (root Dockerfile)
+node_modules
+.git
+.env
+.env.*
+*.log
+backend
+dist
+coverage
+.cursor
+.vscode
+.idea
+*.md
+!README.md

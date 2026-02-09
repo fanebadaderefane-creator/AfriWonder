@@ -1,0 +1,635 @@
+// Ajout des entités manquantes pour atteindre 47 entités complètes
+
+// ============================================
+// ENTITÉS MANQUANTES À AJOUTER
+// ============================================
+
+model Wishlist {
+  id         String   @id @default(uuid())
+  user_id    String
+  product_id String
+  created_at DateTime @default(now())
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, product_id])
+  @@index([user_id])
+  @@index([product_id])
+}
+
+model SellerProfile {
+  id                String   @id @default(uuid())
+  user_id           String   @unique
+  store_name        String
+  store_description String?
+  store_logo        String?
+  store_banner      String?
+  rating            Float    @default(0)
+  total_sales       Int      @default(0)
+  total_revenue     Float    @default(0)
+  is_verified       Boolean  @default(false)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([is_verified])
+}
+
+model ProductVariant {
+  id         String   @id @default(uuid())
+  product_id String
+  name       String
+  value      String
+  price_diff Float    @default(0)
+  stock      Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  product    Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([product_id])
+}
+
+model ProductPromotion {
+  id          String   @id @default(uuid())
+  product_id  String
+  discount    Float
+  start_date  DateTime
+  end_date    DateTime
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  product     Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([product_id])
+  @@index([is_active])
+  @@index([end_date])
+}
+
+model FlashSale {
+  id          String   @id @default(uuid())
+  product_id  String
+  discount    Float
+  start_time  DateTime
+  end_time    DateTime
+  stock_limit Int
+  sold_count  Int      @default(0)
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  product     Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([product_id])
+  @@index([is_active])
+  @@index([end_time])
+}
+
+model Dispute {
+  id            String    @id @default(uuid())
+  order_id      String
+  user_id       String
+  seller_id     String
+  reason        String
+  description   String?
+  status        String    @default("open")
+  resolution    String?
+  resolved_by   String?
+  resolved_at   DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  @@index([order_id])
+  @@index([user_id])
+  @@index([seller_id])
+  @@index([status])
+}
+
+model Course {
+  id              String        @id @default(uuid())
+  creator_id      String
+  title           String
+  description     String
+  thumbnail_url   String?
+  price           Float
+  category        String?
+  level           String?
+  duration_hours  Int?
+  students_count  Int           @default(0)
+  rating          Float         @default(0)
+  is_published    Boolean       @default(false)
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+  enrollments     Enrollment[]
+  certificates    Certificate[]
+
+  @@index([creator_id])
+  @@index([category])
+  @@index([is_published])
+}
+
+model Enrollment {
+  id            String    @id @default(uuid())
+  course_id     String
+  user_id       String
+  progress      Float     @default(0)
+  completed_at  DateTime?
+  certificate_id String?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  course        Course    @relation(fields: [course_id], references: [id], onDelete: Cascade)
+
+  @@unique([course_id, user_id])
+  @@index([course_id])
+  @@index([user_id])
+}
+
+model Certificate {
+  id            String      @id @default(uuid())
+  course_id     String
+  user_id       String
+  certificate_url String
+  issued_at     DateTime    @default(now())
+  course        Course      @relation(fields: [course_id], references: [id], onDelete: Cascade)
+
+  @@unique([course_id, user_id])
+  @@index([course_id])
+  @@index([user_id])
+}
+
+model LiveStreamBan {
+  id            String      @id @default(uuid())
+  live_id       String
+  user_id       String
+  reason        String
+  banned_by     String
+  expires_at    DateTime?
+  is_permanent  Boolean     @default(false)
+  created_at    DateTime    @default(now())
+  live_stream   LiveStream  @relation(fields: [live_id], references: [id], onDelete: Cascade)
+
+  @@index([live_id])
+  @@index([user_id])
+}
+
+model Gift {
+  id          String            @id @default(uuid())
+  name        String
+  icon        String
+  price       Float
+  category    String?
+  is_active   Boolean           @default(true)
+  created_at  DateTime          @default(now())
+  updated_at  DateTime          @updatedAt
+  transactions GiftTransaction[]
+
+  @@index([is_active])
+  @@index([category])
+}
+
+model GiftTransaction {
+  id            String   @id @default(uuid())
+  gift_id       String
+  sender_id     String
+  recipient_id  String
+  amount        Float
+  message       String?
+  created_at    DateTime @default(now())
+  gift          Gift     @relation(fields: [gift_id], references: [id], onDelete: Cascade)
+
+  @@index([gift_id])
+  @@index([sender_id])
+  @@index([recipient_id])
+}
+
+model DirectCall {
+  id            String   @id @default(uuid())
+  caller_id     String
+  receiver_id   String
+  status        String   @default("pending")
+  started_at    DateTime?
+  ended_at      DateTime?
+  duration      Int?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@index([caller_id])
+  @@index([receiver_id])
+  @@index([status])
+}
+
+model Conversation {
+  id            String    @id @default(uuid())
+  user1_id      String
+  user2_id      String
+  last_message_at DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  messages      Message[]
+
+  @@unique([user1_id, user2_id])
+  @@index([user1_id])
+  @@index([user2_id])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversation_id String
+  sender_id      String
+  content        String
+  message_type   String        @default("text")
+  is_read        Boolean       @default(false)
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
+  conversation   Conversation  @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+
+  @@index([conversation_id])
+  @@index([sender_id])
+  @@index([is_read])
+  @@index([created_at])
+}
+
+model Community {
+  id              String            @id @default(uuid())
+  creator_id      String
+  name            String
+  description     String?
+  avatar          String?
+  banner          String?
+  category        String?
+  members_count   Int               @default(0)
+  posts_count     Int               @default(0)
+  is_private      Boolean           @default(false)
+  created_at      DateTime          @default(now())
+  updated_at      DateTime          @updatedAt
+  members         CommunityMember[]
+
+  @@index([creator_id])
+  @@index([category])
+  @@index([is_private])
+}
+
+model CommunityMember {
+  id            String    @id @default(uuid())
+  community_id  String
+  user_id       String
+  role          String    @default("member")
+  joined_at     DateTime  @default(now())
+  community     Community @relation(fields: [community_id], references: [id], onDelete: Cascade)
+
+  @@unique([community_id, user_id])
+  @@index([community_id])
+  @@index([user_id])
+}
+
+model Story {
+  id            String   @id @default(uuid())
+  user_id       String
+  media_url     String
+  media_type    String
+  expires_at    DateTime
+  views_count   Int      @default(0)
+  created_at    DateTime @default(now())
+
+  @@index([user_id])
+  @@index([expires_at])
+}
+
+model Playlist {
+  id          String         @id @default(uuid())
+  user_id     String
+  name        String
+  description String?
+  is_public   Boolean        @default(false)
+  videos_count Int           @default(0)
+  created_at  DateTime       @default(now())
+  updated_at  DateTime       @updatedAt
+  items       PlaylistItem[]
+
+  @@index([user_id])
+  @@index([is_public])
+}
+
+model PlaylistItem {
+  id         String   @id @default(uuid())
+  playlist_id String
+  video_id   String
+  position   Int
+  added_at   DateTime @default(now())
+  playlist   Playlist @relation(fields: [playlist_id], references: [id], onDelete: Cascade)
+  video      Video    @relation(fields: [video_id], references: [id], onDelete: Cascade)
+
+  @@unique([playlist_id, video_id])
+  @@index([playlist_id])
+  @@index([video_id])
+}
+
+model Music {
+  id          String   @id @default(uuid())
+  title       String
+  artist      String
+  album       String?
+  duration    Int
+  audio_url   String
+  cover_url   String?
+  genre       String?
+  plays_count Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@index([artist])
+  @@index([genre])
+}
+
+model Analytics {
+  id            String   @id @default(uuid())
+  user_id       String?
+  entity_type   String
+  entity_id     String
+  metric_type   String
+  metric_value  Float
+  date          DateTime @default(now())
+  metadata      Json?
+
+  @@index([user_id])
+  @@index([entity_type])
+  @@index([entity_id])
+  @@index([date])
+}
+
+model SubscriptionTier {
+  id            String        @id @default(uuid())
+  creator_id    String
+  name          String
+  price         Float
+  benefits      String[]
+  is_active     Boolean       @default(true)
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @updatedAt
+  subscriptions Subscription[]
+
+  @@index([creator_id])
+  @@index([is_active])
+}
+
+model Payout {
+  id            String   @id @default(uuid())
+  creator_id    String
+  amount        Float
+  currency      String   @default("XOF")
+  status        String   @default("pending")
+  payment_method String
+  processed_at  DateTime?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@index([creator_id])
+  @@index([status])
+  @@index([created_at])
+}
+
+model Campaign {
+  id                String         @id @default(uuid())
+  creator_id        String
+  title             String
+  description       String
+  goal_amount       Float
+  current_amount    Float           @default(0)
+  backers_count     Int             @default(0)
+  end_date          DateTime
+  status            String           @default("active")
+  created_at        DateTime         @default(now())
+  updated_at        DateTime         @updatedAt
+  contributions     Contribution[]
+
+  @@index([creator_id])
+  @@index([status])
+  @@index([end_date])
+}
+
+model Contribution {
+  id            String    @id @default(uuid())
+  campaign_id   String
+  contributor_id String
+  amount        Float
+  reward_tier   String?
+  created_at    DateTime  @default(now())
+  campaign      Campaign  @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+
+  @@index([campaign_id])
+  @@index([contributor_id])
+}
+
+model LoanRequest {
+  id                String              @id @default(uuid())
+  borrower_id       String
+  amount            Float
+  purpose           String
+  repayment_period  Int
+  interest_rate     Float
+  status            String              @default("pending")
+  approved_at       DateTime?
+  funded_at         DateTime?
+  created_at        DateTime            @default(now())
+  updated_at        DateTime            @updatedAt
+  contributions     MicroloanContribution[]
+
+  @@index([borrower_id])
+  @@index([status])
+}
+
+model MicroloanContribution {
+  id            String       @id @default(uuid())
+  loan_id       String
+  lender_id     String
+  amount        Float
+  created_at    DateTime     @default(now())
+  loan_request  LoanRequest  @relation(fields: [loan_id], references: [id], onDelete: Cascade)
+
+  @@index([loan_id])
+  @@index([lender_id])
+}
+
+model Job {
+  id            String         @id @default(uuid())
+  employer_id   String
+  title         String
+  description   String
+  location      String?
+  salary_min    Float?
+  salary_max    Float?
+  job_type      String
+  category      String?
+  status        String         @default("open")
+  expires_at    DateTime?
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @updatedAt
+  applications  JobApplication[]
+
+  @@index([employer_id])
+  @@index([status])
+  @@index([category])
+}
+
+model JobApplication {
+  id            String   @id @default(uuid())
+  job_id        String
+  applicant_id  String
+  cover_letter  String?
+  resume_url    String?
+  status        String   @default("pending")
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+  job           Job      @relation(fields: [job_id], references: [id], onDelete: Cascade)
+
+  @@unique([job_id, applicant_id])
+  @@index([job_id])
+  @@index([applicant_id])
+}
+
+model Service {
+  id            String   @id @default(uuid())
+  provider_id   String
+  title         String
+  description   String
+  price         Float
+  category      String?
+  location      String?
+  is_available  Boolean  @default(true)
+  rating        Float    @default(0)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@index([provider_id])
+  @@index([category])
+  @@index([is_available])
+}
+
+model Event {
+  id            String   @id @default(uuid())
+  organizer_id  String
+  title         String
+  description   String
+  location      String
+  start_date    DateTime
+  end_date      DateTime
+  price         Float?
+  category      String?
+  attendees_count Int    @default(0)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@index([organizer_id])
+  @@index([start_date])
+  @@index([category])
+}
+
+model CivicPetition {
+  id            String            @id @default(uuid())
+  creator_id    String
+  title         String
+  description   String
+  goal_signatures Int
+  current_signatures Int          @default(0)
+  status        String            @default("active")
+  end_date      DateTime?
+  created_at    DateTime          @default(now())
+  updated_at    DateTime          @updatedAt
+  signatures    PetitionSignature[]
+
+  @@index([creator_id])
+  @@index([status])
+}
+
+model PetitionSignature {
+  id            String          @id @default(uuid())
+  petition_id   String
+  signer_id     String
+  comment       String?
+  created_at    DateTime        @default(now())
+  petition      CivicPetition   @relation(fields: [petition_id], references: [id], onDelete: Cascade)
+
+  @@unique([petition_id, signer_id])
+  @@index([petition_id])
+  @@index([signer_id])
+}
+
+model NewsArticle {
+  id            String   @id @default(uuid())
+  author_id     String
+  title         String
+  content       String
+  cover_image   String?
+  category      String?
+  views_count   Int      @default(0)
+  is_published  Boolean  @default(false)
+  published_at  DateTime?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@index([author_id])
+  @@index([category])
+  @@index([is_published])
+}
+
+model Challenge {
+  id            String   @id @default(uuid())
+  creator_id    String
+  title         String
+  description   String
+  start_date    DateTime
+  end_date      DateTime
+  prize         String?
+  participants_count Int @default(0)
+  status        String   @default("active")
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@index([creator_id])
+  @@index([status])
+  @@index([end_date])
+}
+
+model Referral {
+  id            String   @id @default(uuid())
+  referrer_id   String
+  referred_id   String
+  reward_amount Float    @default(0)
+  status        String   @default("pending")
+  completed_at  DateTime?
+  created_at    DateTime @default(now())
+
+  @@unique([referrer_id, referred_id])
+  @@index([referrer_id])
+  @@index([referred_id])
+}
+
+model Badge {
+  id            String      @id @default(uuid())
+  name          String      @unique
+  icon          String
+  description   String?
+  category      String?
+  requirement   String?
+  is_active     Boolean     @default(true)
+  created_at    DateTime    @default(now())
+  updated_at    DateTime    @updatedAt
+
+  @@index([category])
+  @@index([is_active])
+}
+
+model UserVerification {
+  id            String   @id @default(uuid())
+  user_id       String   @unique
+  document_type String
+  document_url  String
+  status        String   @default("pending")
+  verified_at   DateTime?
+  verified_by   String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@index([user_id])
+  @@index([status])
+}
+
