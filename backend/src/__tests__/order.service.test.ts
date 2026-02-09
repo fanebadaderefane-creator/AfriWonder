@@ -232,7 +232,8 @@ describe('OrderService', () => {
       const result = await orderService.confirmPayment(order.id);
 
       expect(result).toBeDefined();
-      expect(result.status).toBe('processing');
+      expect(result.status).toBe('paid');
+      expect(result.payment_status).toBe('escrow');
 
       // Vérifier que le wallet du vendeur a été crédité
       const sellerWallet = await prisma.sellerWallet.findUnique({

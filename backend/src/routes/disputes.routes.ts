@@ -15,7 +15,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
       description,
       evidence_images,
     });
-    res.json({ success: true, data: dispute });
+    res.status(201).json({ success: true, data: dispute });
   } catch (error: any) {
     next(error);
   }

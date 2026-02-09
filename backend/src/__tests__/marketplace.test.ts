@@ -152,7 +152,11 @@ describe('Marketplace Complet', () => {
     await prisma.product.deleteMany();
     await prisma.sellerWallet.deleteMany();
     await prisma.sellerProfile.deleteMany();
-    await prisma.user.deleteMany();
+    // Ne pas supprimer l'utilisateur plateforme (créé en beforeAll du setup global)
+    const PLATFORM_USER_ID = process.env.PLATFORM_USER_ID || '00000000-0000-0000-0000-000000000000';
+    await prisma.user.deleteMany({
+      where: { id: { not: PLATFORM_USER_ID } }
+    });
   });
 
   describe('Products API', () => {

@@ -38,8 +38,8 @@ router.get('/stripe/verify', authenticate, async (req: AuthRequest, res, next) =
   }
 });
 
-// POST /api/payments/orange-money — idempotency + risk + KYC + audit
-router.post('/orange-money', authenticate, idempotencyMiddleware, async (req: AuthRequest, res, next) => {
+// Handler commun pour initier Orange Money
+const handleOrangeMoneyInit = async (req: AuthRequest, res: any, next: any) => {
   try {
     const userId = req.user!.id;
     const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || (req.socket as any)?.remoteAddress;
@@ -70,7 +70,13 @@ router.post('/orange-money', authenticate, idempotencyMiddleware, async (req: Au
   } catch (error: any) {
     next(error);
   }
-});
+};
+
+// POST /api/payments/orange-money — idempotency + risk + KYC + audit
+router.post('/orange-money', authenticate, idempotencyMiddleware, handleOrangeMoneyInit);
+
+// POST /api/payments/orange-money/initiate — alias pour compatibilité
+router.post('/orange-money/initiate', authenticate, idempotencyMiddleware, handleOrangeMoneyInit);
 
 // POST /api/payments/orange-money/verify
 router.post('/orange-money/verify', authenticate, async (req: AuthRequest, res, next) => {
