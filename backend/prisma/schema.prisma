@@ -7,112 +7,112 @@ datasource db {
 }
 
 model User {
-  id                        String                  @id @default(uuid())
-  email                     String                  @unique
-  username                  String                  @unique
-  password_hash             String
-  full_name                 String?
-  profile_image             String?
-  country                   String?                 // Pays pour leaderboard / profil
-  role                      String                  @default("user")
-  is_verified               Boolean                 @default(false)
-  account_suspended         Boolean                 @default(false)
-  suspended_at              DateTime?
-  suspended_reason          String?                 // fraud, abuse, legal, user_request
-  created_at                DateTime                @default(now())
-  updated_at                DateTime                @updatedAt
-  addresses                 Address[]
-  cart                      Cart?
-  comments                  Comment[]
-  follows                   Follow[]                @relation("Follower")
-  following                 Follow[]                @relation("Following")
-  likes                     Like[]
-  live_streams              LiveStream[]
+  id                         String                    @id @default(uuid())
+  email                      String                    @unique
+  username                   String                    @unique
+  password_hash              String
+  full_name                  String?
+  profile_image              String?
+  country                    String? // Pays pour leaderboard / profil
+  role                       String                    @default("user")
+  is_verified                Boolean                   @default(false)
+  account_suspended          Boolean                   @default(false)
+  suspended_at               DateTime?
+  suspended_reason           String? // fraud, abuse, legal, user_request
+  created_at                 DateTime                  @default(now())
+  updated_at                 DateTime                  @updatedAt
+  addresses                  Address[]
+  cart                       Cart?
+  comments                   Comment[]
+  follows                    Follow[]                  @relation("Follower")
+  following                  Follow[]                  @relation("Following")
+  likes                      Like[]
+  live_streams               LiveStream[]
   live_viewers               LiveViewer[]
   live_moderator_of          LiveModerator[]
   live_likes                 LiveLike[]
   live_top_donors            LiveTopDonor[]
   creator_level              CreatorLevel?
-  moderation_reports        Moderation[]            @relation("ModerationReporter")
-  notifications             Notification[]
-  notification_logs         NotificationLog[]
-  notification_preference   NotificationPreference?
-  orders                    Order[]
-  order_reviews             OrderReview[]           @relation("OrderReviewUser")
-  products                  Product[]
-  reports                   Report[]                @relation("Reporter")
-  reviews                   Review[]
-  saves                     Save[]
-  subscriptions             Subscription[]
-  transactions              Transaction[]
-  video_tips_sent           VideoTip[]              @relation("TipSender")
-  video_tips_received       VideoTip[]              @relation("TipReceiver")
-  user_badges               UserBadge[]
-  user_points               UserPoints?
-  videos                    Video[]
-  view_history              ViewHistory[]
-  wallets                   Wallet[]
-  wallet_security           WalletSecurity?
-  seller_wallet             SellerWallet?
-  withdrawals               Withdrawal[]
-  wishlist                  Wishlist[]
-  seller_profile            SellerProfile?
-  seller_reviews_received   SellerReview[]          @relation("SellerReviewed")
-  seller_reviews_given      SellerReview[]          @relation("SellerReviewAuthor")
-  support_tickets           SupportTicket[]
-  support_messages          SupportMessage[]
-  enrollments               Enrollment[]
-  certificates              Certificate[]
-  courses_created          Course[]
-  course_reviews            CourseReview[]
-  course_wishlist           CourseWishlist[]
-  user_level                UserLevel?
-  conversations_user1       Conversation[]          @relation("User1")
-  conversations_user2       Conversation[]          @relation("User2")
-  stories                   Story[]
-  playlists                 Playlist[]
-  community_members         CommunityMember[]
-  communities_created       Community[]
-  referrals_sent            Referral[]              @relation("Referrer")
-  referrals_received        Referral[]              @relation("Referred")
-  user_verification         UserVerification?
-  service_provider          ServiceProvider?        @relation("ServiceProvider")
-  service_bookings_customer ServiceBooking[]        @relation("BookingCustomer")
-  service_reviews           ServiceReview[]         @relation("ServiceReviewCustomer")
-  events_organized          Event[]
-  event_tickets             EventTicket[]
-  event_attendances         EventAttendance[]
-  event_payments            EventPayment[]
-  event_likes               EventLike[]
-  event_comments            EventComment[]
-  event_featured_payments   EventFeaturedPayment[]
-  event_chat_messages       EventChatMessage[]
-  news_articles_authored    NewsArticle[]
-  article_views             ArticleView[]
-  article_likes             ArticleLike[]
-  article_comments          ArticleComment[]
-  user_news_preference      UserNewsPreference?
+  moderation_reports         Moderation[]              @relation("ModerationReporter")
+  notifications              Notification[]
+  notification_logs          NotificationLog[]
+  notification_preference    NotificationPreference?
+  orders                     Order[]
+  order_reviews              OrderReview[]             @relation("OrderReviewUser")
+  products                   Product[]
+  reports                    Report[]                  @relation("Reporter")
+  reviews                    Review[]
+  saves                      Save[]
+  subscriptions              Subscription[]
+  transactions               Transaction[]
+  video_tips_sent            VideoTip[]                @relation("TipSender")
+  video_tips_received        VideoTip[]                @relation("TipReceiver")
+  user_badges                UserBadge[]
+  user_points                UserPoints?
+  videos                     Video[]
+  view_history               ViewHistory[]
+  wallets                    Wallet[]
+  wallet_security            WalletSecurity?
+  seller_wallet              SellerWallet?
+  withdrawals                Withdrawal[]
+  wishlist                   Wishlist[]
+  seller_profile             SellerProfile?
+  seller_reviews_received    SellerReview[]            @relation("SellerReviewed")
+  seller_reviews_given       SellerReview[]            @relation("SellerReviewAuthor")
+  support_tickets            SupportTicket[]
+  support_messages           SupportMessage[]
+  enrollments                Enrollment[]
+  certificates               Certificate[]
+  courses_created            Course[]
+  course_reviews             CourseReview[]
+  course_wishlist            CourseWishlist[]
+  user_level                 UserLevel?
+  conversations_user1        Conversation[]            @relation("User1")
+  conversations_user2        Conversation[]            @relation("User2")
+  stories                    Story[]
+  playlists                  Playlist[]
+  community_members          CommunityMember[]
+  communities_created        Community[]
+  referrals_sent             Referral[]                @relation("Referrer")
+  referrals_received         Referral[]                @relation("Referred")
+  user_verification          UserVerification?
+  service_provider           ServiceProvider?          @relation("ServiceProvider")
+  service_bookings_customer  ServiceBooking[]          @relation("BookingCustomer")
+  service_reviews            ServiceReview[]           @relation("ServiceReviewCustomer")
+  events_organized           Event[]
+  event_tickets              EventTicket[]
+  event_attendances          EventAttendance[]
+  event_payments             EventPayment[]
+  event_likes                EventLike[]
+  event_comments             EventComment[]
+  event_featured_payments    EventFeaturedPayment[]
+  event_chat_messages        EventChatMessage[]
+  news_articles_authored     NewsArticle[]
+  article_views              ArticleView[]
+  article_likes              ArticleLike[]
+  article_comments           ArticleComment[]
+  user_news_preference       UserNewsPreference?
   news_premium_subscriptions NewsPremiumSubscription[]
-  presence                  UserPresence?
-  blocked_by                UserBlock[]             @relation("Blocked")
-  blocking                  UserBlock[]             @relation("Blocker")
-  messages_sent             Message[]
-  message_reports           MessageReport[]
+  presence                   UserPresence?
+  blocked_by                 UserBlock[]               @relation("Blocked")
+  blocking                   UserBlock[]               @relation("Blocker")
+  messages_sent              Message[]
+  message_reports            MessageReport[]
   loan_requests_borrowed     LoanRequest[]
-  civic_petitions_created   CivicPetition[]
+  civic_petitions_created    CivicPetition[]
   jobs_created               Job[]
   job_applications           JobApplication[]
   candidate_profile          CandidateProfile?
   company_profile            CompanyProfile?
   petition_comments          PetitionComment[]
   petition_comment_likes     PetitionCommentLike[]
-  company_ratings_received   CompanyRating[]   @relation("CompanyRatingsReceived")
-  company_ratings_given     CompanyRating[]   @relation("CompanyRatingsGiven")
-  candidate_ratings_received CandidateRating[] @relation("CandidateRatingsReceived")
-  candidate_ratings_given   CandidateRating[] @relation("CandidateRatingsGiven")
+  company_ratings_received   CompanyRating[]           @relation("CompanyRatingsReceived")
+  company_ratings_given      CompanyRating[]           @relation("CompanyRatingsGiven")
+  candidate_ratings_received CandidateRating[]         @relation("CandidateRatingsReceived")
+  candidate_ratings_given    CandidateRating[]         @relation("CandidateRatingsGiven")
   saved_jobs                 SavedJob[]
   saved_petitions            SavedPetition[]
-  petition_signatures        PetitionSignature[]   @relation("PetitionSigner")
+  petition_signatures        PetitionSignature[]       @relation("PetitionSigner")
   coupons_created            Coupon[]
   user_loyalty_entries       UserLoyalty[]
   loyalty_program            LoyaltyProgram?
@@ -126,32 +126,32 @@ model User {
   admin_audit_logs           AdminAuditLog[]
   suspicious_activity_alerts SuspiciousActivityAlert[]
   // Ride / Transport
-  rides_as_passenger        Ride[]                 @relation("RidePassenger")
-  rides_as_driver           Ride[]                 @relation("RideDriver")
+  rides_as_passenger         Ride[]                    @relation("RidePassenger")
+  rides_as_driver            Ride[]                    @relation("RideDriver")
   // Driver profile (user_id on Driver)
-  driver_profile            Driver?
+  driver_profile             Driver?
   // Restaurant owner
-  restaurants_owned         Restaurant[]
+  restaurants_owned          Restaurant[]
   // Food orders (customer + delivery person)
-  food_orders_customer      FoodOrder[]            @relation("FoodOrderCustomer")
-  food_orders_delivery      FoodOrder[]            @relation("FoodOrderDelivery")
+  food_orders_customer       FoodOrder[]               @relation("FoodOrderCustomer")
+  food_orders_delivery       FoodOrder[]               @relation("FoodOrderDelivery")
   // Airtime & Bills
-  airtime_recharges         AirtimeRecharge[]
-  bill_payments             BillPayment[]
+  airtime_recharges          AirtimeRecharge[]
+  bill_payments              BillPayment[]
   // Tickets
-  tickets                   Ticket[]
+  tickets                    Ticket[]
   // Health: Doctor profile + Appointments
-  doctor_profile            Doctor?
-  appointments_as_patient   Appointment[]          @relation("AppointmentPatient")
+  doctor_profile             Doctor?
+  appointments_as_patient    Appointment[]             @relation("AppointmentPatient")
   // Pharmacy owner
-  pharmacies_owned          Pharmacy[]
+  pharmacies_owned           Pharmacy[]
   // Property owner
-  properties_owned          Property[]
+  properties_owned           Property[]
   // Insurance
-  insurance_policies        InsurancePolicy[]
+  insurance_policies         InsurancePolicy[]
   insurance_claims           InsuranceClaim[]
   // Property visit requests
-  property_visit_requests   PropertyVisitRequest[]
+  property_visit_requests    PropertyVisitRequest[]
 }
 
 model Video {
@@ -260,33 +260,33 @@ model ViewHistory {
 }
 
 model Product {
-  id               String             @id @default(uuid())
-  name             String
-  description      String
-  price            Float
-  stock            Int                @default(0)
-  seller_id        String
-  images           String[]
-  category         String?
-  subcategory      String? // sous-catégorie
-  product_type     String?            @default("physical") // physical | digital | service
-  status           String             @default("active") // draft | active | suspended
-  currency         String?            @default("XOF")
-  brand            String?
-  condition        String? // new | used | refurbished
-  delivery_options Json? // ["local", "international", "pickup", "point_relais"]
-  video_url        String? // Vidéo produit (une URL)
-  created_at       DateTime           @default(now())
-  updated_at       DateTime           @updatedAt
-  inventory_logs   InventoryLog[]
-  order_items      OrderItem[]
-  order_reviews    OrderReview[]
-  seller           User               @relation(fields: [seller_id], references: [id], onDelete: Cascade)
-  reviews          Review[]
-  wishlist         Wishlist[]
-  variants         ProductVariant[]
-  promotions       ProductPromotion[]
-  flash_sales      FlashSale[]
+  id                String             @id @default(uuid())
+  name              String
+  description       String
+  price             Float
+  stock             Int                @default(0)
+  seller_id         String
+  images            String[]
+  category          String?
+  subcategory       String? // sous-catégorie
+  product_type      String?            @default("physical") // physical | digital | service
+  status            String             @default("active") // draft | active | suspended
+  currency          String?            @default("XOF")
+  brand             String?
+  condition         String? // new | used | refurbished
+  delivery_options  Json? // ["local", "international", "pickup", "point_relais"]
+  video_url         String? // Vidéo produit (une URL)
+  created_at        DateTime           @default(now())
+  updated_at        DateTime           @updatedAt
+  inventory_logs    InventoryLog[]
+  order_items       OrderItem[]
+  order_reviews     OrderReview[]
+  seller            User               @relation(fields: [seller_id], references: [id], onDelete: Cascade)
+  reviews           Review[]
+  wishlist          Wishlist[]
+  variants          ProductVariant[]
+  promotions        ProductPromotion[]
+  flash_sales       FlashSale[]
   product_analytics ProductAnalytics[]
 
   @@index([status])
@@ -420,36 +420,36 @@ model UserBadge {
 }
 
 model LiveStream {
-  id                  String          @id @default(uuid())
+  id                  String                  @id @default(uuid())
   creator_id          String
   creator_name        String
   title               String
   description         String?
   category            String?
   stream_url          String
-  stream_token        String?         // Token sécurisé Agora/LiveKit/IVS
-  stream_key          String?         // Clé RTMP (AWS IVS / Mux / Agora)
-  rtmp_url            String?         // URL d’ingestion RTMP
-  playback_url        String?         // URL de lecture HLS/DASH
+  stream_token        String? // Token sécurisé Agora/LiveKit/IVS
+  stream_key          String? // Clé RTMP (AWS IVS / Mux / Agora)
+  rtmp_url            String? // URL d’ingestion RTMP
+  playback_url        String? // URL de lecture HLS/DASH
   thumbnail_url       String?
   replay_url          String?
-  status              String          @default("live") // scheduled | live | ended
-  viewers_count       Int             @default(0)
-  peak_viewers        Int             @default(0)
-  total_watch_time    Int?            // Somme des temps de visionnage (secondes)
-  started_at          DateTime        @default(now())
+  status              String                  @default("live") // scheduled | live | ended
+  viewers_count       Int                     @default(0)
+  peak_viewers        Int                     @default(0)
+  total_watch_time    Int? // Somme des temps de visionnage (secondes)
+  started_at          DateTime                @default(now())
   ended_at            DateTime?
   duration_minutes    Int?
-  total_gifts_amount  Float           @default(0)
-  total_messages      Int             @default(0)
-  total_likes        Int             @default(0)
-  is_featured         Boolean         @default(false)
-  region              String?         // Pays/région (SN, CI, FR…)
-  language            String?        // fr, en, ar…
-  room_id             String          @unique
-  scheduled_at        DateTime?       // Si status = scheduled
-  created_at          DateTime        @default(now())
-  updated_at          DateTime        @updatedAt
+  total_gifts_amount  Float                   @default(0)
+  total_messages      Int                     @default(0)
+  total_likes         Int                     @default(0)
+  is_featured         Boolean                 @default(false)
+  region              String? // Pays/région (SN, CI, FR…)
+  language            String? // fr, en, ar…
+  room_id             String                  @unique
+  scheduled_at        DateTime? // Si status = scheduled
+  created_at          DateTime                @default(now())
+  updated_at          DateTime                @updatedAt
   chat_messages       LiveChat[]
   gifts               LiveGift[]
   bans                LiveStreamBan[]
@@ -459,7 +459,7 @@ model LiveStream {
   likes               LiveLike[]
   top_donors          LiveTopDonor[]
   analytics           LiveAnalytics?
-  creator             User            @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+  creator             User                    @relation(fields: [creator_id], references: [id], onDelete: Cascade)
 
   @@index([creator_id])
   @@index([status])
@@ -476,8 +476,8 @@ model LiveViewer {
   session_id     String
   joined_at      DateTime   @default(now())
   left_at        DateTime?
-  watch_duration Int?       // Temps de visionnage en secondes
-  country        String?    // Pays du viewer (analytics)
+  watch_duration Int? // Temps de visionnage en secondes
+  country        String? // Pays du viewer (analytics)
   is_active      Boolean    @default(true)
   last_seen_at   DateTime   @default(now())
   live_stream    LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
@@ -495,19 +495,19 @@ model LiveModerationSettings {
   slow_mode_seconds Int        @default(0)
   comments_enabled  Boolean    @default(true)
   followers_only    Boolean    @default(false)
-  banned_words      Json?      // string[]
+  banned_words      Json? // string[]
   live_stream       LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
 
   @@index([live_id])
 }
 
 model LiveModerator {
-  id         String     @id @default(uuid())
-  live_id    String
-  user_id    String
-  created_at DateTime   @default(now())
+  id          String     @id @default(uuid())
+  live_id     String
+  user_id     String
+  created_at  DateTime   @default(now())
   live_stream LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
-  user       User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([live_id, user_id])
   @@index([live_id])
@@ -515,32 +515,32 @@ model LiveModerator {
 }
 
 model LiveLike {
-  id         String     @id @default(uuid())
-  live_id    String
-  user_id    String
-  created_at DateTime   @default(now())
+  id          String     @id @default(uuid())
+  live_id     String
+  user_id     String
+  created_at  DateTime   @default(now())
   live_stream LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
-  user       User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([live_id])
   @@index([user_id])
 }
 
 model LiveAnalytics {
-  id                      String     @id @default(uuid())
-  live_id                 String     @unique
-  total_viewers           Int        @default(0)
-  peak_viewers            Int        @default(0)
-  unique_viewers          Int        @default(0)
-  total_gifts_value       Float      @default(0)
-  total_messages          Int        @default(0)
-  total_likes             Int        @default(0)
+  id                         String     @id @default(uuid())
+  live_id                    String     @unique
+  total_viewers              Int        @default(0)
+  peak_viewers               Int        @default(0)
+  unique_viewers             Int        @default(0)
+  total_gifts_value          Float      @default(0)
+  total_messages             Int        @default(0)
+  total_likes                Int        @default(0)
   average_watch_time_seconds Int?
-  duration_seconds        Int?
-  viewer_countries        Json?      // { "SN": 120, "CI": 45, "FR": 30 }
-  retention_buckets       Json?      // [ { "min": 0, "max": 60, "count": 50 }, ... ]
-  computed_at             DateTime   @default(now())
-  live_stream             LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
+  duration_seconds           Int?
+  viewer_countries           Json? // { "SN": 120, "CI": 45, "FR": 30 }
+  retention_buckets          Json? // [ { "min": 0, "max": 60, "count": 50 }, ... ]
+  computed_at                DateTime   @default(now())
+  live_stream                LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
 
   @@index([live_id])
 }
@@ -561,13 +561,13 @@ model LiveTopDonor {
 }
 
 model CreatorLevel {
-  id              String   @id @default(uuid())
-  user_id         String   @unique
-  level           Int      @default(1)
-  total_earnings  Float    @default(0)
-  total_streams   Int      @default(0)
-  updated_at      DateTime @updatedAt
-  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id             String   @id @default(uuid())
+  user_id        String   @unique
+  level          Int      @default(1)
+  total_earnings Float    @default(0)
+  total_streams  Int      @default(0)
+  updated_at     DateTime @updatedAt
+  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
 }
@@ -604,10 +604,10 @@ model LiveChat {
   sender_avatar String?
   sender_role   String     @default("viewer") // viewer | moderator | creator
   message       String
-  message_type  String     @default("text")   // text | gift | system
+  message_type  String     @default("text") // text | gift | system
   is_deleted    Boolean    @default(false)
   is_pinned     Boolean    @default(false)
-  is_moderated  Boolean    @default(false)   // Modéré (caché ou averti)
+  is_moderated  Boolean    @default(false) // Modéré (caché ou averti)
   created_date  DateTime   @default(now())
   live_stream   LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
 
@@ -618,23 +618,23 @@ model LiveChat {
 }
 
 model Wallet {
-  id                  String        @id @default(uuid())
-  user_id             String
-  wallet_type         String        @default("user") // user | campaign_escrow
-  currency            String        @default("XOF")
-  balance             Float         @default(0) // DÉPRÉCIÉ: utiliser available_balance; gardé pour compat
-  available_balance   Float         @default(0)
-  pending_balance     Float         @default(0)
-  locked_balance      Float         @default(0)
-  total_earnings      Float         @default(0)
-  total_payouts       Float         @default(0)
-  status              String        @default("active") // active | frozen | closed
-  campaign_id         String?       // Si wallet_type = campaign_escrow
-  created_at          DateTime      @default(now())
-  updated_at          DateTime      @updatedAt
-  user                User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  ledger_entries      LedgerEntry[]
-  campaign_escrow     Campaign?     @relation("CampaignEscrow", fields: [campaign_id], references: [id], onDelete: SetNull)
+  id                String        @id @default(uuid())
+  user_id           String
+  wallet_type       String        @default("user") // user | campaign_escrow
+  currency          String        @default("XOF")
+  balance           Float         @default(0) // DÉPRÉCIÉ: utiliser available_balance; gardé pour compat
+  available_balance Float         @default(0)
+  pending_balance   Float         @default(0)
+  locked_balance    Float         @default(0)
+  total_earnings    Float         @default(0)
+  total_payouts     Float         @default(0)
+  status            String        @default("active") // active | frozen | closed
+  campaign_id       String? // Si wallet_type = campaign_escrow
+  created_at        DateTime      @default(now())
+  updated_at        DateTime      @updatedAt
+  user              User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  ledger_entries    LedgerEntry[]
+  campaign_escrow   Campaign?     @relation("CampaignEscrow", fields: [campaign_id], references: [id], onDelete: SetNull)
 
   @@unique([campaign_id]) // un escrow wallet par campagne (campaign_id nullable pour wallets user)
   @@index([user_id])
@@ -647,10 +647,10 @@ model Wallet {
 model LedgerEntry {
   id             String   @id @default(uuid())
   wallet_id      String
-  type           String   // credit | debit
+  type           String // credit | debit
   amount         Float
   reference_id   String?
-  reference_type String?  // order | contribution | withdrawal | refund | tip | campaign | loan | etc.
+  reference_type String? // order | contribution | withdrawal | refund | tip | campaign | loan | etc.
   description    String?
   balance_before Float
   balance_after  Float
@@ -663,18 +663,18 @@ model LedgerEntry {
 }
 
 model WalletSecurity {
-  id                    String    @id @default(uuid())
-  user_id               String    @unique
-  pin_hash              String?   // Hash du PIN wallet (optionnel)
-  withdrawal_daily_limit Float?   // Limite retrait quotidien
-  last_withdrawal_at    DateTime?
-  withdrawal_count_today Int       @default(0)
-  two_fa_required_for_withdrawal Boolean @default(true)
-  is_blocked            Boolean   @default(false)
-  blocked_reason        String?
-  created_at            DateTime  @default(now())
-  updated_at            DateTime  @updatedAt
-  user                  User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id                             String    @id @default(uuid())
+  user_id                        String    @unique
+  pin_hash                       String? // Hash du PIN wallet (optionnel)
+  withdrawal_daily_limit         Float? // Limite retrait quotidien
+  last_withdrawal_at             DateTime?
+  withdrawal_count_today         Int       @default(0)
+  two_fa_required_for_withdrawal Boolean   @default(true)
+  is_blocked                     Boolean   @default(false)
+  blocked_reason                 String?
+  created_at                     DateTime  @default(now())
+  updated_at                     DateTime  @updatedAt
+  user                           User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
 }
@@ -748,26 +748,26 @@ model Cart {
 }
 
 model Coupon {
-  id                     String    @id @default(uuid())
-  code                   String    @unique
-  seller_id              String?   // null = coupon plateforme
-  discount_percentage    Float
-  discount_value         Float?    // montant fixe (XOF)
-  expires_at             DateTime
-  start_at               DateTime? // début validité
-  is_used                Boolean   @default(false)
-  max_uses               Int?
-  uses_count             Int       @default(0)
-  min_order_amount       Float?    // montant minimum panier
-  max_discount_amount    Float?    // plafond réduction (pour %)
-  usage_per_user         Int?      // limite par utilisateur
-  first_time_customers_only Boolean @default(false)
-  specific_customer_segment Json?   // ["segment_id"] ou règles
-  auto_apply             Boolean   @default(false)
-  created_at             DateTime  @default(now())
-  updated_at             DateTime  @updatedAt
-  usages                 CouponUsage[]
-  seller                 User?     @relation(fields: [seller_id], references: [id], onDelete: Cascade)
+  id                        String        @id @default(uuid())
+  code                      String        @unique
+  seller_id                 String? // null = coupon plateforme
+  discount_percentage       Float
+  discount_value            Float? // montant fixe (XOF)
+  expires_at                DateTime
+  start_at                  DateTime? // début validité
+  is_used                   Boolean       @default(false)
+  max_uses                  Int?
+  uses_count                Int           @default(0)
+  min_order_amount          Float? // montant minimum panier
+  max_discount_amount       Float? // plafond réduction (pour %)
+  usage_per_user            Int? // limite par utilisateur
+  first_time_customers_only Boolean       @default(false)
+  specific_customer_segment Json? // ["segment_id"] ou règles
+  auto_apply                Boolean       @default(false)
+  created_at                DateTime      @default(now())
+  updated_at                DateTime      @updatedAt
+  usages                    CouponUsage[]
+  seller                    User?         @relation(fields: [seller_id], references: [id], onDelete: Cascade)
 
   @@index([code])
   @@index([expires_at])
@@ -775,13 +775,13 @@ model Coupon {
 }
 
 model CouponUsage {
-  id           String   @id @default(uuid())
-  coupon_id    String
-  user_id      String
-  order_id     String?
+  id              String   @id @default(uuid())
+  coupon_id       String
+  user_id         String
+  order_id        String?
   discount_amount Float
-  used_at      DateTime @default(now())
-  coupon       Coupon   @relation(fields: [coupon_id], references: [id], onDelete: Cascade)
+  used_at         DateTime @default(now())
+  coupon          Coupon   @relation(fields: [coupon_id], references: [id], onDelete: Cascade)
 
   @@index([coupon_id])
   @@index([user_id])
@@ -789,19 +789,19 @@ model CouponUsage {
 }
 
 model ProductAnalytics {
-  id                  String   @id @default(uuid())
-  product_id          String
-  seller_id           String
-  period_start        DateTime // début période (jour/semaine/mois)
-  period_end          DateTime
-  total_views         Int      @default(0)
-  total_sales         Int      @default(0)
-  revenue             Float    @default(0)
-  conversion_rate     Float    @default(0)
-  add_to_cart_count   Int      @default(0)
-  abandoned_cart_count Int     @default(0)
-  created_at          DateTime @default(now())
-  product             Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  id                   String   @id @default(uuid())
+  product_id           String
+  seller_id            String
+  period_start         DateTime // début période (jour/semaine/mois)
+  period_end           DateTime
+  total_views          Int      @default(0)
+  total_sales          Int      @default(0)
+  revenue              Float    @default(0)
+  conversion_rate      Float    @default(0)
+  add_to_cart_count    Int      @default(0)
+  abandoned_cart_count Int      @default(0)
+  created_at           DateTime @default(now())
+  product              Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   @@unique([product_id, period_start])
   @@index([seller_id])
@@ -809,17 +809,16 @@ model ProductAnalytics {
 }
 
 model AbandonedCart {
-  id          String   @id @default(uuid())
-  user_id     String
-  seller_id   String
-  product_ids Json     // ["product_id1", "product_id2"]
-  items_snapshot Json? // [{ product_id, name, price, quantity }]
-  total_value Float
-  abandoned_at DateTime @default(now())
-  recovered   Boolean   @default(false)
-  recovered_at DateTime?
+  id                 String    @id @default(uuid())
+  user_id            String
+  seller_id          String
+  product_ids        Json // ["product_id1", "product_id2"]
+  items_snapshot     Json? // [{ product_id, name, price, quantity }]
+  total_value        Float
+  abandoned_at       DateTime  @default(now())
+  recovered          Boolean   @default(false)
+  recovered_at       DateTime?
   recovered_order_id String?
-  created_at  DateTime @default(now())
 
   @@index([user_id])
   @@index([seller_id])
@@ -828,31 +827,31 @@ model AbandonedCart {
 }
 
 model LoyaltyProgram {
-  id                 String   @id @default(uuid())
-  seller_id          String   @unique
-  points_per_purchase Float   @default(1)   // points par 1 XOF dépensé
-  reward_threshold   Int      @default(100) // points pour récompense
-  reward_type        String   @default("discount") // discount | free_shipping | gift
-  reward_value       Float?   // valeur récompense (XOF ou %)
-  is_active          Boolean  @default(true)
-  created_at         DateTime @default(now())
-  updated_at         DateTime @updatedAt
-  seller             User     @relation(fields: [seller_id], references: [id], onDelete: Cascade)
-  user_loyalties     UserLoyalty[]
+  id                  String        @id @default(uuid())
+  seller_id           String        @unique
+  points_per_purchase Float         @default(1) // points par 1 XOF dépensé
+  reward_threshold    Int           @default(100) // points pour récompense
+  reward_type         String        @default("discount") // discount | free_shipping | gift
+  reward_value        Float? // valeur récompense (XOF ou %)
+  is_active           Boolean       @default(true)
+  created_at          DateTime      @default(now())
+  updated_at          DateTime      @updatedAt
+  seller              User          @relation(fields: [seller_id], references: [id], onDelete: Cascade)
+  user_loyalties      UserLoyalty[]
 
   @@index([seller_id])
 }
 
 model UserLoyalty {
-  id             String   @id @default(uuid())
-  user_id        String
-  seller_id      String
-  points_balance Int      @default(0)
-  lifetime_points Int    @default(0)
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
-  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  program        LoyaltyProgram @relation(fields: [seller_id], references: [seller_id], onDelete: Cascade)
+  id              String         @id @default(uuid())
+  user_id         String
+  seller_id       String
+  points_balance  Int            @default(0)
+  lifetime_points Int            @default(0)
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+  user            User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  program         LoyaltyProgram @relation(fields: [seller_id], references: [seller_id], onDelete: Cascade)
 
   @@unique([user_id, seller_id])
   @@index([user_id])
@@ -1176,10 +1175,10 @@ model PlatformSettings {
 model AdminLog {
   id          String   @id @default(uuid())
   admin_id    String
-  action_type String   // ban_user, resolve_dispute, export_data, change_commission, freeze_wallet, refund, kill_switch, etc.
-  target_type String?  // user, order, wallet, dispute, platform
+  action_type String // ban_user, resolve_dispute, export_data, change_commission, freeze_wallet, refund, kill_switch, etc.
+  target_type String? // user, order, wallet, dispute, platform
   target_id   String?
-  metadata    Json?    // payload optionnel (reason, amount, etc.)
+  metadata    Json? // payload optionnel (reason, amount, etc.)
   ip_address  String?
   user_agent  String?
   created_at  DateTime @default(now())
@@ -1581,20 +1580,20 @@ model ProductPromotion {
 }
 
 model FlashSale {
-  id                  String    @id @default(uuid())
-  product_id          String
-  discount            Float
-  start_time          DateTime
-  end_time            DateTime
-  stock_limit         Int
-  sold_count          Int       @default(0)
-  is_active           Boolean   @default(true)
-  badge_label         String?   // "OFFRE LIMITÉE", "FLASH"
-  featured_homepage   Boolean   @default(false)
-  notification_sent    Boolean   @default(false)
-  created_at          DateTime  @default(now())
-  updated_at          DateTime  @updatedAt
-  product             Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  id                String   @id @default(uuid())
+  product_id        String
+  discount          Float
+  start_time        DateTime
+  end_time          DateTime
+  stock_limit       Int
+  sold_count        Int      @default(0)
+  is_active         Boolean  @default(true)
+  badge_label       String? // "OFFRE LIMITÉE", "FLASH"
+  featured_homepage Boolean  @default(false)
+  notification_sent Boolean  @default(false)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+  product           Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   @@index([product_id])
   @@index([is_active])
@@ -1629,32 +1628,32 @@ model Dispute {
 }
 
 model Course {
-  id                   String        @id @default(uuid())
-  creator_id            String
-  title                 String
-  description           String        @db.Text
-  thumbnail_url         String?
-  trailer_url           String?
-  price                 Float
-  currency              String        @default("XOF")
-  category              String?
-  level                 String?
-  duration_hours        Float?
-  students_count        Int           @default(0)
-  rating                Float         @default(0)
-  reviews_count         Int           @default(0)
-  is_published          Boolean       @default(false)
-  is_featured           Boolean       @default(false)
-  language              String        @default("fr")
-  certificate_enabled   Boolean       @default(true)
-  created_at            DateTime      @default(now())
-  updated_at            DateTime      @updatedAt
-  creator               User          @relation(fields: [creator_id], references: [id], onDelete: Cascade)
-  enrollments           Enrollment[]
-  certificates          Certificate[]
-  lessons               Lesson[]
-  reviews               CourseReview[]
-  wishlist              CourseWishlist[]
+  id                  String           @id @default(uuid())
+  creator_id          String
+  title               String
+  description         String           @db.Text
+  thumbnail_url       String?
+  trailer_url         String?
+  price               Float
+  currency            String           @default("XOF")
+  category            String?
+  level               String?
+  duration_hours      Float?
+  students_count      Int              @default(0)
+  rating              Float            @default(0)
+  reviews_count       Int              @default(0)
+  is_published        Boolean          @default(false)
+  is_featured         Boolean          @default(false)
+  language            String           @default("fr")
+  certificate_enabled Boolean          @default(true)
+  created_at          DateTime         @default(now())
+  updated_at          DateTime         @updatedAt
+  creator             User             @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+  enrollments         Enrollment[]
+  certificates        Certificate[]
+  lessons             Lesson[]
+  reviews             CourseReview[]
+  wishlist            CourseWishlist[]
 
   @@index([creator_id])
   @@index([category])
@@ -1672,8 +1671,8 @@ model Lesson {
   title            String
   description      String?  @db.Text
   video_url        String?
-  video_url_240p   String?  // Qualité basse (adaptative)
-  video_url_720p   String?  // Qualité haute (adaptative)
+  video_url_240p   String? // Qualité basse (adaptative)
+  video_url_720p   String? // Qualité haute (adaptative)
   duration_minutes Int?
   order            Int      @default(0)
   is_preview       Boolean  @default(false)
@@ -1731,7 +1730,7 @@ model Enrollment {
   user_id             String
   progress            Float     @default(0)
   progress_percentage Float     @default(0)
-  last_lesson_id     String?
+  last_lesson_id      String?
   completed           Boolean   @default(false)
   completed_at        DateTime?
   certificate_id      String?
@@ -1746,14 +1745,14 @@ model Enrollment {
 }
 
 model Certificate {
-  id                       String   @id @default(uuid())
-  course_id                String
-  user_id                  String
-  certificate_url          String?
-  verification_token       String   @unique @default(uuid())
-  issued_at                DateTime @default(now())
-  course                   Course   @relation(fields: [course_id], references: [id], onDelete: Cascade)
-  user                     User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id                 String   @id @default(uuid())
+  course_id          String
+  user_id            String
+  certificate_url    String?
+  verification_token String   @unique @default(uuid())
+  issued_at          DateTime @default(now())
+  course             Course   @relation(fields: [course_id], references: [id], onDelete: Cascade)
+  user               User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([course_id, user_id])
   @@index([course_id])
@@ -1833,7 +1832,7 @@ model Conversation {
   last_message_id   String?
   last_message_text String?   @db.Text
   last_message_at   DateTime?
-  unread_count_map  Json?      // { "user_id": number }
+  unread_count_map  Json? // { "user_id": number }
   is_group          Boolean   @default(false)
   group_name        String?
   group_avatar      String?
@@ -1850,24 +1849,24 @@ model Conversation {
 }
 
 model Message {
-  id                  String       @id @default(uuid())
+  id                  String          @id @default(uuid())
   conversation_id     String
   sender_id           String
-  type                String       @default("text") // text, image, video, audio, file
-  content             String       @db.Text
+  type                String          @default("text") // text, image, video, audio, file
+  content             String          @db.Text
   media_url           String?
   thumbnail_url       String?
-  is_edited           Boolean      @default(false)
-  is_deleted          Boolean      @default(false)
-  status              String       @default("sent") // sent, delivered, read
-  read_by             Json?        // [user_id]
+  is_edited           Boolean         @default(false)
+  is_deleted          Boolean         @default(false)
+  status              String          @default("sent") // sent, delivered, read
+  read_by             Json? // [user_id]
   reply_to_message_id String?
-  created_at          DateTime     @default(now())
-  updated_at          DateTime     @updatedAt
-  conversation        Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
-  sender              User?        @relation(fields: [sender_id], references: [id], onDelete: Cascade)
-  reply_to            Message?     @relation("Reply", fields: [reply_to_message_id], references: [id])
-  replies             Message[]    @relation("Reply")
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @updatedAt
+  conversation        Conversation    @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  sender              User?           @relation(fields: [sender_id], references: [id], onDelete: Cascade)
+  reply_to            Message?        @relation("Reply", fields: [reply_to_message_id], references: [id])
+  replies             Message[]       @relation("Reply")
   reports             MessageReport[]
 
   @@index([conversation_id])
@@ -1877,23 +1876,23 @@ model Message {
 }
 
 model UserPresence {
-  id         String   @id @default(uuid())
-  user_id    String   @unique
-  is_online  Boolean  @default(false)
-  last_seen  DateTime @updatedAt
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id        String   @id @default(uuid())
+  user_id   String   @unique
+  is_online Boolean  @default(false)
+  last_seen DateTime @updatedAt
+  user      User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@index([is_online])
 }
 
 model UserBlock {
-  id          String   @id @default(uuid())
-  blocker_id  String
-  blocked_id  String
-  created_at  DateTime @default(now())
-  blocker     User     @relation("Blocker", fields: [blocker_id], references: [id], onDelete: Cascade)
-  blocked     User     @relation("Blocked", fields: [blocked_id], references: [id], onDelete: Cascade)
+  id         String   @id @default(uuid())
+  blocker_id String
+  blocked_id String
+  created_at DateTime @default(now())
+  blocker    User     @relation("Blocker", fields: [blocker_id], references: [id], onDelete: Cascade)
+  blocked    User     @relation("Blocked", fields: [blocked_id], references: [id], onDelete: Cascade)
 
   @@unique([blocker_id, blocked_id])
   @@index([blocker_id])
@@ -2057,23 +2056,23 @@ model Payout {
 }
 
 model Campaign {
-  id                String         @id @default(uuid())
-  creator_id        String
-  title             String
-  description       String
-  goal_amount       Float
-  current_amount    Float          @default(0)
-  backers_count     Int            @default(0)
-  end_date          DateTime
-  status            String         @default("active") // active | funded | failed | completed | suspended
-  kyc_verified      Boolean        @default(false)
-  report_count      Int            @default(0)
-  fraud_flag        Boolean        @default(false)
-  milestones        Json?          // [{ id, label, amount_target, amount_released, status, released_at }]
-  created_at        DateTime       @default(now())
-  updated_at        DateTime       @updatedAt
-  contributions     Contribution[]
-  escrow_wallet     Wallet?        @relation("CampaignEscrow")
+  id             String         @id @default(uuid())
+  creator_id     String
+  title          String
+  description    String
+  goal_amount    Float
+  current_amount Float          @default(0)
+  backers_count  Int            @default(0)
+  end_date       DateTime
+  status         String         @default("active") // active | funded | failed | completed | suspended
+  kyc_verified   Boolean        @default(false)
+  report_count   Int            @default(0)
+  fraud_flag     Boolean        @default(false)
+  milestones     Json? // [{ id, label, amount_target, amount_released, status, released_at }]
+  created_at     DateTime       @default(now())
+  updated_at     DateTime       @updatedAt
+  contributions  Contribution[]
+  escrow_wallet  Wallet?        @relation("CampaignEscrow")
 
   @@index([creator_id])
   @@index([status])
@@ -2082,15 +2081,15 @@ model Campaign {
 }
 
 model Contribution {
-  id             String   @id @default(uuid())
-  campaign_id    String
-  contributor_id String
-  amount         Float
-  reward_tier    String?
-  status         String   @default("pending") // pending | completed | refunded
+  id                 String    @id @default(uuid())
+  campaign_id        String
+  contributor_id     String
+  amount             Float
+  reward_tier        String?
+  status             String    @default("pending") // pending | completed | refunded
   escrow_released_at DateTime?
-  created_at     DateTime @default(now())
-  campaign       Campaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+  created_at         DateTime  @default(now())
+  campaign           Campaign  @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
 
   @@index([campaign_id])
   @@index([contributor_id])
@@ -2098,26 +2097,26 @@ model Contribution {
 }
 
 model LoanRequest {
-  id                    String                  @id @default(uuid())
-  borrower_id           String
-  amount_requested      Float
-  current_amount        Float                   @default(0)
-  interest_rate         Float
+  id                      String                  @id @default(uuid())
+  borrower_id             String
+  amount_requested        Float
+  current_amount          Float                   @default(0)
+  interest_rate           Float
   repayment_period_months Int
-  purpose               String
-  business_plan         String?                 @db.Text
-  credit_score          Float?                 // Calculé backend uniquement
-  risk_level            String?                // low | medium | high
-  status                String                  @default("active") // active | funded | completed | defaulted | cancelled
-  deadline              DateTime?
-  approved_at           DateTime?
-  funded_at             DateTime?
-  created_at            DateTime                @default(now())
-  updated_at            DateTime                @updatedAt
-  borrower              User                    @relation(fields: [borrower_id], references: [id], onDelete: Cascade)
-  contributions         MicroloanContribution[]
-  agreement             LoanAgreement?
-  repayments            LoanRepayment[]
+  purpose                 String
+  business_plan           String?                 @db.Text
+  credit_score            Float? // Calculé backend uniquement
+  risk_level              String? // low | medium | high
+  status                  String                  @default("active") // active | funded | completed | defaulted | cancelled
+  deadline                DateTime?
+  approved_at             DateTime?
+  funded_at               DateTime?
+  created_at              DateTime                @default(now())
+  updated_at              DateTime                @updatedAt
+  borrower                User                    @relation(fields: [borrower_id], references: [id], onDelete: Cascade)
+  contributions           MicroloanContribution[]
+  agreement               LoanAgreement?
+  repayments              LoanRepayment[]
 
   @@index([borrower_id])
   @@index([status])
@@ -2125,29 +2124,29 @@ model LoanRequest {
 }
 
 model LoanAgreement {
-  id                String       @id @default(uuid())
-  loan_id           String       @unique
-  borrower_signature String?     // Token ou hash signature
+  id                 String      @id @default(uuid())
+  loan_id            String      @unique
+  borrower_signature String? // Token ou hash signature
   lender_signature   String?
   contract_pdf_url   String?
-  created_at        DateTime     @default(now())
-  loan_request      LoanRequest  @relation(fields: [loan_id], references: [id], onDelete: Cascade)
+  created_at         DateTime    @default(now())
+  loan_request       LoanRequest @relation(fields: [loan_id], references: [id], onDelete: Cascade)
 
   @@index([loan_id])
 }
 
 model LoanRepayment {
-  id             String       @id @default(uuid())
+  id             String      @id @default(uuid())
   loan_id        String
   due_date       DateTime
   amount_due     Float
-  amount_paid    Float        @default(0)
-  status         String       @default("pending") // pending | paid | overdue | partial
-  penalty_amount Float        @default(0)
+  amount_paid    Float       @default(0)
+  status         String      @default("pending") // pending | paid | overdue | partial
+  penalty_amount Float       @default(0)
   paid_at        DateTime?
-  created_at     DateTime     @default(now())
-  updated_at     DateTime     @updatedAt
-  loan_request   LoanRequest  @relation(fields: [loan_id], references: [id], onDelete: Cascade)
+  created_at     DateTime    @default(now())
+  updated_at     DateTime    @updatedAt
+  loan_request   LoanRequest @relation(fields: [loan_id], references: [id], onDelete: Cascade)
 
   @@index([loan_id])
   @@index([due_date])
@@ -2167,27 +2166,27 @@ model MicroloanContribution {
 }
 
 model Job {
-  id           String           @id @default(uuid())
-  employer_id  String
-  title        String
-  description  String           @db.Text
-  location     String?
-  salary_min   Float?
-  salary_max   Float?
-  salary_currency String        @default("XOF")
-  job_type     String
-  category     String?
-  country      String?
-  status       String           @default("open")
-  expires_at   DateTime?
-  views_count  Int              @default(0)
-  is_premium   Boolean          @default(false)
-  is_urgent    Boolean          @default(false)
-  created_at   DateTime         @default(now())
-  updated_at   DateTime         @updatedAt
-  employer     User             @relation(fields: [employer_id], references: [id], onDelete: Cascade)
-  applications JobApplication[]
-  saved_by     SavedJob[]
+  id              String           @id @default(uuid())
+  employer_id     String
+  title           String
+  description     String           @db.Text
+  location        String?
+  salary_min      Float?
+  salary_max      Float?
+  salary_currency String           @default("XOF")
+  job_type        String
+  category        String?
+  country         String?
+  status          String           @default("open")
+  expires_at      DateTime?
+  views_count     Int              @default(0)
+  is_premium      Boolean          @default(false)
+  is_urgent       Boolean          @default(false)
+  created_at      DateTime         @default(now())
+  updated_at      DateTime         @updatedAt
+  employer        User             @relation(fields: [employer_id], references: [id], onDelete: Cascade)
+  applications    JobApplication[]
+  saved_by        SavedJob[]
 
   @@index([employer_id])
   @@index([status])
@@ -2217,10 +2216,10 @@ model CandidateProfile {
   user_id       String   @unique
   cv_url        String?
   portfolio_url String?
-  skills        Json?    // string[]
-  experience    Json?    // [{ title, company, start, end, description }]
-  education     Json?    // [{ school, degree, start, end }]
-  availability  String?  // immediate | 2weeks | 1month | custom
+  skills        Json? // string[]
+  experience    Json? // [{ title, company, start, end, description }]
+  education     Json? // [{ school, degree, start, end }]
+  availability  String? // immediate | 2weeks | 1month | custom
   phone         String?
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
@@ -2230,30 +2229,30 @@ model CandidateProfile {
 }
 
 model CompanyProfile {
-  id               String   @id @default(uuid())
-  user_id          String   @unique
-  company_name     String?
-  description      String?  @db.Text
-  logo_url         String?
-  documents_legal  String?  // URL or comma-separated
-  is_verified      Boolean  @default(false)
-  rating_avg       Float    @default(0)
-  rating_count     Int      @default(0)
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
-  user             User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id              String   @id @default(uuid())
+  user_id         String   @unique
+  company_name    String?
+  description     String?  @db.Text
+  logo_url        String?
+  documents_legal String? // URL or comma-separated
+  is_verified     Boolean  @default(false)
+  rating_avg      Float    @default(0)
+  rating_count    Int      @default(0)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@index([is_verified])
 }
 
 model CompanyRating {
-  id          String   @id @default(uuid())
-  from_user_id String  // candidate
-  to_user_id   String  // employer
+  id           String   @id @default(uuid())
+  from_user_id String // candidate
+  to_user_id   String // employer
   job_id       String
-  rating       Int     // 1-5
-  comment      String? @db.Text
+  rating       Int // 1-5
+  comment      String?  @db.Text
   created_at   DateTime @default(now())
   from_user    User     @relation("CompanyRatingsGiven", fields: [from_user_id], references: [id], onDelete: Cascade)
   to_user      User     @relation("CompanyRatingsReceived", fields: [to_user_id], references: [id], onDelete: Cascade)
@@ -2263,12 +2262,12 @@ model CompanyRating {
 }
 
 model CandidateRating {
-  id          String   @id @default(uuid())
-  from_user_id String  // employer
-  to_user_id   String  // candidate
+  id           String   @id @default(uuid())
+  from_user_id String // employer
+  to_user_id   String // candidate
   job_id       String
-  rating       Int     // 1-5
-  comment      String? @db.Text
+  rating       Int // 1-5
+  comment      String?  @db.Text
   created_at   DateTime @default(now())
   from_user    User     @relation("CandidateRatingsGiven", fields: [from_user_id], references: [id], onDelete: Cascade)
   to_user      User     @relation("CandidateRatingsReceived", fields: [to_user_id], references: [id], onDelete: Cascade)
@@ -2278,12 +2277,12 @@ model CandidateRating {
 }
 
 model SavedJob {
-  id        String   @id @default(uuid())
-  job_id    String
-  user_id   String
+  id         String   @id @default(uuid())
+  job_id     String
+  user_id    String
   created_at DateTime @default(now())
-  job       Job      @relation(fields: [job_id], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  job        Job      @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([job_id, user_id])
   @@index([job_id])
@@ -2540,46 +2539,46 @@ model ServicePayout {
 }
 
 model Event {
-  id               String    @id @default(uuid())
-  title            String
-  description      String?
-  category         String?
-  image            String?
-  organizer_id     String
-  organizer_name   String?
-  start_date       DateTime
-  end_date         DateTime
-  location         String?
-  latitude         Float?
-  longitude        Float?
-  event_type       String    @default("physical") // physical | virtual | hybrid
-  capacity         Int?      // null = illimité
-  price            Float?    @default(0)
-  currency         String    @default("XOF")
-  is_free          Boolean   @default(true)
-  is_featured      Boolean   @default(false)
-  featured_until   DateTime?
-  status           String    @default("draft") // draft | published | cancelled | completed
-  virtual_url      String?   // Zoom, Google Meet, stream URL
-  replay_url       String?
-  refund_policy    String?   // texte politique remboursement
-  faq              Json?     // [{ question, answer }]
-  speakers         Json?     // [{ name, role, photo? }] section intervenants
-  sponsors         Json?     // [{ name, logo_url?, link? }] partenaires
-  platform_fee_pct Float?    @default(10) // commission 5-15%
-  attendees_count  Int       @default(0) // dénombré à partir des billets payés/check-in
-  created_at       DateTime  @default(now())
-  updated_at       DateTime  @updatedAt
-  organizer        User      @relation(fields: [organizer_id], references: [id], onDelete: Cascade)
-  ticket_types     EventTicketType[]
-  tickets          EventTicket[]
-  attendances      EventAttendance[]
-  payments         EventPayment[]
-  likes            EventLike[]
-  comments         EventComment[]
+  id                String                 @id @default(uuid())
+  title             String
+  description       String?
+  category          String?
+  image             String?
+  organizer_id      String
+  organizer_name    String?
+  start_date        DateTime
+  end_date          DateTime
+  location          String?
+  latitude          Float?
+  longitude         Float?
+  event_type        String                 @default("physical") // physical | virtual | hybrid
+  capacity          Int? // null = illimité
+  price             Float?                 @default(0)
+  currency          String                 @default("XOF")
+  is_free           Boolean                @default(true)
+  is_featured       Boolean                @default(false)
+  featured_until    DateTime?
+  status            String                 @default("draft") // draft | published | cancelled | completed
+  virtual_url       String? // Zoom, Google Meet, stream URL
+  replay_url        String?
+  refund_policy     String? // texte politique remboursement
+  faq               Json? // [{ question, answer }]
+  speakers          Json? // [{ name, role, photo? }] section intervenants
+  sponsors          Json? // [{ name, logo_url?, link? }] partenaires
+  platform_fee_pct  Float?                 @default(10) // commission 5-15%
+  attendees_count   Int                    @default(0) // dénombré à partir des billets payés/check-in
+  created_at        DateTime               @default(now())
+  updated_at        DateTime               @updatedAt
+  organizer         User                   @relation(fields: [organizer_id], references: [id], onDelete: Cascade)
+  ticket_types      EventTicketType[]
+  tickets           EventTicket[]
+  attendances       EventAttendance[]
+  payments          EventPayment[]
+  likes             EventLike[]
+  comments          EventComment[]
   featured_payments EventFeaturedPayment[]
-  chat_messages   EventChatMessage[]
-  ticket_locks     TicketLock[]
+  chat_messages     EventChatMessage[]
+  ticket_locks      TicketLock[]
 
   @@index([organizer_id])
   @@index([start_date])
@@ -2591,21 +2590,21 @@ model Event {
 
 // Stock par type de billet (scalable, temps réel)
 model EventTicketType {
-  id                  String    @id @default(uuid())
-  event_id            String
-  name                String    // standard | vip | early_bird
-  description         String?
-  price               Float     @default(0)
-  currency            String    @default("XOF")
-  quantity_available  Int       @default(0)  // stock total
-  quantity_sold       Int       @default(0)  // vendus
-  max_per_user        Int?      // null = illimité
-  sale_start          DateTime?
-  sale_end            DateTime?
-  created_at          DateTime  @default(now())
-  updated_at          DateTime  @updatedAt
-  event               Event     @relation(fields: [event_id], references: [id], onDelete: Cascade)
-  tickets             EventTicket[]
+  id                 String        @id @default(uuid())
+  event_id           String
+  name               String // standard | vip | early_bird
+  description        String?
+  price              Float         @default(0)
+  currency           String        @default("XOF")
+  quantity_available Int           @default(0) // stock total
+  quantity_sold      Int           @default(0) // vendus
+  max_per_user       Int? // null = illimité
+  sale_start         DateTime?
+  sale_end           DateTime?
+  created_at         DateTime      @default(now())
+  updated_at         DateTime      @updatedAt
+  event              Event         @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  tickets            EventTicket[]
 
   @@unique([event_id, name])
   @@index([event_id])
@@ -2614,14 +2613,14 @@ model EventTicketType {
 
 // Lock temporaire (2 min) pour éviter survente pendant checkout
 model TicketLock {
-  id             String   @id @default(uuid())
-  event_id       String
-  ticket_type    String   // nom du type (standard, vip, etc.)
-  user_id        String
-  quantity       Int      @default(1)
-  expires_at     DateTime
-  created_at     DateTime @default(now())
-  event          Event    @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  id          String   @id @default(uuid())
+  event_id    String
+  ticket_type String // nom du type (standard, vip, etc.)
+  user_id     String
+  quantity    Int      @default(1)
+  expires_at  DateTime
+  created_at  DateTime @default(now())
+  event       Event    @relation(fields: [event_id], references: [id], onDelete: Cascade)
 
   @@index([event_id])
   @@index([user_id])
@@ -2630,27 +2629,27 @@ model TicketLock {
 }
 
 model EventTicket {
-  id               String    @id @default(uuid())
-  event_id         String
+  id                   String           @id @default(uuid())
+  event_id             String
   event_ticket_type_id String?
-  user_id          String
-  ticket_type      String    @default("standard") // standard | vip | early_bird
-  price            Float     @default(0)
-  currency         String    @default("XOF")
-  payment_status   String    @default("pending") // pending | paid | refunded
-  payment_method   String?
-  transaction_id   String?
-  qr_code          String?   @unique // token unique pour check-in (affiché)
-  qr_signature     String?   // HMAC pour anti-fraude scan
-  checked_in       Boolean   @default(false)
-  checked_in_at    DateTime?
-  scan_count      Int       @default(0) // anti-double: incremented at each scan attempt
-  city             String?   // ville du participant (analytics)
-  source           String?   // source inscription: mobile_web, desktop, app, etc.
-  created_at       DateTime  @default(now())
-  event            Event     @relation(fields: [event_id], references: [id], onDelete: Cascade)
-  event_ticket_type EventTicketType? @relation(fields: [event_ticket_type_id], references: [id], onDelete: SetNull)
-  user             User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user_id              String
+  ticket_type          String           @default("standard") // standard | vip | early_bird
+  price                Float            @default(0)
+  currency             String           @default("XOF")
+  payment_status       String           @default("pending") // pending | paid | refunded
+  payment_method       String?
+  transaction_id       String?
+  qr_code              String?          @unique // token unique pour check-in (affiché)
+  qr_signature         String? // HMAC pour anti-fraude scan
+  checked_in           Boolean          @default(false)
+  checked_in_at        DateTime?
+  scan_count           Int              @default(0) // anti-double: incremented at each scan attempt
+  city                 String? // ville du participant (analytics)
+  source               String? // source inscription: mobile_web, desktop, app, etc.
+  created_at           DateTime         @default(now())
+  event                Event            @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  event_ticket_type    EventTicketType? @relation(fields: [event_ticket_type_id], references: [id], onDelete: SetNull)
+  user                 User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([event_id])
   @@index([user_id])
@@ -2675,21 +2674,21 @@ model EventAttendance {
 }
 
 model EventPayment {
-  id               String    @id @default(uuid())
-  event_id         String
-  user_id          String
-  amount           Float
-  currency         String    @default("XOF")
-  provider         String    // orange_money, mtn_money, wave, flutterwave, paystack, card, cod
-  transaction_id   String?
-  status           String    @default("pending") // pending | completed | failed | refunded
-  paid_at          DateTime?
-  refunded_at      DateTime?
-  city             String?   // ville participant (analytics)
-  source           String?   // source inscription
-  created_at       DateTime  @default(now())
-  event            Event     @relation(fields: [event_id], references: [id], onDelete: Cascade)
-  user             User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id             String    @id @default(uuid())
+  event_id       String
+  user_id        String
+  amount         Float
+  currency       String    @default("XOF")
+  provider       String // orange_money, mtn_money, wave, flutterwave, paystack, card, cod
+  transaction_id String?
+  status         String    @default("pending") // pending | completed | failed | refunded
+  paid_at        DateTime?
+  refunded_at    DateTime?
+  city           String? // ville participant (analytics)
+  source         String? // source inscription
+  created_at     DateTime  @default(now())
+  event          Event     @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  user           User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([event_id])
   @@index([user_id])
@@ -2774,7 +2773,7 @@ model CivicPetition {
   target_authority_email String?
   is_boosted             Boolean             @default(false)
   is_featured            Boolean             @default(false)
-  featured_until          DateTime?
+  featured_until         DateTime?
   created_at             DateTime            @default(now())
   updated_at             DateTime            @updatedAt
   creator                User                @relation(fields: [creator_id], references: [id], onDelete: Cascade)
@@ -2790,17 +2789,17 @@ model CivicPetition {
 }
 
 model PetitionSignature {
-  id            String        @id @default(uuid())
-  petition_id   String
-  signer_id     String
-  comment       String?
-  is_verified   Boolean       @default(false)
-  ip_address    String?
-  signer_city   String?
+  id             String        @id @default(uuid())
+  petition_id    String
+  signer_id      String
+  comment        String?
+  is_verified    Boolean       @default(false)
+  ip_address     String?
+  signer_city    String?
   signer_country String?
-  created_at    DateTime      @default(now())
-  petition      CivicPetition @relation(fields: [petition_id], references: [id], onDelete: Cascade)
-  signer        User          @relation("PetitionSigner", fields: [signer_id], references: [id], onDelete: Cascade)
+  created_at     DateTime      @default(now())
+  petition       CivicPetition @relation(fields: [petition_id], references: [id], onDelete: Cascade)
+  signer         User          @relation("PetitionSigner", fields: [signer_id], references: [id], onDelete: Cascade)
 
   @@unique([petition_id, signer_id])
   @@index([petition_id])
@@ -2808,16 +2807,16 @@ model PetitionSignature {
 }
 
 model PetitionComment {
-  id          String             @id @default(uuid())
+  id          String                @id @default(uuid())
   petition_id String
   user_id     String
   parent_id   String?
-  content     String             @db.Text
-  created_at  DateTime           @default(now())
-  petition    CivicPetition      @relation(fields: [petition_id], references: [id], onDelete: Cascade)
-  user        User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  parent      PetitionComment?   @relation("CommentReplies", fields: [parent_id], references: [id], onDelete: Cascade)
-  replies     PetitionComment[]  @relation("CommentReplies")
+  content     String                @db.Text
+  created_at  DateTime              @default(now())
+  petition    CivicPetition         @relation(fields: [petition_id], references: [id], onDelete: Cascade)
+  user        User                  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  parent      PetitionComment?      @relation("CommentReplies", fields: [parent_id], references: [id], onDelete: Cascade)
+  replies     PetitionComment[]     @relation("CommentReplies")
   likes       PetitionCommentLike[]
 
   @@index([petition_id])
@@ -2843,7 +2842,7 @@ model SavedPetition {
   petition_id String
   user_id     String
   created_at  DateTime      @default(now())
-  petition    CivicPetition  @relation(fields: [petition_id], references: [id], onDelete: Cascade)
+  petition    CivicPetition @relation(fields: [petition_id], references: [id], onDelete: Cascade)
   user        User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([petition_id, user_id])
@@ -2852,46 +2851,46 @@ model SavedPetition {
 }
 
 model NewsArticle {
-  id                String    @id @default(uuid())
-  title             String
-  slug              String    @unique
-  subtitle          String?
-  content           String    // rich text
-  excerpt           String?
-  featured_image    String?
-  category          String?
-  tags              Json?     // string[]
-  country           String?
-  language          String    @default("FR")
-  author_id         String
-  author_name       String?
-  author_avatar     String?
-  is_breaking       Boolean   @default(false)
-  breaking_priority Int?      // 1-5
+  id                 String            @id @default(uuid())
+  title              String
+  slug               String            @unique
+  subtitle           String?
+  content            String // rich text
+  excerpt            String?
+  featured_image     String?
+  category           String?
+  tags               Json? // string[]
+  country            String?
+  language           String            @default("FR")
+  author_id          String
+  author_name        String?
+  author_avatar      String?
+  is_breaking        Boolean           @default(false)
+  breaking_priority  Int? // 1-5
   breaking_expiry_at DateTime?
-  is_verified       Boolean   @default(false)
-  is_published      Boolean   @default(false)
-  is_sponsored      Boolean   @default(false)
-  is_featured       Boolean   @default(false)
-  is_premium        Boolean   @default(false)
-  status            String    @default("draft") // draft | review | published | archived
-  views             Int       @default(0)
-  likes_count       Int       @default(0)
-  comments_count    Int       @default(0)
-  shares_count      Int       @default(0)
-  reading_time      Int?      // minutes
-  seo_title         String?
-  seo_description   String?
-  published_at      DateTime?
-  created_at        DateTime  @default(now())
-  updated_at        DateTime  @updatedAt
+  is_verified        Boolean           @default(false)
+  is_published       Boolean           @default(false)
+  is_sponsored       Boolean           @default(false)
+  is_featured        Boolean           @default(false)
+  is_premium         Boolean           @default(false)
+  status             String            @default("draft") // draft | review | published | archived
+  views              Int               @default(0)
+  likes_count        Int               @default(0)
+  comments_count     Int               @default(0)
+  shares_count       Int               @default(0)
+  reading_time       Int? // minutes
+  seo_title          String?
+  seo_description    String?
+  published_at       DateTime?
+  created_at         DateTime          @default(now())
+  updated_at         DateTime          @updatedAt
   verified_source_id String?
-  author            User      @relation(fields: [author_id], references: [id], onDelete: Cascade)
-  verified_source   VerifiedSource? @relation(fields: [verified_source_id], references: [id])
-  article_views     ArticleView[]
-  article_likes     ArticleLike[]
-  article_comments  ArticleComment[]
-  trending          TrendingArticle[]
+  author             User              @relation(fields: [author_id], references: [id], onDelete: Cascade)
+  verified_source    VerifiedSource?   @relation(fields: [verified_source_id], references: [id])
+  article_views      ArticleView[]
+  article_likes      ArticleLike[]
+  article_comments   ArticleComment[]
+  trending           TrendingArticle[]
 
   @@index([author_id])
   @@index([category])
@@ -2908,7 +2907,7 @@ model ArticleView {
   id         String      @id @default(uuid())
   article_id String
   user_id    String?
-  ip_hash    String      // hash for anonymous; 1 view per (user_id or ip_hash) per 24h enforced in service
+  ip_hash    String // hash for anonymous; 1 view per (user_id or ip_hash) per 24h enforced in service
   viewed_at  DateTime    @default(now())
   article    NewsArticle @relation(fields: [article_id], references: [id], onDelete: Cascade)
   user       User?       @relation(fields: [user_id], references: [id], onDelete: SetNull)
@@ -2933,18 +2932,18 @@ model ArticleLike {
 }
 
 model ArticleComment {
-  id         String           @id @default(uuid())
-  article_id String
-  user_id    String
-  parent_id  String?
-  content    String
-  is_deleted Boolean          @default(false)
-  is_reported Boolean         @default(false)
-  created_at DateTime         @default(now())
-  article    NewsArticle      @relation(fields: [article_id], references: [id], onDelete: Cascade)
-  user       User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  parent     ArticleComment?  @relation("CommentReplies", fields: [parent_id], references: [id], onDelete: SetNull)
-  replies    ArticleComment[] @relation("CommentReplies")
+  id          String           @id @default(uuid())
+  article_id  String
+  user_id     String
+  parent_id   String?
+  content     String
+  is_deleted  Boolean          @default(false)
+  is_reported Boolean          @default(false)
+  created_at  DateTime         @default(now())
+  article     NewsArticle      @relation(fields: [article_id], references: [id], onDelete: Cascade)
+  user        User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  parent      ArticleComment?  @relation("CommentReplies", fields: [parent_id], references: [id], onDelete: SetNull)
+  replies     ArticleComment[] @relation("CommentReplies")
 
   @@index([article_id])
   @@index([user_id])
@@ -2954,7 +2953,7 @@ model ArticleComment {
 model UserNewsPreference {
   id                   String   @id @default(uuid())
   user_id              String   @unique
-  preferred_categories  Json?    // string[]
+  preferred_categories Json? // string[]
   preferred_country    String?
   preferred_language   String?
   created_at           DateTime @default(now())
@@ -2965,11 +2964,11 @@ model UserNewsPreference {
 }
 
 model TrendingArticle {
-  id          String      @id @default(uuid())
-  article_id  String      @unique
-  score       Float
-  calculated_at DateTime  @default(now())
-  article     NewsArticle @relation(fields: [article_id], references: [id], onDelete: Cascade)
+  id            String      @id @default(uuid())
+  article_id    String      @unique
+  score         Float
+  calculated_at DateTime    @default(now())
+  article       NewsArticle @relation(fields: [article_id], references: [id], onDelete: Cascade)
 
   @@index([score])
 }
@@ -2979,7 +2978,7 @@ model VerifiedSource {
   name        String
   logo        String?
   website     String?
-  trust_score Int?          // 0-100
+  trust_score Int? // 0-100
   created_at  DateTime      @default(now())
   articles    NewsArticle[]
 
@@ -2988,11 +2987,11 @@ model VerifiedSource {
 
 model NewsPremiumSubscription {
   id         String   @id @default(uuid())
-  user_id   String
-  plan      String   // monthly | yearly
+  user_id    String
+  plan       String // monthly | yearly
   expires_at DateTime
   created_at DateTime @default(now())
-  user      User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@index([expires_at])
@@ -3037,38 +3036,38 @@ model Referral {
 // =====================================================
 
 model Ride {
-  id                    String    @id @default(uuid())
-  passenger_id          String
-  passenger_name        String?
-  passenger_phone      String?
-  driver_id             String?
-  driver_name           String?
-  driver_phone          String?
-  driver_avatar         String?
-  vehicle_type          String    @default("moto") // moto | car | tricycle | van
-  pickup_location       String
-  pickup_lat            Float?
-  pickup_lng            Float?
-  dropoff_location     String
-  dropoff_lat           Float?
-  dropoff_lng           Float?
-  distance_km           Float?
+  id                     String    @id @default(uuid())
+  passenger_id           String
+  passenger_name         String?
+  passenger_phone        String?
+  driver_id              String?
+  driver_name            String?
+  driver_phone           String?
+  driver_avatar          String?
+  vehicle_type           String    @default("moto") // moto | car | tricycle | van
+  pickup_location        String
+  pickup_lat             Float?
+  pickup_lng             Float?
+  dropoff_location       String
+  dropoff_lat            Float?
+  dropoff_lng            Float?
+  distance_km            Float?
   estimated_duration_min Int?
-  price                 Float?
-  currency              String    @default("XOF")
-  status                String    @default("requested") // requested | accepted | driver_arriving | in_progress | completed | cancelled
-  payment_method        String    @default("cash") // cash | wallet | mobile_money | card
-  rating                Float?
-  driver_rating         Float?
-  tip_amount           Float     @default(0)
-  cancellation_fee     Float     @default(0)
-  cancellation_reason  String?
-  notes                 String?
-  completed_at         DateTime?
-  created_at           DateTime  @default(now())
-  updated_at           DateTime  @updatedAt
-  passenger             User      @relation("RidePassenger", fields: [passenger_id], references: [id], onDelete: Cascade)
-  driver                User?     @relation("RideDriver", fields: [driver_id], references: [id], onDelete: SetNull)
+  price                  Float?
+  currency               String    @default("XOF")
+  status                 String    @default("requested") // requested | accepted | driver_arriving | in_progress | completed | cancelled
+  payment_method         String    @default("cash") // cash | wallet | mobile_money | card
+  rating                 Float?
+  driver_rating          Float?
+  tip_amount             Float     @default(0)
+  cancellation_fee       Float     @default(0)
+  cancellation_reason    String?
+  notes                  String?
+  completed_at           DateTime?
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @updatedAt
+  passenger              User      @relation("RidePassenger", fields: [passenger_id], references: [id], onDelete: Cascade)
+  driver                 User?     @relation("RideDriver", fields: [driver_id], references: [id], onDelete: SetNull)
 
   @@index([passenger_id])
   @@index([driver_id])
@@ -3077,33 +3076,33 @@ model Ride {
 }
 
 model Driver {
-  id                     String   @id @default(uuid())
-  user_id                String   @unique
+  id                     String    @id @default(uuid())
+  user_id                String    @unique
   full_name              String
   phone                  String
   email                  String?
   avatar                 String?
-  vehicle_type           String   // moto | car | tricycle | van
+  vehicle_type           String // moto | car | tricycle | van
   vehicle_brand          String?
   vehicle_model          String?
   vehicle_color          String?
   license_plate          String
   license_number         String?
   license_expiry         DateTime? @db.Date
-  rating                 Float    @default(5.0)
-  total_rides            Int      @default(0)
-  total_earnings         Float    @default(0)
-  status                 String   @default("offline") // offline | available | busy
+  rating                 Float     @default(5.0)
+  total_rides            Int       @default(0)
+  total_earnings         Float     @default(0)
+  status                 String    @default("offline") // offline | available | busy
   current_location       String?
   current_lat            Float?
   current_lng            Float?
-  is_verified            Boolean  @default(false)
-  verification_documents Json?    @default("[]") // string[]
+  is_verified            Boolean   @default(false)
+  verification_documents Json?     @default("[]") // string[]
   bank_account           String?
-  available_seats        Int      @default(1)
-  created_at             DateTime @default(now())
-  updated_at             DateTime @updatedAt
-  user                   User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  available_seats        Int       @default(1)
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @updatedAt
+  user                   User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@index([status])
@@ -3115,34 +3114,34 @@ model Driver {
 // =====================================================
 
 model Restaurant {
-  id                 String    @id @default(uuid())
-  owner_id           String
-  name               String
-  description        String?
-  logo_url           String?
-  banner_url         String?
-  cuisine_type       Json?     @default("[]") // string[] enum: africain, senegalais, ...
-  address            String
-  city               String?
-  latitude           Float?
-  longitude          Float?
-  phone              String
-  opening_hours      String?
-  delivery_time_min  Int       @default(30)
-  minimum_order      Float     @default(0)
-  delivery_fee       Float     @default(0)
-  rating             Float     @default(5.0)
-  total_reviews      Int       @default(0)
-  total_orders       Int       @default(0)
-  is_open            Boolean   @default(true)
-  is_verified        Boolean   @default(false)
-  accepts_orders     Boolean   @default(true)
-  tags               Json?     @default("[]") // string[]
-  created_at         DateTime  @default(now())
-  updated_at         DateTime  @updatedAt
-  owner              User      @relation(fields: [owner_id], references: [id], onDelete: Cascade)
-  menu_items         MenuItem[]
-  food_orders        FoodOrder[]
+  id                String      @id @default(uuid())
+  owner_id          String
+  name              String
+  description       String?
+  logo_url          String?
+  banner_url        String?
+  cuisine_type      Json?       @default("[]") // string[] enum: africain, senegalais, ...
+  address           String
+  city              String?
+  latitude          Float?
+  longitude         Float?
+  phone             String
+  opening_hours     String?
+  delivery_time_min Int         @default(30)
+  minimum_order     Float       @default(0)
+  delivery_fee      Float       @default(0)
+  rating            Float       @default(5.0)
+  total_reviews     Int         @default(0)
+  total_orders      Int         @default(0)
+  is_open           Boolean     @default(true)
+  is_verified       Boolean     @default(false)
+  accepts_orders    Boolean     @default(true)
+  tags              Json?       @default("[]") // string[]
+  created_at        DateTime    @default(now())
+  updated_at        DateTime    @updatedAt
+  owner             User        @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  menu_items        MenuItem[]
+  food_orders       FoodOrder[]
 
   @@index([owner_id])
   @@index([city])
@@ -3150,66 +3149,66 @@ model Restaurant {
 }
 
 model MenuItem {
-  id                  String   @id @default(uuid())
-  restaurant_id       String
-  restaurant_name     String?
-  name                String
-  description         String?
-  category            String   @default("plats") // entrees | plats | desserts | boissons | accompagnements | menu_complet
-  price               Float
-  currency            String   @default("XOF")
-  image_url           String?
-  images              Json?    @default("[]") // string[]
-  preparation_time_min Int     @default(20)
-  calories            Int?
-  is_available        Boolean  @default(true)
-  is_popular          Boolean  @default(false)
-  is_spicy            Boolean  @default(false)
-  is_vegetarian       Boolean  @default(false)
-  allergens           Json?    @default("[]") // string[]
-  options             Json?    @default("[]") // object[]
-  discount_percent    Float    @default(0)
-  orders_count       Int      @default(0)
-  created_at         DateTime @default(now())
-  updated_at         DateTime @updatedAt
-  restaurant          Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+  id                   String     @id @default(uuid())
+  restaurant_id        String
+  restaurant_name      String?
+  name                 String
+  description          String?
+  category             String     @default("plats") // entrees | plats | desserts | boissons | accompagnements | menu_complet
+  price                Float
+  currency             String     @default("XOF")
+  image_url            String?
+  images               Json?      @default("[]") // string[]
+  preparation_time_min Int        @default(20)
+  calories             Int?
+  is_available         Boolean    @default(true)
+  is_popular           Boolean    @default(false)
+  is_spicy             Boolean    @default(false)
+  is_vegetarian        Boolean    @default(false)
+  allergens            Json?      @default("[]") // string[]
+  options              Json?      @default("[]") // object[]
+  discount_percent     Float      @default(0)
+  orders_count         Int        @default(0)
+  created_at           DateTime   @default(now())
+  updated_at           DateTime   @updatedAt
+  restaurant           Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
 
   @@index([restaurant_id])
   @@index([category])
 }
 
 model FoodOrder {
-  id                    String    @id @default(uuid())
-  customer_id           String
-  customer_name         String?
-  customer_phone        String?
-  restaurant_id         String
-  restaurant_name       String?
-  items                 Json      // array of order items
-  subtotal              Float?
-  delivery_fee           Float     @default(0)
-  service_fee           Float     @default(0)
-  total_amount          Float
-  currency              String    @default("XOF")
-  delivery_address      String
-  delivery_lat          Float?
-  delivery_lng          Float?
-  delivery_instructions String?
-  payment_method        String    @default("cash") // cash | wallet | mobile_money | card
-  status                String    @default("pending") // pending | confirmed | preparing | ready | picked_up | on_the_way | delivered | cancelled
-  delivery_person_id    String?
-  delivery_person_name  String?
-  delivery_person_phone String?
+  id                      String     @id @default(uuid())
+  customer_id             String
+  customer_name           String?
+  customer_phone          String?
+  restaurant_id           String
+  restaurant_name         String?
+  items                   Json // array of order items
+  subtotal                Float?
+  delivery_fee            Float      @default(0)
+  service_fee             Float      @default(0)
+  total_amount            Float
+  currency                String     @default("XOF")
+  delivery_address        String
+  delivery_lat            Float?
+  delivery_lng            Float?
+  delivery_instructions   String?
+  payment_method          String     @default("cash") // cash | wallet | mobile_money | card
+  status                  String     @default("pending") // pending | confirmed | preparing | ready | picked_up | on_the_way | delivered | cancelled
+  delivery_person_id      String?
+  delivery_person_name    String?
+  delivery_person_phone   String?
   estimated_delivery_time DateTime?
-  delivered_at          DateTime?
-  rating                Float?
-  review                String?
-  special_requests      String?
-  created_at            DateTime  @default(now())
-  updated_at            DateTime  @updatedAt
-  customer              User      @relation("FoodOrderCustomer", fields: [customer_id], references: [id], onDelete: Cascade)
-  delivery_person       User?     @relation("FoodOrderDelivery", fields: [delivery_person_id], references: [id], onDelete: SetNull)
-  restaurant            Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+  delivered_at            DateTime?
+  rating                  Float?
+  review                  String?
+  special_requests        String?
+  created_at              DateTime   @default(now())
+  updated_at              DateTime   @updatedAt
+  customer                User       @relation("FoodOrderCustomer", fields: [customer_id], references: [id], onDelete: Cascade)
+  delivery_person         User?      @relation("FoodOrderDelivery", fields: [delivery_person_id], references: [id], onDelete: SetNull)
+  restaurant              Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
 
   @@index([customer_id])
   @@index([restaurant_id])
@@ -3225,7 +3224,7 @@ model AirtimeRecharge {
   id               String    @id @default(uuid())
   user_id          String
   phone_number     String
-  operator         String    // Orange | MTN | Moov | Airtel | Togocel | Vodacom | Safaricom
+  operator         String // Orange | MTN | Moov | Airtel | Togocel | Vodacom | Safaricom
   amount           Float
   currency         String    @default("XOF")
   payment_method   String    @default("wallet") // wallet | mobile_money | card
@@ -3247,7 +3246,7 @@ model AirtimeRecharge {
 model BillPayment {
   id             String    @id @default(uuid())
   user_id        String
-  bill_type      String    // electricity | water | internet | tv | insurance | school_fees | government_tax
+  bill_type      String // electricity | water | internet | tv | insurance | school_fees | government_tax
   provider       String
   account_number String
   customer_name  String?
@@ -3277,7 +3276,7 @@ model BillPayment {
 model Ticket {
   id                String    @id @default(uuid())
   user_id           String
-  ticket_type       String    // event | concert | cinema | transport | sports | theater
+  ticket_type       String // event | concert | cinema | transport | sports | theater
   event_id          String?
   event_name        String?
   event_date        DateTime?
@@ -3310,34 +3309,34 @@ model Ticket {
 // =====================================================
 
 model Doctor {
-  id                   String    @id @default(uuid())
-  user_id              String    @unique
+  id                   String        @id @default(uuid())
+  user_id              String        @unique
   full_name            String
-  specialty            String   // general | pediatrie | gynecologie | dentiste | ophtalmologie | dermatologie | cardiologie | psychiatrie | autre
-  qualifications       Json?     @default("[]") // string[]
+  specialty            String // general | pediatrie | gynecologie | dentiste | ophtalmologie | dermatologie | cardiologie | psychiatrie | autre
+  qualifications       Json?         @default("[]") // string[]
   license_number       String?
   years_experience     Int?
   profile_photo        String?
   bio                  String?
-  languages            Json?     // string[] e.g. ["francais"]
-  clinic_name         String?
-  clinic_address      String?
+  languages            Json? // string[] e.g. ["francais"]
+  clinic_name          String?
+  clinic_address       String?
   city                 String?
   phone                String
   email                String?
   consultation_fee     Float?
-  currency             String    @default("XOF")
-  accepts_telemedicine Boolean   @default(true)
-  accepts_insurance    Boolean   @default(false)
-  rating               Float     @default(5.0)
-  total_consultations  Int       @default(0)
-  is_verified          Boolean   @default(false)
-  is_available        Boolean   @default(true)
-  available_hours     String?
-  created_at           DateTime  @default(now())
-  updated_at           DateTime  @updatedAt
-  user                 User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  appointments        Appointment[]
+  currency             String        @default("XOF")
+  accepts_telemedicine Boolean       @default(true)
+  accepts_insurance    Boolean       @default(false)
+  rating               Float         @default(5.0)
+  total_consultations  Int           @default(0)
+  is_verified          Boolean       @default(false)
+  is_available         Boolean       @default(true)
+  available_hours      String?
+  created_at           DateTime      @default(now())
+  updated_at           DateTime      @updatedAt
+  user                 User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  appointments         Appointment[]
 
   @@index([user_id])
   @@index([specialty])
@@ -3345,35 +3344,35 @@ model Doctor {
 }
 
 model Appointment {
-  id                   String    @id @default(uuid())
-  patient_id           String
-  patient_name         String?
-  patient_phone        String?
-  patient_age          Int?
-  doctor_id            String
-  doctor_name          String?
-  doctor_specialty     String?
-  appointment_type     String    @default("telemedicine") // telemedicine | in_person | follow_up
-  appointment_date     DateTime
-  duration_minutes     Int       @default(30)
-  reason               String
-  symptoms             String?
-  status               String    @default("scheduled") // scheduled | confirmed | in_progress | completed | cancelled | no_show
-  consultation_fee     Float?
-  currency             String    @default("XOF")
-  payment_status       String    @default("pending") // pending | paid | refunded
-  payment_method       String?   // wallet | mobile_money | cash | insurance
-  video_call_link      String?
-  prescription         String?
+  id                    String    @id @default(uuid())
+  patient_id            String
+  patient_name          String?
+  patient_phone         String?
+  patient_age           Int?
+  doctor_id             String
+  doctor_name           String?
+  doctor_specialty      String?
+  appointment_type      String    @default("telemedicine") // telemedicine | in_person | follow_up
+  appointment_date      DateTime
+  duration_minutes      Int       @default(30)
+  reason                String
+  symptoms              String?
+  status                String    @default("scheduled") // scheduled | confirmed | in_progress | completed | cancelled | no_show
+  consultation_fee      Float?
+  currency              String    @default("XOF")
+  payment_status        String    @default("pending") // pending | paid | refunded
+  payment_method        String? // wallet | mobile_money | cash | insurance
+  video_call_link       String?
+  prescription          String?
   prescription_file_url String?
-  medical_notes        String?
-  follow_up_required   Boolean   @default(false)
-  rating               Float?
-  completed_at         DateTime?
-  created_at           DateTime  @default(now())
-  updated_at           DateTime  @updatedAt
-  patient              User      @relation("AppointmentPatient", fields: [patient_id], references: [id], onDelete: Cascade)
-  doctor               Doctor    @relation(fields: [doctor_id], references: [id], onDelete: Cascade)
+  medical_notes         String?
+  follow_up_required    Boolean   @default(false)
+  rating                Float?
+  completed_at          DateTime?
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
+  patient               User      @relation("AppointmentPatient", fields: [patient_id], references: [id], onDelete: Cascade)
+  doctor                Doctor    @relation(fields: [doctor_id], references: [id], onDelete: Cascade)
 
   @@index([patient_id])
   @@index([doctor_id])
@@ -3420,43 +3419,44 @@ model Pharmacy {
 // =====================================================
 
 model Property {
-  id                String   @id @default(uuid())
-  owner_id          String
-  owner_name        String?
-  owner_phone       String?
-  listing_type      String   // rent | sale
-  property_type     String   // apartment | house | studio | villa | land | office | shop | warehouse
-  title             String
-  description       String?
-  address           String
-  city              String?
-  neighborhood      String?
-  latitude          Float?
-  longitude         Float?
-  price             Float
-  currency          String   @default("XOF")
-  bedrooms          Int?
-  bathrooms         Int?
-  surface_area      Float?
-  floor             Int?
-  total_floors      Int?
-  is_furnished      Boolean  @default(false)
-  amenities         Json?    @default("[]") // string[]
-  images            Json?     @default("[]") // string[]
-  video_url         String?
-  year_built        Int?
-  available_from    DateTime? @db.Date
-  status            String   @default("available") // available | rented | sold | reserved
-  views             Int      @default(0)
-  saved_count       Int      @default(0)
-  is_verified       Boolean  @default(false)
-  deposit_required  Float?
-  utilities_included Boolean @default(false)
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
-  owner             User     @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  id                 String    @id @default(uuid())
+  owner_id           String
+  owner_name         String?
+  owner_phone        String?
+  listing_type       String // rent | sale
+  property_type      String // apartment | house | studio | villa | land | office | shop | warehouse
+  title              String
+  description        String?
+  address            String
+  city               String?
+  neighborhood       String?
+  latitude           Float?
+  longitude          Float?
+  price              Float
+  currency           String    @default("XOF")
+  bedrooms           Int?
+  bathrooms          Int?
+  surface_area       Float?
+  floor              Int?
+  total_floors       Int?
+  is_furnished       Boolean   @default(false)
+  amenities          Json?     @default("[]") // string[]
+  images             Json?     @default("[]") // string[]
+  video_url          String?
+  year_built         Int?
+  available_from     DateTime? @db.Date
+  status             String    @default("available") // available | rented | sold | reserved
+  views              Int       @default(0)
+  saved_count        Int       @default(0)
+  is_verified        Boolean   @default(false)
+  deposit_required   Float?
+  utilities_included Boolean   @default(false)
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+  owner              User      @relation(fields: [owner_id], references: [id], onDelete: Cascade)
 
-  visit_requests       PropertyVisitRequest[]
+  visit_requests PropertyVisitRequest[]
+
   @@index([owner_id])
   @@index([listing_type])
   @@index([property_type])
@@ -3465,17 +3465,17 @@ model Property {
 }
 
 model PropertyVisitRequest {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   property_id    String
   user_id        String
   requested_date DateTime? @db.Date
   message        String?
-  status         String   @default("pending") // pending | accepted | rejected | completed
+  status         String    @default("pending") // pending | accepted | rejected | completed
   owner_notes    String?
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
-  property       Property @relation(fields: [property_id], references: [id], onDelete: Cascade)
-  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  property       Property  @relation(fields: [property_id], references: [id], onDelete: Cascade)
+  user           User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([property_id])
   @@index([user_id])
@@ -3487,61 +3487,61 @@ model PropertyVisitRequest {
 // =====================================================
 
 model InsurancePolicy {
-  id                 String    @id @default(uuid())
-  user_id            String
-  policy_type        String    // health | vehicle | property | life | travel | micro_insurance
-  policy_number      String?
-  provider           String
-  plan_name          String?
-  coverage_amount    Float?
-  premium_amount     Float
-  payment_frequency  String    @default("monthly") // monthly | quarterly | yearly
-  currency           String    @default("XOF")
-  start_date         DateTime? @db.Date
-  end_date           DateTime? @db.Date
-  status             String    @default("pending") // active | expired | cancelled | pending
-  beneficiaries      Json?     @default("[]") // object[]
-  covered_items      Json?     @default("[]") // string[]
-  exclusions         Json?     @default("[]") // string[]
-  deductible         Float     @default(0)
-  documents          Json?     @default("[]") // string[] URLs
-  auto_renew         Boolean   @default(true)
-  claims_count       Int       @default(0)
-  last_payment_date  DateTime? @db.Date
-  next_payment_date  DateTime? @db.Date
-  created_at         DateTime  @default(now())
-  updated_at         DateTime  @updatedAt
-  user               User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  claims             InsuranceClaim[]
+  id                String           @id @default(uuid())
+  user_id           String
+  policy_type       String // health | vehicle | property | life | travel | micro_insurance
+  policy_number     String?
+  provider          String
+  plan_name         String?
+  coverage_amount   Float?
+  premium_amount    Float
+  payment_frequency String           @default("monthly") // monthly | quarterly | yearly
+  currency          String           @default("XOF")
+  start_date        DateTime?        @db.Date
+  end_date          DateTime?        @db.Date
+  status            String           @default("pending") // active | expired | cancelled | pending
+  beneficiaries     Json?            @default("[]") // object[]
+  covered_items     Json?            @default("[]") // string[]
+  exclusions        Json?            @default("[]") // string[]
+  deductible        Float            @default(0)
+  documents         Json?            @default("[]") // string[] URLs
+  auto_renew        Boolean          @default(true)
+  claims_count      Int              @default(0)
+  last_payment_date DateTime?        @db.Date
+  next_payment_date DateTime?        @db.Date
+  created_at        DateTime         @default(now())
+  updated_at        DateTime         @updatedAt
+  user              User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  claims            InsuranceClaim[]
 
   @@index([user_id])
   @@index([status])
 }
 
 model InsuranceClaim {
-  id                   String   @id @default(uuid())
+  id                   String          @id @default(uuid())
   user_id              String
   policy_id            String
   policy_number        String?
   claim_number         String?
-  incident_date        DateTime @db.Date
+  incident_date        DateTime        @db.Date
   description          String
   claim_amount         Float
-  approved_amount      Float    @default(0)
-  currency             String   @default("XOF")
-  status               String   @default("submitted") // submitted | under_review | approved | rejected | paid
-  validation_level     Int      @default(0) // 0-4 workflow
-  risk_score           Float?   // 0-100 fraud/risk
-  supporting_documents Json?    @default("[]") // string[] URLs
-  photos               Json?     @default("[]") // string[] URLs
+  approved_amount      Float           @default(0)
+  currency             String          @default("XOF")
+  status               String          @default("submitted") // submitted | under_review | approved | rejected | paid
+  validation_level     Int             @default(0) // 0-4 workflow
+  risk_score           Float? // 0-100 fraud/risk
+  supporting_documents Json?           @default("[]") // string[] URLs
+  photos               Json?           @default("[]") // string[] URLs
   adjuster_name        String?
   adjuster_notes       String?
   rejection_reason     String?
-  paid_date            DateTime? @db.Date
-  payment_method       String?   // bank_transfer | mobile_money | check
-  created_at           DateTime  @default(now())
-  updated_at           DateTime  @updatedAt
-  user                 User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  paid_date            DateTime?       @db.Date
+  payment_method       String? // bank_transfer | mobile_money | check
+  created_at           DateTime        @default(now())
+  updated_at           DateTime        @updatedAt
+  user                 User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
   policy               InsurancePolicy @relation(fields: [policy_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
@@ -3551,12 +3551,12 @@ model InsuranceClaim {
 
 // Idempotency — anti double paiement / double achat
 model IdempotencyKey {
-  id             String    @id @default(uuid())
-  key            String    @unique
+  id              String   @id @default(uuid())
+  key             String   @unique
   response_status Int?
-  response_body   String?   @db.Text
-  created_at     DateTime  @default(now())
-  expires_at     DateTime
+  response_body   String?  @db.Text
+  created_at      DateTime @default(now())
+  expires_at      DateTime
 
   @@index([key])
   @@index([expires_at])
@@ -3566,8 +3566,8 @@ model IdempotencyKey {
 // Blacklist — user, device, IP (anti-fraude)
 model BlacklistEntry {
   id         String    @id @default(uuid())
-  type       String    // user | device | ip
-  value      String    // user_id, device_id, or IP/range
+  type       String // user | device | ip
+  value      String // user_id, device_id, or IP/range
   reason     String?
   created_by String?
   expires_at DateTime?
@@ -3581,11 +3581,11 @@ model BlacklistEntry {
 // Audit trail — tous mouvements financiers et actions critiques
 model AuditEvent {
   id          String   @id @default(uuid())
-  event_type  String   // payment_init, payment_confirm, ticket_book, ride_create, claim_submit, kyc_submit, etc.
+  event_type  String // payment_init, payment_confirm, ticket_book, ride_create, claim_submit, kyc_submit, etc.
   actor_id    String?
   target_type String?
   target_id   String?
-  payload     Json?    // snapshot pertinent
+  payload     Json? // snapshot pertinent
   ip_address  String?
   user_agent  String?
   created_at  DateTime @default(now())
@@ -3611,15 +3611,15 @@ model FeatureFlag {
 
 // AML — transactions flaggées (seuils, reporting)
 model TransactionFlag {
-  id             String   @id @default(uuid())
-  reference_type String   // order, event_payment, withdrawal, etc.
+  id             String    @id @default(uuid())
+  reference_type String // order, event_payment, withdrawal, etc.
   reference_id   String?
   user_id        String
   amount         Float
-  currency       String   @default("XOF")
-  reason         String   // amount_threshold, velocity, manual
-  status         String   @default("pending") // pending | reported | cleared
-  created_at     DateTime @default(now())
+  currency       String    @default("XOF")
+  reason         String // amount_threshold, velocity, manual
+  status         String    @default("pending") // pending | reported | cleared
+  created_at     DateTime  @default(now())
   reviewed_at    DateTime?
   reviewed_by    String?
 
@@ -3665,18 +3665,18 @@ model UserVerification {
 // =====================================================
 
 model LegalDocument {
-  id               String                  @id @default(uuid())
-  type             String                  // 'privacy_policy', 'terms_of_service', 'cookies_policy', 'data_protection'
-  version          String
-  language         String                  @default("fr")
-  title            String
-  content          String                  // Full HTML/Markdown content
-  effective_date   DateTime
-  created_at       DateTime                @default(now())
-  updated_at       DateTime                @updatedAt
-  is_active        Boolean                 @default(false)
-  created_by       String?
-  acceptances      UserLegalAcceptance[]
+  id             String                @id @default(uuid())
+  type           String // 'privacy_policy', 'terms_of_service', 'cookies_policy', 'data_protection'
+  version        String
+  language       String                @default("fr")
+  title          String
+  content        String // Full HTML/Markdown content
+  effective_date DateTime
+  created_at     DateTime              @default(now())
+  updated_at     DateTime              @updatedAt
+  is_active      Boolean               @default(false)
+  created_by     String?
+  acceptances    UserLegalAcceptance[]
 
   @@unique([type, version, language])
   @@index([type, is_active])
@@ -3685,16 +3685,16 @@ model LegalDocument {
 }
 
 model UserLegalAcceptance {
-  id           String         @id @default(uuid())
-  user_id      String
-  document_id  String
-  version      String
-  accepted_at  DateTime       @default(now())
-  ip_address   String?
-  user_agent   String?
-  device_info  Json?
-  user         User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  document     LegalDocument  @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  id          String        @id @default(uuid())
+  user_id     String
+  document_id String
+  version     String
+  accepted_at DateTime      @default(now())
+  ip_address  String?
+  user_agent  String?
+  device_info Json?
+  user        User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  document    LegalDocument @relation(fields: [document_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@index([document_id])
@@ -3795,18 +3795,18 @@ model SecurityLog {
 }
 
 model User2FA {
-  id            String    @id @default(uuid())
-  user_id       String    @unique
-  method        String // 'sms', 'authenticator', 'email'
-  is_enabled    Boolean   @default(false)
-  secret        String?
-  backup_codes  String[]
-  phone_number  String?
-  last_used_at  DateTime?
-  enabled_at    DateTime?
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
-  user          User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id           String    @id @default(uuid())
+  user_id      String    @unique
+  method       String // 'sms', 'authenticator', 'email'
+  is_enabled   Boolean   @default(false)
+  secret       String?
+  backup_codes String[]
+  phone_number String?
+  last_used_at DateTime?
+  enabled_at   DateTime?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  user         User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@index([is_enabled])
@@ -3853,36 +3853,36 @@ model SuspiciousActivityAlert {
 }
 
 model LegalEntityInfo {
-  id               String   @id @default(uuid())
-  company_name     String
-  legal_form       String?
+  id                  String   @id @default(uuid())
+  company_name        String
+  legal_form          String?
   registration_number String?
-  vat_number       String?
-  address          String
-  city             String
-  postal_code      String?
-  country          String
-  phone            String?
-  email            String
-  dpo_name         String?
-  dpo_email        String?
-  dpo_phone        String?
-  data_controller  String?
-  hosting_provider String?
-  hosting_region   String?
-  updated_at       DateTime @updatedAt
+  vat_number          String?
+  address             String
+  city                String
+  postal_code         String?
+  country             String
+  phone               String?
+  email               String
+  dpo_name            String?
+  dpo_email           String?
+  dpo_phone           String?
+  data_controller     String?
+  hosting_provider    String?
+  hosting_region      String?
+  updated_at          DateTime @updatedAt
 
   @@map("legal_entity_info")
 }
 
 model DataRetentionPolicy {
-  id                   String    @id @default(uuid())
-  data_type            String    @unique
-  retention_days       Int
-  description          String?
-  auto_delete_enabled  Boolean   @default(true)
-  last_cleanup_at      DateTime?
-  updated_at           DateTime  @updatedAt
+  id                  String    @id @default(uuid())
+  data_type           String    @unique
+  retention_days      Int
+  description         String?
+  auto_delete_enabled Boolean   @default(true)
+  last_cleanup_at     DateTime?
+  updated_at          DateTime  @updatedAt
 
   @@map("data_retention_policies")
 }
