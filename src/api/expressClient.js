@@ -1090,6 +1090,53 @@ export const api = {
       return data.data ?? data;
     },
   },
+  gamification: {
+    async getMe() {
+      const { data } = await axiosInstance.get('/gamification/me');
+      return data.data;
+    },
+    async awardPoints(payload) {
+      const { data } = await axiosInstance.post('/gamification/award', payload);
+      return data.data;
+    },
+    async awardBadge(payload) {
+      const { data } = await axiosInstance.post('/gamification/badge', payload);
+      return data.data;
+    },
+  },
+  viewHistory: {
+    async list(params = {}) {
+      const { data } = await axiosInstance.get('/view-history', { params });
+      return data.data ?? [];
+    },
+    async record(videoId, watchTimeSeconds = 0) {
+      const { data } = await axiosInstance.post('/view-history', {
+        video_id: videoId,
+        watch_time_seconds: watchTimeSeconds,
+      });
+      return data.data;
+    },
+  },
+  analytics: {
+    async getVideoAnalytics(videoId, startDate, endDate) {
+      const params = {};
+      if (startDate) params.startDate = startDate instanceof Date ? startDate.toISOString() : startDate;
+      if (endDate) params.endDate = endDate instanceof Date ? endDate.toISOString() : endDate;
+      const { data } = await axiosInstance.get(`/analytics/video/${videoId}`, { params });
+      return data.data ?? [];
+    },
+    async getCreatorAnalytics(creatorId, startDate, endDate) {
+      const params = {};
+      if (startDate) params.startDate = startDate instanceof Date ? startDate.toISOString() : startDate;
+      if (endDate) params.endDate = endDate instanceof Date ? endDate.toISOString() : endDate;
+      const { data } = await axiosInstance.get(`/analytics/creator/${creatorId}`, { params });
+      return data.data;
+    },
+    async recordVideo(payload) {
+      const { data } = await axiosInstance.post('/analytics/video/record', payload);
+      return data.data;
+    },
+  },
   live: {
     async list(params = {}) {
       const { data } = await axiosInstance.get('/live', { params });

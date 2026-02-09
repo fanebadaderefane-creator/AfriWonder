@@ -46,6 +46,30 @@ router.get('/:entityType/:entityId', authenticate, async (req: AuthRequest, res,
   }
 });
 
+// POST /api/analytics/video/record — enregistrer / incrémenter VideoAnalytics (vue, likes, etc.)
+router.post('/video/record', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { video_id, creator_id, views, likes, comments, shares, watch_time_minutes, engagement_rate, revenue } = req.body;
+    if (!video_id || !creator_id) {
+      return res.status(400).json({ success: false, error: 'video_id et creator_id requis' });
+    }
+    const analytics = await analyticsService.recordVideoAnalytics({
+      video_id,
+      creator_id,
+      views: views ?? 1,
+      likes: likes ?? 0,
+      comments: comments ?? 0,
+      shares: shares ?? 0,
+      watch_time_minutes: watch_time_minutes ?? 0,
+      engagement_rate: engagement_rate ?? 0,
+      revenue: revenue ?? 0,
+    });
+    res.json({ success: true, data: analytics });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // POST /api/analytics
 router.post('/', authenticate, async (req: AuthRequest, res, next) => {
   try {

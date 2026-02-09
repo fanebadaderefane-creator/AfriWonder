@@ -86,6 +86,65 @@ class AnalyticsService {
     return analytics;
   }
 
+  async recordVideoAnalytics(data: {
+    video_id: string;
+    creator_id: string;
+    date?: Date;
+    views?: number;
+    likes?: number;
+    comments?: number;
+    shares?: number;
+    watch_time_minutes?: number;
+    engagement_rate?: number;
+    revenue?: number;
+  }) {
+    const date = data.date ? new Date(data.date) : new Date();
+    const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+    const existing = await prisma.videoAnalytics.findFirst({
+      where: { video_id: data.video_id, date: dayStart },
+    });
+
+    const inc = {
+      views: data.views ?? 0,
+      likes: data.likes ?? 0,
+      comments: data.comments ?? 0,
+      shares: data.shares ?? 0,
+      watch_time_minutes: data.watch_time_minutes ?? 0,
+      revenue: data.revenue ?? 0,
+    };
+
+    if (existing) {
+      return prisma.videoAnalytics.update({
+        where: { id: existing.id },
+        data: {
+          views: existing.views + inc.views,
+          likes: existing.likes + inc.likes,
+          comments: existing.comments + inc.comments,
+          shares: existing.shares + inc.shares,
+          watch_time_minutes: existing.watch_time_minutes + inc.watch_time_minutes,
+          revenue: existing.revenue + inc.revenue,
+          engagement_rate: data.engagement_rate ?? existing.engagement_rate,
+        },
+      });
+    }
+
+    return prisma.videoAnalytics.create({
+      data: {
+        video_id: data.video_id,
+        creator_id: data.creator_id,
+        date: dayStart,
+        views: inc.views || 1,
+        likes: inc.likes,
+        comments: inc.comments,
+        shares: inc.shares,
+        watch_time_minutes: inc.watch_time_minutes,
+        engagement_rate: data.engagement_rate ?? 0,
+        revenue: inc.revenue,
+      },
+    });
+  }
+
   async getAnalytics(entityType: string, entityId: string, startDate?: Date, endDate?: Date) {
     const where: any = {
       entity_type: entityType,

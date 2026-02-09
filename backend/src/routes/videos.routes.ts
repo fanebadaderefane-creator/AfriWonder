@@ -9,9 +9,8 @@ const router = Router();
 // GET /api/videos - Liste des vidéos
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
-    const { page = '1', limit, category, visibility = 'public' } = req.query;
+    const { page = '1', limit, category, visibility = 'public', creator_id: creatorId } = req.query;
     const userId = req.user?.id;
-    // Si limit n'est pas spécifié ou est 0, récupérer toutes les vidéos
     const limitValue = limit ? parseInt(limit as string) : 0;
 
     const videos = await videoService.list({
@@ -20,6 +19,7 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       category: category as string,
       visibility: visibility as string,
       userId,
+      creator_id: creatorId as string,
     });
 
     res.json({

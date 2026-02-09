@@ -5,10 +5,11 @@ import GamificationEngine from './gamification.service.js';
 
 interface ListOptions {
   page: number;
-  limit?: number; // Optionnel, si 0 ou non spécifié, récupère toutes les vidéos
+  limit?: number;
   category?: string;
   visibility?: string;
   userId?: string;
+  creator_id?: string;
 }
 
 class VideoService {
@@ -54,7 +55,7 @@ class VideoService {
     }
   }
   async list(options: ListOptions) {
-    const { page, limit, category, visibility = 'public', userId } = options;
+    const { page, limit, category, visibility = 'public', userId, creator_id: creatorId } = options;
     // Si limit n'est pas spécifié ou est 0, récupérer toutes les vidéos
     const shouldGetAll = !limit || limit === 0;
     const skip = shouldGetAll ? undefined : (page - 1) * (limit || 0);
@@ -92,6 +93,10 @@ class VideoService {
     // Filtre par catégorie
     if (category) {
       where.category = category;
+    }
+    // Filtre par créateur
+    if (creatorId) {
+      where.creator_id = creatorId;
     }
 
     const [videos, total] = await Promise.all([
