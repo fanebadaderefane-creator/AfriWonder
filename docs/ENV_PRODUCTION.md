@@ -7,7 +7,7 @@
 | `NODE_ENV` | `production` |
 | `DATABASE_URL` | PostgreSQL (Supabase ou autre) |
 | `JWT_SECRET` | Secret fort (32+ caractères) |
-| `CORS_ORIGIN` | URL du front (ex. `https://africonnect.com`) |
+| `CORS_ORIGIN` | URL du front (ex. `https://afriwonder.com`) |
 | `REDIS_URL` | Redis pour rate limiting + cache (ex. `redis://redis:6379`) |
 
 ## Paiements (selon contrats)

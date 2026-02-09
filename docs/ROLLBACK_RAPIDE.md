@@ -1,18 +1,18 @@
-# Rollback rapide AfriConnect
+# Rollback rapide AfriWonder
 
 ## 1. Rollback applicatif (code)
 
 ### Avec Docker (recommandé)
 ```bash
 # Lister les images récentes
-docker images africonnect-backend --format "{{.Tag}}\t{{.CreatedAt}}" | head -5
+docker images afriwonder-backend --format "{{.Tag}}\t{{.CreatedAt}}" | head -5
 
 # Rollback 1-click : redéployer l'image précédente
-docker tag africonnect-backend:previous africonnect-backend:latest
+docker tag afriwonder-backend:previous afriwonder-backend:latest
 docker compose -f docker-compose.prod.yml up -d backend
 
 # Ou avec tag de version
-docker pull your-registry/africonnect-backend:v1.2.2
+docker pull your-registry/afriwonder-backend:v1.2.2
 docker compose -f docker-compose.prod.yml up -d backend
 ```
 
@@ -29,12 +29,12 @@ cd backend
 
 ```bash
 # 1. Restaurer le dernier backup
-gunzip -c backups/africonnect_backup_YYYYMMDD_HHMMSS.sql.gz | psql "$DATABASE_URL" -f -
+gunzip -c backups/afriwonder_backup_YYYYMMDD_HHMMSS.sql.gz | psql "$DATABASE_URL" -f -
 
 # 2. Ou restaurer dans une DB temporaire puis basculer
-createdb africonnect_restored
-gunzip -c backups/africonnect_backup_*.sql.gz | psql africonnect_restored -f -
-# Vérifier les données, puis mettre DATABASE_URL vers africonnect_restored et redémarrer
+createdb afriwonder_restored
+gunzip -c backups/afriwonder_backup_*.sql.gz | psql afriwonder_restored -f -
+# Vérifier les données, puis mettre DATABASE_URL vers afriwonder_restored et redémarrer
 ```
 
 ## 3. Rollback paiement (remboursement)

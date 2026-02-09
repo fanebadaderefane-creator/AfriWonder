@@ -1,4 +1,4 @@
-# ✅ CHECKLIST 100% PROPRE - AfriConnect
+# ✅ CHECKLIST 100% PROPRE - AfriWonder
 
 ## 🎯 OBJECTIF : Projet 100% Fonctionnel et Propre
 
@@ -193,7 +193,7 @@ Get-ChildItem -Path src/components -Recurse -Filter *.jsx | Select-String -Patte
 AWS_ACCESS_KEY_ID=votre_access_key
 AWS_SECRET_ACCESS_KEY=votre_secret_key
 AWS_REGION=us-east-1
-AWS_S3_BUCKET=africonnect-uploads
+AWS_S3_BUCKET=afriwonder-uploads
 ```
 
 **Option 2 : Cloudflare R2** (moins cher)
@@ -202,7 +202,7 @@ AWS_S3_BUCKET=africonnect-uploads
 R2_ACCOUNT_ID=votre_account_id
 R2_ACCESS_KEY_ID=votre_access_key
 R2_SECRET_ACCESS_KEY=votre_secret_key
-R2_BUCKET_NAME=africonnect
+R2_BUCKET_NAME=afriwonder
 ```
 
 **Option 3 : Temporaire - Stockage local** (dev seulement)

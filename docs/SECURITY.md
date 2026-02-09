@@ -1,8 +1,8 @@
-# Politique de Sécurité AfriConnect
+# Politique de Sécurité AfriWonder
 
 ## Signalement de Vulnérabilités
 
-Si vous découvrez une vulnérabilité de sécurité, veuillez **NE PAS** ouvrir une issue publique. Contactez-nous directement à : **security@africonnect.app**
+Si vous découvrez une vulnérabilité de sécurité, veuillez **NE PAS** ouvrir une issue publique. Contactez-nous directement à : **security@afriwonder.app**
 
 ## Mesures de Sécurité Implémentées
 

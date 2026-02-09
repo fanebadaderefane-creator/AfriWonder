@@ -1,4 +1,4 @@
-# Roadmap Entreprise — AfriConnect
+# Roadmap Entreprise — AfriWonder
 
 Ce document aligne l’audit « 100% entreprise » avec l’existant du projet et définit les blocs à ajouter (Compliance, Anti-fraude, Scalabilité, Financial Core, Identity, Data, Incident) pour un niveau **infrastructure + régulation + finance**.
 
@@ -387,4 +387,4 @@ Ce document aligne l’audit « 100% entreprise » avec l’existant du projet e
 
 ---
 
-*Document créé à partir de l’audit « 100 % entreprise » et de l’état du dépôt AfriConnect. À mettre à jour au fil des implémentations.*
+*Document créé à partir de l’audit « 100 % entreprise » et de l’état du dépôt AfriWonder. À mettre à jour au fil des implémentations.*

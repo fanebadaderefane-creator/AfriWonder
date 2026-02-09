@@ -5,7 +5,7 @@ test.describe('Home page smoke test', () => {
     await page.goto('/');
 
     // La page doit charger et répondre
-    await expect(page).toHaveTitle(/AfriConnect/i);
+    await expect(page).toHaveTitle(/AfriWonder/i);
 
     // Vérification très légère de la navigation principale (bottom-nav ou layout)
     const root = page.locator('#root');

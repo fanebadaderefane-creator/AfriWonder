@@ -1,4 +1,4 @@
-# 🚀 AFRICONNECT - LANCEMENT 26 FÉVRIER 2026
+# 🚀 AfriWonder - LANCEMENT 26 FÉVRIER 2026
 
 ## 📚 DOCUMENTATION CRÉÉE
 
@@ -252,7 +252,7 @@ Il reste **30% de configuration et sécurisation** pour transformer votre projet
 ### Logs temps réel:
 ```bash
 # PM2
-pm2 logs africonnect-backend --err
+pm2 logs afriwonder-backend --err
 
 # Docker
 docker-compose logs -f backend
@@ -271,7 +271,7 @@ psql $DATABASE_URL -c "SELECT * FROM SlowQueryLog ORDER BY duration DESC LIMIT 1
 # Créer script de validation (à exécuter le 25 février)
 cat > validate-launch.sh << 'EOF'
 #!/bin/bash
-echo "🔍 VALIDATION LANCEMENT AFRICONNECT"
+echo "🔍 VALIDATION LANCEMENT AFRIWONDER"
 
 # 1. Tests
 echo "▶️ Tests backend..."

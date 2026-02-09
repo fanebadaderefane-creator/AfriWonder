@@ -1,4 +1,4 @@
-# AfriConnect — Production Ready
+# AfriWonder — Production Ready
 
 Checklist et actions pour déployer en production.
 
@@ -14,7 +14,7 @@ Checklist et actions pour déployer en production.
 
 ### Recommandé
 
-- `CORS_ORIGIN` — URL du frontend (ex. `https://app.africonnect.com`)
+- `CORS_ORIGIN` — URL du frontend (ex. `https://app.afriwonder.com`)
 - `APP_URL` — URL publique du backend (callbacks, liens dans les mails)
 - `PORT` — Port d’écoute (défaut 3000)
 - `CRON_SECRET` ou `EVENTS_REMINDERS_SECRET` — Pour sécuriser le cron des rappels événements
@@ -46,8 +46,8 @@ NODE_ENV=production node dist/index.js
 
 ### Variables
 
-- `VITE_API_URL` — URL de l’API (ex. `https://api.africonnect.com/api`)
-- `VITE_WS_URL` — URL WebSocket (ex. `wss://api.africonnect.com`)
+- `VITE_API_URL` — URL de l’API (ex. `https://api.afriwonder.com/api`)
+- `VITE_WS_URL` — URL WebSocket (ex. `wss://api.afriwonder.com`)
 
 En dev, les défauts sont `http://localhost:3000/api` et `ws://localhost:3000`.
 
@@ -69,7 +69,7 @@ Les fichiers sont dans `dist/`. Déployer sur Vercel, Netlify, S3+CloudFront, et
 À exécuter régulièrement (ex. toutes les heures) :
 
 ```bash
-curl -X POST "https://api.africonnect.com/api/events/cron/send-reminders" \
+curl -X POST "https://api.afriwonder.com/api/events/cron/send-reminders" \
   -H "X-Cron-Secret: VOTRE_CRON_SECRET" \
   -H "Content-Type: application/json"
 ```

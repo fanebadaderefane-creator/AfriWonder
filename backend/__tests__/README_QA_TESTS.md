@@ -1,10 +1,10 @@
-# Tests QA AfriConnect — A à Z
+# Tests QA AfriWonder — A à Z
 
 ## Architecture des tests
 
 - **Jest** + **supertest** (backend)
 - **Setup** : `backend/__tests__/setup.ts` — connexion Prisma à la DB de test
-- **DB** : `DATABASE_URL` dans `.env.test` ou `.env` (ex. `postgresql://.../africonnect_test`)
+- **DB** : `DATABASE_URL` dans `.env.test` ou `.env` (ex. `postgresql://.../afriwonder_test`)
 
 ## Lancer les tests
 
@@ -96,5 +96,5 @@ npm run test:coverage
 ## Variables de test
 
 - `NODE_ENV=test`
-- `DATABASE_URL` → base dédiée (ex. africonnect_test)
+- `DATABASE_URL` → base dédiée (ex. afriwonder_test)
 - `JWT_SECRET` → clé de test (ex. test-secret-key-for-ci)

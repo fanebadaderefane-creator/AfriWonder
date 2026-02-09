@@ -8,9 +8,9 @@ const __dirname = path.dirname(__filename);
 
 // Backend .env
 const backendEnv = `DATABASE_URL="postgresql://postgres.xxxxxxxxxxxxx:PASSWORD@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connect_timeout=15"
-JWT_SECRET="africonnect_jwt_secret_key_2026_very_secure_random_string_32chars_minimum"
+JWT_SECRET="afriwonder_jwt_secret_key_2026_very_secure_random_string_32chars_minimum"
 JWT_EXPIRES_IN="7d"
-JWT_REFRESH_SECRET="africonnect_refresh_secret_key_2026_different_from_jwt_secret_very_secure"
+JWT_REFRESH_SECRET="afriwonder_refresh_secret_key_2026_different_from_jwt_secret_very_secure"
 JWT_REFRESH_EXPIRES_IN="30d"
 PORT=3000
 NODE_ENV=development
@@ -25,7 +25,7 @@ ORANGE_MONEY_ENV=test
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 AWS_REGION=us-east-1
-AWS_S3_BUCKET=africonnect-uploads
+AWS_S3_BUCKET=afriwonder-uploads
 APP_URL=http://localhost:3000
 `;
 

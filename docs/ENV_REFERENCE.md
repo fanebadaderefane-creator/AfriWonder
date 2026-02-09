@@ -1,4 +1,4 @@
-# AfriConnect — Référence complète des variables d'environnement
+# AfriWonder — Référence complète des variables d'environnement
 
 Document unique listant **toutes** les clés utilisées dans le projet (backend + frontend), de A à Z.
 
@@ -93,13 +93,13 @@ Document unique listant **toutes** les clés utilisées dans le projet (backend 
 | `R2_ENDPOINT` | Ex. `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
 | `R2_ACCESS_KEY_ID` | |
 | `R2_SECRET_ACCESS_KEY` | |
-| `R2_BUCKET_NAME` | Défaut `africonnect` |
+| `R2_BUCKET_NAME` | Défaut `afriwonder` |
 | `R2_PUBLIC_URL` | URL publique du bucket (ex. `https://pub-xxx.r2.dev`) |
 | **AWS S3** (alternatif) | |
 | `AWS_ACCESS_KEY_ID` | |
 | `AWS_SECRET_ACCESS_KEY` | |
 | `AWS_REGION` | Ex. `us-east-1` |
-| `AWS_S3_BUCKET` | Ex. `africonnect-uploads` |
+| `AWS_S3_BUCKET` | Ex. `afriwonder-uploads` |
 
 ### Live streaming (Agora)
 
@@ -139,7 +139,7 @@ Document unique listant **toutes** les clés utilisées dans le projet (backend 
 | Variable | Utilisation |
 |----------|-------------|
 | `SENDGRID_API_KEY` | Envoi d’emails |
-| `SENDGRID_FROM_EMAIL` | Ex. `noreply@africonnect.app` |
+| `SENDGRID_FROM_EMAIL` | Ex. `noreply@afriwonder.app` |
 
 ### Fraude & limites
 
@@ -191,8 +191,8 @@ Toutes les variables exposées au client doivent être préfixées par **`VITE_`
 
 | Variable | Utilisation | Exemple |
 |----------|-------------|---------|
-| `VITE_API_URL` | URL de l’API backend | `https://api.africonnect.com/api` |
-| `VITE_WS_URL` | URL WebSocket | `wss://api.africonnect.com` |
+| `VITE_API_URL` | URL de l’API backend | `https://api.afriwonder.com/api` |
+| `VITE_WS_URL` | URL WebSocket | `wss://api.afriwonder.com` |
 
 ### Optionnel
 

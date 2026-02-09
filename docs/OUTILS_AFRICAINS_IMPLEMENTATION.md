@@ -13,14 +13,14 @@ Les fonctionnalités **Mode hors-ligne**, **Téléchargements**, **QR Code** et 
 - **Config** : `vite.config.js` — plugin `VitePWA` en stratégie `injectManifest`, fichier custom `src/sw-custom.js`.
 - **Precache** : assets critiques (injection `self.__WB_MANIFEST` par le plugin).
 - **Runtime** :
-  - **Média téléchargés** : CacheFirst sur le cache `africonnect-media-v1` (vidéos enregistrées par l’app).
-  - **API** : NetworkFirst avec fallback cache `africonnect-api-v1`.
+  - **Média téléchargés** : CacheFirst sur le cache `afriwonder-media-v1` (vidéos enregistrées par l’app).
+  - **API** : NetworkFirst avec fallback cache `afriwonder-api-v1`.
   - **Reste** : Network puis fallback precache / index.html.
 
 ### Téléchargement réel
 
 - Le bouton **Télécharger** (ShareSheet sur une vidéo) appelle `offlineCacheService.downloadMedia()` :
-  - `fetch(video_url)` puis mise en cache dans `caches.open('africonnect-media-v1')`.
+  - `fetch(video_url)` puis mise en cache dans `caches.open('afriwonder-media-v1')`.
   - Métadonnées enregistrées en IndexedDB via `offlineStorage.service.js`.
 - En lecture, la même URL est utilisée : le SW sert la réponse depuis le cache si elle existe (consultation hors ligne).
 
@@ -33,7 +33,7 @@ Les fonctionnalités **Mode hors-ligne**, **Téléchargements**, **QR Code** et 
 
 ## 2. Système de téléchargements
 
-- **IndexedDB** : base `africonnect-offline`, store `downloads` (id, mediaUrl, title, creator, sizeBytes, downloadedAt).
+- **IndexedDB** : base `afriwonder-offline`, store `downloads` (id, mediaUrl, title, creator, sizeBytes, downloadedAt).
 - **Service** : `src/services/offlineStorage.service.js` (CRUD métadonnées, `getTotalStorageUsed`, `getStorageQuota`).
 - **Page Téléchargements** (`Downloads.jsx`) :
   - Liste depuis IndexedDB.

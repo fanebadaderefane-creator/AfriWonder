@@ -51,7 +51,7 @@ La section devrait ressembler à ceci :
 ```
 Facebook Developers Console
   → Mes applications
-    → Africonnect (votre app)
+    → AfriWonder (votre app)
       → Paramètres de l'app
         → Général (General) ← ICI !
           → Descendre jusqu'à "Valid OAuth Redirect URIs"

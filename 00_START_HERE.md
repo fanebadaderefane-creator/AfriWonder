@@ -1,4 +1,4 @@
-# 🚀 START HERE - LANCEMENT AFRICONNECT 26 FÉVRIER 2026
+# 🚀 START HERE - LANCEMENT AFRIWONDER 26 FÉVRIER 2026
 
 **Créé le**: 8 février 2026
 **Deadline**: 26 février 2026 (18 jours)

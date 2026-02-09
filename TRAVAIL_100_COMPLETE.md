@@ -1,4 +1,4 @@
-# ✅ TRAVAIL 100% COMPLET - AfriConnect Indépendant
+# ✅ TRAVAIL 100% COMPLET - AfriWonder Indépendant
 
 **Date** : 2 Février 2026  
 **Status** : ✅ **MIGRATION TERMINÉE**
@@ -163,7 +163,7 @@ ORANGE_MONEY_API_KEY=...
 # backend/.env
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
-AWS_S3_BUCKET=africonnect-uploads
+AWS_S3_BUCKET=afriwonder-uploads
 ```
 **Alternative** : Cloudflare R2 ou upload local
 

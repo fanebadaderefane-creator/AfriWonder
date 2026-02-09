@@ -1,4 +1,4 @@
-# AfriConnect — Fonctionnalités, UX et tests
+# AfriWonder — Fonctionnalités, UX et tests
 
 Checklist et priorités pour les prochaines évolutions.
 

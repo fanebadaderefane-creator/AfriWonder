@@ -1,8 +1,8 @@
-# Architecture AfriConnect
+# Architecture AfriWonder
 
 ## Vue d'ensemble
 
-AfriConnect est une super-app vidéo africaine construite avec React, Vite, et un backend Express/Prisma.
+AfriWonder est une super-app vidéo africaine construite avec React, Vite, et un backend Express/Prisma.
 
 ## Stack Technique
 

@@ -168,6 +168,10 @@ import BecomeDriver from './pages/BecomeDriver';
 import RestaurantMenu from './pages/RestaurantMenu.jsx';
 import TicketDetails from './pages/TicketDetails';
 import PropertyDetails from './pages/PropertyDetails';
+import GamificationHub from './pages/GamificationHub';
+import ProjectPresentation from './pages/ProjectPresentation';
+import DeveloperPortal from './pages/DeveloperPortal';
+import DeveloperGuide from './pages/DeveloperGuide';
 import __Layout from './Layout.jsx';
 
 
@@ -293,6 +297,10 @@ export const PAGES = {
     "RestaurantMenu": RestaurantMenu,
     "TicketDetails": TicketDetails,
     "PropertyDetails": PropertyDetails,
+    "GamificationHub": GamificationHub,
+    "ProjectPresentation": ProjectPresentation,
+    "DeveloperPortal": DeveloperPortal,
+    "DeveloperGuide": DeveloperGuide,
 }
 
 export const pagesConfig = {

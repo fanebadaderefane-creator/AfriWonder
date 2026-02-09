@@ -1,4 +1,4 @@
-# Implémentation Finance Fintech – AfriConnect
+# Implémentation Finance Fintech – AfriWonder
 
 Ce document décrit ce qui a été mis en place pour transformer Wallet, Microcrédit et Crowdfunding en écosystème financier sécurisé, scalable et conforme (aligné sur le prompt niveau international).
 

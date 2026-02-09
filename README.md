@@ -51,7 +51,7 @@ La première super-app vidéo africaine - Connectant créateurs, commerçants et
 1. **Cloner le repository**
 ```bash
 git clone <repository-url>
-cd AfriConnect
+cd AfriWonder
 ```
 
 2. **Installer les dépendances**
@@ -116,7 +116,7 @@ npm run typecheck     # Vérifier les types TypeScript
 ## 🏗️ Structure du Projet
 
 ```
-AfriConnect/
+AfriWonder/
 ├── src/
 │   ├── api/              # Clients API
 │   ├── components/       # Composants React
@@ -187,7 +187,7 @@ Le projet utilise GitHub Actions pour :
 
 ## 🌍 Support Multilingue
 
-AfriConnect supporte plusieurs langues locales africaines. La sélection de langue est sauvegardée et synchronisée sur tous les appareils.
+AfriWonder supporte plusieurs langues locales africaines. La sélection de langue est sauvegardée et synchronisée sur tous les appareils.
 
 ## 💳 Paiements
 
@@ -200,7 +200,7 @@ Intégration avec :
 
 ## 📄 Licence
 
-Propriétaire - AfriConnect © 2026
+Propriétaire - AfriWonder © 2026
 
 ## 📧 Contact
 
