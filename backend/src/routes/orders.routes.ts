@@ -102,7 +102,7 @@ router.post('/', authenticate, orderActionLimiter, async (req: AuthRequest, res,
   try {
     const userId = req.user!.id;
     const order = await orderService.createFromCart(userId, req.body);
-    res.json({ success: true, data: order });
+    res.status(201).json({ success: true, data: order });
   } catch (error: any) {
     next(error);
   }

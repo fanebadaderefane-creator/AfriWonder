@@ -27,7 +27,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
       content,
       photos,
     });
-    res.json({ success: true, data: review });
+    res.status(201).json({ success: true, data: review });
   } catch (error: any) {
     next(error);
   }
