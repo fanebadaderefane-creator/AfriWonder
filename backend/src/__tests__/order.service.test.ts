@@ -247,21 +247,22 @@ describe('OrderService', () => {
       );
     });
 
-    it('devrait rejeter si la commande a déjà été traitée', async () => {
+    it('devrait retourner alreadyProcessed si la commande a déjà été traitée', async () => {
       const order = await prisma.order.create({
         data: {
           user_id: testUserId,
           subtotal_amount: 20000,
           total_amount: 20000,
-          status: 'completed',
+          status: 'paid',
+          payment_status: 'escrow',
           payment_method: 'orange_money',
           shipping_address: '123 Rue Test',
         },
       });
 
-      await expect(orderService.confirmPayment(order.id)).rejects.toThrow(
-        'La commande a déjà été traitée'
-      );
+      const result = await orderService.confirmPayment(order.id);
+      expect(result.alreadyProcessed).toBe(true);
+      expect(result.order.id).toBe(order.id);
     });
   });
 });

@@ -43,7 +43,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
       category,
       isPrivate,
     });
-    res.json({ success: true, data: community });
+    res.status(201).json({ success: true, data: community });
   } catch (error: any) {
     next(error);
   }
