@@ -59,6 +59,9 @@ jobs:
           JWT_SECRET: test-secret-key-for-ci
           JWT_REFRESH_SECRET: test-refresh-secret-key-for-ci
           NODE_ENV: test
+          CORS_ORIGIN: http://localhost:5173
+          FRAUD_MAX_SUCCESS_IN_WINDOW: "100"
+          FRAUD_MAX_PAYMENT_AMOUNT: "999999999"
 
       - name: Upload coverage
         if: always()

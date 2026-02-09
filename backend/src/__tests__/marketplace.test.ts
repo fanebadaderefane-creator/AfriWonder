@@ -119,6 +119,11 @@ describe('Marketplace Complet', () => {
         password: 'Test123!@#',
       });
     buyerToken = buyerLoginResponse.body.data?.accessToken || '';
+    if (!buyerToken) {
+      throw new Error(
+        `Auth buyer failed: ${buyerLoginResponse.status} ${JSON.stringify(buyerLoginResponse.body)}`
+      );
+    }
 
     // Se connecter comme vendeur
     const sellerLoginResponse = await request(app)
@@ -128,6 +133,11 @@ describe('Marketplace Complet', () => {
         password: 'Test123!@#',
       });
     sellerToken = sellerLoginResponse.body.data?.accessToken || '';
+    if (!sellerToken) {
+      throw new Error(
+        `Auth seller failed: ${sellerLoginResponse.status} ${JSON.stringify(sellerLoginResponse.body)}`
+      );
+    }
   });
 
   afterEach(async () => {
