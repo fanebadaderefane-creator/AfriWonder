@@ -39,6 +39,9 @@ export default defineConfig({
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw-custom.js',
+      injectManifest: {
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MiB (bundle peut dépasser 2 MiB)
+      },
       manifest: {
         name: 'AfriWonder - Plateforme Sociale Africaine',
         short_name: 'AfriWonder',

@@ -1,15 +1,32 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
+import TranslationProvider from '@/components/common/TranslationProvider';
 import Ticketing from '../Ticketing';
+
+const testQueryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: false },
+  },
+});
+
+function TestWrapper({ children }) {
+  return (
+    <QueryClientProvider client={testQueryClient}>
+      <TranslationProvider>
+        <MemoryRouter>{children}</MemoryRouter>
+      </TranslationProvider>
+    </QueryClientProvider>
+  );
+}
 
 // Mock léger du client API pour éviter tout appel réseau réel
 vi.mock('@/api/expressClient', () => ({
   __esModule: true,
   default: {
     tickets: {
-      // On retourne la même forme que l'API réelle, mais avec des données simplifiées
       getMyTickets: vi.fn().mockResolvedValue([
         {
           id: 1,
@@ -26,9 +43,9 @@ vi.mock('@/api/expressClient', () => ({
 describe('Ticketing page', () => {
   it("affiche le header et la section 'Mes billets' en mode mobile-first", async () => {
     render(
-      <MemoryRouter>
+      <TestWrapper>
         <Ticketing />
-      </MemoryRouter>
+      </TestWrapper>
     );
 
     // Titre principal de la page

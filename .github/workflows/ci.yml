@@ -37,6 +37,12 @@ jobs:
         working-directory: backend
         run: npm ci
       
+      - name: Create test database
+        working-directory: backend
+        run: npm run test:create-db
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afriwonder_test
+      
       - name: Setup test database
         working-directory: backend
         run: |
@@ -150,11 +156,19 @@ jobs:
         working-directory: backend
         run: npm ci
 
+      - name: Create test database
+        working-directory: backend
+        run: npm run test:create-db
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afriwonder_test
+
       - name: Prepare test database
         working-directory: backend
         run: |
           npm run db:generate
           npm run test:db
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afriwonder_test
 
       - name: Start backend API
         working-directory: backend
