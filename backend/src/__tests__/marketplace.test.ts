@@ -76,6 +76,21 @@ describe('Marketplace Complet', () => {
       },
     });
 
+    // Recréer l'utilisateur plateforme (supprimé par deleteMany) pour ledger/escrow
+    const PLATFORM_USER_ID = process.env.PLATFORM_USER_ID || '00000000-0000-0000-0000-000000000000';
+    await prisma.user.upsert({
+      where: { id: PLATFORM_USER_ID },
+      update: {},
+      create: {
+        id: PLATFORM_USER_ID,
+        email: 'platform@afriwonder.app',
+        username: 'platform',
+        password_hash: 'no-login',
+        full_name: 'AfriWonder Platform',
+        role: 'admin',
+      },
+    });
+
     // Créer un produit
     testProduct = await prisma.product.create({
       data: {

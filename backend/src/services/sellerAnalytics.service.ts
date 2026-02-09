@@ -28,13 +28,7 @@ class SellerAnalyticsService {
     const { start, end } = getDateRange(period, customStart, customEnd);
     const prevRange = this.getPreviousRange(start, end);
 
-    const [
-      orderItemsCurrent,
-      orderItemsPrev,
-      products,
-      abandonedCarts,
-      orderItemsWithProduct,
-    ] = await Promise.all([
+    const [orderItemsCurrent, orderItemsPrev, products, abandonedCartsRaw, orderItemsWithProduct] = await Promise.all([
       prisma.orderItem.findMany({
         where: {
           product: { seller_id: sellerId },
@@ -59,9 +53,14 @@ class SellerAnalyticsService {
         where: { seller_id: sellerId, status: 'active' },
         select: { id: true, name: true, price: true, stock: true },
       }),
-      prisma.abandonedCart.findMany({
-        where: { seller_id: sellerId, abandoned_at: { gte: start, lte: end } },
-      }),
+      prisma.abandonedCart
+        .findMany({
+          where: { seller_id: sellerId, abandoned_at: { gte: start, lte: end } },
+        })
+        .catch((err) => {
+          logger.warn('AbandonedCart query failed (table or schema mismatch)', { sellerId, err: err.message });
+          return [];
+        }),
       prisma.orderItem.findMany({
         where: {
           product: { seller_id: sellerId },
@@ -73,6 +72,7 @@ class SellerAnalyticsService {
         include: { product: true, order: true },
       }),
     ]);
+    const abandonedCarts = abandonedCartsRaw;
 
     const orderIdsCurrent = [...new Set(orderItemsCurrent.map(i => i.order_id))];
     const ordersCurrent = orderItemsCurrent.length

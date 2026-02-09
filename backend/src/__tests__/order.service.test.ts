@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { prisma } from './setup.js';
 import orderService from '../services/order.service.js';
+import escrowService from '../services/escrow.service.js';
 
 describe('OrderService', () => {
   // IDs de test réutilisables
@@ -198,7 +199,6 @@ describe('OrderService', () => {
 
   describe('confirmPayment', () => {
     it('devrait confirmer le paiement et distribuer les fonds', async () => {
-      // Créer une commande d'abord
       // Créer une commande avec OrderItem
       const order = await prisma.order.create({
         data: {
@@ -221,7 +221,7 @@ describe('OrderService', () => {
             include: {
               product: {
                 include: {
-                  seller: true, // Le service attend cette relation
+                  seller: true,
                 },
               },
             },
@@ -235,7 +235,10 @@ describe('OrderService', () => {
       expect(result.status).toBe('paid');
       expect(result.payment_status).toBe('escrow');
 
-      // Vérifier que le wallet du vendeur a été crédité
+      // Les fonds sont en escrow après confirmPayment ; on simule la libération (livraison confirmée)
+      await escrowService.releaseFunds(order.id, 'delivery_confirmed');
+
+      // Vérifier que le wallet du vendeur a été crédité après release
       const sellerWallet = await prisma.sellerWallet.findUnique({
         where: { user_id: testSellerId },
       });
