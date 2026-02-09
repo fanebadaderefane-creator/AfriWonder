@@ -35,7 +35,8 @@ if (!urlMatch) {
   process.exit(1);
 }
 
-const [, user, password, host, port, database] = urlMatch;
+const [, user, password, host, port, databaseWithQuery] = urlMatch;
+const database = databaseWithQuery ? databaseWithQuery.split('?')[0] : 'afriwonder_test';
 
 console.log(`🔧 Création de la base de données de test: ${database}`);
 console.log(`📋 Host: ${host}:${port}`);

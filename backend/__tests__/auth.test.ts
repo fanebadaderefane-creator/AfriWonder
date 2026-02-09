@@ -44,6 +44,27 @@ describe('Auth API', () => {
       expect(response.body.data.user.email).toBe('newuser@example.com');
     });
 
+    it('devrait stocker le mot de passe hashé (jamais en clair)', async () => {
+      const plainPassword = 'SecretPass456!@#';
+      await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: 'hashcheck@example.com',
+          password: plainPassword,
+          username: 'hashcheckuser',
+          full_name: 'Hash Check User'
+        });
+
+      const user = await prisma.user.findUnique({
+        where: { email: 'hashcheck@example.com' },
+      });
+      expect(user).toBeTruthy();
+      expect(user!.password_hash).toBeTruthy();
+      expect(user!.password_hash).not.toBe(plainPassword);
+      const isValidHash = await bcrypt.compare(plainPassword, user!.password_hash);
+      expect(isValidHash).toBe(true);
+    });
+
     it('devrait rejeter un email déjà utilisé', async () => {
       const response = await request(app)
         .post('/api/auth/register')

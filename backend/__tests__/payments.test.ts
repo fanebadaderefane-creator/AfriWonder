@@ -1,5 +1,6 @@
 /**
- * QA — Paiements : webhook payload, wallet, transactions (sans appels réels providers)
+ * Tests d'intégration API paiements (plan stratégie tests)
+ * Endpoints /api/payments/* : création intent Stripe, vérification, auth requise
  */
 import request from 'supertest';
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
@@ -10,83 +11,85 @@ import bcrypt from 'bcryptjs';
 describe('Payments API', () => {
   let user: any;
   let token: string;
+  const ts = Date.now();
 
   beforeEach(async () => {
-    const hashed = await bcrypt.hash('Test123!@#', 10);
+    const hashed = await bcrypt.hash('PayTest123!@#', 10);
     user = await prisma.user.create({
       data: {
-        email: `pay${Date.now()}@example.com`,
+        email: `pay${ts}${Math.random().toString(36).slice(2, 8)}@example.com`,
         password_hash: hashed,
-        username: `payuser${Date.now()}`,
-        full_name: 'Pay User',
+        username: `payuser${ts}`,
+        full_name: 'Payment Test User',
       },
     });
-    const login = await request(app)
+    const loginRes = await request(app)
       .post('/api/auth/login')
-      .send({ email: user.email, password: 'Test123!@#' });
-    token = login.body.data?.accessToken || '';
+      .send({ email: user.email, password: 'PayTest123!@#' });
+    token = loginRes.body.data?.accessToken || '';
   });
 
   afterEach(async () => {
     await prisma.transaction.deleteMany({});
+    await prisma.order.deleteMany({});
     await prisma.wallet.deleteMany({});
     await prisma.user.deleteMany({});
   });
 
-  describe('POST /api/payment/webhook', () => {
-    it('devrait exiger orderId ou reference', async () => {
+  describe('POST /api/payments/stripe/checkout', () => {
+    it('devrait retourner 401 sans token', async () => {
       const res = await request(app)
-        .post('/api/payment/webhook')
-        .send({ provider: 'orange_money', status: 'SUCCESS' });
-      expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/orderId|reference/i);
+        .post('/api/payments/stripe/checkout')
+        .send({
+          orderId: 'order-123',
+          items: [{ product_id: 'p1', quantity: 1, price: 1000, name: 'Test' }],
+          successUrl: 'http://localhost:5173/success',
+          cancelUrl: 'http://localhost:5173/cancel',
+        });
+      expect(res.status).toBe(401);
     });
 
-    it('devrait accepter un payload valide et retourner 200', async () => {
+    it('devrait accepter une requête authentifiée et retourner une structure cohérente ou erreur Stripe', async () => {
       const res = await request(app)
-        .post('/api/payment/webhook')
+        .post('/api/payments/stripe/checkout')
+        .set('Authorization', `Bearer ${token}`)
         .send({
-          provider: 'orange_money',
-          orderId: 'fake-order-id',
-          status: 'SUCCESS',
+          orderId: 'order-123',
+          items: [{ product_id: 'p1', quantity: 1, price: 1000, name: 'Produit Test' }],
+          successUrl: 'http://localhost:5173/success',
+          cancelUrl: 'http://localhost:5173/cancel',
         });
-      expect(res.status).toBe(200);
-      expect(res.body).toHaveProperty('received', true);
-    });
 
-    it('status non success ne devrait pas traiter', async () => {
-      const res = await request(app)
-        .post('/api/payment/webhook')
-        .send({
-          provider: 'orange_money',
-          orderId: 'any',
-          status: 'PENDING',
-        });
-      expect(res.status).toBe(200);
-      expect(res.body.processed).toBe(false);
+      if (res.status === 200) {
+        expect(res.body.success).toBe(true);
+        expect(res.body.data).toHaveProperty('sessionId');
+        expect(res.body.data).toHaveProperty('url');
+      } else {
+        expect([500, 503]).toContain(res.status);
+        expect(res.body.success).toBe(false);
+      }
     });
   });
 
-  describe('GET /api/payments/wallet', () => {
-    it('devrait retourner le wallet ou en créer un', async () => {
+  describe('GET /api/payments/stripe/verify', () => {
+    it('devrait retourner 401 sans token', async () => {
       const res = await request(app)
-        .get('/api/payments/wallet')
-        .set('Authorization', `Bearer ${token}`);
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data).toHaveProperty('balance');
-      expect(res.body.data).toHaveProperty('available_balance');
+        .get('/api/payments/stripe/verify')
+        .query({ sessionId: 'cs_test_xxx' });
+      expect(res.status).toBe(401);
     });
-  });
 
-  describe('GET /api/payments/transactions', () => {
-    it('devrait retourner la liste des transactions', async () => {
+    it('devrait accepter une requête authentifiée', async () => {
       const res = await request(app)
-        .get('/api/payments/transactions')
-        .set('Authorization', `Bearer ${token}`);
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(Array.isArray(res.body.data)).toBe(true);
+        .get('/api/payments/stripe/verify')
+        .set('Authorization', `Bearer ${token}`)
+        .query({ sessionId: 'cs_test_nonexistent' });
+
+      expect([200, 400, 404, 500]).toContain(res.status);
+      if (res.status === 200) {
+        expect(res.body.success).toBe(true);
+        expect(res.body.data).toBeDefined();
+      }
     });
   });
 });

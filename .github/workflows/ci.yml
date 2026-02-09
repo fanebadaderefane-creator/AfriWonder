@@ -53,10 +53,11 @@ jobs:
       
       - name: Run tests
         working-directory: backend
-        run: npm run test:coverage
+        run: npm run test:db:prepare && npm run test:coverage
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afriwonder_test
           JWT_SECRET: test-secret-key-for-ci
+          JWT_REFRESH_SECRET: test-refresh-secret-key-for-ci
           NODE_ENV: test
 
       - name: Upload coverage
@@ -79,6 +80,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+          cache-dependency-path: package-lock.json
       
       - name: Install dependencies
         run: npm ci
@@ -87,7 +89,7 @@ jobs:
         run: npm run lint
       
       - name: Run tests
-        run: npm run test -- --coverage
+        run: npm run test:coverage
       
       - name: Build
         run: npm run build
@@ -135,6 +137,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afriwonder_test
       JWT_SECRET: test-secret-key-for-ci
+      JWT_REFRESH_SECRET: test-refresh-secret-key-for-ci
       NODE_ENV: test
       # URL de l'API utilisée à la fois par le frontend (Vite) et par les tests Playwright
       VITE_API_URL: http://127.0.0.1:3000/api
@@ -207,7 +210,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: playwright-report
+          path: test-results/playwright
+      - name: Upload Playwright traces and videos
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-videos
+          path: test-results/
 
   # Alerte si CI échoue sur main (configurer CI_ALERT_WEBHOOK_URL dans GitHub Secrets)
   notify-on-failure:
