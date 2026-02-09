@@ -1,4 +1,4 @@
-# AfriConnect 🌍
+# AfriWonder
 
 La première super-app vidéo africaine - Connectant créateurs, commerçants et communauté.
 
@@ -204,7 +204,7 @@ Propriétaire - AfriConnect © 2026
 
 ## 📧 Contact
 
-- Email : support@africonnect.app
+- Email : support@afriwonder.app
 - Documentation : voir le dossier `docs/`
 
 ---
