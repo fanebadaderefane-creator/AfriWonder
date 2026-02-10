@@ -2,7 +2,7 @@
  * Couverture architecture complète : chaque page (PAGES) doit se rendre sans crash.
  * Mocks génériques pour api, auth, react-query, router, composants lourds.
  */
-import React from 'react';
+import React, { act } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -103,7 +103,7 @@ describe('Architecture complète - Smoke render de toutes les pages', () => {
 
   Object.entries(PAGES).forEach(([pageName, PageComponent]) => {
     const skip = SKIP_SMOKE_PAGES.has(pageName);
-    (skip ? it.skip : it)(`${pageName} rend sans crash`, () => {
+    (skip ? it.skip : it)(`${pageName} rend sans crash`, async () => {
       expect(PageComponent).toBeDefined();
       const { container } = render(
         <MemoryRouter>
@@ -111,6 +111,10 @@ describe('Architecture complète - Smoke render de toutes les pages', () => {
         </MemoryRouter>
       );
       expect(container).toBeTruthy();
+      // Laisser React appliquer les mises à jour asynchrones (useEffect, setState) pour éviter les warnings act(...)
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
     });
   });
 });

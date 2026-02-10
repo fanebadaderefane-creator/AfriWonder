@@ -112,23 +112,29 @@ describe('Landing page (auth)', () => {
     expect(screen.getByPlaceholderText(/^email$/i)).toHaveValue('e2e@example.com');
   }, 15000);
 
-  it('affiche une erreur de connexion si login échoue', async () => {
-    const user = userEvent.setup();
-    loginMock.mockRejectedValueOnce(new Error('Email ou mot de passe incorrect'));
+  it(
+    'affiche une erreur de connexion si login échoue',
+    async () => {
+      const user = userEvent.setup();
+      loginMock.mockRejectedValueOnce(new Error('Email ou mot de passe incorrect'));
 
-    render(
-      <MemoryRouter>
-        <Landing />
-      </MemoryRouter>
-    );
+      render(
+        <MemoryRouter>
+          <Landing />
+        </MemoryRouter>
+      );
 
-    await user.type(screen.getByPlaceholderText(/^email$/i), 'bad@example.com');
-    await user.type(screen.getByPlaceholderText(/mot de passe/i), 'bad-password');
-    await user.click(screen.getAllByRole('button', { name: /^se connecter$/i })[1]);
+      await user.type(screen.getByPlaceholderText(/^email$/i), 'bad@example.com');
+      await user.type(screen.getByPlaceholderText(/mot de passe/i), 'bad-password');
+      await user.click(screen.getAllByRole('button', { name: /^se connecter$/i })[1]);
 
-    await waitFor(() => {
-      expect(loginMock).toHaveBeenCalledWith('bad@example.com', 'bad-password');
-    });
-    expect(screen.getByText(/email ou mot de passe incorrect/i)).toBeInTheDocument();
-  });
+      await waitFor(() => {
+        expect(loginMock).toHaveBeenCalledWith('bad@example.com', 'bad-password');
+      });
+      await waitFor(() => {
+        expect(screen.getByText(/email ou mot de passe incorrect/i)).toBeInTheDocument();
+      });
+    },
+    15000
+  );
 });

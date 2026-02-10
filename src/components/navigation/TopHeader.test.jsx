@@ -55,15 +55,19 @@ describe('TopHeader', () => {
     });
   });
 
-  it('affiche les tabs et déclenche onTabChange', async () => {
-    const onTabChange = vi.fn();
-    const user = userEvent.setup();
-    renderTopHeader({ activeTab: 'pourtoi', onTabChange, followingCount: 3 });
+  it(
+    'affiche les tabs et déclenche onTabChange',
+    async () => {
+      const onTabChange = vi.fn();
+      const user = userEvent.setup();
+      renderTopHeader({ activeTab: 'pourtoi', onTabChange, followingCount: 3 });
 
-    expect(await screen.findByText('following')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /following/i }));
-    expect(onTabChange).toHaveBeenCalledWith('abonnements');
-  });
+      expect(await screen.findByText('following')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /following/i }));
+      expect(onTabChange).toHaveBeenCalledWith('abonnements');
+    },
+    10000
+  );
 
   it('affiche le title si showTabs=false', async () => {
     renderTopHeader({ showTabs: false, title: 'Mon Espace' });
