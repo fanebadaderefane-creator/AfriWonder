@@ -18,7 +18,7 @@ if (!process.env.DATABASE_URL) {
 const dbUrl = process.env.DATABASE_URL;
 
 if (!dbUrl) {
-  console.error('❌ DATABASE_URL non défini dans .env.test');
+  console.error('❌ DATABASE_URL non défini (définir dans .env.test ou dans l’environnement, ex. CI)');
   process.exit(1);
 }
 

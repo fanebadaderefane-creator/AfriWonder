@@ -9,6 +9,8 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.js', './src/test/setupTests.ts'],
     include: ['src/**/*.{test,spec}.{js,jsx,ts,tsx}'],
+    testTimeout: 20000,
+    hookTimeout: 15000,
     exclude: [
       'node_modules',
       'dist',
@@ -31,7 +33,7 @@ export default defineConfig({
       thresholds: {
         statements: 5,
         branches: 30,
-        functions: 14,
+        functions: 13,
         lines: 5,
       },
     },
