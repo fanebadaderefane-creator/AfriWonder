@@ -45,6 +45,9 @@ jobs:
         working-directory: backend
         run: npm ci
       
+      - name: Wait for Postgres
+        run: sleep 5
+
       - name: Create test database
         working-directory: backend
         run: npm run test:create-db
@@ -59,9 +62,15 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afriwonder_test
       
+      - name: Prepare DB for tests
+        working-directory: backend
+        run: npm run test:db:prepare
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afriwonder_test
+      
       - name: Run tests
         working-directory: backend
-        run: npm run test:db:prepare && npm run test:coverage
+        run: npm run test:coverage
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afriwonder_test
           JWT_SECRET: test-secret-key-for-ci

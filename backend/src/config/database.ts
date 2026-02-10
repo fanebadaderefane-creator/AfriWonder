@@ -24,7 +24,7 @@ const prisma = new PrismaClient({
     : ['error'],
 });
 
-// Connect to database (only in non-test environment)
+// Connect to database (only in non-test environment; never exit in test)
 if (process.env.NODE_ENV !== 'test') {
   prisma.$connect()
     .then(() => {
@@ -35,10 +35,8 @@ if (process.env.NODE_ENV !== 'test') {
       process.exit(1);
     });
 } else {
-  // En mode test, se connecter silencieusement
-  prisma.$connect().catch(() => {
-    // Ignorer les erreurs de connexion en mode test
-  });
+  // En mode test : pas de process.exit, connexion gérée par __tests__/setup.ts
+  prisma.$connect().catch(() => {});
 }
 
 // Graceful shutdown
