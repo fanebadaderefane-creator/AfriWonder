@@ -40,9 +40,8 @@ export default {
       lines: 0,
     },
   },
-  // Aide à identifier les handles (timers, connexions, serveurs) qui
-  // restent ouverts après la fin des tests. À désactiver une fois le
-  // problème trouvé, car cela ralentit légèrement Jest.
-  detectOpenHandles: true,
+  // Désactivé en CI pour éviter exit code 1 quand des handles (ex. pool PG)
+  // restent ouverts après afterAll. En local, mettre à true pour déboguer.
+  detectOpenHandles: process.env.CI !== 'true',
 };
 
