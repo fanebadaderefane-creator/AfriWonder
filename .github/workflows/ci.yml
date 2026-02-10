@@ -72,6 +72,7 @@ jobs:
         working-directory: backend
         run: npm run test:coverage
         env:
+          NODE_OPTIONS: --max-old-space-size=4096
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afriwonder_test
           JWT_SECRET: test-secret-key-for-ci
           JWT_REFRESH_SECRET: test-refresh-secret-key-for-ci
