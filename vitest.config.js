@@ -27,9 +27,13 @@ export default defineConfig({
         '**/*.config.js',
         '**/dist/',
         '**/*.d.ts',
-        'src/components/ui/**',
-        'functions/**',
       ],
+      thresholds: {
+        statements: 5,
+        branches: 30,
+        functions: 15,
+        lines: 5,
+      },
     },
   },
   resolve: {

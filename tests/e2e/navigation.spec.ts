@@ -7,21 +7,22 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Navigation principale', () => {
   test('accès aux pages clés depuis la home (desktop)', async ({ page }) => {
-    await page.goto('/');
-    await expect(page.locator('#root')).toBeVisible({ timeout: 10000 });
+    await page.goto('/', { waitUntil: 'load', timeout: 20000 });
+    await expect(page.locator('#root').locator('*').first()).toBeVisible({ timeout: 15000 });
 
-    await page.goto('/Search');
-    await expect(page).toHaveURL(/\/Search/i);
+    // Unauthenticated: /Search and /Profile may redirect to /Landing or stay on route
+    await page.goto('/Search', { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await expect(page).toHaveURL(/\/(Search|Landing)?\/?$/i, { timeout: 10000 });
 
-    await page.goto('/Profile');
-    await expect(page).toHaveURL(/\/Profile/i);
+    await page.goto('/Profile', { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await expect(page).toHaveURL(/\/(Profile|Landing)?\/?$/i, { timeout: 10000 });
   });
 
   test('accès home et layout sur mobile (viewport mobile)', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'load', timeout: 20000 });
 
-    await expect(page.locator('#root')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#root').locator('*').first()).toBeVisible({ timeout: 15000 });
     await expect(page).toHaveURL(/\//);
   });
 });

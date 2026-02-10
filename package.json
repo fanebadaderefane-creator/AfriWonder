@@ -19,6 +19,8 @@
     "test:backend": "npm run test:smoke --prefix backend",
     "test:backend:full": "npm run test:coverage --prefix backend",
     "test:all": "npm run test:smoke --prefix backend && npm run test --prefix .",
+    "test:ci": "npm run test --prefix backend && npm run test --prefix . && npm run test:e2e",
+    "test:all:100:e2e": "npm run test:backend:full && npm run test:coverage && npm run test:e2e",
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,json,css,md}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,json,css,md}\"",
     "generate-icons": "node scripts/generate-icons.js",

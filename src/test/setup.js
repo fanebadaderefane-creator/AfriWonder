@@ -18,6 +18,13 @@ beforeAll(() => {
     disconnect = () => null;
     unobserve = () => null;
   };
+  if (typeof window !== 'undefined') {
+    window.scrollTo = () => {};
+    Element.prototype.scrollIntoView = () => {};
+  }
+  if (typeof globalThis.indexedDB === 'undefined') {
+    globalThis.indexedDB = { open: () => ({ result: {}, transaction: () => {} }), deleteDatabase: () => {} };
+  }
 });
 
 // Extend Vitest's expect with jest-dom matchers

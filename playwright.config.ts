@@ -8,11 +8,20 @@ export default defineConfig({
   expect: {
     timeout: 5 * 1000,
   },
-  fullyParallel: true,
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 2 : undefined,
-  reporter: process.env.CI ? [['html', { outputFolder: 'test-results/playwright' }], ['list']] : 'list',
+  workers: 1,
+  reporter: [
+    ['list'],
+    ['html', { outputFolder: 'playwright-report', open: 'never' }],
+  ],
+  webServer: {
+    command: 'npm run dev',
+    url: baseURL,
+    reuseExistingServer: !process.env.CI,
+    timeout: 120 * 1000,
+  },
   use: {
     baseURL,
     trace: 'on-first-retry',

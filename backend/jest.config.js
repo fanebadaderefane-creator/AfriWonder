@@ -20,14 +20,25 @@ export default {
   },
   testMatch: ['**/__tests__/**/*.test.ts'],
   testPathIgnorePatterns: ['/node_modules/', '/dist/'],
+  modulePathIgnorePatterns: ['<rootDir>/dist/'],
+  // Couverture backend réelle sur le code applicatif
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
+    '!src/**/__tests__/**',
     '!src/index.ts',
   ],
   moduleFileExtensions: ['ts', 'js', 'json'],
   setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],
-  testTimeout: 30000, // 30 secondes pour les tests avec DB
-  maxWorkers: 1, // Exécuter les tests en série pour limiter les connexions DB
+  testTimeout: 30000,
+  maxWorkers: 1,
+  coverageThreshold: {
+    global: {
+      statements: 0,
+      branches: 0,
+      functions: 0,
+      lines: 0,
+    },
+  },
 };
 

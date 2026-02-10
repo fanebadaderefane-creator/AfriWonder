@@ -29,7 +29,9 @@ export const errorHandler = (
     method: req.method,
     statusCode,
     userId,
-  }).catch(() => {});
+  }).catch(noop);
+
+  function noop() {}
 
   res.status(statusCode).json({
     success: false,

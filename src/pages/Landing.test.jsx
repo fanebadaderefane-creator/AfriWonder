@@ -1,16 +1,20 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Landing from './Landing';
+
+const loginMock = vi.fn();
+const registerMock = vi.fn();
+const logoutMock = vi.fn();
 
 vi.mock('@/lib/AuthContext', () => ({
   useAuth: () => ({
     isAuthenticated: false,
-    login: vi.fn(),
-    register: vi.fn(),
-    logout: vi.fn(),
+    login: loginMock,
+    register: registerMock,
+    logout: logoutMock,
   }),
 }));
 
@@ -51,5 +55,80 @@ describe('Landing page (auth)', () => {
     expect(screen.getByPlaceholderText(/nom d'utilisateur/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/email/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/mot de passe/i)).toBeInTheDocument();
+  });
+
+  it(
+    "désactive l'inscription tant que les conditions ne sont pas acceptées",
+    async () => {
+      const user = userEvent.setup();
+      render(
+        <MemoryRouter>
+          <Landing />
+        </MemoryRouter>
+      );
+
+      await user.click(screen.getAllByRole('button', { name: /s'inscrire/i })[0]);
+      await user.type(screen.getByPlaceholderText(/nom complet/i), 'User Test');
+      await user.type(screen.getByPlaceholderText(/nom d'utilisateur/i), 'user_test');
+      await user.type(screen.getByPlaceholderText(/^email$/i), 'test@example.com');
+      await user.type(screen.getByPlaceholderText(/mot de passe/i), 'Password123!');
+      const registerHeading = screen.getByRole('heading', { name: /créer un compte/i });
+      const registerCard = registerHeading.closest('div');
+      expect(registerCard).not.toBeNull();
+      const submitButton = within(registerCard).getByRole('button', { name: /^s'inscrire$/i });
+      expect(submitButton).toBeDisabled();
+      await user.click(submitButton);
+      expect(registerMock).not.toHaveBeenCalled();
+    },
+    15000
+  );
+
+  it("inscrit l'utilisateur puis revient sur le formulaire de connexion", async () => {
+    const user = userEvent.setup();
+    registerMock.mockResolvedValueOnce({ ok: true });
+
+    render(
+      <MemoryRouter>
+        <Landing />
+      </MemoryRouter>
+    );
+
+    await user.click(screen.getAllByRole('button', { name: /s'inscrire/i })[0]);
+    await user.type(screen.getByPlaceholderText(/nom complet/i), 'Utilisateur E2E');
+    await user.type(screen.getByPlaceholderText(/nom d'utilisateur/i), 'e2euser');
+    await user.type(screen.getByPlaceholderText(/^email$/i), 'e2e@example.com');
+    await user.type(screen.getByPlaceholderText(/mot de passe/i), 'Password123!');
+    await user.click(screen.getByRole('checkbox'));
+    const registerHeading = screen.getByRole('heading', { name: /créer un compte/i });
+    const registerCard = registerHeading.closest('div');
+    expect(registerCard).not.toBeNull();
+    await user.click(within(registerCard).getByRole('button', { name: /^s'inscrire$/i }));
+
+    await waitFor(() => {
+      expect(registerMock).toHaveBeenCalledTimes(1);
+    });
+    expect(logoutMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('heading', { name: /se connecter/i })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/^email$/i)).toHaveValue('e2e@example.com');
+  }, 15000);
+
+  it('affiche une erreur de connexion si login échoue', async () => {
+    const user = userEvent.setup();
+    loginMock.mockRejectedValueOnce(new Error('Email ou mot de passe incorrect'));
+
+    render(
+      <MemoryRouter>
+        <Landing />
+      </MemoryRouter>
+    );
+
+    await user.type(screen.getByPlaceholderText(/^email$/i), 'bad@example.com');
+    await user.type(screen.getByPlaceholderText(/mot de passe/i), 'bad-password');
+    await user.click(screen.getAllByRole('button', { name: /^se connecter$/i })[1]);
+
+    await waitFor(() => {
+      expect(loginMock).toHaveBeenCalledWith('bad@example.com', 'bad-password');
+    });
+    expect(screen.getByText(/email ou mot de passe incorrect/i)).toBeInTheDocument();
   });
 });
