@@ -106,6 +106,20 @@ const app = express();
 
 // Sentry (Express) — l’instrumentation HTTP/Tracing est configurée dans initSentry()
 
+// Health check (AVANT anti-bot pour que curl/k8s/CI puissent appeler /health)
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), env: process.env.NODE_ENV || 'development' });
+});
+app.get('/health/ready', async (req, res) => {
+  try {
+    const prisma = (await import('./config/database.js')).default;
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: 'ok', db: 'connected', timestamp: new Date().toISOString() });
+  } catch (err: any) {
+    res.status(503).json({ status: 'unavailable', db: 'error', error: process.env.NODE_ENV === 'development' ? err?.message : undefined });
+  }
+});
+
 // Middleware
 app.use(helmet());
 app.use(cors({
@@ -139,22 +153,6 @@ app.use('/api/admin', adminLimiter); // 30 req/min
 app.use('/api/comments', antiSpamMiddleware);
 app.use('/api/messages', antiSpamMiddleware);
 app.use('/api/news', antiSpamMiddleware);
-
-// Health check (liveness)
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), env: process.env.NODE_ENV || 'development' });
-});
-
-// Readiness (DB connectée) — pour Kubernetes / load balancers
-app.get('/health/ready', async (req, res) => {
-  try {
-    const prisma = (await import('./config/database.js')).default;
-    await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: 'ok', db: 'connected', timestamp: new Date().toISOString() });
-  } catch (err: any) {
-    res.status(503).json({ status: 'unavailable', db: 'error', error: process.env.NODE_ENV === 'development' ? err?.message : undefined });
-  }
-});
 
 // Région CEDEAO (Mali, Sénégal, CI, Burkina) — pour déploiement multi-pays
 app.get('/health/region', async (_req, res) => {
