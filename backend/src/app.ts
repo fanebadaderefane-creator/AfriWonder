@@ -89,6 +89,10 @@ import appointmentsRoutes from './routes/appointments.routes.js';
 import pharmaciesRoutes from './routes/pharmacies.routes.js';
 import propertiesRoutes from './routes/properties.routes.js';
 import insuranceRoutes from './routes/insurance.routes.js';
+import moderationRoutes from './routes/moderation.routes.js';
+import playlistsRoutes from './routes/playlists.routes.js';
+import storiesRoutes from './routes/stories.routes.js';
+import wishlistRoutes from './routes/wishlist.routes.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -100,11 +104,7 @@ import * as Sentry from '@sentry/node';
 
 const app = express();
 
-// Sentry (request/tracing) — doit être en premier après body parsers pour tracer correctement
-if (process.env.SENTRY_DSN) {
-  app.use(Sentry.Handlers.requestHandler());
-  app.use(Sentry.Handlers.tracingHandler());
-}
+// Sentry (Express) — l’instrumentation HTTP/Tracing est configurée dans initSentry()
 
 // Middleware
 app.use(helmet());
@@ -183,12 +183,14 @@ app.get('/health/errors', (req, res) => {
   res.json({ success: true, ...getErrorsSummary() });
 });
 
-// Swagger API Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'AfriWonder API Documentation',
-}));
-console.log('📚 Swagger UI disponible sur http://localhost:3000/api-docs');
+// Swagger API Documentation (désactivé en tests pour éviter les handles persistants)
+if (process.env.NODE_ENV !== 'test') {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'AfriWonder API Documentation',
+  }));
+  console.log('📚 Swagger UI disponible sur http://localhost:3000/api-docs');
+}
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -262,10 +264,14 @@ app.use('/api/appointments', appointmentsRoutes);
 app.use('/api/pharmacies', pharmaciesRoutes);
 app.use('/api/properties', propertiesRoutes);
 app.use('/api/insurance', insuranceRoutes);
+app.use('/api/moderation', moderationRoutes);
+app.use('/api/playlists', playlistsRoutes);
+app.use('/api/stories', storiesRoutes);
+app.use('/api/wishlist', wishlistRoutes);
 
-// Sentry error handler (avant notre errorHandler)
-if (process.env.SENTRY_DSN) {
-  app.use(Sentry.Handlers.errorHandler());
+// Sentry error handler (avant notre errorHandler, désactivé en tests)
+if (process.env.SENTRY_DSN && process.env.NODE_ENV !== 'test') {
+  Sentry.setupExpressErrorHandler(app);
 }
 // Error handler (must be last)
 app.use(errorHandler);

@@ -40,5 +40,9 @@ export default {
       lines: 0,
     },
   },
+  // Aide à identifier les handles (timers, connexions, serveurs) qui
+  // restent ouverts après la fin des tests. À désactiver une fois le
+  // problème trouvé, car cela ralentit légèrement Jest.
+  detectOpenHandles: true,
 };
 

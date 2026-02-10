@@ -77,6 +77,13 @@ class AuthService {
   }
 
   async login(email: string, password: string) {
+    // Valider les données requises pour éviter les erreurs 500 Prisma
+    if (!email || !password) {
+      const error: any = new Error('Email et mot de passe sont requis');
+      error.statusCode = 400;
+      throw error;
+    }
+
     // Trouver l'utilisateur
     const user = await prisma.user.findUnique({
       where: { email },

@@ -4,6 +4,16 @@ import exchangeRateService from '../services/exchangeRate.service.js';
 
 const router = Router();
 
+// GET /api/exchange-rates - liste des taux de change
+router.get('/', async (_req, res, next) => {
+  try {
+    const rates = await exchangeRateService.getAllRates();
+    res.json({ success: true, data: rates });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get('/rates', async (_req, res, next) => {
   try {
     const rates = await exchangeRateService.getAllRates();

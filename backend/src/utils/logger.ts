@@ -6,6 +6,7 @@ type LogLevel = 'error' | 'warn' | 'info' | 'debug';
 
 class Logger {
   private isDevelopment = process.env.NODE_ENV === 'development';
+  private shouldLog = process.env.NODE_ENV !== 'test';
 
   error(message: string, error?: Error | unknown, context?: Record<string, unknown>) {
     const logData = {
@@ -22,7 +23,9 @@ class Logger {
       }),
     };
 
-    console.error('[ERROR]', logData);
+    if (this.shouldLog) {
+      console.error('[ERROR]', logData);
+    }
     return logData;
   }
 
@@ -34,7 +37,9 @@ class Logger {
       context,
     };
 
-    console.warn('[WARN]', logData);
+    if (this.shouldLog) {
+      console.warn('[WARN]', logData);
+    }
     return logData;
   }
 
@@ -46,12 +51,14 @@ class Logger {
       context,
     };
 
-    console.log('[INFO]', logData);
+    if (this.shouldLog) {
+      console.log('[INFO]', logData);
+    }
     return logData;
   }
 
   debug(message: string, context?: Record<string, unknown>) {
-    if (!this.isDevelopment) return;
+    if (!this.isDevelopment || !this.shouldLog) return;
 
     const logData = {
       level: 'debug' as LogLevel,

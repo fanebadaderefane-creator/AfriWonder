@@ -4,7 +4,20 @@ import platformRevenueService from '../services/platformRevenue.service.js';
 
 const router = Router();
 
-// Toutes les routes nécessitent une authentification admin
+// Configuration publique de base de la plateforme
+// GET /api/platform/config
+router.get('/config', (_req, res) => {
+  res.json({
+    success: true,
+    data: {
+      name: 'AfriWonder',
+      version: process.env.npm_package_version || '1.0.0',
+      environment: process.env.NODE_ENV || 'development',
+    },
+  });
+});
+
+// Toutes les autres routes nécessitent une authentification admin
 // TODO: Ajouter un middleware isAdmin pour vérifier que l'utilisateur est admin
 
 // GET /api/platform/revenue - Statistiques de revenus de la plateforme

@@ -4,6 +4,22 @@ import prisma from '../config/database.js';
 
 const router = Router();
 
+// GET /api/bills - nécessite une authentification
+router.get('/', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const bills = await prisma.billPayment.findMany({
+      where: { user_id: userId },
+      orderBy: { created_at: 'desc' },
+      take: 20,
+    });
+
+    res.json({ success: true, data: bills });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.post('/pay', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
