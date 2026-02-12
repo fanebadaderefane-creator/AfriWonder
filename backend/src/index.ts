@@ -8,6 +8,8 @@ import messageService from './services/message.service.js';
 import { setMessageIo } from './services/message.service.js';
 import { startAccountDeletionJobs } from './jobs/accountDeletion.job.js';
 import { startDataRetentionJob, initializeRetentionPolicies } from './jobs/dataRetention.job.js';
+import { startLiveScheduledReminderJob } from './jobs/liveScheduledReminder.job.js';
+import { startModerationTimeoutJob } from './jobs/moderationTimeout.job.js';
 import { initRedis } from './utils/cache.js';
 
 const socketToUserId = new Map<string, string>();
@@ -30,7 +32,7 @@ if (process.env.NODE_ENV === 'production') {
 try {
   const { getAppCountry, COUNTRY_NAMES } = await import('./config/region.js');
   const country = getAppCountry();
-  logger.info({ message: 'Pays actif (CEDEAO)', country, name: COUNTRY_NAMES[country] || country });
+  logger.info('Pays actif (CEDEAO)', { country, name: COUNTRY_NAMES[country] || country });
 } catch {
   // region config optionnel
 }
@@ -130,8 +132,9 @@ httpServer.listen(PORT, async () => {
   // Démarrer les jobs automatiques
   startAccountDeletionJobs();
   startDataRetentionJob();
-  
-  logger.info('✅ Jobs automatiques démarrés (suppression comptes, rétention données)');
+  startLiveScheduledReminderJob();
+  startModerationTimeoutJob();
+
+  logger.info('✅ Jobs automatiques démarrés (suppression comptes, rétention données, rappel live)');
   logger.info('🛡️ Sécurité: Rate limiting + Anti-bot + Chiffrement ACTIVÉS');
 });
-

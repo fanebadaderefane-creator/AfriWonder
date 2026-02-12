@@ -5,7 +5,7 @@ export type BlacklistType = 'user' | 'device' | 'ip';
 export async function isBlacklisted(type: BlacklistType, value: string, checkExpiry = true): Promise<boolean> {
   if (!value?.trim()) return false;
   const now = new Date();
-  const where: { type: string; value: string; OR?: { expires_at: null }[] | { expires_at: { gt: Date } }[] } = { type, value: value.trim() };
+  const where: any = { type, value: value.trim() };
   if (checkExpiry) where.OR = [{ expires_at: null }, { expires_at: { gt: now } }];
   const entry = await prisma.blacklistEntry.findFirst({ where });
   return !!entry;

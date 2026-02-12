@@ -7,9 +7,11 @@ interface ListOptions {
   page: number;
   limit?: number;
   category?: string;
+  category_id?: string;
   visibility?: string;
   userId?: string;
   creator_id?: string;
+  hashtag?: string;
 }
 
 class VideoService {
@@ -55,7 +57,7 @@ class VideoService {
     }
   }
   async list(options: ListOptions) {
-    const { page, limit, category, visibility = 'public', userId, creator_id: creatorId } = options;
+    const { page, limit, category, category_id, visibility = 'public', userId, creator_id: creatorId, hashtag } = options;
     // Si limit n'est pas spécifié ou est 0, récupérer toutes les vidéos
     const shouldGetAll = !limit || limit === 0;
     const skip = shouldGetAll ? undefined : (page - 1) * (limit || 0);
@@ -90,13 +92,21 @@ class VideoService {
       ];
     }
 
-    // Filtre par catégorie
+    // Filtre par catégorie (string ou category_id)
     if (category) {
       where.category = category;
+    } else if (category_id) {
+      where.video_categories = { some: { category_id } };
     }
     // Filtre par créateur
     if (creatorId) {
       where.creator_id = creatorId;
+    }
+
+    // Filtre par hashtag
+    if (hashtag && hashtag.trim()) {
+      const tag = String(hashtag).replace(/^#/, '').toLowerCase();
+      where.video_hashtags = { some: { tag_name: tag } };
     }
 
     const [videos, total] = await Promise.all([
@@ -111,6 +121,7 @@ class VideoService {
               profile_image: true,
             },
           },
+          video_hashtags: { select: { tag_name: true } },
           _count: {
             select: {
               video_likes: true,
@@ -130,8 +141,8 @@ class VideoService {
     // Formater les vidéos pour correspondre au format attendu par le frontend
     // IMPORTANT: Ne JAMAIS modifier les URLs ici - elles doivent être stables pour React
     const formattedVideos = videos.map((video: any) => {
-      const { creator, _count, ...videoData } = video;
-      // Parser les hashtags depuis JSON si nécessaire
+      const { creator, _count, video_hashtags, ...videoData } = video;
+      // Parser les hashtags depuis JSON ou video_hashtags
       let hashtags = video.hashtags;
       if (typeof hashtags === 'string') {
         try {
@@ -139,6 +150,9 @@ class VideoService {
         } catch {
           hashtags = [];
         }
+      }
+      if (!Array.isArray(hashtags) || hashtags.length === 0) {
+        hashtags = (video_hashtags || []).map((h: any) => h.tag_name);
       }
       return {
         ...videoData,
@@ -177,6 +191,7 @@ class VideoService {
             profile_image: true,
           },
         },
+        video_hashtags: { select: { tag_name: true } },
         video_likes: userId
           ? {
               where: { user_id: userId },
@@ -220,17 +235,9 @@ class VideoService {
       }
     }
 
-    // Incrémenter les vues
-    await prisma.video.update({
-      where: { id },
-      data: {
-        views: {
-          increment: 1,
-        },
-      },
-    });
+    // Vues = backend event uniquement. Ne PAS incrémenter dans getById (voir POST /videos/:id/view).
 
-    // Parser les hashtags depuis JSON si nécessaire
+    // Parser les hashtags depuis JSON ou video_hashtags
     let hashtags = video.hashtags;
     if (typeof hashtags === 'string') {
       try {
@@ -238,6 +245,9 @@ class VideoService {
       } catch {
         hashtags = [];
       }
+    }
+    if (!Array.isArray(hashtags) || hashtags.length === 0) {
+      hashtags = (video.video_hashtags || []).map((h: any) => h.tag_name);
     }
 
     // Formater la réponse pour correspondre au format attendu par le frontend
@@ -258,12 +268,65 @@ class VideoService {
 
     // Supprimer les champs internes
     delete formattedVideo.creator;
+    delete formattedVideo.video_hashtags;
     if (formattedVideo.video_likes !== undefined) {
       delete formattedVideo.video_likes;
     }
     delete formattedVideo._count;
 
     return formattedVideo;
+  }
+
+  /**
+   * Enregistrer une vue (event backend validé).
+   * Règles: viewer ≠ creator, ≥3 sec OU ≥25%, 1 vue / 30 min / user|device / vidéo.
+   */
+  async recordView(videoId: string, options: {
+    userId?: string;
+    deviceId?: string;
+    watchSeconds?: number;
+    watchPercent?: number;
+    ip?: string;
+  }): Promise<{ recorded: boolean; views: number }> {
+    const { userId, deviceId, watchSeconds = 0, watchPercent = 0, ip } = options;
+    const viewerKey = userId ? `u:${userId}` : (deviceId ? `d:${deviceId}` : ip ? `i:${ip}` : null);
+
+    if (!viewerKey) {
+      return { recorded: false, views: 0 };
+    }
+
+    const video = await prisma.video.findUnique({
+      where: { id: videoId },
+      select: { id: true, creator_id: true, views: true },
+    });
+
+    if (!video) return { recorded: false, views: 0 };
+
+    if (userId && userId === video.creator_id) return { recorded: false, views: video.views };
+
+    const minWatch = watchSeconds >= 3 || watchPercent >= 25;
+    if (!minWatch) return { recorded: false, views: video.views };
+
+    const timeBucket = Math.floor(Date.now() / 1000 / 1800);
+
+    try {
+      await prisma.videoView.create({
+        data: {
+          video_id: videoId,
+          viewer_key: viewerKey,
+          time_bucket: timeBucket,
+        },
+      });
+      const updated = await prisma.video.update({
+        where: { id: videoId },
+        data: { views: { increment: 1 } },
+        select: { views: true },
+      });
+      return { recorded: true, views: updated.views };
+    } catch (e: any) {
+      if (e?.code === 'P2002') return { recorded: false, views: video.views };
+      throw e;
+    }
   }
 
   async create(data: {
@@ -288,7 +351,7 @@ class VideoService {
     validateUrl(data.video_url, 'video_url');
     validateUrl(data.thumbnail_url, 'thumbnail_url');
 
-    // Normaliser les URLs UNIQUEMENT à l'upload (une seule fois)
+    const hashtagsArray = Array.isArray(data.hashtags) ? data.hashtags : [];
     const video = await prisma.video.create({
       data: {
         title: data.title,
@@ -298,7 +361,7 @@ class VideoService {
         creator_id: data.creator_id,
         visibility: data.visibility || 'public',
         category: data.category,
-        hashtags: data.hashtags ? JSON.stringify(data.hashtags) : undefined,
+        hashtags: hashtagsArray.length ? JSON.stringify(hashtagsArray) : undefined,
         music_title: data.music_title,
       },
       include: {
@@ -312,6 +375,27 @@ class VideoService {
         },
       },
     });
+
+    if (hashtagsArray.length > 0) {
+      await prisma.videoHashtag.createMany({
+        data: hashtagsArray.map((tag: string) => ({
+          video_id: video.id,
+          tag_name: String(tag).replace(/^#/, '').toLowerCase(),
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    if (data.category && data.category.trim()) {
+      const catName = String(data.category).trim().toLowerCase();
+      let cat = await prisma.category.findUnique({ where: { name: catName } });
+      if (!cat) {
+        cat = await prisma.category.create({ data: { name: catName } });
+      }
+      await prisma.videoCategory.create({
+        data: { video_id: video.id, category_id: cat.id },
+      }).catch(() => {});
+    }
 
     logger.info('Vidéo créée', { videoId: video.id, creatorId: data.creator_id });
 
@@ -327,6 +411,7 @@ class VideoService {
     description: string;
     visibility: string;
     category: string;
+    is_featured: boolean;
   }>, userId: string) {
     // Vérifier que l'utilisateur est le créateur
     const video = await prisma.video.findUnique({

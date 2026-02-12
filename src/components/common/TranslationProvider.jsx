@@ -96,7 +96,12 @@ const translations = {
     followers: "Abonnés",
     following: "Abonnement",
     follow: "S'abonner",
-    unfollow: "Se désabonner"
+    unfollow: "Se désabonner",
+    // Wonder
+    wonder: "Wonder",
+    my_wonder: "Mon Wonder",
+    wonderers: "Wonderers",
+    in_his_wonder: "Dans son Wonder"
   },
   en: {
     // Navigation
@@ -183,7 +188,12 @@ const translations = {
     followers: "Followers",
     following: "Following",
     follow: "Follow",
-    unfollow: "Unfollow"
+    unfollow: "Unfollow",
+    // Wonder
+    wonder: "Wonder",
+    my_wonder: "My Wonder",
+    wonderers: "Wonderers",
+    in_his_wonder: "In their Wonder"
   },
   ar: {
     // Navigation
@@ -269,8 +279,39 @@ const translations = {
     // Users
     followers: "المتابعون",
     following: "يتابع",
+    wonder: "Wonder",
+    my_wonder: "عجائبي",
+    wonderers: "Wonderers",
+    in_his_wonder: "في عجائبه",
     follow: "متابعة",
     unfollow: "إلغاء المتابعة"
+  },
+  bm: {
+    home: "So",
+    create: "Kɛ",
+    search: "Cɛ",
+    inbox: "Bata",
+    profile: "Mɔgɔ",
+    live: "Dɔnni",
+    marketplace: "Sɔrɔ",
+    discover: "Yira",
+    cart: "Panier",
+    product: "Fɛn",
+    products: "Fɛnw",
+    price: "Sɔngɔ",
+    quantity: "Dɔgɔ",
+    add_to_cart: "Panier ma don",
+    checkout: "Tɛmɛn",
+    loading: "A bɛ cɛ...",
+    save: "Dɔnni",
+    cancel: "Bɔ",
+    delete: "Sigi",
+    edit: "Labila",
+    close: "Dabi",
+    back: "Kɔ",
+    error: "Fali",
+    follow: "Tɛmɛ",
+    unfollow: "Tɛmɛ ma tɛmɛ"
   }
 };
 

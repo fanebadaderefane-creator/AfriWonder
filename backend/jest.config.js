@@ -21,7 +21,7 @@ export default {
   testMatch: ['**/__tests__/**/*.test.ts'],
   testPathIgnorePatterns: ['/node_modules/', '/dist/'],
   modulePathIgnorePatterns: ['<rootDir>/dist/'],
-  // Couverture backend réelle sur le code applicatif
+  // Couverture backend : pour viser 100% vert, voir COVERAGE.md à la racine du repo.
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
@@ -32,6 +32,7 @@ export default {
   setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],
   testTimeout: 30000,
   maxWorkers: 1,
+  // Mettre 100 pour exiger 100% (build échoue sinon). Voir COVERAGE.md.
   coverageThreshold: {
     global: {
       statements: 0,

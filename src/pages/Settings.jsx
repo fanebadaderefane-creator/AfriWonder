@@ -6,8 +6,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useTheme } from 'next-themes';
 import { 
-  ArrowLeft, Camera, User, Bell, Shield, Globe, Moon, 
+  ArrowLeft, Camera, User, Bell, Shield, Globe, Moon, Sun, Monitor,
   HelpCircle, LogOut, ChevronRight, Wifi, WifiOff, Smartphone, MapPin
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -23,6 +24,7 @@ export default function Settings() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { logout } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [user, setUser] = useState(null);
   const [activeSection, setActiveSection] = useState('main');
   const [isLoading, setIsLoading] = useState(false);
@@ -59,7 +61,8 @@ export default function Settings() {
         });
         setSettings({
           ...settings,
-          ...u.settings
+          ...u.settings,
+          data_mode: u.data_saver_mode ? 'lite' : (settings.data_mode || 'auto')
         });
       } catch (_e) {
         navigate(createPageUrl('Home'));
@@ -282,12 +285,16 @@ export default function Settings() {
                   if (file) {
                     try {
                       toast.loading('Téléchargement...');
-                      const { file_url } = await api.upload.video({ file });
+                      const result = await api.upload.image(file);
+                      const file_url = result?.file_url || result?.data?.file_url;
+                      if (!file_url) throw new Error('Pas d\'URL reçue');
                       await api.auth.updateMe({ profile_image: file_url });
                       
-                      // Invalider le cache des vidéos pour recharger avec la nouvelle photo
+                      // Invalider les caches pour afficher la nouvelle photo partout
                       queryClient.invalidateQueries({ queryKey: ['videos'] });
                       queryClient.invalidateQueries({ queryKey: ['profile-videos'] });
+                      queryClient.invalidateQueries({ queryKey: ['auth'] });
+                      queryClient.invalidateQueries({ queryKey: ['follow-stats'] });
                       
                       // Recharger les données utilisateur
                       const updatedUser = await api.auth.me();
@@ -355,6 +362,54 @@ export default function Settings() {
     );
   }
 
+  // Appearance (CDC 5.1: Mode sombre optionnel)
+  if (activeSection === 'appearance') {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 z-40">
+          <div className="flex items-center gap-4 px-4 py-3">
+            <Button variant="ghost" size="icon" onClick={() => setActiveSection('main')}>
+              <ArrowLeft className="w-6 h-6" />
+            </Button>
+            <h1 className="text-lg font-bold dark:text-white">{t('appearance')}</h1>
+          </div>
+        </div>
+
+        <div className="p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 space-y-4">
+            <p className="text-gray-600 dark:text-gray-400 text-sm">Choisir le thème de l&apos;application</p>
+            <div className="flex gap-2">
+              <Button
+                variant={theme === 'light' ? 'default' : 'outline'}
+                className="flex-1 flex items-center gap-2"
+                onClick={() => setTheme('light')}
+              >
+                <Sun className="w-4 h-4" />
+                Clair
+              </Button>
+              <Button
+                variant={theme === 'dark' ? 'default' : 'outline'}
+                className="flex-1 flex items-center gap-2"
+                onClick={() => setTheme('dark')}
+              >
+                <Moon className="w-4 h-4" />
+                Sombre
+              </Button>
+              <Button
+                variant={theme === 'system' ? 'default' : 'outline'}
+                className="flex-1 flex items-center gap-2"
+                onClick={() => setTheme('system')}
+              >
+                <Monitor className="w-4 h-4" />
+                Système
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Data Mode
   if (activeSection === 'data') {
     return (
@@ -371,7 +426,15 @@ export default function Settings() {
         <div className="p-4">
           <DataModeToggle
             mode={settings.data_mode}
-            onChange={(mode) => setSettings({ ...settings, data_mode: mode })}
+            onChange={async (mode) => {
+              setSettings({ ...settings, data_mode: mode });
+              try {
+                await api.auth.updateMe({ data_saver_mode: mode === 'lite' });
+                toast.success('Mode données mis à jour');
+              } catch (_e) {
+                toast.error('Erreur lors de la mise à jour');
+              }
+            }}
           />
 
           <div className="mt-6 bg-white rounded-2xl p-4 space-y-4">

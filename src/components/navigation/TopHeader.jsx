@@ -160,7 +160,7 @@ export default function TopHeader({
 
               >
 
-                {t('following')}
+                {t('my_wonder')}
 
                 {followingCount > 0 && activeTab === 'abonnements' && (
 

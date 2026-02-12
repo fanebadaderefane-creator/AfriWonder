@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 
 import { motion } from 'framer-motion';
 
-import { Scissors, Sparkles, Music2, Type, Sticker, Plus, Loader2 } from 'lucide-react';
+import { Scissors, Sparkles, Music2, Type, Sticker, Plus, Loader2, Play, Pause, Volume2, VolumeX } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
 
@@ -31,6 +31,8 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
   const [endTime, setEndTime] = useState(initialData.end_time || 0);
 
   const [duration, setDuration] = useState(0);
+
+  const [videoSize, setVideoSize] = useState({ w: 0, h: 0 });
 
   const [musicLibrary, setMusicLibrary] = useState([]);
 
@@ -66,7 +68,11 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
 
   const [previewCut, setPreviewCut] = useState(null);
 
-  const [selectedTransition, setSelectedTransition] = useState('none');
+  const [selectedTransition, setSelectedTransition] = useState(initialData.transition || 'none');
+
+  const [isPlaying, setIsPlaying] = useState(true);
+
+  const [isMuted, setIsMuted] = useState(true);
 
   const audioRef = useRef(null);
 
@@ -77,6 +83,8 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
   // Envoyer toutes les données actuelles au parent dès le montage et à chaque changement
 
   useEffect(() => {
+
+    const transitionEntry = TRANSITIONS.find((t) => t.value === selectedTransition);
 
     onVideoDataChange({
 
@@ -96,27 +104,52 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
 
       music_title: selectedMusic?.title || '',
 
-      music_id: selectedMusic?.id || ''
+      music_id: selectedMusic?.id || '',
+
+      transition: selectedTransition,
+
+      transition_duration: transitionEntry?.duration ?? 0,
 
     });
 
-  }, [filter, startTime, endTime, textOverlay, stickers, selectedMusic]);
+  }, [filter, startTime, endTime, textOverlay, stickers, selectedMusic, selectedTransition]);
 
   useEffect(() => {
 
-    if (videoRef?.current) {
+    const el = videoRef?.current;
 
-      videoRef.current.onloadedmetadata = () => {
+    if (!el || el.tagName !== 'VIDEO') return;
 
-        setDuration(videoRef.current.duration);
+    const onLoaded = () => {
 
-        setEndTime(videoRef.current.duration);
+      if (typeof el.duration === 'number' && !Number.isNaN(el.duration)) {
 
-      };
+        setDuration(el.duration);
 
-    }
+        setEndTime((prev) => (prev <= 0 || prev > el.duration ? el.duration : prev));
 
-  }, [videoRef]);
+      }
+
+    };
+
+    if (el.readyState >= 1) onLoaded();
+
+    if (el.videoWidth && el.videoHeight) setVideoSize({ w: el.videoWidth, h: el.videoHeight });
+
+    el.addEventListener('loadedmetadata', onLoaded);
+
+    return () => el.removeEventListener('loadedmetadata', onLoaded);
+
+  }, [videoRef, previewUrl]);
+
+  // Démarrer la lecture (muted pour respecter les politiques navigateur) au chargement
+  useEffect(() => {
+    if (!previewUrl || !videoRef?.current) return;
+    const v = videoRef.current;
+    v.muted = true;
+    setIsMuted(true);
+    v.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+  }, [previewUrl]);
 
   // Charger la libraire de musiques
 
@@ -312,7 +345,9 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
 
         ref={containerRef}
 
-        className="relative w-full aspect-video bg-black rounded-lg overflow-hidden touch-none"
+        className="relative w-full rounded-lg overflow-hidden touch-none"
+
+        style={{ aspectRatio: videoSize.w && videoSize.h ? videoSize.w / videoSize.h : 16/9, backgroundColor: 'transparent' }}
 
         onMouseMove={handleDragMove}
 
@@ -332,35 +367,105 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
 
         {previewUrl && (
 
-          <video
+          <>
 
-            src={previewUrl}
+            <video
 
-            className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+              ref={videoRef}
 
-            style={{
+              src={previewUrl}
 
-              filter: filter === 'Normal' ? 'none' :
+              className="absolute inset-0 w-full h-full object-contain pointer-events-none"
 
-                      filter === 'Noir & Blanc' ? 'grayscale(100%)' :
+              style={{
 
-                      filter === 'Sépia' ? 'sepia(100%)' :
+                filter: filter === 'Normal' ? 'none' :
 
-                      filter === 'Vibrant' ? 'saturate(200%)' :
+                        filter === 'Noir & Blanc' ? 'grayscale(100%)' :
 
-                      filter === 'Foncé' ? 'brightness(0.75)' :
+                        filter === 'Sépia' ? 'sepia(100%)' :
 
-                      filter === 'Lumineux' ? 'brightness(1.25)' : 'none'
+                        filter === 'Vibrant' ? 'saturate(200%)' :
 
-            }}
+                        filter === 'Foncé' ? 'brightness(0.75)' :
 
-            autoPlay
+                        filter === 'Lumineux' ? 'brightness(1.25)' : 'none'
 
-            loop
+              }}
 
-            muted
+              muted={isMuted}
 
-          />
+              loop
+
+              playsInline
+
+              onLoadedMetadata={(e) => {
+
+                const v = e.target;
+
+                if (v && typeof v.duration === 'number' && !Number.isNaN(v.duration)) {
+
+                  setDuration(v.duration);
+
+                  setEndTime((prev) => (prev <= 0 || prev > v.duration ? v.duration : prev));
+
+                }
+
+                if (v && v.videoWidth && v.videoHeight) {
+
+                  setVideoSize({ w: v.videoWidth, h: v.videoHeight });
+
+                }
+
+              }}
+
+              onPlay={() => setIsPlaying(true)}
+
+              onPause={() => setIsPlaying(false)}
+
+              onEnded={() => setIsPlaying(false)}
+
+            />
+
+            {/* Contrôles lecture / son */}
+            <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-2 p-3 bg-gradient-to-t from-black/80 to-transparent pointer-events-auto">
+              <Button
+                type="button"
+                size="icon"
+                variant="secondary"
+                className="h-10 w-10 rounded-full bg-white/20 hover:bg-white/30 text-white border-0"
+                onClick={() => {
+                  const v = videoRef?.current;
+                  if (!v) return;
+                  if (isPlaying) {
+                    v.pause();
+                    setIsPlaying(false);
+                  } else {
+                    v.play().catch(() => {});
+                    setIsPlaying(true);
+                  }
+                }}
+              >
+                {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="secondary"
+                className="h-10 w-10 rounded-full bg-white/20 hover:bg-white/30 text-white border-0"
+                onClick={() => {
+                  setIsMuted((m) => !m);
+                  const v = videoRef?.current;
+                  if (v && isMuted) {
+                    v.play().catch(() => {});
+                  }
+                }}
+                title={isMuted ? 'Activer le son' : 'Couper le son'}
+              >
+                {isMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+              </Button>
+            </div>
+          </>
 
         )}
 
@@ -544,29 +649,35 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
 
                 type="range"
 
-                min="0"
+                min={0}
 
-                max={duration}
+                max={duration > 0 ? duration : 1}
 
                 step="0.1"
 
-                value={startTime}
+                value={Math.min(startTime, duration > 0 ? duration : 1)}
 
                 onChange={(e) => {
 
                   const value = Number(e.target.value);
 
-                  setStartTime(value);
+                  const maxVal = duration > 0 ? duration : 1;
+
+                  const clamped = Math.max(0, Math.min(value, maxVal));
+
+                  setStartTime(clamped);
+
+                  if (endTime < clamped) setEndTime(clamped);
 
                   if (videoRef?.current) {
 
-                    videoRef.current.currentTime = value;
+                    videoRef.current.currentTime = clamped;
 
                   }
 
                 }}
 
-                className="w-full"
+                className="w-full h-2 accent-orange-500 cursor-pointer"
 
               />
 
@@ -584,27 +695,31 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
 
                 min={startTime}
 
-                max={duration}
+                max={duration > 0 ? duration : 1}
 
                 step="0.1"
 
-                value={endTime}
+                value={Math.min(endTime, duration > 0 ? duration : 1)}
 
                 onChange={(e) => {
 
                   const value = Number(e.target.value);
 
-                  setEndTime(value);
+                  const maxVal = duration > 0 ? duration : 1;
+
+                  const clamped = Math.max(startTime, Math.min(value, maxVal));
+
+                  setEndTime(clamped);
 
                   if (videoRef?.current) {
 
-                    videoRef.current.currentTime = value;
+                    videoRef.current.currentTime = clamped;
 
                   }
 
                 }}
 
-                className="w-full"
+                className="w-full h-2 accent-orange-500 cursor-pointer"
 
               />
 
@@ -648,12 +763,17 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
 
             </div>
 
-            <div className="flex items-center justify-between bg-orange-500/20 border border-orange-500 rounded-lg p-3">
-
-              <span className="text-xs text-white">Durée:</span>
-
-              <span className="text-sm font-bold text-orange-400">{(endTime - startTime).toFixed(1)}s</span>
-
+            <div className="space-y-2">
+              <div className="flex items-center justify-between bg-orange-500/20 border border-orange-500 rounded-lg p-3">
+                <span className="text-xs text-white">Segment:</span>
+                <span className="text-sm font-bold text-orange-400">{(endTime - startTime).toFixed(1)}s</span>
+              </div>
+              {selectedTransition !== 'none' && (
+                <div className="flex items-center justify-between bg-white/10 rounded-lg p-3">
+                  <span className="text-xs text-white/70">Transition ({TRANSITIONS.find(t => t.value === selectedTransition)?.name}):</span>
+                  <span className="text-sm text-orange-400">{(TRANSITIONS.find(t => t.value === selectedTransition)?.duration ?? 0).toFixed(1)}s</span>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">

@@ -43,6 +43,7 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MiB (bundle peut dépasser 2 MiB)
       },
       manifest: {
+        id: '/',
         name: 'AfriWonder - Plateforme Sociale Africaine',
         short_name: 'AfriWonder',
         description: 'Plateforme de partage vidéo, marketplace et services pour l\'Afrique',

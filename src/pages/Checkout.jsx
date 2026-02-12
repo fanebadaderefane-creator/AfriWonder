@@ -15,8 +15,13 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { toast } from "sonner";
 
-// Marketplace: Orange Money uniquement
-const paymentIcons = { orange_money: '🟠' };
+const paymentIcons = {
+  orange_money: 'OM',
+  moov_money: 'MM',
+  card: 'CB',
+  wallet: 'W',
+  cod: 'COD',
+};
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -133,6 +138,15 @@ export default function Checkout() {
         throw new Error('Veuillez sélectionner une adresse de livraison');
       }
 
+      const shippingCity = isGuest
+        ? guestInfo.city
+        : showNewAddress
+          ? newAddress.city
+          : (() => {
+              const addr = addresses.find((a) => a.id === selectedAddress);
+              return addr?.city || newAddress.city;
+            })();
+
       const shippingAddress = isGuest
         ? `${guestInfo.address}, ${guestInfo.city}`
         : showNewAddress
@@ -148,6 +162,7 @@ export default function Checkout() {
 
       const result = await api.orders.create({
         shipping_address: shippingAddress,
+        shipping_city: shippingCity || undefined,
         payment_method: paymentMethod || 'orange_money',
       });
 
@@ -394,13 +409,27 @@ export default function Checkout() {
           </h3>
           <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod}>
             <div className="space-y-2">
-              <div className="flex items-center gap-3 p-3 border rounded-lg bg-orange-50 border-orange-200">
-                <RadioGroupItem value="orange_money" id="orange_money" />
-                <label htmlFor="orange_money" className="flex-1 cursor-pointer flex items-center gap-2">
-                  <span className="text-2xl">{paymentIcons.orange_money}</span>
-                  <span className="font-medium">Orange Money</span>
-                </label>
-              </div>
+              {[
+                { id: 'orange_money', label: 'Orange Money', hint: 'Paiement mobile instantané' },
+                { id: 'moov_money', label: 'Moov Money', hint: 'Paiement mobile Moov' },
+                { id: 'card', label: 'Carte bancaire', hint: 'Visa / Mastercard (Stripe)' },
+                { id: 'wallet', label: 'Portefeuille', hint: 'Payer depuis votre solde AfriWonder' },
+                { id: 'cod', label: 'Paiement à la livraison', hint: 'Règlement au livreur' },
+              ].map((m) => (
+                <div
+                  key={m.id}
+                  className={`flex items-center gap-3 p-3 border rounded-lg ${paymentMethod === m.id ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-200'}`}
+                >
+                  <RadioGroupItem value={m.id} id={m.id} />
+                  <label htmlFor={m.id} className="flex-1 cursor-pointer flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2">
+                      <span className="text-2xl">{paymentIcons[m.id]}</span>
+                      <span className="font-medium">{m.label}</span>
+                    </span>
+                    <span className="text-xs text-gray-500">{m.hint}</span>
+                  </label>
+                </div>
+              ))}
             </div>
           </RadioGroup>
         </Card>

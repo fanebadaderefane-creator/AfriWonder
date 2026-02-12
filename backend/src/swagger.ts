@@ -38,6 +38,82 @@ const options: swaggerJsdoc.Options = {
           bearerFormat: 'JWT',
         },
       },
+      schemas: {
+        ErrorResponse: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', example: false },
+            error: {
+              oneOf: [
+                { type: 'string', example: 'Invalid request' },
+                {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string', example: 'Invalid request' },
+                  },
+                },
+              ],
+            },
+          },
+        },
+        Product: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            seller_id: { type: 'string', format: 'uuid' },
+            name: { type: 'string' },
+            description: { type: 'string' },
+            price: { type: 'number', example: 15000 },
+            stock: { type: 'integer', example: 12 },
+            status: { type: 'string', example: 'active' },
+            category: { type: 'string', example: 'electronics' },
+            images: { type: 'array', items: { type: 'string' } },
+            created_at: { type: 'string', format: 'date-time' },
+          },
+        },
+        CartItem: {
+          type: 'object',
+          properties: {
+            productId: { type: 'string', format: 'uuid' },
+            quantity: { type: 'integer', minimum: 1 },
+            price: { type: 'number' },
+            sellerId: { type: 'string', format: 'uuid' },
+          },
+        },
+        Cart: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            user_id: { type: 'string', format: 'uuid' },
+            items: { type: 'array', items: { $ref: '#/components/schemas/CartItem' } },
+            subtotal: { type: 'number' },
+            coupon_code: { type: 'string', nullable: true },
+            coupon_discount: { type: 'number' },
+          },
+        },
+        Order: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            user_id: { type: 'string', format: 'uuid' },
+            seller_id: { type: 'string', format: 'uuid' },
+            total_amount: { type: 'number' },
+            status: { type: 'string', example: 'pending' },
+            payment_status: { type: 'string', example: 'pending' },
+            shipping_address: { type: 'string' },
+            created_at: { type: 'string', format: 'date-time' },
+          },
+        },
+        Pagination: {
+          type: 'object',
+          properties: {
+            page: { type: 'integer', example: 1 },
+            limit: { type: 'integer', example: 20 },
+            total: { type: 'integer', example: 120 },
+            totalPages: { type: 'integer', example: 6 },
+          },
+        },
+      },
     },
     security: [
       {

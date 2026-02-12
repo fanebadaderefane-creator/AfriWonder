@@ -173,6 +173,120 @@ class EscrowService {
     return { orderId, status: 'frozen' };
   }
 
+  async partialRefundAndRelease(orderId: string, refundAmount: number, reason: string) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        items: {
+          include: {
+            product: { include: { seller: true } },
+          },
+        },
+      },
+    });
+
+    if (!order) throw new Error('Commande non trouvée');
+    if (order.escrow_status !== 'held') throw new Error('Fonds non bloqués');
+
+    if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
+      const err: any = new Error('refund_amount invalide');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (refundAmount >= order.total_amount) {
+      const err: any = new Error('refund_amount doit être inférieur au total de la commande');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const sellerRaw: Record<string, number> = {};
+    for (const item of order.items) {
+      const sellerId = item.product.seller_id;
+      const itemTotal = (item as any).unit_price
+        ? (item as any).unit_price * item.quantity
+        : (item as any).price * item.quantity;
+      const platformFee = itemTotal * this.PLATFORM_COMMISSION_RATE;
+      if (!sellerRaw[sellerId]) sellerRaw[sellerId] = 0;
+      sellerRaw[sellerId] += itemTotal - platformFee;
+    }
+
+    const sellerTotal = Object.values(sellerRaw).reduce((s, v) => s + v, 0);
+    if (refundAmount >= sellerTotal) {
+      const err: any = new Error('refund_amount trop élevé par rapport au montant libérable vendeur');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const remainingForSellers = sellerTotal - refundAmount;
+    const ratio = remainingForSellers / sellerTotal;
+    const sellerIds = Object.keys(sellerRaw);
+    const sellerPayouts: Record<string, number> = {};
+    let distributed = 0;
+
+    for (let i = 0; i < sellerIds.length; i++) {
+      const sellerId = sellerIds[i];
+      const base = sellerRaw[sellerId];
+      const payout = i === sellerIds.length - 1
+        ? Math.max(0, Number((remainingForSellers - distributed).toFixed(2)))
+        : Math.max(0, Number((base * ratio).toFixed(2)));
+      sellerPayouts[sellerId] = payout;
+      distributed += payout;
+    }
+
+    const userWallet = await ledgerService.getOrCreateUserWallet(order.user_id, order.currency || 'XOF');
+    await ledgerService.credit(userWallet.id, refundAmount, {
+      referenceId: orderId,
+      referenceType: 'refund',
+      description: `Remboursement partiel - ${reason}`,
+    });
+    await prisma.transaction.create({
+      data: {
+        user_id: order.user_id,
+        type: 'refund',
+        amount: refundAmount,
+        currency: order.currency || 'XOF',
+        status: 'completed',
+        description: `Remboursement partiel - ${reason}`,
+        reference_id: orderId,
+        payment_method: 'internal',
+      },
+    });
+
+    for (const [sellerId, amount] of Object.entries(sellerPayouts)) {
+      if (amount <= 0) continue;
+      const wallet = await withdrawalService.getSellerWallet(sellerId);
+      await prisma.sellerWallet.update({
+        where: { id: wallet.id },
+        data: { balance: { increment: amount } },
+      });
+      await prisma.transaction.create({
+        data: {
+          user_id: sellerId,
+          type: 'order_payment',
+          amount,
+          currency: order.currency || 'XOF',
+          status: 'completed',
+          description: `Vente (partielle) - Commande ${orderId}`,
+          reference_id: orderId,
+          payment_method: 'internal',
+        },
+      });
+    }
+
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { escrow_status: 'released', payment_status: 'released' },
+    });
+
+    logger.info('Remboursement partiel et libération escrow', {
+      orderId,
+      refundAmount,
+      remainingForSellers,
+    });
+
+    return { orderId, refundAmount, sellerPayouts, remainingForSellers };
+  }
+
   async checkAndAutoRelease() {
     const releaseDate = new Date();
     releaseDate.setDate(releaseDate.getDate() - this.DEFAULT_RELEASE_DAYS);

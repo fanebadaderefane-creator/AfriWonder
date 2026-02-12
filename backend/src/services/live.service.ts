@@ -9,7 +9,6 @@ import platformRevenueService from './platformRevenue.service.js';
 import notificationService from './notification.service.js';
 import paymentService from './payment.service.js';
 import crypto from 'crypto';
-
 import commissionService from './commission.service.js';
 // Cadeaux live : 50% partagé (25% créateur, 25% plateforme) — modèle AfriWonder
 const VIEWER_INACTIVE_SEC = 60;
@@ -62,10 +61,11 @@ async function syncViewersCount(streamId: string) {
   return activeCount;
 }
 
-/** UID numérique pour Agora (0 .. 2^32-1) à partir de userId */
+/** UID numérique pour Agora (1 .. 2^32-1) à partir de userId */
 function userIdToAgoraUid(userId: string): number {
   const hash = crypto.createHash('md5').update(userId).digest();
-  return hash.readUInt32BE(0) >>> 0;
+  const uid = hash.readUInt32BE(0) >>> 0;
+  return uid > 0 ? uid : 1; // Agora exige uid >= 1
 }
 
 class LiveService {
@@ -79,20 +79,24 @@ class LiveService {
 
   /** Token Agora RTC (si AGORA_APP_ID + AGORA_APP_CERTIFICATE) */
   async getAgoraToken(channelName: string, userId: string, role: 'host' | 'audience'): Promise<{ token: string; appId: string; channel: string; uid: number } | null> {
-    const appId = process.env.AGORA_APP_ID;
-    const appCert = process.env.AGORA_APP_CERTIFICATE;
+    const appId = process.env.AGORA_APP_ID?.trim();
+    const appCert = process.env.AGORA_APP_CERTIFICATE?.trim();
     if (!appId || !appCert) return null;
     try {
-      const { RtcTokenBuilder, RtcRole } = await import('agora-token');
+      const agoraToken = await import('agora-token');
+      const { RtcTokenBuilder, RtcRole } = agoraToken.default ?? agoraToken;
+      if (!RtcTokenBuilder || !RtcRole) {
+        throw new Error('agora-token: RtcTokenBuilder ou RtcRole manquant. Vérifiez la version du package.');
+      }
       const uid = userIdToAgoraUid(userId);
       const expireSec = 3600 * 24;
-      const privilegeExpiredTs = Math.floor(Date.now() / 1000) + expireSec;
       const rtcRole = role === 'host' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
-      const token = RtcTokenBuilder.buildTokenWithUid(appId, appCert, channelName, uid, rtcRole, privilegeExpiredTs, privilegeExpiredTs);
+      const token = RtcTokenBuilder.buildTokenWithUid(appId, appCert, channelName, uid, rtcRole, expireSec, expireSec);
       return { token, appId, channel: channelName, uid };
     } catch (e) {
-      logger.warn('Agora token generation failed', { err: (e as Error).message });
-      return null;
+      const msg = (e as Error).message;
+      logger.warn('Agora token generation failed', { err: msg });
+      throw new Error(`Agora: ${msg}`);
     }
   }
 
@@ -109,6 +113,13 @@ class LiveService {
     language?: string;
     status?: 'scheduled' | 'live';
     scheduled_at?: Date;
+    tags?: string[];
+    age_restriction?: string;
+    donations_enabled?: boolean;
+    private_mode?: boolean;
+    goal_target?: number;
+    delay_seconds?: number;
+    max_quality?: string;
   }) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -124,8 +135,9 @@ class LiveService {
       data: {
         creator_id: userId,
         creator_name: user.username || 'Unknown',
-        title: data.title,
-        description: data.description,
+        // CDC: titre max 100 caractères, description max 500
+        title: data.title.slice(0, 100),
+        description: data.description ? data.description.slice(0, 500) : null,
         category: data.category,
         stream_url: data.streamUrl || '',
         stream_token: streamToken,
@@ -134,10 +146,18 @@ class LiveService {
         playback_url: data.playback_url,
         thumbnail_url: data.thumbnail_url,
         region: data.region,
-        language: data.language,
+        language: data.language || 'fr',
         status,
         scheduled_at: data.scheduled_at,
         room_id: roomId,
+        tags: (data.tags || []).slice(0, 5),
+        age_restriction: data.age_restriction || 'all',
+        donations_enabled: data.donations_enabled ?? true,
+        private_mode: data.private_mode ?? false,
+        goal_target: data.goal_target ?? null,
+        goal_amount: data.goal_target ? 0 : null,
+        delay_seconds: Math.min(60, Math.max(0, data.delay_seconds ?? 0)),
+        max_quality: data.max_quality || 'auto',
       },
     });
 
@@ -199,8 +219,12 @@ class LiveService {
     const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
     if (!stream) throw new Error('Stream not found');
     if (role === 'host' && stream.creator_id !== userId) throw new Error('Unauthorized');
-    const agora = await this.getAgoraToken(stream.room_id, userId, role);
-    if (agora) return agora;
+    try {
+      const agora = await this.getAgoraToken(stream.room_id, userId, role);
+      if (agora) return agora;
+    } catch (_e) {
+      logger.warn('Agora token fallback to HMAC', { streamId });
+    }
     return {
       token: this.generateStreamToken(stream.room_id, userId, role),
       appId: null,
@@ -274,28 +298,36 @@ class LiveService {
     const stream = await prisma.liveStream.findUnique({
       where: { id: streamId },
       include: {
-        creator: { select: { id: true, username: true, profile_image: true, is_verified: true } },
+        creator: { select: { id: true, username: true, profile_image: true, is_verified: true, replay_premium: true } },
         moderation_settings: true,
         chat_messages: { take: 100, orderBy: [{ is_pinned: 'desc' }, { created_date: 'desc' }], where: { is_deleted: false } },
         gifts: { take: 30, orderBy: { created_at: 'desc' } },
+        replay_chapters: { orderBy: { start_seconds: 'asc' } },
       },
     });
     if (!stream) return null;
     const moderatorIds = new Set((await prisma.liveModerator.findMany({ where: { live_id: streamId }, select: { user_id: true } })).map((m) => m.user_id));
     const topDonorIds = new Set((await prisma.liveTopDonor.findMany({ where: { live_id: streamId }, take: 20, select: { user_id: true } })).map((d) => d.user_id));
     const creatorId = stream.creator_id;
-    const chatWithBadges = stream.chat_messages.map((msg: any) => ({
-      ...msg,
-      sender_badges: {
-        is_creator: msg.sender_id === creatorId,
-        is_moderator: moderatorIds.has(msg.sender_id),
-        is_top_supporter: topDonorIds.has(msg.sender_id),
-      },
-    }));
-    return { ...stream, chat_messages: chatWithBadges };
+    const creator = stream.creator as { replay_premium?: boolean };
+    const retentionDays = creator?.replay_premium ? 90 : 14;
+    const now = new Date();
+    const chatWithBadges = stream.chat_messages.map((msg: any) => {
+      const pinExpired = msg.pin_expires_at && new Date(msg.pin_expires_at) < now;
+      return {
+        ...msg,
+        is_pinned: msg.is_pinned && !pinExpired,
+        sender_badges: {
+          is_creator: msg.sender_id === creatorId,
+          is_moderator: moderatorIds.has(msg.sender_id),
+          is_top_supporter: topDonorIds.has(msg.sender_id),
+        },
+      };
+    });
+    return { ...stream, chat_messages: chatWithBadges, replay_retention_days: retentionDays };
   }
 
-  async listStreams(page = 1, limit = 20, filters?: { status?: string; category?: string; featured?: boolean; region?: string; language?: string }) {
+  async listStreams(page = 1, limit = 20, filters?: { status?: string; category?: string; featured?: boolean; region?: string; language?: string; sortBy?: string }) {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (filters?.status) where.status = filters.status;
@@ -304,21 +336,28 @@ class LiveService {
     if (filters?.region) where.region = filters.region;
     if (filters?.language) where.language = filters.language;
 
+    const sortBy = filters?.sortBy || 'viewers';
+    let orderBy: any[] = [{ status: 'asc' }];
+    if (sortBy === 'recent') orderBy.push({ started_at: 'desc' });
+    else if (sortBy === 'popularity') orderBy.push({ total_gifts_amount: 'desc' }, { total_likes: 'desc' });
+    else if (sortBy === 'duration') orderBy.push({ duration_minutes: 'desc' });
+    else orderBy.push({ viewers_count: 'desc' });
+
     const [streams, total] = await Promise.all([
       prisma.liveStream.findMany({
         where,
         include: { creator: { select: { id: true, username: true, profile_image: true, is_verified: true } } },
         skip,
         take: limit,
-        orderBy: [{ status: 'asc' }, { viewers_count: 'desc' }],
+        orderBy,
       }),
       prisma.liveStream.count({ where }),
     ]);
     return { streams, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
-  /** Découverte : populaires, régionaux, par catégorie, des comptes suivis */
-  async getDiscovery(userId: string | null, options?: { type?: 'popular' | 'regional' | 'followed' | 'category'; region?: string; category?: string; limit?: number }) {
+  /** Découverte : populaires, régionaux, par catégorie, des comptes suivis, trending (algorithme recommandation) */
+  async getDiscovery(userId: string | null, options?: { type?: 'popular' | 'regional' | 'followed' | 'category' | 'trending'; region?: string; category?: string; limit?: number }) {
     const limit = Math.min(options?.limit ?? 20, 50);
     const where: any = { status: 'live' };
 
@@ -344,12 +383,162 @@ class LiveService {
       prisma.liveStream.findMany({
         where,
         include: { creator: { select: { id: true, username: true, profile_image: true, is_verified: true } } },
-        take: limit,
+        take: options?.type === 'trending' ? limit * 2 : limit,
         orderBy,
       }),
       prisma.liveStream.count({ where }),
     ]);
+
+    // CDC: Algorithme recommandation trending — score = viewers*2 + total_gifts + total_likes
+    if (options?.type === 'trending' && streams.length > 0) {
+      const scored = streams
+        .map((s) => ({
+          ...s,
+          _score: (s.viewers_count ?? 0) * 2 + (s.total_gifts_amount ?? 0) / 100 + (s.total_likes ?? 0),
+        }))
+        .sort((a, b) => (b._score || 0) - (a._score || 0))
+        .slice(0, limit)
+        .map(({ _score, ...rest }) => rest);
+      return { streams: scored, pagination: { page: 1, limit, total, totalPages: Math.ceil(total / limit) } };
+    }
+
     return { streams, pagination: { page: 1, limit, total, totalPages: Math.ceil(total / limit) } };
+  }
+
+  /** CDC: Don direct (tip) sans gift — 100–1M FCFA, 15% plateforme, tiers visuels */
+  async sendTip(streamId: string, senderId: string, data: { amount: number; message?: string; is_anonymous?: boolean }) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream) throw new Error('Stream not found');
+    if (stream.status !== 'live') throw new Error('Stream has ended.');
+    if (stream.donations_enabled === false) throw new Error('Les dons sont désactivés.');
+
+    const amount = Math.round(data.amount);
+    if (amount < 100) throw new Error('Montant minimum: 100 FCFA');
+    if (amount > 1_000_000) throw new Error('Montant maximum: 1 000 000 FCFA');
+
+    const key = `${streamId}:${senderId}`;
+    pruneGiftRateLimit(key);
+    const recent = giftRateLimitMap.get(key) || [];
+    if (recent.length >= GIFT_RATE_LIMIT_COUNT) {
+      throw new Error(`Limite: max ${GIFT_RATE_LIMIT_COUNT} dons par 10 secondes.`);
+    }
+    recent.push(Date.now());
+    giftRateLimitMap.set(key, recent);
+
+    const wallet = await getOrCreateWallet(senderId);
+    const bal = wallet.available_balance ?? wallet.balance ?? 0;
+    if (bal < amount) throw new Error(`Solde insuffisant. Rechargez votre portefeuille.`);
+
+    const msg = data.message?.slice(0, 200) || null;
+    const { platform: platformCommission, creator: creatorEarnings } = commissionService.videoSocialLiveGift(amount);
+
+    let tier = 'standard';
+    if (amount >= 10000) tier = 'vip';
+    else if (amount >= 5000) tier = 'premium';
+    else if (amount >= 1000) tier = 'super';
+    else if (amount >= 500) tier = 'featured';
+
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.wallet.update({
+        where: { id: wallet.id },
+        data: { balance: { decrement: amount } },
+      });
+
+      const tip = await tx.liveTip.create({
+        data: {
+          live_id: streamId,
+          sender_id: data.is_anonymous ? null : senderId,
+          sender_name: data.is_anonymous ? 'Anonyme' : (await tx.user.findUnique({ where: { id: senderId }, select: { username: true } }))?.username || 'User',
+          sender_avatar: data.is_anonymous ? null : (await tx.user.findUnique({ where: { id: senderId }, select: { profile_image: true } }))?.profile_image || null,
+          creator_id: stream.creator_id,
+          amount,
+          creator_earnings: creatorEarnings,
+          platform_commission: platformCommission,
+          message: msg,
+          is_anonymous: data.is_anonymous ?? false,
+          tier,
+        },
+      });
+
+      const goalUpdate: Record<string, unknown> = { total_tips_amount: { increment: amount } };
+      let goalReached = false;
+      if (stream.goal_target != null && stream.goal_target > 0) {
+        const current = stream.goal_amount ?? 0;
+        const newGoalAmount = current + amount;
+        goalUpdate.goal_amount = newGoalAmount;
+        if (newGoalAmount >= stream.goal_target) goalReached = true;
+      }
+      await tx.liveStream.update({ where: { id: streamId }, data: goalUpdate });
+
+      const chatMsg = data.is_anonymous
+        ? `💵 Don anonyme: ${amount.toLocaleString()} FCFA`
+        : `💵 ${(await tx.user.findUnique({ where: { id: senderId }, select: { username: true } }))?.username || 'User'} : ${amount.toLocaleString()} FCFA${msg ? ` — ${msg}` : ''}`;
+      const pinSeconds = tier === 'vip' ? 120 : tier === 'premium' ? 30 : 0;
+      const pinExpiresAt = pinSeconds > 0 ? new Date(Date.now() + pinSeconds * 1000) : null;
+      await tx.liveChat.create({
+        data: {
+          live_id: streamId,
+          sender_id: senderId,
+          sender_name: data.is_anonymous ? 'Anonyme' : (await tx.user.findUnique({ where: { id: senderId }, select: { username: true } }))?.username || 'User',
+          sender_avatar: data.is_anonymous ? null : (await tx.user.findUnique({ where: { id: senderId }, select: { profile_image: true } }))?.profile_image || null,
+          message: chatMsg,
+          message_type: 'gift',
+          is_pinned: pinSeconds > 0,
+          pin_expires_at: pinExpiresAt,
+        },
+      });
+      await tx.liveStream.update({ where: { id: streamId }, data: { total_messages: { increment: 1 } } });
+
+      const withdrawalService = (await import('./withdrawal.service.js')).default;
+      const sellerWallet = await withdrawalService.getSellerWallet(stream.creator_id);
+      await tx.sellerWallet.update({
+        where: { id: sellerWallet.id },
+        data: { balance: { increment: creatorEarnings } },
+      });
+
+      await tx.transaction.create({
+        data: {
+          user_id: senderId,
+          type: 'live_tip_sent',
+          amount: -amount,
+          currency: 'XOF',
+          status: 'completed',
+          description: `Don live${data.is_anonymous ? ' (anonyme)' : ''}`,
+          reference_id: tip.id,
+          payment_method: 'wallet',
+        },
+      });
+      await tx.transaction.create({
+        data: {
+          user_id: stream.creator_id,
+          type: 'tip_received',
+          amount: creatorEarnings,
+          currency: 'XOF',
+          status: 'completed',
+          description: 'Don reçu pendant le live',
+          reference_id: tip.id,
+          payment_method: 'internal',
+        },
+      });
+      return tip;
+    });
+
+    await platformRevenueService.addRevenue(platformCommission, 'live_gifts', `Commission tip live`, result.id);
+    const io = getIO();
+    if (io) io.to(`stream:${streamId}`).emit('live:tip', { ...result, tier });
+    const streamAfter = await prisma.liveStream.findUnique({ where: { id: streamId }, select: { goal_amount: true, goal_target: true, creator_id: true } });
+    if (streamAfter?.goal_target && streamAfter.goal_target > 0 && (streamAfter.goal_amount ?? 0) >= streamAfter.goal_target) {
+      try {
+        await notificationService.create(streamAfter.creator_id, {
+          type: 'live_goal_reached',
+          title: 'Objectif atteint !',
+          message: `Félicitations ! Votre objectif de ${streamAfter.goal_target.toLocaleString()} FCFA a été atteint.`,
+          reference_type: 'live',
+          reference_id: streamId,
+        });
+      } catch (_) {}
+    }
+    return { ...result, tier };
   }
 
   /** Cadeau: vérif status, wallet, transaction atomique, rate limit */
@@ -364,9 +553,12 @@ class LiveService {
     const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
     if (!stream) throw new Error('Stream not found');
     if (stream.status !== 'live') throw new Error('Stream has ended. Gifts are disabled.');
+    if (stream.donations_enabled === false) throw new Error('Les dons sont désactivés.');
 
     const totalAmount = data.amount * data.quantity;
-    if (totalAmount <= 0) throw new Error('Invalid amount');
+    // CDC: montant minimum 100 FCFA, maximum 1 000 000 FCFA
+    if (totalAmount < 100) throw new Error('Montant minimum pour un don live: 100 FCFA');
+    if (totalAmount > 1_000_000) throw new Error('Montant maximum pour un don live: 1 000 000 FCFA');
 
     const key = `${streamId}:${senderId}`;
     pruneGiftRateLimit(key);
@@ -380,6 +572,11 @@ class LiveService {
     const wallet = await getOrCreateWallet(senderId);
     if (wallet.balance < totalAmount) {
       throw new Error(`Solde insuffisant. Votre solde: ${wallet.balance} FCFA. Rechargez votre portefeuille.`);
+    }
+
+    // CDC: message accompagnant le don max 200 caractères
+    if (data.message && data.message.length > 200) {
+      data.message = data.message.slice(0, 200);
     }
 
     const { platform: platformCommission, creator: creatorEarnings } = commissionService.videoSocialLiveGift(totalAmount);
@@ -409,10 +606,12 @@ class LiveService {
         },
       });
 
-      await tx.liveStream.update({
-        where: { id: streamId },
-        data: { total_gifts_amount: { increment: totalAmount } },
-      });
+      const goalUpdate: Record<string, unknown> = { total_gifts_amount: { increment: totalAmount } };
+      if (stream.goal_target != null && stream.goal_target > 0) {
+        const current = stream.goal_amount ?? 0;
+        goalUpdate.goal_amount = current + totalAmount;
+      }
+      await tx.liveStream.update({ where: { id: streamId }, data: goalUpdate });
 
       await tx.liveChat.create({
         data: {
@@ -420,7 +619,7 @@ class LiveService {
           sender_id: senderId,
           sender_name: (await tx.user.findUnique({ where: { id: senderId }, select: { username: true } }))?.username || 'User',
           sender_avatar: (await tx.user.findUnique({ where: { id: senderId }, select: { profile_image: true } }))?.profile_image || null,
-          message: `🎁 ${data.giftName} x${data.quantity}`,
+          message: data.message ? `🎁 ${data.giftName} x${data.quantity} — ${data.message}` : `🎁 ${data.giftName} x${data.quantity}`,
           message_type: 'gift',
         },
       });
@@ -471,11 +670,24 @@ class LiveService {
     const io = getIO();
     if (io) io.to(`stream:${streamId}`).emit('live:gift', result);
 
+    const streamAfter = await prisma.liveStream.findUnique({ where: { id: streamId }, select: { goal_amount: true, goal_target: true, creator_id: true } });
+    if (streamAfter?.goal_target && streamAfter.goal_target > 0 && (streamAfter.goal_amount ?? 0) >= streamAfter.goal_target) {
+      try {
+        await notificationService.create(streamAfter.creator_id, {
+          type: 'live_goal_reached',
+          title: 'Objectif atteint !',
+          message: `Félicitations ! Votre objectif de ${streamAfter.goal_target.toLocaleString()} FCFA a été atteint.`,
+          reference_type: 'live',
+          reference_id: streamId,
+        });
+      } catch (_) {}
+    }
+
     logger.info('Live gift sent', { streamId, senderId, giftId: result.id, totalAmount });
     return result;
   }
 
-  /** Chat: anti-spam 1 msg / 2 sec, slow mode, banned words, followers only, mute/ban */
+  /** Chat: anti-spam, slow mode, emoji_only, slash commands (/ban, /timeout, /clear) */
   async sendChatMessage(streamId: string, userId: string, message: string) {
     const stream = await prisma.liveStream.findUnique({
       where: { id: streamId },
@@ -486,6 +698,48 @@ class LiveService {
 
     const settings = stream.moderation_settings;
     if (settings && !settings.comments_enabled) throw new Error('Comments are disabled by the host.');
+
+    const rawMsg = (message || '').trim();
+    if (!rawMsg) throw new Error('Message vide.');
+
+    const isCreator = stream.creator_id === userId;
+    const isMod = await prisma.liveModerator.findFirst({
+      where: { live_id: streamId, user_id: userId },
+    });
+    const canModerate = !!(isCreator || isMod);
+
+    if (rawMsg.startsWith('/') && canModerate) {
+      const parts = rawMsg.slice(1).split(/\s+/);
+      const cmd = parts[0].toLowerCase();
+      if (cmd === 'ban' && parts[1]) {
+        const targetUsername = parts.slice(1).join(' ');
+        const targetUser = await prisma.user.findFirst({ where: { username: targetUsername } });
+        if (targetUser) {
+          await this.banUser(streamId, targetUser.id, userId, 'Commande /ban', { permanent: true });
+          return { type: 'system', message: `Utilisateur ${targetUsername} banni.` } as any;
+        }
+      }
+      if (cmd === 'timeout' && parts[1]) {
+        const targetUsername = parts[1];
+        const mins = parseInt(parts[2]) || 5;
+        const targetUser = await prisma.user.findFirst({ where: { username: targetUsername } });
+        if (targetUser) {
+          await this.banUser(streamId, targetUser.id, userId, 'Timeout', { durationMinutes: mins });
+          return { type: 'system', message: `Timeout ${mins} min pour ${targetUsername}.` } as any;
+        }
+      }
+      if (cmd === 'clear') {
+        await prisma.liveChat.updateMany({ where: { live_id: streamId }, data: { is_deleted: true } });
+        const io = getIO();
+        if (io) io.to(`stream:${streamId}`).emit('live:chat:clear');
+        return { type: 'system', message: 'Chat effacé.' } as any;
+      }
+    }
+
+    const emojiOnly = /^[\p{Emoji}\s]+$/u;
+    if (settings?.emoji_only && !emojiOnly.test(rawMsg)) {
+      throw new Error('Mode emoji uniquement. Envoyez uniquement des emojis.');
+    }
 
     const ban = await prisma.liveStreamBan.findFirst({
       where: { live_id: streamId, user_id: userId },
@@ -519,7 +773,7 @@ class LiveService {
     }
 
     const bannedWords = (settings?.banned_words as string[]) || [];
-    let cleanMessage = (message || '').trim().slice(0, 500);
+    let cleanMessage = rawMsg.slice(0, 500);
     for (const word of bannedWords) {
       const re = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
       cleanMessage = cleanMessage.replace(re, '***');
@@ -536,10 +790,6 @@ class LiveService {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { username: true, profile_image: true },
-    });
-    const isCreator = stream.creator_id === userId;
-    const isMod = await prisma.liveModerator.findUnique({
-      where: { live_id_user_id: { live_id: streamId, user_id: userId } },
     });
     const senderRole = isCreator ? 'creator' : (isMod ? 'moderator' : 'viewer');
 
@@ -563,7 +813,54 @@ class LiveService {
     const io = getIO();
     if (io) io.to(`stream:${streamId}`).emit('live:chat', chatMessage);
 
+    // CDC: Mentions @username — notifier les utilisateurs mentionnés
+    const mentionRegex = /@(\w+)/g;
+    let m;
+    const mentionedUsernames = new Set<string>();
+    while ((m = mentionRegex.exec(cleanMessage)) !== null) mentionedUsernames.add(m[1]);
+    if (mentionedUsernames.size > 0) {
+      const mentioned = await prisma.user.findMany({
+        where: { username: { in: [...mentionedUsernames] } },
+        select: { id: true },
+      });
+      const senderName = user?.username || 'Quelqu\'un';
+      for (const u of mentioned) {
+        if (u.id !== userId) {
+          try {
+            await notificationService.create(u.id, {
+              type: 'live_mention',
+              title: 'Mention dans un live',
+              message: `${senderName} vous a mentionné dans le chat : ${cleanMessage.slice(0, 80)}...`,
+              reference_type: 'live',
+              reference_id: streamId,
+            });
+          } catch (_) {}
+        }
+      }
+    }
+
     return chatMessage;
+  }
+
+  /** CDC: Réaction (heart, fire, thumbs) */
+  async reaction(streamId: string, userId: string, reactionType: 'like' | 'heart' | 'fire' | 'thumbs') {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream) throw new Error('Stream not found');
+    if (stream.status !== 'live') throw new Error('Stream has ended.');
+
+    await prisma.liveLike.create({
+      data: { live_id: streamId, user_id: userId, reaction_type: reactionType },
+    });
+
+    const updated = await prisma.liveStream.update({
+      where: { id: streamId },
+      data: { total_likes: { increment: 1 } },
+    });
+
+    const io = getIO();
+    if (io) io.to(`stream:${streamId}`).emit('live:like', { count: updated.total_likes, reactionType });
+
+    return { total_likes: updated.total_likes, reactionType };
   }
 
   async like(streamId: string, userId: string) {
@@ -572,7 +869,7 @@ class LiveService {
     if (stream.status !== 'live') throw new Error('Stream has ended.');
 
     await prisma.liveLike.create({
-      data: { live_id: streamId, user_id: userId },
+      data: { live_id: streamId, user_id: userId, reaction_type: 'like' },
     });
 
     const updated = await prisma.liveStream.update({
@@ -631,6 +928,32 @@ class LiveService {
       where: { id: streamId },
       data: updateData,
     });
+
+    // CDC: Notification « replay disponible » aux abonnés
+    const finalReplayUrl = options?.replay_url ?? stream.replay_url;
+    if (finalReplayUrl) {
+      try {
+        const followers = await prisma.follow.findMany({
+          where: { following_id: stream.creator_id },
+          select: { follower_id: true },
+        });
+        const creatorName = (await prisma.user.findUnique({ where: { id: stream.creator_id }, select: { username: true } }))?.username || 'Créateur';
+        for (const f of followers) {
+          try {
+            await notificationService.create(f.follower_id, {
+              type: 'live_replay_available',
+              title: 'Replay disponible',
+              message: `${creatorName} a publié le replay : ${stream.title}`,
+              reference_type: 'live',
+              reference_id: streamId,
+            });
+          } catch (_) {}
+        }
+        if (followers.length) logger.info('Notifications replay envoyées', { streamId, count: followers.length });
+      } catch (e) {
+        logger.warn('Erreur notif replay', { streamId });
+      }
+    }
 
     await prisma.liveAnalytics.create({
       data: {
@@ -696,6 +1019,7 @@ class LiveService {
     slow_mode_seconds?: number;
     comments_enabled?: boolean;
     followers_only?: boolean;
+    emoji_only?: boolean;
     banned_words?: string[];
   }) {
     const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
@@ -798,10 +1122,32 @@ class LiveService {
     const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
     if (!stream) throw new Error('Stream not found');
     if (userId && stream.creator_id !== userId) throw new Error('Unauthorized');
+    const hadReplay = !!stream.replay_url;
     await prisma.liveStream.update({
       where: { id: streamId },
       data: { replay_url: replayUrl },
     });
+    // CDC: Notifier abonnés si replay ajouté (et pas déjà notifié via endStream)
+    if (!hadReplay && stream.status === 'ended') {
+      try {
+        const followers = await prisma.follow.findMany({
+          where: { following_id: stream.creator_id },
+          select: { follower_id: true },
+        });
+        const creatorName = (await prisma.user.findUnique({ where: { id: stream.creator_id }, select: { username: true } }))?.username || 'Créateur';
+        for (const f of followers) {
+          try {
+            await notificationService.create(f.follower_id, {
+              type: 'live_replay_available',
+              title: 'Replay disponible',
+              message: `${creatorName} a publié le replay : ${stream.title}`,
+              reference_type: 'live',
+              reference_id: streamId,
+            });
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
     return prisma.liveStream.findUnique({ where: { id: streamId } });
   }
 
@@ -911,6 +1257,66 @@ class LiveService {
     logger.info('Wallet recharge confirmed', { userId: tx.user_id, amount: tx.amount });
     return { success: true, new_balance: wallet.balance + tx.amount };
   }
+
+  /** CDC: Export données créateur (CSV/Excel) */
+  async exportCreatorAnalytics(userId: string, format: 'csv' | 'json' = 'csv') {
+    const streams = await prisma.liveStream.findMany({
+      where: { creator_id: userId },
+      include: { analytics: true },
+      orderBy: { started_at: 'desc' },
+    });
+    if (format === 'json') return { streams };
+    const headers = 'id,title,started_at,duration_minutes,viewers_count,peak_viewers,total_gifts_amount,total_tips_amount,total_likes,total_messages\n';
+    const rows = streams.map((s) =>
+      [s.id, `"${(s.title || '').replace(/"/g, '""')}"`, s.started_at?.toISOString(), s.duration_minutes ?? 0, s.viewers_count, s.peak_viewers, s.total_gifts_amount, s.total_tips_amount ?? 0, s.total_likes, s.total_messages].join(',')
+    );
+    return headers + rows.join('\n');
+  }
+
+  /** CDC: Chapitres replay */
+  async getReplayChapters(streamId: string) {
+    const chapters = await prisma.liveReplayChapter.findMany({
+      where: { live_id: streamId },
+      orderBy: { start_seconds: 'asc' },
+    });
+    return chapters;
+  }
+
+  async addReplayChapter(streamId: string, userId: string, data: { title: string; start_seconds: number; end_seconds?: number }) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream || stream.creator_id !== userId) throw new Error('Unauthorized');
+    return prisma.liveReplayChapter.create({
+      data: { live_id: streamId, title: data.title, start_seconds: data.start_seconds, end_seconds: data.end_seconds ?? null },
+    });
+  }
+
+  /** CDC: Abonnement mensuel créateur (don récurrent) */
+  async subscribeToCreator(subscriberId: string, creatorId: string, amountFcfa: number) {
+    if (amountFcfa < 100 || amountFcfa > 100_000) throw new Error('Montant abonnement: 100 à 100 000 FCFA/mois');
+    const exists = await prisma.liveCreatorSubscription.findUnique({
+      where: { creator_id_subscriber_id: { creator_id: creatorId, subscriber_id: subscriberId } },
+    });
+    if (exists) throw new Error('Abonnement déjà actif');
+    const next = new Date();
+    next.setMonth(next.getMonth() + 1);
+    return prisma.liveCreatorSubscription.create({
+      data: {
+        creator_id: creatorId,
+        subscriber_id: subscriberId,
+        amount_fcfa: amountFcfa,
+        next_billing_at: next,
+      },
+    });
+  }
+
+  async unsubscribeFromCreator(subscriberId: string, creatorId: string) {
+    await prisma.liveCreatorSubscription.updateMany({
+      where: { creator_id: creatorId, subscriber_id: subscriberId },
+      data: { status: 'cancelled' },
+    });
+    return { ok: true };
+  }
+
 }
 
 export default new LiveService();

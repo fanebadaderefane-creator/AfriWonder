@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { requireAnyAdmin } from '../middleware/adminRbac.js';
 import { param } from '../utils/params.js';
 import withdrawalService from '../services/withdrawal.service.js';
 
@@ -14,7 +15,7 @@ router.post('/request', authenticate, async (req: AuthRequest, res, next) => {
     if (!amount || !orange_money_phone) {
       return res.status(400).json({
         success: false,
-        error: { message: 'Montant et numéro Orange Money requis' },
+        error: { message: 'Montant et numÃ©ro Orange Money requis' },
       });
     }
 
@@ -27,7 +28,7 @@ router.post('/request', authenticate, async (req: AuthRequest, res, next) => {
     res.status(201).json({
       success: true,
       data: withdrawal,
-      message: 'Demande de retrait créée. Elle sera traitée sous 24-48h.',
+      message: 'Demande de retrait crÃ©Ã©e. Elle sera traitÃ©e sous 24-48h.',
     });
   } catch (error: any) {
     next(error);
@@ -53,12 +54,8 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // GET /api/withdrawals/pending - Retraits en attente (Admin)
-router.get('/pending', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/pending', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
   try {
-    // TODO: Vérifier que l'utilisateur est admin
-    // if (req.user!.role !== 'admin') {
-    //   return res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
-    // }
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
@@ -75,9 +72,8 @@ router.get('/pending', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/withdrawals/:id/process - Traiter un retrait (Admin)
-router.post('/:id/process', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/process', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
   try {
-    // TODO: Vérifier que l'utilisateur est admin
     const adminId = req.user!.id;
     const withdrawalId = param(req, 'id');
     const { transaction_reference, notes } = req.body;
@@ -90,7 +86,7 @@ router.post('/:id/process', authenticate, async (req: AuthRequest, res, next) =>
     res.json({
       success: true,
       data: result,
-      message: 'Retrait traité avec succès',
+      message: 'Retrait traitÃ© avec succÃ¨s',
     });
   } catch (error: any) {
     next(error);
@@ -109,7 +105,7 @@ router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => 
     res.json({
       success: true,
       data: withdrawal,
-      message: 'Retrait annulé. Le montant a été remboursé dans votre wallet.',
+      message: 'Retrait annulÃ©. Le montant a Ã©tÃ© remboursÃ© dans votre wallet.',
     });
   } catch (error: any) {
     next(error);
@@ -117,4 +113,5 @@ router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 export default router;
+
 

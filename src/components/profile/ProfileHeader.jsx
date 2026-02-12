@@ -42,7 +42,9 @@ export default function ProfileHeader({
         if (!file) return;
         
         try {
-          const { file_url } = await api.upload.video({ file });
+          const result = await api.upload.image(file);
+          const file_url = result?.file_url || result?.data?.file_url;
+          if (!file_url) throw new Error('Pas d\'URL reçue');
           await api.auth.updateMe({ profile_image: file_url });
           
           // Invalider le cache des vidéos pour recharger avec la nouvelle photo
@@ -159,11 +161,11 @@ export default function ProfileHeader({
         <div className="flex items-center gap-4 mb-4">
           <button onClick={onFollowingClick} className="text-center hover:bg-gray-50 px-2 py-2 rounded-lg transition-colors">
             <span className="block text-lg font-bold text-gray-900">{formatCount(stats.following)}</span>
-            <span className="text-xs text-gray-500">Abonnements</span>
+            <span className="text-xs text-gray-500">Dans leur Wonder</span>
           </button>
           <button onClick={onFollowersClick} className="text-center hover:bg-gray-50 px-2 py-2 rounded-lg transition-colors">
-            <span className="block text-lg font-bold text-gray-900">{formatCount(stats.followers)}</span>
-            <span className="text-xs text-gray-500">Abonnés</span>
+            <span className="block text-lg font-bold text-gray-900">{formatCount(stats.wonderers ?? stats.followers)}</span>
+            <span className="text-xs text-gray-500">Wonderers</span>
           </button>
           <button onClick={onStatsClick} className="text-center hover:bg-gray-50 px-2 py-2 rounded-lg transition-colors">
             <span className="block text-lg font-bold text-gray-900">{formatCount(stats.likes)}</span>
@@ -219,11 +221,11 @@ export default function ProfileHeader({
                 className={cn(
                   "flex-1 rounded-xl transition-all",
                   isFollowing 
-                    ? "bg-gray-100 text-gray-700 hover:bg-gray-200" 
-                    : "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                    ? "bg-gray-100 text-gray-700 hover:bg-gray-200 border border-orange-200" 
+                    : "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white shadow-lg hover:shadow-orange-500/30"
                 )}
               >
-                {isFollowing ? 'Abonné' : "S'abonner"}
+                {isFollowing ? 'Dans son Wonder' : 'Wonder'}
               </Button>
               <Button
                 onClick={onMessage}

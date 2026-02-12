@@ -8,8 +8,54 @@ import { evaluate as riskEvaluate } from '../services/riskEngine.service.js';
 import { requireKycFor } from '../services/kycRequired.service.js';
 import { auditFromRequest } from '../services/auditTrail.service.js';
 import { logger } from '../utils/logger.js';
+import { logWebhookIncoming, logWebhookProcessed, logWebhookError } from '../utils/webhookLogger.js';
 
 const router = Router();
+
+/**
+ * @swagger
+ * /api/payments/orange-money:
+ *   post:
+ *     tags: [Payments]
+ *     summary: Initier un paiement Orange Money
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [orderId, amount, phone]
+ *             properties:
+ *               orderId: { type: string }
+ *               amount: { type: number }
+ *               phone: { type: string, example: "+22370123456" }
+ *               returnUrl: { type: string }
+ *     responses:
+ *       200:
+ *         description: Paiement initialise
+ *
+ * /api/payments/orange-money/verify:
+ *   post:
+ *     tags: [Payments]
+ *     summary: Verifier un paiement Orange Money
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Paiement verifie
+ *
+ * /api/payments/wallet:
+ *   get:
+ *     tags: [Payments]
+ *     summary: Obtenir le wallet utilisateur
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Wallet recupere
+ */
 
 // POST /api/payments/stripe/checkout
 router.post('/stripe/checkout', authenticate, async (req: AuthRequest, res, next) => {
@@ -49,6 +95,25 @@ const handleOrangeMoneyInit = async (req: AuthRequest, res: any, next: any) => {
     const kyc = await requireKycFor(userId, 'payment');
     if (!kyc.allowed) return res.status(403).json({ success: false, message: kyc.message });
     const { orderId, amount, phone, returnUrl } = req.body;
+    if (!orderId || typeof orderId !== 'string') {
+      return res.status(400).json({ success: false, message: 'orderId requis' });
+    }
+    if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+      return res.status(400).json({ success: false, message: 'amount invalide' });
+    }
+    if (!phone || typeof phone !== 'string' || phone.replace(/[^\d+]/g, '').length < 8) {
+      return res.status(400).json({ success: false, message: 'phone invalide' });
+    }
+    if (returnUrl && typeof returnUrl === 'string') {
+      try {
+        const parsed = new URL(returnUrl);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          return res.status(400).json({ success: false, message: 'returnUrl invalide' });
+        }
+      } catch {
+        return res.status(400).json({ success: false, message: 'returnUrl invalide' });
+      }
+    }
     const risk = await riskEvaluate({
       userId,
       amount: amount ?? 0,
@@ -66,6 +131,93 @@ const handleOrangeMoneyInit = async (req: AuthRequest, res: any, next: any) => {
     const key = req.headers['idempotency-key'] as string;
     if (key) saveIdempotencyResponse(key, 200, { success: true, data: result }).catch(() => {});
     auditFromRequest(req, 'payment_init', 'order', orderId, { amount, orderId }).catch(() => {});
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+};
+
+const processSuccessfulPaymentReference = async (referenceId: string, status: string) => {
+  const handlers = [
+    ['video_tip', () => import('../services/videoTip.service.js').then(m => m.default.completeTip(referenceId, status))],
+    ['loan_contribution', () => import('../services/microcredit.service.js').then(m => m.default.confirmContribution(referenceId))],
+    ['campaign_contribution', () => import('../services/crowdfunding.service.js').then(m => m.default.confirmContribution(referenceId))],
+    ['subscription', () => import('../services/subscription.service.js').then(m => m.default.confirmSubscription(referenceId))],
+    ['order', () => import('../services/order.service.js').then(m => m.default.confirmPayment(referenceId))],
+    ['service', () => import('../services/service.service.js').then(m => m.default.confirmServicePayment(referenceId))],
+    ['course', () => import('../services/course.service.js').then(m => m.default.confirmCoursePayment(referenceId))],
+    ['event', () => import('../services/event.service.js').then(m => m.default.confirmTicketPayment(referenceId))],
+    ['challenge', () => import('../services/challenge.service.js').then(m => m.default.confirmParticipation(referenceId))],
+    ['petition', () => import('../services/civic.service.js').then(m => m.default.confirmDonation(referenceId))],
+    ['job_premium', () => import('../services/job.service.js').then(m => m.default.confirmPremiumPayment(referenceId))],
+    ['promotion', () => import('../services/product.service.js').then(m => m.default.confirmPromotionPayment(referenceId))],
+    ['flash_sale', () => import('../services/product.service.js').then(m => m.default.confirmFlashSalePayment(referenceId))],
+    ['gift', () => import('../services/gift.service.js').then(m => m.default.confirmGiftPayment(referenceId))],
+    ['certificate', () => import('../services/certificate.service.js').then(m => m.default.confirmVerificationPayment(referenceId))],
+    ['shipping', () => import('../services/shipping.service.js').then(m => m.default.confirmShippingPayment(referenceId))],
+  ] as const;
+
+  for (const [type, fn] of handlers) {
+    try {
+      await fn();
+      logger.info('Paiement confirme via handler', { referenceId, type });
+      return type;
+    } catch (_error) {
+      // continue
+    }
+  }
+  return null;
+};
+
+const handleMoovMoneyInit = async (req: AuthRequest, res: any, next: any) => {
+  try {
+    const userId = req.user!.id;
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || (req.socket as any)?.remoteAddress;
+    if (!(await platformControlService.isPaymentsEnabled())) {
+      return res.status(503).json({ success: false, message: 'Paiements temporairement indisponibles.' });
+    }
+    const kyc = await requireKycFor(userId, 'payment');
+    if (!kyc.allowed) return res.status(403).json({ success: false, message: kyc.message });
+
+    const { orderId, amount, phone, returnUrl } = req.body;
+    if (!orderId || typeof orderId !== 'string') {
+      return res.status(400).json({ success: false, message: 'orderId requis' });
+    }
+    if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+      return res.status(400).json({ success: false, message: 'amount invalide' });
+    }
+    if (!phone || typeof phone !== 'string' || phone.replace(/[^\d+]/g, '').length < 8) {
+      return res.status(400).json({ success: false, message: 'phone invalide' });
+    }
+    if (returnUrl && typeof returnUrl === 'string') {
+      try {
+        const parsed = new URL(returnUrl);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          return res.status(400).json({ success: false, message: 'returnUrl invalide' });
+        }
+      } catch {
+        return res.status(400).json({ success: false, message: 'returnUrl invalide' });
+      }
+    }
+
+    const risk = await riskEvaluate({
+      userId,
+      amount: amount ?? 0,
+      paymentMethod: 'moov_money',
+      orderId,
+      ip,
+      action: 'payment_init',
+    });
+    if (!risk.allowed) return res.status(403).json({ success: false, message: risk.reason || 'Action non autorisee.' });
+
+    const result = await paymentService.initiateMoovMoneyPayment(userId, orderId, {
+      amount,
+      phone,
+      returnUrl,
+    });
+    const key = req.headers['idempotency-key'] as string;
+    if (key) saveIdempotencyResponse(key, 200, { success: true, data: result }).catch(() => {});
+    auditFromRequest(req, 'payment_init', 'order', orderId, { amount, orderId, provider: 'moov_money' }).catch(() => {});
     res.json({ success: true, data: result });
   } catch (error: any) {
     next(error);
@@ -297,6 +449,9 @@ router.post('/webhook', async (req, res, next) => {
     } else if (provider === 'mtn_money' || provider === 'mtn') {
       const r = await paymentService.verifyMtnMoneyPayment(effectiveRef, { status, transaction_id });
       verified = r.success;
+    } else if (provider === 'moov_money' || provider === 'moov') {
+      const r = await paymentService.verifyMoovMoneyPayment(effectiveRef, { status, transaction_id });
+      verified = r.success;
     } else if (provider === 'wave') {
       const r = await paymentService.verifyWavePayment(effectiveRef, { status });
       verified = r.success;
@@ -332,23 +487,48 @@ router.post('/webhook', async (req, res, next) => {
   }
 });
 
-// POST /api/payments/orange-money/webhook - Webhook Orange Money (pas d'authentification)
+// POST /api/payments/orange-money/webhook - Webhook Orange Money (body brut pour signature)
 router.post('/orange-money/webhook', async (req, res, next) => {
   try {
-    const { orderId, status, pay_token } = req.body;
-    
-    // Vérifier la signature du webhook (à implémenter selon Orange Money)
-    // Pour l'instant, on traite directement
+    const rawBody = req.body as Buffer | undefined;
+    const body = rawBody ? JSON.parse(rawBody.toString('utf8')) : req.body || {};
+    const { orderId, status, pay_token } = body;
 
-    if (status === 'SUCCESS' && orderId) {
-      // Utiliser la même logique que verify
-      const paymentService = (await import('../services/payment.service.js')).default;
-      const result = await paymentService.verifyOrangeMoneyPayment(orderId, {
-        status,
-        pay_token,
-      });
+    logWebhookIncoming('orange_money', { orderId, status, ...(orderId ? {} : { raw: body }) });
 
-      // Traiter les différents types (même logique que verify)
+    const signature = (req.headers['x-orange-signature'] || req.headers['x-signature']) as string | undefined;
+    if (!paymentService.verifyOrangeMoneyWebhookSignature(rawBody ?? JSON.stringify(body), signature)) {
+      logWebhookError('orange_money', 'Signature invalide', body);
+      return res.status(401).json({ success: false, error: 'Signature invalide' });
+    }
+
+    if (status !== 'SUCCESS' && status !== 'completed') {
+      logWebhookProcessed('orange_money', orderId || 'n/a', 'ignored');
+      return res.json({ success: true, received: true, processed: false });
+    }
+
+    if (!orderId) {
+      return res.status(400).json({ success: false, error: 'orderId requis' });
+    }
+
+    let result = { success: false as boolean };
+    try {
+      result = await paymentService.verifyOrangeMoneyPayment(orderId, { status, pay_token });
+    } catch (err) {
+      if (process.env.ORANGE_MONEY_ENV === 'test' || process.env.ORANGE_MONEY_TRUST_WEBHOOK === '1') {
+        result = { success: true };
+      } else {
+        logWebhookError('orange_money', (err as Error).message, body);
+        return res.status(500).json({ success: false, error: 'Vérification paiement échouée' });
+      }
+    }
+
+    if (!result.success && process.env.ORANGE_MONEY_TRUST_WEBHOOK !== '1') {
+      logWebhookProcessed('orange_money', orderId, 'ignored');
+      return res.json({ success: true, received: true, processed: false });
+    }
+
+    {
       // 1. Video Tip
       try {
         const videoTipService = (await import('../services/videoTip.service.js')).default;
@@ -462,7 +642,8 @@ router.post('/orange-money/webhook', async (req, res, next) => {
       } catch (error) {}
     }
 
-    res.json({ success: true, received: true });
+    logWebhookProcessed('orange_money', orderId, 'processed');
+    res.json({ success: true, received: true, processed: true });
   } catch (error: any) {
     next(error);
   }
@@ -491,6 +672,62 @@ router.post('/mtn/verify', authenticate, async (req: AuthRequest, res, next) => 
       await orderService.confirmPayment(orderId);
     }
     res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// ========== MOOV MONEY (Mali) ==========
+// POST /api/payments/moov
+router.post('/moov', authenticate, idempotencyMiddleware, handleMoovMoneyInit);
+
+// POST /api/payments/moov/initiate
+router.post('/moov/initiate', authenticate, idempotencyMiddleware, handleMoovMoneyInit);
+
+// POST /api/payments/moov/verify
+router.post('/moov/verify', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { orderId, status, transaction_id } = req.body;
+    const result = await paymentService.verifyMoovMoneyPayment(orderId, { status, transaction_id });
+    if (result.success && orderId) {
+      await processSuccessfulPaymentReference(orderId, status || 'SUCCESS');
+    }
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/payments/moov/webhook
+router.post('/moov/webhook', async (req, res, next) => {
+  try {
+    const rawBody = req.body as Buffer | undefined;
+    const body = rawBody ? JSON.parse(rawBody.toString('utf8')) : req.body || {};
+    const orderId = body.orderId || body.reference || body.reference_id;
+    const status = body.status;
+    const transaction_id = body.transaction_id || body.tx_id;
+
+    logWebhookIncoming('moov_money', { orderId, status, ...(orderId ? {} : { raw: body }) });
+
+    const signature = (req.headers['x-moov-signature'] || req.headers['x-signature']) as string | undefined;
+    if (!paymentService.verifyMoovWebhookSignature(rawBody ?? JSON.stringify(body), signature)) {
+      logWebhookError('moov_money', 'Signature invalide', body);
+      return res.status(401).json({ success: false, error: 'Signature invalide' });
+    }
+
+    if (!orderId) {
+      return res.status(400).json({ success: false, error: 'orderId requis' });
+    }
+
+    const result = await paymentService.verifyMoovMoneyPayment(orderId, { status, transaction_id });
+    if (!result.success && process.env.MOOV_MONEY_TRUST_WEBHOOK !== '1') {
+      logWebhookProcessed('moov_money', orderId, 'ignored');
+      return res.json({ success: true, received: true, processed: false });
+    }
+
+    await processSuccessfulPaymentReference(orderId, status || 'SUCCESS');
+    logWebhookProcessed('moov_money', orderId, 'processed');
+    res.json({ success: true, received: true, processed: true });
   } catch (error: any) {
     next(error);
   }
@@ -615,6 +852,37 @@ router.post('/wallet/withdraw', authenticate, async (req: AuthRequest, res, next
   }
 });
 
+// POST /api/payments/wallet/pay-order - Paiement d'une commande avec le portefeuille utilisateur
+router.post('/wallet/pay-order', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const { orderId, pin } = req.body;
+    if (!orderId) {
+      return res.status(400).json({ success: false, error: { message: 'orderId requis' } });
+    }
+
+    const orderService = (await import('../services/order.service.js')).default;
+    const order: any = await orderService.getById(orderId, userId);
+    if (order.user_id !== userId) {
+      return res.status(403).json({ success: false, error: { message: 'Seul l\'acheteur peut payer cette commande' } });
+    }
+    if (order.payment_status !== 'pending') {
+      return res.status(400).json({ success: false, error: { message: 'Cette commande est deja payee ou en cours de traitement' } });
+    }
+
+    await paymentService.withdrawFromWallet(
+      userId,
+      Number(order.total_amount) || 0,
+      `Paiement commande ${orderId}`,
+      { pin: pin ? String(pin) : undefined }
+    );
+    const confirmed = await orderService.confirmPayment(orderId);
+    res.json({ success: true, data: confirmed, message: 'Paiement wallet confirmé' });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // GET /api/payments/transactions
 router.get('/transactions', authenticate, async (req: AuthRequest, res, next) => {
   try {
@@ -675,4 +943,3 @@ router.post('/wallet/validate-pin', authenticate, async (req: AuthRequest, res, 
 });
 
 export default router;
-

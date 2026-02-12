@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, ArrowLeft, Camera, Radio, Eye, Heart } from 'lucide-react';
+import { Loader2, ArrowLeft, Camera, Radio, Eye, Heart, Mic } from 'lucide-react';
 import { toast } from "sonner";
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
@@ -26,7 +26,10 @@ export default function LiveStreamPage() {
   const [streamData, setStreamData] = useState({
     title: '',
     description: '',
-    category: 'other'
+    category: 'other',
+    // CDC: tags (max 5) et restriction d'âge, stockés côté UI pour méta (backend pourra les supporter ensuite)
+    tags: '',
+    ageRestriction: 'all', // all | 13+ | 18+
   });
 
   const [liveStream, setLiveStream] = useState(null);
@@ -55,18 +58,27 @@ export default function LiveStreamPage() {
     refetchInterval: 3000,
   });
 
-  const { data: tokenData } = useQuery({
+  const { data: tokenData, isError: tokenError } = useQuery({
     queryKey: ['live-token', liveStream?.id, 'host'],
     queryFn: () => api.live.getStreamToken(liveStream.id, 'host'),
     enabled: !!liveStream?.id && step === 'streaming',
+    retry: 1,
+  });
+  const { data: agoraStatus } = useQuery({
+    queryKey: ['live-agora-status'],
+    queryFn: () => api.live.getAgoraStatus(),
+    enabled: step === 'streaming' && !!liveStream?.id && !!(tokenData && !tokenData?.appId),
   });
   const agoraToken = tokenData?.token != null ? tokenData : null;
-  const { localVideoTrack, leave: leaveAgora, error: agoraError } = useAgoraHost(agoraToken, localVideoRef);
+  const { localVideoTrack, localAudioTrack, leave: leaveAgora, error: agoraError, audioOnlyMode } = useAgoraHost(agoraToken, localVideoRef);
   const hasAgora = !!(agoraToken?.appId && agoraToken?.channel);
+  const agoraDiagnostic = !hasAgora && step === 'streaming'
+    ? (tokenError ? 'Backend inaccessible. Lancez : cd backend && npm run dev' : agoraStatus?.message || (tokenData && !tokenData?.appId ? 'Redémarrez le backend (cd backend && npm run dev) après avoir ajouté AGORA_APP_ID et AGORA_APP_CERTIFICATE dans backend/.env' : 'Configurez Agora (backend) pour le flux vidéo réel'))
+    : '';
 
   useEffect(() => {
-    if (agoraError) toast.error(agoraError);
-  }, [agoraError]);
+    if (agoraError && !audioOnlyMode) toast.error(agoraError);
+  }, [agoraError, audioOnlyMode]);
 
   useEffect(() => {
     if (step !== 'streaming' || !liveStream?.id) return;
@@ -185,6 +197,7 @@ export default function LiveStreamPage() {
                 <Input
                   placeholder="Ex: Gaming session, Musique..."
                   value={streamData.title}
+                  maxLength={100}
                   onChange={(e) => setStreamData(prev => ({ ...prev, title: e.target.value }))}
                   className="bg-gray-900 border-gray-800 text-white placeholder:text-gray-500"
                 />
@@ -195,6 +208,7 @@ export default function LiveStreamPage() {
                 <Textarea
                   placeholder="Décrivez votre live..."
                   value={streamData.description}
+                  maxLength={500}
                   onChange={(e) => setStreamData(prev => ({ ...prev, description: e.target.value }))}
                   className="bg-gray-900 border-gray-800 text-white placeholder:text-gray-500 h-24"
                 />
@@ -214,10 +228,76 @@ export default function LiveStreamPage() {
                 </Select>
               </div>
 
+              <div className="space-y-4">
+                <label className="block text-white font-medium">Tags (max 5, séparés par des virgules)</label>
+                <Input
+                  placeholder="musique, live, bamako..."
+                  value={streamData.tags}
+                  onChange={(e) => setStreamData(prev => ({ ...prev, tags: e.target.value }))}
+                  className="bg-gray-900 border-gray-800 text-white placeholder:text-gray-500"
+                />
+              </div>
+
+              <div className="space-y-4">
+                <label className="block text-white font-medium">Restriction d'âge</label>
+                <Select
+                  value={streamData.ageRestriction}
+                  onValueChange={(v) => setStreamData(prev => ({ ...prev, ageRestriction: v }))}
+                >
+                  <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tout public</SelectItem>
+                    <SelectItem value="13+">13+</SelectItem>
+                    <SelectItem value="18+">18+</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
                 <p className="text-sm text-blue-400">
                   💡 Conseil: Assurez-vous que votre caméra et microphone sont activés avant de commencer.
                 </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="border-blue-500/50 text-blue-400 hover:bg-blue-500/20"
+                    onClick={async () => {
+                      try {
+                        const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                        s.getTracks().forEach((t) => t.stop());
+                        toast.success('Caméra et micro OK');
+                      } catch (e) {
+                        toast.error('Activez caméra/micro dans les paramètres du navigateur.');
+                      }
+                    }}
+                  >
+                    Vérifier accès caméra
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="border-amber-500/50 text-amber-400 hover:bg-amber-500/20"
+                    onClick={async () => {
+                      try {
+                        const status = await api.live.getAgoraStatus();
+                        if (status?.configured) {
+                          toast.success('Connexion Agora OK – Prêt pour le live');
+                        } else {
+                          toast.error(status?.message || 'Agora non configuré. Vérifiez le backend.');
+                        }
+                      } catch (e) {
+                        toast.error('Backend inaccessible ou Agora non configuré.');
+                      }
+                    }}
+                  >
+                    Test connexion Agora
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -257,9 +337,29 @@ export default function LiveStreamPage() {
                   {!localVideoTrack && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/70">
                       <div className="text-center text-white">
-                        <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                        <p className="font-medium">Préparation de la caméra...</p>
+                        {audioOnlyMode ? (
+                          <>
+                            <div className="w-16 h-16 rounded-full bg-amber-500/20 flex items-center justify-center mx-auto mb-4">
+                              <Mic className="w-8 h-8 text-amber-400" />
+                            </div>
+                            <p className="font-medium text-amber-300">Diffusion audio uniquement</p>
+                            <p className="text-sm text-gray-400 mt-1">Caméra non disponible. Le micro fonctionne.</p>
+                          </>
+                        ) : agoraError ? (
+                          <>
+                            <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
+                              <Camera className="w-8 h-8 text-red-400" />
+                            </div>
+                            <p className="font-medium text-red-300">Caméra/micro : {agoraError}</p>
+                            <p className="text-sm text-gray-400 mt-2">Vérifiez : permissions navigateur, caméra branchée, essayez Chrome.</p>
+                          </>
+                        ) : (
+                          <>
+                            <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                            <p className="font-medium">Préparation de la caméra...</p>
                         <p className="text-sm text-gray-400 mt-1">Autorisez l’accès caméra et micro si demandé</p>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
@@ -271,7 +371,7 @@ export default function LiveStreamPage() {
                       <Camera className="w-12 h-12 text-white" />
                     </div>
                     <p className="text-white font-bold">{streamData.title}</p>
-                    <p className="text-gray-400 text-sm mt-2">Configurez Agora (backend) pour le flux vidéo réel</p>
+                    <p className="text-gray-400 text-sm mt-2">{agoraDiagnostic}</p>
                   </div>
                 </div>
               )}

@@ -18,6 +18,15 @@
     "types": ["node"]
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "__tests__", "_tests_"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "__tests__",
+    "_tests_",
+    "src/**/__tests__/**",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.spec.ts",
+    "src/**/*.spec.tsx"
+  ]
 }
-

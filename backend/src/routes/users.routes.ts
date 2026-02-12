@@ -67,6 +67,29 @@ router.post('/:id/follow', authenticate, async (req: AuthRequest, res, next) => 
   }
 });
 
+// POST /api/users/:id/wonder - Wonder = s'émerveiller avec un créateur (branding Afriwonder)
+router.post('/:id/wonder', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const creatorId = param(req, 'id');
+    const followerId = req.user!.id;
+    const result = await userService.toggleWonder(followerId, creatorId);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/users/:id/wonderers - Nombre de Wonderers d'un créateur
+router.get('/:id/wonderers', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const creatorId = param(req, 'id');
+    const count = await userService.getWonderersCount(creatorId);
+    res.json({ success: true, data: { wonderers: count } });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // GET /api/users/:id/stats
 router.get('/:id/stats', optionalAuth, async (req: AuthRequest, res, next) => {
   try {

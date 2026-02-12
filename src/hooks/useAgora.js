@@ -24,6 +24,7 @@ export function useAgoraHost(tokenData, videoContainerRef) {
   const [localVideoTrack, setLocalVideoTrack] = useState(null);
   const [localAudioTrack, setLocalAudioTrack] = useState(null);
   const [error, setError] = useState(null);
+  const [audioOnlyMode, setAudioOnlyMode] = useState(false);
   const clientRef = useRef(null);
   const tracksRef = useRef([]);
 
@@ -42,6 +43,7 @@ export function useAgoraHost(tokenData, videoContainerRef) {
       tracksRef.current = [];
       setLocalVideoTrack(null);
       setLocalAudioTrack(null);
+      setAudioOnlyMode(false);
     } catch (e) {
       console.warn('Agora leave error', e);
     }
@@ -57,6 +59,7 @@ export function useAgoraHost(tokenData, videoContainerRef) {
     let cancelled = false;
     (async () => {
       setError(null);
+      setAudioOnlyMode(false);
       try {
         const RTC = await loadAgora();
         const client = RTC.createClient({ mode: 'live', codec: 'vp8' });
@@ -64,9 +67,32 @@ export function useAgoraHost(tokenData, videoContainerRef) {
         await client.join(appId, channel, token, uid);
         await client.setClientRole('host');
 
-        const [audioTrack, videoTrack] = await RTC.createMicrophoneAndCameraTracks();
+        let audioTrack = null;
+        let videoTrack = null;
+
+        try {
+          [audioTrack, videoTrack] = await RTC.createMicrophoneAndCameraTracks();
+        } catch (deviceErr) {
+          const isDeviceNotFound = deviceErr?.message?.includes('DEVICE_NOT_FOUND') || deviceErr?.code === 'DEVICE_NOT_FOUND';
+          if (isDeviceNotFound) {
+            try {
+              audioTrack = await RTC.createMicrophoneTrack();
+              if (cancelled) { audioTrack?.close(); return; }
+              tracksRef.current = [audioTrack];
+              setLocalAudioTrack(audioTrack);
+              setLocalVideoTrack(null);
+              await client.publish([audioTrack]);
+              if (!cancelled) setAudioOnlyMode(true);
+              return;
+            } catch (audioErr) {
+              throw deviceErr;
+            }
+          }
+          throw deviceErr;
+        }
+
         if (cancelled) {
-          [audioTrack, videoTrack].forEach((t) => t.close());
+          [audioTrack, videoTrack].forEach((t) => t?.close());
           return;
         }
         tracksRef.current = [audioTrack, videoTrack];
@@ -90,16 +116,22 @@ export function useAgoraHost(tokenData, videoContainerRef) {
     };
   }, [tokenData?.appId, tokenData?.channel, tokenData?.token, tokenData?.uid]);
 
-  return { localVideoTrack, localAudioTrack, error, leave };
+  return { localVideoTrack, localAudioTrack, error, audioOnlyMode, leave };
 }
+
+/** Agora stream type: 0 = high, 1 = low (160p/audio) — CDC mode données réduites */
+const VIDEO_STREAM_LOW = 1;
 
 /**
  * Audience: souscrit au stream distant. Retourne { remoteVideoTrack, error, leave }.
  * @param {Object} tokenData - { token, appId, channel, uid } depuis api.live.getStreamToken(id, 'audience')
  * @param {React.RefObject} videoContainerRef - élément DOM où jouer la vidéo du créateur
+ * @param {Object} options - { dataSaverMode: boolean } CDC mode données réduites → qualité 160p
  */
-export function useAgoraAudience(tokenData, videoContainerRef) {
+export function useAgoraAudience(tokenData, videoContainerRef, options = {}) {
+  const dataSaverMode = !!options.dataSaverMode;
   const [remoteVideoTrack, setRemoteVideoTrack] = useState(null);
+  const [remoteAudioTrack, setRemoteAudioTrack] = useState(null);
   const [error, setError] = useState(null);
   const clientRef = useRef(null);
 
@@ -112,6 +144,7 @@ export function useAgoraAudience(tokenData, videoContainerRef) {
         clientRef.current = null;
       }
       setRemoteVideoTrack(null);
+      setRemoteAudioTrack(null);
     } catch (e) {
       console.warn('Agora audience leave error', e);
     }
@@ -138,12 +171,18 @@ export function useAgoraAudience(tokenData, videoContainerRef) {
           if (cancelled) return;
           await client.subscribe(user, mediaType);
           if (mediaType === 'video' && user.videoTrack) {
+            if (dataSaverMode && client.setRemoteVideoStreamType) {
+              try {
+                client.setRemoteVideoStreamType(user.uid, VIDEO_STREAM_LOW);
+              } catch (_) {}
+            }
             setRemoteVideoTrack(user.videoTrack);
             setTimeout(() => {
               if (videoContainerRef?.current && !cancelled) user.videoTrack.play(videoContainerRef.current);
             }, 50);
           }
           if (mediaType === 'audio' && user.audioTrack) {
+            setRemoteAudioTrack(user.audioTrack);
             user.audioTrack.play();
           }
         });
@@ -156,7 +195,7 @@ export function useAgoraAudience(tokenData, videoContainerRef) {
       cancelled = true;
       leave();
     };
-  }, [tokenData?.appId, tokenData?.channel, tokenData?.token, tokenData?.uid]);
+  }, [tokenData?.appId, tokenData?.channel, tokenData?.token, tokenData?.uid, dataSaverMode]);
 
-  return { remoteVideoTrack, error, leave };
+  return { remoteVideoTrack, remoteAudioTrack, error, leave };
 }

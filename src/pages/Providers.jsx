@@ -16,7 +16,7 @@ export default function Providers() {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [minRating, setMinRating] = useState('');
+  const [minRating, setMinRating] = useState('all');
   const [locationType, setLocationType] = useState('all');
 
   const { data: providersData, isLoading } = useQuery({
@@ -27,7 +27,7 @@ export default function Providers() {
         limit: 50,
         ...(selectedCategory !== 'all' && { category: selectedCategory }),
         ...(searchTerm && { search: searchTerm }),
-        ...(minRating && { min_rating: parseFloat(minRating) }),
+        ...(minRating && minRating !== 'all' && { min_rating: parseFloat(minRating) }),
         ...(locationType !== 'all' && { location_type: locationType }),
       };
       return api.providers.list(params);
@@ -86,7 +86,7 @@ export default function Providers() {
                   <SelectValue placeholder="Note minimum" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Toutes les notes</SelectItem>
+                  <SelectItem value="all">Toutes les notes</SelectItem>
                   <SelectItem value="4">4 étoiles et plus</SelectItem>
                   <SelectItem value="3">3 étoiles et plus</SelectItem>
                 </SelectContent>

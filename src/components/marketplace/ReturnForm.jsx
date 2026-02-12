@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { api } from '@/api/expressClient';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertCircle, Loader2, Upload } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
@@ -12,37 +12,28 @@ export default function ReturnForm({ orderId, productId, onSuccess }) {
   const [formData, setFormData] = useState({
     reason: 'defective',
     description: '',
-    images: []
+    refundAmount: '',
   });
   const [uploadedImages, setUploadedImages] = useState([]);
   const queryClient = useQueryClient();
 
   const createReturnMutation = useMutation({
-    mutationFn: async (data) => {
-      const user = await api.auth.me();
-      
-      const returnRequest = await api.entities.Return.create({
-        order_id: orderId,
-        product_id: productId,
-        user_id: user.id,
-        reason: data.reason,
-        description: data.description,
-        images: uploadedImages,
-        requested_amount: 0,
-        status: 'pending_approval'
-      });
-
-      return returnRequest;
-    },
+    mutationFn: async (data) => api.returns.request(orderId, {
+      product_id: productId,
+      reason: data.reason,
+      description: data.description,
+      images: uploadedImages,
+      refund_amount: Number(data.refundAmount),
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
-      toast.success('Demande de retour créée avec succès');
+      queryClient.invalidateQueries({ queryKey: ['returns'] });
+      toast.success('Demande de retour creee avec succes');
       onSuccess?.();
     },
     onError: (error) => {
-      toast.error('Erreur lors de la création de la demande');
-      console.error(error);
-    }
+      toast.error(error?.apiMessage || 'Erreur lors de la creation de la demande');
+    },
   });
 
   const uploadImage = async (e) => {
@@ -51,10 +42,10 @@ export default function ReturnForm({ orderId, productId, onSuccess }) {
 
     try {
       const { file_url } = await api.upload.video({ file });
-      setUploadedImages([...uploadedImages, file_url]);
-      toast.success('Image uploadée');
+      setUploadedImages((prev) => [...prev, file_url]);
+      toast.success('Image uploadee');
     } catch (_error) {
-      toast.error('Erreur lors de l\'upload');
+      toast.error("Erreur lors de l'upload");
     }
   };
 
@@ -62,6 +53,10 @@ export default function ReturnForm({ orderId, productId, onSuccess }) {
     e.preventDefault();
     if (!formData.reason || !formData.description) {
       toast.error('Veuillez remplir tous les champs');
+      return;
+    }
+    if (!Number.isFinite(Number(formData.refundAmount)) || Number(formData.refundAmount) <= 0) {
+      toast.error('Montant de remboursement invalide');
       return;
     }
     createReturnMutation.mutate(formData);
@@ -78,30 +73,43 @@ export default function ReturnForm({ orderId, productId, onSuccess }) {
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
           <label className="text-sm font-semibold block mb-2">Raison du retour</label>
-          <Select 
-            value={formData.reason} 
-            onValueChange={(value) => setFormData({...formData, reason: value})}
+          <Select
+            value={formData.reason}
+            onValueChange={(value) => setFormData((s) => ({ ...s, reason: value }))}
           >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="defective">Produit défectueux</SelectItem>
-              <SelectItem value="not_as_described">Pas conforme à la description</SelectItem>
-              <SelectItem value="changed_mind">Changement d'avis</SelectItem>
-              <SelectItem value="damaged_shipping">Endommagé à la livraison</SelectItem>
+              <SelectItem value="defective">Produit defectueux</SelectItem>
+              <SelectItem value="not_as_described">Pas conforme a la description</SelectItem>
+              <SelectItem value="changed_mind">Changement d avis</SelectItem>
+              <SelectItem value="damaged_shipping">Endommage a la livraison</SelectItem>
               <SelectItem value="other">Autre</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         <div>
-          <label className="text-sm font-semibold block mb-2">Description détaillée</label>
+          <label className="text-sm font-semibold block mb-2">Description detaillee</label>
           <Textarea
-            placeholder="Décrivez le problème en détail..."
+            placeholder="Decrivez le probleme en detail..."
             value={formData.description}
-            onChange={(e) => setFormData({...formData, description: e.target.value})}
+            onChange={(e) => setFormData((s) => ({ ...s, description: e.target.value }))}
             className="min-h-24"
+          />
+        </div>
+
+        <div>
+          <label className="text-sm font-semibold block mb-2">Montant rembourse demande (XOF)</label>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            placeholder="Ex: 10000"
+            value={formData.refundAmount}
+            onChange={(e) => setFormData((s) => ({ ...s, refundAmount: e.target.value }))}
+            className="w-full border rounded-md px-3 py-2"
           />
         </div>
 
@@ -110,7 +118,7 @@ export default function ReturnForm({ orderId, productId, onSuccess }) {
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
             <label className="flex flex-col items-center cursor-pointer">
               <Upload className="w-8 h-8 text-gray-400 mb-2" />
-              <span className="text-sm text-gray-600">Cliquez pour uploader ou drag-drop</span>
+              <span className="text-sm text-gray-600">Cliquez pour uploader une image</span>
               <input
                 type="file"
                 accept="image/*"
@@ -123,14 +131,14 @@ export default function ReturnForm({ orderId, productId, onSuccess }) {
           {uploadedImages.length > 0 && (
             <div className="grid grid-cols-3 gap-3 mt-4">
               {uploadedImages.map((url, idx) => (
-                <div key={idx} className="relative">
+                <div key={url} className="relative">
                   <img src={url} alt="Return proof" className="w-full h-24 object-cover rounded-lg" />
                   <button
                     type="button"
-                    onClick={() => setUploadedImages(uploadedImages.filter((_, i) => i !== idx))}
+                    onClick={() => setUploadedImages((prev) => prev.filter((_, i) => i !== idx))}
                     className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
                   >
-                    ✕
+                    x
                   </button>
                 </div>
               ))}
@@ -142,7 +150,7 @@ export default function ReturnForm({ orderId, productId, onSuccess }) {
           <div className="flex gap-2">
             <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
             <p className="text-sm text-blue-800">
-              Une fois approuvée, vous recevrez un label de retour gratuit par email.
+              Une fois approuvee, vous recevrez les informations de retour.
             </p>
           </div>
         </div>
@@ -167,5 +175,3 @@ export default function ReturnForm({ orderId, productId, onSuccess }) {
     </motion.div>
   );
 }
-
-

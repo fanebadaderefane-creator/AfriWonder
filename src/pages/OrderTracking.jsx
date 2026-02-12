@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Package, Truck, CheckCircle, Clock, Star, MessageCircle, MapPin, Phone, RotateCcw, AlertTriangle, FileDown } from 'lucide-react';
+import { ArrowLeft, Package, Truck, CheckCircle, Clock, Star, MessageCircle, MapPin, Phone, RotateCcw, AlertTriangle, FileDown, CreditCard } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
@@ -32,21 +32,32 @@ export default function OrderTracking() {
   const [showRefundModal, setShowRefundModal] = useState(false);
   const [refundAmount, setRefundAmount] = useState('');
   const [refundReason, setRefundReason] = useState('');
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [returnReason, setReturnReason] = useState('not_as_described');
+  const [returnDescription, setReturnDescription] = useState('');
+  const [returnAmount, setReturnAmount] = useState('');
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [payPhone, setPayPhone] = useState('');
+  const [payPin, setPayPin] = useState('');
+  const [payLoading, setPayLoading] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setOrderId(params.get('id'));
   }, []);
 
-  useEffect(() => {
-    if (order?.total_amount && !refundAmount) setRefundAmount(String(order.total_amount));
-  }, [order?.total_amount]);
-
   const { data: orderRaw, isLoading } = useQuery({
     queryKey: ['order', orderId],
     queryFn: () => api.orders.getById(orderId),
     enabled: !!orderId,
     refetchInterval: 5000
+  });
+
+  const { data: shipmentTimeline } = useQuery({
+    queryKey: ['shipment-timeline', orderId],
+    queryFn: () => api.shipments.getTimeline(orderId),
+    enabled: !!orderId,
+    refetchInterval: 7000,
   });
 
   const order = React.useMemo(() => {
@@ -69,6 +80,14 @@ export default function OrderTracking() {
       payment_status: orderRaw.payment_status ?? 'pending',
     };
   }, [orderRaw]);
+  const shipping = shipmentTimeline?.shipping;
+
+  useEffect(() => {
+    if (order?.total_amount && !refundAmount) setRefundAmount(String(order.total_amount));
+  }, [order?.total_amount, refundAmount]);
+  useEffect(() => {
+    if (order?.total_amount && !returnAmount) setReturnAmount(String(order.total_amount));
+  }, [order?.total_amount, returnAmount]);
 
   const { data: myRefunds } = useQuery({
     queryKey: ['refunds-my'],
@@ -77,6 +96,14 @@ export default function OrderTracking() {
   });
   const refundsList = Array.isArray(myRefunds) ? myRefunds : (myRefunds?.refunds ?? myRefunds?.data ?? []);
   const orderRefund = refundsList.find((r) => r.order_id === orderId || r.order?.id === orderId);
+
+  const { data: myReturns } = useQuery({
+    queryKey: ['returns-my'],
+    queryFn: () => api.returns.list('buyer'),
+    enabled: !!orderId
+  });
+  const returnsList = Array.isArray(myReturns) ? myReturns : (myReturns?.returns ?? myReturns?.data ?? []);
+  const orderReturn = returnsList.find((r) => r.order_id === orderId || r.order?.id === orderId);
 
   const requestRefundMutation = useMutation({
     mutationFn: () => api.refunds.request(orderId, {
@@ -90,6 +117,24 @@ export default function OrderTracking() {
       setRefundAmount('');
       setRefundReason('');
       toast.success('Demande de remboursement envoyée');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || e.message || 'Erreur')
+  });
+
+  const requestReturnMutation = useMutation({
+    mutationFn: () => api.returns.request(orderId, {
+      reason: returnReason,
+      description: returnDescription || undefined,
+      refund_amount: parseFloat(returnAmount) || order?.total_amount || 0
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['returns-my'] });
+      queryClient.invalidateQueries({ queryKey: ['order', orderId] });
+      setShowReturnModal(false);
+      setReturnDescription('');
+      setReturnReason('not_as_described');
+      setReturnAmount('');
+      toast.success('Demande de retour/echange envoyee');
     },
     onError: (e) => toast.error(e.response?.data?.error || e.message || 'Erreur')
   });
@@ -287,6 +332,47 @@ export default function OrderTracking() {
         </Card>
       )}
 
+      {/* Preuve de livraison */}
+      {(shipping?.proof_of_delivery_photo || shipping?.signature || shipping?.actual_delivery || shipping?.current_location) && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-lg">Preuve de livraison</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {shipping?.proof_of_delivery_photo && (
+              <div>
+                <p className="text-xs text-gray-500 mb-2">Photo de livraison</p>
+                <a href={shipping.proof_of_delivery_photo} target="_blank" rel="noopener noreferrer" className="block">
+                  <img
+                    src={shipping.proof_of_delivery_photo}
+                    alt="Preuve de livraison"
+                    className="w-full max-h-72 object-cover rounded-lg border"
+                  />
+                </a>
+              </div>
+            )}
+            {shipping?.signature && (
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <p className="text-xs text-gray-500">Signature</p>
+                <p className="font-mono text-sm break-all">{shipping.signature}</p>
+              </div>
+            )}
+            {shipping?.current_location && (
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <p className="text-xs text-gray-500">Derniere localisation</p>
+                <p className="text-sm">{shipping.current_location}</p>
+              </div>
+            )}
+            {shipping?.actual_delivery && (
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <p className="text-xs text-gray-500">Date de livraison effective</p>
+                <p className="text-sm">{new Date(shipping.actual_delivery).toLocaleString('fr-FR')}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Remboursement */}
       {orderRefund && (
         <Card className="mb-6 p-4">
@@ -307,8 +393,52 @@ export default function OrderTracking() {
         </Card>
       )}
 
+      {/* Retour / echange */}
+      {orderReturn && (
+        <Card className="mb-6 p-4">
+          <h3 className="font-semibold flex items-center gap-2 mb-2">
+            <RotateCcw className="w-5 h-5" />
+            Demande de retour/echange
+          </h3>
+          <p className="text-sm text-gray-600">
+            Montant: {orderReturn.refund_amount?.toLocaleString()} FCFA - Statut:{' '}
+            <Badge className={
+              ['approved', 'exchange_approved'].includes(orderReturn.status) ? 'bg-green-100 text-green-800' :
+              ['rejected'].includes(orderReturn.status) ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
+            }>
+              {orderReturn.status}
+            </Badge>
+          </p>
+          {orderReturn.reason && <p className="text-xs text-gray-500 mt-1">Motif: {orderReturn.reason}</p>}
+          {orderReturn.description && <p className="text-xs text-gray-500 mt-1">{orderReturn.description}</p>}
+        </Card>
+      )}
+
       {/* Actions */}
       <div className="space-y-3">
+        {order.payment_status === 'pending' && order.payment_method === 'cod' && (
+          <Card className="p-4 bg-amber-50 border-amber-200">
+            <p className="font-medium text-amber-800">💵 Paiement à la livraison</p>
+            <p className="text-sm text-amber-700 mt-1">
+              Vous réglerez {order.total_amount?.toLocaleString()} FCFA auprès du livreur à la réception du colis.
+            </p>
+          </Card>
+        )}
+        {order.payment_status === 'pending' && order.payment_method !== 'cod' && (
+          <Button
+            onClick={() => setShowPayModal(true)}
+            className="w-full bg-orange-500 hover:bg-orange-600 text-white"
+          >
+            <CreditCard className="w-4 h-4 mr-2" />
+            Payer avec {
+              order.payment_method === 'moov_money' ? 'Moov Money'
+                : order.payment_method === 'card' ? 'Carte bancaire'
+                : order.payment_method === 'wallet' ? 'Portefeuille'
+                : 'Orange Money'
+            } ({order.total_amount?.toLocaleString()} FCFA)
+          </Button>
+        )}
+
         {order.status === 'in_transit' && !order.confirmed_by_buyer && (
           <Button
             onClick={() => confirmDeliveryMutation.mutate()}
@@ -337,6 +467,17 @@ export default function OrderTracking() {
           >
             <RotateCcw className="w-4 h-4 mr-2" />
             Demander un remboursement
+          </Button>
+        )}
+
+        {!orderReturn && ['delivered', 'completed'].includes(order.status) && (
+          <Button
+            variant="outline"
+            className="w-full border-blue-200 text-blue-700 hover:bg-blue-50"
+            onClick={() => setShowReturnModal(true)}
+          >
+            <RotateCcw className="w-4 h-4 mr-2" />
+            Demander un retour/echange
           </Button>
         )}
 
@@ -385,6 +526,175 @@ export default function OrderTracking() {
         </Button>
       </div>
 
+      {/* Pay Modal */}
+      {showPayModal && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/50 flex items-end z-50">
+          <motion.div initial={{ y: 100 }} animate={{ y: 0 }} className="w-full bg-white rounded-t-3xl p-6 space-y-4">
+            <h3 className="text-lg font-bold">
+              Payer avec {
+                order?.payment_method === 'moov_money' ? 'Moov Money'
+                  : order?.payment_method === 'card' ? 'Carte bancaire'
+                  : order?.payment_method === 'wallet' ? 'Portefeuille'
+                  : 'Orange Money'
+              }
+            </h3>
+            <p className="text-sm text-gray-600">
+              {order?.payment_method === 'moov_money'
+                ? 'Entrez votre numero Moov Money (ex: 76 XX XX XX XX). Vous serez redirige pour valider le paiement.'
+                : order?.payment_method === 'card'
+                  ? 'Vous serez redirige vers la page de paiement securisee Stripe.'
+                  : order?.payment_method === 'wallet'
+                    ? 'Entrez votre code PIN wallet pour debiter votre solde.'
+                    : 'Entrez votre numero Orange Money (ex: 77 XX XX XX XX). Vous serez redirige pour valider le paiement.'}
+            </p>
+            {(order?.payment_method === 'orange_money' || order?.payment_method === 'moov_money') && (
+              <div>
+                <p className="text-sm font-semibold mb-2">
+                  Numero {order?.payment_method === 'moov_money' ? 'Moov Money' : 'Orange Money'}
+                </p>
+                <Input
+                  type="tel"
+                  placeholder={order?.payment_method === 'moov_money' ? '76 XX XX XX XX' : '77 XX XX XX XX'}
+                  value={payPhone}
+                  onChange={(e) => setPayPhone(e.target.value.replace(/\D/g, ''))}
+                  disabled={payLoading}
+                />
+              </div>
+            )}
+            {order?.payment_method === 'wallet' && (
+              <div>
+                <p className="text-sm font-semibold mb-2">Code PIN portefeuille</p>
+                <Input
+                  type="password"
+                  placeholder="****"
+                  value={payPin}
+                  onChange={(e) => setPayPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  disabled={payLoading}
+                />
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setShowPayModal(false)} disabled={payLoading}>
+                Annuler
+              </Button>
+              <Button
+                className={`flex-1 ${
+                  order?.payment_method === 'moov_money'
+                    ? 'bg-blue-500 hover:bg-blue-600'
+                    : order?.payment_method === 'wallet'
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : 'bg-orange-500 hover:bg-orange-600'
+                }`}
+                disabled={
+                  payLoading
+                  || ((order?.payment_method === 'orange_money' || order?.payment_method === 'moov_money') && (!payPhone || payPhone.length < 8))
+                  || (order?.payment_method === 'wallet' && (!payPin || payPin.length < 4))
+                }
+                onClick={async () => {
+                  const amount = order?.total_amount ?? 0;
+                  const returnUrl = `${window.location.origin}${createPageUrl('OrderTracking')}?id=${orderId}`;
+                  setPayLoading(true);
+                  try {
+                    if (order?.payment_method === 'wallet') {
+                      await api.payments.payOrderWithWallet(orderId, payPin);
+                      toast.success('Paiement wallet confirme');
+                      setShowPayModal(false);
+                      queryClient.invalidateQueries({ queryKey: ['order', orderId] });
+                      return;
+                    }
+
+                    if (order?.payment_method === 'card') {
+                      const items = (order?.items || []).map((i) => ({
+                        product_id: i.product_id || i.product?.id,
+                        quantity: i.quantity,
+                        price: i.unit_price || i.product?.price || 0,
+                        name: i.product?.name || 'Produit',
+                      }));
+                      const result = await api.payments.createStripeCheckout(orderId, items, returnUrl, returnUrl);
+                      if (result?.url) {
+                        window.location.href = result.url;
+                        return;
+                      }
+                      toast.error('Pas de lien Stripe recu');
+                      return;
+                    }
+
+                    const result = order?.payment_method === 'moov_money'
+                      ? await api.payments.initiateMoovMoney(orderId, amount, payPhone, returnUrl)
+                      : await api.payments.initiateOrangeMoney(orderId, amount, payPhone, returnUrl);
+                    if (result?.paymentUrl) {
+                      window.location.href = result.paymentUrl;
+                      return;
+                    }
+                    toast.error('Pas d URL de paiement recue');
+                  } catch (e) {
+                    toast.error(e?.response?.data?.message || e?.apiMessage || e?.message || 'Erreur lors de l initialisation du paiement');
+                  } finally {
+                    setPayLoading(false);
+                  }
+                }}
+              >
+                {payLoading ? 'Traitement...' : `Payer ${(order?.total_amount ?? 0).toLocaleString()} FCFA`}
+              </Button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+
+      {/* Return / Exchange Modal */}
+      {showReturnModal && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/50 flex items-end z-50">
+          <motion.div initial={{ y: 100 }} animate={{ y: 0 }} className="w-full bg-white rounded-t-3xl p-6 space-y-4">
+            <h3 className="text-lg font-bold">Demander un retour/echange</h3>
+            <div>
+              <p className="text-sm font-semibold mb-2">Motif</p>
+              <select
+                className="w-full border rounded-md px-3 py-2"
+                value={returnReason}
+                onChange={(e) => setReturnReason(e.target.value)}
+              >
+                <option value="not_as_described">Pas conforme a la description</option>
+                <option value="defective">Produit defectueux</option>
+                <option value="damaged_shipping">Endommage a la livraison</option>
+                <option value="wrong_item">Mauvais article recu</option>
+                <option value="other">Autre</option>
+              </select>
+            </div>
+            <div>
+              <p className="text-sm font-semibold mb-2">Montant (FCFA)</p>
+              <Input
+                type="number"
+                min="1"
+                max={order?.total_amount}
+                value={returnAmount}
+                onChange={(e) => setReturnAmount(e.target.value)}
+                placeholder={String(order?.total_amount ?? '')}
+              />
+            </div>
+            <div>
+              <p className="text-sm font-semibold mb-2">Description</p>
+              <Textarea
+                placeholder="Expliquez le probleme..."
+                value={returnDescription}
+                onChange={(e) => setReturnDescription(e.target.value)}
+                rows={3}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setShowReturnModal(false)}>
+                Annuler
+              </Button>
+              <Button
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                disabled={requestReturnMutation.isPending || !returnAmount || !returnReason}
+                onClick={() => requestReturnMutation.mutate()}
+              >
+                {requestReturnMutation.isPending ? 'Envoi...' : 'Envoyer la demande'}
+              </Button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
       {/* Refund Modal */}
       {showRefundModal && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/50 flex items-end z-50">

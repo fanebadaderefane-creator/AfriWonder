@@ -18,6 +18,10 @@ export default function OrderReview() {
   const [selectedItem, setSelectedItem] = useState(null);
   const [productRating, setProductRating] = useState(5);
   const [sellerRating, setSellerRating] = useState(5);
+  const [qualityRating, setQualityRating] = useState(5);
+  const [communicationRating, setCommunicationRating] = useState(5);
+  const [deliveryRating, setDeliveryRating] = useState(5);
+  const [conformityRating, setConformityRating] = useState(5);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [photos, setPhotos] = useState([]);
@@ -57,10 +61,11 @@ export default function OrderReview() {
 
     setUploadingImages(true);
     try {
-      // TODO: Implémenter upload images vers CDN
-      const uploadedUrls = files.map(() => `https://placeholder.com/image-${Date.now()}.jpg`);
-      setPhotos([...photos, ...uploadedUrls]);
-      toast.success(`${files.length} photo(s) ajoutée(s)`);
+      const uploadPromises = files.map((file) => api.upload.image(file));
+      const results = await Promise.all(uploadPromises);
+      const urls = results.map((r) => r?.file_url || r?.url || r?.fileUrl).filter(Boolean);
+      setPhotos((prev) => [...prev, ...urls]);
+      toast.success(`${urls.length} photo(s) ajoutée(s)`);
     } catch (error) {
       toast.error('Erreur lors de l\'upload des photos');
     } finally {
@@ -77,7 +82,11 @@ export default function OrderReview() {
       navigate(`${createPageUrl('OrderTracking')}?id=${orderId}`);
     },
     onError: (error) => {
-      toast.error(error.response?.data?.error || error.message || 'Erreur lors de l\'enregistrement de l\'avis');
+      const apiMsg = error?.response?.data?.error?.message
+        || error?.response?.data?.message
+        || error?.apiMessage
+        || error?.message;
+      toast.error(apiMsg || 'Erreur lors de l\'enregistrement de l\'avis');
     },
   });
 
@@ -97,6 +106,10 @@ export default function OrderReview() {
       product_id: selectedItem.product_id,
       product_rating: productRating,
       seller_rating: sellerRating,
+      quality_rating: qualityRating,
+      communication_rating: communicationRating,
+      delivery_rating: deliveryRating,
+      conformity_rating: conformityRating,
       title: title.trim() || undefined,
       content,
       photos,
@@ -225,6 +238,28 @@ export default function OrderReview() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* CDC: Critères détaillés d'évaluation */}
+          <div className="border-t pt-4 space-y-3">
+            <label className="block text-sm font-medium">Critères détaillés (CDC)</label>
+            {[
+              { key: 'quality', label: 'Qualité du produit', value: qualityRating, setter: setQualityRating },
+              { key: 'communication', label: 'Communication vendeur', value: communicationRating, setter: setCommunicationRating },
+              { key: 'delivery', label: 'Délai de livraison', value: deliveryRating, setter: setDeliveryRating },
+              { key: 'conformity', label: 'Conformité à l\'annonce', value: conformityRating, setter: setConformityRating },
+            ].map(({ key, label, value, setter }) => (
+              <div key={key} className="flex items-center justify-between gap-4">
+                <span className="text-xs text-gray-600">{label}</span>
+                <div className="flex gap-1">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <button key={s} type="button" onClick={() => setter(s)} className="text-xl">
+                      {s <= value ? '⭐' : '☆'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
 
           <div>

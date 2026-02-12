@@ -1,4 +1,5 @@
 import prisma from '../config/database.js';
+import { Prisma } from '@prisma/client';
 
 export type AdminActionType =
   | 'ban_user'
@@ -39,7 +40,7 @@ class AdminAuditService {
         action_type: params.action_type,
         target_type: params.target_type ?? null,
         target_id: params.target_id ?? null,
-        metadata: params.metadata ?? undefined,
+        metadata: (params.metadata as Prisma.InputJsonValue) ?? undefined,
         ip_address: params.ip_address ?? null,
         user_agent: params.user_agent ?? null,
       },

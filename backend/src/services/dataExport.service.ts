@@ -6,8 +6,6 @@ import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import fs from 'fs/promises';
 import path from 'path';
-import archiver from 'archiver';
-import { createWriteStream } from 'fs';
 
 class DataExportService {
   private readonly EXPORT_DIR = path.join(process.cwd(), 'exports');
@@ -224,9 +222,11 @@ class DataExportService {
           },
         }),
         prisma.subscription.findMany({
-          where: { subscriber_id: userId },
+          where: { user_id: userId },
           select: {
-            subscribed_to_id: true,
+            plan_type: true,
+            status: true,
+            end_date: true,
             created_at: true,
           },
         }),
@@ -234,7 +234,8 @@ class DataExportService {
           where: { user_id: userId },
           select: {
             type: true,
-            content: true,
+            title: true,
+            message: true,
             is_read: true,
             created_at: true,
           },

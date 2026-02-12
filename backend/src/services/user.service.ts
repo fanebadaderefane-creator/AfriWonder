@@ -54,6 +54,9 @@ class UserService {
         username: true,
         full_name: true,
         profile_image: true,
+        bio: true,
+        location: true,
+        website: true,
         role: true,
         is_verified: true,
         created_at: true,
@@ -108,30 +111,44 @@ class UserService {
   async updateProfile(userId: string, data: {
     full_name?: string;
     profile_image?: string;
+    bio?: string | null;
+    location?: string | null;
+    website?: string | null;
     country?: string | null;
+    data_saver_mode?: boolean;
   }) {
-    // Rejeter les URLs de domaines externes non autorisés pour les images de profil
     validateUrl(data.profile_image, 'profile_image');
+    validateUrl(data.website, 'website');
 
-    const payload: { full_name?: string; profile_image?: string; country?: string | null } = {};
+    const payload: Record<string, unknown> = {};
     if (data.full_name !== undefined) payload.full_name = data.full_name;
     if (data.profile_image !== undefined) payload.profile_image = data.profile_image;
+    if (data.bio !== undefined) payload.bio = data.bio === '' ? null : data.bio;
+    if (data.location !== undefined) payload.location = data.location === '' ? null : data.location;
+    if (data.website !== undefined) payload.website = data.website === '' ? null : data.website;
     if (data.country !== undefined) payload.country = data.country === '' ? null : data.country;
+    if (data.data_saver_mode !== undefined) payload.data_saver_mode = data.data_saver_mode;
+
+    const selectFields = {
+      id: true,
+      email: true,
+      username: true,
+      full_name: true,
+      profile_image: true,
+      bio: true,
+      location: true,
+      website: true,
+      country: true,
+      role: true,
+      is_verified: true,
+      updated_at: true,
+      data_saver_mode: true,
+    } as const;
 
     const user = await prisma.user.update({
       where: { id: userId },
       data: payload,
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        full_name: true,
-        profile_image: true,
-        country: true,
-        role: true,
-        is_verified: true,
-        updated_at: true,
-      },
+      select: selectFields,
     });
 
     logger.info('Profil utilisateur mis à jour', { userId });
@@ -224,6 +241,9 @@ class UserService {
       await prisma.follow.delete({
         where: { id: existingFollow.id },
       });
+      await prisma.wonderRelation.deleteMany({
+        where: { follower_id: followerId, creator_id: followingId },
+      });
       return { following: false };
     } else {
       await prisma.follow.create({
@@ -231,6 +251,17 @@ class UserService {
           follower_id: followerId,
           following_id: followingId,
         },
+      });
+      await prisma.wonderRelation.upsert({
+        where: {
+          follower_id_creator_id: { follower_id: followerId, creator_id: followingId },
+        },
+        create: {
+          follower_id: followerId,
+          creator_id: followingId,
+          status: 'active',
+        },
+        update: { status: 'active', updated_at: new Date() },
       });
       const followersCount = await prisma.follow.count({
         where: { following_id: followingId },
@@ -244,8 +275,82 @@ class UserService {
     }
   }
 
+  /** Wonder = s'émerveiller avec un créateur (équivalent follow avec branding Afriwonder) */
+  async toggleWonder(followerId: string, creatorId: string) {
+    if (followerId === creatorId) {
+      const error: any = new Error('Vous ne pouvez pas rejoindre votre propre Wonder');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const existingWonder = await prisma.wonderRelation.findFirst({
+      where: {
+        follower_id: followerId,
+        creator_id: creatorId,
+        status: 'active',
+      },
+    });
+
+    if (existingWonder) {
+      await prisma.wonderRelation.delete({ where: { id: existingWonder.id } });
+      const existingFollow = await prisma.follow.findFirst({
+        where: { follower_id: followerId, following_id: creatorId },
+      });
+      if (existingFollow) {
+        await prisma.follow.delete({ where: { id: existingFollow.id } });
+      }
+      return { inWonder: false };
+    } else {
+      await prisma.wonderRelation.upsert({
+        where: {
+          follower_id_creator_id: { follower_id: followerId, creator_id: creatorId },
+        },
+        create: {
+          follower_id: followerId,
+          creator_id: creatorId,
+          status: 'active',
+        },
+        update: { status: 'active', updated_at: new Date() },
+      });
+      await prisma.follow.upsert({
+        where: {
+          follower_id_following_id: { follower_id: followerId, following_id: creatorId },
+        },
+        create: {
+          follower_id: followerId,
+          following_id: creatorId,
+        },
+        update: {},
+      });
+      const wonderersCount = await this.getWonderersCount(creatorId);
+      if (wonderersCount >= 100) {
+        GamificationEngine.on100Followers(creatorId).catch((e) =>
+          logger.warn('Gamification on100Followers', { creatorId, err: e })
+        );
+      }
+      return { inWonder: true };
+    }
+  }
+
+  async getWonderersCount(creatorId: string): Promise<number> {
+    return prisma.wonderRelation.count({
+      where: { creator_id: creatorId, status: 'active' },
+    });
+  }
+
+  async isInWonder(followerId: string, creatorId: string): Promise<boolean> {
+    const w = await prisma.wonderRelation.findFirst({
+      where: {
+        follower_id: followerId,
+        creator_id: creatorId,
+        status: 'active',
+      },
+    });
+    return !!w;
+  }
+
   async getUserStats(userId: string) {
-    const [user, videosCount, followersCount, followingCount, productsCount] = await Promise.all([
+    const [user, videosCount, followersCount, followingCount, productsCount, wonderersCount] = await Promise.all([
       prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -261,6 +366,7 @@ class UserService {
       prisma.follow.count({ where: { following_id: userId } }),
       prisma.follow.count({ where: { follower_id: userId } }),
       prisma.product.count({ where: { seller_id: userId } }),
+      this.getWonderersCount(userId),
     ]);
 
     if (!user) {
@@ -274,6 +380,7 @@ class UserService {
         followers: followersCount,
         following: followingCount,
         products: productsCount,
+        wonderers: Math.max(wonderersCount, followersCount), // compat: wonderers >= followers
       },
     };
   }

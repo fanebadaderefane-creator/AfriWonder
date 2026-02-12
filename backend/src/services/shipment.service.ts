@@ -1,21 +1,69 @@
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import notificationService from './notification.service.js';
+import messageService from './message.service.js';
 
-/**
- * Service de gestion des expéditions et suivi logistique
- * 
- * Fonctionnalités :
- * - Génération numéro de suivi
- * - Mise à jour timeline
- * - Preuve de livraison (photo, signature)
- * - Estimation livraison dynamique
- */
 class ShipmentService {
-  /**
-   * Créer une expédition pour une commande
-   */
-  async createShipment(orderId: string, data: {
+  private toHttpError(message: string, statusCode: number) {
+    const error = new Error(message) as Error & { statusCode?: number };
+    error.statusCode = statusCode;
+    return error;
+  }
+
+  private async assertOrderParticipant(orderId: string, userId: string) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        user_id: true,
+        items: {
+          select: {
+            product: {
+              select: { seller_id: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      throw this.toHttpError('Commande non trouvee', 404);
+    }
+
+    const isBuyer = order.user_id === userId;
+    const isSeller = order.items.some((item) => item.product.seller_id === userId);
+
+    if (!isBuyer && !isSeller) {
+      throw this.toHttpError('Non autorise', 403);
+    }
+  }
+
+  private async assertSellerCanManageShipment(orderId: string, userId: string) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        items: {
+          select: {
+            product: {
+              select: { seller_id: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      throw this.toHttpError('Commande non trouvee', 404);
+    }
+
+    const isSeller = order.items.some((item) => item.product.seller_id === userId);
+    if (!isSeller) {
+      throw this.toHttpError('Seul le vendeur peut gerer cette expedition', 403);
+    }
+  }
+
+  async createShipment(orderId: string, sellerId: string, data: {
     carrier: string;
     tracking_number?: string;
     estimated_delivery_days?: number;
@@ -24,21 +72,28 @@ class ShipmentService {
       where: { id: orderId },
       include: {
         shipping: true,
+        items: {
+          include: {
+            product: { select: { seller_id: true } },
+          },
+        },
       },
     });
 
     if (!order) {
-      throw new Error('Commande non trouvée');
+      throw new Error('Commande non trouvee');
+    }
+
+    const isSeller = order.items.some((item) => item.product.seller_id === sellerId);
+    if (!isSeller) {
+      throw new Error('Seul le vendeur peut creer une expedition pour cette commande');
     }
 
     if (order.shipping) {
-      throw new Error('Expédition déjà créée pour cette commande');
+      throw new Error('Expedition deja creee pour cette commande');
     }
 
-    // Générer numéro de suivi si non fourni
     const trackingNumber = data.tracking_number || this.generateTrackingNumber(data.carrier);
-
-    // Calculer date livraison estimée
     const estimatedDelivery = data.estimated_delivery_days
       ? new Date(Date.now() + data.estimated_delivery_days * 24 * 60 * 60 * 1000)
       : null;
@@ -50,12 +105,11 @@ class ShipmentService {
         carrier: data.carrier,
         status: 'pending',
         shipping_address: order.shipping_address || '',
-        cost: 0, // À calculer selon le transporteur
+        cost: 0,
         estimated_delivery: estimatedDelivery,
       },
     });
 
-    // Mettre à jour la commande
     await prisma.order.update({
       where: { id: orderId },
       data: {
@@ -67,38 +121,52 @@ class ShipmentService {
       },
     });
 
-    // Ajouter événement de suivi initial
     await this.addTrackingEvent(orderId, {
       event_type: 'shipped',
-      description: `Expédié via ${data.carrier}`,
-      location: 'Entrepôt',
+      description: `Expedie via ${data.carrier}`,
+      location: 'Entrepot',
     });
 
-    // Notifier l'acheteur
     try {
       await notificationService.notifyOrderStatusUpdate(order.user_id, orderId, 'in_transit');
     } catch (err) {
-      logger.warn('Erreur notification expédition', { orderId, err });
+      logger.warn('Erreur notification expedition', { orderId, err });
+    }
+    try {
+      const sellerId = order.seller_id || order.items[0]?.product?.seller_id;
+      if (sellerId) {
+        await notificationService.notifyShipmentUpdate(sellerId, orderId, 'in_transit', 'seller');
+      }
+      await notificationService.notifyShipmentUpdate(order.user_id, orderId, 'in_transit', 'buyer');
+    } catch (err) {
+      logger.warn('Erreur notification shipment update', { orderId, err });
     }
 
-    logger.info('Expédition créée', { orderId, trackingNumber, carrier: data.carrier });
+    try {
+      await messageService.sendOrderTrackingUpdate(orderId, 'in_transit', sellerId);
+    } catch (err) {
+      logger.warn('Erreur message auto expedition', { orderId, err });
+    }
+
+    logger.info('Expedition creee', { orderId, trackingNumber, carrier: data.carrier });
     return shipping;
   }
 
-  /**
-   * Ajouter un événement de suivi
-   */
   async addTrackingEvent(orderId: string, data: {
     event_type: string;
     description?: string;
     location?: string;
-  }) {
+  }, actorUserId?: string) {
+    if (actorUserId) {
+      await this.assertSellerCanManageShipment(orderId, actorUserId);
+    }
+
     const shipping = await prisma.shipping.findUnique({
       where: { order_id: orderId },
     });
 
     if (!shipping) {
-      throw new Error('Expédition non trouvée');
+      throw new Error('Expedition non trouvee');
     }
 
     const event = await prisma.trackingEvent.create({
@@ -111,7 +179,6 @@ class ShipmentService {
       },
     });
 
-    // Mettre à jour le statut de l'expédition selon l'événement
     let newStatus = shipping.status;
     if (data.event_type === 'out_for_delivery') {
       newStatus = 'in_transit';
@@ -125,7 +192,6 @@ class ShipmentService {
         data: { status: newStatus },
       });
 
-      // Mettre à jour la commande
       if (data.event_type === 'delivered') {
         await prisma.order.update({
           where: { id: orderId },
@@ -136,42 +202,53 @@ class ShipmentService {
           },
         });
 
-        // Notifier l'acheteur
         try {
           const order = await prisma.order.findUnique({
             where: { id: orderId },
-            select: { user_id: true },
+            select: { user_id: true, seller_id: true },
           });
           if (order) {
             await notificationService.notifyOrderStatusUpdate(order.user_id, orderId, 'delivered');
+            if (order.seller_id) {
+              await notificationService.notifyShipmentUpdate(order.seller_id, orderId, 'delivered', 'seller');
+            }
+            await notificationService.notifyShipmentUpdate(order.user_id, orderId, 'delivered', 'buyer');
           }
         } catch (err) {
           logger.warn('Erreur notification livraison', { orderId, err });
         }
+
+        if (actorUserId) {
+          try {
+            await messageService.sendOrderTrackingUpdate(orderId, 'delivered', actorUserId);
+          } catch (err) {
+            logger.warn('Erreur message auto delivered', { orderId, err });
+          }
+        }
       }
     }
 
-    logger.info('Événement de suivi ajouté', { orderId, eventType: data.event_type });
+    logger.info('Evenement de suivi ajoute', { orderId, eventType: data.event_type });
     return event;
   }
 
-  /**
-   * Confirmer la livraison avec preuve (photo, signature)
-   */
   async confirmDelivery(orderId: string, data: {
     proof_of_delivery_photo?: string;
     signature?: string;
     current_location?: string;
-  }) {
+  }, actorUserId?: string) {
+    if (actorUserId) {
+      await this.assertSellerCanManageShipment(orderId, actorUserId);
+    }
+
     const shipping = await prisma.shipping.findUnique({
       where: { order_id: orderId },
     });
 
     if (!shipping) {
-      throw new Error('Expédition non trouvée');
+      throw new Error('Expedition non trouvee');
     }
 
-    // Mettre à jour l'expédition
     await prisma.shipping.update({
       where: { id: shipping.id },
       data: {
@@ -183,14 +260,12 @@ class ShipmentService {
       },
     });
 
-    // Ajouter événement de livraison
     await this.addTrackingEvent(orderId, {
       event_type: 'delivered',
-      description: 'Livraison confirmée',
+      description: 'Livraison confirmee',
       location: data.current_location,
     });
 
-    // Mettre à jour la commande
     await prisma.order.update({
       where: { id: orderId },
       data: {
@@ -200,20 +275,44 @@ class ShipmentService {
       },
     });
 
-    logger.info('Livraison confirmée', { orderId });
+    if (actorUserId) {
+      try {
+        await messageService.sendOrderTrackingUpdate(orderId, 'delivered', actorUserId);
+      } catch (err) {
+        logger.warn('Erreur message auto confirm delivery', { orderId, err });
+      }
+    }
+
+    try {
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { user_id: true, seller_id: true },
+      });
+      if (order) {
+        if (order.seller_id) {
+          await notificationService.notifyShipmentUpdate(order.seller_id, orderId, 'delivered', 'seller');
+        }
+        await notificationService.notifyShipmentUpdate(order.user_id, orderId, 'delivered', 'buyer');
+      }
+    } catch (err) {
+      logger.warn('Erreur notification confirm delivery', { orderId, err });
+    }
+
+    logger.info('Livraison confirmee', { orderId });
     return { orderId, delivered: true };
   }
 
-  /**
-   * Mettre à jour la localisation actuelle
-   */
-  async updateLocation(orderId: string, location: string) {
+  async updateLocation(orderId: string, location: string, actorUserId?: string) {
+    if (actorUserId) {
+      await this.assertSellerCanManageShipment(orderId, actorUserId);
+    }
+
     const shipping = await prisma.shipping.findUnique({
       where: { order_id: orderId },
     });
 
     if (!shipping) {
-      throw new Error('Expédition non trouvée');
+      throw new Error('Expedition non trouvee');
     }
 
     await prisma.shipping.update({
@@ -225,18 +324,19 @@ class ShipmentService {
 
     await this.addTrackingEvent(orderId, {
       event_type: 'location_update',
-      description: `Mise à jour localisation: ${location}`,
-      location: location,
+      description: `Mise a jour localisation: ${location}`,
+      location,
     });
 
-    logger.info('Localisation mise à jour', { orderId, location });
+    logger.info('Localisation mise a jour', { orderId, location });
     return { orderId, location };
   }
 
-  /**
-   * Obtenir la timeline complète d'une expédition
-   */
-  async getTimeline(orderId: string) {
+  async getTimeline(orderId: string, actorUserId?: string) {
+    if (actorUserId) {
+      await this.assertOrderParticipant(orderId, actorUserId);
+    }
+
     const shipping = await prisma.shipping.findUnique({
       where: { order_id: orderId },
       include: {
@@ -247,7 +347,7 @@ class ShipmentService {
     });
 
     if (!shipping) {
-      throw new Error('Expédition non trouvée');
+      throw new Error('Expedition non trouvee');
     }
 
     return {
@@ -256,9 +356,6 @@ class ShipmentService {
     };
   }
 
-  /**
-   * Générer un numéro de suivi unique
-   */
   private generateTrackingNumber(carrier: string): string {
     const prefix = carrier.toUpperCase().substring(0, 3);
     const timestamp = Date.now().toString(36).toUpperCase();

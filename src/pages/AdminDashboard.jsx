@@ -9,6 +9,7 @@ import ModerationPanel from '@/components/admin/ModerationPanel';
 import AnalyticsPanel from '@/components/admin/AnalyticsPanel';
 import SettingsPanel from '@/components/admin/SettingsPanel';
 import AuditPanel from '@/components/admin/AuditPanel';
+import LogisticsPanel from '@/components/admin/LogisticsPanel';
 
 const ADMIN_ROLES = ['super_admin', 'admin', 'finance_admin', 'moderation_admin', 'support_admin', 'data_admin'];
 
@@ -28,8 +29,12 @@ function ActivePanel({ activeTab, user }) {
       return <ModerationPanel subTab="sellers" />;
     case 'disputes':
       return <ModerationPanel subTab="disputes" />;
+    case 'returns':
+      return <ModerationPanel subTab="returns" />;
     case 'reports':
       return <ModerationPanel subTab="reports" />;
+    case 'logistics':
+      return <LogisticsPanel />;
     case 'analytics':
       return <AnalyticsPanel />;
     case 'audit':

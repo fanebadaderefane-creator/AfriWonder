@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Heart, MapPin, Star, BadgeCheck, Play } from 'lucide-react';
+import { Heart, MapPin, Star, BadgeCheck, Play, Shield } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from "@/lib/utils";
 import { useMarketplaceCurrency } from '@/contexts/MarketplaceCurrencyContext';
@@ -63,11 +63,19 @@ export default function ProductCard({
             )} />
           </button>
 
-          {/* Verified badge */}
+          {/* Verified badge + Badge Confiance CDC 2.2.6 */}
           {product.is_verified && (
-            <div className="absolute bottom-2 left-2 bg-green-500 text-white text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
-              <BadgeCheck className="w-3 h-3" />
-              Vérifié
+            <div className="absolute bottom-2 left-2 flex items-center gap-1">
+              <span className="bg-green-500 text-white text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                <BadgeCheck className="w-3 h-3" />
+                Vérifié
+              </span>
+              {(product.seller_rating ?? 0) >= 4 && (
+                <span className="bg-emerald-600 text-white text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                  <Shield className="w-3 h-3" />
+                  Confiance
+                </span>
+              )}
             </div>
           )}
         </div>

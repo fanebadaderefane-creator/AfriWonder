@@ -138,11 +138,20 @@ CRON_SECRET=
 EVENTS_REMINDERS_SECRET=
 
 # ============================================
-# LIVE STREAMING (Agora)
+# WITHDRAWALS (CDC Live Mali: délai 24–48h)
 # ============================================
-# Pour tokens RTC : https://console.agora.io
+# Délai en heures avant qu'un retrait soit traitable (défaut: 48)
+WITHDRAWAL_DELAY_HOURS=48
+
+# ============================================
+# LIVE STREAMING (Agora) — Flux vidéo réel
+# ============================================
+# Guide complet : docs/AGORA_SETUP.md
+# 1. Créer un projet sur https://console.agora.io
+# 2. Activer l'App Certificate (Primary Certificate)
+# 3. Copier App ID et Certificate ci-dessous
 AGORA_APP_ID=
 AGORA_APP_CERTIFICATE=
-# Fallback si Agora non configuré
+# Fallback HMAC si Agora non configuré (défaut: dev-secret)
 STREAM_SECRET=dev-secret
 

@@ -120,3 +120,48 @@
   font-weight: 700;
   color: #c2410c;
 }
+
+/* WCAG 2.1 AA - Accessibilité */
+/* 2.4.7 Focus visible - contour visible au focus clavier */
+:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 0.8);
+  outline-offset: 2px;
+}
+
+/* Éviter outline sur clic souris (Tap highlight) */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Contraste suffisant pour liens (2.4.7) */
+a:focus-visible {
+  outline: 2px solid #f97316;
+  outline-offset: 2px;
+}
+
+/* 2.3.3 Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Skip to main content - 2.4.1 Bypass blocks */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 1rem;
+  z-index: 9999;
+  padding: 0.75rem 1rem;
+  background: #f97316;
+  color: white;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  transition: top 0.2s;
+}
+
+.skip-link:focus {
+  top: 1rem;
+}

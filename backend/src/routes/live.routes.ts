@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import liveService from '../services/live.service.js';
+import { LIVE_CATEGORIES, LIVE_LANGUAGES, LIVE_AGE_RESTRICTIONS } from '../config/liveCategories.js';
 
 const router = Router();
 
@@ -24,7 +25,45 @@ const chatLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// GET /api/live
+// GET /api/live/agora-status - Vérifier si Agora est configuré + test génération token (diagnostic, pas d'auth)
+router.get('/agora-status', async (_req, res) => {
+  const hasAppId = !!process.env.AGORA_APP_ID?.trim();
+  const hasCert = !!process.env.AGORA_APP_CERTIFICATE?.trim();
+  let tokenTestOk = false;
+  let tokenError = '';
+  if (hasAppId && hasCert) {
+    try {
+      const result = await liveService.getAgoraToken('test_channel', 'test-user', 'host');
+      tokenTestOk = !!(result?.token && result?.appId && result?.channel);
+      if (!tokenTestOk && result?.token) tokenError = 'appId ou channel manquant dans la réponse';
+      else if (!tokenTestOk) tokenError = 'getAgoraToken a retourné null';
+    } catch (e: any) {
+      tokenError = e?.message || String(e) || 'Erreur génération token';
+    }
+  }
+  const configured = hasAppId && hasCert && tokenTestOk;
+  res.json({
+    success: true,
+    data: {
+      configured,
+      hasAppId,
+      hasCert,
+      tokenTestOk,
+      tokenError: tokenError || undefined,
+      message: configured
+        ? 'Agora prêt'
+        : tokenError
+          ? `Erreur token: ${tokenError}`
+          : !hasAppId
+            ? 'AGORA_APP_ID manquant dans backend/.env'
+            : !hasCert
+              ? 'AGORA_APP_CERTIFICATE manquant dans backend/.env'
+              : 'Configurer Agora',
+    },
+  });
+});
+
+// GET /api/live - CDC: sortBy = viewers | recent | popularity | duration
 router.get('/', async (req, res, next) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -35,6 +74,7 @@ router.get('/', async (req, res, next) => {
     if (req.query.featured !== undefined) filters.featured = req.query.featured === 'true';
     if (req.query.region) filters.region = req.query.region as string;
     if (req.query.language) filters.language = req.query.language as string;
+    if (req.query.sortBy) filters.sortBy = req.query.sortBy as string;
     const result = await liveService.listStreams(page, limit, filters);
     res.json({ success: true, data: result });
   } catch (error: any) {
@@ -55,6 +95,11 @@ router.get('/discovery', optionalAuth, async (req: AuthRequest, res, next) => {
   } catch (error: any) {
     next(error);
   }
+});
+
+// GET /api/live/categories - CDC: catégories, langues, restriction âge
+router.get('/categories', (_req, res) => {
+  res.json({ success: true, data: { categories: LIVE_CATEGORIES, languages: LIVE_LANGUAGES, ageRestrictions: LIVE_AGE_RESTRICTIONS } });
 });
 
 // GET /api/live/gifts - Catalogue cadeaux (live)
@@ -102,6 +147,43 @@ router.get('/wallet/recharge/confirm', authenticate, async (req: AuthRequest, re
   }
 });
 
+// GET /api/live/creator/export - CDC: Export analytics CSV/JSON
+router.get('/creator/export', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const format = (req.query.format as string) || 'csv';
+    const data = await liveService.exportCreatorAnalytics(req.user!.id, format as any);
+    if (format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename=live-analytics.csv');
+      return res.send(data);
+    }
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/creator/:creatorId/subscribe - CDC: Abonnement don récurrent
+router.post('/creator/:creatorId/subscribe', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const amount = Number(req.body.amount) || 500;
+    const sub = await liveService.subscribeToCreator(req.user!.id, param(req, 'creatorId'), amount);
+    res.json({ success: true, data: sub });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// DELETE /api/live/creator/:creatorId/subscribe
+router.delete('/creator/:creatorId/subscribe', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    await liveService.unsubscribeFromCreator(req.user!.id, param(req, 'creatorId'));
+    res.json({ success: true });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // GET /api/live/creator-level/:userId - Niveau créateur
 router.get('/creator-level/:userId', async (req, res, next) => {
   try {
@@ -115,7 +197,7 @@ router.get('/creator-level/:userId', async (req, res, next) => {
 // POST /api/live/start
 router.post('/start', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const { title, description, category, streamUrl, thumbnail_url, stream_key, rtmp_url, playback_url, region, language, status, scheduled_at } = req.body;
+    const { title, description, category, streamUrl, thumbnail_url, stream_key, rtmp_url, playback_url, region, language, status, scheduled_at, tags, age_restriction, donations_enabled, private_mode, goal_target, delay_seconds, max_quality } = req.body;
     const stream = await liveService.createStream(req.user!.id, {
       title,
       description,
@@ -129,6 +211,13 @@ router.post('/start', authenticate, async (req: AuthRequest, res, next) => {
       language,
       status,
       scheduled_at: scheduled_at ? new Date(scheduled_at) : undefined,
+      tags,
+      age_restriction,
+      donations_enabled,
+      private_mode,
+      goal_target,
+      delay_seconds,
+      max_quality,
     });
     res.json({ success: true, data: stream });
   } catch (error: any) {
@@ -223,6 +312,21 @@ router.post('/:id/chat', authenticate, chatLimiter, async (req: AuthRequest, res
   }
 });
 
+// POST /api/live/:id/tip - CDC: don direct (sans gift)
+router.post('/:id/tip', authenticate, giftLimiter, async (req: AuthRequest, res, next) => {
+  try {
+    const { amount, message, is_anonymous } = req.body;
+    const result = await liveService.sendTip(param(req, 'id'), req.user!.id, {
+      amount: Number(amount) || 0,
+      message,
+      is_anonymous: !!is_anonymous,
+    });
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // POST /api/live/:id/gift (rate limit 5/10s)
 router.post('/:id/gift', authenticate, giftLimiter, async (req: AuthRequest, res, next) => {
   try {
@@ -246,6 +350,39 @@ router.post('/:id/like', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const result = await liveService.like(param(req, 'id'), req.user!.id);
     res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/:id/reaction - CDC: heart, fire, thumbs
+router.post('/:id/reaction', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const type = (req.body.type as string) || 'like';
+    const valid = ['like', 'heart', 'fire', 'thumbs'].includes(type) ? type : 'like';
+    const result = await liveService.reaction(param(req, 'id'), req.user!.id, valid as any);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/live/:id/chapters - Chapitres replay
+router.get('/:id/chapters', async (req, res, next) => {
+  try {
+    const chapters = await liveService.getReplayChapters(param(req, 'id'));
+    res.json({ success: true, data: chapters });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/:id/chapters - Créateur ajoute chapitre
+router.post('/:id/chapters', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { title, start_seconds, end_seconds } = req.body;
+    const ch = await liveService.addReplayChapter(param(req, 'id'), req.user!.id, { title, start_seconds, end_seconds });
+    res.json({ success: true, data: ch });
   } catch (error: any) {
     next(error);
   }

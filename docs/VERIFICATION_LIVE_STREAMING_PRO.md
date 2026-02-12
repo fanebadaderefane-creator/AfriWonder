@@ -71,6 +71,7 @@ Ce document vérifie l’implémentation du **module Live** par rapport au promp
 | Exigence | Statut | Détail |
 |----------|--------|--------|
 | Lives populaires | ✅ | GET `/api/live/discovery?type=popular` (tri par viewers). |
+| Lives tendances (algorithme) | ✅ | `?type=trending` (score = viewers×2 + gifts/100 + likes). |
 | Lives régionaux | ✅ | `?type=regional&region=SN`. |
 | Lives par intérêts (catégorie) | ✅ | `?type=category&category=...`. |
 | Lives des comptes suivis | ✅ | `?type=followed` (auth optionnelle, `optionalAuth`). |

@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
+import speakeasy from 'speakeasy';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
@@ -76,7 +77,12 @@ class AuthService {
     };
   }
 
-  async login(email: string, password: string) {
+  async login(
+    email: string,
+    password: string,
+    twoFactorCode?: string,
+    backupCode?: string
+  ) {
     // Valider les données requises pour éviter les erreurs 500 Prisma
     if (!email || !password) {
       const error: any = new Error('Email et mot de passe sont requis');
@@ -104,6 +110,62 @@ class AuthService {
       throw error;
     }
 
+    // 2FA optionnelle : si activée, exiger un code TOTP ou un backup code
+    const twoFactor = await prisma.user2FA.findUnique({
+      where: { user_id: user.id },
+      select: {
+        is_enabled: true,
+        secret: true,
+        backup_codes: true,
+      },
+    });
+
+    if (twoFactor?.is_enabled) {
+      const provided2FA = String(twoFactorCode || '').trim();
+      const providedBackup = String(backupCode || '').trim().toUpperCase();
+      let verified = false;
+
+      if (provided2FA && twoFactor.secret) {
+        verified = speakeasy.totp.verify({
+          secret: twoFactor.secret,
+          encoding: 'base32',
+          token: provided2FA,
+          window: 2,
+        });
+      }
+
+      if (!verified && providedBackup) {
+        const backupCodes = (twoFactor.backup_codes || []).map((c) => String(c).toUpperCase());
+        verified = backupCodes.includes(providedBackup);
+        if (verified) {
+          const remaining = backupCodes.filter((c) => c !== providedBackup);
+          await prisma.user2FA.update({
+            where: { user_id: user.id },
+            data: {
+              backup_codes: remaining,
+              last_used_at: new Date(),
+            },
+          });
+        }
+      }
+
+      if (!verified) {
+        const err: any = new Error(
+          provided2FA || providedBackup
+            ? 'Code 2FA invalide'
+            : 'Code 2FA requis pour ce compte'
+        );
+        err.statusCode = 401;
+        err.code = provided2FA || providedBackup ? 'TWO_FA_INVALID' : 'TWO_FA_REQUIRED';
+        throw err;
+      }
+
+      await prisma.user2FA.update({
+        where: { user_id: user.id },
+        data: { last_used_at: new Date() },
+      });
+    }
+
     // Générer les tokens
     const tokens = this.generateTokens(user.id, user.email);
 
@@ -118,6 +180,7 @@ class AuthService {
         profile_image: user.profile_image,
         role: user.role,
       },
+      two_factor_verified: !!twoFactor?.is_enabled,
       ...tokens,
     };
   }
@@ -173,9 +236,13 @@ class AuthService {
         username: true,
         full_name: true,
         profile_image: true,
+        bio: true,
+        location: true,
+        website: true,
         role: true,
         is_verified: true,
         created_at: true,
+        data_saver_mode: true,
       },
     });
 
@@ -295,4 +362,3 @@ class AuthService {
 
 export const authService = new AuthService();
 export default authService;
-

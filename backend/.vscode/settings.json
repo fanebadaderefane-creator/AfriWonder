@@ -1,5 +1,11 @@
 {
   "typescript.tsconfig": "./tsconfig.json",
-  "typescript.enablePromptUseWorkspaceTsdk": false
+  "typescript.enablePromptUseWorkspaceTsdk": false,
+  "cSpell.language": "en,fr",
+  "cSpell.ignorePaths": [
+    "**/__tests__/setup.ts",
+    "**/src/__tests__/marketplace.test.ts",
+    "__tests__/setup.ts",
+    "src/__tests__/marketplace.test.ts"
+  ]
 }
-

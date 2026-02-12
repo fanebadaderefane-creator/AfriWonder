@@ -13,6 +13,12 @@ import {
   webhookLimiter 
 } from './middleware/rateLimiting.js';
 import { antiBotMiddleware, antiSpamMiddleware } from './middleware/antiBot.js';
+import { attachRequestId, httpMetricsMiddleware } from './middleware/observability.middleware.js';
+import {
+  cachePolicyMiddleware,
+  csrfProtectionMiddleware,
+  sanitizeInputMiddleware,
+} from './middleware/requestProtection.middleware.js';
 
 // Import routes
 import authRoutes from './routes/auth.routes.js';
@@ -47,12 +53,14 @@ import leaderboardRoutes from './routes/leaderboard.routes.js';
 import gamificationRoutes from './routes/gamification.routes.js';
 import viewHistoryRoutes from './routes/viewHistory.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
+import proxyRoutes from './routes/proxy.routes.js';
 import servicesRoutes from './routes/services.routes.js';
 import shippingRoutes from './routes/shipping.routes.js';
 import exchangeRatesRoutes from './routes/exchangeRates.routes.js';
 import sellerReviewsRoutes from './routes/seller-reviews.routes.js';
 import supportRoutes from './routes/support.routes.js';
 import refundsRoutes from './routes/refunds.routes.js';
+import returnsRoutes from './routes/returns.routes.js';
 import addressesRoutes from './routes/addresses.routes.js';
 import sellerProfileRoutes from './routes/sellerProfile.routes.js';
 import verificationRoutes from './routes/verification.routes.js';
@@ -91,18 +99,37 @@ import propertiesRoutes from './routes/properties.routes.js';
 import insuranceRoutes from './routes/insurance.routes.js';
 import moderationRoutes from './routes/moderation.routes.js';
 import playlistsRoutes from './routes/playlists.routes.js';
+import musicRoutes from './routes/music.routes.js';
 import storiesRoutes from './routes/stories.routes.js';
 import wishlistRoutes from './routes/wishlist.routes.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
 import { getErrorsSummary } from './services/errorMonitoring.service.js';
+import { getHttpMetricsSummary } from './services/httpMetrics.service.js';
 import prisma from './config/database.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './swagger.js';
 import * as Sentry from '@sentry/node';
+import commissionSettingsService from './services/commissionSettings.service.js';
 
 const app = express();
+app.set('trust proxy', 1);
+app.set('etag', 'strong');
+app.use(attachRequestId);
+app.use(httpMetricsMiddleware);
+
+// Charger les overrides de commissions au demarrage (sans bloquer le boot)
+commissionSettingsService.loadFromDb().catch(() => {});
+
+// CORS en premier (avant routes) — évite "CORS Failed" sur /api/auth/me et preflight OPTIONS
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+app.options('*', cors());
 
 // Sentry (Express) — l’instrumentation HTTP/Tracing est configurée dans initSentry()
 
@@ -120,16 +147,15 @@ app.get('/health/ready', async (req, res) => {
   }
 });
 
-// Middleware
-app.use(helmet());
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
-  credentials: true
-}));
-// Stripe webhook exige body brut pour vérification signature (avant express.json)
+// Middleware (CORP cross-origin pour permettre au front d’utiliser les réponses ex. proxy média)
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+// Webhooks paiement exigent body brut pour vérification signature (avant express.json)
 app.use('/api/payments/stripe/webhook', express.raw({ type: 'application/json' }));
+app.use('/api/payments/orange-money/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(sanitizeInputMiddleware);
+app.use(csrfProtectionMiddleware);
 
 // Anti-bot (bloquer bots malveillants)
 app.use(antiBotMiddleware);
@@ -153,6 +179,7 @@ app.use('/api/admin', adminLimiter); // 30 req/min
 app.use('/api/comments', antiSpamMiddleware);
 app.use('/api/messages', antiSpamMiddleware);
 app.use('/api/news', antiSpamMiddleware);
+app.use(cachePolicyMiddleware);
 
 // Région CEDEAO (Mali, Sénégal, CI, Burkina) — pour déploiement multi-pays
 app.get('/health/region', async (_req, res) => {
@@ -181,18 +208,31 @@ app.get('/health/errors', (req, res) => {
   res.json({ success: true, ...getErrorsSummary() });
 });
 
+app.get('/health/metrics', (req, res) => {
+  const apiKey = req.headers['x-health-key'] || req.query.key;
+  const expected = process.env.HEALTH_API_KEY;
+  if (expected && apiKey !== expected) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+  res.json({ success: true, data: getHttpMetricsSummary() });
+});
+
 // Swagger API Documentation (désactivé en tests pour éviter les handles persistants)
 if (process.env.NODE_ENV !== 'test') {
+  app.get('/api/openapi.json', (_req, res) => {
+    res.json(swaggerSpec);
+  });
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
     customCss: '.swagger-ui .topbar { display: none }',
     customSiteTitle: 'AfriWonder API Documentation',
   }));
-  console.log('📚 Swagger UI disponible sur http://localhost:3000/api-docs');
+  console.log('Swagger UI disponible sur http://localhost:3000/api-docs');
 }
 
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/videos', videoRoutes);
+app.use('/api/proxy', proxyRoutes);
 app.use('/api/comments', commentsRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
@@ -242,6 +282,7 @@ app.use('/api/exchange-rates', exchangeRatesRoutes);
 app.use('/api/seller-reviews', sellerReviewsRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/refunds', refundsRoutes);
+app.use('/api/returns', returnsRoutes);
 app.use('/api/addresses', addressesRoutes);
 app.use('/api/seller-profile', sellerProfileRoutes);
 app.use('/api/verification', verificationRoutes);
@@ -264,6 +305,7 @@ app.use('/api/properties', propertiesRoutes);
 app.use('/api/insurance', insuranceRoutes);
 app.use('/api/moderation', moderationRoutes);
 app.use('/api/playlists', playlistsRoutes);
+app.use('/api/music', musicRoutes);
 app.use('/api/stories', storiesRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 
@@ -275,4 +317,5 @@ if (process.env.SENTRY_DSN && process.env.NODE_ENV !== 'test') {
 app.use(errorHandler);
 
 export default app;
+
 

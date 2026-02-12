@@ -28,6 +28,10 @@ export default function AdvancedFilters({ isOpen, onClose, filters, onApply }) {
     { value: 'used', label: 'Occasion' }
   ];
 
+  const maliRegions = [
+    'Bamako', 'Sikasso', 'Ségou', 'Mopti', 'Kayes', 'Koulikoro', 'Gao', 'Tombouctou'
+  ];
+
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
@@ -155,6 +159,37 @@ export default function AdvancedFilters({ isOpen, onClose, filters, onApply }) {
                     {opt.label}
                   </Label>
                 </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Région Mali (CDC) */}
+          <div>
+            <h3 className="font-semibold mb-3">
+              <MapPin className="w-4 h-4 inline mr-1" />
+              Région (Mali)
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {maliRegions.map(region => (
+                <Badge
+                  key={region}
+                  onClick={() => {
+                    const regions = localFilters.regions || [];
+                    setLocalFilters({
+                      ...localFilters,
+                      regions: regions.includes(region)
+                        ? regions.filter(r => r !== region)
+                        : [...regions, region]
+                    });
+                  }}
+                  className={`cursor-pointer ${
+                    (localFilters.regions || []).includes(region)
+                      ? 'bg-orange-500'
+                      : 'bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  {region}
+                </Badge>
               ))}
             </div>
           </div>

@@ -1,5 +1,5 @@
-// @ts-nocheck
-import React, { useState, useRef, useEffect, memo } from 'react';
+ // @ts-nocheck
+import React, { useState, useRef, useEffect, useMemo, memo } from 'react';
 import {
   Heart,
   MessageCircle,
@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn } from "@/lib/utils";
+import { cn, getVideoPlaybackUrl } from "@/lib/utils";
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { useTranslation } from "@/components/common/useTranslation";
@@ -69,6 +69,11 @@ function VideoCardContent({
   hideActions = false
 }) {
   const videoRef = useRef(null);
+  const progressBarRef = useRef(null);
+  const previewVideoRef = useRef(null);
+  const previewCanvasRef = useRef(null);
+  const lastPreviewTimeRef = useRef(-1);
+  const viewRecordedRef = useRef(false);
   const navigate = useNavigate();
   
   // Extraire les hashtags et la musique de la description si les champs n'existent pas
@@ -94,6 +99,11 @@ function VideoCardContent({
   const [isAnimating, setIsAnimating] = useState(false);
   const [showParticles, setShowParticles] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
+
+  // URL stable pour éviter remontage vidéo et NS_BINDING_ABORTED (ne change pas à chaque render)
+  const videoUrl = useMemo(() => getVideoPlaybackUrl(video.video_url) || '', [video.video_url]);
+
+  const [loadError, setLoadError] = useState(false);
 
   const { t } = useTranslation();
   
@@ -274,13 +284,13 @@ function VideoCardContent({
   /* ================= VIDEO ================= */
 
   const handlePlayPause = () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || loadError) return;
 
     if (isPlaying) {
       videoRef.current.pause();
       setIsPlaying(false);
     } else {
-      videoRef.current.play();
+      videoRef.current.play().catch(() => {});
       setIsPlaying(true);
     }
 
@@ -288,18 +298,46 @@ function VideoCardContent({
     setTimeout(() => setShowPlayIcon(false), 500);
   };
 
+  const handleRetryLoad = () => {
+    setLoadError(false);
+    if (videoRef.current && video.video_url) {
+      videoRef.current.src = getVideoPlaybackUrl(video.video_url);
+      videoRef.current.load();
+    }
+  };
+
   const handleTimeUpdate = () => {
     if (!videoRef.current || !videoRef.current.duration) return;
+    if (isDragging) return;
 
-    // Handle end_time for cut videos
     if (video.end_time && video.end_time > 0 && videoRef.current.currentTime >= video.end_time) {
       videoRef.current.currentTime = video.start_time || 0;
     }
 
-    setProgress(
-      (videoRef.current.currentTime / videoRef.current.duration) * 100
-    );
-    setCurrentTime(videoRef.current.currentTime);
+    const startTime = video.start_time || 0;
+    const endTime = video.end_time || videoRef.current.duration;
+    const safeRange = Math.max(0.001, endTime - startTime);
+    const clampedTime = Math.max(startTime, Math.min(endTime, videoRef.current.currentTime));
+    const pct = ((clampedTime - startTime) / safeRange) * 100;
+    setProgress(pct);
+    setCurrentTime(clampedTime);
+
+    if (isActive && !viewRecordedRef.current && (clampedTime - startTime >= 3 || pct >= 25)) {
+      viewRecordedRef.current = true;
+      let deviceId = null;
+      try {
+        deviceId = localStorage.getItem('afw_device_id');
+        if (!deviceId) {
+          deviceId = 'd_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+          localStorage.setItem('afw_device_id', deviceId);
+        }
+      } catch (_) {}
+      api.videos.recordView(video.id, {
+        watchSeconds: clampedTime - startTime,
+        watchPercent: pct,
+        deviceId,
+      }).catch(() => {});
+    }
   };
 
   const handleLoadedMetadata = () => {
@@ -314,54 +352,149 @@ function VideoCardContent({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Prévisualisation au survol/drag de la barre
+  useEffect(() => {
+    if (!isDragging || !previewVideoRef.current || !previewCanvasRef.current || !videoUrl) return;
+    const prev = previewVideoRef.current;
+    const canvas = previewCanvasRef.current;
+    const targetTime = currentTime;
+    lastPreviewTimeRef.current = targetTime;
+    prev.currentTime = targetTime;
+  }, [isDragging, currentTime, videoUrl]);
+
+  const handlePreviewSeeked = () => {
+    const prev = previewVideoRef.current;
+    const canvas = previewCanvasRef.current;
+    if (!prev || !canvas || prev.readyState < 2) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const tw = prev.videoWidth;
+    const th = prev.videoHeight;
+    if (!tw || !th) return;
+    const cw = 90;
+    const ch = 160;
+    canvas.width = cw;
+    canvas.height = ch;
+    const videoRatio = tw / th;
+    const canvasRatio = cw / ch;
+    let sx, sy, sw, sh;
+    if (videoRatio > canvasRatio) {
+      sh = th;
+      sw = th * canvasRatio;
+      sx = (tw - sw) / 2;
+      sy = 0;
+    } else {
+      sw = tw;
+      sh = tw / canvasRatio;
+      sx = 0;
+      sy = (th - sh) / 2;
+    }
+    try {
+      ctx.drawImage(prev, sx, sy, sw, sh, 0, 0, cw, ch);
+    } catch (_e) {
+      // CORS ou vidéo cross-origin peut bloquer drawImage
+    }
+  };
+
+  const handleSeek = (clientX) => {
+    if (!progressBarRef.current || !videoRef.current) return;
+    const dur = videoRef.current.duration;
+    if (!dur || !isFinite(dur) || dur <= 0) return;
+
+    const rect = progressBarRef.current.getBoundingClientRect();
+    const offsetX = clientX - rect.left;
+    const percentage = Math.max(0, Math.min(1, offsetX / rect.width));
+    
+    const startTime = video.start_time || 0;
+    const endTime = video.end_time || dur;
+    
+    // Calculer le nouveau temps dans la plage disponible.
+    const newTime = startTime + (percentage * (endTime - startTime));
+
+    videoRef.current.currentTime = newTime;
+    setProgress(percentage * 100);
+    setCurrentTime(newTime);
+  };
+
+  const removeDragListenersRef = useRef(null);
+
+  const attachDragListeners = () => {
+    if (removeDragListenersRef.current) return;
+
+    const handleMouseMove = (e) => {
+      handleSeek(e.clientX);
+    };
+
+    const handleMouseUp = () => {
+      removeDragListenersRef.current?.();
+      removeDragListenersRef.current = null;
+      setIsDragging(false);
+    };
+
+    const handleTouchMove = (e) => {
+      if (!e.touches || e.touches.length === 0) return;
+      e.preventDefault();
+      handleSeek(e.touches[0].clientX);
+    };
+
+    const handleTouchEnd = () => {
+      removeDragListenersRef.current?.();
+      removeDragListenersRef.current = null;
+      setIsDragging(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd);
+    window.addEventListener('touchcancel', handleTouchEnd);
+
+    removeDragListenersRef.current = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('touchcancel', handleTouchEnd);
+      removeDragListenersRef.current = null;
+    };
+  };
+
+  const handleProgressMouseDown = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+    handleSeek(e.clientX);
+    attachDragListeners();
+  };
+
+  const handleProgressTouchStart = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.touches || e.touches.length === 0) return;
+    setIsDragging(true);
+    handleSeek(e.touches[0].clientX);
+    attachDragListeners();
+  };
+
   const handleProgressClick = (e) => {
-    if (!videoRef.current || !videoRef.current.duration) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const percentage = (clickX / rect.width) * 100;
-    const newTime = (percentage / 100) * videoRef.current.duration;
-
-    videoRef.current.currentTime = newTime;
-    setProgress(percentage);
-  };
-
-  const handleProgressDrag = (e) => {
-    if (!isDragging || !videoRef.current || !videoRef.current.duration) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const percentage = Math.max(0, Math.min(100, (clickX / rect.width) * 100));
-    const newTime = (percentage / 100) * videoRef.current.duration;
-
-    videoRef.current.currentTime = newTime;
-    setProgress(percentage);
-  };
-
-  const handleProgressTouchMove = (e) => {
-    if (!isDragging || !videoRef.current || !videoRef.current.duration) return;
-
-    const touch = e.touches[0];
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = touch.clientX - rect.left;
-    const percentage = Math.max(0, Math.min(100, (clickX / rect.width) * 100));
-    const newTime = (percentage / 100) * videoRef.current.duration;
-
-    videoRef.current.currentTime = newTime;
-    setProgress(percentage);
+    e.preventDefault();
+    e.stopPropagation();
+    if (isDragging) return;
+    handleSeek(e.clientX);
   };
 
   /* ================= RENDER ================= */
 
   return (
-    <div className="relative w-screen h-screen bg-black" style={{ width: '100vw', height: '100vh' }}>
-
+    <div className="relative w-full h-screen bg-black overflow-hidden">
+      <div className="absolute inset-0 overflow-hidden">
       {/* ================= VIDEO ================= */}
       <video
+        key={video.id}
         ref={videoRef}
-        src={video.video_url || ''}
+        src={videoUrl}
         poster={video.thumbnail_url || ''}
-        className="absolute inset-0 w-full h-full object-cover"
+        className="absolute top-0 left-0 w-full h-full object-cover"
         preload="metadata"
         loop
         playsInline
@@ -370,39 +503,26 @@ function VideoCardContent({
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onError={(e) => {
-          // Ne pas déclencher de refetch ou re-render
-          // Juste logger l'erreur silencieusement
           const videoElement = e.target;
           const errorCode = videoElement.error?.code;
           const errorMessage = videoElement.error?.message;
-          
-          console.error('Erreur de chargement vidéo:', {
-            videoId: video.id,
-            videoUrl: video.video_url,
-            errorCode,
-            errorMessage,
-            // Ne pas inclure l'élément vidéo complet pour éviter les références circulaires
-          });
-          
-          // Empêcher le navigateur de réessayer automatiquement
+          setLoadError(true);
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('Erreur de chargement vidéo:', {
+              videoId: video.id,
+              videoUrl: video.video_url,
+              errorCode,
+              errorMessage,
+            });
+          }
           if (videoElement) {
             videoElement.removeAttribute('src');
             videoElement.load();
           }
         }}
-        onLoadStart={() => {
-          // Log silencieux pour debug uniquement
-          if (process.env.NODE_ENV === 'development') {
-            console.log('Début du chargement vidéo:', {
-              videoId: video.id,
-              videoUrl: video.video_url
-            });
-          }
-        }}
+        onLoadStart={() => setLoadError(false)}
+        onLoadedData={() => setLoadError(false)}
         style={{ 
-          objectFit: 'cover', 
-          width: '100%', 
-          height: '100%',
           filter: video.filter === 'Normal' || !video.filter ? 'none' :
                   video.filter === 'Noir & Blanc' ? 'grayscale(100%)' :
                   video.filter === 'Sépia' ? 'sepia(100%)' :
@@ -411,6 +531,42 @@ function VideoCardContent({
                   video.filter === 'Lumineux' ? 'brightness(1.25)' : 'none'
         }}
       />
+      {/* Vidéo cachée pour la prévisualisation au scrub */}
+      {videoUrl && (
+        <video
+          ref={previewVideoRef}
+          src={videoUrl}
+          muted
+          preload="auto"
+          playsInline
+          onSeeked={handlePreviewSeeked}
+          className="absolute opacity-0 pointer-events-none w-0 h-0"
+          aria-hidden
+        />
+      )}
+      </div>
+
+      {/* ================= ERREUR DE CHARGEMENT ================= */}
+      {loadError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-[50] p-4">
+          {video.thumbnail_url ? (
+            <img
+              src={video.thumbnail_url}
+              alt=""
+              className="max-w-full max-h-[50%] object-contain rounded-lg opacity-80"
+            />
+          ) : null}
+          <p className="text-white text-center mt-4 font-medium">Vidéo indisponible</p>
+          <p className="text-white/70 text-sm text-center mt-1">Impossible de charger la vidéo</p>
+          <button
+            type="button"
+            onClick={handleRetryLoad}
+            className="mt-4 px-6 py-2.5 bg-white text-black rounded-full font-semibold hover:bg-gray-200 active:scale-95 transition-transform"
+          >
+            Réessayer
+          </button>
+        </div>
+      )}
 
       {/* ================= GRADIENT ================= */}
       <div
@@ -447,7 +603,7 @@ function VideoCardContent({
 
       {/* ================= BARRE DE PROGRESSION ================= */}
       <div className={cn(
-        "absolute left-0 right-0 bottom-[100px] px-3 z-[90] transition-opacity duration-300",
+        "absolute left-0 right-0 bottom-[100px] px-3 z-[95] transition-opacity duration-300",
         hideActions ? "opacity-0 pointer-events-none" : "opacity-100"
       )}>
         <div className="flex items-center gap-2">
@@ -455,24 +611,67 @@ function VideoCardContent({
             {formatTime(currentTime)}
           </span>
           <div 
-            className="flex-1 h-1 bg-white/30 rounded-full relative cursor-pointer"
+            ref={progressBarRef}
+            className={cn(
+              "flex-1 h-12 relative select-none touch-manipulation",
+              isDragging ? "cursor-grabbing" : "cursor-grab"
+            )}
+            onMouseDown={handleProgressMouseDown}
+            onTouchStart={handleProgressTouchStart}
             onClick={handleProgressClick}
-            onMouseDown={() => setIsDragging(true)}
-            onMouseUp={() => setIsDragging(false)}
-            onMouseMove={handleProgressDrag}
-            onMouseLeave={() => setIsDragging(false)}
-            onTouchStart={() => setIsDragging(true)}
-            onTouchEnd={() => setIsDragging(false)}
-            onTouchMove={handleProgressTouchMove}
+            style={{ touchAction: 'none' }}
           >
-            <div
-              className="h-full bg-white rounded-full transition-[width] duration-150"
-              style={{ width: `${progress}%` }}
-            />
+            {/* Prévisualisation au survol/drag (style YouTube) */}
+            {isDragging && (
+              <div
+                className="absolute bottom-full left-0 mb-2 pointer-events-none"
+                style={{
+                  left: `${progress}%`,
+                  transform: 'translateX(-50%)',
+                }}
+              >
+                <div className="bg-black/95 rounded-lg overflow-hidden shadow-xl border border-white/20">
+                  <canvas
+                    ref={previewCanvasRef}
+                    width={90}
+                    height={160}
+                    className="block w-[90px] h-40 object-cover"
+                  />
+                  <div className="px-2 py-1.5 text-center">
+                    <span className="text-white text-sm font-semibold">
+                      {formatTime(currentTime)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Barre de fond */}
+            <div className="absolute inset-0 flex items-center">
+              <div className="absolute left-0 right-0 h-1 bg-white/30 rounded-full overflow-hidden">
+                {/* Barre de progression */}
+                <div
+                  className="h-full bg-white rounded-full transition-none"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+            
+            {/* Curseur draggable */}
             <div 
-              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg"
-              style={{ left: `${progress}%`, transform: 'translate(-50%, -50%)' }}
-            />
+              className="absolute top-1/2 pointer-events-none"
+              style={{ 
+                left: `${progress}%`, 
+                transform: 'translate(-50%, -50%)'
+              }}
+            >
+              <div 
+                className={cn(
+                  "w-3 h-3 bg-white rounded-full shadow-lg transition-transform duration-150",
+                  isDragging ? "scale-[1.8]" : "scale-100"
+                )} 
+              />
+            </div>
           </div>
           <span className="text-white text-xs font-medium min-w-[35px]">
             {formatTime(duration)}
@@ -697,12 +896,12 @@ function VideoCardContent({
               {following || isFollowing ? (
                 <>
                   <UserCheck className="w-3 h-3 inline mr-1" />
-                  Suivi
+                  Dans son Wonder
                 </>
               ) : (
                 <>
                   <UserPlus className="w-3 h-3 inline mr-1" />
-                  Suivre
+                  Wonder
                 </>
               )}
             </button>
@@ -756,17 +955,22 @@ function VideoCardContent({
         )}
 
         {musicTitle && (
-          <button
-            onClick={() =>
-              navigate(createPageUrl('Create') + `?music=${encodeURIComponent(musicTitle)}`)
-            }
-            className="flex items-center gap-2 bg-white/15 px-3 py-2 rounded-full w-fit mb-2 hover:bg-white/25 transition-colors cursor-pointer"
-          >
-            <Music2 className="w-4 h-4 text-white" />
-            <span className="text-white text-sm">
-              {musicTitle}
+          <div className="flex items-center gap-2 mb-2">
+            <span className="flex items-center gap-2 bg-white/15 px-3 py-2 rounded-full w-fit">
+              <Music2 className="w-4 h-4 text-white" />
+              <span className="text-white text-sm">{musicTitle}</span>
             </span>
-          </button>
+            {currentUser && currentUser.id !== video.creator_id && (
+              <button
+                onClick={() =>
+                  navigate(createPageUrl('Create') + `?music=${encodeURIComponent(musicTitle)}`)
+                }
+                className="text-orange-300 hover:text-orange-200 text-xs font-medium"
+              >
+                Utiliser
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>

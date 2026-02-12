@@ -86,6 +86,18 @@ export default function Ticketing() {
       soldOut: false,
       trending: false
     },
+    {
+      id: 4,
+      title: 'Événement complet',
+      type: 'Concert',
+      date: '01 Avr 2027',
+      time: '21h00',
+      venue: 'Arena',
+      price: 20000,
+      image: 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=400',
+      soldOut: true,
+      trending: false
+    },
   ];
 
   return (

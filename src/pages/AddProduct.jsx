@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, X, Loader2, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, X, Loader2, Image as ImageIcon, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { toast } from "sonner";
@@ -21,6 +21,12 @@ const categories = [
   { value: 'artisanat', label: 'Artisanat' },
   { value: 'services', label: 'Services' },
   { value: 'autre', label: 'Autre' },
+];
+
+const conditions = [
+  { value: 'new', label: 'Neuf' },
+  { value: 'used', label: 'Occasion' },
+  { value: 'refurbished', label: 'Reconditionné' },
 ];
 
 const deliveryOptions = [
@@ -43,6 +49,7 @@ export default function AddProduct() {
   const [user, setUser] = useState(null);
   const [images, setImages] = useState([]);
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [variants, setVariants] = useState([]); // CDC: [{ name, value, price_diff, stock }]
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -53,6 +60,12 @@ export default function AddProduct() {
     video_url: '',
     delivery_options: [],
     payment_methods: [],
+    latitude: '',
+    longitude: '',
+    weight_kg: '',
+    condition: '',
+    negotiable_price: false,
+    valid_until: '', // Format YYYY-MM-DD pour durée validité annonce (CDC)
   });
 
   useEffect(() => {
@@ -78,7 +91,7 @@ export default function AddProduct() {
         return res?.file_url || res?.url || res?.fileUrl;
       });
       const urls = await Promise.all(uploadPromises);
-      setImages(prev => [...prev, ...urls].slice(0, 5));
+      setImages(prev => [...prev, ...urls].slice(0, 10)); // CDC: min 5, max 10
       toast.success('Images téléchargées');
     } catch (_error) {
       toast.error('Erreur lors du téléchargement');
@@ -112,8 +125,8 @@ export default function AddProduct() {
       return;
     }
 
-    if (images.length === 0) {
-      toast.error('Ajoutez au moins une image');
+    if (images.length < 5) {
+      toast.error('Le cahier des charges exige au moins 5 photos par produit');
       return;
     }
 
@@ -126,6 +139,18 @@ export default function AddProduct() {
       images,
       video_url: formData.video_url?.trim() || undefined,
       delivery_options: formData.delivery_options?.length ? formData.delivery_options : undefined,
+      latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
+      longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
+      weight_kg: formData.weight_kg ? parseFloat(formData.weight_kg) : undefined,
+      condition: formData.condition || undefined,
+      negotiable_price: !!formData.negotiable_price,
+      valid_until: formData.valid_until ? new Date(formData.valid_until).toISOString() : undefined,
+      variants: variants.length > 0 ? variants.map((v) => ({
+        name: v.name,
+        value: v.value,
+        price_diff: parseFloat(v.price_diff) || 0,
+        stock: parseInt(v.stock, 10) || 0,
+      })) : undefined,
     };
 
     createProductMutation.mutate(productData);
@@ -178,7 +203,7 @@ export default function AddProduct() {
               </motion.div>
             ))}
             
-            {images.length < 5 && (
+            {images.length < 10 && (
               <label className="aspect-square rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-orange-400 transition-colors">
                 <input
                   type="file"
@@ -199,7 +224,7 @@ export default function AddProduct() {
               </label>
             )}
           </div>
-          <p className="text-xs text-gray-500 mt-2">Maximum 5 photos</p>
+          <p className="text-xs text-gray-500 mt-2">CDC : minimum 5 photos, maximum 10</p>
         </div>
 
         {/* Vidéo produit (optionnel) */}
@@ -213,6 +238,44 @@ export default function AddProduct() {
             className="mt-1"
           />
           <p className="text-xs text-gray-500 mt-1">Lien vers une vidéo de présentation (YouTube, Vimeo, ou URL directe)</p>
+        </div>
+
+        {/* Géolocalisation & Poids (CDC) */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <Label className="text-sm">Latitude (optionnel)</Label>
+            <Input
+              type="number"
+              step="any"
+              placeholder="12.6392"
+              value={formData.latitude}
+              onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label className="text-sm">Longitude (optionnel)</Label>
+            <Input
+              type="number"
+              step="any"
+              placeholder="-8.0029"
+              value={formData.longitude}
+              onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label className="text-sm">Poids (kg, livraison)</Label>
+            <Input
+              type="number"
+              step="0.1"
+              min="0"
+              placeholder="1"
+              value={formData.weight_kg}
+              onChange={(e) => setFormData({ ...formData, weight_kg: e.target.value })}
+              className="mt-1"
+            />
+          </div>
         </div>
 
         {/* Basic Info */}
@@ -266,6 +329,48 @@ export default function AddProduct() {
             </div>
           </div>
 
+          <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-50">
+            <input
+              type="checkbox"
+              checked={formData.negotiable_price}
+              onChange={(e) => setFormData({ ...formData, negotiable_price: e.target.checked })}
+              className="w-4 h-4 text-orange-500"
+            />
+            <span className="text-sm">Prix négociable (CDC)</span>
+          </label>
+
+          <div>
+            <Label htmlFor="condition">État du produit (CDC)</Label>
+            <Select
+              value={formData.condition}
+              onValueChange={(value) => setFormData({ ...formData, condition: value })}
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Choisir l'état" />
+              </SelectTrigger>
+              <SelectContent>
+                {conditions.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="valid_until">Date de fin de validité (CDC)</Label>
+            <Input
+              id="valid_until"
+              type="date"
+              min={new Date().toISOString().split('T')[0]}
+              value={formData.valid_until}
+              onChange={(e) => setFormData({ ...formData, valid_until: e.target.value })}
+              className="mt-1"
+            />
+            <p className="text-xs text-gray-500 mt-1">Optionnel. L'annonce expirera à cette date.</p>
+          </div>
+
           <div>
             <Label htmlFor="category">Catégorie *</Label>
             <Select
@@ -283,6 +388,58 @@ export default function AddProduct() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Variantes produits (CDC) - Taille, couleur, etc. */}
+          <div>
+            <Label className="text-base font-semibold mb-3 block">Variantes (optionnel) - CDC</Label>
+            <p className="text-xs text-gray-500 mb-2">Ex: Taille S/M/L, Couleur Rouge/Bleu</p>
+            {variants.map((v, idx) => (
+              <div key={idx} className="flex gap-2 mb-2 items-end">
+                <Input
+                  placeholder="Ex: Taille"
+                  value={v.name}
+                  onChange={(e) => setVariants((prev) => prev.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))}
+                  className="flex-1"
+                />
+                <Input
+                  placeholder="Ex: M"
+                  value={v.value}
+                  onChange={(e) => setVariants((prev) => prev.map((x, i) => (i === idx ? { ...x, value: e.target.value } : x)))}
+                  className="flex-1"
+                />
+                <Input
+                  type="number"
+                  placeholder="+FCFA"
+                  value={v.price_diff}
+                  onChange={(e) => setVariants((prev) => prev.map((x, i) => (i === idx ? { ...x, price_diff: e.target.value } : x)))}
+                  className="w-24"
+                />
+                <Input
+                  type="number"
+                  placeholder="Stock"
+                  value={v.stock}
+                  onChange={(e) => setVariants((prev) => prev.map((x, i) => (i === idx ? { ...x, stock: e.target.value } : x)))}
+                  className="w-20"
+                />
+                <button
+                  type="button"
+                  onClick={() => setVariants((prev) => prev.filter((_, i) => i !== idx))}
+                  className="w-9 h-9 rounded-full bg-red-100 text-red-600 flex items-center justify-center"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setVariants((prev) => [...prev, { name: '', value: '', price_diff: '0', stock: '0' }])}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Ajouter une variante
+            </Button>
           </div>
 
           <div>

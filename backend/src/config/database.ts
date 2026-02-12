@@ -3,8 +3,26 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { logger } from '../utils/logger.js';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config();
+if (process.env.NODE_ENV === 'test') {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const envCandidates = [
+    path.resolve(process.cwd(), '.env.test'),
+    path.resolve(process.cwd(), 'backend', '.env.test'),
+    path.resolve(currentDir, '..', '..', '.env.test'),
+  ];
+  const resolvedEnvPath = envCandidates.find((p) => fs.existsSync(p));
+  if (resolvedEnvPath) {
+    dotenv.config({ path: resolvedEnvPath, override: true });
+  } else {
+    dotenv.config({ override: true });
+  }
+} else {
+  dotenv.config();
+}
 
 // Créer le pool de connexions PostgreSQL
 const connectionString = process.env.DATABASE_URL;
@@ -46,4 +64,3 @@ process.on('beforeExit', async () => {
 });
 
 export default prisma;
-

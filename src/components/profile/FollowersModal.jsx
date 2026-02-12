@@ -89,16 +89,16 @@ export default function FollowersModal({ isOpen, onClose, userId, initialTab = '
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Communauté</DialogTitle>
+          <DialogTitle>Wonder — Communauté</DialogTitle>
         </DialogHeader>
         
         <Tabs defaultValue={initialTab} className="w-full">
           <TabsList className="w-full grid grid-cols-2">
             <TabsTrigger value="followers">
-              Abonnés ({followers.length})
+              Wonderers ({followers.length})
             </TabsTrigger>
             <TabsTrigger value="following">
-              Abonnements ({following.length})
+              Dans leur Wonder ({following.length})
             </TabsTrigger>
           </TabsList>
           

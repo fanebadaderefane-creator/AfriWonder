@@ -108,7 +108,7 @@ router.get('/export-data/requests', authenticate, async (req: AuthRequest, res, 
 router.get('/export-data/download/:id', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
-    const requestId = req.params.id;
+    const requestId = String(req.params.id);
     
     const { url, fileName } = await privacyService.getExportDownloadUrl(userId, requestId);
     

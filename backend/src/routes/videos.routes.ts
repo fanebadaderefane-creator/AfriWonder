@@ -9,7 +9,7 @@ const router = Router();
 // GET /api/videos - Liste des vidéos
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
-    const { page = '1', limit, category, visibility = 'public', creator_id: creatorId } = req.query;
+    const { page = '1', limit, category, visibility = 'public', creator_id: creatorId, hashtag } = req.query;
     const userId = req.user?.id;
     const limitValue = limit ? parseInt(limit as string) : 0;
 
@@ -20,12 +20,83 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       visibility: visibility as string,
       userId,
       creator_id: creatorId as string,
+      hashtag: hashtag as string,
     });
 
     res.json({
       success: true,
       data: videos,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/videos/category/:id - Vidéos par catégorie (avant :id pour éviter conflit)
+router.get('/category/:id', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const categoryId = param(req, 'id');
+    const { page = '1', limit = '20' } = req.query;
+    const userId = req.user?.id;
+
+    const videos = await videoService.list({
+      page: parseInt(page as string),
+      limit: parseInt(limit as string),
+      category_id: categoryId,
+      visibility: 'public',
+      userId,
+    });
+
+    res.json({
+      success: true,
+      data: videos,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/videos/hashtag/:tag - Vidéos par hashtag (avant :id pour éviter conflit)
+router.get('/hashtag/:tag', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const tag = param(req, 'tag');
+    const { page = '1', limit = '20' } = req.query;
+    const userId = req.user?.id;
+
+    const videos = await videoService.list({
+      page: parseInt(page as string),
+      limit: parseInt(limit as string),
+      hashtag: tag,
+      visibility: 'public',
+      userId,
+    });
+
+    res.json({
+      success: true,
+      data: videos,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/videos/:id/view - Enregistrer une vue (≥3s ou ≥25%, 1/30min/user)
+router.post('/:id/view', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const userId = req.user?.id;
+    const { watchSeconds, watchPercent, deviceId } = req.body || {};
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || (req.socket as any)?.remoteAddress;
+
+    const result = await videoService.recordView(id, {
+      userId,
+      deviceId,
+      watchSeconds,
+      watchPercent,
+      ip,
+    });
+
+    res.json({ success: true, ...result });
   } catch (error) {
     next(error);
   }

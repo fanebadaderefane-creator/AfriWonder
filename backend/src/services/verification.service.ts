@@ -1,5 +1,6 @@
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
+import notificationService from './notification.service.js';
 
 class VerificationService {
   async isKycApproved(userId: string): Promise<boolean> {
@@ -120,6 +121,17 @@ class VerificationService {
       await prisma.sellerProfile.updateMany({
         where: { user_id: verification.user_id },
         data: { is_verified: true },
+      });
+      await prisma.user.update({
+        where: { id: verification.user_id },
+        data: { is_verified: true },
+      });
+      await notificationService.create(verification.user_id, {
+        type: 'account_verified',
+        title: 'Compte vérifié',
+        message: 'Félicitations ! Votre compte a été vérifié. Vous pouvez maintenant profiter de tous les avantages.',
+        reference_type: 'verification',
+        reference_id: verificationId,
       });
     }
     logger.info('Vérification KYC traitée par admin', { verificationId, status: data.status });

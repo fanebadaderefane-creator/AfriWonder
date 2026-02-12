@@ -8,7 +8,8 @@ import commissionService from './commission.service.js';
 class ServicePayoutService {
   // Taux aligné sur config commissions (services 15-20%, défaut 17.5%)
   private get commissionRate() {
-    return commissionService.getConfig('services').provider_commission_default_pct;
+    const cfg: any = commissionService.getConfig('services');
+    return typeof cfg?.provider_commission_default_pct === 'number' ? cfg.provider_commission_default_pct : 0.175;
   }
   // Délai de payout par défaut : J+3 (3 jours après complétion)
   private readonly DEFAULT_PAYOUT_DELAY_DAYS = 3;
@@ -358,3 +359,4 @@ class ServicePayoutService {
 }
 
 export default new ServicePayoutService();
+

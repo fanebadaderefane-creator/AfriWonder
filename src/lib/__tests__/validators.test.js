@@ -2,6 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { userSchema, productSchema, paymentSchema, videoSchema, orderSchema, validate } from '../validators';
 
 describe('Validators', () => {
+  it('should rethrow non-ZodError from validate', () => {
+    const fakeSchema = { parse: () => { throw new Error('non-zod'); } };
+    expect(() => validate({}, fakeSchema)).toThrow('non-zod');
+  });
+
   describe('userSchema', () => {
     it('should validate correct user data', () => {
       const data = {

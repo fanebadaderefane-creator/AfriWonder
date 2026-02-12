@@ -4,6 +4,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 const axiosInstance = axios.create({
   baseURL: API_URL,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -189,6 +190,14 @@ export const api = {
       const { data } = await axiosInstance.post(`/videos/${id}/share`);
       return data.data;
     },
+    async recordView(id, { watchSeconds = 0, watchPercent = 0, deviceId } = {}) {
+      const { data } = await axiosInstance.post(`/videos/${id}/view`, {
+        watchSeconds,
+        watchPercent,
+        deviceId: deviceId || (typeof localStorage !== 'undefined' ? localStorage.getItem('afw_device_id') : null),
+      });
+      return data;
+    },
   },
   users: {
     async getById(id) {
@@ -209,6 +218,14 @@ export const api = {
     },
     async toggleFollow(id) {
       const { data } = await axiosInstance.post(`/users/${id}/follow`);
+      return data.data;
+    },
+    async toggleWonder(id) {
+      const { data } = await axiosInstance.post(`/users/${id}/wonder`);
+      return data.data;
+    },
+    async getWonderers(id) {
+      const { data } = await axiosInstance.get(`/users/${id}/wonderers`);
       return data.data;
     },
     async getStats(id) {
@@ -241,6 +258,52 @@ export const api = {
     async list(params = {}) {
       const { data } = await axiosInstance.get('/products', { params });
       return data.data;
+    },
+    async getSuggestions(query, limit = 8) {
+      const { data } = await axiosInstance.get('/products/suggestions', { params: { q: query, limit } });
+      return data.data || [];
+    },
+    async getHighlights(params = {}) {
+      const { data } = await axiosInstance.get('/products/highlights', {
+        params: {
+          trending_limit: params.trendingLimit || 8,
+          new_limit: params.newLimit || 8,
+        },
+      });
+      return data.data || { trending: [], newest: [] };
+    },
+    async getRecommendations(limit = 8) {
+      const { data } = await axiosInstance.get('/products/recommendations', { params: { limit } });
+      return data.data || [];
+    },
+    async getNearby(latitudeOrOptions, longitude, radiusKm = 50, limit = 200) {
+      let params;
+      if (typeof latitudeOrOptions === 'object' && latitudeOrOptions !== null) {
+        const o = latitudeOrOptions;
+        params = {
+          latitude: o.latitude,
+          longitude: o.longitude,
+          radius_km: o.radius_km ?? o.radiusKm ?? 50,
+          limit: o.limit ?? 200,
+          category: o.category,
+          search: o.search,
+          min_price: o.min_price ?? o.minPrice,
+          max_price: o.max_price ?? o.maxPrice,
+          condition: o.condition,
+          delivery_option: o.delivery_option ?? o.deliveryOption,
+          verified_seller: o.verified_seller ?? o.verifiedSeller,
+          min_rating: o.min_rating ?? o.minRating,
+          seller_country: o.seller_country ?? o.sellerCountry,
+          min_lat: o.min_lat ?? o.minLat,
+          max_lat: o.max_lat ?? o.maxLat,
+          min_lng: o.min_lng ?? o.minLng,
+          max_lng: o.max_lng ?? o.maxLng,
+        };
+      } else {
+        params = { latitude: latitudeOrOptions, longitude, radius_km: radiusKm, limit };
+      }
+      const { data } = await axiosInstance.get('/products/nearby', { params });
+      return data.data || [];
     },
     async getById(id) {
       const { data } = await axiosInstance.get(`/products/${id}`);
@@ -275,6 +338,18 @@ export const api = {
     },
     async updateStock(id, quantity) {
       const { data } = await axiosInstance.put(`/products/${id}/stock`, { quantity });
+      return data.data;
+    },
+    async getQuestions(productId, params = {}) {
+      const { data } = await axiosInstance.get(`/products/${productId}/questions`, { params });
+      return data.data;
+    },
+    async askQuestion(productId, question) {
+      const { data } = await axiosInstance.post(`/products/${productId}/questions`, { question });
+      return data.data;
+    },
+    async answerQuestion(questionId, answer) {
+      const { data } = await axiosInstance.post(`/products/questions/${questionId}/answer`, { answer });
       return data.data;
     },
   },
@@ -339,6 +414,20 @@ export const api = {
     },
     async setRate(from_currency, to_currency, rate) {
       const { data } = await axiosInstance.put('/exchange-rates/rates', { from_currency, to_currency, rate });
+      return data.data;
+    },
+  },
+  sellerProfile: {
+    async getMe() {
+      const { data } = await axiosInstance.get('/seller-profile/me');
+      return data.data;
+    },
+    async create(payload) {
+      const { data } = await axiosInstance.post('/seller-profile', payload);
+      return data.data;
+    },
+    async update(payload) {
+      const { data } = await axiosInstance.put('/seller-profile', payload);
       return data.data;
     },
   },
@@ -452,6 +541,42 @@ export const api = {
       const { data } = await axiosInstance.get('/admin/health');
       return data.data;
     },
+    async getMonitoringErrors() {
+      const { data } = await axiosInstance.get('/admin/monitoring/errors');
+      return data.data ?? data;
+    },
+    async getMonitoringHttp() {
+      const { data } = await axiosInstance.get('/admin/monitoring/http');
+      return data.data ?? data;
+    },
+    async getLogisticsProviders() {
+      const { data } = await axiosInstance.get('/admin/logistics/providers');
+      return data.data;
+    },
+    async listLogisticsRates(params = {}) {
+      const { data } = await axiosInstance.get('/admin/logistics/rates', { params });
+      return data.data;
+    },
+    async createLogisticsRate(payload) {
+      const { data } = await axiosInstance.post('/admin/logistics/rates', payload);
+      return data.data;
+    },
+    async updateLogisticsRate(id, payload) {
+      const { data } = await axiosInstance.put(`/admin/logistics/rates/${id}`, payload);
+      return data.data;
+    },
+    async listPickupPoints(params = {}) {
+      const { data } = await axiosInstance.get('/admin/logistics/pickup-points', { params });
+      return data.data;
+    },
+    async createPickupPoint(payload) {
+      const { data } = await axiosInstance.post('/admin/logistics/pickup-points', payload);
+      return data.data;
+    },
+    async updatePickupPoint(id, payload) {
+      const { data } = await axiosInstance.put(`/admin/logistics/pickup-points/${id}`, payload);
+      return data.data;
+    },
     async getKillSwitch() {
       const { data } = await axiosInstance.get('/admin/kill-switch');
       return data.data;
@@ -474,6 +599,22 @@ export const api = {
     },
     async getStrategicAnalytics(params = {}) {
       const { data } = await axiosInstance.get('/admin/analytics/strategic', { params });
+      return data.data;
+    },
+    async exportStrategicAnalytics(params = {}) {
+      const res = await axiosInstance.get('/admin/analytics/strategic/export', { params, responseType: 'blob' });
+      return res.data;
+    },
+    async getCommissionConfig() {
+      const { data } = await axiosInstance.get('/admin/commissions/config');
+      return data.data;
+    },
+    async updateCommissionConfig(overrides, merge = true) {
+      const { data } = await axiosInstance.patch('/admin/commissions/config', { overrides, merge });
+      return data.data;
+    },
+    async resetCommissionConfig() {
+      const { data } = await axiosInstance.post('/admin/commissions/config/reset');
       return data.data;
     },
   },
@@ -539,6 +680,24 @@ export const api = {
     },
     async listAll(params = {}) {
       const { data } = await axiosInstance.get('/refunds/admin', { params });
+      return data.data;
+    },
+  },
+  returns: {
+    async request(orderId, payload) {
+      const { data } = await axiosInstance.post(`/returns/${orderId}`, payload);
+      return data.data;
+    },
+    async list(scope = 'buyer') {
+      const { data } = await axiosInstance.get('/returns', { params: { scope } });
+      return data.data;
+    },
+    async getById(returnId) {
+      const { data } = await axiosInstance.get(`/returns/${returnId}`);
+      return data.data;
+    },
+    async updateStatus(returnId, payload) {
+      const { data } = await axiosInstance.put(`/returns/${returnId}/status`, payload);
       return data.data;
     },
   },
@@ -819,6 +978,18 @@ export const api = {
       const { data } = await axiosInstance.get(`/order-reviews/orders/${orderId}`);
       return data.data;
     },
+    async reply(reviewId, reply) {
+      const { data } = await axiosInstance.patch(`/order-reviews/${reviewId}/reply`, { reply });
+      return data.data;
+    },
+    async report(reviewId, reason) {
+      const { data } = await axiosInstance.post(`/order-reviews/${reviewId}/report`, { reason });
+      return data.data;
+    },
+    async rateBuyer(orderId, { rating, content }) {
+      const { data } = await axiosInstance.post(`/order-reviews/orders/${orderId}/rate-buyer`, { rating, content });
+      return data.data;
+    },
   },
   payments: {
     async createStripeCheckout(orderId, items, successUrl, cancelUrl) {
@@ -849,6 +1020,18 @@ export const api = {
       });
       return data.data;
     },
+    async initiateMoovMoney(orderId, amount, phone, returnUrl) {
+      const { data } = await axiosInstance.post('/payments/moov', {
+        orderId, amount, phone, returnUrl
+      });
+      return data.data;
+    },
+    async initiateWavePayment(orderId, amount, returnUrl, currency = 'XOF') {
+      const { data } = await axiosInstance.post('/payments/wave', {
+        orderId, amount, returnUrl, currency
+      });
+      return data.data;
+    },
     async getWallet() {
       const { data } = await axiosInstance.get('/payments/wallet');
       return data.data;
@@ -859,6 +1042,10 @@ export const api = {
     },
     async withdrawFromWallet(amount, description, options = {}) {
       const { data } = await axiosInstance.post('/payments/wallet/withdraw', { amount, description, pin: options.pin });
+      return data.data;
+    },
+    async payOrderWithWallet(orderId, pin) {
+      const { data } = await axiosInstance.post('/payments/wallet/pay-order', { orderId, pin });
       return data.data;
     },
     async getWalletSecurity() {
@@ -1137,6 +1324,18 @@ export const api = {
       return data.data;
     },
   },
+  moderation: {
+    async report(contentType, contentId, reason, description, severity) {
+      const { data } = await axiosInstance.post('/moderation/report', {
+        contentType,
+        contentId,
+        reason,
+        description: description || '',
+        severity: severity ?? (['harassment', 'hate_speech', 'explicit_content'].includes(reason) ? 'high' : 'medium'),
+      });
+      return data.data;
+    },
+  },
   live: {
     async list(params = {}) {
       const { data } = await axiosInstance.get('/live', { params });
@@ -1144,6 +1343,10 @@ export const api = {
     },
     async getDiscovery(params = {}) {
       const { data } = await axiosInstance.get('/live/discovery', { params });
+      return data.data;
+    },
+    async getCategories() {
+      const { data } = await axiosInstance.get('/live/categories');
       return data.data;
     },
     async getGifts(category) {
@@ -1181,7 +1384,8 @@ export const api = {
         rtmp_url: liveData.rtmp_url,
         playback_url: liveData.playback_url,
         region: liveData.region,
-        language: liveData.language,
+        // Live: langue forcée à 'fr' (CDC adapté Afriwonder)
+        language: 'fr',
         status: liveData.status,
         scheduled_at: liveData.scheduled_at,
       });
@@ -1189,6 +1393,10 @@ export const api = {
     },
     async startScheduled(id) {
       const { data } = await axiosInstance.post(`/live/${id}/start-scheduled`);
+      return data.data;
+    },
+    async getAgoraStatus() {
+      const { data } = await axiosInstance.get('/live/agora-status');
       return data.data;
     },
     async getStreamToken(id, role = 'audience') {
@@ -1213,6 +1421,10 @@ export const api = {
       const { data } = await axiosInstance.post(`/live/${id}/chat`, { message });
       return data.data;
     },
+    async sendTip(id, payload) {
+      const { data } = await axiosInstance.post(`/live/${id}/tip`, payload);
+      return data.data;
+    },
     async sendGift(id, giftData) {
       const { data } = await axiosInstance.post(`/live/${id}/gift`, giftData);
       return data.data;
@@ -1221,12 +1433,45 @@ export const api = {
       const { data } = await axiosInstance.post(`/live/${id}/like`);
       return data.data;
     },
+    async reaction(id, type = 'like') {
+      const { data } = await axiosInstance.post(`/live/${id}/reaction`, { type });
+      return data.data;
+    },
+    async getChapters(id) {
+      const { data } = await axiosInstance.get(`/live/${id}/chapters`);
+      return data.data;
+    },
+    async addChapter(id, payload) {
+      const { data } = await axiosInstance.post(`/live/${id}/chapters`, payload);
+      return data.data;
+    },
+    async exportCreatorAnalytics(format = 'csv') {
+      const res = await axiosInstance.get('/live/creator/export', { params: { format }, responseType: format === 'csv' ? 'blob' : 'json' });
+      return res.data;
+    },
+    async subscribeToCreator(creatorId, amount = 500) {
+      const { data } = await axiosInstance.post(`/live/creator/${creatorId}/subscribe`, { amount });
+      return data.data;
+    },
+    async unsubscribeFromCreator(creatorId) {
+      await axiosInstance.delete(`/live/creator/${creatorId}/subscribe`);
+    },
     async getTopDonors(id, limit = 10) {
       const { data } = await axiosInstance.get(`/live/${id}/top-donors`, { params: { limit } });
       return data.data;
     },
     async getAnalytics(id) {
       const { data } = await axiosInstance.get(`/live/${id}/analytics`);
+      return data.data;
+    },
+    async report(id, reason, description) {
+      const { data } = await axiosInstance.post('/moderation/report', {
+        contentType: 'live',
+        contentId: id,
+        reason,
+        description,
+        severity: ['harassment', 'hate_speech', 'explicit_content'].includes(reason) ? 'high' : 'medium',
+      });
       return data.data;
     },
     async getModeration(id) {

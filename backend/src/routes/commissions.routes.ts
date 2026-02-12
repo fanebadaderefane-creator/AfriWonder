@@ -3,18 +3,24 @@
  * Backend reste la source de vérité au moment du paiement.
  */
 import { Router } from 'express';
-import { COMMISSION_VERTICALS } from '../config/commissions.js';
 import commissionService from '../services/commission.service.js';
+import commissionSettingsService from '../services/commissionSettings.service.js';
 
 const router = Router();
 
 /** GET /api/commissions — config complète (taux, montants min/max) pour affichage frontend */
-router.get('/', (req, res) => {
-  res.json({
-    success: true,
-    data: COMMISSION_VERTICALS,
-    currency_default: 'XOF',
-  });
+router.get('/', async (req, res, next) => {
+  try {
+    await commissionSettingsService.ensureLoaded();
+    const config = commissionSettingsService.getEffectiveConfig();
+    res.json({
+      success: true,
+      data: config,
+      currency_default: 'XOF',
+    });
+  } catch (e) {
+    next(e);
+  }
 });
 
 /**
@@ -22,8 +28,9 @@ router.get('/', (req, res) => {
  * Utilisé par le frontend pour afficher la répartition avant paiement (éviter les risques / litiges).
  * Query: vertical, rule, amount_fcfa [, delivery_fee_fcfa pour food]
  */
-router.get('/calculate', (req, res, next) => {
+router.get('/calculate', async (req, res, next) => {
   try {
+    await commissionSettingsService.ensureLoaded();
     const vertical = (req.query.vertical as string)?.toLowerCase();
     const rule = (req.query.rule as string)?.toLowerCase();
     const amountFcfa = Math.max(0, Number(req.query.amount_fcfa) || 0);

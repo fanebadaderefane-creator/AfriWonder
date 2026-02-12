@@ -10,11 +10,30 @@ import { toast } from 'sonner';
 export default function FinancePanel() {
   const queryClient = useQueryClient();
   const [freezeWalletId, setFreezeWalletId] = useState('');
+  const [commissionForm, setCommissionForm] = useState({
+    marketplaceSellerPct: '10',
+    servicesProviderPct: '17.5',
+  });
 
   const { data: finance, isLoading } = useQuery({
     queryKey: ['admin-finance-dashboard'],
     queryFn: () => api.admin.getFinanceDashboard(),
   });
+  const { data: commissionCfg } = useQuery({
+    queryKey: ['admin-commissions-config'],
+    queryFn: () => api.admin.getCommissionConfig(),
+  });
+
+  React.useEffect(() => {
+    const effective = commissionCfg?.effective;
+    if (!effective) return;
+    const mkp = Number(effective.marketplace?.seller_commission_default_pct ?? 0.1) * 100;
+    const svc = Number(effective.services?.provider_commission_default_pct ?? 0.175) * 100;
+    setCommissionForm({
+      marketplaceSellerPct: Number.isFinite(mkp) ? String(mkp) : '10',
+      servicesProviderPct: Number.isFinite(svc) ? String(svc) : '17.5',
+    });
+  }, [commissionCfg]);
 
   const freezeMutation = useMutation({
     mutationFn: (walletId) => api.admin.freezeWallet(walletId),
@@ -34,6 +53,33 @@ export default function FinancePanel() {
       setFreezeWalletId('');
     },
     onError: (e) => toast.error(e?.apiMessage || 'Erreur'),
+  });
+
+  const updateCommissionsMutation = useMutation({
+    mutationFn: () => {
+      const mkp = Number(commissionForm.marketplaceSellerPct);
+      const svc = Number(commissionForm.servicesProviderPct);
+      if (!Number.isFinite(mkp) || mkp < 0 || mkp > 100) throw new Error('Commission marketplace invalide');
+      if (!Number.isFinite(svc) || svc < 0 || svc > 100) throw new Error('Commission services invalide');
+      return api.admin.updateCommissionConfig({
+        marketplace: { seller_commission_default_pct: mkp / 100 },
+        services: { provider_commission_default_pct: svc / 100 },
+      }, true);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-commissions-config'] });
+      toast.success('Commissions mises a jour');
+    },
+    onError: (e) => toast.error(e?.apiMessage || e?.message || 'Erreur'),
+  });
+
+  const resetCommissionsMutation = useMutation({
+    mutationFn: () => api.admin.resetCommissionConfig(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-commissions-config'] });
+      toast.success('Commissions reinitialisees');
+    },
+    onError: (e) => toast.error(e?.apiMessage || e?.message || 'Erreur'),
   });
 
   if (isLoading || !finance) return <div className="text-white/70">Chargement finance...</div>;
@@ -85,6 +131,53 @@ export default function FinancePanel() {
               <Badge>{(tx.amount ?? 0).toLocaleString()} {tx.currency ?? 'XOF'}</Badge>
             </div>
           ))}
+        </div>
+      </Card>
+
+      <Card className="p-6 bg-white/10 backdrop-blur border-white/20 text-white">
+        <h3 className="font-bold mb-4">Configuration commissions</h3>
+        <div className="grid md:grid-cols-3 gap-3 items-end">
+          <div>
+            <p className="text-sm text-white/70 mb-1">Marketplace vendeur (%)</p>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white w-full"
+              value={commissionForm.marketplaceSellerPct}
+              onChange={(e) => setCommissionForm((s) => ({ ...s, marketplaceSellerPct: e.target.value }))}
+            />
+          </div>
+          <div>
+            <p className="text-sm text-white/70 mb-1">Services prestataire (%)</p>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white w-full"
+              value={commissionForm.servicesProviderPct}
+              onChange={(e) => setCommissionForm((s) => ({ ...s, servicesProviderPct: e.target.value }))}
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              disabled={updateCommissionsMutation.isPending}
+              onClick={() => updateCommissionsMutation.mutate()}
+            >
+              Sauvegarder
+            </Button>
+            <Button
+              variant="outline"
+              className="border-white/20 text-white"
+              disabled={resetCommissionsMutation.isPending}
+              onClick={() => resetCommissionsMutation.mutate()}
+            >
+              Reset
+            </Button>
+          </div>
         </div>
       </Card>
     </div>

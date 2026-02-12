@@ -3,6 +3,8 @@ import { Toaster } from "@/components/ui/sonner";
 import TranslationProvider from "@/components/common/TranslationProvider";
 import { MarketplaceCurrencyProvider } from "@/contexts/MarketplaceCurrencyContext";
 import OfflineIndicator from "@/components/common/OfflineIndicator";
+import PWAInstallBanner from "@/components/pwa/PWAInstallBanner";
+import PWAUpdateToast from "@/components/pwa/PWAUpdateToast";
 
 export default function Layout({ children, currentPageName }) {
   // Pages that should have no padding and full screen
@@ -12,7 +14,8 @@ export default function Layout({ children, currentPageName }) {
   useEffect(() => {
     // Disable pull-to-refresh and elastic bounce
     const preventPullToRefresh = (e) => {
-      if (window.scrollY === 0 && e.touches[0].clientY > e.touches[0].clientY) {
+      const startY = document.body.getAttribute('data-start-y');
+      if (window.scrollY === 0 && e.touches?.[0] && startY != null && e.touches[0].clientY > parseFloat(startY)) {
         e.preventDefault();
       }
     };
@@ -55,19 +58,20 @@ export default function Layout({ children, currentPageName }) {
     document.addEventListener('touchmove', (e) => {
       // Ne bloquer QUE le scroll du body/window, pas les conteneurs internes
       const target = e.target;
-      const isScrollingContainer = target.closest('[data-scroll-container]') || 
+      const isScrollingContainer = target.closest('[data-scroll-container]') ||
                                     target.classList.contains('overflow-y-scroll') ||
                                     target.classList.contains('overflow-scroll');
-      
+
       // Si c'est un conteneur de scroll interne, NE PAS bloquer
       if (isScrollingContainer) {
         return;
       }
-      
+
+      preventPullToRefresh(e);
       const startY = parseFloat(document.body.getAttribute('data-start-y') || '0');
       const touch = e.touches[0];
       const currentY = touch.clientY;
-      
+
       // Prevent pull-to-refresh when at top and scrolling down
       if (window.scrollY === 0 && currentY > startY) {
         e.preventDefault();
@@ -100,7 +104,13 @@ export default function Layout({ children, currentPageName }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* WCAG 2.1 AA 2.4.1 - Lien d'évitement */}
+      <a href="#main-content" className="skip-link">
+        Aller au contenu principal
+      </a>
       <OfflineIndicator />
+      <PWAInstallBanner />
+      <PWAUpdateToast />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         
@@ -307,7 +317,7 @@ export default function Layout({ children, currentPageName }) {
 
       <TranslationProvider>
         <MarketplaceCurrencyProvider>
-          <main className={isFullScreen ? '' : ''}>
+          <main id="main-content" className={isFullScreen ? '' : ''} tabIndex={-1}>
             {children}
           </main>
         </MarketplaceCurrencyProvider>

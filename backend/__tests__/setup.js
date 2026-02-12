@@ -45,6 +45,26 @@ beforeAll(async () => {
         console.error('   3. Les credentials dans .env.test sont corrects');
         throw error;
     }
+    // Créer l'utilisateur plateforme (pour ledger/platform services)
+    const PLATFORM_USER_ID = process.env.PLATFORM_USER_ID || '00000000-0000-0000-0000-000000000000';
+    try {
+        await prisma.user.upsert({
+            where: { id: PLATFORM_USER_ID },
+            update: {},
+            create: {
+                id: PLATFORM_USER_ID,
+                email: 'platform@afriwonder.app',
+                username: 'platform',
+                password_hash: 'no-login',
+                full_name: 'AfriWonder Platform',
+                role: 'admin',
+            },
+        });
+        console.log('✅ Utilisateur plateforme créé/vérifié');
+    }
+    catch (err) {
+        console.warn('⚠️ Erreur création utilisateur plateforme (peut être ignoré si déjà existant):', err.message);
+    }
 });
 // Teardown après tous les tests
 afterAll(async () => {

@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
   ArrowLeft, BarChart3, Users, Package, Video, ShoppingBag, Flag, AlertCircle, Settings,
-  Shield, Activity, Search, DollarSign, TrendingUp, FileText,
+  Shield, Activity, Search, DollarSign, TrendingUp, FileText, Truck, RotateCcw,
 } from 'lucide-react';
 import PlatformHealth from './PlatformHealth';
 
@@ -17,6 +17,8 @@ const TABS = [
   { id: 'finance', label: 'Finance', icon: DollarSign },
   { id: 'reports', label: 'Signalements', icon: Flag },
   { id: 'disputes', label: 'Litiges', icon: AlertCircle },
+  { id: 'returns', label: 'Retours', icon: RotateCcw },
+  { id: 'logistics', label: 'Logistique', icon: Truck },
   { id: 'analytics', label: 'Analytics', icon: TrendingUp },
   { id: 'audit', label: 'Journal audit', icon: FileText },
   { id: 'settings', label: 'Paramètres', icon: Settings },
@@ -24,11 +26,11 @@ const TABS = [
 
 const ROLE_ACCESS = {
   super_admin: new Set(TABS.map((t) => t.id)),
-  admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'reports', 'disputes', 'finance', 'analytics', 'audit', 'settings']),
-  finance_admin: new Set(['overview', 'finance', 'orders', 'audit']),
-  moderation_admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'reports', 'disputes']),
-  support_admin: new Set(['overview', 'users', 'disputes', 'reports']),
-  data_admin: new Set(['overview', 'analytics', 'audit', 'orders', 'users']),
+  admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'reports', 'disputes', 'returns', 'finance', 'logistics', 'analytics', 'audit', 'settings']),
+  finance_admin: new Set(['overview', 'finance', 'orders', 'audit', 'logistics']),
+  moderation_admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'reports', 'disputes', 'returns', 'logistics']),
+  support_admin: new Set(['overview', 'users', 'disputes', 'returns', 'reports', 'logistics']),
+  data_admin: new Set(['overview', 'analytics', 'audit', 'orders', 'users', 'logistics']),
 };
 
 function canAccess(role, tabId) {

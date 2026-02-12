@@ -29,6 +29,12 @@ export default function Language() {
       flag: "🇸🇦",
       nativeName: "العربية",
       speakers: "400M+ متحدثون"
+    },
+    bm: {
+      name: "Bamanankan",
+      flag: "🇲🇱",
+      nativeName: "Bambara",
+      speakers: "CDC Mali"
     }
   };
 
@@ -52,7 +58,7 @@ export default function Language() {
       {/* Content */}
       <div className="max-w-2xl mx-auto p-4 space-y-4">
         {availableLanguages.map((lang, index) => {
-          const info = languageInfo[lang];
+          const info = languageInfo[lang] || { name: lang, flag: "🌐", nativeName: lang, speakers: "" };
           const isSelected = language === lang;
 
           return (

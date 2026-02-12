@@ -73,6 +73,7 @@ class SellerProfileService {
     city: string;
     store_logo: string;
     store_banner: string;
+    subscription_tier: string; // CDC: free | starter | business | enterprise
   }>) {
     const profile = await prisma.sellerProfile.findUnique({
       where: { user_id: userId },
@@ -91,6 +92,7 @@ class SellerProfileService {
         ...(data.city != null && { city: data.city.trim() || null }),
         ...(data.store_logo != null && { store_logo: data.store_logo || null }),
         ...(data.store_banner != null && { store_banner: data.store_banner || null }),
+        ...(data.subscription_tier != null && ['free', 'starter', 'business', 'enterprise'].includes(data.subscription_tier) && { subscription_tier: data.subscription_tier }),
       },
       include: {
         user: {

@@ -5,6 +5,39 @@ import cartService from '../services/cart.service.js';
 
 const router = Router();
 
+/**
+ * @swagger
+ * /api/cart:
+ *   get:
+ *     tags: [Cart]
+ *     summary: Recuperer le panier utilisateur
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Panier retourne
+ *
+ * /api/cart/add:
+ *   post:
+ *     tags: [Cart]
+ *     summary: Ajouter un produit au panier
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [productId, quantity]
+ *             properties:
+ *               productId: { type: string, format: uuid }
+ *               quantity: { type: integer, minimum: 1 }
+ *     responses:
+ *       200:
+ *         description: Panier mis a jour
+ */
+
 // GET /api/cart
 router.get('/', authenticate, async (req: AuthRequest, res, next) => {
   try {
@@ -79,4 +112,3 @@ router.post('/coupon', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 export default router;
-

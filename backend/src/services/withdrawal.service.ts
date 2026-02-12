@@ -7,10 +7,14 @@ import axios from 'axios';
  * Les créateurs peuvent retirer leur argent depuis leur wallet vers leur compte Orange Money
  */
 class WithdrawalService {
-  // Montant minimum de retrait
-  private readonly MIN_WITHDRAWAL_AMOUNT = 1000; // 1000 FCFA minimum
-  private readonly WITHDRAWAL_FEE_RATE = 0.03;
-  private readonly WITHDRAWAL_DELAY_DAYS = 7; // Payout différé J+7
+  // CDC Live Streaming Mali: min 10 000 FCFA, frais 500 FCFA fixe
+  private readonly MIN_WITHDRAWAL_AMOUNT = 10_000;
+  private readonly WITHDRAWAL_FEE_FIXED = 500;
+  // CDC: délai retrait 24–48h paramétrable via WITHDRAWAL_DELAY_HOURS (défaut: 48)
+  private readonly WITHDRAWAL_DELAY_HOURS = (() => {
+    const val = parseInt(process.env.WITHDRAWAL_DELAY_HOURS || '48', 10);
+    return Number.isNaN(val) ? 48 : Math.max(24, Math.min(48, val));
+  })();
 
   /**
    * Obtenir ou créer le wallet vendeur d'un utilisateur
@@ -69,12 +73,17 @@ class WithdrawalService {
       throw err;
     }
 
+    if (data.amount > 10_000_000) {
+      const err: any = new Error('Limite mensuelle anti-blanchiment: 10 000 000 FCFA');
+      err.statusCode = 400;
+      throw err;
+    }
+
     // Obtenir le wallet
     const wallet = await this.getSellerWallet(userId);
 
-    // Calculer les frais de retrait
-    const withdrawalFee = data.amount * this.WITHDRAWAL_FEE_RATE;
-    const totalDeduction = data.amount + withdrawalFee; // Montant + frais
+    const withdrawalFee = this.WITHDRAWAL_FEE_FIXED;
+    const totalDeduction = data.amount + withdrawalFee;
 
     // Vérifier le solde (doit couvrir montant + frais)
     if (wallet.balance < totalDeduction) {
@@ -101,7 +110,7 @@ class WithdrawalService {
       },
     });
 
-    // Créditer la plateforme (frais de retrait 3%)
+    // Créditer la plateforme (frais 500 FCFA fixe CDC)
     const platformRevenueService = (await import('./platformRevenue.service.js')).default;
     await platformRevenueService.addRevenue(
       withdrawalFee,
@@ -191,9 +200,9 @@ class WithdrawalService {
     }
 
     const minProcessDate = new Date(withdrawal.created_at);
-    minProcessDate.setDate(minProcessDate.getDate() + this.WITHDRAWAL_DELAY_DAYS);
+    minProcessDate.setHours(minProcessDate.getHours() + this.WITHDRAWAL_DELAY_HOURS);
     if (new Date() < minProcessDate) {
-      const err: any = new Error(`Le retrait ne peut être traité qu'à partir du ${minProcessDate.toLocaleDateString('fr-FR')} (délai J+${this.WITHDRAWAL_DELAY_DAYS})`);
+      const err: any = new Error(`Le retrait ne peut être traité qu'à partir du ${minProcessDate.toLocaleDateString('fr-FR')} (délai ${this.WITHDRAWAL_DELAY_HOURS}h CDC)`);
       err.statusCode = 400;
       throw err;
     }

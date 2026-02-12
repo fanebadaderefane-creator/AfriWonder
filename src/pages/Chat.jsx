@@ -13,11 +13,57 @@ import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import BottomNav from '../components/navigation/BottomNav';
 import { useConversationSocket } from '@/hooks/useMessageSocket';
+import { useTranslation } from '@/components/common/useTranslation';
 
 const MESSAGES_LIMIT = 30;
 const TYPING_DEBOUNCE_MS = 400;
 
+const chatI18n = {
+  fr: {
+    loadOlderError: 'Impossible de charger plus de messages',
+    sendSuccess: 'Message envoye',
+    sendError: "Erreur lors de l'envoi",
+    selectImage: 'Veuillez selectionner une image',
+    uploadError: 'Erreur upload image',
+    selectConversation: 'Selectionnez une conversation depuis Messages.',
+    backToMessages: 'Retour aux messages',
+    online: 'En ligne',
+    offline: 'Hors ligne',
+    typingSuffix: 'est en train d ecrire...',
+    orderConversation: 'Conversation concernant la commande #',
+    viewOrder: 'Voir la commande',
+    loadOlder: 'Charger les anciens messages',
+    noMessage: 'Aucun message',
+    startConversation: 'Commencez la conversation',
+    deletedMessage: 'Message supprime',
+    read: 'Lu',
+    placeholder: 'Votre message...',
+  },
+  bm: {
+    loadOlderError: 'Se ka mesaji koro korow soro te',
+    sendSuccess: 'Mesaji ci',
+    sendError: 'Mesaji ci ye te se',
+    selectImage: 'I ka ja beenin do sugandi',
+    uploadError: 'Ja upload ye te se',
+    selectConversation: 'I ka barokan do sugandi Messages kono.',
+    backToMessages: 'Segin ka taa mesajiw ma',
+    online: 'A be yan',
+    offline: 'A te yan',
+    typingSuffix: 'be sebenni ke...',
+    orderConversation: 'Barokan min be taara commande #',
+    viewOrder: 'Commande laje',
+    loadOlder: 'Mesaji koro korow ye',
+    noMessage: 'Mesaji si te',
+    startConversation: 'Barokan damine',
+    deletedMessage: 'Mesaji ye bo',
+    read: 'Kalanlen',
+    placeholder: 'I ka mesaji...',
+  },
+};
+
 export default function Chat() {
+  const { language } = useTranslation();
+  const labels = chatI18n[language] || chatI18n.fr;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const userId = searchParams.get('userId') || searchParams.get('_userId');
@@ -47,7 +93,6 @@ export default function Chat() {
     getUser();
   }, [navigate]);
 
-  // Get or create conversation and derive other user
   const { data: conversationData, isLoading: loadingConv } = useQuery({
     queryKey: ['conversation', currentUser?.id, userId],
     queryFn: () => api.messages.getConversation(userId),
@@ -66,7 +111,6 @@ export default function Chat() {
 
   const conversationId = conversation?.id;
 
-  // Messages with cursor pagination (first page)
   const { data: messagesData, isLoading: loadingMessages, refetch: refetchMessages } = useQuery({
     queryKey: ['messages-list', conversationId],
     queryFn: () => api.messages.getMessages(conversationId, null, MESSAGES_LIMIT),
@@ -97,11 +141,11 @@ export default function Chat() {
 
   const firstPageMessages = messagesData?.messages ?? [];
   const hasMore = messagesData?.hasMore ?? false;
-  const nextCursorFromApi = messagesData?.nextCursor ?? null;
 
   useEffect(() => {
     if (messagesData?.nextCursor != null) setCursorForOlder(messagesData.nextCursor);
   }, [messagesData?.nextCursor]);
+
   useEffect(() => {
     setOlderMessages([]);
     setCursorForOlder(null);
@@ -117,13 +161,12 @@ export default function Chat() {
       setOlderMessages((prev) => [...(res.messages ?? []), ...prev]);
       setCursorForOlder(res.nextCursor ?? null);
     } catch (_e) {
-      toast.error('Impossible de charger plus de messages');
+      toast.error(labels.loadOlderError);
     } finally {
       setLoadingOlder(false);
     }
-  }, [conversationId, cursorForOlder, loadingOlder]);
+  }, [conversationId, cursorForOlder, loadingOlder, labels.loadOlderError]);
 
-  // Mark as read when opening conversation + invalidate unread badge
   useEffect(() => {
     if (!conversationId || !currentUser?.id) return;
     api.messages.markAsRead(conversationId).then(() => {
@@ -152,10 +195,16 @@ export default function Chat() {
       queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser?.id] });
       queryClient.invalidateQueries({ queryKey: ['messages-unread-count'] });
       setMessageContent('');
-      toast.success('Message envoyé');
+      toast.success(labels.sendSuccess);
     },
     onError: (err) => {
-      toast.error(err.response?.data?.error?.message || err.message || "Erreur lors de l'envoi");
+      toast.error(
+        err?.response?.data?.error?.message
+        || err?.response?.data?.message
+        || err?.apiMessage
+        || err?.message
+        || labels.sendError
+      );
     },
   });
 
@@ -169,7 +218,7 @@ export default function Chat() {
   const handleImageSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file || !file.type.startsWith('image/')) {
-      toast.error('Veuillez sélectionner une image');
+      toast.error(labels.selectImage);
       return;
     }
     e.target.value = '';
@@ -177,7 +226,7 @@ export default function Chat() {
       const { file_url } = await api.upload.image(file);
       sendMessageMutation.mutate({ content: '', type: 'image', media_url: file_url });
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Erreur upload image');
+      toast.error(err?.response?.data?.error?.message || err?.response?.data?.message || err?.apiMessage || labels.uploadError);
     }
   };
 
@@ -192,8 +241,8 @@ export default function Chat() {
   if (!userId) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4">
-        <p className="text-gray-500 mb-4">Sélectionnez une conversation depuis Messages.</p>
-        <Button onClick={() => navigate(createPageUrl('Inbox'))}>Retour aux messages</Button>
+        <p className="text-gray-500 mb-4">{labels.selectConversation}</p>
+        <Button onClick={() => navigate(createPageUrl('Inbox'))}>{labels.backToMessages}</Button>
         <BottomNav />
       </div>
     );
@@ -223,21 +272,21 @@ export default function Chat() {
           <p className="font-semibold text-gray-800">{otherUser?.full_name || otherUser?.username || 'Utilisateur'}</p>
           <p className="text-xs text-gray-500">
             {typingUser
-              ? `${typingUser.name} est en train d'écrire...`
+              ? `${typingUser.name} ${labels.typingSuffix}`
               : presence?.is_online
-                ? 'En ligne'
+                ? labels.online
                 : presence?.last_seen
                   ? `Vu ${formatDistanceToNow(new Date(presence.last_seen), { addSuffix: true, locale: fr })}`
-                  : 'Hors ligne'}
+                  : labels.offline}
           </p>
         </div>
       </div>
 
       {orderId && (
         <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 flex items-center justify-between gap-2">
-          <span className="text-sm text-amber-800">Conversation concernant la commande #{orderId.slice(0, 8)}</span>
+          <span className="text-sm text-amber-800">{labels.orderConversation}{orderId.slice(0, 8)}</span>
           <Button variant="outline" size="sm" className="border-amber-300 text-amber-800 shrink-0" onClick={() => navigate(`${createPageUrl('OrderTracking')}?id=${orderId}`)}>
-            Voir la commande
+            {labels.viewOrder}
           </Button>
         </div>
       )}
@@ -246,7 +295,7 @@ export default function Chat() {
         {hasMore && (
           <div className="flex justify-center py-2">
             <Button variant="ghost" size="sm" onClick={loadOlder} disabled={loadingOlder}>
-              {loadingOlder ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Charger les anciens messages'}
+              {loadingOlder ? <Loader2 className="w-4 h-4 animate-spin" /> : labels.loadOlder}
             </Button>
           </div>
         )}
@@ -257,8 +306,8 @@ export default function Chat() {
         ) : messages.length === 0 ? (
           <div className="h-full flex items-center justify-center text-center min-h-[200px]">
             <div>
-              <p className="text-gray-500">Aucun message</p>
-              <p className="text-sm text-gray-400">Commencez la conversation</p>
+              <p className="text-gray-500">{labels.noMessage}</p>
+              <p className="text-sm text-gray-400">{labels.startConversation}</p>
             </div>
           </div>
         ) : (
@@ -266,7 +315,7 @@ export default function Chat() {
             if (msg.is_deleted) {
               return (
                 <div key={msg.id} className="flex justify-center">
-                  <span className="text-xs text-gray-400">Message supprimé</span>
+                  <span className="text-xs text-gray-400">{labels.deletedMessage}</span>
                 </div>
               );
             }
@@ -283,10 +332,10 @@ export default function Chat() {
                   {msg.content && typeof msg.content === 'string' && msg.content.trim() && (
                     <p className="break-words whitespace-pre-wrap">{msg.content}</p>
                   )}
-                  {!isImage && !(msg.content && msg.content.trim()) && <p className="opacity-70">—</p>}
+                  {!isImage && !(msg.content && msg.content.trim()) && <p className="opacity-70">-</p>}
                   <p className={`text-xs mt-1 ${isOwn ? 'text-white/70' : 'text-gray-500'}`}>
                     {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true, locale: fr })}
-                    {isOwn && msg.status === 'read' && ' · Lu'}
+                    {isOwn && msg.status === 'read' && ` · ${labels.read}`}
                   </p>
                 </div>
               </motion.div>
@@ -303,7 +352,7 @@ export default function Chat() {
         </Button>
         <form onSubmit={handleSendMessage} className="flex-1 flex gap-2">
           <Input
-            placeholder="Votre message..."
+            placeholder={labels.placeholder}
             value={messageContent}
             onChange={handleInputChange}
             disabled={sendMessageMutation.isPending}

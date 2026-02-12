@@ -1996,7 +1996,7 @@ export default function Create() {
 
 
 
-            <div className="flex-1 p-4 bg-black overflow-y-auto">
+            <div className="flex-1 p-4 bg-zinc-900 overflow-y-auto">
 
               <VideoEditor
 

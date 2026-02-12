@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { 
-  ArrowLeft, Star, MapPin, Package, ShoppingBag, MessageSquare, BadgeCheck 
+  ArrowLeft, Star, MapPin, Package, ShoppingBag, MessageSquare, BadgeCheck, Shield 
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
@@ -166,7 +166,7 @@ export default function SellerProfile() {
                 {seller.full_name?.[0]?.toUpperCase() || seller.email?.[0]?.toUpperCase() || 'V'}
               </div>
               {(seller.seller_profile?.is_verified || seller.is_verified) && (
-                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center" title="Vendeur vérifié">
                   <BadgeCheck className="w-4 h-4 text-white" />
                 </div>
               )}
@@ -185,7 +185,7 @@ export default function SellerProfile() {
                   <span>{[seller.seller_profile?.city, seller.seller_profile?.country].filter(Boolean).join(', ') || seller.location}</span>
                 </div>
               )}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center gap-1">
                   <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
                   <span className="font-semibold">{averageRating}</span>
@@ -193,6 +193,15 @@ export default function SellerProfile() {
                 </div>
                 <span className="text-gray-300">•</span>
                 <span className="text-gray-600 text-sm">{totalSales} ventes</span>
+                {/* Badge Confiance CDC 2.2.6 : vendeur vérifié + note ≥4 et ≥5 avis */}
+                {(seller.seller_profile?.is_verified || seller.is_verified) &&
+                 parseFloat(averageRating) >= 4 &&
+                 totalReviewsCount >= 5 && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">
+                    <Shield className="w-3.5 h-3.5" />
+                    Confiance
+                  </span>
+                )}
               </div>
             </div>
           </div>

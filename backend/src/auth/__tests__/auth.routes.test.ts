@@ -5,6 +5,7 @@
 import request from 'supertest';
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import bcrypt from 'bcryptjs';
+import speakeasy from 'speakeasy';
 import app from '../../app.js';
 import { prisma } from '../../../__tests__/setup.js';
 
@@ -124,6 +125,99 @@ describe('Auth routes', () => {
         .send({ email: 'unknown@example.com', password: validUser.password })
         .expect(401);
       expect(res.body.success).toBe(false);
+    });
+
+    it('returns 401 when 2FA enabled and code missing', async () => {
+      const user = await prisma.user.findUniqueOrThrow({ where: { email: validUser.email } });
+      const secret = speakeasy.generateSecret({ name: 'AfriWonder', length: 32 }).base32;
+      await prisma.user2FA.upsert({
+        where: { user_id: user.id },
+        update: {
+          method: 'authenticator',
+          is_enabled: true,
+          secret,
+          backup_codes: ['BACKUP123'],
+        },
+        create: {
+          user_id: user.id,
+          method: 'authenticator',
+          is_enabled: true,
+          secret,
+          backup_codes: ['BACKUP123'],
+        },
+      });
+
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email: validUser.email, password: validUser.password })
+        .expect(401);
+
+      expect(res.body.success).toBe(false);
+      const message = res.body?.error?.message || res.body?.message || '';
+      expect(String(message).toLowerCase()).toContain('2fa');
+    });
+
+    it('returns 401 when 2FA enabled and code invalid', async () => {
+      const user = await prisma.user.findUniqueOrThrow({ where: { email: validUser.email } });
+      const secret = speakeasy.generateSecret({ name: 'AfriWonder', length: 32 }).base32;
+      await prisma.user2FA.upsert({
+        where: { user_id: user.id },
+        update: {
+          method: 'authenticator',
+          is_enabled: true,
+          secret,
+          backup_codes: ['BACKUP123'],
+        },
+        create: {
+          user_id: user.id,
+          method: 'authenticator',
+          is_enabled: true,
+          secret,
+          backup_codes: ['BACKUP123'],
+        },
+      });
+
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email: validUser.email, password: validUser.password, twoFactorCode: '000000' })
+        .expect(401);
+
+      expect(res.body.success).toBe(false);
+    });
+
+    it('returns 200 when 2FA enabled and TOTP code valid', async () => {
+      const user = await prisma.user.findUniqueOrThrow({ where: { email: validUser.email } });
+      const secret = speakeasy.generateSecret({ name: 'AfriWonder', length: 32 }).base32;
+      await prisma.user2FA.upsert({
+        where: { user_id: user.id },
+        update: {
+          method: 'authenticator',
+          is_enabled: true,
+          secret,
+          backup_codes: ['BACKUP123'],
+        },
+        create: {
+          user_id: user.id,
+          method: 'authenticator',
+          is_enabled: true,
+          secret,
+          backup_codes: ['BACKUP123'],
+        },
+      });
+
+      const code = speakeasy.totp({
+        secret,
+        encoding: 'base32',
+      });
+
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email: validUser.email, password: validUser.password, twoFactorCode: code })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.accessToken).toBeDefined();
+      expect(res.body.data.two_factor_verified).toBe(true);
     });
   });
 });

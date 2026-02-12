@@ -132,8 +132,11 @@ class VideoTipService {
       throw error;
     }
 
+    if (tip.status === 'completed') {
+      return { success: true, tip };
+    }
+
     if (paymentStatus === 'SUCCESS' || paymentStatus === 'completed') {
-      // Mettre à jour le tip
       await prisma.videoTip.update({
         where: { id: tipId },
         data: { status: 'completed' },

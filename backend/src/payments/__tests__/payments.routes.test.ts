@@ -89,4 +89,16 @@ describe('Payments routes', () => {
       }
     });
   });
+
+  describe('POST /api/payments/wallet/pay-order', () => {
+    it('returns 400 when orderId is missing', async () => {
+      const res = await request(app)
+        .post('/api/payments/wallet/pay-order')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+  });
 });

@@ -2,6 +2,7 @@ import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import Stripe from 'stripe';
 import axios from 'axios';
+import crypto from 'crypto';
 import fraudCheck from './fraudCheck.service.js';
 import ledgerService from './ledger.service.js';
 
@@ -10,6 +11,76 @@ const stripe = process.env.STRIPE_SECRET_KEY
   : null;
 
 class PaymentService {
+  private async markPaymentAttemptPending(orderId: string, provider: string, amount: number, transactionId?: string) {
+    const existing = await prisma.orderPayment.findFirst({
+      where: { order_id: orderId, provider, status: { in: ['pending', 'processing', 'failed'] } },
+      orderBy: { created_at: 'desc' },
+    });
+
+    if (existing) {
+      await prisma.orderPayment.update({
+        where: { id: existing.id },
+        data: {
+          transaction_id: transactionId ?? existing.transaction_id,
+          status: 'processing',
+          amount,
+          failure_reason: null,
+        },
+      });
+      return;
+    }
+
+    await prisma.orderPayment.create({
+      data: {
+        order_id: orderId,
+        provider,
+        transaction_id: transactionId,
+        status: 'processing',
+        amount,
+        currency: 'XOF',
+      },
+    });
+  }
+
+  private async markPaymentAttemptFinal(
+    orderId: string,
+    provider: string,
+    status: 'completed' | 'failed',
+    transactionId?: string,
+    failureReason?: string,
+  ) {
+    const existing = await prisma.orderPayment.findFirst({
+      where: { order_id: orderId, provider },
+      orderBy: { created_at: 'desc' },
+    });
+
+    if (existing) {
+      await prisma.orderPayment.update({
+        where: { id: existing.id },
+        data: {
+          transaction_id: transactionId ?? existing.transaction_id,
+          status,
+          paid_at: status === 'completed' ? new Date() : existing.paid_at,
+          failure_reason: status === 'failed' ? (failureReason || 'payment_failed') : null,
+        },
+      });
+      return;
+    }
+
+    await prisma.orderPayment.create({
+      data: {
+        order_id: orderId,
+        provider,
+        transaction_id: transactionId,
+        status,
+        amount: 0,
+        currency: 'XOF',
+        paid_at: status === 'completed' ? new Date() : undefined,
+        failure_reason: status === 'failed' ? (failureReason || 'payment_failed') : null,
+      },
+    });
+  }
+
   // ============================================
   // STRIPE PAYMENTS
   // ============================================
@@ -171,22 +242,16 @@ class PaymentService {
     phone: string;
     returnUrl: string;
   }) {
-    // Configuration Orange Money Mali
     const merchantId = process.env.ORANGE_MONEY_MERCHANT_ID || process.env.VITE_ORANGE_MERCHANT_ID;
     const apiKey = process.env.ORANGE_MONEY_API_KEY || process.env.VITE_ORANGE_API_KEY;
 
     if (!merchantId || !apiKey) {
-      throw new Error('Orange Money Mali non configuré. Vérifiez ORANGE_MONEY_MERCHANT_ID et ORANGE_MONEY_API_KEY');
+      throw new Error('Orange Money Mali non configure. Verifiez ORANGE_MONEY_MERCHANT_ID et ORANGE_MONEY_API_KEY');
     }
 
-    // Pour Orange Money Mali, l'API peut varier selon la documentation officielle
-    // Utiliser l'endpoint Mali spécifique
     const orangeMoneyBaseUrl = process.env.ORANGE_MONEY_API_URL || 'https://api.orange.ml';
-    
+
     try {
-      // Créer le paiement Orange Money Mali
-      // Note: L'implémentation exacte dépend de l'API Orange Money Mali
-      // Cette structure est un exemple et doit être adaptée selon la documentation officielle
       const paymentResponse = await axios.post(
         `${orangeMoneyBaseUrl}/payment/v1/webpayment`,
         {
@@ -205,32 +270,37 @@ class PaymentService {
         {
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`, // Ou selon la méthode d'authentification Orange Money Mali
+            Authorization: `Bearer ${apiKey}`,
           },
         }
       );
 
-    // Créer une transaction
-    await prisma.transaction.create({
-      data: {
-        user_id: userId,
-        type: 'payment',
-        amount: data.amount,
-        currency: 'XOF',
-        status: 'pending',
-        description: `Paiement Orange Money - Commande ${orderId}`,
-        reference_id: orderId,
-      },
-    });
+      await prisma.transaction.create({
+        data: {
+          user_id: userId,
+          type: 'payment',
+          amount: data.amount,
+          currency: 'XOF',
+          status: 'pending',
+          description: `Paiement Orange Money - Commande ${orderId}`,
+          reference_id: orderId,
+          payment_method: 'orange_money',
+          phone_number: data.phone,
+        },
+      });
 
-      logger.info('Paiement Orange Money Mali initié', { userId, orderId, amount: data.amount });
+      const reference = paymentResponse.data?.reference || orderId;
+      await this.markPaymentAttemptPending(orderId, 'orange_money', data.amount, reference);
+
+      logger.info('Paiement Orange Money Mali initie', { userId, orderId, amount: data.amount, reference });
       return {
-        paymentUrl: paymentResponse.data.payment_url || paymentResponse.data.redirect_url,
+        paymentUrl: paymentResponse.data?.payment_url || paymentResponse.data?.redirect_url,
         orderId,
-        reference: paymentResponse.data.reference || orderId,
+        reference,
+        provider: 'orange_money',
       };
     } catch (error: any) {
-      logger.error('Erreur lors de l\'initiation du paiement Orange Money Mali', {
+      logger.error('Erreur initiation paiement Orange Money Mali', {
         error: error.message,
         userId,
         orderId,
@@ -238,26 +308,40 @@ class PaymentService {
       throw new Error(`Erreur Orange Money Mali: ${error.message || 'Impossible d\'initier le paiement'}`);
     }
   }
+  /** Vérifie la signature du webhook Orange Money. En test ou sans secret configuré, accepte. */
+  verifyOrangeMoneyWebhookSignature(body: string | Buffer, signature?: string): boolean {
+    const env = process.env.ORANGE_MONEY_ENV || process.env.NODE_ENV;
+    const secret = process.env.ORANGE_MONEY_WEBHOOK_SECRET;
+    if (env === 'test' || !secret) {
+      if (!secret && env === 'production') {
+        logger.warn('Orange Money webhook: ORANGE_MONEY_WEBHOOK_SECRET manquant en production');
+      }
+      return true;
+    }
+    if (!signature) return false;
+    const raw = typeof body === 'string' ? body : body.toString('utf8');
+    const expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');
+    const sigBuf = Buffer.from(signature, 'hex');
+    const expBuf = Buffer.from(expected, 'hex');
+    if (sigBuf.length !== expBuf.length) return false;
+    return crypto.timingSafeEqual(sigBuf, expBuf);
+  }
 
   async verifyOrangeMoneyPayment(orderId: string, data: {
     status: string;
     pay_token?: string;
   }) {
     if (data.status === 'SUCCESS' && data.pay_token) {
-      // Vérifier le paiement avec Orange Money API
       const clientId = process.env.ORANGE_MONEY_CLIENT_ID;
       const clientSecret = process.env.ORANGE_MONEY_CLIENT_SECRET;
 
       if (!clientId || !clientSecret) {
-        throw new Error('Orange Money non configuré');
+        throw new Error('Orange Money non configure');
       }
 
-      // Obtenir le token
       const tokenResponse = await axios.post(
         'https://api.orange.com/oauth/v3/token',
-        new URLSearchParams({
-          grant_type: 'client_credentials',
-        }),
+        new URLSearchParams({ grant_type: 'client_credentials' }),
         {
           headers: {
             Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
@@ -268,7 +352,6 @@ class PaymentService {
 
       const accessToken = tokenResponse.data.access_token;
 
-      // Vérifier le statut du paiement
       try {
         const verifyResponse = await axios.get(
           `https://api.orange.com/orange-money-webpay/m/v1/transactionstatus?order_id=${orderId}`,
@@ -280,23 +363,11 @@ class PaymentService {
         );
 
         if (verifyResponse.data.status === 'SUCCESS') {
-          // Mettre à jour la transaction
           await prisma.transaction.updateMany({
-            where: {
-              reference_id: orderId,
-              status: 'pending',
-            },
-            data: {
-              status: 'completed',
-            },
+            where: { reference_id: orderId, status: 'pending' },
+            data: { status: 'completed', payment_method: 'orange_money' },
           });
-
-          // Mettre à jour la commande
-          await prisma.order.update({
-            where: { id: orderId },
-            data: { status: 'processing' },
-          });
-
+          await this.markPaymentAttemptFinal(orderId, 'orange_money', 'completed', data.pay_token);
           return {
             success: true,
             status: 'paid',
@@ -304,8 +375,9 @@ class PaymentService {
           };
         }
       } catch (error) {
-        logger.error('Erreur vérification Orange Money', error);
+        logger.error('Erreur verification Orange Money', error);
       }
+      await this.markPaymentAttemptFinal(orderId, 'orange_money', 'failed', data.pay_token, 'verification_failed');
     }
 
     return {
@@ -313,9 +385,7 @@ class PaymentService {
       status: data.status,
     };
   }
-
-  // ============================================
-  // MTN MOBILE MONEY (stub — configurer MTN_MOBILE_MONEY_* en prod)
+// MTN MOBILE MONEY (stub — configurer MTN_MOBILE_MONEY_* en prod)
   // ============================================
   async initiateMtnMoneyPayment(userId: string, orderId: string, data: { amount: number; phone: string; returnUrl: string }) {
     if (!process.env.MTN_MOBILE_MONEY_API_KEY || !process.env.MTN_MOBILE_MONEY_SUBSCRIPTION_KEY) {
@@ -335,7 +405,100 @@ class PaymentService {
   }
 
   // ============================================
-  // WAVE (stub — configurer WAVE_* en prod)
+  // MOOV MONEY (Mali — stub, configurer MOOV_* en prod)
+  // ============================================
+  async initiateMoovMoneyPayment(userId: string, orderId: string, data: { amount: number; phone: string; returnUrl: string }) {
+    const apiKey = process.env.MOOV_MONEY_API_KEY;
+    const apiUrl = process.env.MOOV_MONEY_API_URL;
+    const merchantId = process.env.MOOV_MONEY_MERCHANT_ID;
+
+    await prisma.transaction.create({
+      data: {
+        user_id: userId,
+        type: 'payment',
+        amount: data.amount,
+        currency: 'XOF',
+        status: 'pending',
+        description: `Paiement Moov Money - Commande ${orderId}`,
+        reference_id: orderId,
+        payment_method: 'moov_money',
+        phone_number: data.phone,
+      },
+    });
+
+    if (!apiKey || !apiUrl || !merchantId) {
+      logger.warn('Moov Money non configure completement, fallback local', { orderId });
+      await this.markPaymentAttemptPending(orderId, 'moov_money', data.amount, orderId);
+      return { orderId, reference: orderId, paymentUrl: data.returnUrl, provider: 'moov_money' };
+    }
+
+    const response = await axios.post(
+      `${apiUrl.replace(/\/$/, '')}/payments`,
+      {
+        merchant_id: merchantId,
+        amount: data.amount,
+        currency: 'XOF',
+        msisdn: data.phone,
+        order_id: orderId,
+        callback_url: `${process.env.APP_URL || 'http://localhost:3000'}/api/payments/moov/webhook`,
+        return_url: data.returnUrl,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const reference = response.data?.reference || response.data?.transaction_id || orderId;
+    await this.markPaymentAttemptPending(orderId, 'moov_money', data.amount, reference);
+
+    logger.info('Paiement Moov Money initie', { userId, orderId, amount: data.amount, reference });
+    return {
+      orderId,
+      reference,
+      paymentUrl: response.data?.payment_url || response.data?.redirect_url || data.returnUrl,
+      provider: 'moov_money',
+    };
+  }
+
+  async verifyMoovMoneyPayment(orderId: string, data: { status: string; transaction_id?: string }) {
+    const isSuccess = ['SUCCESS', 'success', 'completed', 'COMPLETED', 'paid', 'PAID'].includes(data.status);
+    if (isSuccess) {
+      await prisma.transaction.updateMany({
+        where: { reference_id: orderId, status: 'pending' },
+        data: { status: 'completed', payment_method: 'moov_money' },
+      });
+      await this.markPaymentAttemptFinal(orderId, 'moov_money', 'completed', data.transaction_id);
+      logger.info('Paiement Moov Money verifie', { orderId });
+      return { success: true, status: 'paid', orderId };
+    }
+
+    await this.markPaymentAttemptFinal(orderId, 'moov_money', 'failed', data.transaction_id, data.status || 'failed');
+    return { success: false, status: data.status };
+  }
+
+  verifyMoovWebhookSignature(body: string | Buffer, signature?: string): boolean {
+    const env = process.env.MOOV_MONEY_ENV || process.env.NODE_ENV;
+    const secret = process.env.MOOV_MONEY_WEBHOOK_SECRET;
+    if (env === 'test' || !secret) {
+      if (!secret && env === 'production') {
+        logger.warn('Moov Money webhook: MOOV_MONEY_WEBHOOK_SECRET manquant en production');
+      }
+      return true;
+    }
+    if (!signature) return false;
+    const raw = typeof body === 'string' ? body : body.toString('utf8');
+    const expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');
+    const sigBuf = Buffer.from(signature, 'hex');
+    const expBuf = Buffer.from(expected, 'hex');
+    if (sigBuf.length !== expBuf.length) return false;
+    return crypto.timingSafeEqual(sigBuf, expBuf);
+  }
+
+  // ============================================
+  // WAVE (stub - configurer WAVE_* en prod) (stub — configurer WAVE_* en prod)
   // ============================================
   async initiateWavePayment(userId: string, orderId: string, data: { amount: number; currency?: string; returnUrl: string }) {
     if (!process.env.WAVE_API_KEY) {
@@ -499,4 +662,6 @@ class PaymentService {
 
 export const paymentService = new PaymentService();
 export default paymentService;
+
+
 

@@ -29,9 +29,14 @@ router.post('/register', async (req, res, next) => {
 // POST /api/auth/login
 router.post('/login', async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, twoFactorCode, otpCode, backupCode } = req.body;
 
-    const result = await authService.login(email, password);
+    const result = await authService.login(
+      email,
+      password,
+      twoFactorCode || otpCode,
+      backupCode
+    );
 
     res.json({
       success: true,
@@ -292,4 +297,3 @@ router.get('/facebook/callback', async (req, res, next) => {
 });
 
 export default router;
-

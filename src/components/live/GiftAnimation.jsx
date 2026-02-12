@@ -2,46 +2,33 @@ import React from 'react';
 import { motion } from 'framer-motion';
 
 const GIFT_ANIMATIONS = {
-  heart: {
-    emoji: '❤️',
-    particles: 8,
-    color: '#ef4444'
-  },
-  star: {
-    emoji: '⭐',
-    particles: 12,
-    color: '#f59e0b'
-  },
-  fire: {
-    emoji: '🔥',
-    particles: 10,
-    color: '#ef5350'
-  },
-  crown: {
-    emoji: '👑',
-    particles: 6,
-    color: '#fbbf24'
-  },
-  diamond: {
-    emoji: '💎',
-    particles: 15,
-    color: '#06b6d4'
-  },
-  plane: {
-    emoji: '✈️',
-    particles: 5,
-    color: '#3b82f6'
-  }
+  heart: { emoji: '❤️', particles: 8, color: '#ef4444' },
+  star: { emoji: '⭐', particles: 12, color: '#f59e0b' },
+  fire: { emoji: '🔥', particles: 10, color: '#ef5350' },
+  crown: { emoji: '👑', particles: 6, color: '#fbbf24' },
+  diamond: { emoji: '💎', particles: 15, color: '#06b6d4' },
+  plane: { emoji: '✈️', particles: 5, color: '#3b82f6' },
+  tip: { emoji: '💵', particles: 10, color: '#f59e0b' }
 };
 
-export default function GiftAnimation({ gift, position = { x: 0, y: 0 }, onComplete }) {
+// CDC: Effets visuels par tier (standard, featured, super, premium, vip)
+const TIER_CONFIG = {
+  standard: { scale: 1, duration: 2, distance: 120, glow: 8 },
+  featured: { scale: 1.2, duration: 2.2, distance: 150, glow: 12 },
+  super: { scale: 1.4, duration: 2.5, distance: 180, glow: 16 },
+  premium: { scale: 1.6, duration: 2.8, distance: 220, glow: 22 },
+  vip: { scale: 2, duration: 3, distance: 280, glow: 30 }
+};
+
+export default function GiftAnimation({ gift, position = { x: 0, y: 0 }, tier = 'standard', onComplete }) {
   const giftData = GIFT_ANIMATIONS[gift?.id] || GIFT_ANIMATIONS.heart;
-  const particles = Array.from({ length: giftData.particles });
+  const tierCfg = TIER_CONFIG[tier] || TIER_CONFIG.standard;
+  const particles = Array.from({ length: Math.min(giftData.particles + (tier === 'vip' ? 10 : tier === 'premium' ? 6 : 0), 25) });
 
   return (
     <motion.div
       initial={{ scale: 0, opacity: 1 }}
-      animate={{ scale: 1, opacity: 1 }}
+      animate={{ scale: tierCfg.scale, opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed pointer-events-none"
       style={{
@@ -51,20 +38,18 @@ export default function GiftAnimation({ gift, position = { x: 0, y: 0 }, onCompl
       }}
       onAnimationComplete={onComplete}
     >
-      {/* Main Gift Icon */}
       <motion.div
         initial={{ y: 0 }}
-        animate={{ y: -300 }}
-        transition={{ duration: 2.5, ease: 'easeOut' }}
+        animate={{ y: -tierCfg.distance - 100 }}
+        transition={{ duration: tierCfg.duration, ease: 'easeOut' }}
         className="text-5xl"
       >
         {giftData.emoji}
       </motion.div>
 
-      {/* Particle Effects */}
       {particles.map((_, idx) => {
         const angle = (idx / particles.length) * Math.PI * 2;
-        const distance = 150;
+        const distance = tierCfg.distance + (idx % 3) * 20;
         const x = Math.cos(angle) * distance;
         const y = Math.sin(angle) * distance;
 
@@ -73,15 +58,14 @@ export default function GiftAnimation({ gift, position = { x: 0, y: 0 }, onCompl
             key={idx}
             initial={{ x: 0, y: 0, opacity: 1 }}
             animate={{ x, y, opacity: 0 }}
-            transition={{ duration: 2, ease: 'easeOut', delay: idx * 0.02 }}
+            transition={{ duration: tierCfg.duration - 0.3, ease: 'easeOut', delay: idx * 0.02 }}
             className="absolute text-2xl pointer-events-none"
           >
-            ✨
+            {tier === 'vip' || tier === 'premium' ? '💫' : '✨'}
           </motion.div>
         );
       })}
 
-      {/* Shine Effect */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: [0, 1, 0] }}
@@ -89,11 +73,11 @@ export default function GiftAnimation({ gift, position = { x: 0, y: 0 }, onCompl
         className="absolute inset-0 rounded-full pointer-events-none"
         style={{
           background: `radial-gradient(circle, ${giftData.color} 0%, transparent 70%)`,
-          filter: 'blur(8px)',
-          width: 60,
-          height: 60,
-          marginLeft: -30,
-          marginTop: -30
+          filter: `blur(${tierCfg.glow}px)`,
+          width: 60 * tierCfg.scale,
+          height: 60 * tierCfg.scale,
+          marginLeft: -30 * tierCfg.scale,
+          marginTop: -30 * tierCfg.scale
         }}
       />
     </motion.div>

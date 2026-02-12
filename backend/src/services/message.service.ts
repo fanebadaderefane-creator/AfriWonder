@@ -1,10 +1,7 @@
-/**
- * Module Messages — production ready
- * unread_count_map, cursor pagination, status sent/delivered/read, typing, presence, rate limit.
- */
 import crypto from 'crypto';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
+import notificationService from './notification.service.js';
 
 let messageIo: import('socket.io').Server | null = null;
 export function setMessageIo(io: import('socket.io').Server) {
@@ -35,8 +32,27 @@ function incrementUnreadForUser(map: UnreadCountMap | null, userId: string): Unr
   return out;
 }
 
+function makeHttpError(message: string, statusCode: number): Error & { statusCode?: number } {
+  const error = new Error(message) as Error & { statusCode?: number };
+  error.statusCode = statusCode;
+  return error;
+}
+
+function maskSensitiveContacts(input: string): string {
+  if (!input) return input;
+  let out = input;
+
+  out = out.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[contact masque]');
+  out = out.replace(/(?<!\w)(\+?\d[\d\s().-]{6,}\d)(?!\w)/g, (match) => {
+    const digits = match.replace(/\D/g, '');
+    if (digits.length >= 8 && digits.length <= 15) return '[contact masque]';
+    return match;
+  });
+
+  return out;
+}
+
 class MessageService {
-  /** Check if blocker has blocked blockedId */
   async isBlocked(blockerId: string, blockedId: string): Promise<boolean> {
     const block = await prisma.userBlock.findFirst({
       where: {
@@ -131,7 +147,6 @@ class MessageService {
     return conversation;
   }
 
-  /** Cursor-based: cursor = created_at ISO string of oldest message in current view; load older messages. Verifies userId is participant. */
   async getMessages(conversationId: string, cursor?: string | null, limit: number = MESSAGES_PAGE_SIZE, userId: string | null = null) {
     const conv = await prisma.conversation.findFirst({
       where: {
@@ -140,7 +155,7 @@ class MessageService {
       },
       select: { id: true },
     });
-    if (!conv) throw new Error('Conversation non trouvée ou accès non autorisé');
+    if (!conv) throw new Error('Conversation non trouvee ou acces non autorise');
 
     const take = Math.min(50, Math.max(1, limit)) + 1;
 
@@ -181,6 +196,24 @@ class MessageService {
     const blocked = await this.isBlocked(senderId, recipientId);
     if (blocked) throw new Error('Cannot send message to this user');
 
+    const normalizedType = String(type || 'text').trim().toLowerCase();
+    const allowedTypes = new Set(['text', 'image', 'video', 'audio', 'file']);
+    if (!allowedTypes.has(normalizedType)) {
+      throw makeHttpError('Type de message invalide', 400);
+    }
+
+    const rawContent = typeof content === 'string' ? content : '';
+    const maskedContent = maskSensitiveContacts(rawContent.trim()).slice(0, 2000);
+    const mediaUrl = options?.media_url ? String(options.media_url).trim() : '';
+    const thumbnailUrl = options?.thumbnail_url ? String(options.thumbnail_url).trim() : '';
+
+    if (normalizedType === 'text' && !maskedContent) {
+      throw makeHttpError('Le contenu texte est requis', 400);
+    }
+    if (normalizedType !== 'text' && !mediaUrl) {
+      throw makeHttpError('media_url est requis pour ce type de message', 400);
+    }
+
     const conversation = await this.getOrCreateConversation(senderId, recipientId);
     const otherId = conversation.user1_id === senderId ? conversation.user2_id : conversation.user1_id;
 
@@ -188,11 +221,11 @@ class MessageService {
       data: {
         conversation_id: conversation.id,
         sender_id: senderId,
-        content: content || '',
-        type: type || 'text',
+        content: maskedContent,
+        type: normalizedType,
         status: 'sent',
-        media_url: options?.media_url,
-        thumbnail_url: options?.thumbnail_url,
+        media_url: mediaUrl || null,
+        thumbnail_url: thumbnailUrl || null,
         reply_to_message_id: options?.reply_to_message_id || null,
       },
       include: {
@@ -204,7 +237,15 @@ class MessageService {
     const prevMap = (conversation.unread_count_map as UnreadCountMap) || {};
     const newMap = incrementUnreadForUser(prevMap, otherId);
 
-    const lastText = type === 'text' ? content : type === 'image' ? '📷 Image' : type === 'video' ? '🎬 Video' : '📎 Fichier';
+    const lastText = normalizedType === 'text'
+      ? maskedContent
+      : normalizedType === 'image'
+        ? 'Image'
+        : normalizedType === 'video'
+          ? 'Video'
+          : normalizedType === 'audio'
+            ? 'Audio'
+            : 'Fichier';
 
     await prisma.conversation.update({
       where: { id: conversation.id },
@@ -221,8 +262,63 @@ class MessageService {
       messageIo.to(`user:${otherId}`).emit('message:unread', { conversationId: conversation.id, unread: getUnreadForUser(newMap, otherId) });
     }
 
+    try {
+      await notificationService.create(otherId, {
+        type: 'message_new',
+        title: 'Nouveau message',
+        message: normalizedType === 'text' ? (maskedContent.slice(0, 120) || 'Message recu') : `Nouveau ${normalizedType}`,
+        reference_type: 'conversation',
+        reference_id: conversation.id,
+        data: { conversationId: conversation.id, senderId },
+      });
+    } catch (err) {
+      logger.warn('Message notification failed', { senderId, recipientId, err });
+    }
+
     logger.info('Message sent', { senderId, recipientId, messageId: message.id });
     return message;
+  }
+
+  async sendOrderTrackingUpdate(orderId: string, status: string, actorId: string) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true, user_id: true, seller_id: true },
+    });
+    if (!order?.seller_id) return null;
+
+    const participants = new Set([order.user_id, order.seller_id]);
+    if (!participants.has(actorId)) return null;
+
+    const recipientId = actorId === order.user_id ? order.seller_id : order.user_id;
+    const shortId = order.id.slice(0, 8);
+    const frMap: Record<string, string> = {
+      processing: 'en traitement',
+      preparing: 'en preparation',
+      in_transit: 'en livraison',
+      delivered: 'livree',
+      completed: 'terminee',
+      cancelled: 'annulee',
+      paid: 'payee',
+    };
+    const bmMap: Record<string, string> = {
+      processing: 'baara kan',
+      preparing: 'sigida la',
+      in_transit: 'sira kan',
+      delivered: 'seginna',
+      completed: 'banbana',
+      cancelled: 'dabila',
+      paid: 'warakeli kera',
+    };
+    const fr = frMap[status] || status;
+    const bm = bmMap[status] || status;
+    const text = `Suivi commande #${shortId}: statut ${fr}. [BM: ${bm}]`;
+
+    try {
+      return await this.sendMessage(actorId, recipientId, text, 'text');
+    } catch (err) {
+      logger.warn('Order tracking auto-message failed', { orderId, status, actorId, err });
+      return null;
+    }
   }
 
   async markAsRead(conversationId: string, userId: string) {

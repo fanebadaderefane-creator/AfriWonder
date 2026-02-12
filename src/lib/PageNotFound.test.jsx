@@ -5,20 +5,13 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import PageNotFound from './PageNotFound';
 
-const { queryFnResultRef } = vi.hoisted(() => ({
-  queryFnResultRef: { current: { user: null, isAuthenticated: false } },
-}));
+const { queryFnResultRef, apiMock } = vi.hoisted(() => {
+  const apiMock = { auth: { me: vi.fn() } };
+  const queryFnResultRef = { current: { user: null, isAuthenticated: false } };
+  return { queryFnResultRef, apiMock };
+});
 
-vi.mock('@/api/expressClient', () => ({
-  api: { auth: { me: vi.fn() } },
-}));
-
-vi.mock('@tanstack/react-query', () => ({
-  useQuery: () => ({
-    data: queryFnResultRef.current,
-    isFetched: true,
-  }),
-}));
+vi.mock('@/api/expressClient', () => ({ api: apiMock }));
 
 function renderAt(path) {
   return render(
@@ -29,6 +22,13 @@ function renderAt(path) {
     </MemoryRouter>
   );
 }
+
+vi.mock('@tanstack/react-query', () => ({
+  useQuery: (opts) => ({
+    data: queryFnResultRef.current,
+    isFetched: true,
+  }),
+}));
 
 describe('PageNotFound', () => {
   beforeEach(() => {

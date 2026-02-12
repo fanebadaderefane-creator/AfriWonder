@@ -5,6 +5,7 @@
 
 import prisma from '../config/database.js';
 import { getErrorsSummary } from './errorMonitoring.service.js';
+import { getHttpMetricsSummary } from './httpMetrics.service.js';
 
 // Cache court pour éviter de surcharger la DB
 let cache: {
@@ -42,7 +43,7 @@ async function getHealthUncached(): Promise<{
   ]);
 
   const errorRate5m = errorsSummary?.countLast24h ? Math.min(1, errorsSummary.countLast24h / 100) : 0;
-  const apiLatencyP95: number | null = null;
+  const apiLatencyP95 = getHttpMetricsSummary().p95_ms;
 
   let status: 'stable' | 'degraded' | 'critical' = 'stable';
   if (errorRate5m > 0.1 || failedPaymentsLastHour > 50) status = 'degraded';

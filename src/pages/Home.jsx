@@ -489,7 +489,7 @@ export default function Home() {
   }
 
   return (
-    <div className="h-screen w-screen bg-black relative overflow-hidden">
+    <div className="w-full h-[100dvh] bg-black relative overflow-hidden">
       {/* AfriWonder Logo */}
       <button
         onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
@@ -631,17 +631,19 @@ export default function Home() {
                      _navigate('/');
                      return;
                    }
-                   const wasFollowing = userFollows.some(f => f.following_id === video.creator_id);
-                   await api.users.toggleFollow(video.creator_id);
+                   const wasInWonder = userFollows.some(f => f.following_id === video.creator_id);
+                   const result = await api.users.toggleWonder(video.creator_id);
+                   const inWonder = result?.data?.inWonder ?? result?.inWonder ?? !wasInWonder;
 
                    // Invalider les queries pour mettre à jour l'état
                    queryClient.invalidateQueries({ queryKey: ['user-follows', user.id] });
+                   queryClient.invalidateQueries({ queryKey: ['follow-stats', video.creator_id] });
                    
-                   if (!wasFollowing) {
+                   if (inWonder) {
                      NotificationService.notifyNewFollower(user.id, video.creator_id);
-                     toast.success(`Vous suivez maintenant ${video.creator_name}`);
+                     toast.success('Vous êtes maintenant dans son Wonder ✨');
                    } else {
-                     toast.success(`Vous ne suivez plus ${video.creator_name}`);
+                     toast.success(`Vous avez quitté le Wonder de ${video.creator_name}`);
                    }
                  }}
                  isFollowing={userFollows.some(f => f.following_id === video.creator_id)}

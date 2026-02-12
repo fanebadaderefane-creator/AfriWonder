@@ -24,28 +24,50 @@ export default function SearchPage() {
     setSearchParams({ q, category: filters.category });
   };
 
-  // Fetch videos
+  const isHashtagSearch = query.trim().startsWith('#') || /^#?\w+$/.test(query.trim());
+  const hashtagForApi = isHashtagSearch ? query.trim().replace(/^#/, '') : '';
+
+  // Fetch videos (utilise l'API hashtag si recherche par hashtag)
   const { data: videos, isLoading: videosLoading } = useQuery({
-    queryKey: ['searchVideos', query, filters],
+    queryKey: ['searchVideos', query, filters, hashtagForApi],
     queryFn: async () => {
       if (!query.trim()) return [];
-      
-      const videoResult = await api.videos.list({ page: 1, limit: 50 });
-      let results = videoResult.videos || [];
-      
-      results = results.filter(v => 
-        v.title?.toLowerCase().includes(query.toLowerCase()) ||
-        v.description?.toLowerCase().includes(query.toLowerCase()) ||
-        v.hashtags?.some(h => h.toLowerCase().includes(query.toLowerCase())) ||
-        v.music_title?.toLowerCase().includes(query.toLowerCase())
-      );
 
-      if (filters.category && filters.category !== 'all') {
-        results = results.filter(v => v.category === filters.category);
+      if (hashtagForApi && filters.type !== 'users' && filters.type !== 'products') {
+        const res = await api.videos.list({ page: 1, limit: 50, hashtag: hashtagForApi });
+        let results = res?.videos || [];
+        if (filters.category && filters.category !== 'all') {
+          results = results.filter((v) => v.category === filters.category);
+        }
+        if (filters.duration !== 'all') {
+          results = results.filter((v) => {
+            const dur = v.duration || 0;
+            if (filters.duration === 'short') return dur < 60;
+            if (filters.duration === 'medium') return dur >= 60 && dur <= 600;
+            if (filters.duration === 'long') return dur > 600;
+            return true;
+          });
+        }
+        return results.slice(0, 20);
       }
 
+      const videoResult = await api.videos.list({ page: 1, limit: 50, hashtag: hashtagForApi || undefined });
+      let results = videoResult.videos || [];
+      if (!hashtagForApi) {
+        results = results.filter(
+          (v) =>
+            v.title?.toLowerCase().includes(query.toLowerCase()) ||
+            v.description?.toLowerCase().includes(query.toLowerCase()) ||
+            (v.hashtags && (Array.isArray(v.hashtags) ? v.hashtags : []).some((h) => String(h).toLowerCase().includes(query.toLowerCase()))) ||
+            v.music_title?.toLowerCase().includes(query.toLowerCase())
+        );
+      }
+
+      if (filters.category && filters.category !== 'all') {
+        results = results.filter((v) => v.category === filters.category);
+      }
       if (filters.duration !== 'all') {
-        results = results.filter(v => {
+        results = results.filter((v) => {
           const dur = v.duration || 0;
           if (filters.duration === 'short') return dur < 60;
           if (filters.duration === 'medium') return dur >= 60 && dur <= 600;
@@ -53,10 +75,9 @@ export default function SearchPage() {
           return true;
         });
       }
-
       return results.slice(0, 20);
     },
-    enabled: !!(query && (filters.type === 'all' || filters.type === 'videos'))
+    enabled: !!(query && (filters.type === 'all' || filters.type === 'videos')),
   });
 
   // Fetch users
@@ -210,16 +231,16 @@ export default function SearchPage() {
                         key={product.id}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        onClick={() => navigate(createPageUrl('Product') + `?productId=${product.id}`)}
+                        onClick={() => navigate(createPageUrl('Product') + `?id=${product.id}`)}
                         className="bg-white rounded-lg p-3 flex gap-3 cursor-pointer hover:bg-gray-50"
                       >
                         <div className="w-16 h-16 rounded-lg bg-gray-300 flex-shrink-0">
                           {product.images?.[0] && (
-                            <img src={product.images[0]} alt={product.title} className="w-full h-full object-cover rounded-lg" />
+                            <img src={product.images[0]} alt={product.name || product.title} className="w-full h-full object-cover rounded-lg" />
                           )}
                         </div>
                         <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 truncate">{product.title}</h3>
+                          <h3 className="font-semibold text-gray-900 truncate">{product.name || product.title}</h3>
                           <p className="text-sm font-bold text-orange-600">{product.price?.toLocaleString()} FCFA</p>
                         </div>
                       </motion.div>

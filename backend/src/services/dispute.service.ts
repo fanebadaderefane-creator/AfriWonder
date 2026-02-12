@@ -97,6 +97,14 @@ class DisputeService {
     await prisma.order.update({ where: { id: dispute.order_id }, data: { dispute_status: 'resolved' } });
     if (data.resolution_type === 'refund') {
       await escrowService.refundFunds(dispute.order_id, data.resolution);
+    } else if (data.resolution_type === 'partial_refund') {
+      const amount = Number(data.refund_amount);
+      if (!Number.isFinite(amount) || amount <= 0 || amount >= Number(dispute.order.total_amount)) {
+        const err: any = new Error('refund_amount invalide pour partial_refund');
+        err.statusCode = 400;
+        throw err;
+      }
+      await escrowService.partialRefundAndRelease(dispute.order_id, amount, data.resolution);
     } else if (data.resolution_type === 'reject') {
       await escrowService.releaseFunds(dispute.order_id, 'dispute_resolved');
     }

@@ -281,11 +281,8 @@ class SecurityService {
         type: 'security_alert',
         title: 'Activité suspecte détectée',
         message: alert.description,
-        data: {
-          alert_id: alert.id,
-          alert_type: alert.alert_type,
-          severity: alert.severity,
-        },
+        reference_id: alert.id,
+        reference_type: 'security_alert',
       },
     });
 
@@ -399,3 +396,4 @@ class SecurityService {
 }
 
 export default new SecurityService();
+

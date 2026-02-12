@@ -45,31 +45,35 @@ export default function MobileMoneyPayment() {
       return;
     }
 
+    if (!user?.id) {
+      toast.error('Utilisateur non authentifié');
+      return;
+    }
+
     setLoading(true);
-    const txRef = `TXN_${user.id}_${Date.now()}`;
+    const txRef = `wallet_${user.id}_${Date.now()}`;
     setReference(txRef);
 
     try {
-      // Create transaction record
-      await api.payments.addToWallet(parseFloat(amount), `Top-up via ${method}`);
-
       setStep('processing');
+      const returnUrl = `${window.location.origin}${createPageUrl('Wallet')}?topup=success&ref=${encodeURIComponent(txRef)}`;
+      const amountValue = parseFloat(amount);
+      let paymentResult = null;
 
-      // Call backend function to initiate payment
-      // This would use the mobileMoney functions
       if (method === 'orange_money') {
-        // Redirect to Orange Money
-        const apiUrl = import.meta.env.VITE_API_URL || import.meta.env.REACT_APP_API_URL || '';
-        window.location.href = `${apiUrl}/initiate-orange-money?amount=${amount}&phoneNumber=${phoneNumber}&reference=${txRef}&userId=${user.id}`;
+        paymentResult = await api.payments.initiateOrangeMoney(txRef, amountValue, phoneNumber, returnUrl, txRef);
       } else if (method === 'wave') {
-        // Redirect to Wave
-        const apiUrl = import.meta.env.VITE_API_URL || import.meta.env.REACT_APP_API_URL || '';
-        window.location.href = `${apiUrl}/initiate-wave?amount=${amount}&phoneNumber=${phoneNumber}&reference=${txRef}&userId=${user.id}`;
+        paymentResult = await api.payments.initiateWavePayment(txRef, amountValue, returnUrl, 'XOF');
       }
+
+      if (!paymentResult?.paymentUrl) {
+        throw new Error('URL de paiement introuvable');
+      }
+      window.location.assign(paymentResult.paymentUrl);
     } catch (_error) {
-      toast.error('Erreur: ' + error._message);
+      toast.error(_error?.response?.data?.message || _error?.message || 'Erreur lors de l\'initiation du paiement');
       setLoading(false);
-      setStep('amount');
+      setStep('confirm');
     }
   };
 

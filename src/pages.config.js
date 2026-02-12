@@ -102,6 +102,7 @@ import LiveView from './pages/LiveView';
 import Lives from './pages/Lives';
 import LoanDetails from './pages/LoanDetails';
 import Marketplace from './pages/Marketplace';
+import MarketplaceMap from './pages/MarketplaceMap';
 import Microcredit from './pages/Microcredit';
 import MobileMoneyPayment from './pages/MobileMoneyPayment';
 import ModerationDashboard from './pages/ModerationDashboard';
@@ -129,6 +130,7 @@ import Search from './pages/Search';
 import SellerDashboard from './pages/SellerDashboard';
 import SellerOrders from './pages/SellerOrders';
 import SellerProfile from './pages/SellerProfile';
+import SellerSubscription from './pages/SellerSubscription';
 import SellerPromotions from './pages/SellerPromotions';
 import SellerStorefront from './pages/SellerStorefront';
 import SellerWallet from './pages/SellerWallet';
@@ -231,6 +233,7 @@ export const PAGES = {
     "Lives": Lives,
     "LoanDetails": LoanDetails,
     "Marketplace": Marketplace,
+    "MarketplaceMap": MarketplaceMap,
     "Microcredit": Microcredit,
     "MobileMoneyPayment": MobileMoneyPayment,
     "ModerationDashboard": ModerationDashboard,
@@ -258,6 +261,7 @@ export const PAGES = {
     "SellerDashboard": SellerDashboard,
     "SellerOrders": SellerOrders,
     "SellerProfile": SellerProfile,
+    "SellerSubscription": SellerSubscription,
     "SellerPromotions": SellerPromotions,
     "SellerStorefront": SellerStorefront,
     "SellerWallet": SellerWallet,

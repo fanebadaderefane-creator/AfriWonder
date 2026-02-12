@@ -262,6 +262,14 @@ export default function Landing() {
             </h1>
           </motion.div>
 
+          {/* Message de bienvenue / Slogan */}
+          <p className="text-2xl sm:text-3xl text-orange-200 mb-4 font-semibold">
+            Bienvenue sur AfriWonder. Entrez dans le Wonder de l'Afrique.
+          </p>
+          <p className="text-sm sm:text-base text-gray-400 mb-6 italic">
+            AfriWonder — Where Africa Wows the World
+          </p>
+
           {/* Description */}
           <p className="text-xl sm:text-2xl text-gray-300 mb-8 max-w-3xl mx-auto leading-relaxed">
             La première <span className="text-orange-400 font-bold">Super-app vidéo africaine</span> connectant créateurs, commerçants et communauté, optimisée pour les faibles débits, disponible dans toutes les langues locales avec paiements mobiles intégrés.

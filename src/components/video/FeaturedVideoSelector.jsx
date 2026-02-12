@@ -5,21 +5,52 @@ import { Star, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from "sonner";
 import { api } from '@/api/expressClient';
+import { getVideoPlaybackUrl } from '@/lib/utils';
 
-export default function FeaturedVideoSelector({ isOpen, onClose, videos, currentFeaturedId, _userId }) {
+/** Affiche une frame de la vidéo (même logique que la grille du profil) */
+function VideoThumbnail({ videoUrl }) {
+  const [error, setError] = React.useState(false);
+  if (error) {
+    return (
+      <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs bg-gray-800">
+        Erreur chargement
+      </div>
+    );
+  }
+  return (
+    <video
+      src={getVideoPlaybackUrl(videoUrl)}
+      className="w-full h-full object-cover"
+      preload="auto"
+      muted
+      playsInline
+      onLoadedMetadata={(e) => {
+        const el = e.currentTarget;
+        if (el?.duration) el.currentTime = Math.min(1, el.duration / 10);
+      }}
+      onLoadedData={(e) => {
+        const el = e.currentTarget;
+        if (el?.duration && el.currentTime === 0) el.currentTime = Math.min(1, el.duration / 10);
+      }}
+      onError={() => setError(true)}
+    />
+  );
+}
+
+export default function FeaturedVideoSelector({ isOpen, onClose, videos, currentFeaturedId, _userId, onSuccess }) {
   const handleSetFeatured = async (videoId) => {
     try {
-      // Unfeature all other videos
-      const updates = videos.map(v => 
+      const updates = videos.map(v =>
         api.videos.update(v.id, { is_featured: v.id === videoId })
       );
       await Promise.all(updates);
-      
+
       toast.success('Vidéo mise en avant avec succès');
       onClose();
-      window.location.reload();
-    } catch (_error) {
-      toast.error('Erreur lors de la mise à jour');
+      onSuccess?.();
+    } catch (err) {
+      console.error('Featured video update error:', err);
+      toast.error(err?.response?.data?.error?.message || 'Erreur lors de la mise à jour');
     }
   };
 
@@ -51,12 +82,18 @@ export default function FeaturedVideoSelector({ isOpen, onClose, videos, current
                   : 'border-gray-200 hover:border-orange-300'
               }`}
             >
-              <div className="aspect-video">
-                <img
-                  src={video.thumbnail_url || video.video_url}
-                  alt={video.title}
-                  className="w-full h-full object-cover"
-                />
+              <div className="aspect-video bg-gray-900">
+                {video.thumbnail_url ? (
+                  <img
+                    src={video.thumbnail_url}
+                    alt={video.title}
+                    className="w-full h-full object-cover"
+                  />
+                ) : video.video_url ? (
+                  <VideoThumbnail videoUrl={video.video_url} />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">Pas de miniature</div>
+                )}
               </div>
               
               {video.id === currentFeaturedId && (

@@ -82,7 +82,8 @@ export const checkSuspiciousActivity = async (req: AuthRequest, res: Response, n
 
   try {
     // Vérifier s'il y a des alertes critiques non résolues
-    const alerts = await securityService['getSuspiciousActivities'](userId);
+    const getSuspiciousActivities = (securityService as any).getSuspiciousActivities;
+    const alerts = typeof getSuspiciousActivities === 'function' ? await getSuspiciousActivities.call(securityService, userId) : [];
     const criticalAlerts = alerts.filter((a: any) => 
       a.severity === 'critical' && a.status === 'pending'
     );
@@ -158,7 +159,8 @@ export const detectIpChange = async (req: AuthRequest, res: Response, next: Next
 
   try {
     // Obtenir la dernière IP de connexion
-    const lastLog = await securityService['getLastSecurityLog'](userId, 'login');
+    const getLastSecurityLog = (securityService as any).getLastSecurityLog;
+    const lastLog = typeof getLastSecurityLog === 'function' ? await getLastSecurityLog.call(securityService, userId, 'login') : null;
 
     if (lastLog && lastLog.ip_address !== currentIp) {
       // IP différente détectée
@@ -195,3 +197,4 @@ export default {
   logAdminAction,
   detectIpChange,
 };
+

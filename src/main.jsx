@@ -38,19 +38,21 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
     setTimeout(() => {
-      navigator.serviceWorker.register('/sw-custom.js')
+      navigator.serviceWorker.register('/sw-custom.js', { scope: '/' })
         .then((reg) => {
-          console.log('✅ PWA Service Worker registered');
           reg.addEventListener('updatefound', () => {
             const newWorker = reg.installing;
             newWorker?.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('Nouvelle version disponible. Rechargez pour mettre à jour.');
+                window.dispatchEvent(new CustomEvent('sw-update-available'));
               }
             });
           });
+          if (reg.waiting && navigator.serviceWorker.controller) {
+            window.dispatchEvent(new CustomEvent('sw-update-available'));
+          }
         })
-        .catch((err) => console.warn('❌ Service Worker registration failed:', err));
+        .catch(() => {});
     }, 500);
   });
 }

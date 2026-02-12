@@ -44,19 +44,13 @@ export default function ReportButton({ contentType, contentId, contentPreview, r
 
     setLoading(true);
     try {
-      await api.entities.Moderation.create({
-        reported_user_id: reportedUserId,
-        reported_user_name: reportedUserName,
-        reporter_id: user?.id,
-        reporter_name: user?.full_name || user?.email,
-        content_type: contentType,
-        content_id: contentId,
-        content_preview: contentPreview?.substring(0, 100),
-        reason: reason,
-        description: description,
-        status: 'pending',
-        severity: ['harassment', 'hate_speech', 'explicit_content'].includes(reason) ? 'high' : 'medium'
-      });
+      await api.moderation.report(
+        contentType,
+        contentId,
+        reason,
+        description,
+        ['harassment', 'hate_speech', 'explicit_content'].includes(reason) ? 'high' : 'medium'
+      );
 
       setSubmitted(true);
       toast.success('Signalement envoyé. Merci!');
@@ -68,7 +62,7 @@ export default function ReportButton({ contentType, contentId, contentPreview, r
         setSubmitted(false);
       }, 2000);
     } catch (_error) {
-      toast.error('Erreur: ' + error._message);
+      toast.error('Erreur: ' + (_error?.message || _error?.apiMessage || 'Erreur lors du signalement'));
     } finally {
       setLoading(false);
     }
@@ -153,7 +147,7 @@ export default function ReportButton({ contentType, contentId, contentPreview, r
               <CheckCircle className="w-12 h-12 text-green-500 mb-3" />
               <h3 className="font-semibold text-gray-900">Merci!</h3>
               <p className="text-sm text-gray-500 text-center mt-1">
-                Votre signalement a é_té envoyé et sera examiné rapidement.
+                Votre signalement a été envoyé et sera examiné rapidement.
               </p>
             </div>
           )}

@@ -23,4 +23,34 @@ describe('Health API', () => {
       if (res.status === 200) expect(res.body.db).toBe('connected');
     });
   });
+
+  describe('GET /health/region', () => {
+    it('devrait retourner 200 avec country et currency', async () => {
+      const res = await request(app).get('/health/region');
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('ok');
+      expect(res.body).toHaveProperty('country');
+      expect(res.body).toHaveProperty('currency');
+      expect(res.body).toHaveProperty('supportedCountries');
+    });
+  });
+
+  describe('GET /health/errors', () => {
+    it('devrait retourner 200 ou 401 selon x-health-key', async () => {
+      const res = await request(app).get('/health/errors');
+      expect([200, 401]).toContain(res.status);
+      if (res.status === 200) expect(res.body.success).toBe(true);
+    });
+  });
+
+  describe('GET /health/metrics', () => {
+    it('devrait retourner 200 ou 401 selon x-health-key', async () => {
+      const res = await request(app).get('/health/metrics');
+      expect([200, 401]).toContain(res.status);
+      if (res.status === 200) {
+        expect(res.body.success).toBe(true);
+        expect(res.body).toHaveProperty('data');
+      }
+    });
+  });
 });

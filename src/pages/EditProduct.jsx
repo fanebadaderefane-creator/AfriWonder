@@ -11,6 +11,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from "sonner";
 import { createPageUrl } from "@/utils";
 
+const conditions = [
+  { value: 'new', label: 'Neuf' },
+  { value: 'used', label: 'Occasion' },
+  { value: 'refurbished', label: 'Reconditionné' },
+];
+
 const categories = [
   { value: 'mode', label: 'Mode' },
   { value: 'beaute', label: 'Beauté' },
@@ -37,6 +43,10 @@ export default function EditProduct() {
     category: '',
     stock: 1,
     video_url: '',
+    condition: '',
+    negotiable_price: false,
+    valid_until: '',
+    weight_kg: '',
   });
 
   useEffect(() => {
@@ -58,6 +68,10 @@ export default function EditProduct() {
         category: product.category || '',
         stock: product.stock ?? 1,
         video_url: product.video_url || '',
+        condition: product.condition || '',
+        negotiable_price: !!product.negotiable_price,
+        valid_until: product.valid_until ? new Date(product.valid_until).toISOString().split('T')[0] : '',
+        weight_kg: product.weight_kg != null ? String(product.weight_kg) : '',
       });
       setImages(Array.isArray(product.images) ? [...product.images] : (product.image_url ? [product.image_url] : []));
     }
@@ -69,7 +83,7 @@ export default function EditProduct() {
     setUploadingImages(true);
     try {
       const urls = await Promise.all(files.map((file) => api.upload.image(file).then((res) => res?.file_url || res?.url || res?.fileUrl)));
-      setImages((prev) => [...prev, ...urls].slice(0, 5));
+      setImages((prev) => [...prev, ...urls].slice(0, 10));
       toast.success('Images ajoutées');
     } catch (_e) {
       toast.error('Erreur téléchargement');
@@ -91,6 +105,10 @@ export default function EditProduct() {
       category: formData.category,
       images: images.length ? images : undefined,
       video_url: formData.video_url?.trim() || undefined,
+      condition: formData.condition || undefined,
+      negotiable_price: formData.negotiable_price,
+      valid_until: formData.valid_until ? new Date(formData.valid_until).toISOString() : undefined,
+      weight_kg: formData.weight_kg ? parseFloat(formData.weight_kg) : undefined,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product', productId] });
@@ -106,8 +124,8 @@ export default function EditProduct() {
       toast.error('Remplissez les champs obligatoires');
       return;
     }
-    if (images.length === 0) {
-      toast.error('Ajoutez au moins une image');
+    if (images.length < 5) {
+      toast.error('Le CDC exige au moins 5 photos');
       return;
     }
     updateMutation.mutate();
@@ -149,7 +167,7 @@ export default function EditProduct() {
                 </button>
               </div>
             ))}
-            {images.length < 5 && (
+            {images.length < 10 && (
               <label className="aspect-square rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer">
                 <input type="file" multiple accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploadingImages} />
                 {uploadingImages ? <Loader2 className="w-6 h-6 animate-spin text-gray-400" /> : <ImageIcon className="w-6 h-6 text-gray-400" />}
@@ -213,6 +231,35 @@ export default function EditProduct() {
               className="mt-1"
             />
           </div>
+        </div>
+
+        <label className="flex items-center gap-3 p-3 rounded-xl border cursor-pointer">
+          <input type="checkbox" checked={formData.negotiable_price} onChange={(e) => setFormData({ ...formData, negotiable_price: e.target.checked })} className="w-4 h-4" />
+          <span>Prix négociable</span>
+        </label>
+
+        <div>
+          <Label>État</Label>
+          <Select value={formData.condition} onValueChange={(v) => setFormData({ ...formData, condition: v })}>
+            <SelectTrigger className="mt-1">
+              <SelectValue placeholder="État" />
+            </SelectTrigger>
+            <SelectContent>
+              {conditions.map((c) => (
+                <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label>Validité annonce (optionnel)</Label>
+          <Input type="date" value={formData.valid_until} onChange={(e) => setFormData({ ...formData, valid_until: e.target.value })} className="mt-1" />
+        </div>
+
+        <div>
+          <Label>Poids (kg, livraison)</Label>
+          <Input type="number" step="0.1" placeholder="1" value={formData.weight_kg} onChange={(e) => setFormData({ ...formData, weight_kg: e.target.value })} className="mt-1" />
         </div>
 
         <div>

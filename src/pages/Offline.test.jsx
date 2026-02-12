@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import OfflinePage from './Offline';
 
@@ -31,18 +31,27 @@ describe('Offline page', () => {
     if (originalOnLine) Object.defineProperty(global, 'navigator', originalOnLine);
   });
 
-  it('affiche le titre Mode hors ligne', () => {
+  it('affiche le titre Mode hors ligne', async () => {
     render(<OfflinePage />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
     expect(screen.getByRole('heading', { name: /Mode hors ligne/i })).toBeInTheDocument();
   });
 
-  it('affiche le statut en ligne quand navigator.onLine est true', () => {
+  it('affiche le statut en ligne quand navigator.onLine est true', async () => {
     render(<OfflinePage />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
     expect(screen.getByText(/Vous êtes en ligne/)).toBeInTheDocument();
   });
 
-  it('affiche le bouton Actualiser la page quand en ligne', () => {
+  it('affiche le bouton Actualiser la page quand en ligne', async () => {
     render(<OfflinePage />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
     expect(screen.getByRole('button', { name: /Actualiser la page/i })).toBeInTheDocument();
   });
 
@@ -50,13 +59,33 @@ describe('Offline page', () => {
     const reloadMock = vi.fn();
     Object.defineProperty(window, 'location', { value: { reload: reloadMock }, writable: true });
     render(<OfflinePage />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
     await userEvent.click(screen.getByRole('button', { name: /Actualiser la page/i }));
     expect(reloadMock).toHaveBeenCalled();
   });
 
-  it('affiche la section Contenu disponible hors ligne', () => {
+  it('affiche la section Contenu disponible hors ligne', async () => {
     render(<OfflinePage />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
     expect(screen.getByText(/Contenu disponible hors ligne/)).toBeInTheDocument();
     expect(screen.getByText(/Disponible hors ligne/)).toBeInTheDocument();
+  });
+
+  it('affiche hors ligne et pas la carte Actualiser quand navigator.onLine est false', async () => {
+    Object.defineProperty(global, 'navigator', {
+      value: { onLine: false },
+      configurable: true,
+      writable: true,
+    });
+    render(<OfflinePage />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(screen.getByText(/Vous êtes hors ligne/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Actualiser la page/i })).not.toBeInTheDocument();
   });
 });

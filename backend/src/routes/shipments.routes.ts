@@ -5,11 +5,12 @@ import shipmentService from '../services/shipment.service.js';
 
 const router = Router();
 
-// POST /api/shipments - Créer une expédition
+// POST /api/shipments - Créer une expédition (réservé au vendeur)
 router.post('/', authenticate, async (req: AuthRequest, res, next) => {
   try {
+    const userId = req.user!.id;
     const { order_id, carrier, tracking_number, estimated_delivery_days } = req.body;
-    const shipment = await shipmentService.createShipment(order_id, {
+    const shipment = await shipmentService.createShipment(order_id, userId, {
       carrier,
       tracking_number,
       estimated_delivery_days,
@@ -24,7 +25,8 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 router.get('/:orderId/timeline', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const orderId = param(req, 'orderId');
-    const timeline = await shipmentService.getTimeline(orderId);
+    const userId = req.user!.id;
+    const timeline = await shipmentService.getTimeline(orderId, userId);
     res.json({ success: true, data: timeline });
   } catch (error: any) {
     next(error);
@@ -35,12 +37,16 @@ router.get('/:orderId/timeline', authenticate, async (req: AuthRequest, res, nex
 router.post('/:orderId/tracking', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const orderId = param(req, 'orderId');
+    const userId = req.user!.id;
     const { event_type, description, location } = req.body;
+    if (!event_type || typeof event_type !== 'string') {
+      return res.status(400).json({ success: false, error: { message: 'event_type requis' } });
+    }
     const event = await shipmentService.addTrackingEvent(orderId, {
       event_type,
       description,
       location,
-    });
+    }, userId);
     res.json({ success: true, data: event });
   } catch (error: any) {
     next(error);
@@ -51,12 +57,19 @@ router.post('/:orderId/tracking', authenticate, async (req: AuthRequest, res, ne
 router.post('/:orderId/confirm-delivery', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const orderId = param(req, 'orderId');
+    const userId = req.user!.id;
     const { proof_of_delivery_photo, signature, current_location } = req.body;
+    if (!proof_of_delivery_photo || !signature) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'proof_of_delivery_photo et signature sont requis' },
+      });
+    }
     const result = await shipmentService.confirmDelivery(orderId, {
       proof_of_delivery_photo,
       signature,
       current_location,
-    });
+    }, userId);
     res.json({ success: true, data: result });
   } catch (error: any) {
     next(error);
@@ -67,8 +80,12 @@ router.post('/:orderId/confirm-delivery', authenticate, async (req: AuthRequest,
 router.put('/:orderId/location', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const orderId = param(req, 'orderId');
+    const userId = req.user!.id;
     const { location } = req.body;
-    const result = await shipmentService.updateLocation(orderId, location);
+    if (!location || typeof location !== 'string') {
+      return res.status(400).json({ success: false, error: { message: 'location requise' } });
+    }
+    const result = await shipmentService.updateLocation(orderId, location, userId);
     res.json({ success: true, data: result });
   } catch (error: any) {
     next(error);

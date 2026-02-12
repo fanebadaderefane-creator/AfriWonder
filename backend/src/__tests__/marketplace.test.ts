@@ -1,3 +1,4 @@
+/* cspell:disable */
 /**
  * Tests complets du marketplace AfriWonder
  * Exécution: npm test -- marketplace.test.ts
@@ -104,18 +105,6 @@ describe('Marketplace Complet', () => {
       },
     });
 
-    // Créer un panier
-    testCart = await prisma.cart.create({
-      data: {
-        user_id: testBuyer.id,
-        items: [
-          { productId: testProduct.id, quantity: 2, price: 10000, sellerId: testSeller.id },
-        ],
-        subtotal: 20000,
-        coupon_discount: 0,
-      },
-    });
-
     // Attendre que les utilisateurs soient disponibles
     let retries = 5;
     while (retries > 0) {
@@ -124,6 +113,28 @@ describe('Marketplace Complet', () => {
       if (buyer && seller) break;
       await new Promise(resolve => setTimeout(resolve, 50));
       retries--;
+    }
+
+    // Créer un panier (avec retry pour éviter les flakes FK sur environnements distants)
+    retries = 3;
+    while (retries > 0) {
+      try {
+        testCart = await prisma.cart.create({
+          data: {
+            user_id: testBuyer.id,
+            items: [
+              { productId: testProduct.id, quantity: 2, price: 10000, sellerId: testSeller.id },
+            ],
+            subtotal: 20000,
+            coupon_discount: 0,
+          },
+        });
+        break;
+      } catch (_e) {
+        retries--;
+        if (retries === 0) throw _e;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
     }
 
     // Se connecter comme acheteur
@@ -204,11 +215,128 @@ describe('Marketplace Complet', () => {
           price: 15000,
           category: 'electronics',
           stock: 5,
+          images: [
+            'https://example.com/p1.jpg',
+            'https://example.com/p2.jpg',
+            'https://example.com/p3.jpg',
+            'https://example.com/p4.jpg',
+            'https://example.com/p5.jpg',
+          ],
         });
 
       expect(response.status).toBe(201);
       expect(response.body.success).toBe(true);
       expect(response.body.data.name).toBe('Nouveau Produit');
+    });
+
+    it('devrait retourner des suggestions de recherche', async () => {
+      const response = await request(app)
+        .get('/api/products/suggestions')
+        .query({ q: 'Produit', limit: 5 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.data)).toBe(true);
+    });
+
+    it('devrait retourner les produits tendance et nouveautés', async () => {
+      const response = await request(app)
+        .get('/api/products/highlights')
+        .query({ trending_limit: 5, new_limit: 5 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toHaveProperty('trending');
+      expect(response.body.data).toHaveProperty('newest');
+      expect(Array.isArray(response.body.data.trending)).toBe(true);
+      expect(Array.isArray(response.body.data.newest)).toBe(true);
+    });
+
+    it('devrait retourner des recommandations personnalisées', async () => {
+      const response = await request(app)
+        .get('/api/products/recommendations')
+        .set('Authorization', `Bearer ${buyerToken}`)
+        .query({ limit: 5 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.data)).toBe(true);
+    });
+
+    it('devrait retourner des produits proches par coordonnées', async () => {
+      const response = await request(app)
+        .get('/api/products/nearby')
+        .query({ latitude: 12.6392, longitude: -8.0029, radius_km: 100, limit: 10 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.data)).toBe(true);
+    });
+    it('devrait filtrer les produits proches avec criteres avances', async () => {
+      await prisma.sellerProfile.update({
+        where: { user_id: testSeller.id },
+        data: { is_verified: true, status: 'active' },
+      });
+
+      const match = await prisma.product.create({
+        data: {
+          seller_id: testSeller.id,
+          name: 'Produit proche filtre',
+          description: 'Doit apparaitre',
+          price: 15000,
+          stock: 5,
+          status: 'active',
+          category: 'electronics',
+          condition: 'new',
+          delivery_options: ['point_relais'],
+          latitude: 12.6401,
+          longitude: -8.0030,
+          images: ['https://example.com/p1.jpg', 'https://example.com/p2.jpg', 'https://example.com/p3.jpg', 'https://example.com/p4.jpg', 'https://example.com/p5.jpg'],
+        },
+      });
+
+      await prisma.product.create({
+        data: {
+          seller_id: testSeller.id,
+          name: 'Produit proche exclu',
+          description: 'Ne doit pas apparaitre',
+          price: 45000,
+          stock: 5,
+          status: 'active',
+          category: 'electronics',
+          condition: 'used',
+          delivery_options: ['livraison_moto'],
+          latitude: 12.648,
+          longitude: -8.011,
+          images: ['https://example.com/p6.jpg', 'https://example.com/p7.jpg', 'https://example.com/p8.jpg', 'https://example.com/p9.jpg', 'https://example.com/p10.jpg'],
+        },
+      });
+
+      const response = await request(app)
+        .get('/api/products/nearby')
+        .query({
+          latitude: 12.6392,
+          longitude: -8.0029,
+          radius_km: 40,
+          limit: 20,
+          category: 'electronics',
+          max_price: 20000,
+          condition: 'new',
+          delivery_option: 'point_relais',
+          verified_seller: true,
+          min_lat: 12.63,
+          max_lat: 12.645,
+          min_lng: -8.01,
+          max_lng: -7.99,
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.data)).toBe(true);
+      const ids = response.body.data.map((p: any) => p.id);
+      expect(ids).toContain(match.id);
+      expect(response.body.data.every((p: any) => p.price <= 20000)).toBe(true);
+      expect(response.body.data.every((p: any) => p.condition === 'new')).toBe(true);
     });
   });
 
@@ -520,3 +648,4 @@ describe('Marketplace Complet', () => {
     });
   });
 });
+

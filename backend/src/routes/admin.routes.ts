@@ -5,6 +5,7 @@ import { requireAnyAdmin, requireSuperAdmin, requireFinanceAdmin, requireDataAdm
 import adminService from '../services/admin.service.js';
 import verificationService from '../services/verification.service.js';
 import { getErrorsSummary } from '../services/errorMonitoring.service.js';
+import { getHttpMetricsSummary } from '../services/httpMetrics.service.js';
 import backupService from '../services/backup.service.js';
 import adminFinanceService from '../services/adminFinance.service.js';
 import crowdfundingService from '../services/crowdfunding.service.js';
@@ -15,6 +16,7 @@ import prisma from '../config/database.js';
 import { addToBlacklist } from '../services/blacklist.service.js';
 import * as amlService from '../services/aml.service.js';
 import featureFlagService from '../services/featureFlag.service.js';
+import commissionSettingsService from '../services/commissionSettings.service.js';
 
 const router = Router();
 
@@ -218,9 +220,215 @@ router.get('/orders', authenticate, requireAnyAdmin, async (req: AuthRequest, re
 });
 
 // GET /api/admin/monitoring/errors — Résumé des erreurs (monitoring)
+// GET /api/admin/logistics/providers
+router.get('/logistics/providers', authenticate, requireAnyAdmin, async (_req: AuthRequest, res, next) => {
+  try {
+    const ratesByProvider = await prisma.shippingRate.groupBy({
+      by: ['provider'],
+      _count: { _all: true },
+      where: { is_active: true },
+    });
+
+    const pickupPoints = await prisma.pickupPoint.findMany({
+      where: { is_active: true },
+      select: { id: true, name: true, city: true, country: true },
+      orderBy: [{ country: 'asc' }, { city: 'asc' }, { name: 'asc' }],
+    });
+
+    res.json({
+      success: true,
+      data: {
+        providers: ratesByProvider.map((r) => ({
+          name: r.provider,
+          active_rates: r._count._all,
+        })),
+        pickup_points: pickupPoints,
+      },
+    });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/admin/logistics/rates
+router.get('/logistics/rates', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const provider = (req.query.provider as string)?.trim();
+    const country = (req.query.country as string)?.trim();
+    const where: any = {};
+    if (provider) where.provider = provider;
+    if (country) where.destination_country = country.toUpperCase();
+
+    const rates = await prisma.shippingRate.findMany({
+      where,
+      orderBy: [{ provider: 'asc' }, { destination_country: 'asc' }, { estimated_delivery_days: 'asc' }],
+    });
+    res.json({ success: true, data: rates });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/admin/logistics/rates
+router.post('/logistics/rates', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const { provider, destination_country, base_cost, cost_per_kg, estimated_delivery_days, is_active } = req.body || {};
+    if (!provider || !destination_country) {
+      return res.status(400).json({ success: false, error: 'provider et destination_country requis' });
+    }
+    const baseCost = Number(base_cost);
+    const costPerKg = Number(cost_per_kg);
+    const etaDays = Number(estimated_delivery_days);
+    if (!Number.isFinite(baseCost) || baseCost < 0) {
+      return res.status(400).json({ success: false, error: 'base_cost invalide' });
+    }
+    if (!Number.isFinite(costPerKg) || costPerKg < 0) {
+      return res.status(400).json({ success: false, error: 'cost_per_kg invalide' });
+    }
+    if (!Number.isFinite(etaDays) || etaDays <= 0) {
+      return res.status(400).json({ success: false, error: 'estimated_delivery_days invalide' });
+    }
+
+    const created = await prisma.shippingRate.create({
+      data: {
+        provider: String(provider).trim(),
+        destination_country: String(destination_country).trim().toUpperCase(),
+        base_cost: baseCost,
+        cost_per_kg: costPerKg,
+        estimated_delivery_days: etaDays,
+        is_active: typeof is_active === 'boolean' ? is_active : true,
+      },
+    });
+    await auditLog(req, 'create_shipping_rate', 'shipping_rate', created.id, {
+      provider: created.provider,
+      destination_country: created.destination_country,
+    });
+    res.status(201).json({ success: true, data: created });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// PUT /api/admin/logistics/rates/:id
+router.put('/logistics/rates/:id', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const current = await prisma.shippingRate.findUnique({ where: { id } });
+    if (!current) {
+      return res.status(404).json({ success: false, error: 'Tarif logistique non trouve' });
+    }
+
+    const data: any = {};
+    if (typeof req.body.provider === 'string' && req.body.provider.trim()) data.provider = req.body.provider.trim();
+    if (typeof req.body.destination_country === 'string' && req.body.destination_country.trim()) {
+      data.destination_country = req.body.destination_country.trim().toUpperCase();
+    }
+    if (req.body.base_cost !== undefined) {
+      const v = Number(req.body.base_cost);
+      if (!Number.isFinite(v) || v < 0) return res.status(400).json({ success: false, error: 'base_cost invalide' });
+      data.base_cost = v;
+    }
+    if (req.body.cost_per_kg !== undefined) {
+      const v = Number(req.body.cost_per_kg);
+      if (!Number.isFinite(v) || v < 0) return res.status(400).json({ success: false, error: 'cost_per_kg invalide' });
+      data.cost_per_kg = v;
+    }
+    if (req.body.estimated_delivery_days !== undefined) {
+      const v = Number(req.body.estimated_delivery_days);
+      if (!Number.isFinite(v) || v <= 0) return res.status(400).json({ success: false, error: 'estimated_delivery_days invalide' });
+      data.estimated_delivery_days = v;
+    }
+    if (typeof req.body.is_active === 'boolean') data.is_active = req.body.is_active;
+
+    const updated = await prisma.shippingRate.update({ where: { id }, data });
+    await auditLog(req, 'update_shipping_rate', 'shipping_rate', id, data);
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/admin/logistics/pickup-points
+router.get('/logistics/pickup-points', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const country = (req.query.country as string)?.trim();
+    const city = (req.query.city as string)?.trim();
+    const where: any = {};
+    if (country) where.country = country.toUpperCase();
+    if (city) where.city = { contains: city, mode: 'insensitive' };
+
+    const points = await prisma.pickupPoint.findMany({
+      where,
+      orderBy: [{ country: 'asc' }, { city: 'asc' }, { name: 'asc' }],
+    });
+    res.json({ success: true, data: points });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/admin/logistics/pickup-points
+router.post('/logistics/pickup-points', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const { name, address, city, country, is_active } = req.body || {};
+    if (!name || !address || !city || !country) {
+      return res.status(400).json({ success: false, error: 'name, address, city, country requis' });
+    }
+
+    const created = await prisma.pickupPoint.create({
+      data: {
+        name: String(name).trim(),
+        address: String(address).trim(),
+        city: String(city).trim(),
+        country: String(country).trim().toUpperCase(),
+        is_active: typeof is_active === 'boolean' ? is_active : true,
+      },
+    });
+    await auditLog(req, 'create_pickup_point', 'pickup_point', created.id, {
+      city: created.city,
+      country: created.country,
+    });
+    res.status(201).json({ success: true, data: created });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// PUT /api/admin/logistics/pickup-points/:id
+router.put('/logistics/pickup-points/:id', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const current = await prisma.pickupPoint.findUnique({ where: { id } });
+    if (!current) {
+      return res.status(404).json({ success: false, error: 'Point relais non trouve' });
+    }
+    const data: any = {};
+    if (typeof req.body.name === 'string' && req.body.name.trim()) data.name = req.body.name.trim();
+    if (typeof req.body.address === 'string' && req.body.address.trim()) data.address = req.body.address.trim();
+    if (typeof req.body.city === 'string' && req.body.city.trim()) data.city = req.body.city.trim();
+    if (typeof req.body.country === 'string' && req.body.country.trim()) data.country = req.body.country.trim().toUpperCase();
+    if (typeof req.body.is_active === 'boolean') data.is_active = req.body.is_active;
+
+    const updated = await prisma.pickupPoint.update({ where: { id }, data });
+    await auditLog(req, 'update_pickup_point', 'pickup_point', id, data);
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 router.get('/monitoring/errors', authenticate, requireAnyAdmin, (req, res) => {
   try {
     res.json({ success: true, ...getErrorsSummary() });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/admin/monitoring/http — Metriques HTTP (latence, erreur, top routes)
+router.get('/monitoring/http', authenticate, requireAnyAdmin, (req, res) => {
+  try {
+    res.json({ success: true, data: getHttpMetricsSummary() });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -374,6 +582,81 @@ router.get('/analytics/strategic', authenticate, requireDataAdmin, async (req: A
   }
 });
 
+// GET /api/admin/analytics/strategic/export - Export KPI strategiques (CSV)
+router.get('/analytics/strategic/export', authenticate, requireDataAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const from = req.query.from as string;
+    const to = req.query.to as string;
+    const data = await adminService.getStrategicAnalytics({ from, to });
+
+    const rows: Array<[string, string | number]> = [
+      ['metric', 'value'],
+      ['growthRatePct', data.growthRate ?? 0],
+      ['newUsersLast7d', data.newUsersLast7d ?? 0],
+      ['newUsersLast24h', data.newUsersLast24h ?? 0],
+      ['userGrowthRate7dPct', data.userGrowthRate7d ?? 0],
+      ['arpuXof', data.arpu ?? 0],
+      ['conversionMarketplacePct', data.conversionMarketplace ?? 0],
+      ['revenueLast30dXof', data.revenueLast30d ?? 0],
+      ['transactionsLast24h', data.transactionsLast24h ?? 0],
+      ['ordersCompleted', data.ordersCompleted ?? 0],
+      ['ordersTotal', data.ordersTotal ?? 0],
+      ['mau30d', data.mau ?? 0],
+      ['retentionRate30dPct', data.retentionRate30d ?? 0],
+      ['retentionRate90dPct', data.retentionRate90d ?? 0],
+      ['newUsers30d', data.newUsers30d ?? 0],
+      ['activatedUsers30d', data.activatedUsers30d ?? 0],
+      ['activationRate30dPct', data.activationRate30d ?? 0],
+      ['newUsers7d', data.newUsers7d ?? 0],
+      ['activatedUsers7d', data.activatedUsers7d ?? 0],
+      ['activationRate7dPct', data.activationRate7d ?? 0],
+      ['cartsWithItemsLast7d', data.cartsWithItemsLast7d ?? 0],
+      ['cartsConvertedLast7d', data.cartsConvertedLast7d ?? 0],
+      ['abandonedCartsLast7d', data.abandonedCartsLast7d ?? 0],
+      ['cartAbandonmentRate7dPct', data.cartAbandonmentRate7d ?? 0],
+      ['paymentsAttempted30d', data.paymentsAttempted30d ?? 0],
+      ['paymentsSuccess30d', data.paymentsSuccess30d ?? 0],
+      ['paymentsFailed30d', data.paymentsFailed30d ?? 0],
+      ['paymentSuccessRate30dPct', data.paymentSuccessRate30d ?? 0],
+      ['sellersTotal', data.sellersTotal ?? 0],
+      ['activeSellers30d', data.activeSellers30d ?? 0],
+      ['avgProductsPerSeller', data.avgProductsPerSeller ?? 0],
+      ['listingsCreated30d', data.listingsCreated30d ?? 0],
+      ['soldListings30d', data.soldListings30d ?? 0],
+      ['listingToSaleConversionRate30dPct', data.listingToSaleConversionRate30d ?? 0],
+      ['avgOrderProcessingHours30d', data.avgOrderProcessingHours30d ?? 0],
+      ['avgSellerRating', data.avgSellerRating ?? 0],
+      ['gmv30dXof', data.gmv30d ?? 0],
+      ['avgBasket30dXof', data.avgBasket30d ?? 0],
+      ['visitors30d', data.visitors30d ?? 0],
+      ['buyers30d', data.buyers30d ?? 0],
+      ['visitorToBuyerConversionRate30dPct', data.visitorToBuyerConversionRate30d ?? 0],
+      ['commissionRevenue30dXof', data.commissionRevenue30d ?? 0],
+      ['subscriptionRevenue30dXof', data.subscriptionRevenue30d ?? 0],
+      ['totalPlatformRevenue30dXof', data.totalPlatformRevenue30d ?? 0],
+      ['nps30d', data.nps30d ?? 0],
+      ['npsRespondents30d', data.npsRespondents30d ?? 0],
+      ['npsNote', data.npsNote ?? ''],
+      ['retentionNote', data.retentionNote ?? ''],
+      ['ltvNote', data.ltvNote ?? ''],
+    ];
+
+    const csv = rows
+      .map(([k, v]) => {
+        const safe = String(v ?? '').replace(/"/g, '""');
+        return `"${k}","${safe}"`;
+      })
+      .join('\n');
+
+    await auditLog(req, 'export_data', 'analytics', undefined, { from, to, format: 'csv' });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="kpi-strategic-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.status(200).send(csv);
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // POST /api/admin/crowdfunding/:id/suspend - Suspendre une campagne (fraud_flag optionnel)
 router.post('/crowdfunding/:id/suspend', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
   try {
@@ -457,5 +740,58 @@ router.patch('/feature-flags/:key', authenticate, requireSuperAdmin, async (req:
   }
 });
 
-export default router;
+// GET /api/admin/commissions/config - Configuration effective des commissions
+router.get('/commissions/config', authenticate, requireFinanceAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    await commissionSettingsService.ensureLoaded();
+    res.json({
+      success: true,
+      data: {
+        overrides: commissionSettingsService.getOverrides(),
+        effective: commissionSettingsService.getEffectiveConfig(),
+      },
+    });
+  } catch (error: any) {
+    next(error);
+  }
+});
 
+// PATCH /api/admin/commissions/config - Mettre a jour les overrides commissions
+router.patch('/commissions/config', authenticate, requireFinanceAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const { overrides, merge } = req.body || {};
+    if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) {
+      return res.status(400).json({ success: false, error: 'overrides (objet) requis' });
+    }
+    const effective = await commissionSettingsService.updateOverrides(overrides, merge !== false);
+    await auditLog(req, 'change_commission', 'platform', undefined, { overrides, merge: merge !== false });
+    res.json({
+      success: true,
+      data: {
+        overrides: commissionSettingsService.getOverrides(),
+        effective,
+      },
+    });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/admin/commissions/config/reset - Reinitialiser les overrides
+router.post('/commissions/config/reset', authenticate, requireFinanceAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const effective = await commissionSettingsService.resetOverrides();
+    await auditLog(req, 'change_commission', 'platform', undefined, { action: 'reset' });
+    res.json({
+      success: true,
+      data: {
+        overrides: {},
+        effective,
+      },
+    });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+export default router;

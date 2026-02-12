@@ -19,7 +19,7 @@ export default function ServicesPage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [mapCenter, _setMapCenter] = useState([14.6928, -17.0467]); // Dakar
 
-  const { data: services } = useQuery({
+  const { data: services, isLoading } = useQuery({
     queryKey: ['services', selectedCategory],
     queryFn: async () => {
       if (selectedCategory === 'all') {

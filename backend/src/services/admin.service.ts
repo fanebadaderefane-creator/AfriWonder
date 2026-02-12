@@ -1,4 +1,5 @@
 import prisma from '../config/database.js';
+import { Prisma } from '@prisma/client';
 import { logger } from '../utils/logger.js';
 
 class AdminService {
@@ -325,29 +326,312 @@ class AdminService {
       prisma.transaction.count({ where: { created_at: { gte: dayAgo } } }),
     ]);
 
+    const getActiveUserIds = async (since: Date): Promise<string[]> => {
+      const [orderUsers, transactionUsers, viewUsers, cartUsers] = await Promise.all([
+        prisma.order.groupBy({
+          by: ['user_id'],
+          where: { created_at: { gte: since } },
+        }),
+        prisma.transaction.groupBy({
+          by: ['user_id'],
+          where: { created_at: { gte: since } },
+        }),
+        prisma.viewHistory.groupBy({
+          by: ['user_id'],
+          where: { created_at: { gte: since } },
+        }),
+        prisma.cart.groupBy({
+          by: ['user_id'],
+          where: { last_updated: { gte: since } },
+        }),
+      ]);
+
+      return Array.from(
+        new Set([
+          ...orderUsers.map((u) => u.user_id),
+          ...transactionUsers.map((u) => u.user_id),
+          ...viewUsers.map((u) => u.user_id),
+          ...cartUsers.map((u) => u.user_id),
+        ]),
+      );
+    };
+
+    const thirtyDaysAgo = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const ninetyDaysAgo = new Date(to.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+    const [activeUserIds30d, activeUserIds90d] = await Promise.all([
+      getActiveUserIds(thirtyDaysAgo),
+      getActiveUserIds(ninetyDaysAgo),
+    ]);
+
+    const [eligibleRetention30d, retainedRetention30d, eligibleRetention90d, retainedRetention90d] = await Promise.all([
+      prisma.user.count({ where: { created_at: { lt: thirtyDaysAgo } } }),
+      activeUserIds30d.length > 0
+        ? prisma.user.count({
+            where: {
+              id: { in: activeUserIds30d },
+              created_at: { lt: thirtyDaysAgo },
+            },
+          })
+        : Promise.resolve(0),
+      prisma.user.count({ where: { created_at: { lt: ninetyDaysAgo } } }),
+      activeUserIds90d.length > 0
+        ? prisma.user.count({
+            where: {
+              id: { in: activeUserIds90d },
+              created_at: { lt: ninetyDaysAgo },
+            },
+          })
+        : Promise.resolve(0),
+    ]);
+
+    const [newUsers30d, activatedUsers30d, newUsers7d, activatedUsers7d] = await Promise.all([
+      prisma.user.count({ where: { created_at: { gte: thirtyDaysAgo } } }),
+      prisma.user.count({
+        where: {
+          created_at: { gte: thirtyDaysAgo },
+          OR: [
+            { orders: { some: {} } },
+            { transactions: { some: {} } },
+            { view_history: { some: {} } },
+            { cart: { is: { subtotal: { gt: 0 } } } },
+          ],
+        },
+      }),
+      prisma.user.count({ where: { created_at: { gte: weekAgo } } }),
+      prisma.user.count({
+        where: {
+          created_at: { gte: weekAgo },
+          OR: [
+            { orders: { some: {} } },
+            { transactions: { some: {} } },
+            { view_history: { some: {} } },
+            { cart: { is: { subtotal: { gt: 0 } } } },
+          ],
+        },
+      }),
+    ]);
+
+    const [cartsWithItemsLast7d, cartsConvertedLast7d] = await Promise.all([
+      prisma.cart.count({
+        where: {
+          last_updated: { gte: weekAgo },
+          subtotal: { gt: 0 },
+        },
+      }),
+      prisma.cart.count({
+        where: {
+          last_updated: { gte: weekAgo },
+          subtotal: { gt: 0 },
+          user: {
+            orders: {
+              some: { created_at: { gte: weekAgo } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const [orderPaymentsCompleted30d, orderPaymentsFailed30d, ordersPaid30d, ordersFailed30d] = await Promise.all([
+      prisma.orderPayment.count({
+        where: {
+          created_at: { gte: from },
+          status: 'completed',
+        },
+      }),
+      prisma.orderPayment.count({
+        where: {
+          created_at: { gte: from },
+          status: 'failed',
+        },
+      }),
+      prisma.order.count({
+        where: {
+          created_at: { gte: from },
+          payment_status: 'paid',
+        },
+      }),
+      prisma.order.count({
+        where: {
+          created_at: { gte: from },
+          payment_status: 'failed',
+        },
+      }),
+    ]);
+
+    const [
+      totalSellers,
+      activeProductsTotal,
+      listingsCreated30d,
+      sellersWithRating,
+      buyerUsers30d,
+      visitorUsers30d,
+      soldListingsRows30d,
+      activeSellersRows30d,
+      processingDelayRows30d,
+      platformRevenueRows30d,
+      npsRows30d,
+    ] = await Promise.all([
+      prisma.sellerProfile.count(),
+      prisma.product.count({ where: { status: 'active' } }),
+      prisma.product.count({ where: { created_at: { gte: from } } }),
+      prisma.sellerProfile.aggregate({
+        _avg: { rating: true },
+        where: { rating: { gt: 0 } },
+      }),
+      prisma.order.groupBy({
+        by: ['user_id'],
+        where: {
+          created_at: { gte: from },
+          status: { notIn: ['cancelled'] },
+        },
+      }),
+      prisma.viewHistory.groupBy({
+        by: ['user_id'],
+        where: { created_at: { gte: from } },
+      }),
+      prisma.$queryRaw<{ sold_count: bigint | number }[]>(Prisma.sql`
+        SELECT COUNT(DISTINCT oi.product_id) AS sold_count
+        FROM "OrderItem" oi
+        INNER JOIN "Order" o ON o.id = oi.order_id
+        WHERE o.created_at >= ${from}
+          AND o.status IN ('completed', 'delivered')
+      `),
+      prisma.$queryRaw<{ active_sellers: bigint | number }[]>(Prisma.sql`
+        SELECT COUNT(DISTINCT seller_id) AS active_sellers
+        FROM (
+          SELECT p.seller_id
+          FROM "Product" p
+          WHERE p.created_at >= ${from} OR p.updated_at >= ${from}
+          UNION
+          SELECT o.seller_id
+          FROM "Order" o
+          WHERE o.created_at >= ${from} AND o.seller_id IS NOT NULL
+        ) s
+      `),
+      prisma.$queryRaw<{ avg_hours: number | null }[]>(Prisma.sql`
+        SELECT AVG(EXTRACT(EPOCH FROM (o.shipped_at - o.created_at)) / 3600.0) AS avg_hours
+        FROM "Order" o
+        WHERE o.created_at >= ${from}
+          AND o.shipped_at IS NOT NULL
+      `),
+      prisma.$queryRaw<{ source: string; amount: number | null }[]>(Prisma.sql`
+        SELECT
+          split_part(t.description, ':', 1) AS source,
+          SUM(t.amount)::float AS amount
+        FROM "Transaction" t
+        WHERE t.type = 'platform_commission'
+          AND t.status = 'completed'
+          AND t.created_at >= ${from}
+          AND t.description IS NOT NULL
+        GROUP BY split_part(t.description, ':', 1)
+      `),
+      prisma.$queryRaw<{ promoters: bigint | number; detractors: bigint | number; total: bigint | number }[]>(Prisma.sql`
+        SELECT
+          SUM(CASE WHEN COALESCE(orv.seller_rating, orv.product_rating) = 5 THEN 1 ELSE 0 END) AS promoters,
+          SUM(CASE WHEN COALESCE(orv.seller_rating, orv.product_rating) <= 3 THEN 1 ELSE 0 END) AS detractors,
+          COUNT(*) AS total
+        FROM "OrderReview" orv
+        WHERE orv.created_at >= ${from}
+          AND orv.is_verified = true
+          AND orv.status = 'approved'
+      `),
+    ]);
+
     const rev30 = revenueLast30d._sum.total_amount ?? 0;
     const revPrev30 = revenuePrev30d._sum.total_amount ?? 0;
     const growthRate = revPrev30 > 0 ? ((rev30 - revPrev30) / revPrev30) * 100 : 0;
     const userGrowth7d = newUsersPrev7d > 0 ? ((newUsersLast7d - newUsersPrev7d) / newUsersPrev7d) * 100 : 0;
     const conversionMarketplace = totalUsers > 0 ? (ordersTotal / totalUsers) * 100 : 0;
     const arpu = totalUsers > 0 ? rev30 / totalUsers : 0;
+    const mau = activeUserIds30d.length;
+    const retentionRate30d = eligibleRetention30d > 0 ? (retainedRetention30d / eligibleRetention30d) * 100 : 0;
+    const retentionRate90d = eligibleRetention90d > 0 ? (retainedRetention90d / eligibleRetention90d) * 100 : 0;
+    const activationRate30d = newUsers30d > 0 ? (activatedUsers30d / newUsers30d) * 100 : 0;
+    const activationRate7d = newUsers7d > 0 ? (activatedUsers7d / newUsers7d) * 100 : 0;
+    const abandonedCartsLast7d = Math.max(0, cartsWithItemsLast7d - cartsConvertedLast7d);
+    const cartAbandonmentRate7d = cartsWithItemsLast7d > 0 ? (abandonedCartsLast7d / cartsWithItemsLast7d) * 100 : 0;
+    const paymentAttempts30d = orderPaymentsCompleted30d + orderPaymentsFailed30d;
+    const fallbackPaymentAttempts30d = ordersPaid30d + ordersFailed30d;
+    const paymentSuccessRate30d = paymentAttempts30d > 0
+      ? (orderPaymentsCompleted30d / paymentAttempts30d) * 100
+      : (fallbackPaymentAttempts30d > 0 ? (ordersPaid30d / fallbackPaymentAttempts30d) * 100 : 0);
+    const paymentsSuccess30d = paymentAttempts30d > 0 ? orderPaymentsCompleted30d : ordersPaid30d;
+    const paymentsFailed30d = paymentAttempts30d > 0 ? orderPaymentsFailed30d : ordersFailed30d;
+    const paymentsAttempted30d = paymentAttempts30d > 0 ? paymentAttempts30d : fallbackPaymentAttempts30d;
+    const activeSellers30d = Number(activeSellersRows30d?.[0]?.active_sellers ?? 0);
+    const avgProductsPerSeller = totalSellers > 0 ? activeProductsTotal / totalSellers : 0;
+    const soldListings30d = Number(soldListingsRows30d?.[0]?.sold_count ?? 0);
+    const listingToSaleConversionRate30d = listingsCreated30d > 0 ? (soldListings30d / listingsCreated30d) * 100 : 0;
+    const avgSellerRating = sellersWithRating?._avg?.rating ?? 0;
+    const avgOrderProcessingHours30d = processingDelayRows30d?.[0]?.avg_hours ?? 0;
+    const gmv30d = rev30;
+    const avgBasket30d = ordersCompleted > 0 ? gmv30d / ordersCompleted : 0;
+    const buyers30d = buyerUsers30d.length;
+    const visitors30d = visitorUsers30d.length;
+    const visitorToBuyerConversionRate30d = visitors30d > 0 ? (buyers30d / visitors30d) * 100 : 0;
+    const revenueBySource = new Map((platformRevenueRows30d || []).map((r) => [String(r.source || '').trim(), Number(r.amount || 0)]));
+    const commissionRevenue30d = revenueBySource.get('marketplace') ?? 0;
+    const subscriptionRevenue30d = revenueBySource.get('subscriptions') ?? 0;
+    const totalPlatformRevenue30d = commissionRevenue30d + subscriptionRevenue30d;
+    const npsPromoters30d = Number(npsRows30d?.[0]?.promoters ?? 0);
+    const npsDetractors30d = Number(npsRows30d?.[0]?.detractors ?? 0);
+    const npsRespondents30d = Number(npsRows30d?.[0]?.total ?? 0);
+    const nps30d = npsRespondents30d > 0 ? ((npsPromoters30d - npsDetractors30d) / npsRespondents30d) * 100 : 0;
 
     return {
       growthRate: Math.round(growthRate * 100) / 100,
       newUsersLast7d,
       newUsersLast24h,
       userGrowthRate7d: Math.round(userGrowth7d * 100) / 100,
-      retentionNote: 'Calcul détaillé 7j/30j via cohortes à brancher sur pipeline analytics',
+      retentionNote: 'Retention calculee sur utilisateurs actifs via commandes, transactions, vues et paniers',
       arpu: Math.round(arpu * 100) / 100,
-      ltvNote: 'LTV/CAC à calculer via cohortes',
+      ltvNote: 'LTV/CAC a calculer via cohortes',
       conversionMarketplace: Math.round(conversionMarketplace * 100) / 100,
       revenueLast30d: rev30,
       transactionsLast24h: txCountLast24h,
       ordersCompleted,
       ordersTotal,
+      mau,
+      retentionRate30d: Math.round(retentionRate30d * 100) / 100,
+      retentionRate90d: Math.round(retentionRate90d * 100) / 100,
+      newUsers30d,
+      activatedUsers30d,
+      activationRate30d: Math.round(activationRate30d * 100) / 100,
+      newUsers7d,
+      activatedUsers7d,
+      activationRate7d: Math.round(activationRate7d * 100) / 100,
+      cartsWithItemsLast7d,
+      cartsConvertedLast7d,
+      abandonedCartsLast7d,
+      cartAbandonmentRate7d: Math.round(cartAbandonmentRate7d * 100) / 100,
+      paymentsAttempted30d,
+      paymentsSuccess30d,
+      paymentsFailed30d,
+      paymentSuccessRate30d: Math.round(paymentSuccessRate30d * 100) / 100,
+      sellersTotal: totalSellers,
+      activeSellers30d,
+      avgProductsPerSeller: Math.round(avgProductsPerSeller * 100) / 100,
+      listingsCreated30d,
+      soldListings30d,
+      listingToSaleConversionRate30d: Math.round(listingToSaleConversionRate30d * 100) / 100,
+      avgOrderProcessingHours30d: Math.round(Number(avgOrderProcessingHours30d) * 100) / 100,
+      avgSellerRating: Math.round(Number(avgSellerRating) * 100) / 100,
+      gmv30d,
+      avgBasket30d: Math.round(avgBasket30d * 100) / 100,
+      buyers30d,
+      visitors30d,
+      visitorToBuyerConversionRate30d: Math.round(visitorToBuyerConversionRate30d * 100) / 100,
+      commissionRevenue30d: Math.round(commissionRevenue30d * 100) / 100,
+      subscriptionRevenue30d: Math.round(subscriptionRevenue30d * 100) / 100,
+      totalPlatformRevenue30d: Math.round(totalPlatformRevenue30d * 100) / 100,
+      nps30d: Math.round(nps30d * 100) / 100,
+      npsRespondents30d,
+      npsNote: 'NPS proxy derive des avis verifies: 5=promoteur, 4=passif, 1-3=detracteur',
     };
   }
 }
 
 export default new AdminService();
+
 

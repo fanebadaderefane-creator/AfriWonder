@@ -1,6 +1,7 @@
 import prisma from '../config/database.js';
 import { Prisma } from '@prisma/client';
 import { logger } from '../utils/logger.js';
+import { getCityCoords, haversineDistanceKm } from '../config/maliCities.js';
 import paymentService from './payment.service.js';
 import platformRevenueService from './platformRevenue.service.js';
 import withdrawalService from './withdrawal.service.js';
@@ -9,6 +10,7 @@ import notificationService from './notification.service.js';
 import escrowService from './escrow.service.js';
 import invoiceService from './invoice.service.js';
 import GamificationEngine from './gamification.service.js';
+import messageService from './message.service.js';
 
 class OrderService {
   async list(userId: string, page: number = 1, limit: number = 20) {
@@ -67,7 +69,7 @@ class OrderService {
     };
   }
 
-  /** Commandes où l'utilisateur connecté est le vendeur */
+  /** Commandes oÃ¹ l'utilisateur connectÃ© est le vendeur */
   async listBySeller(sellerId: string, page: number = 1, limit: number = 20) {
     const skip = (page - 1) * limit;
 
@@ -110,6 +112,9 @@ class OrderService {
                 take: 5,
               },
             },
+          },
+          buyer_reviews: {
+            where: { seller_id: sellerId },
           },
         },
         orderBy: { created_at: 'desc' },
@@ -162,7 +167,7 @@ class OrderService {
                 },
               },
             },
-            review: true, // Avis associé à cet item
+            review: true, // Avis associÃ© Ã  cet item
           },
         },
         shipping: {
@@ -200,15 +205,15 @@ class OrderService {
     });
 
     if (!order) {
-      throw new Error('Commande non trouvée');
+      throw new Error('Commande non trouvÃ©e');
     }
 
-    // Vérifier autorisation (acheteur ou vendeur)
+    // VÃ©rifier autorisation (acheteur ou vendeur)
     const isBuyer = order.user_id === userId;
     const isSeller = order.seller_id === userId || order.items.some(item => item.product.seller?.id === userId);
     
     if (!isBuyer && !isSeller) {
-      throw new Error('Non autorisé');
+      throw new Error('Non autorisÃ©');
     }
 
     return order;
@@ -217,6 +222,8 @@ class OrderService {
   async createFromCart(userId: string, data: {
     shipping_address: string;
     payment_method: string;
+    shipping_city?: string; // CDC: ville livraison pour calcul distance
+    address_id?: string;
     items?: Array<{ product_id: string; quantity: number }>;
     source?: string; // 'marketplace' | 'live'
     live_id?: string;
@@ -225,7 +232,7 @@ class OrderService {
     insurance_amount?: number;
     priority_fee?: number;
   }) {
-    // Récupérer ou créer le panier
+    // RÃ©cupÃ©rer ou crÃ©er le panier
     let cart = await prisma.cart.findUnique({
       where: { user_id: userId },
     });
@@ -261,8 +268,8 @@ class OrderService {
       throw new Error('Panier vide');
     }
 
-    // Vérifier stock et récupérer seller_id pour chaque produit
-    const validated: Array<{ product_id: string; quantity: number; price: number; seller_id: string }> = [];
+    // VÃ©rifier stock et rÃ©cupÃ©rer seller_id pour chaque produit
+    const validated: Array<{ product_id: string; quantity: number; price: number; seller_id: string; weight_kg: number }> = [];
     let grandTotal = 0;
 
     for (const item of rawItems) {
@@ -270,11 +277,11 @@ class OrderService {
 
       const product = await prisma.product.findUnique({
         where: { id: item.product_id },
-        select: { id: true, name: true, price: true, stock: true, seller_id: true },
+        select: { id: true, name: true, price: true, stock: true, seller_id: true, weight_kg: true },
       });
 
       if (!product) {
-        throw new Error(`Produit ${item.product_id} non trouvé`);
+        throw new Error(`Produit ${item.product_id} non trouvÃ©`);
       }
       if ((product.stock ?? 0) < item.quantity) {
         throw new Error(`Stock insuffisant pour ${product.name}`);
@@ -286,6 +293,7 @@ class OrderService {
         quantity: item.quantity,
         price: product.price,
         seller_id: product.seller_id,
+        weight_kg: product.weight_kg ?? 1,
       });
     }
 
@@ -309,7 +317,7 @@ class OrderService {
 
     const fraud = await fraudCheck.checkPayment(userId, totalAmount, data.payment_method || 'unknown', {});
     if (!fraud.allowed) {
-      throw new Error(fraud.reason || 'Paiement refusé pour des raisons de sécurité.');
+      throw new Error(fraud.reason || 'Paiement refusÃ© pour des raisons de sÃ©curitÃ©.');
     }
 
     const createdOrders: any[] = [];
@@ -319,7 +327,37 @@ class OrderService {
       const orderDiscount = Math.round(orderTotal * discountRatio * 100) / 100;
       const finalAmount = Math.max(0, orderTotal - orderDiscount);
 
-      // Récupérer les produits complets pour snapshot
+      // CDC: Calcul frais livraison selon distance et poids (base 500 + distance + 150/kg)
+      const totalWeightKg = sellerItems.reduce((s, i) => s + (i.weight_kg ?? 1) * i.quantity, 0);
+      const weightFee = Math.round(totalWeightKg * 150);
+
+      let distanceFee = 0;
+      const shippingCity = data.shipping_city || (() => {
+        const parts = (data.shipping_address || '').split(',').map((p) => p.trim());
+        return parts.length > 1 ? parts[parts.length - 1] : null;
+      })();
+
+      if (shippingCity) {
+        const sellerProfile = await prisma.sellerProfile.findFirst({
+          where: { user_id: sellerId },
+          select: { city: true },
+        });
+        const destCoords = getCityCoords(shippingCity);
+        const originCoords = sellerProfile?.city ? getCityCoords(sellerProfile.city) : getCityCoords('Bamako');
+        if (destCoords && originCoords) {
+          const distanceKm = haversineDistanceKm(
+            originCoords.lat,
+            originCoords.lng,
+            destCoords.lat,
+            destCoords.lng
+          );
+          distanceFee = Math.round(Math.min(distanceKm * 50, 5000));
+        }
+      }
+
+      const calculatedShipping = Math.round(Math.min(500 + weightFee + distanceFee, 15000));
+
+      // RÃ©cupÃ©rer les produits complets pour snapshot
       const products = await prisma.product.findMany({
         where: {
           id: { in: sellerItems.map(i => i.product_id) },
@@ -350,10 +388,11 @@ class OrderService {
         };
       });
 
-      // Calculer les montants détaillés (livraison, logistique, assurance, prioritaire)
+      // Calculer les montants dÃ©taillÃ©s (livraison, logistique, assurance, prioritaire)
       const subtotal = orderTotal;
-      const shippingAmount = Number(data.shipping_amount) || 0;
-      const taxAmount = 0; // À calculer selon la région
+      const hasCustomShipping = data.shipping_amount != null && !Number.isNaN(Number(data.shipping_amount));
+      const shippingAmount = hasCustomShipping ? Number(data.shipping_amount) : calculatedShipping;
+      const taxAmount = 0; // Ã€ calculer selon la rÃ©gion
       const logisticsFee = Number(data.logistics_fee) || 0;
       const insuranceAmount = Number(data.insurance_amount) || 0;
       const priorityFee = Number(data.priority_fee) || 0;
@@ -416,7 +455,7 @@ class OrderService {
         logger.warn('Erreur notification nouvelle commande', { orderId: order.id, sellerId, err });
       }
 
-      // Réserver le stock pour cette commande
+      // RÃ©server le stock pour cette commande
       for (const item of sellerItems) {
         await prisma.product.update({
           where: { id: item.product_id },
@@ -428,7 +467,7 @@ class OrderService {
             order_id: order.id,
             quantity: item.quantity,
             type: 'reserve',
-            notes: `Réservé pour commande ${order.id}`,
+            notes: `RÃ©servÃ© pour commande ${order.id}`,
           },
         });
       }
@@ -460,13 +499,13 @@ class OrderService {
       },
     });
 
-    logger.info('Commandes créées (une par vendeur)', {
+    logger.info('Commandes crÃ©Ã©es (une par vendeur)', {
       userId,
       orderIds: createdOrders.map((o) => o.id),
       count: createdOrders.length,
     });
 
-    // Retourner la première commande pour compatibilité, et un tableau de toutes les commandes
+    // Retourner la premiÃ¨re commande pour compatibilitÃ©, et un tableau de toutes les commandes
     return createdOrders.length === 1
       ? createdOrders[0]
       : { orders: createdOrders, count: createdOrders.length };
@@ -492,27 +531,27 @@ class OrderService {
     });
 
     if (!order) {
-      throw new Error('Commande non trouvée');
+      throw new Error('Commande non trouvÃ©e');
     }
 
-    // Idempotence webhook : déjà payée = succès (évite double traitement et retries)
+    // Idempotence webhook : dÃ©jÃ  payÃ©e = succÃ¨s (Ã©vite double traitement et retries)
     if (order.payment_status === 'paid' || order.payment_status === 'escrow' || order.status === 'paid') {
       return { order, alreadyProcessed: true };
     }
     if (order.status !== 'pending' && order.payment_status !== 'pending') {
-      throw new Error('La commande a déjà été traitée');
+      throw new Error('La commande a dÃ©jÃ  Ã©tÃ© traitÃ©e');
     }
 
-    // Vérification anti-fraude avant de traiter le paiement
+    // VÃ©rification anti-fraude avant de traiter le paiement
     const fraud = await fraudCheck.checkPayment(order.user_id, order.total_amount, order.payment_method || 'unknown', { orderId });
     if (!fraud.allowed) {
-      throw new Error(fraud.reason || 'Paiement refusé pour des raisons de sécurité.');
+      throw new Error(fraud.reason || 'Paiement refusÃ© pour des raisons de sÃ©curitÃ©.');
     }
 
-    // Bloquer les fonds dans escrow au lieu de les distribuer immédiatement
+    // Bloquer les fonds dans escrow au lieu de les distribuer immÃ©diatement
     await escrowService.holdFunds(orderId);
 
-    // Créer enregistrement de paiement
+    // CrÃ©er enregistrement de paiement
     await prisma.orderPayment.create({
       data: {
         order_id: orderId,
@@ -525,7 +564,7 @@ class OrderService {
       },
     });
 
-    // Mettre à jour la transaction de paiement
+    // Mettre Ã  jour la transaction de paiement
     await prisma.transaction.updateMany({
       where: {
         reference_id: orderId,
@@ -536,7 +575,7 @@ class OrderService {
       },
     });
 
-    // Mettre à jour le statut de la commande
+    // Mettre Ã  jour le statut de la commande
     const updatedOrder = await prisma.order.update({
       where: { id: orderId },
       data: {
@@ -546,11 +585,11 @@ class OrderService {
       },
     });
 
-    // Créer la facture (pour téléchargement PDF)
+    // CrÃ©er la facture (pour tÃ©lÃ©chargement PDF)
     try {
       await invoiceService.getOrCreateInvoice(orderId);
     } catch (err) {
-      logger.warn('Erreur création facture', { orderId, err });
+      logger.warn('Erreur crÃ©ation facture', { orderId, err });
     }
 
     // Notifier l'acheteur du changement de statut
@@ -560,32 +599,98 @@ class OrderService {
       logger.warn('Erreur notification statut commande', { orderId, err });
     }
 
-    logger.info('Paiement commande confirmé et fonds bloqués dans escrow', { orderId });
+    logger.info('Paiement commande confirmÃ© et fonds bloquÃ©s dans escrow', { orderId });
     return updatedOrder;
   }
 
   async updateStatus(id: string, status: string, userId: string) {
     const order = await prisma.order.findUnique({
       where: { id },
-      select: { user_id: true, status: true },
+      include: {
+        items: {
+          select: {
+            product: {
+              select: {
+                seller_id: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!order) {
       throw new Error('Commande non trouvée');
     }
 
-    if (order.user_id !== userId) {
+    const isBuyer = order.user_id === userId;
+    const isSeller = order.seller_id === userId || order.items.some((item) => item.product?.seller_id === userId);
+
+    if (!isBuyer && !isSeller) {
       throw new Error('Non autorisé');
     }
 
-    const validStatuses = ['pending', 'processing', 'completed', 'cancelled'];
-    if (!validStatuses.includes(status)) {
+    const normalizedStatus = String(status || '').trim();
+    const allStatuses = new Set([
+      'pending',
+      'pending_payment',
+      'paid',
+      'processing',
+      'preparing',
+      'in_transit',
+      'delivered',
+      'completed',
+      'cancelled',
+    ]);
+    if (!allStatuses.has(normalizedStatus)) {
       throw new Error('Statut invalide');
+    }
+
+    const actor = isSeller && !isBuyer ? 'seller' : 'buyer';
+    const buyerAllowedStatuses = new Set(['cancelled']);
+    const sellerAllowedStatuses = new Set(['processing', 'preparing', 'in_transit', 'delivered', 'completed', 'cancelled']);
+
+    if (actor === 'buyer' && !buyerAllowedStatuses.has(normalizedStatus)) {
+      throw new Error('Transition non autorisée pour l\'acheteur');
+    }
+    if (actor === 'seller' && !sellerAllowedStatuses.has(normalizedStatus)) {
+      throw new Error('Transition non autorisée pour le vendeur');
+    }
+
+    const sellerTransitions: Record<string, Set<string>> = {
+      pending: new Set(['processing', 'preparing', 'cancelled']),
+      pending_payment: new Set(['processing', 'preparing', 'cancelled']),
+      paid: new Set(['processing', 'preparing', 'in_transit', 'cancelled']),
+      processing: new Set(['preparing', 'in_transit', 'completed', 'cancelled']),
+      preparing: new Set(['in_transit', 'completed', 'cancelled']),
+      in_transit: new Set(['delivered', 'completed']),
+      delivered: new Set(['completed']),
+      completed: new Set([]),
+      cancelled: new Set([]),
+    };
+
+    const buyerTransitions: Record<string, Set<string>> = {
+      pending: new Set(['cancelled']),
+      pending_payment: new Set(['cancelled']),
+      paid: new Set([]),
+      processing: new Set([]),
+      preparing: new Set([]),
+      in_transit: new Set([]),
+      delivered: new Set([]),
+      completed: new Set([]),
+      cancelled: new Set([]),
+    };
+
+    const transitionTable = actor === 'seller' ? sellerTransitions : buyerTransitions;
+    const currentStatus = order.status;
+    const allowedNextStatuses = transitionTable[currentStatus] || new Set<string>();
+    if (!allowedNextStatuses.has(normalizedStatus)) {
+      throw new Error(`Transition invalide: ${currentStatus} -> ${normalizedStatus}`);
     }
 
     const updated = await prisma.order.update({
       where: { id },
-      data: { status },
+      data: { status: normalizedStatus },
       include: {
         items: {
           include: {
@@ -596,7 +701,7 @@ class OrderService {
     });
 
     // Si annulée, libérer le stock
-    if (status === 'cancelled' && order.status !== 'cancelled') {
+    if (normalizedStatus === 'cancelled' && order.status !== 'cancelled') {
       for (const item of updated.items) {
         await prisma.product.update({
           where: { id: item.product_id },
@@ -621,12 +726,17 @@ class OrderService {
 
     // Notifier l'acheteur du changement de statut
     try {
-      await notificationService.notifyOrderStatusUpdate(order.user_id, id, status);
+      await notificationService.notifyOrderStatusUpdate(order.user_id, id, normalizedStatus);
     } catch (err) {
       logger.warn('Erreur notification statut commande', { orderId: id, err });
     }
+    try {
+      await messageService.sendOrderTrackingUpdate(id, normalizedStatus, userId);
+    } catch (err) {
+      logger.warn('Erreur message automatique suivi commande', { orderId: id, err });
+    }
 
-    logger.info('Statut commande mis à jour', { orderId: id, status });
+    logger.info('Statut commande mis à jour', { orderId: id, status: normalizedStatus, actor });
     return updated;
   }
 
@@ -636,16 +746,16 @@ class OrderService {
       where: { id },
       select: { user_id: true, status: true, payment_status: true, created_at: true },
     });
-    if (!order) throw new Error('Commande non trouvée');
-    if (order.user_id !== userId) throw new Error('Non autorisé');
+    if (!order) throw new Error('Commande non trouvÃ©e');
+    if (order.user_id !== userId) throw new Error('Non autorisÃ©');
     if (order.status !== 'pending' && order.status !== 'pending_payment') {
-      throw new Error('Annulation impossible : la commande a déjà été traitée.');
+      throw new Error('Annulation impossible : la commande a dÃ©jÃ  Ã©tÃ© traitÃ©e.');
     }
     const deadlineMs = deadlineHours * 60 * 60 * 1000;
     if (Date.now() - new Date(order.created_at).getTime() > deadlineMs) {
-      throw new Error(`Annulation impossible après ${deadlineHours}h. Contactez le support.`);
+      throw new Error(`Annulation impossible aprÃ¨s ${deadlineHours}h. Contactez le support.`);
     }
-    // Si déjà payé, le remboursement sera géré par escrow (refund) si implémenté côté webhook/annulation
+    // Si dÃ©jÃ  payÃ©, le remboursement sera gÃ©rÃ© par escrow (refund) si implÃ©mentÃ© cÃ´tÃ© webhook/annulation
     return this.updateStatus(id, 'cancelled', userId);
   }
 
@@ -656,22 +766,22 @@ class OrderService {
     });
 
     if (!order) {
-      throw new Error('Commande non trouvée');
+      throw new Error('Commande non trouvÃ©e');
     }
 
     if (order.user_id !== userId) {
-      throw new Error('Non autorisé');
+      throw new Error('Non autorisÃ©');
     }
 
-    // Débloquer les fonds escrow vers le vendeur
+    // DÃ©bloquer les fonds escrow vers le vendeur
     try {
       await escrowService.releaseFunds(id, 'delivery_confirmed');
     } catch (err: any) {
-      logger.warn('Erreur déblocage escrow', { orderId: id, err: err.message });
-      // Continuer même si escrow échoue
+      logger.warn('Erreur dÃ©blocage escrow', { orderId: id, err: err.message });
+      // Continuer mÃªme si escrow Ã©choue
     }
 
-    // Mettre à jour le statut
+    // Mettre Ã  jour le statut
     const updated = await prisma.order.update({
       where: { id },
       data: {
@@ -696,8 +806,13 @@ class OrderService {
     } catch (err) {
       logger.warn('Erreur notification vendeur', { orderId: id, err });
     }
+    try {
+      await messageService.sendOrderTrackingUpdate(id, 'completed', userId);
+    } catch (err) {
+      logger.warn('Erreur message auto completion commande', { orderId: id, err });
+    }
 
-    // Gamification : première vente vendeur
+    // Gamification : premiÃ¨re vente vendeur
     if (sellerId) {
       try {
         const completedCount = await prisma.order.count({
@@ -719,7 +834,7 @@ class OrderService {
       }
     }
 
-    // Gamification : points acheteur pour commande livrée (1 pt / 100 FCFA, min 10, max 200)
+    // Gamification : points acheteur pour commande livrÃ©e (1 pt / 100 FCFA, min 10, max 200)
     try {
       const pointsToAdd = Math.min(200, Math.max(10, Math.floor((updated.total_amount ?? 0) / 100)));
       await prisma.userPoints.upsert({
@@ -738,16 +853,16 @@ class OrderService {
           last_points_awarded: new Date(),
         },
       });
-      logger.info('Points achat attribués', { orderId: id, userId, points: pointsToAdd });
+      logger.info('Points achat attribuÃ©s', { orderId: id, userId, points: pointsToAdd });
     } catch (err) {
       logger.warn('Erreur attribution points achat', { orderId: id, err });
     }
 
-    logger.info('Réception confirmée et fonds débloqués', { orderId: id });
+    logger.info('RÃ©ception confirmÃ©e et fonds dÃ©bloquÃ©s', { orderId: id });
     return updated;
   }
 
-  /** Commandes passées pendant un live (pour le créateur du live) */
+  /** Commandes passÃ©es pendant un live (pour le crÃ©ateur du live) */
   async listByLiveId(liveId: string, creatorId: string, page: number = 1, limit: number = 20) {
     const skip = (page - 1) * limit;
     const [orders, total] = await Promise.all([
@@ -835,4 +950,5 @@ class OrderService {
 
 export const orderService = new OrderService();
 export default orderService;
+
 

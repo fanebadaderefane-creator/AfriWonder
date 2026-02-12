@@ -7,6 +7,42 @@ import invoiceService from '../services/invoice.service.js';
 
 const router = Router();
 
+/**
+ * @swagger
+ * /api/orders:
+ *   get:
+ *     tags: [Orders]
+ *     summary: Lister les commandes de l'utilisateur
+ *     security:
+ *       - bearerAuth: []
+ *   post:
+ *     tags: [Orders]
+ *     summary: Creer une commande a partir du panier
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       201:
+ *         description: Commande creee
+ */
+
+/**
+ * @swagger
+ * /api/orders/{id}/confirm-payment:
+ *   post:
+ *     tags: [Orders]
+ *     summary: Confirmer le paiement d'une commande
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Paiement confirme
+ */
+
 // Limitation création commandes et confirmations paiement (anti-abus)
 const orderActionLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -157,4 +193,3 @@ router.post('/:id/confirm-reception', authenticate, async (req: AuthRequest, res
 });
 
 export default router;
-

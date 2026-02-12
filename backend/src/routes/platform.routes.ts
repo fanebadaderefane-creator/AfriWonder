@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { requireAnyAdmin } from '../middleware/adminRbac.js';
 import platformRevenueService from '../services/platformRevenue.service.js';
 
 const router = Router();
@@ -17,11 +18,10 @@ router.get('/config', (_req, res) => {
   });
 });
 
-// Toutes les autres routes nécessitent une authentification admin
-// TODO: Ajouter un middleware isAdmin pour vérifier que l'utilisateur est admin
+// Toutes les routes sensibles ci-dessous nécessitent une authentification admin.
 
 // GET /api/platform/revenue - Statistiques de revenus de la plateforme
-router.get('/revenue', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/revenue', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
   try {
     const { startDate, endDate } = req.query;
     
@@ -40,7 +40,7 @@ router.get('/revenue', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // GET /api/platform/revenue/:type - Revenus par type
-router.get('/revenue/:type', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/revenue/:type', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
   try {
     const { type } = req.params;
     const { startDate, endDate } = req.query;
@@ -64,7 +64,7 @@ router.get('/revenue/:type', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // GET /api/platform/wallet - Wallet de la plateforme
-router.get('/wallet', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/wallet', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
   try {
     const wallet = await platformRevenueService.getPlatformWallet();
 
@@ -78,4 +78,6 @@ router.get('/wallet', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 export default router;
+
+
 

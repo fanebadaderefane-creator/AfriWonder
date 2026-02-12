@@ -1,3 +1,4 @@
+/* cspell:disable */
 /**
  * Setup global pour les tests Jest
  * Configure la base de données de test et exécute les migrations
@@ -7,15 +8,24 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { beforeAll, afterAll } from '@jest/globals';
 
-// Charger les variables d'environnement de test
-const testEnvPath = path.resolve(process.cwd(), '.env.test');
-dotenv.config({ path: testEnvPath });
+// Charger les variables d'environnement de test de facon robuste
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+const envCandidates = [
+  path.resolve(process.cwd(), '.env.test'),
+  path.resolve(process.cwd(), 'backend', '.env.test'),
+  path.resolve(currentDir, '..', '.env.test'),
+];
 
-// Fallback sur .env si .env.test n'existe pas
-if (!process.env.DATABASE_URL) {
-  dotenv.config();
+const resolvedEnvPath = envCandidates.find((p) => fs.existsSync(p));
+if (resolvedEnvPath) {
+  dotenv.config({ path: resolvedEnvPath, override: true });
+} else {
+  // Fallback ultime: .env standard
+  dotenv.config({ override: true });
 }
 
 const connectionString = process.env.DATABASE_URL;

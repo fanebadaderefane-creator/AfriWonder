@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import moderationService from '../services/moderation.service.js';
+import * as moderationSanctions from '../services/moderationSanctions.service.js';
 
 const router = Router();
 
@@ -51,6 +52,43 @@ router.put('/reports/:id/review', authenticate, async (req: AuthRequest, res, ne
       notes,
     });
     res.json({ success: true, data: report });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/moderation/strikes - CDC: Ajouter un strike (admin/mod)
+router.post('/strikes', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    if (req.user!.role !== 'admin' && req.user!.role !== 'moderator') {
+      return res.status(403).json({ success: false, error: 'Moderator access required' });
+    }
+    const { userId, infraction, reason, contextType, contextId } = req.body;
+    if (!userId || !infraction || !reason) {
+      return res.status(400).json({ success: false, error: 'userId, infraction, reason requis' });
+    }
+    const result = await moderationSanctions.addStrike(userId, {
+      infraction,
+      reason,
+      contextType,
+      contextId,
+      issuedBy: req.user!.id,
+    });
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/moderation/strikes/:userId
+router.get('/strikes/:userId', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    if (req.user!.role !== 'admin' && req.user!.role !== 'moderator') {
+      return res.status(403).json({ success: false, error: 'Moderator access required' });
+    }
+    const strikes = await moderationSanctions.getStrikes(param(req, 'userId'));
+    const count = await moderationSanctions.getStrikesCount(param(req, 'userId'));
+    res.json({ success: true, data: { strikes, count } });
   } catch (error: any) {
     next(error);
   }

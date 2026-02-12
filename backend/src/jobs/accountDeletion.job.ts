@@ -127,11 +127,9 @@ export async function sendDeletionReminders() {
             type: 'account_deletion_reminder',
             title: 'Suppression de compte imminente',
             message: `Votre compte sera définitivement supprimé le ${deletion.scheduled_deletion_at.toLocaleDateString('fr-FR')}. Vous pouvez encore annuler cette demande.`,
-            data: {
-              deletion_id: deletion.id,
-              scheduled_date: deletion.scheduled_deletion_at,
-              cancellation_url: `/api/privacy/cancel-deletion/${deletion.cancellation_token}`,
-            },
+            reference_id: deletion.id,
+            reference_type: 'account_deletion',
+            action_url: `/api/privacy/cancel-deletion/${deletion.cancellation_token}`,
           },
         });
 

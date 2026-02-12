@@ -28,6 +28,10 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
 // 1) Média téléchargé : CacheFirst (lecture offline)
 // 2) API : NetworkFirst (fallback cache)
 // 3) Reste : Network first, puis precache

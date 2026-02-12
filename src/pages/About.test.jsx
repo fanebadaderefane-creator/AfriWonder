@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import About from './About';
@@ -86,14 +86,18 @@ describe('About page', () => {
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     const rateButtons = screen.getAllByText(/Noter l'application/);
-    await userEvent.click(rateButtons[0]);
+    await act(async () => {
+      await userEvent.click(rateButtons[0]);
+    });
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
     expect(screen.getByRole('dialog')).toHaveTextContent(/Noter l'application/);
     expect(screen.getByRole('dialog')).toHaveTextContent(/notation sera bientôt disponible/);
     const okButton = screen.getByRole('button', { name: /^OK$/i });
-    await userEvent.click(okButton);
+    await act(async () => {
+      await userEvent.click(okButton);
+    });
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });

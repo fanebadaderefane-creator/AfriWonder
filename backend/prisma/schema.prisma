@@ -13,12 +13,17 @@ model User {
   password_hash              String
   full_name                  String?
   profile_image              String?
+  bio                        String?
+  location                   String?
+  website                    String?
   country                    String? // Pays pour leaderboard / profil
   role                       String                    @default("user")
   is_verified                Boolean                   @default(false)
   account_suspended          Boolean                   @default(false)
   suspended_at               DateTime?
   suspended_reason           String? // fraud, abuse, legal, user_request
+  replay_premium             Boolean                   @default(false) // 90j replays vs 14j
+  data_saver_mode            Boolean                   @default(false) // Mode données réduites
   created_at                 DateTime                  @default(now())
   updated_at                 DateTime                  @updatedAt
   addresses                  Address[]
@@ -26,14 +31,19 @@ model User {
   comments                   Comment[]
   follows                    Follow[]                  @relation("Follower")
   following                  Follow[]                  @relation("Following")
+  wonder_relations_given     WonderRelation[]          @relation("Wonderer")
+  wonder_relations_received  WonderRelation[]          @relation("WonderCreator")
   likes                      Like[]
   live_streams               LiveStream[]
   live_viewers               LiveViewer[]
   live_moderator_of          LiveModerator[]
   live_likes                 LiveLike[]
   live_top_donors            LiveTopDonor[]
+  live_subscriptions_created LiveCreatorSubscription[]   @relation("LiveSubscriptionsCreated")
+  live_subscriptions_given   LiveCreatorSubscription[]  @relation("LiveSubscriptionsGiven")
   creator_level              CreatorLevel?
   moderation_reports         Moderation[]              @relation("ModerationReporter")
+  user_strikes               UserStrike[]             // CDC: 3 strikes = ban
   notifications              Notification[]
   notification_logs          NotificationLog[]
   notification_preference    NotificationPreference?
@@ -59,6 +69,9 @@ model User {
   seller_profile             SellerProfile?
   seller_reviews_received    SellerReview[]            @relation("SellerReviewed")
   seller_reviews_given       SellerReview[]            @relation("SellerReviewAuthor")
+  order_buyer_reviews_given  OrderBuyerReview[]        @relation("BuyerReviewSeller")
+  order_buyer_reviews_received OrderBuyerReview[]     @relation("BuyerReviewBuyer")
+  product_questions          ProductQuestion[]         @relation("ProductQuestionAuthor")
   support_tickets            SupportTicket[]
   support_messages           SupportMessage[]
   enrollments                Enrollment[]
@@ -154,6 +167,39 @@ model User {
   property_visit_requests    PropertyVisitRequest[]
 }
 
+model VideoHashtag {
+  id         String   @id @default(uuid())
+  video_id   String
+  tag_name   String
+  created_at DateTime @default(now())
+  video      Video    @relation(fields: [video_id], references: [id], onDelete: Cascade)
+
+  @@unique([video_id, tag_name])
+  @@index([tag_name])
+  @@index([video_id])
+}
+
+model VideoCategory {
+  id          String   @id @default(uuid())
+  video_id    String
+  category_id String
+  created_at  DateTime @default(now())
+  video       Video    @relation(fields: [video_id], references: [id], onDelete: Cascade)
+  category    Category @relation(fields: [category_id], references: [id], onDelete: Cascade)
+
+  @@unique([video_id, category_id])
+  @@index([video_id])
+  @@index([category_id])
+}
+
+model Category {
+  id             String          @id @default(uuid())
+  name           String          @unique
+  video_categories VideoCategory[]
+
+  @@index([name])
+}
+
 model Video {
   id                    String                @id @default(uuid())
   title                 String
@@ -163,14 +209,17 @@ model Video {
   creator_id            String
   visibility            String                @default("public")
   category              String?
-  hashtags              Json? // Array of hashtag strings
+  hashtags              Json? // Array of hashtag strings (legacy, synced with VideoHashtag)
   music_title           String? // Music title
+  video_hashtags        VideoHashtag[]
+  video_categories      VideoCategory[]
   views                 Int                   @default(0)
   likes                 Int                   @default(0)
   comments_count        Int                   @default(0)
   shares                Int                   @default(0)
   saves                 Int                   @default(0)
   duration              Int?
+  is_featured           Boolean               @default(false)
   created_at            DateTime              @default(now())
   updated_at            DateTime              @updatedAt
   collaborator_revenues CollaboratorRevenue[]
@@ -181,11 +230,13 @@ model Video {
   creator               User                  @relation(fields: [creator_id], references: [id], onDelete: Cascade)
   analytics             VideoAnalytics[]
   view_history          ViewHistory[]
+  video_views           VideoView[]
   playlist_items        PlaylistItem[]
 
   @@index([creator_id, created_at])
   @@index([visibility, created_at])
   @@index([category])
+  @@index([is_featured])
 }
 
 model Like {
@@ -232,6 +283,22 @@ model Follow {
   @@index([following_id])
 }
 
+model WonderRelation {
+  id           String   @id @default(uuid())
+  follower_id  String
+  creator_id   String
+  status       String   @default("active") // pending | active
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+  wonderer     User     @relation("Wonderer", fields: [follower_id], references: [id], onDelete: Cascade)
+  creator      User     @relation("WonderCreator", fields: [creator_id], references: [id], onDelete: Cascade)
+
+  @@unique([follower_id, creator_id])
+  @@index([follower_id])
+  @@index([creator_id])
+  @@index([status])
+}
+
 model Save {
   id         String   @id @default(uuid())
   user_id    String
@@ -259,6 +326,20 @@ model ViewHistory {
   @@index([video_id])
 }
 
+/// Comptage vues enterprise: 1 vue / 30 min / user|device / vidéo. Backend source de vérité.
+model VideoView {
+  id          String   @id @default(uuid())
+  video_id    String
+  viewer_key  String   // "u:{userId}" ou "d:{deviceId}" (anonyme)
+  time_bucket Int      // Unix timestamp / 1800 (fenêtre 30 min)
+  created_at  DateTime @default(now())
+  video       Video    @relation(fields: [video_id], references: [id], onDelete: Cascade)
+
+  @@unique([video_id, viewer_key, time_bucket])
+  @@index([video_id])
+  @@index([video_id, time_bucket])
+}
+
 model Product {
   id                String             @id @default(uuid())
   name              String
@@ -276,11 +357,17 @@ model Product {
   condition         String? // new | used | refurbished
   delivery_options  Json? // ["local", "international", "pickup", "point_relais"]
   video_url         String? // Vidéo produit (une URL)
+  latitude          Float? // CDC: géolocalisation
+  longitude         Float?
+  weight_kg         Float? // CDC: calcul frais livraison
+  negotiable_price  Boolean            @default(false) // CDC: prix négociable
+  valid_until       DateTime? // CDC: durée validité annonce
   created_at        DateTime           @default(now())
   updated_at        DateTime           @updatedAt
   inventory_logs    InventoryLog[]
   order_items       OrderItem[]
   order_reviews     OrderReview[]
+  product_questions ProductQuestion[]
   seller            User               @relation(fields: [seller_id], references: [id], onDelete: Cascade)
   reviews           Review[]
   wishlist          Wishlist[]
@@ -293,6 +380,21 @@ model Product {
   @@index([seller_id, status])
   @@index([category, status])
   @@index([status, created_at])
+}
+
+model ProductQuestion {
+  id         String    @id @default(uuid())
+  product_id String
+  user_id    String
+  question   String
+  answer     String?
+  answered_at DateTime?
+  created_at DateTime  @default(now())
+  product    Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  user       User      @relation("ProductQuestionAuthor", fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([product_id])
+  @@index([user_id])
 }
 
 model Order {
@@ -337,6 +439,7 @@ model Order {
   payments                OrderPayment[]
   disputes                Dispute[]
   reviews                 OrderReview[]
+  buyer_reviews           OrderBuyerReview[] // CDC 2.2.6: notation mutuelle vendeur→acheteur
   invoice                 OrderInvoice?
 
   @@index([user_id])
@@ -441,6 +544,7 @@ model LiveStream {
   ended_at            DateTime?
   duration_minutes    Int?
   total_gifts_amount  Float                   @default(0)
+  total_tips_amount   Float                   @default(0)
   total_messages      Int                     @default(0)
   total_likes         Int                     @default(0)
   is_featured         Boolean                 @default(false)
@@ -448,10 +552,21 @@ model LiveStream {
   language            String? // fr, en, ar…
   room_id             String                  @unique
   scheduled_at        DateTime? // Si status = scheduled
+  tags                String[]                // CDC: max 5
+  age_restriction     String                  @default("all") // all | 13+ | 18+
+  donations_enabled   Boolean                 @default(true)
+  private_mode        Boolean                 @default(false)
+  goal_amount         Float?
+  goal_target         Float?
+  delay_seconds       Int                     @default(0)
+  max_quality         String                  @default("auto")
+  replay_retention_days Int                   @default(14)
   created_at          DateTime                @default(now())
   updated_at          DateTime                @updatedAt
   chat_messages       LiveChat[]
   gifts               LiveGift[]
+  tips                LiveTip[]
+  replay_chapters     LiveReplayChapter[]
   bans                LiveStreamBan[]
   viewers             LiveViewer[]
   moderation_settings LiveModerationSettings?
@@ -495,6 +610,7 @@ model LiveModerationSettings {
   slow_mode_seconds Int        @default(0)
   comments_enabled  Boolean    @default(true)
   followers_only    Boolean    @default(false)
+  emoji_only        Boolean    @default(false) // CDC: mode emoji uniquement
   banned_words      Json? // string[]
   live_stream       LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
 
@@ -515,15 +631,45 @@ model LiveModerator {
 }
 
 model LiveLike {
-  id          String     @id @default(uuid())
-  live_id     String
-  user_id     String
-  created_at  DateTime   @default(now())
-  live_stream LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
-  user        User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id            String     @id @default(uuid())
+  live_id       String
+  user_id       String
+  reaction_type String     @default("like") // like | heart | fire | thumbs
+  created_at    DateTime   @default(now())
+  live_stream   LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
+  user          User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([live_id])
   @@index([user_id])
+}
+
+model LiveReplayChapter {
+  id           String     @id @default(uuid())
+  live_id      String
+  title        String
+  start_seconds Int
+  end_seconds  Int?
+  created_at   DateTime   @default(now())
+  live_stream  LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
+
+  @@index([live_id])
+}
+
+model LiveCreatorSubscription {
+  id             String   @id @default(uuid())
+  creator_id     String
+  subscriber_id  String
+  amount_fcfa    Float
+  status         String   @default("active")
+  started_at     DateTime @default(now())
+  next_billing_at DateTime?
+  created_at     DateTime @default(now())
+  creator        User     @relation("LiveSubscriptionsCreated", fields: [creator_id], references: [id], onDelete: Cascade)
+  subscriber     User     @relation("LiveSubscriptionsGiven", fields: [subscriber_id], references: [id], onDelete: Cascade)
+
+  @@unique([creator_id, subscriber_id])
+  @@index([creator_id])
+  @@index([subscriber_id])
 }
 
 model LiveAnalytics {
@@ -596,6 +742,27 @@ model LiveGift {
   @@index([creator_id])
 }
 
+model LiveTip {
+  id                  String     @id @default(uuid())
+  live_id             String
+  sender_id           String?
+  sender_name         String?
+  sender_avatar       String?
+  creator_id          String
+  amount              Float
+  creator_earnings    Float
+  platform_commission Float
+  message             String?
+  is_anonymous        Boolean    @default(false)
+  tier                String     @default("standard")
+  created_at          DateTime   @default(now())
+  live_stream         LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
+
+  @@index([live_id])
+  @@index([sender_id])
+  @@index([creator_id])
+}
+
 model LiveChat {
   id            String     @id @default(uuid())
   live_id       String
@@ -607,6 +774,7 @@ model LiveChat {
   message_type  String     @default("text") // text | gift | system
   is_deleted    Boolean    @default(false)
   is_pinned     Boolean    @default(false)
+  pin_expires_at DateTime? // CDC: auto-unpin après 30s (premium) / 2min (vip)
   is_moderated  Boolean    @default(false) // Modéré (caché ou averti)
   created_date  DateTime   @default(now())
   live_stream   LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
@@ -1212,6 +1380,26 @@ model Moderation {
   @@index([severity])
 }
 
+/// CDC Modération: 3 strikes = ban. Grille sanctions Live Streaming Mali.
+model UserStrike {
+  id             String   @id @default(uuid())
+  user_id        String
+  infraction     String   // inappropriate_language | spam | violence | nudity | harassment | cp | copyright | fraud | algorithm_manipulation
+  severity       String   @default("medium") // low | medium | high | critical
+  reason         String   @db.Text
+  context_type   String?  // live | video | comment | chat
+  context_id     String?
+  issued_by      String   // admin_id ou système
+  suspension_days Int?    // 0 = ban immédiat, null = strike seul
+  suspension_hours Int?  // CDC: timeout court (ex. spam 1ère fois = 1h)
+  created_at     DateTime @default(now())
+  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([infraction])
+  @@index([created_at])
+}
+
 model Return {
   id                     String    @id @default(uuid())
   order_id               String
@@ -1265,14 +1453,20 @@ model OrderReview {
   product_id     String
   seller_id      String
   user_id        String
-  product_rating Int // Note produit (1-5)
-  seller_rating  Int? // Note vendeur (1-5)
-  title          String?
-  content        String
-  photos         String[]   @default([])
-  is_verified    Boolean    @default(true) // Acheteur vérifié (a acheté)
-  helpful_count  Int        @default(0)
-  status         String     @default("approved") // pending, approved, rejected
+  product_rating      Int // Note produit (1-5)
+  seller_rating       Int? // Note vendeur (1-5)
+  quality_rating      Int? // CDC: critère qualité
+  communication_rating Int? // CDC: critère communication
+  delivery_rating      Int? // CDC: critère délai livraison
+  conformity_rating   Int? // CDC: critère conformité
+  title               String?
+  content             String
+  photos              String[]   @default([])
+  seller_reply        String? // CDC: réponse vendeur aux avis
+  seller_reply_at     DateTime?
+  is_verified         Boolean    @default(true) // Acheteur vérifié (a acheté)
+  helpful_count       Int        @default(0)
+  status              String     @default("approved") // pending, approved, rejected
   created_at     DateTime   @default(now())
   updated_at     DateTime   @updatedAt
   order          Order      @relation(fields: [order_id], references: [id], onDelete: Cascade)
@@ -1287,6 +1481,24 @@ model OrderReview {
   @@index([user_id])
   @@index([status])
   @@index([product_rating])
+}
+
+model OrderBuyerReview {
+  id         String   @id @default(uuid())
+  order_id   String
+  seller_id  String
+  buyer_id   String
+  rating     Int      // 1-5
+  content    String?  // Commentaire optionnel
+  created_at DateTime @default(now())
+  order      Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  seller     User     @relation("BuyerReviewSeller", fields: [seller_id], references: [id], onDelete: Cascade)
+  buyer      User     @relation("BuyerReviewBuyer", fields: [buyer_id], references: [id], onDelete: Cascade)
+
+  @@unique([order_id, seller_id]) // Un vendeur note l'acheteur une fois par commande
+  @@index([order_id])
+  @@index([seller_id])
+  @@index([buyer_id])
 }
 
 model DisputeMessage {
@@ -1463,6 +1675,7 @@ model SellerProfile {
   status            String   @default("active") // active | suspended | blocked
   country           String?
   city              String?
+  subscription_tier String   @default("free") // CDC: free | starter | business | enterprise
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt
   user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)

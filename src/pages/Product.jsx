@@ -9,7 +9,8 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { 
   ArrowLeft, Star, MapPin, Truck, ShoppingCart,
-  Heart, Share2, BadgeCheck, ChevronLeft, ChevronRight, Shield
+  Heart, Share2, BadgeCheck, ChevronLeft, ChevronRight, Shield, HelpCircle, Send,
+  Flag, MessageCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
@@ -29,17 +30,25 @@ const paymentMethods = {
 
 export default function Product() {
   const navigate = useNavigate();
-  const _queryClient = useQueryClient();
+  const queryClient = useQueryClient();
   const [productId, setProductId] = useState(null);
   const [user, setUser] = useState(null);
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [showCheckout, setShowCheckout] = useState(false);
+  const [newQuestion, setNewQuestion] = useState('');
+  const [answeringQuestionId, setAnsweringQuestionId] = useState(null);
+  const [answerText, setAnswerText] = useState('');
   const [deliveryInfo, setDeliveryInfo] = useState({
     address: '',
     phone: '',
     method: 'livraison_moto'
   });
+  const [paymentMethod, setPaymentMethod] = useState('orange_money');
+  const [replyingToReviewId, setReplyingToReviewId] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [reportingReviewId, setReportingReviewId] = useState(null);
+  const [reportReason, setReportReason] = useState('');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -87,14 +96,80 @@ export default function Product() {
     enabled: !!product?.category
   });
 
+  const { data: productReviewsData } = useQuery({
+    queryKey: ['product-reviews', productId],
+    queryFn: () => api.orderReviews.getProductReviews(productId, { page: 1, limit: 10 }),
+    enabled: !!productId
+  });
+  const productReviews = productReviewsData?.reviews ?? [];
+
+  const { data: questionsData } = useQuery({
+    queryKey: ['product-questions', productId],
+    queryFn: () => api.products.getQuestions(productId, { page: 1, limit: 20 }),
+    enabled: !!productId
+  });
+  const questions = questionsData?.questions ?? [];
+
+  const askQuestionMutation = useMutation({
+    mutationFn: (q) => api.products.askQuestion(productId, q),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product-questions', productId] });
+      toast.success('Question envoyée');
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur')
+  });
+
+  const replyToReviewMutation = useMutation({
+    mutationFn: ({ reviewId, reply }) => api.orderReviews.reply(reviewId, reply),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product-reviews', productId] });
+      setReplyingToReviewId(null);
+      setReplyText('');
+      toast.success('Réponse publiée');
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.response?.data?.message || e?.apiMessage || e?.message || 'Erreur'),
+  });
+
+  const reportReviewMutation = useMutation({
+    mutationFn: ({ reviewId, reason }) => api.orderReviews.report(reviewId, reason),
+    onSuccess: () => {
+      setReportingReviewId(null);
+      setReportReason('');
+      toast.success('Signalement enregistré');
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.response?.data?.message || e?.apiMessage || e?.message || 'Erreur'),
+  });
+
+  const answerQuestionMutation = useMutation({
+    mutationFn: ({ qId, ans }) => api.products.answerQuestion(qId, ans),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product-questions', productId] });
+      setAnsweringQuestionId(null);
+      setAnswerText('');
+      toast.success('Réponse envoyée');
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur')
+  });
+
   const { formatPrice } = useMarketplaceCurrency();
+
+  const addToCartMutation = useMutation({
+    mutationFn: () => api.cart.add(product.id, quantity),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cart-badge'] });
+      toast.success(`${product.name} ajouté au panier`);
+    },
+    onError: (e) => {
+      toast.error(e.response?.data?.message || e.message || 'Erreur');
+    }
+  });
 
   const createOrderMutation = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error('Vous devez être connecté');
       const result = await api.orders.create({
         shipping_address: deliveryInfo.address,
-        payment_method: 'orange_money',
+        payment_method: paymentMethod,
         items: [{ product_id: product.id, quantity }],
       });
       const order = result.orders ? result.orders[0] : result;
@@ -240,12 +315,34 @@ export default function Product() {
                     Vérifié
                   </Badge>
                 )}
+                {(product.seller?.seller_profile?.is_verified || product.is_verified) &&
+                 (product.seller?.seller_profile?.rating ?? product.seller_rating ?? 0) >= 4 && (
+                  <Badge className="bg-emerald-100 text-emerald-700">
+                    <Shield className="w-3 h-3 mr-1" />
+                    Confiance
+                  </Badge>
+                )}
               </div>
             </div>
           </div>
-          <p className="text-3xl font-bold text-orange-500">
-            {formatPrice(product.price)}
-          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-3xl font-bold text-orange-500">
+              {formatPrice(product.price)}
+            </p>
+            {product.negotiable_price && (
+              <Badge variant="outline" className="text-xs">Prix négociable</Badge>
+            )}
+            {product.condition && (
+              <Badge variant="secondary" className="text-xs">
+                {product.condition === 'new' && 'Neuf'}
+                {product.condition === 'used' && 'Occasion'}
+                {product.condition === 'refurbished' && 'Reconditionné'}
+              </Badge>
+            )}
+            {product.valid_until && new Date(product.valid_until) > new Date() && (
+              <Badge variant="outline" className="text-xs">Valide jusqu'au {new Date(product.valid_until).toLocaleDateString('fr-FR')}</Badge>
+            )}
+          </div>
           {product.sold_count > 0 && (
             <p className="text-sm text-gray-500 mt-1">{product.sold_count} vendus</p>
           )}
@@ -271,9 +368,18 @@ export default function Product() {
                 >
                   {seller.full_name || seller.email?.split('@')[0]}
                 </button>
-                <div className="flex items-center gap-1 text-sm text-gray-500">
-                  <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                  <span>{product.seller?.seller_profile?.rating ?? product.seller_rating ?? 0}</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1 text-sm text-gray-500">
+                    <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+                    <span>{seller?.seller_profile?.rating ?? product.seller?.seller_profile?.rating ?? product.seller_rating ?? 0}</span>
+                  </div>
+                  {(seller?.seller_profile?.is_verified || seller?.is_verified || product.seller?.seller_profile?.is_verified || product.is_verified) &&
+                   (seller?.seller_profile?.rating ?? product.seller?.seller_profile?.rating ?? product.seller_rating ?? 0) >= 4 && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">
+                      <Shield className="w-3 h-3" />
+                      Confiance
+                    </span>
+                  )}
                 </div>
               </div>
               {user?.id === sellerId ? (
@@ -326,6 +432,185 @@ export default function Product() {
           <p className="text-gray-600 text-sm whitespace-pre-line">
             {product.description || 'Aucune description disponible'}
           </p>
+        </Card>
+
+        {/* Géolocalisation (CDC) */}
+        {(product.latitude && product.longitude) && (
+          <Card className="p-4">
+            <h3 className="font-semibold mb-2 flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-orange-500" />
+              Localisation
+            </h3>
+            <a
+              href={`https://www.openstreetmap.org/?mlat=${product.latitude}&mlon=${product.longitude}&zoom=15`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-orange-600 hover:underline"
+            >
+              Voir sur la carte →
+            </a>
+          </Card>
+        )}
+
+        {/* Q/R publiques (CDC) */}
+        <Card className="p-4">
+          <h3 className="font-semibold mb-3 flex items-center gap-2">
+            <HelpCircle className="w-4 h-4 text-blue-500" />
+            Questions & Réponses ({questions.length})
+          </h3>
+          <div className="space-y-3">
+            {questions.map((q) => (
+              <div key={q.id} className="border-l-2 border-gray-200 pl-3">
+                <p className="text-sm font-medium text-gray-800">{q.question}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{q.user?.full_name || 'Utilisateur'} · {new Date(q.created_at).toLocaleDateString('fr-FR')}</p>
+                {q.answer ? (
+                  <p className="text-sm text-gray-600 mt-2 bg-gray-50 p-2 rounded">— {q.answer}</p>
+                ) : user?.id === sellerId && (
+                  <div className="mt-2">
+                    {answeringQuestionId === q.id ? (
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Votre réponse..."
+                          value={answerText}
+                          onChange={(e) => setAnswerText(e.target.value)}
+                          className="text-sm"
+                        />
+                        <Button size="sm" onClick={() => answerQuestionMutation.mutate({ qId: q.id, ans: answerText })} disabled={!answerText.trim() || answerQuestionMutation.isPending}>
+                          Envoyer
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setAnsweringQuestionId(null); setAnswerText(''); }}>Annuler</Button>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => setAnsweringQuestionId(q.id)} className="text-xs text-orange-600 hover:underline">
+                        Répondre
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {user && (
+            <div className="flex gap-2 mt-3">
+              <Input
+                placeholder="Poser une question..."
+                value={newQuestion}
+                onChange={(e) => setNewQuestion(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), askQuestionMutation.mutate(newQuestion), setNewQuestion(''))}
+              />
+              <Button
+                size="sm"
+                onClick={() => { if (newQuestion.trim()) askQuestionMutation.mutate(newQuestion.trim()); setNewQuestion(''); }}
+                disabled={!newQuestion.trim() || askQuestionMutation.isPending}
+              >
+                <Send className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+        </Card>
+
+        {/* Avis et notations (CDC: photos, critères détaillés, réponse vendeur, signalement) */}
+        <Card className="p-4">
+          <h3 className="font-semibold mb-3 flex items-center gap-2">
+            <Star className="w-4 h-4 text-yellow-400" />
+            Avis ({Array.isArray(productReviews) ? productReviews.length : 0})
+          </h3>
+          {Array.isArray(productReviews) && productReviews.length > 0 ? (
+            <div className="space-y-4 max-h-96 overflow-y-auto">
+              {productReviews.map((r) => (
+                <div key={r.id || r.order_id} className="border-b border-gray-100 pb-4 last:border-0 last:pb-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="flex">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star
+                            key={star}
+                            className={`w-4 h-4 ${star <= (r.product_rating ?? r.rating ?? 0) ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {r.user?.full_name || r.buyer_name || 'Acheteur'}
+                        {r.is_verified && <span className="ml-1 text-green-600">✓ Vérifié</span>}
+                      </span>
+                    </div>
+                    {user?.id !== r.user_id && (
+                      <button
+                        type="button"
+                        onClick={() => setReportingReviewId(r.id === reportingReviewId ? null : r.id)}
+                        className="text-xs text-gray-400 hover:text-red-500 flex items-center gap-1"
+                      >
+                        <Flag className="w-3 h-3" /> Signaler
+                      </button>
+                    )}
+                  </div>
+                  {reportingReviewId === r.id && (
+                    <div className="mt-2 flex gap-2">
+                      <Input
+                        placeholder="Raison du signalement..."
+                        value={reportReason}
+                        onChange={(e) => setReportReason(e.target.value)}
+                        className="text-sm"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => reportReason.trim() && reportReviewMutation.mutate({ reviewId: r.id, reason: reportReason })}
+                        disabled={!reportReason.trim() || reportReviewMutation.isPending}
+                      >
+                        Envoyer
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => { setReportingReviewId(null); setReportReason(''); }}>Annuler</Button>
+                    </div>
+                  )}
+                  {(r.quality_rating || r.communication_rating || r.delivery_rating || r.conformity_rating) && (
+                    <div className="flex flex-wrap gap-2 mt-1 text-xs text-gray-500">
+                      {r.quality_rating && <span>Qualité: {r.quality_rating}/5</span>}
+                      {r.communication_rating && <span>Com: {r.communication_rating}/5</span>}
+                      {r.delivery_rating && <span>Livraison: {r.delivery_rating}/5</span>}
+                      {r.conformity_rating && <span>Conformité: {r.conformity_rating}/5</span>}
+                    </div>
+                  )}
+                  <p className="text-sm text-gray-600 mt-1">{r.content || r.title || '—'}</p>
+                  {r.photos && r.photos.length > 0 && (
+                    <div className="flex gap-2 mt-2 flex-wrap">
+                      {r.photos.map((url, idx) => (
+                        <img key={idx} src={url} alt="" className="w-16 h-16 object-cover rounded" />
+                      ))}
+                    </div>
+                  )}
+                  {r.seller_reply ? (
+                    <div className="mt-2 ml-4 pl-3 border-l-2 border-orange-200 bg-orange-50/50 rounded p-2">
+                      <p className="text-xs font-medium text-orange-700">Réponse du vendeur</p>
+                      <p className="text-sm text-gray-700">{r.seller_reply}</p>
+                    </div>
+                  ) : user?.id === sellerId && (
+                    <div className="mt-2">
+                      {replyingToReviewId === r.id ? (
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Répondre à cet avis..."
+                            value={replyText}
+                            onChange={(e) => setReplyText(e.target.value)}
+                            className="text-sm"
+                          />
+                          <Button size="sm" onClick={() => replyToReviewMutation.mutate({ reviewId: r.id, reply: replyText })} disabled={!replyText.trim() || replyToReviewMutation.isPending}>
+                            Envoyer
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => { setReplyingToReviewId(null); setReplyText(''); }}>Annuler</Button>
+                        </div>
+                      ) : (
+                        <button type="button" onClick={() => setReplyingToReviewId(r.id)} className="text-xs text-orange-600 hover:underline flex items-center gap-1">
+                          <MessageCircle className="w-3 h-3" /> Répondre
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">Aucun avis pour le moment.</p>
+          )}
         </Card>
 
         {/* Delivery & Payment */}
@@ -421,11 +706,25 @@ export default function Product() {
             </button>
           </div>
           <Button
+            variant="outline"
+            onClick={() => {
+              if (!user) {
+                toast.error('Connectez-vous pour ajouter au panier');
+                return;
+              }
+              addToCartMutation.mutate();
+            }}
+            disabled={(product.stock ?? 0) === 0 || addToCartMutation.isPending}
+            className="py-6 border-orange-500 text-orange-600 hover:bg-orange-50"
+          >
+            <ShoppingCart className="w-5 h-5 mr-2" />
+            Ajouter au panier
+          </Button>
+          <Button
             onClick={handleBuyNow}
             disabled={(product.stock ?? 0) === 0 || createOrderMutation.isPending}
             className="flex-1 py-6 bg-gradient-to-r from-orange-500 to-red-500 text-white text-lg"
           >
-            <ShoppingCart className="w-5 h-5 mr-2" />
             Acheter maintenant
           </Button>
         </div>
@@ -458,15 +757,39 @@ export default function Product() {
                   <span>{formatPrice(totalPrice)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Frais plateforme (10%)</span>
+                  <span className="text-gray-600">Frais livraison (CDC, poids)</span>
                   <span className="text-orange-600">
-                    {formatPrice(Math.max(totalPrice * 0.1, 100))}
+                    {formatPrice(Math.round(500 + ((product.weight_kg ?? 1) * quantity) * 150))}
                   </span>
                 </div>
                 <div className="flex justify-between font-bold pt-2 border-t">
                   <span>Total</span>
-                  <span className="text-orange-500">{formatPrice(totalPrice)}</span>
+                  <span className="text-orange-500">
+                    {formatPrice(totalPrice + Math.round(500 + ((product.weight_kg ?? 1) * quantity) * 150))}
+                  </span>
                 </div>
+              </div>
+            </Card>
+
+            {/* Payment method */}
+            <Card className="p-4">
+              <h3 className="font-semibold mb-3">Mode de paiement</h3>
+              <div className="space-y-2">
+                {[
+                  { id: 'orange_money', label: 'Orange Money', emoji: '🟠' },
+                  { id: 'moov_money', label: 'Moov Money', emoji: '🔵' },
+                  { id: 'cod', label: 'Paiement à la livraison', emoji: '💵' }
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setPaymentMethod(m.id)}
+                    className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 text-left transition-colors ${paymentMethod === m.id ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-gray-300'}`}
+                  >
+                    <span className="text-xl">{m.emoji}</span>
+                    <span className="font-medium">{m.label}</span>
+                  </button>
+                ))}
               </div>
             </Card>
 

@@ -17,6 +17,9 @@ export default function Lives() {
   const queryClient = useQueryClient();
   const [user, setUser] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [sortBy, setSortBy] = useState('viewers');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [regionFilter, setRegionFilter] = useState('');
   const [liveForm, setLiveForm] = useState({
     title: '',
     description: '',
@@ -34,15 +37,42 @@ export default function Lives() {
   }, []);
 
   const { data: listResult } = useQuery({
-    queryKey: ['live-streams'],
+    queryKey: ['live-streams', sortBy, categoryFilter, regionFilter],
     queryFn: async () => {
-      const res = await api.live.list({ page: 1, limit: 50 });
+      const params = { page: 1, limit: 50, sortBy };
+      if (categoryFilter) params.category = categoryFilter;
+      if (regionFilter) params.region = regionFilter;
+      const res = await api.live.list(params);
       return res?.streams ?? res?.data?.streams ?? [];
     },
     refetchInterval: 10000
   });
 
+  const { data: discoveryData } = useQuery({
+    queryKey: ['live-discovery', user?.id],
+    queryFn: async () => {
+      const [popular, trending, followed, categories] = await Promise.all([
+        api.live.getDiscovery({ type: 'popular', limit: 10 }),
+        api.live.getDiscovery({ type: 'trending', limit: 10 }),
+        user?.id ? api.live.getDiscovery({ type: 'followed', limit: 10 }) : Promise.resolve({ streams: [] }),
+        api.live.getCategories().catch(() => ({ categories: [] })),
+      ]);
+      return {
+        popular: popular?.streams ?? popular?.data?.streams ?? [],
+        trending: trending?.streams ?? trending?.data?.streams ?? [],
+        followed: followed?.streams ?? followed?.data?.streams ?? [],
+        categories: categories?.categories ?? categories ?? [],
+      };
+    },
+    enabled: true,
+    refetchInterval: 15000
+  });
+
   const liveStreams = listResult ?? [];
+  const popularStreams = discoveryData?.popular ?? [];
+  const trendingStreams = discoveryData?.trending ?? [];
+  const followedStreams = discoveryData?.followed ?? [];
+  const categories = discoveryData?.categories ?? [];
 
   const createLiveMutation = useMutation({
     mutationFn: async (data) => {
@@ -105,6 +135,70 @@ export default function Lives() {
       </div>
 
       <div className="p-4 space-y-6">
+        {/* CDC: Tri + Filtres */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-sm text-gray-500">Trier:</span>
+          {['viewers', 'recent', 'popularity', 'duration'].map((s) => (
+            <button
+              key={s}
+              onClick={() => setSortBy(s)}
+              className={`px-3 py-1 rounded-full text-sm ${sortBy === s ? 'bg-red-500 text-white' : 'bg-white shadow-sm border border-gray-100 text-gray-700'}`}
+            >
+              {s === 'viewers' ? 'Spectateurs' : s === 'recent' ? 'Récent' : s === 'popularity' ? 'Populaire' : 'Durée'}
+            </button>
+          ))}
+        </div>
+
+        {/* CDC: Catégories cliquables */}
+        {categories.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+            <button
+              onClick={() => setCategoryFilter('')}
+              className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 ${!categoryFilter ? 'bg-red-500 text-white' : 'bg-white shadow-sm border border-gray-100 text-gray-700'}`}
+            >
+              Tout
+            </button>
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setCategoryFilter(categoryFilter === c.id ? '' : c.id)}
+                className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 ${categoryFilter === c.id ? 'bg-red-500 text-white' : 'bg-white shadow-sm border border-gray-100 text-gray-700'}`}
+              >
+                <span>{c.icon}</span>
+                {c.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* CDC: Créateurs suivis en live */}
+        {followedStreams.length > 0 && (
+          <div>
+            <h2 className="font-bold text-gray-800 mb-3 flex items-center gap-2">Suivis en direct</h2>
+            <div className="space-y-3">
+              {followedStreams.map((live) => (
+                <Link key={live.id} to={`${createPageUrl('LiveView')}?id=${live.id}`}>
+                  <motion.div whileHover={{ scale: 1.02 }} className="bg-white rounded-xl overflow-hidden shadow-sm">
+                    <div className="relative aspect-video bg-gradient-to-br from-pink-500 to-red-500">
+                      <img src={live.thumbnail_url || 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=600'} className="w-full h-full object-cover" alt="" />
+                      <div className="absolute top-3 left-3 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold flex items-center gap-1 animate-pulse">
+                        <Radio className="w-3 h-3" /> LIVE
+                      </div>
+                      <div className="absolute bottom-3 left-3 bg-black/60 text-white px-2 py-1 rounded text-xs flex items-center gap-1">
+                        <Eye className="w-3 h-3" /> {live.viewers_count}
+                      </div>
+                    </div>
+                    <div className="p-4">
+                      <h3 className="font-semibold text-gray-800 mb-1">{live.title}</h3>
+                      <p className="text-sm text-gray-500">{live.creator_name}</p>
+                    </div>
+                  </motion.div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Create Form */}
         {showCreateForm && (
           <motion.div
@@ -148,15 +242,15 @@ export default function Lives() {
           </motion.div>
         )}
 
-        {/* Active Lives */}
-        {activeLives.length > 0 && (
+        {/* CDC: Trending / Popular - ordonné par spectateurs */}
+        {(popularStreams.length > 0 || activeLives.length > 0) && (
           <div>
             <h2 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
               <Radio className="w-5 h-5 text-red-500 animate-pulse" />
-              En direct maintenant
+              Trending / En direct
             </h2>
             <div className="space-y-3">
-              {activeLives.map((live) => (
+              {(popularStreams.length > 0 ? popularStreams : activeLives).map((live) => (
                 <Link
                   key={live.id}
                   to={`${createPageUrl('LiveView')}?id=${live.id}`}

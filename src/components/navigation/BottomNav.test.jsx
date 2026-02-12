@@ -44,7 +44,7 @@ describe('BottomNav', () => {
 
   it('affiche les onglets principaux', async () => {
     getUnreadCountMock.mockResolvedValueOnce({ count: 0 });
-    renderBottomNav('/Home');
+    renderBottomNav('/home');
 
     expect(await screen.findByText('home')).toBeInTheDocument();
     expect(screen.getByText('discover')).toBeInTheDocument();
@@ -64,5 +64,12 @@ describe('BottomNav', () => {
     renderBottomNav('/Inbox');
 
     expect(await screen.findByText('99+')).toBeInTheDocument();
+  });
+
+  it('affiche l’indicateur actif sur l’onglet courant', async () => {
+    getUnreadCountMock.mockResolvedValueOnce({ count: 0 });
+    renderBottomNav('/home');
+    await screen.findByText('home');
+    expect(screen.getByTestId('active-tab-indicator')).toBeInTheDocument();
   });
 });

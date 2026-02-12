@@ -6,13 +6,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-import { Grid3X3, Bookmark, Heart, ShoppingBag, Play, Star, ArrowLeft, Pencil, Trash2 } from 'lucide-react';
+import { Grid3X3, Bookmark, Heart, ShoppingBag, Play, ArrowLeft, Pencil, Trash2 } from 'lucide-react';
 
 import { motion } from 'framer-motion';
 
 import { Link, useNavigate } from 'react-router-dom';
 
 import { createPageUrl } from "@/utils";
+import { getVideoPlaybackUrl } from "@/lib/utils";
 
 import { toast } from "sonner";
 
@@ -326,7 +327,8 @@ export default function Profile() {
 
           followers: stats?.stats?.followers || stats?.followers_count || stats?.followers || 0, 
 
-          following: stats?.stats?.following || stats?.following_count || stats?.following || 0 
+          following: stats?.stats?.following || stats?.following_count || stats?.following || 0,
+          wonderers: stats?.stats?.wonderers ?? stats?.stats?.followers ?? 0
 
         };
 
@@ -372,31 +374,24 @@ export default function Profile() {
 
 
 
-  // Check if following
-
+  // Sync isFollowing depuis profileUser ou getFollowing (Wonder = Follow synchronisé)
   useEffect(() => {
-
-    if (user && profileUserId && !isOwnProfile) {
-
-      api.users.getFollowing(user.id)
-
-        .then(result => {
-
-          const following = result?.following || (Array.isArray(result) ? result : []);
-
-          setIsFollowing(following.some(f => 
-
-            (typeof f === 'string' ? f === profileUserId : f.following_id === profileUserId || f.id === profileUserId)
-
-          ));
-
-        })
-
-        .catch(() => setIsFollowing(false));
-
+    if (isOwnProfile || !profileUserId) return;
+    if (profileUser?.isFollowing !== undefined) {
+      setIsFollowing(!!profileUser.isFollowing);
+      return;
     }
-
-  }, [user, profileUserId, isOwnProfile]);
+    if (user) {
+      api.users.getFollowing(user.id)
+        .then(result => {
+          const following = result?.following || (Array.isArray(result) ? result : []);
+          setIsFollowing(following.some(f =>
+            (typeof f === 'string' ? f === profileUserId : f.following_id === profileUserId || f.id === profileUserId)
+          ));
+        })
+        .catch(() => setIsFollowing(false));
+    }
+  }, [user, profileUserId, isOwnProfile, profileUser?.isFollowing]);
 
 
 
@@ -516,7 +511,7 @@ export default function Profile() {
 
 
 
-  const handleFollow = async () => {
+  const handleWonder = async () => {
 
     if (!user) {
 
@@ -530,13 +525,31 @@ export default function Profile() {
 
     try {
 
-      await api.users.toggleFollow(profileUserId);
+      const result = await api.users.toggleWonder(profileUserId);
 
-      setIsFollowing(!isFollowing);
+      const inWonder = result?.data?.inWonder ?? result?.inWonder ?? !isFollowing;
+
+      setIsFollowing(inWonder);
+
+      if (inWonder) {
+
+        toast.success('Vous êtes maintenant dans son Wonder ✨');
+
+      }
+
+      if (typeof queryClient?.invalidateQueries === 'function') {
+
+        queryClient.invalidateQueries({ queryKey: ['follow-stats', profileUserId] });
+
+        queryClient.invalidateQueries({ queryKey: ['user-follows', user?.id] });
+
+      }
 
     } catch (error) {
 
-      console.error('Error toggling follow:', error);
+      console.error('Error toggling wonder:', error);
+
+      toast.error('Une erreur est survenue');
 
     }
 
@@ -576,13 +589,13 @@ export default function Profile() {
 
                 <video
 
-                  src={video.video_url}
+                  src={getVideoPlaybackUrl(video.video_url)}
 
                   poster={video.thumbnail_url || undefined}
 
                   className="w-full h-full object-cover"
 
-                  preload="metadata"
+                  preload={video.thumbnail_url ? 'metadata' : 'auto'}
 
                   muted
 
@@ -590,13 +603,9 @@ export default function Profile() {
 
                   onLoadedMetadata={(e) => {
 
-                    // Afficher la première frame de la vidéo si pas de poster
-
-                    /** @type {HTMLVideoElement} */
-
                     const videoEl = e.currentTarget;
 
-                    if (!video.thumbnail_url && videoEl && videoEl.duration) {
+                    if (!video.thumbnail_url && videoEl?.duration) {
 
                       videoEl.currentTime = Math.min(1, videoEl.duration / 10);
 
@@ -606,23 +615,15 @@ export default function Profile() {
 
                   onError={(e) => {
 
-                    // Si la vidéo échoue, afficher une image de fallback
-
-                    /** @type {HTMLVideoElement} */
-
                     const videoEl = e.currentTarget;
 
-                    if (videoEl && videoEl.style) {
+                    if (videoEl?.style) {
 
                       videoEl.style.display = 'none';
 
                       const fallbackImg = videoEl.parentElement?.querySelector('.video-fallback-img');
 
-                      if (fallbackImg && fallbackImg instanceof HTMLElement) {
-
-                        fallbackImg.style.display = 'block';
-
-                      }
+                      if (fallbackImg instanceof HTMLElement) fallbackImg.style.display = 'block';
 
                     }
 
@@ -807,13 +808,15 @@ export default function Profile() {
 
           following: followStats.following,
 
+          wonderers: followStats.wonderers ?? followStats.followers,
+
           likes: totalLikes,
 
           videos: totalVideosCount
 
         }}
 
-        onFollow={handleFollow}
+        onFollow={handleWonder}
 
         onMessage={() => window.location.href = `${createPageUrl('Chat')}?userId=${profileUserId}`}
 
@@ -1030,23 +1033,19 @@ export default function Profile() {
 
                   <video
 
-                    src={featuredVideo.video_url}
+                    src={getVideoPlaybackUrl(featuredVideo.video_url)}
 
                     poster={featuredVideo.thumbnail_url || undefined}
 
                     className="w-full h-full object-cover"
 
-                    preload="metadata"
+                    preload={featuredVideo.thumbnail_url ? 'metadata' : 'auto'}
 
                     muted
 
                     playsInline
 
                     onLoadedMetadata={(e) => {
-
-                      // Afficher la première frame de la vidéo si pas de poster
-
-                      /** @type {HTMLVideoElement} */
 
                       const videoEl = e.currentTarget;
 
@@ -1060,23 +1059,15 @@ export default function Profile() {
 
                     onError={(e) => {
 
-                      // Si la vidéo échoue, afficher une image de fallback
-
-                      /** @type {HTMLVideoElement} */
-
                       const videoEl = e.currentTarget;
 
-                      if (videoEl && videoEl.style) {
+                      if (videoEl?.style) {
 
                         videoEl.style.display = 'none';
 
                         const fallbackImg = videoEl.parentElement?.querySelector('.featured-fallback-img');
 
-                        if (fallbackImg && fallbackImg instanceof HTMLElement) {
-
-                          fallbackImg.style.display = 'block';
-
-                        }
+                        if (fallbackImg instanceof HTMLElement) fallbackImg.style.display = 'block';
 
                       }
 
@@ -1088,15 +1079,7 @@ export default function Profile() {
 
                 {!featuredVideo.video_url && featuredVideo.thumbnail_url && (
 
-                  <img
-
-                    src={featuredVideo.thumbnail_url}
-
-                    alt={featuredVideo.title}
-
-                    className="w-full h-full object-cover"
-
-                  />
+                  <img src={featuredVideo.thumbnail_url} alt={featuredVideo.title} className="w-full h-full object-cover" />
 
                 )}
 
@@ -1132,19 +1115,35 @@ export default function Profile() {
 
           ) : isOwnProfile ? (
 
-            <button
+            <div className="bg-gradient-to-br from-orange-500 via-red-500 to-pink-500 rounded-2xl p-6 text-center text-white shadow-lg">
 
-              onClick={() => setShowFeaturedSelector(true)}
+              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
 
-              className="w-full aspect-video bg-gray-100 rounded-2xl flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-orange-300 transition-colors"
+                <Play className="w-8 h-8" />
 
-            >
+              </div>
 
-              <Star className="w-8 h-8 text-gray-400" />
+              <h3 className="text-xl font-bold mb-2">Choisir une vidéo mise en avant</h3>
 
-              <p className="text-sm text-gray-500">Choisir une vidéo</p>
+              <p className="text-white/90 text-sm mb-6">
 
-            </button>
+                Elle sera affichée en grand sur votre profil
+
+              </p>
+
+              <button
+
+                onClick={() => setShowFeaturedSelector(true)}
+
+                className="bg-white text-orange-500 px-8 py-3.5 rounded-full font-bold hover:bg-gray-50 transition-all transform hover:scale-105 shadow-md"
+
+              >
+
+                Choisir
+
+              </button>
+
+            </div>
 
           ) : null}
 
@@ -1313,6 +1312,11 @@ export default function Profile() {
         videos={videos}
 
         currentFeaturedId={featuredVideo?.id}
+
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['profile-videos', profileUserId] });
+          refetchVideos();
+        }}
 
         _userId={profileUserId}
 
