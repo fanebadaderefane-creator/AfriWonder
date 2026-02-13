@@ -185,16 +185,24 @@ Stripe : `STRIPE_WEBHOOK_SECRET` déjà strict.
 
 | Étape | Commande / action |
 |-------|-------------------|
-| Env prod | `npm run check:prod-env` |
-| Build | `npm run build` |
+| **Setup automatisé** | `npm run setup-production` (build, migrations, dossiers) |
+| **Vérification** | `npm run pre-launch-check` (env, build, tests smoke) |
+| Env prod | `cd backend && npm run check:prod-env` |
+| Build | `npm run build` (backend + frontend) |
 | Migrations | `npx prisma migrate deploy` |
-| Tests | `npm run test` (ou `npm run test:coverage` pour la couverture) |
+| Tests | `npm run test` (backend) |
 | Load test | `npm run load-test` |
-| Cron backup | `setup-cron-backup.sh` |
+| Cron backup | `sudo ./backend/scripts/setup-cron-backup.sh` |
 | PM2 | `pm2 start ecosystem.config.js` |
 | Nginx | Config SSL + reload |
 | Sentry | DSN configuré |
 | UptimeRobot | Health check actif |
+
+**Fichiers créés pour vous :**
+- `env.production.template` — Copier vers `backend/.env`
+- `TODO_MANUEL_USER.md` — Liste des actions manuelles
+- `scripts/pre-launch-check.js` — Vérification avant lancement
+- `scripts/setup-production.js` — Setup automatisé
 
 **Couverture** : seuil 80% configuré. Si CI échoue, exécuter `npm run test:coverage` dans backend pour voir les écarts. Réduire temporairement dans `jest.config.js` (ex. 70%) si nécessaire.
 

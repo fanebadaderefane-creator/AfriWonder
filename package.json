@@ -23,6 +23,8 @@
     "verify-api-sync": "node scripts/verify-api-sync.js",
     "verify-ads-feed": "node scripts/verify-ads-feed-connectivity.js",
     "verify-phase1-pages": "node scripts/verify-phase1-pages.js",
+    "pre-launch-check": "node scripts/pre-launch-check.js",
+    "setup-production": "node scripts/setup-production.js",
     "test:backend:full": "npm run test:coverage --prefix backend",
     "test:all": "npm run test:smoke --prefix backend && npm run test --prefix .",
     "test:ci": "npm run test --prefix backend && npm run test --prefix . && npm run test:e2e",
