@@ -1,211 +1,475 @@
-# AfriWonder
+# AfriWonder 🌍
 
-La première super-app vidéo africaine - Connectant créateurs, commerçants et communauté.
+**La première super-app vidéo africaine** — Connectant créateurs, commerçants et communauté.
+
+[![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org/)
+[![React](https://img.shields.io/badge/React-18-blue.svg)](https://reactjs.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-blue.svg)](https://postgresql.org/)
+[![License](https://img.shields.io/badge/License-Propriétaire-orange.svg)](./LICENSE)
+
+---
+
+## 📋 Table des matières
+
+- [Vue d'ensemble](#-vue-densemble)
+- [Fonctionnalités](#-fonctionnalités)
+- [Stack technique](#-stack-technique)
+- [Prérequis](#-prérequis)
+- [Installation complète](#-installation-complète)
+- [Configuration](#-configuration)
+- [Lancement](#-lancement)
+- [Tests](#-tests)
+- [Structure du projet](#-structure-du-projet)
+- [Collaboration Git](#-collaboration-git)
+- [Dépannage](#-dépannage)
+- [Documentation](#-documentation)
+- [Contact](#-contact)
+
+---
+
+## 🎯 Vue d'ensemble
+
+AfriWonder est une **super-app** développée pour le marché africain, combinant :
+
+- **Vidéo sociale** (style TikTok) avec feed, live streaming, stories
+- **Marketplace e-commerce** avec paiements mobiles (Orange Money, Wave, MTN, Stripe)
+- **Services** (réservation, transport, livraison alimentaire)
+- **Finance** (microcrédit, crowdfunding)
+- **Éducation, emploi, civic** (pétitions, campagnes)
+
+Le projet est **monorepo** : frontend (React/Vite) à la racine, backend (Express/Prisma) dans `backend/`.
+
+---
 
 ## 🚀 Fonctionnalités
 
-- 📹 **Super-app vidéo** (style TikTok) avec algorithmes de recommandation ML
-- 🛒 **Marketplace e-commerce** complet avec gestion de commandes
-- 📺 **Live streaming** avec système de dons et cadeaux
-- 🎮 **Gamification** (badges, points, leaderboard, challenges)
-- 💰 **Microcrédit et finance** intégrés
-- 👥 **Communautés** et événements
-- 💼 **Jobs et services**
-- 🗳️ **Civic** (pétitions, campagnes)
-- 💳 **Paiements mobiles** (Orange Money, MTN Money, Wave, Moov Money)
-- 🌐 **Multilingue** avec support des langues locales africaines
-- 📱 **Optimisé pour connexions lentes** avec mode offline
+| Module | Description |
+|--------|-------------|
+| 📹 **Vidéo** | Feed, upload, likes, commentaires, playlists, challenges |
+| 📺 **Live** | Streaming avec dons, cadeaux, abonnements créateurs |
+| 🛒 **Marketplace** | Produits, panier, checkout, vendeurs, paiements |
+| 💼 **Services** | Réservation, prestataires, disponibilités |
+| 🚗 **Transport** | Courses, chauffeurs |
+| 🍔 **Food** | Restaurants, menus, livraison |
+| 🏥 **Télémedecine** | Rendez-vous, pharmacie |
+| 🏘️ **Immobilier** | Propriétés, annonces |
+| 🎫 **Billettirie** | Événements, billets |
+| 💳 **Finance** | Wallet, microcrédit, crowdfunding |
+| 📰 **Contenu** | Actualités, cours, emplois, civic |
+| 🎮 **Gamification** | Badges, points, leaderboard |
 
-## 🛠️ Stack Technique
+---
+
+## 🛠️ Stack technique
 
 ### Frontend
-- **React 18** - Bibliothèque UI moderne
-- **Vite** - Build tool ultra-rapide
-- **React Router** - Routing
-- **TanStack Query** - Gestion d'état serveur avec cache
-- **Tailwind CSS** - Styling utility-first
-- **Radix UI** - Composants accessibles
-- **Framer Motion** - Animations fluides
+- **React 18** + **Vite 6**
+- **React Router** v6
+- **TanStack Query** (cache & API)
+- **Tailwind CSS** + **Radix UI**
+- **Framer Motion**
+- **Socket.io-client** (temps réel)
 
 ### Backend
-- **Node.js / Express** - API REST
-- **Prisma** - ORM et migrations
-- **PostgreSQL** (Supabase ou autre) - Base de données propre au projet
-- **Socket.io** - Communication temps réel
-- **JWT** - Authentification
+- **Node.js 20+** + **Express**
+- **Prisma** (ORM)
+- **PostgreSQL**
+- **Socket.io** (WebSockets)
+- **JWT** (authentification)
 
-### Outils de Développement
-- **Vitest** - Framework de test
-- **Testing Library** - Tests de composants React
-- **ESLint** - Linting
-- **Prettier** - Formatage de code
+### Outils
+- **Vitest** (tests frontend)
+- **Jest** (tests backend)
+- **ESLint** + **Prettier**
+- **Playwright** (E2E)
 
-## 📦 Installation
+---
 
-### Prérequis
-- Node.js 20+
-- npm ou yarn
+## 📦 Prérequis
 
-### Étapes
+Avant de commencer, assure-toi d'avoir :
 
-1. **Cloner le repository**
+| Outil | Version | Vérification |
+|-------|---------|--------------|
+| **Node.js** | 20+ | `node -v` |
+| **npm** | 10+ | `npm -v` |
+| **Git** | 2.x | `git --version` |
+| **PostgreSQL** | 15+ | `psql --version` |
+| **Redis** (optionnel) | 6+ | `redis-cli ping` |
+
+### Installation PostgreSQL (si nécessaire)
+
+- **Windows** : [PostgreSQL Download](https://www.postgresql.org/download/windows/)
+- **macOS** : `brew install postgresql@15`
+- **Linux** : `sudo apt install postgresql postgresql-contrib` (Ubuntu/Debian)
+
+### Alternative : Supabase (PostgreSQL hébergé)
+
+Tu peux utiliser [Supabase](https://supabase.com) pour une base PostgreSQL gratuite :
+
+1. Créer un projet Supabase
+2. Récupérer l’URL de connexion dans **Settings → Database**
+3. Utiliser cette URL pour `DATABASE_URL`
+
+---
+
+## 📥 Installation complète
+
+### 1. Cloner le repository
+
 ```bash
-git clone <repository-url>
+git clone https://github.com/VOTRE_ORG/AfriWonder.git
 cd AfriWonder
 ```
 
-2. **Installer les dépendances**
+> Remplace `VOTRE_ORG` par l’URL réelle du dépôt GitHub.
+
+### 2. Installer le frontend (racine)
+
 ```bash
 npm install
 ```
 
-3. **Configurer l'environnement**
-```bash
-# Créer .env.local à partir de .env.example
-cp .env.example .env.local
+### 3. Installer le backend
 
-# Remplir les variables dans .env.local
-# VITE_BASE44_APP_ID=your_app_id
-# VITE_API_URL=https://votre-api.com/api
+```bash
+cd backend
+npm install
+cd ..
 ```
 
-4. **Lancer le serveur de développement**
+### 4. Créer la base PostgreSQL
+
+```bash
+# Se connecter à PostgreSQL
+psql -U postgres
+
+# Créer la base
+CREATE DATABASE afriwonder;
+CREATE USER afriwonder_user WITH PASSWORD 'votre_mot_de_passe';
+GRANT ALL PRIVILEGES ON DATABASE afriwonder TO afriwonder_user;
+\q
+```
+
+Ou avec Supabase : la base est déjà créée.
+
+### 5. Configurer les variables d'environnement
+
+Voir la section [Configuration](#-configuration) ci-dessous.
+
+### 6. Migrer la base de données
+
+```bash
+cd backend
+npx prisma generate
+npx prisma migrate deploy
+# Ou en dev : npx prisma migrate dev
+cd ..
+```
+
+### 7. (Optionnel) Seed des données de test
+
+```bash
+cd backend
+npx prisma db seed
+cd ..
+```
+
+---
+
+## ⚙️ Configuration
+
+### Variables d'environnement
+
+Le projet utilise **deux fichiers** `.env` : un pour le frontend, un pour le backend.
+
+#### A. Frontend (racine du projet)
+
+Créer `.env.local` à la racine :
+
+```bash
+cp .env.example .env.local
+```
+
+Éditer `.env.local` et remplir au minimum :
+
+```env
+# API Backend (obligatoire)
+VITE_API_URL=http://localhost:3000/api
+VITE_WS_URL=ws://localhost:3000
+
+# Base44 (optionnel en dev)
+VITE_BASE44_APP_ID=your_app_id_here
+VITE_BASE44_APP_BASE_URL=https://your-app.base44.app
+
+# Optionnel
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_xxx
+```
+
+#### B. Backend (`backend/`)
+
+Créer `backend/.env` :
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+Éditer `backend/.env` avec les valeurs **minimales** pour le développement :
+
+```env
+# ========== OBLIGATOIRE ==========
+DATABASE_URL=postgresql://afriwonder_user:votre_mot_de_passe@localhost:5432/afriwonder
+JWT_SECRET=changez-moi-minimum-32-caracteres-secrets-pour-jwt
+JWT_REFRESH_SECRET=changez-moi-autre-secret-32-caracteres-refresh
+
+# ========== SERVEUR ==========
+PORT=3000
+NODE_ENV=development
+APP_URL=http://localhost:3000
+CORS_ORIGIN=http://localhost:5173
+
+# ========== OAuth (optionnel) ==========
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
+FACEBOOK_APP_ID=
+FACEBOOK_APP_SECRET=
+FACEBOOK_REDIRECT_URI=http://localhost:3000/api/auth/facebook/callback
+
+# ========== Redis (optionnel, pour cache & rate limit) ==========
+REDIS_URL=redis://localhost:6379
+
+# ========== Paiements (optionnel en dev) ==========
+STRIPE_SECRET_KEY=
+ORANGE_MONEY_MERCHANT_ID=
+ORANGE_MONEY_API_KEY=
+```
+
+> Les secrets (`JWT_SECRET`, `JWT_REFRESH_SECRET`) doivent être **uniques** et **longs** (32+ caractères).
+
+Référence complète : [docs/ENV_REFERENCE.md](./docs/ENV_REFERENCE.md)
+
+---
+
+## 🚀 Lancement
+
+### Développement local
+
+Ouvrir **deux terminaux** :
+
+#### Terminal 1 — Backend
+
+```bash
+cd backend
+npm run dev
+```
+
+Le backend écoute sur `http://localhost:3000`.
+
+#### Terminal 2 — Frontend
+
 ```bash
 npm run dev
 ```
 
-L'application sera accessible sur `http://localhost:5173`
+L’application est accessible sur `http://localhost:5173`.
+
+### Build production
+
+```bash
+# Backend
+cd backend
+npm run build
+npm start
+
+# Frontend (dans un autre terminal)
+npm run build
+npm run preview
+```
+
+---
 
 ## 🧪 Tests
 
 ```bash
-npm test              # Lancer tous les tests
-npm run test:watch    # Mode watch (re-exécute les tests à chaque changement)
-npm run test:coverage # Avec couverture de code
-npm run test:ui       # Interface graphique pour les tests
+# Tests frontend (Vitest)
+npm test
+
+# Tests backend (Jest)
+npm run test:backend
+
+# Tous les tests
+npm run test:all
+
+# Couverture
+npm run test:coverage        # frontend
+npm run test:backend:full    # backend
+
+# E2E (Playwright)
+npm run test:e2e
 ```
 
-## 🏗️ Build
+---
 
-```bash
-npm run build         # Build de production
-npm run preview       # Prévisualiser le build
-```
-
-## 📚 Documentation
-
-- [Architecture](./docs/ARCHITECTURE.md) - Architecture du projet
-- [API Documentation](./docs/API.md) - Documentation des endpoints API
-- [Contributing](./docs/CONTRIBUTING.md) - Guide de contribution
-- [Security](./docs/SECURITY.md) - Politique de sécurité
-
-## 🔧 Scripts Disponibles
-
-```bash
-npm run dev           # Serveur de développement
-npm run build         # Build de production
-npm run preview       # Prévisualiser le build
-npm run lint          # Vérifier le code avec ESLint
-npm run lint:fix      # Corriger automatiquement les erreurs ESLint
-npm run format        # Formater le code avec Prettier
-npm run format:check  # Vérifier le formatage
-npm test              # Lancer les tests
-npm run typecheck     # Vérifier les types TypeScript
-```
-
-## 🏗️ Structure du Projet
+## 📁 Structure du projet
 
 ```
 AfriWonder/
-├── src/
-│   ├── api/              # Clients API
-│   ├── components/       # Composants React
-│   │   ├── ui/          # Composants UI de base (shadcn)
-│   │   ├── common/      # Composants communs
-│   │   ├── video/       # Composants vidéo
-│   │   └── ...
-│   ├── pages/           # Pages de l'application
-│   ├── lib/             # Utilitaires
-│   │   ├── logger.js    # Service de logging centralisé
-│   │   ├── validators.js # Schémas de validation Zod
-│   │   └── ...
-│   ├── hooks/           # Hooks React personnalisés
-│   └── utils/           # Fonctions utilitaires
-├── functions/           # Backend functions (TypeScript)
-├── docs/               # Documentation
-├── .github/            # GitHub Actions (CI/CD)
-└── tests/              # Tests
+├── src/                      # Frontend React
+│   ├── api/                  # Clients API
+│   ├── components/           # Composants réutilisables
+│   │   ├── ui/              # shadcn/ui
+│   │   ├── video/           # Vidéo, live
+│   │   ├── marketplace/     # E-commerce
+│   │   └── common/          # Communs
+│   ├── pages/               # Pages (routes)
+│   ├── hooks/               # Hooks React
+│   ├── lib/                 # Utilitaires, AuthContext, etc.
+│   ├── contexts/            # Contextes React
+│   ├── utils/               # Helpers
+│   ├── App.jsx
+│   ├── Layout.jsx
+│   └── main.jsx
+│
+├── backend/                  # Backend Express
+│   ├── prisma/
+│   │   ├── schema.prisma    # Modèles DB
+│   │   ├── migrations/      # Migrations SQL
+│   │   └── seed.ts         # Données de test
+│   ├── src/
+│   │   ├── routes/         # Routes API
+│   │   ├── services/       # Logique métier
+│   │   ├── middleware/     # Auth, rate limit, etc.
+│   │   ├── config/         # Configuration
+│   │   ├── jobs/           # Tâches planifiées
+│   │   ├── app.ts
+│   │   └── index.ts
+│   ├── .env
+│   └── package.json
+│
+├── docs/                     # Documentation
+├── .env.example              # Template frontend
+├── package.json
+├── vite.config.js
+└── README.md
 ```
 
-## 🔒 Sécurité
+---
 
-- Authentification JWT via votre API
-- RBAC (Role-Based Access Control)
-- Validation des entrées avec Zod
-- Chiffrement des données sensibles
-- Conformité PCI DSS pour les paiements
+## 🤝 Collaboration Git
 
-Voir [SECURITY.md](./docs/SECURITY.md) pour plus de détails.
+### Workflow recommandé
 
-## 🤝 Contribution
+1. **Créer une branche** depuis `main` :
 
-Les contributions sont les bienvenues ! Voir [CONTRIBUTING.md](./docs/CONTRIBUTING.md) pour les guidelines.
+   ```bash
+   git checkout main
+   git pull origin main
+   git checkout -b feature/ma-fonctionnalite
+   ```
 
-1. Fork le projet
-2. Créer une branche (`git checkout -b feature/AmazingFeature`)
-3. Commit vos changements (`git commit -m 'feat: Add AmazingFeature'`)
-4. Push vers la branche (`git push origin feature/AmazingFeature`)
-5. Ouvrir une Pull Request
+2. **Développer** et commiter régulièrement :
 
-## 📝 Conventions de Code
+   ```bash
+   git add .
+   git commit -m "feat: ajouter recherche produits"
+   ```
 
-- Utiliser le logger centralisé (`src/lib/logger.js`) au lieu de `console.log`
-- Valider les entrées avec les schémas Zod (`src/lib/validators.js`)
-- Suivre les conventions React (hooks, composants)
-- Écrire des tests pour les nouvelles fonctionnalités
-- Documenter le code complexe
+3. **Pousser** la branche :
 
-## 🚀 Déploiement
+   ```bash
+   git push -u origin feature/ma-fonctionnalite
+   ```
 
-Le projet utilise **votre propre backend** (Express) et **votre propre base de données** (PostgreSQL, ex. Supabase). Les changements pushés sur `main` déclenchent la CI (tests, build) via GitHub Actions.
+4. **Ouvrir une Pull Request** sur GitHub :
+   - Titre clair
+   - Description des changements
+   - Référence aux issues si pertinent
 
-### CI/CD
+### Conventions de commit
 
-Le projet utilise GitHub Actions pour :
-- ✅ Linting automatique
-- ✅ Tests automatiques
-- ✅ Build de vérification
-- ✅ Coverage de code
+| Préfixe | Usage |
+|---------|-------|
+| `feat:` | Nouvelle fonctionnalité |
+| `fix:` | Correction de bug |
+| `docs:` | Documentation |
+| `style:` | Formatage (sans changement de logique) |
+| `refactor:` | Refactoring |
+| `test:` | Tests |
+| `chore:` | Tâches diverses (deps, config) |
 
-## 📊 Performance
+### Avant de push
 
-- Code splitting automatique avec Vite
-- Lazy loading des routes
-- Cache avec React Query
-- Optimisation pour connexions lentes
-- Mode offline avec Service Workers
+```bash
+npm run lint
+npm test
+npm run test:backend
+```
 
-## 🌍 Support Multilingue
+---
 
-AfriWonder supporte plusieurs langues locales africaines. La sélection de langue est sauvegardée et synchronisée sur tous les appareils.
+## 🆘 Dépannage
 
-## 💳 Paiements
+### Erreur `DATABASE_URL` invalide
 
-Intégration avec :
-- Stripe (cartes bancaires internationales)
-- Orange Money
-- MTN Money
-- Wave
-- Moov Money
+- Vérifier que PostgreSQL tourne : `pg_isready -h localhost`
+- Vérifier l’URL dans `backend/.env` : `postgresql://user:pass@host:5432/db`
+
+### Erreur Prisma "schema not found"
+
+```bash
+cd backend
+npx prisma generate
+npx prisma migrate deploy
+```
+
+### Le frontend ne voit pas l’API
+
+- Vérifier `VITE_API_URL` dans `.env.local` : `http://localhost:3000/api`
+- Vérifier que le backend tourne sur le port 3000
+
+### Erreur CORS
+
+- Vérifier `CORS_ORIGIN` dans `backend/.env` : `http://localhost:5173`
+
+### Redis manquant (optionnel)
+
+Si Redis n’est pas installé, le backend peut fonctionner sans (rate limit en mémoire). Pour installer :
+
+- **Windows** : [Redis for Windows](https://github.com/microsoftarchive/redis/releases) ou WSL
+- **macOS** : `brew install redis`
+- **Linux** : `sudo apt install redis-server`
+
+### Port déjà utilisé
+
+- Changer `PORT` dans `backend/.env` (ex. 3001)
+- Changer `VITE_API_URL` et `VITE_WS_URL` dans `.env.local` en conséquence
+
+---
+
+## 📚 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [ARCHITECTURE.md](./docs/ARCHITECTURE.md) | Architecture du projet |
+| [CONTRIBUTING.md](./docs/CONTRIBUTING.md) | Guide de contribution |
+| [ENV_REFERENCE.md](./docs/ENV_REFERENCE.md) | Variables d'environnement |
+| [API.md](./docs/API.md) | Endpoints API |
+| [SECURITY.md](./docs/SECURITY.md) | Sécurité |
+| [AGORA_SETUP.md](./docs/AGORA_SETUP.md) | Configuration live streaming |
+
+---
 
 ## 📄 Licence
 
 Propriétaire - AfriWonder © 2026
 
+---
+
 ## 📧 Contact
 
-- Email : support@afriwonder.app
-- Documentation : voir le dossier `docs/`
+- **Email** : support@afriwonder.app
+- **Documentation** : dossier `docs/`
 
 ---
 
