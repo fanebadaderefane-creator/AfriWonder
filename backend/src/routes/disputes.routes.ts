@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
-import { requireAnyAdmin } from '../middleware/adminRbac.js';
+import { requireAnyAdmin, isAllowedAdminEmail } from '../middleware/adminRbac.js';
 import { param } from '../utils/params.js';
 import disputeService from '../services/dispute.service.js';
 
@@ -42,8 +42,10 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
     if (!['buyer', 'seller', 'admin'].includes(as)) {
       return res.status(400).json({ success: false, error: { message: 'Parametre as invalide' } });
     }
-    if (as === 'admin' && req.user?.role !== 'admin' && req.user?.role !== 'super_admin') {
-      return res.status(403).json({ success: false, error: { message: 'Acces admin requis' } });
+    if (as === 'admin') {
+      if (!isAllowedAdminEmail(req.user?.email) || (req.user?.role !== 'admin' && req.user?.role !== 'super_admin')) {
+        return res.status(403).json({ success: false, error: { message: 'Acces admin requis' } });
+      }
     }
     const status = req.query.status as string | undefined;
     const disputes = await disputeService.listDisputes(userId, {

@@ -814,7 +814,14 @@ function VideoCardContent({
 
         {onTip && (
           <div className="flex flex-col items-center">
-            <button onClick={onTip} className="flex items-center justify-center w-7 h-7">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onTip();
+              }}
+              className="flex items-center justify-center w-7 h-7 touch-manipulation"
+            >
               <DollarSign className="w-6 h-6 text-yellow-400" />
             </button>
             <span className="text-white text-xs font-semibold leading-tight min-h-[16px]"></span>

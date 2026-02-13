@@ -102,34 +102,41 @@ export default function Lives() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Back Button */}
-      <div className="fixed top-4 left-4 z-50">
-        <button
-          onClick={() => {
-            if (window.history.length > 1) {
-              navigate(-1);
-            } else {
-              navigate('/Home');
-            }
-          }}
-          className="w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-gray-800 hover:bg-white transition-all shadow-lg active:scale-95"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-      </div>
-
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40">
-        <div className="flex items-center justify-between px-4 py-3">
-          <h1 className="text-xl font-bold">Lives</h1>
+        <div className="flex items-center gap-3 px-4 py-3">
+          <button
+            onClick={() => {
+              if (window.history.length > 1) {
+                navigate(-1);
+              } else {
+                navigate('/Home');
+              }
+            }}
+            className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-gray-800 hover:bg-gray-100 transition-all active:scale-95"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h1 className="text-xl font-bold flex-1">Lives</h1>
           {user && (
-            <Button
-              onClick={() => setShowCreateForm(!showCreateForm)}
-              className="bg-gradient-to-r from-pink-500 to-red-500 rounded-full"
-              size="sm"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Programmer
-            </Button>
+            <div className="flex gap-2 shrink-0">
+              <Button
+                onClick={() => navigate(createPageUrl('LiveStream'))}
+                className="bg-gradient-to-r from-red-500 to-rose-600 rounded-full animate-pulse"
+                size="sm"
+              >
+                <Radio className="w-4 h-4 mr-2" />
+                Démarrer
+              </Button>
+              <Button
+                onClick={() => setShowCreateForm(!showCreateForm)}
+                variant="outline"
+                className="rounded-full border-pink-200 text-pink-600 hover:bg-pink-50"
+                size="sm"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Programmer
+              </Button>
+            </div>
           )}
         </div>
       </div>
@@ -298,19 +305,39 @@ export default function Lives() {
                   className="bg-white rounded-xl p-4 shadow-sm"
                 >
                   <div className="flex items-start gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white shrink-0">
                       {live.creator_name?.[0]?.toUpperCase()}
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-gray-800">{live.title}</h3>
                       <p className="text-sm text-gray-500">{live.creator_name}</p>
                       <p className="text-xs text-gray-400 mt-1">
-                        {new Date(live.started_at).toLocaleString('fr-FR')}
+                        {new Date(live.scheduled_at || live.started_at).toLocaleString('fr-FR')}
                       </p>
                     </div>
-                    <Badge variant="outline" className="text-orange-500 border-orange-200">
-                      Programmé
-                    </Badge>
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <Badge variant="outline" className="text-orange-500 border-orange-200">
+                        Programmé
+                      </Badge>
+                      {user?.id === live.creator_id && (
+                        <Button
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              await api.live.startScheduled(live.id);
+                              toast.success('Live démarré ! Redirection...');
+                              navigate(`${createPageUrl('LiveStream')}?id=${live.id}`);
+                            } catch (err) {
+                              toast.error(err?.apiMessage || err?.message || 'Erreur');
+                            }
+                          }}
+                          className="bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-full text-xs"
+                        >
+                          <Radio className="w-3 h-3 mr-1" />
+                          Démarrer
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

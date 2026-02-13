@@ -3,11 +3,16 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { 
-  ShoppingBag, Calendar, Radio, GraduationCap, Briefcase,
+  ShoppingBag, Calendar, Radio, Video, GraduationCap, Briefcase,
   Building2, Wallet, Settings, Globe, WifiOff, Users, TrendingUp,
   Shield, HelpCircle, Info, ChevronRight, Sparkles, MapPin, Award, PiggyBank, FileText, Bell, QrCode, Share2, Download, MessageCircle,
   Ticket, Car, Utensils, Smartphone, HeartPulse, Home, ShieldCheck
 } from 'lucide-react';
+
+/** Email autorisé pour le centre de contrôle — seul ce compte voit et accède au dashboard admin */
+const SUPER_ADMIN_EMAIL = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com').toLowerCase();
+
+const isSuperAdmin = (user) => user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
@@ -44,7 +49,8 @@ const menuSections = [
   {
     title: 'Créateurs & Live',
     items: [
-      { id: 'live', label: 'Lives en cours', icon: Radio, page: 'Lives', color: 'bg-pink-100 text-pink-600', badge: 'Live' },
+      { id: 'live', label: 'Regarder les lives', icon: Radio, page: 'Lives', color: 'bg-pink-100 text-pink-600', badge: 'Live' },
+      { id: 'live-stream', label: 'Démarrer un live', icon: Video, page: 'LiveStream', color: 'bg-red-100 text-red-600' },
       { id: 'creator-tools', label: 'Outils créateurs', icon: Sparkles, page: 'CreatorTools', color: 'bg-amber-100 text-amber-600' },
       { id: 'analytics', label: 'Statistiques', icon: TrendingUp, page: 'Analytics', color: 'bg-indigo-100 text-indigo-600' },
     ]
@@ -142,6 +148,30 @@ export default function MenuPlus({ isOpen, onClose, user }) {
 
           {/* Menu content */}
           <div className="flex-1 overflow-y-auto bg-gray-50">
+            {isSuperAdmin(user) && (
+              <div className="py-3 border-b border-orange-200 bg-gradient-to-r from-orange-50 to-red-50">
+                <h4 className="px-4 text-xs font-semibold text-orange-600 uppercase tracking-wider mb-2">
+                  Administrateur
+                </h4>
+                <div className="bg-white mx-4 rounded-xl border-2 border-orange-200 shadow-md overflow-hidden">
+                  <Link
+                    to={createPageUrl('AdminDashboard')}
+                    onClick={onClose}
+                    className="flex items-center gap-4 px-4 py-4 hover:bg-orange-50 transition-colors"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg">
+                      <Shield className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <span className="font-bold text-gray-800 block">Centre de contrôle</span>
+                      <span className="text-xs text-gray-500">Contrôle total AfriWonder</span>
+                    </div>
+                    <Badge className="bg-orange-500 text-white">Admin</Badge>
+                    <ChevronRight className="w-5 h-5 text-gray-400" />
+                  </Link>
+                </div>
+              </div>
+            )}
             {menuSections.map((section, sectionIndex) => (
               <div key={section.title} className="py-3">
                 <h4 className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">

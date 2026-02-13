@@ -74,6 +74,13 @@ class VideoService {
     // Filtre par visibilité
     if (visibility === 'public') {
       where.visibility = 'public';
+    } else if (visibility === 'creator' && creatorId && userId && creatorId === userId) {
+      // Profil propre : inclure public + privé (brouillons) du créateur — vidéos privées = brouillons
+      where.creator_id = creatorId;
+      where.OR = [
+        { visibility: 'public' },
+        { visibility: 'prive' },
+      ];
     } else if (userId) {
       // Si utilisateur connecté, voir aussi ses vidéos privées et celles des abonnements
       where.OR = [
@@ -99,7 +106,7 @@ class VideoService {
       where.video_categories = { some: { category_id } };
     }
     // Filtre par créateur
-    if (creatorId) {
+    if (creatorId && visibility !== 'creator') {
       where.creator_id = creatorId;
     }
 

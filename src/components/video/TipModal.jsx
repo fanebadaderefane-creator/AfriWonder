@@ -44,8 +44,8 @@ export default function TipModal({
     try {
       await onSendTip(finalAmount, selectedMethod);
       setStep('success');
-    } catch (_error) {
-      console.error('Tip failed:', error);
+    } catch (err) {
+      console.error('Tip failed:', err);
     }
     setIsLoading(false);
   };
@@ -58,7 +58,7 @@ export default function TipModal({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }} modal>
       <DialogContent className="sm:max-w-md rounded-3xl p-0 overflow-hidden">
         <DialogTitle className="sr-only">
           {step === 'amount' ? 'Choisir un montant' : step === 'payment' ? 'Choisir le paiement' : 'Confirmation'}

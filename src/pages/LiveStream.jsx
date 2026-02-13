@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, ArrowLeft, Camera, Radio, Eye, Heart, Mic } from 'lucide-react';
 import { toast } from "sonner";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAgoraHost } from '@/hooks/useAgora';
@@ -16,12 +16,15 @@ const categories = ['gaming', 'music', 'education', 'sports', 'art', 'other'];
 
 export default function LiveStreamPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const streamIdFromUrl = searchParams.get('id');
   const queryClient = useQueryClient();
   const _videoRef = useRef(null);
   const localVideoRef = useRef(null);
   const [user, setUser] = useState(null);
   const [step, setStep] = useState('setup'); // 'setup' | 'streaming' | 'ended'
   const [loading, setLoading] = useState(false);
+  const [loadingExisting, setLoadingExisting] = useState(!!streamIdFromUrl);
 
   const [streamData, setStreamData] = useState({
     title: '',
@@ -50,6 +53,50 @@ export default function LiveStreamPage() {
     };
     getUser();
   }, [navigate]);
+
+  // Charger un stream existant (ex: live programmé démarré depuis Lives)
+  useEffect(() => {
+    if (!streamIdFromUrl || !user?.id) return;
+    const loadExisting = async () => {
+      try {
+        let stream = await api.live.getById(streamIdFromUrl);
+        if (!stream) {
+          toast.error('Stream introuvable');
+          navigate(createPageUrl('Lives'));
+          return;
+        }
+        if (stream.creator_id !== user.id) {
+          toast.error('Vous n\'êtes pas le créateur de ce live');
+          navigate(createPageUrl('Lives'));
+          return;
+        }
+        if (stream.status === 'scheduled') {
+          await api.live.startScheduled(streamIdFromUrl);
+          stream = await api.live.getById(streamIdFromUrl);
+        }
+        if (stream.status === 'live') {
+          setLiveStream(stream);
+          setStreamData((prev) => ({
+            ...prev,
+            title: stream.title || prev.title,
+            description: stream.description || prev.description,
+            category: stream.category || prev.category,
+          }));
+          setStep('streaming');
+          toast.success('Live chargé !');
+        } else if (stream.status === 'ended') {
+          toast.error('Ce live est déjà terminé');
+          navigate(createPageUrl('Lives'));
+        }
+      } catch (err) {
+        toast.error(err?.apiMessage || err?.message || 'Erreur');
+        navigate(createPageUrl('Lives'));
+      } finally {
+        setLoadingExisting(false);
+      }
+    };
+    loadExisting();
+  }, [streamIdFromUrl, user?.id, navigate]);
 
   const { data: liveData, refetch: refetchLive } = useQuery({
     queryKey: ['live', liveStream?.id],
@@ -158,9 +205,9 @@ export default function LiveStreamPage() {
     sendChatMutation.mutate();
   };
 
-  if (!user) {
+  if (!user || loadingExisting) {
     return (
-      <div className="h-screen flex items-center justify-center">
+      <div className="h-screen flex items-center justify-center bg-black">
         <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
       </div>
     );

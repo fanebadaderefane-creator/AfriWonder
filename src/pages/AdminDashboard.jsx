@@ -11,7 +11,9 @@ import SettingsPanel from '@/components/admin/SettingsPanel';
 import AuditPanel from '@/components/admin/AuditPanel';
 import LogisticsPanel from '@/components/admin/LogisticsPanel';
 
+const SUPER_ADMIN_EMAIL = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com').toLowerCase();
 const ADMIN_ROLES = ['super_admin', 'admin', 'finance_admin', 'moderation_admin', 'support_admin', 'data_admin'];
+const isAllowedAdmin = (u) => u?.email?.toLowerCase() === SUPER_ADMIN_EMAIL && ADMIN_ROLES.includes(u?.role);
 
 function ActivePanel({ activeTab, user }) {
   switch (activeTab) {
@@ -56,7 +58,7 @@ export default function AdminDashboard() {
     const getUser = async () => {
       try {
         const u = await api.auth.me();
-        if (!u || !ADMIN_ROLES.includes(u.role)) {
+        if (!u || !isAllowedAdmin(u)) {
           navigate('/Home');
           return;
         }

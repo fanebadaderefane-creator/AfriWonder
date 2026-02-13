@@ -27,6 +27,12 @@ JWT_REFRESH_SECRET="votre_refresh_secret_different_du_jwt_secret"
 JWT_REFRESH_EXPIRES_IN="30d"
 
 # ============================================
+# ADMIN (Centre de contrôle)
+# ============================================
+# Email autorisé pour accéder au dashboard admin — seul ce compte peut utiliser le centre de contrôle
+SUPER_ADMIN_EMAIL=fanebadaderefane@gmail.com
+
+# ============================================
 # SERVER
 # ============================================
 PORT=3000

@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-import { Grid3X3, Bookmark, Heart, ShoppingBag, Play, ArrowLeft, Pencil, Trash2 } from 'lucide-react';
+import { Grid3X3, Bookmark, Heart, ShoppingBag, Play, ArrowLeft, Pencil, Trash2, FileText } from 'lucide-react';
 
 import { motion } from 'framer-motion';
 
@@ -141,17 +141,20 @@ export default function Profile() {
 
   const { data: videos = [], isLoading: videosLoading, refetch: refetchVideos } = useQuery({
 
-    queryKey: ['profile-videos', profileUserId],
+    queryKey: ['profile-videos', profileUserId, user?.id],
 
     queryFn: async () => {
 
       if (!profileUserId) return [];
 
-      // Récupérer toutes les vidéos sans limite
+      // Profil propre : visibility='creator' pour inclure les brouillons (vidéos privées)
+      const ownProfile = user?.id === profileUserId;
+      const params = ownProfile
+        ? { creator_id: profileUserId, visibility: 'creator', page: 1, limit: 0 }
+        : { creator_id: profileUserId, page: 1, limit: 0 };
+      const result = await api.videos.list(params);
 
-      const result = await api.entities.Video.filter({ creator_id: profileUserId }, '-created_date', 0);
-
-      return Array.isArray(result) ? result : [];
+      return result?.videos || (Array.isArray(result) ? result : []);
 
     },
 
@@ -505,9 +508,10 @@ export default function Profile() {
 
   
 
-  // Count total videos published
-
-  const totalVideosCount = videos.length;
+  // Publier = visibles (public + abonnes), Brouillons = privé
+  const publishedVideos = videos.filter((v) => v.visibility !== 'prive');
+  const draftVideos = videos.filter((v) => v.visibility === 'prive');
+  const totalVideosCount = publishedVideos.length;
 
 
 
@@ -901,6 +905,18 @@ export default function Profile() {
                 {/* @ts-expect-error - TabsTrigger accepts children via forwardRef */}
                 <TabsTrigger 
 
+                  value="brouillons"
+
+                  className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-orange-500"
+
+                >
+
+                  <FileText className="w-5 h-5" />
+
+                </TabsTrigger>
+                {/* @ts-expect-error - TabsTrigger accepts children via forwardRef */}
+                <TabsTrigger 
+
                   value="saved"
 
                   className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-orange-500"
@@ -955,7 +971,7 @@ export default function Profile() {
 
       {/* Call to Action - When no videos */}
 
-      {activeTab === 'videos' && videos.length === 0 && isOwnProfile && (
+      {activeTab === 'videos' && publishedVideos.length === 0 && !videosLoading && isOwnProfile && (
 
         <div className="p-4 pb-8">
 
@@ -1169,11 +1185,35 @@ export default function Profile() {
 
             </div>
 
-          ) : videos.length > 0 ? (
+          ) : publishedVideos.length > 0 ? (
 
-            <VideoGrid videos={videos} isOwnProfile={isOwnProfile} onDeleteVideo={handleDeleteVideo} />
+            <VideoGrid videos={publishedVideos} isOwnProfile={isOwnProfile} onDeleteVideo={handleDeleteVideo} />
 
           ) : null
+
+        )}
+
+
+
+        {activeTab === 'brouillons' && isOwnProfile && (
+
+          draftVideos.length > 0 ? (
+
+            <VideoGrid videos={draftVideos} isOwnProfile={true} onDeleteVideo={handleDeleteVideo} />
+
+          ) : (
+
+            <div className="text-center py-16">
+
+              <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+
+              <p className="text-gray-500">Aucun brouillon</p>
+
+              <p className="text-gray-400 text-sm mt-1">Les vidéos en privé apparaissent ici</p>
+
+            </div>
+
+          )
 
         )}
 

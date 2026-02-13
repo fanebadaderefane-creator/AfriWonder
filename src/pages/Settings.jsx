@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useTheme } from 'next-themes';
 import { 
   ArrowLeft, Camera, User, Bell, Shield, Globe, Moon, Sun, Monitor,
-  HelpCircle, LogOut, ChevronRight, Wifi, WifiOff, Smartphone, MapPin
+  HelpCircle, LogOut, ChevronRight, Wifi, WifiOff, Smartphone, MapPin, ShieldCheck
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from "sonner";
@@ -224,6 +224,25 @@ export default function Settings() {
               );
             })}
           </div>
+
+          {/* Admin - Centre de contrôle (réservé à l'email SUPER_ADMIN) */}
+          {user?.email?.toLowerCase() === (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com').toLowerCase() && (
+            <motion.button
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              onClick={() => navigate(createPageUrl('AdminDashboard'))}
+              className="w-full flex items-center gap-4 p-4 bg-gradient-to-r from-orange-50 to-red-50 rounded-2xl border-2 border-orange-200"
+            >
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
+                <ShieldCheck className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1 text-left">
+                <span className="font-bold text-gray-800 block">Centre de contrôle</span>
+                <span className="text-xs text-gray-500">Contrôle total AfriWonder</span>
+              </div>
+              <ChevronRight className="w-5 h-5 text-orange-500" />
+            </motion.button>
+          )}
 
           {/* Logout */}
           <button

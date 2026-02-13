@@ -170,8 +170,9 @@ export default function VideoView() {
         onMuteToggle={() => setIsMuted(!isMuted)}
         onLike={() => likeMutation.mutate()}
         onComment={() => setShowComments(true)}
-        _onShare={() => setShowShare(true)}
+        onShare={() => setShowShare(true)}
         onSave={() => saveMutation.mutate()}
+        onTip={() => setShowTip(true)}
         onProfileClick={(creatorId) => {
           navigate(`${createPageUrl('Profile')}?_userId=${creatorId}`);
         }}

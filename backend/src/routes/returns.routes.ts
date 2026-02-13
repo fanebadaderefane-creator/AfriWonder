@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
+import { isAllowedAdminEmail } from '../middleware/adminRbac.js';
 import returnService from '../services/return.service.js';
 
 const router = Router();
@@ -28,6 +29,9 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
     const role = req.user?.role || 'user';
     const scopeRaw = typeof req.query.scope === 'string' ? req.query.scope : 'buyer';
     const scope = scopeRaw === 'admin' || scopeRaw === 'seller' ? scopeRaw : 'buyer';
+    if (scope === 'admin' && !isAllowedAdminEmail(req.user?.email)) {
+      return res.status(403).json({ success: false, error: { message: 'Acces admin requis' } });
+    }
 
     const returns = await returnService.listReturns(userId, role, scope);
     res.json({ success: true, data: returns });

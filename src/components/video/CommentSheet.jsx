@@ -471,7 +471,7 @@ export default function CommentSheet({
 
             size="icon"
 
-            onClick={onTip}
+            onClick={(e) => { e?.stopPropagation?.(); onTip?.(); }}
 
             className="flex-shrink-0 border-orange-200 text-orange-500 hover:bg-orange-50"
 

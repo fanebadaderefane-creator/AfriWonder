@@ -37,7 +37,7 @@ export default function BottomNav() {
 
     { id: 'create', icon: PlusSquare, label: '', page: 'Create', isCreate: true },
 
-    { id: 'live', icon: Radio, label: 'Live', page: 'LiveStream' },
+    { id: 'live', icon: Radio, label: 'Live', page: 'Lives' },
 
     { id: 'inbox', icon: MessageSquare, label: t('inbox'), page: 'Inbox' },
 

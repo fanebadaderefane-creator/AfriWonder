@@ -1244,7 +1244,7 @@ export default function Create() {
 
                   whileTap={{ scale: 0.98 }}
 
-                  onClick={() => navigate(createPageUrl('StartLive'))}
+                  onClick={() => navigate(createPageUrl('LiveStream'))}
 
                   className="w-full p-6 rounded-2xl bg-white/10 text-white flex items-center gap-4 border border-white/20"
 
@@ -1948,11 +1948,11 @@ export default function Create() {
 
             exit={{ opacity: 0, x: -100 }}
 
-            className="h-screen flex flex-col"
+            className="h-screen flex flex-col min-h-0"
 
           >
 
-            <div className="flex items-center justify-between p-4">
+            <div className="flex-shrink-0 flex items-center justify-between p-4">
 
               <Button
 
@@ -1996,7 +1996,7 @@ export default function Create() {
 
 
 
-            <div className="flex-1 p-4 bg-zinc-900 overflow-y-auto">
+            <div className="flex-1 min-h-0 p-4 bg-zinc-900 overflow-y-auto overflow-x-hidden overscroll-contain">
 
               <VideoEditor
 
