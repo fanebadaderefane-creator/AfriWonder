@@ -1,6 +1,15 @@
 import { Page } from '@playwright/test';
 
 /**
+ * Attend que le contenu React soit visible dans #root.
+ * Utilise #root div (premier div descendant) au lieu de #root * pour éviter
+ * de matcher une balise <script> injectée par Vite (hidden).
+ */
+export async function waitForAppVisible(page: Page, timeout = 25000): Promise<void> {
+  await page.locator('#root div').first().waitFor({ state: 'visible', timeout });
+}
+
+/**
  * Wait for any full-screen overlay (modal backdrop, cookie banner container) to be hidden
  * so it doesn't intercept clicks (e.g. on "S'inscrire"). Call before critical clicks if needed.
  */

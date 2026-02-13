@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
   ArrowLeft, BarChart3, Users, Package, Video, ShoppingBag, Flag, AlertCircle, Settings,
-  Shield, Activity, Search, DollarSign, TrendingUp, FileText, Truck, RotateCcw,
+  Shield, Activity, Search, DollarSign, TrendingUp, FileText, Truck, RotateCcw, Megaphone,
 } from 'lucide-react';
 import PlatformHealth from './PlatformHealth';
 
@@ -14,6 +14,7 @@ const TABS = [
   { id: 'videos', label: 'Vidéos', icon: Video },
   { id: 'orders', label: 'Commandes', icon: Package },
   { id: 'sellers', label: 'Vendeurs', icon: ShoppingBag },
+  { id: 'campagnes', label: 'Campagnes pub', icon: Megaphone },
   { id: 'finance', label: 'Finance', icon: DollarSign },
   { id: 'reports', label: 'Signalements', icon: Flag },
   { id: 'disputes', label: 'Litiges', icon: AlertCircle },
@@ -26,9 +27,9 @@ const TABS = [
 
 const ROLE_ACCESS = {
   super_admin: new Set(TABS.map((t) => t.id)),
-  admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'reports', 'disputes', 'returns', 'finance', 'logistics', 'analytics', 'audit', 'settings']),
-  finance_admin: new Set(['overview', 'finance', 'orders', 'audit', 'logistics']),
-  moderation_admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'reports', 'disputes', 'returns', 'logistics']),
+  admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'campagnes', 'reports', 'disputes', 'returns', 'finance', 'logistics', 'analytics', 'audit', 'settings']),
+  finance_admin: new Set(['overview', 'finance', 'orders', 'audit', 'logistics', 'campagnes']),
+  moderation_admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'campagnes', 'reports', 'disputes', 'returns', 'logistics']),
   support_admin: new Set(['overview', 'users', 'disputes', 'returns', 'reports', 'logistics']),
   data_admin: new Set(['overview', 'analytics', 'audit', 'orders', 'users', 'logistics']),
 };

@@ -15,6 +15,18 @@ vi.mock('@/contexts/MarketplaceCurrencyContext', () => ({
   MarketplaceCurrencyProvider: ({ children }) => <>{children}</>,
 }));
 
+vi.mock('@/lib/AuthContext', () => ({
+  useAuth: () => ({ user: { id: '1', email: 'test@test.com' } }),
+}));
+
+vi.mock('@/components/navigation/MenuPlus', () => ({
+  default: () => null,
+}));
+
+vi.mock('@/components/navigation/GlobalMenuButton', () => ({
+  default: () => null,
+}));
+
 vi.mock('@/components/common/OfflineIndicator', () => ({
   default: () => <div data-testid="offline-indicator" />,
 }));

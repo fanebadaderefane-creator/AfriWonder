@@ -8,7 +8,7 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import app from '../app.js';
-import { prisma } from './setup.js';
+import prisma from '../config/database.js';
 import * as liveReminder from '../jobs/liveScheduledReminder.job.js';
 import * as moderationSanctions from '../services/moderationSanctions.service.js';
 
@@ -74,9 +74,13 @@ describe('CDC Live Streaming Mali', () => {
       const stream = await prisma.liveStream.create({
         data: {
           creator_id: creator.id,
+          creator_name: creator.full_name || creator.username || 'CDC Creator',
           title: 'CDC Test Live',
           status: 'scheduled',
           scheduled_at: in10Min,
+          stream_url: `https://test.live/stream-${creator.id}`,
+          room_id: `room-${creator.id}-${Date.now()}`,
+          tags: [],
         },
       });
 
@@ -103,8 +107,8 @@ describe('CDC Live Streaming Mali', () => {
 
       await prisma.notification.deleteMany({ where: { reference_id: stream.id } });
       await prisma.follow.deleteMany({ where: { following_id: creator.id } });
-      await prisma.liveStream.delete({ where: { id: stream.id } });
-      await prisma.user.delete({ where: { id: creator.id } });
+      await prisma.liveStream.deleteMany({ where: { id: stream.id } });
+      await prisma.user.deleteMany({ where: { id: creator.id } });
     });
   });
 
@@ -206,7 +210,7 @@ describe('CDC Live Streaming Mali', () => {
         expect(e.message).toMatch(/délai|ne peut être traité/);
       }
 
-      await prisma.withdrawal.delete({ where: { id: withdrawal.id } });
+      await prisma.withdrawal.deleteMany({ where: { id: withdrawal.id } });
     });
   });
 });

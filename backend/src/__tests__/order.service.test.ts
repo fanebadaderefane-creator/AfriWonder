@@ -6,9 +6,11 @@
  * Configurer DATABASE_URL dans .env.test
  */
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { prisma } from './setup.js';
+import prisma from '../config/database.js';
 import orderService from '../services/order.service.js';
 import escrowService from '../services/escrow.service.js';
+
+const PLATFORM_USER_ID = process.env.PLATFORM_USER_ID || '00000000-0000-0000-0000-000000000000';
 
 describe('OrderService', () => {
   // IDs de test réutilisables
@@ -18,7 +20,8 @@ describe('OrderService', () => {
   let testCartId: string;
 
   beforeEach(async () => {
-    // Nettoyer les données de test précédentes (dans l'ordre des dépendances)
+    const unique = `order-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // Nettoyer les données de test précédentes (garder l'utilisateur plateforme)
     await prisma.inventoryLog.deleteMany();
     await prisma.orderItem.deleteMany();
     await prisma.order.deleteMany();
@@ -27,13 +30,13 @@ describe('OrderService', () => {
     await prisma.product.deleteMany();
     await prisma.sellerWallet.deleteMany();
     await prisma.sellerProfile.deleteMany();
-    await prisma.user.deleteMany();
+    await prisma.user.deleteMany({ where: { id: { not: PLATFORM_USER_ID } } });
 
     // Créer un utilisateur de test
     const testUser = await prisma.user.create({
       data: {
-        username: 'testuser',
-        email: 'test@example.com',
+        username: `testuser-${unique}`,
+        email: `test-${unique}@example.com`,
         password_hash: 'hashed_password',
         full_name: 'Test User',
       },
@@ -43,8 +46,8 @@ describe('OrderService', () => {
     // Créer un vendeur de test
     const sellerUser = await prisma.user.create({
       data: {
-        username: 'testseller',
-        email: 'seller@example.com',
+        username: `testseller-${unique}`,
+        email: `seller-${unique}@example.com`,
         password_hash: 'hashed_password',
         full_name: 'Test Seller',
       },
@@ -92,30 +95,11 @@ describe('OrderService', () => {
     });
     testCartId = testCart.id;
 
-    // Créer un utilisateur plateforme pour les tests confirmPayment
-    const platformUserId = process.env.PLATFORM_USER_ID || '00000000-0000-0000-0000-000000000000';
-    try {
-      await prisma.user.create({
-        data: {
-          id: platformUserId,
-          username: 'platform',
-          email: 'platform@afriwonder.com',
-          password_hash: 'platform_hash',
-          full_name: 'Platform User',
-        },
-      });
-    } catch (err: any) {
-      // L'utilisateur existe peut-être déjà, ignorer l'erreur
-      if (!err.message?.includes('Unique constraint')) {
-        throw err;
-      }
-    }
-
-    // Créer un wallet pour la plateforme
+    // Créer un wallet pour la plateforme (utilisateur déjà créé par setup)
     try {
       await prisma.wallet.create({
         data: {
-          user_id: platformUserId,
+          user_id: PLATFORM_USER_ID,
           balance: 0,
         },
       });
@@ -128,7 +112,7 @@ describe('OrderService', () => {
   });
 
   afterEach(async () => {
-    // Nettoyer après chaque test (dans l'ordre des dépendances)
+    // Nettoyer après chaque test (garder l'utilisateur plateforme)
     await prisma.inventoryLog.deleteMany();
     await prisma.orderItem.deleteMany();
     await prisma.order.deleteMany();
@@ -137,7 +121,7 @@ describe('OrderService', () => {
     await prisma.product.deleteMany();
     await prisma.sellerWallet.deleteMany();
     await prisma.sellerProfile.deleteMany();
-    await prisma.user.deleteMany();
+    await prisma.user.deleteMany({ where: { id: { not: PLATFORM_USER_ID } } });
   });
 
   describe('createFromCart', () => {

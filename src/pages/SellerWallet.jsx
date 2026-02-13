@@ -115,10 +115,10 @@ export default function SellerWallet() {
         {/* Balance Card */}
         <Card className="p-6 bg-gradient-to-br from-green-500 to-emerald-600 text-white">
           <p className="text-white/80 mb-2">Solde disponible</p>
-          <p className="text-4xl font-bold mb-4">{wallet.balance.toLocaleString()} FCFA</p>
+          <p className="text-4xl font-bold mb-4">{(wallet?.balance ?? 0).toLocaleString()} FCFA</p>
           <Button
             onClick={() => setShowWithdraw(true)}
-            disabled={wallet.balance < 1000}
+            disabled={(wallet?.balance ?? 0) < 1000}
             className="w-full bg-white text-green-600 hover:bg-gray-100"
           >
             <ArrowDownToLine className="w-4 h-4 mr-2" />
@@ -131,17 +131,17 @@ export default function SellerWallet() {
           <Card className="p-4 text-center">
             <Clock className="w-5 h-5 text-orange-500 mx-auto mb-2" />
             <p className="text-xs text-gray-500 mb-1">En attente</p>
-            <p className="font-bold">{wallet.pending_balance.toLocaleString()}</p>
+            <p className="font-bold">{(wallet?.pending_balance ?? 0).toLocaleString()}</p>
           </Card>
           <Card className="p-4 text-center">
             <TrendingUp className="w-5 h-5 text-green-500 mx-auto mb-2" />
             <p className="text-xs text-gray-500 mb-1">Total gagné</p>
-            <p className="font-bold">{wallet.total_earned.toLocaleString()}</p>
+            <p className="font-bold">{(wallet?.total_earned ?? 0).toLocaleString()}</p>
           </Card>
           <Card className="p-4 text-center">
             <ArrowDownToLine className="w-5 h-5 text-blue-500 mx-auto mb-2" />
             <p className="text-xs text-gray-500 mb-1">Retiré</p>
-            <p className="font-bold">{wallet.total_withdrawn.toLocaleString()}</p>
+            <p className="font-bold">{(wallet?.total_withdrawn ?? 0).toLocaleString()}</p>
           </Card>
         </div>
 

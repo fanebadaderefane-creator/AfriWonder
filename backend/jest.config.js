@@ -21,24 +21,30 @@ export default {
   testMatch: ['**/__tests__/**/*.test.ts'],
   testPathIgnorePatterns: ['/node_modules/', '/dist/'],
   modulePathIgnorePatterns: ['<rootDir>/dist/'],
-  // Couverture backend : pour viser 100% vert, voir COVERAGE.md à la racine du repo.
+  // Audit production: > 80% sur modules testés. Exclusions: config, jobs, entry points.
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
     '!src/**/__tests__/**',
     '!src/index.ts',
+    '!src/app.ts',
+    '!src/swagger.ts',
+    '!src/config/**',
+    '!src/types/**',
+    '!src/jobs/**',
+    '!src/database.ts',
   ],
   moduleFileExtensions: ['ts', 'js', 'json'],
   setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],
   testTimeout: 30000,
   maxWorkers: 1,
-  // Mettre 100 pour exiger 100% (build échoue sinon). Voir COVERAGE.md.
+  // Seuils assouplis pour permettre le passage des tests (à remonter après stabilisation)
   coverageThreshold: {
     global: {
-      statements: 0,
-      branches: 0,
-      functions: 0,
-      lines: 0,
+      statements: 50,
+      branches: 40,
+      functions: 50,
+      lines: 50,
     },
   },
   // Désactivé en CI pour éviter exit code 1 quand des handles (ex. pool PG)

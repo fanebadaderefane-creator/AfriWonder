@@ -91,6 +91,15 @@ describe('verification.service', () => {
       .spyOn(prisma.sellerProfile, 'updateMany')
       .mockResolvedValueOnce({ count: 1 } as any);
 
+    const userUpdateSpy = jest
+      .spyOn(prisma.user, 'update')
+      .mockResolvedValueOnce({ id: 'u1', is_verified: true } as any);
+
+    const notifMod = await import('../notification.service.js');
+    const notifSpy = jest
+      .spyOn(notifMod.default, 'create')
+      .mockResolvedValueOnce({} as any);
+
     const res = await service.updateStatusByAdmin('v1', 'admin-1', {
       status: 'approved',
     });
@@ -98,6 +107,8 @@ describe('verification.service', () => {
     expect(res.status).toBe('approved');
     expect(updateSpy).toHaveBeenCalled();
     expect(sellerSpy).toHaveBeenCalled();
+    expect(userUpdateSpy).toHaveBeenCalled();
+    expect(notifSpy).toHaveBeenCalled();
   });
 });
 

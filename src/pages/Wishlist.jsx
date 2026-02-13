@@ -58,7 +58,7 @@ export default function Wishlist() {
 
   const removeProductMutation = useMutation({
     mutationFn: async (productId) => {
-      const updated = wishlist.products.filter(p => p.product_id !== productId);
+      const updated = (wishlist?.products ?? []).filter(p => p.product_id !== productId);
       await api.entities.Wishlist.update(wishlist.id, { products: updated });
     },
     onSuccess: () => {
@@ -174,7 +174,7 @@ export default function Wishlist() {
         </Card>
 
         {/* Products */}
-        {wishlist.products?.length === 0 ? (
+        {(wishlist?.products?.length ?? 0) === 0 ? (
           <div className="text-center py-16">
             <Heart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-500 mb-4">Votre liste d'envies est vide</p>
@@ -184,7 +184,7 @@ export default function Wishlist() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3">
-            {wishlist.products.map((product) => (
+            {(wishlist?.products ?? []).map((product) => (
               <Card key={product.product_id} className="p-4">
                 <div className="flex gap-3">
                   <img

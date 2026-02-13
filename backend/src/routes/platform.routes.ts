@@ -2,6 +2,15 @@ import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { requireAnyAdmin } from '../middleware/adminRbac.js';
 import platformRevenueService from '../services/platformRevenue.service.js';
+import featureFlagService from '../services/featureFlag.service.js';
+
+/** Clés de feature flags pour modules Phase 2 (cachés au lancement, réactivables en 1 clic) */
+const LAUNCH_FEATURE_KEYS = [
+  'FEATURE_TRANSPORT', 'FEATURE_FOOD', 'FEATURE_TELEMEDECINE', 'FEATURE_REALESTATE',
+  'FEATURE_INSURANCE', 'FEATURE_UTILITIES', 'FEATURE_TICKETING', 'FEATURE_SERVICES',
+  'FEATURE_EDUCATION', 'FEATURE_JOBS', 'FEATURE_CIVIC', 'FEATURE_CROWDFUNDING',
+  'FEATURE_MICROCREDIT', 'FEATURE_NEWS', 'FEATURE_OFFLINE', 'FEATURE_QRCODE',
+];
 
 const router = Router();
 
@@ -16,6 +25,19 @@ router.get('/config', (_req, res) => {
       environment: process.env.NODE_ENV || 'development',
     },
   });
+});
+
+// GET /api/platform/feature-flags — Public, pour le frontend (menu, visibilité modules)
+router.get('/feature-flags', async (_req, res, next) => {
+  try {
+    const flags: Record<string, boolean> = {};
+    for (const key of LAUNCH_FEATURE_KEYS) {
+      flags[key] = await featureFlagService.isEnabled(key);
+    }
+    res.json({ success: true, data: flags });
+  } catch (error: any) {
+    next(error);
+  }
 });
 
 // Toutes les routes sensibles ci-dessous nécessitent une authentification admin.
@@ -49,7 +71,7 @@ router.get('/revenue/:type', authenticate, requireAnyAdmin, async (req: AuthRequ
     const end = endDate ? new Date(endDate as string) : undefined;
 
     const revenue = await platformRevenueService.getRevenueByType(
-      type as 'video_tips' | 'live_gifts' | 'marketplace' | 'subscriptions',
+      type as 'video_tips' | 'live_gifts' | 'marketplace' | 'subscriptions' | 'ads' | 'gifts_tips',
       start,
       end
     );

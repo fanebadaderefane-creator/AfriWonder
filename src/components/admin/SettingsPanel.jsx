@@ -4,7 +4,8 @@ import { api } from '@/api/expressClient';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Settings, Shield, DollarSign, Download, Mail, AlertTriangle } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Settings, Shield, DollarSign, Download, Mail, AlertTriangle, ToggleLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function SettingsPanel({ userRole }) {
@@ -25,6 +26,21 @@ export default function SettingsPanel({ userRole }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-kill-switch'] });
       toast.success('Parametres mis a jour');
+    },
+    onError: (e) => toast.error(e?.apiMessage || 'Erreur'),
+  });
+
+  const { data: featureFlags = [] } = useQuery({
+    queryKey: ['admin-feature-flags'],
+    queryFn: () => api.admin.getFeatureFlags(),
+  });
+
+  const flagMutation = useMutation({
+    mutationFn: ({ key, enabled }) => api.admin.setFeatureFlag(key, enabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-feature-flags'] });
+      queryClient.invalidateQueries({ queryKey: ['platform-feature-flags'] });
+      toast.success('Module activé/désactivé');
     },
     onError: (e) => toast.error(e?.apiMessage || 'Erreur'),
   });
@@ -78,6 +94,26 @@ export default function SettingsPanel({ userRole }) {
                 <input type="checkbox" checked={emergencyMode} disabled={!isSuperAdmin} onChange={(e) => handleKillSwitch('emergency_mode', e.target.checked)} />
                 Mode urgence (tout coupe)
               </label>
+            </div>
+          </div>
+
+          <div className="p-4 bg-white/5 rounded-lg">
+            <h4 className="font-semibold mb-2 flex items-center gap-2"><ToggleLeft className="w-4 h-4" /> Modules (Phase 2) — Réactiver en 1 clic</h4>
+            <p className="text-sm text-white/60 mb-3">Modules cachés au lancement. Activer pour les afficher dans le menu.</p>
+            {!isSuperAdmin && (
+              <p className="text-sm text-amber-300/80 mb-2">Seul le super_admin peut activer/désactiver les modules.</p>
+            )}
+            <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${!isSuperAdmin ? 'opacity-60 pointer-events-none' : ''}`}>
+              {(featureFlags || []).map((f) => (
+                <label key={f.key} className="flex items-center justify-between gap-2 p-2 bg-white/5 rounded-lg">
+                  <span className="text-sm text-white/80 truncate">{f.description || f.key}</span>
+                  <Switch
+                    checked={!!f.enabled}
+                    disabled={!isSuperAdmin}
+                    onCheckedChange={(checked) => isSuperAdmin && flagMutation.mutate({ key: f.key, enabled: checked })}
+                  />
+                </label>
+              ))}
             </div>
           </div>
 

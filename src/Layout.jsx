@@ -2,14 +2,28 @@ import React, { useEffect } from 'react';
 import { Toaster } from "@/components/ui/sonner";
 import TranslationProvider from "@/components/common/TranslationProvider";
 import { MarketplaceCurrencyProvider } from "@/contexts/MarketplaceCurrencyContext";
+import { AppMenuProvider, useAppMenu } from "@/contexts/AppMenuContext";
+import { useAuth } from "@/lib/AuthContext";
 import OfflineIndicator from "@/components/common/OfflineIndicator";
 import PWAInstallBanner from "@/components/pwa/PWAInstallBanner";
 import PWAUpdateToast from "@/components/pwa/PWAUpdateToast";
+import MenuPlus from "@/components/navigation/MenuPlus";
+import GlobalMenuButton from "@/components/navigation/GlobalMenuButton";
 
 export default function Layout({ children, currentPageName }) {
+  return (
+    <AppMenuProvider>
+      <LayoutContent currentPageName={currentPageName}>{children}</LayoutContent>
+    </AppMenuProvider>
+  );
+}
+
+function LayoutContent({ children, currentPageName }) {
   // Pages that should have no padding and full screen
   const fullScreenPages = ['Home', 'Create'];
   const isFullScreen = fullScreenPages.includes(currentPageName);
+  const { user } = useAuth();
+  const { isOpen: isMenuOpen, closeMenu } = useAppMenu();
 
   useEffect(() => {
     // Disable pull-to-refresh and elastic bounce
@@ -334,6 +348,18 @@ export default function Layout({ children, currentPageName }) {
           },
         }}
       />
+
+      {/* Menu global accessible depuis toutes les pages */}
+      {user && (
+        <>
+          <GlobalMenuButton />
+          <MenuPlus
+            isOpen={isMenuOpen}
+            onClose={closeMenu}
+            user={user}
+          />
+        </>
+      )}
     </div>
   );
 }

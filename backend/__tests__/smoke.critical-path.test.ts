@@ -6,7 +6,7 @@
 import request from 'supertest';
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import app from '../src/app.js';
-import { prisma } from './setup.js';
+import prisma from '../src/config/database.js';
 import bcrypt from 'bcryptjs';
 
 describe('Smoke — Parcours critique', () => {

@@ -41,16 +41,17 @@ find "$BACKUP_DIR" -name "afriwonder_backup_*.sql.gz" -mtime +$RETENTION_DAYS -d
 
 echo "🧹 Anciens backups supprimés (> $RETENTION_DAYS jours)"
 
-# Upload vers S3/R2 (optionnel)
-if [ -n "$R2_ENDPOINT" ] && [ -n "$R2_ACCESS_KEY_ID" ]; then
+# Upload vers S3/R2 (optionnel) - AWS CLI ou rclone requis
+BACKUP_GZ="${BACKUP_FILE}.gz"
+if [ -n "$R2_ENDPOINT" ] && [ -n "$R2_ACCESS_KEY_ID" ] && [ -n "$R2_BUCKET_NAME" ]; then
   echo "☁️ Upload vers Cloudflare R2..."
-  
-  # Utiliser rclone ou aws cli
-  aws s3 cp "$BACKUP_DIR/$BACKUP_FILE.gz" \
-    "s3://$R2_BUCKET_NAME/backups/$BACKUP_FILE.gz" \
-    --endpoint-url="$R2_ENDPOINT"
-  
-  echo "✅ Backup uploadé vers cloud"
+  if command -v aws &>/dev/null; then
+    AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
+      aws s3 cp "$BACKUP_DIR/$BACKUP_GZ" "s3://$R2_BUCKET_NAME/backups/$BACKUP_GZ" \
+      --endpoint-url="$R2_ENDPOINT" --region auto && echo "✅ Backup uploadé vers R2" || echo "⚠️ Échec upload R2"
+  else
+    echo "⚠️ AWS CLI non installé - backup local uniquement (pip install awscli)"
+  fi
 fi
 
 # Notifier admin (optionnel)

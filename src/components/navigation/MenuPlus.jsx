@@ -6,16 +6,18 @@ import {
   ShoppingBag, Calendar, Radio, Video, GraduationCap, Briefcase,
   Building2, Wallet, Settings, Globe, WifiOff, Users, TrendingUp,
   Shield, HelpCircle, Info, ChevronRight, Sparkles, MapPin, Award, PiggyBank, FileText, Bell, QrCode, Share2, Download, MessageCircle,
-  Ticket, Car, Utensils, Smartphone, HeartPulse, Home, ShieldCheck
+  Ticket, Car, Utensils, Smartphone, HeartPulse, Home, ShieldCheck, Megaphone
 } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
+import { createPageUrl } from "@/utils";
+import { useFeatureFlags } from '@/contexts/FeatureFlagsContext';
+import { MENU_ITEM_TO_FLAG } from '@/config/featureFlags';
 
 /** Email autorisé pour le centre de contrôle — seul ce compte voit et accède au dashboard admin */
 const SUPER_ADMIN_EMAIL = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com').toLowerCase();
 
 const isSuperAdmin = (user) => user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
-import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { createPageUrl } from "@/utils";
 
 const menuSections = [
   {
@@ -52,6 +54,7 @@ const menuSections = [
       { id: 'live', label: 'Regarder les lives', icon: Radio, page: 'Lives', color: 'bg-pink-100 text-pink-600', badge: 'Live' },
       { id: 'live-stream', label: 'Démarrer un live', icon: Video, page: 'LiveStream', color: 'bg-red-100 text-red-600' },
       { id: 'creator-tools', label: 'Outils créateurs', icon: Sparkles, page: 'CreatorTools', color: 'bg-amber-100 text-amber-600' },
+      { id: 'advertiser-dashboard', label: 'Mes campagnes pub', icon: Megaphone, page: 'AdvertiserDashboard', color: 'bg-orange-100 text-orange-600', badge: 'Pub' },
       { id: 'analytics', label: 'Statistiques', icon: TrendingUp, page: 'Analytics', color: 'bg-indigo-100 text-indigo-600' },
     ]
   },
@@ -69,7 +72,7 @@ const menuSections = [
     title: 'Finance',
     items: [
       { id: 'wallet', label: 'Mon Wallet', icon: Wallet, page: 'Wallet', color: 'bg-green-100 text-green-600' },
-      { id: 'microcredit', label: 'Microcrédit', icon: PiggyBank, page: 'Microcredit', color: 'bg-cyan-100 text-cyan-600', badge: 'Bientô_t' },
+      { id: 'microcredit', label: 'Microcrédit', icon: PiggyBank, page: 'Microcredit', color: 'bg-cyan-100 text-cyan-600', badge: 'Bientôt' },
       { id: 'crowdfunding', label: 'Crowdfunding', icon: Users, page: 'Crowdfunding', color: 'bg-violet-100 text-violet-600' },
     ]
   },
@@ -110,6 +113,19 @@ const menuSections = [
 ];
 
 export default function MenuPlus({ isOpen, onClose, user }) {
+  const { isEnabled } = useFeatureFlags();
+
+  const isItemVisible = (itemId) => {
+    const flag = MENU_ITEM_TO_FLAG[itemId];
+    if (!flag) return true;
+    return isEnabled(flag);
+  };
+
+  const filteredSections = menuSections.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => isItemVisible(item.id)),
+  })).filter((section) => section.items.length > 0);
+
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent side="right" className="w-[85%] max-w-md p-0 overflow-hidden">
@@ -172,7 +188,7 @@ export default function MenuPlus({ isOpen, onClose, user }) {
                 </div>
               </div>
             )}
-            {menuSections.map((section, sectionIndex) => (
+            {filteredSections.map((section, sectionIndex) => (
               <div key={section.title} className="py-3">
                 <h4 className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
                   {section.title}

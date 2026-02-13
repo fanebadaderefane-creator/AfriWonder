@@ -16,9 +16,10 @@ if (process.env.NODE_ENV === 'test') {
   ];
   const resolvedEnvPath = envCandidates.find((p) => fs.existsSync(p));
   if (resolvedEnvPath) {
-    dotenv.config({ path: resolvedEnvPath, override: true });
+    // override: false pour préserver JWT_SECRET/JWT_REFRESH_SECRET du script test (ex. test:ads)
+    dotenv.config({ path: resolvedEnvPath, override: false });
   } else {
-    dotenv.config({ override: true });
+    dotenv.config({ override: false });
   }
 } else {
   dotenv.config();

@@ -20,9 +20,14 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-vi.mock('@tanstack/react-query', () => ({
-  QueryClientProvider: ({ children }) => <>{children}</>,
-}));
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    QueryClientProvider: ({ children }) => <>{children}</>,
+    useQuery: () => ({ data: null, isLoading: false, isError: false }),
+  };
+});
 
 vi.mock('@/lib/query-client', () => ({
   queryClientInstance: {},

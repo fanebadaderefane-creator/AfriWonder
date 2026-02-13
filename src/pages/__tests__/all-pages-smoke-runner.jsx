@@ -4,6 +4,7 @@
 import React, { act } from 'react';
 import { render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { AppMenuProvider } from '@/contexts/AppMenuContext';
 
 export function runSmokeTestsForEntries(entries) {
   entries.forEach(([pageName, PageComponent]) => {
@@ -11,7 +12,9 @@ export function runSmokeTestsForEntries(entries) {
       expect(PageComponent).toBeDefined();
       const { container } = render(
         <MemoryRouter>
-          <PageComponent />
+          <AppMenuProvider>
+            <PageComponent />
+          </AppMenuProvider>
         </MemoryRouter>
       );
       expect(container).toBeTruthy();

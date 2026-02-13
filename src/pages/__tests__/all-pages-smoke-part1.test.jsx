@@ -22,7 +22,7 @@ const { mockRefetch, getSafeQueryData } = vi.hoisted(() => {
     if (key === 'creatorAnalytics' || key === 'analytics') return { total_views: 0, total_likes: 0, total_followers: 0 };
     if (key === 'creatorDashboard') return { stats: { total_views: 0, total_engagement: 0, total_videos: 0, avg_watch_time: 0, avg_engagement_rate: '0', total_revenue: 0 }, topVideos: [], trendData: [] };
     if (['languages', 'language', 'referrals', 'wishlist', 'saves', 'comments'].includes(key) || (typeof key === 'string' && key.includes('service'))) return [];
-    if (['wallet', 'sellerWallet'].includes(key)) return { balance: 0 };
+    if (['wallet', 'sellerWallet', 'seller-wallet'].includes(key)) return { balance: 0, pending_balance: 0, total_earned: 0, total_withdrawn: 0 };
     if (['order', 'orderTracking'].includes(key)) return { id: '1', status: 'pending' };
     if (key === 'transport') return { drivers: [] };
     if (key === 'foodDelivery') return { restaurants: [] };
@@ -32,6 +32,7 @@ const { mockRefetch, getSafeQueryData } = vi.hoisted(() => {
     if (key === 'insurance') return { policies: [] };
     if (key === 'providers') return { providers: [] };
     if (key === 'video') return { id: '1', video_likes: [], video_saves: [] };
+    if (key === 'ads-campaigns') return { campaigns: [], pagination: { page: 1, totalPages: 1, total: 0 } };
     return [];
   }
   return { mockRefetch, getSafeQueryData };

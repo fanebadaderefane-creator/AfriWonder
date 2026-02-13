@@ -50,6 +50,7 @@
 import About from './pages/About';
 import Achievements from './pages/Achievements';
 import AddProduct from './pages/AddProduct';
+import AdvertiserDashboard from './pages/AdvertiserDashboard';
 import BecomeSeller from './pages/BecomeSeller';
 import AddService from './pages/AddService';
 import Addresses from './pages/Addresses';
@@ -80,6 +81,7 @@ import CreatePetition from './pages/CreatePetition';
 import CreatorTools from './pages/CreatorTools';
 import Crowdfunding from './pages/Crowdfunding';
 import DirectCall from './pages/DirectCall';
+import DirectMessage from './pages/DirectMessage';
 import Discover from './pages/Discover';
 import DisputeCenter from './pages/DisputeCenter';
 import Downloads from './pages/Downloads';
@@ -174,6 +176,7 @@ import GamificationHub from './pages/GamificationHub';
 import ProjectPresentation from './pages/ProjectPresentation';
 import DeveloperPortal from './pages/DeveloperPortal';
 import DeveloperGuide from './pages/DeveloperGuide';
+import ComingSoon from './pages/ComingSoon';
 import __Layout from './Layout.jsx';
 
 
@@ -181,6 +184,7 @@ export const PAGES = {
     "About": About,
     "Achievements": Achievements,
     "AddProduct": AddProduct,
+    "AdvertiserDashboard": AdvertiserDashboard,
     "BecomeSeller": BecomeSeller,
     "AddService": AddService,
     "Addresses": Addresses,
@@ -211,6 +215,7 @@ export const PAGES = {
     "CreatorTools": CreatorTools,
     "Crowdfunding": Crowdfunding,
     "DirectCall": DirectCall,
+    "DirectMessage": DirectMessage,
     "Discover": Discover,
     "DisputeCenter": DisputeCenter,
     "Downloads": Downloads,
@@ -305,6 +310,7 @@ export const PAGES = {
     "ProjectPresentation": ProjectPresentation,
     "DeveloperPortal": DeveloperPortal,
     "DeveloperGuide": DeveloperGuide,
+    "ComingSoon": ComingSoon,
 }
 
 export const pagesConfig = {

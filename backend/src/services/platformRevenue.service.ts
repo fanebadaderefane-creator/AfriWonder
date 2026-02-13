@@ -118,7 +118,7 @@ class PlatformRevenueService {
   /**
    * Obtenir le détail des revenus par type
    */
-  async getRevenueByType(type: 'video_tips' | 'live_gifts' | 'marketplace' | 'subscriptions', startDate?: Date, endDate?: Date) {
+  async getRevenueByType(type: 'video_tips' | 'live_gifts' | 'marketplace' | 'subscriptions' | 'ads' | 'gifts_tips', startDate?: Date, endDate?: Date) {
     const where: any = {
       user_id: this.PLATFORM_USER_ID,
       type: 'platform_commission',
@@ -137,6 +137,8 @@ class PlatformRevenueService {
       live_gifts: 'Commission sur gift live',
       marketplace: 'Commission marketplace',
       subscriptions: 'Commission abonnement',
+      ads: 'Campagne pub',
+      gifts_tips: 'Commission support créateur',
     };
 
     if (typeFilters[type]) {

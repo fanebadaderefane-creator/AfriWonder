@@ -8,7 +8,26 @@ import { runSmokeTestsForEntries } from './all-pages-smoke-runner';
 
 vi.mock('@/api/expressClient', () => {
   const em = { findMany: () => Promise.resolve([]), findUnique: () => Promise.resolve(null), filter: () => Promise.resolve([]), list: () => Promise.resolve([]), get: () => Promise.resolve(null), create: () => Promise.resolve({}), update: () => Promise.resolve({}) };
-  const api = { get: vi.fn().mockResolvedValue({ data: [] }), post: vi.fn().mockResolvedValue({ data: {} }), put: vi.fn().mockResolvedValue({ data: {} }), patch: vi.fn().mockResolvedValue({ data: {} }), delete: vi.fn().mockResolvedValue({}), auth: { me: vi.fn().mockResolvedValue({ id: '1', email: 'test@test.com' }) }, videos: { list: vi.fn().mockResolvedValue({ videos: [] }), getComments: vi.fn().mockResolvedValue({ comments: [] }), getById: vi.fn().mockResolvedValue({ id: '1', video_likes: [], video_saves: [] }) }, users: { getFollowing: vi.fn().mockResolvedValue({ following: [] }), getProfile: vi.fn().mockResolvedValue({}), getLikedVideos: vi.fn().mockResolvedValue({ videos: [] }) }, saves: { list: vi.fn().mockResolvedValue({ videos: [] }) }, payments: { getWallet: vi.fn().mockResolvedValue({ balance: 0 }) }, orders: { getById: vi.fn().mockResolvedValue({ id: '1', status: 'pending', items: [], shipping: {} }) }, refunds: { listMy: vi.fn().mockResolvedValue({ refunds: [] }) }, providers: { list: vi.fn().mockResolvedValue({ providers: [] }) }, support: { listTickets: vi.fn().mockResolvedValue({ tickets: [] }), getTicket: vi.fn().mockResolvedValue(null), createTicket: vi.fn().mockResolvedValue({}), addMessage: vi.fn().mockResolvedValue({}) }, entities: new Proxy({}, { get: () => em }) };
+  const api = {
+    get: vi.fn().mockResolvedValue({ data: [] }), post: vi.fn().mockResolvedValue({ data: {} }), put: vi.fn().mockResolvedValue({ data: {} }), patch: vi.fn().mockResolvedValue({ data: {} }), delete: vi.fn().mockResolvedValue({}),
+    auth: { me: vi.fn().mockResolvedValue({ id: '1', email: 'test@test.com' }) },
+    videos: { list: vi.fn().mockResolvedValue({ videos: [] }), getComments: vi.fn().mockResolvedValue({ comments: [] }), getById: vi.fn().mockResolvedValue({ id: '1', video_likes: [], video_saves: [] }) },
+    users: { getFollowing: vi.fn().mockResolvedValue({ following: [] }), getProfile: vi.fn().mockResolvedValue({}), getLikedVideos: vi.fn().mockResolvedValue({ videos: [] }) },
+    saves: { list: vi.fn().mockResolvedValue({ videos: [] }) },
+    payments: { getWallet: vi.fn().mockResolvedValue({ balance: 0 }) },
+    orders: { getById: vi.fn().mockResolvedValue({ id: '1', status: 'pending', items: [], shipping: {} }) },
+    refunds: { listMy: vi.fn().mockResolvedValue({ refunds: [] }) },
+    providers: { list: vi.fn().mockResolvedValue({ providers: [] }) },
+    support: { listTickets: vi.fn().mockResolvedValue({ tickets: [] }), getTicket: vi.fn().mockResolvedValue(null), createTicket: vi.fn().mockResolvedValue({}), addMessage: vi.fn().mockResolvedValue({}) },
+    transport: { drivers: { listNearby: vi.fn().mockResolvedValue({ drivers: [] }), updateProfile: vi.fn().mockResolvedValue({}) }, rides: { list: vi.fn().mockResolvedValue({ rides: [] }) } },
+    food: { restaurants: { list: vi.fn().mockResolvedValue({ restaurants: [] }), getById: vi.fn().mockResolvedValue(null) }, menuItems: { listByRestaurant: vi.fn().mockResolvedValue([]) } },
+    tickets: { getMyTickets: vi.fn().mockResolvedValue([]), getById: vi.fn().mockResolvedValue(null) },
+    utilities: { airtime: { listMy: vi.fn().mockResolvedValue({ recharges: [] }) }, bills: { listMy: vi.fn().mockResolvedValue({ payments: [] }) } },
+    health: { doctors: { list: vi.fn().mockResolvedValue({ doctors: [] }) } },
+    properties: { list: vi.fn().mockResolvedValue({ properties: [] }) },
+    insurance: { policies: { listMy: vi.fn().mockResolvedValue([]) } },
+    entities: new Proxy({}, { get: () => em }),
+  };
   return { __esModule: true, default: api, api };
 });
 vi.mock('@/lib/AuthContext', () => ({ useAuth: () => ({ isAuthenticated: true, isLoadingAuth: false, authError: null, user: { id: '1', email: 'test@test.com', username: 'test' }, login: vi.fn(), register: vi.fn(), logout: vi.fn() }) }));
@@ -22,7 +41,7 @@ const { mockRefetch, getSafeQueryData } = vi.hoisted(() => {
     if (key === 'creatorAnalytics' || key === 'analytics') return { total_views: 0, total_likes: 0, total_followers: 0 };
     if (key === 'creatorDashboard') return { stats: { total_views: 0, total_engagement: 0, total_videos: 0, avg_watch_time: 0, avg_engagement_rate: '0', total_revenue: 0 }, topVideos: [], trendData: [] };
     if (['languages', 'language', 'referrals', 'wishlist', 'saves', 'comments'].includes(key) || (typeof key === 'string' && key.includes('service'))) return [];
-    if (['wallet', 'sellerWallet'].includes(key)) return { balance: 0 };
+    if (['wallet', 'sellerWallet', 'seller-wallet'].includes(key)) return { balance: 0, pending_balance: 0, total_earned: 0, total_withdrawn: 0 };
     if (['order', 'orderTracking'].includes(key)) return { id: '1', status: 'pending' };
     if (key === 'transport') return { drivers: [] };
     if (key === 'foodDelivery') return { restaurants: [] };
@@ -32,6 +51,7 @@ const { mockRefetch, getSafeQueryData } = vi.hoisted(() => {
     if (key === 'insurance') return { policies: [] };
     if (key === 'providers') return { providers: [] };
     if (key === 'video') return { id: '1', video_likes: [], video_saves: [] };
+    if (key === 'ads-campaigns') return { campaigns: [], pagination: { page: 1, totalPages: 1, total: 0 } };
     return [];
   }
   return { mockRefetch, getSafeQueryData };

@@ -62,8 +62,8 @@ describe('TopHeader', () => {
       const user = userEvent.setup();
       renderTopHeader({ activeTab: 'pourtoi', onTabChange, followingCount: 3 });
 
-      expect(await screen.findByText('following')).toBeInTheDocument();
-      await user.click(screen.getByRole('button', { name: /following/i }));
+      expect(await screen.findByText('my_wonder')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /my_wonder/i }));
       expect(onTabChange).toHaveBeenCalledWith('abonnements');
     },
     10000

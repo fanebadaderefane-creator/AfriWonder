@@ -234,7 +234,7 @@ router.get('/:id/comments', optionalAuth, async (req: AuthRequest, res, next) =>
   }
 });
 
-// POST /api/videos/:id/tip - Faire un tip/don pour une vidéo
+// POST /api/videos/:id/tip - Faire un tip/don pour une vidéo (Orange Money)
 router.post('/:id/tip', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
@@ -261,6 +261,32 @@ router.post('/:id/tip', authenticate, async (req: AuthRequest, res, next) => {
       phone,
       message,
     });
+
+    res.status(201).json({
+      success: true,
+      data: result,
+    });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/videos/:id/tip-wallet - Tip avec le wallet (débit immédiat)
+router.post('/:id/tip-wallet', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const userId = req.user!.id;
+    const { amount, message } = req.body;
+
+    if (!amount || amount < 50) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Le montant minimum est de 50 FCFA' },
+      });
+    }
+
+    const videoTipService = (await import('../services/videoTip.service.js')).default;
+    const result = await videoTipService.createTipWithWallet(userId, id, { amount, message });
 
     res.status(201).json({
       success: true,

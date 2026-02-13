@@ -102,6 +102,10 @@ import playlistsRoutes from './routes/playlists.routes.js';
 import musicRoutes from './routes/music.routes.js';
 import storiesRoutes from './routes/stories.routes.js';
 import wishlistRoutes from './routes/wishlist.routes.js';
+import adsRoutes from './routes/ads.routes.js';
+import feedRoutes from './routes/feed.routes.js';
+import creatorSupportRoutes from './routes/creatorSupport.routes.js';
+import creatorSubscriptionRoutes from './routes/creatorSubscription.routes.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -308,6 +312,10 @@ app.use('/api/playlists', playlistsRoutes);
 app.use('/api/music', musicRoutes);
 app.use('/api/stories', storiesRoutes);
 app.use('/api/wishlist', wishlistRoutes);
+app.use('/api/ads', adsRoutes);
+app.use('/api/feed', feedRoutes);
+app.use('/api/creator-support', creatorSupportRoutes);
+app.use('/api/creator-subscription', creatorSubscriptionRoutes);
 
 // Sentry error handler (avant notre errorHandler, désactivé en tests)
 if (process.env.SENTRY_DSN && process.env.NODE_ENV !== 'test') {

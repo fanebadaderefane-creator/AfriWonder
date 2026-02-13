@@ -94,9 +94,13 @@ export default function AnalyticsPanel() {
           <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Conv visiteur acheteur</p><p className="text-2xl font-bold">{data.visitorToBuyerConversionRate30d ?? 0}%</p></div>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Revenus commissions 30j</p><p className="text-2xl font-bold">{(data.commissionRevenue30d ?? 0).toLocaleString()} XOF</p></div>
+          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Revenus pub 30j</p><p className="text-2xl font-bold">{(data.adsRevenue30d ?? 0).toLocaleString()} XOF</p></div>
+          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Revenus gifts/tips 30j</p><p className="text-2xl font-bold">{(data.giftsTipsRevenue30d ?? 0).toLocaleString()} XOF</p></div>
+          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Revenus marketplace 30j</p><p className="text-2xl font-bold">{(data.commissionRevenue30d ?? 0).toLocaleString()} XOF</p></div>
           <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Revenus abonnements 30j</p><p className="text-2xl font-bold">{(data.subscriptionRevenue30d ?? 0).toLocaleString()} XOF</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Revenus plateforme 30j</p><p className="text-2xl font-bold">{(data.totalPlatformRevenue30d ?? 0).toLocaleString()} XOF</p></div>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Total revenus plateforme 30j</p><p className="text-2xl font-bold">{(data.totalPlatformRevenue30d ?? 0).toLocaleString()} XOF</p></div>
           <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">NPS 30j</p><p className="text-2xl font-bold">{data.nps30d ?? 0}</p></div>
         </div>
       </Card>

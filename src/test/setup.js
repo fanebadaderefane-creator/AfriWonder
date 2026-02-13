@@ -38,6 +38,17 @@ beforeAll(() => {
   if (typeof window !== 'undefined') {
     window.scrollTo = () => {};
     Element.prototype.scrollIntoView = () => {};
+    // jsdom n'a pas matchMedia (next-themes, PWAInstallBanner)
+    window.matchMedia = (query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => true,
+    });
   }
   if (typeof globalThis.indexedDB === 'undefined') {
     globalThis.indexedDB = { open: () => ({ result: {}, transaction: () => {} }), deleteDatabase: () => {} };

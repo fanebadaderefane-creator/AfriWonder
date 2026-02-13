@@ -4,14 +4,15 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import VideoCard from '../components/video/VideoCard';
+import AdCard from '../components/video/AdCard';
 import CommentSheet from '../components/video/CommentSheet';
 import TipModal from '../components/video/TipModal';
 import ShareSheet from '../components/video/ShareSheet';
 import GiftPurchaseModal from '../components/live/GiftPurchaseModal';
 import TopHeader from '../components/navigation/TopHeader';
 import BottomNav from '../components/navigation/BottomNav';
-import MenuPlus from '../components/navigation/MenuPlus';
 import AfriWonderLogo from '../components/common/AfriWonderLogo';
+import { useAppMenu } from '@/contexts/AppMenuContext';
 import NotificationService from '../components/notifications/NotificationService';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { toast } from "sonner";
@@ -29,7 +30,7 @@ export default function Home() {
   const [showTip, setShowTip] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [showGift, setShowGift] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
+  const { isOpen: isMenuOpen, openMenu } = useAppMenu();
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [user, setUser] = useState(null);
   const [likedVideos, setLikedVideos] = useState(new Set());
@@ -63,26 +64,42 @@ export default function Home() {
   const { isSlowConnection } = useNetworkStatus();
   const cacheStrategy = getCacheStrategy(isSlowConnection);
 
-  // Videos query
-  const { data: videos = [], isLoading, refetch } = useQuery({
-    queryKey: ['videos', activeTab, user?.id],
+  // Feed combiné (vidéos + pubs) pour l'onglet Pour toi
+  const { data: feedData, isLoading: feedLoading, refetch: refetchFeed } = useQuery({
+    queryKey: ['feed', user?.id],
+    ...cacheStrategy,
+    queryFn: async () => {
+      const result = await api.feed.list({ page: 1, limit: 50 });
+      return result?.items || [];
+    },
+    enabled: activeTab === 'pourtoi',
+  });
+
+  // Vidéos brutes pour l'onglet Abonnements (filtrées par following)
+  const { data: videos = [], isLoading: videosLoading, refetch: refetchVideos } = useQuery({
+    queryKey: ['videos', user?.id],
     ...cacheStrategy,
     queryFn: async () => {
       const result = await api.videos.list({ page: 1, limit: 50 });
       return result.videos || [];
-    }
+    },
+    enabled: activeTab === 'abonnements',
   });
+
+  const feedItems = feedData || [];
+  const isLoading = activeTab === 'pourtoi' ? feedLoading : videosLoading;
+  const refetch = activeTab === 'pourtoi' ? refetchFeed : refetchVideos;
 
   // Refetch on mount and when user data changes (e.g., after profile update)
   useEffect(() => {
     refetch();
   }, [activeTab, user?.id, refetch]);
   
-  // Invalider le cache des vidéos quand l'utilisateur change (après mise à jour du profil)
+  // Invalider le cache quand l'utilisateur change (après mise à jour du profil)
   useEffect(() => {
     if (user?.id) {
-      // Invalider le cache pour forcer le rechargement avec les nouvelles données du créateur
       queryClient.invalidateQueries({ queryKey: ['videos'] });
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
     }
   }, [user?.profile_image, queryClient, user?.id]);
 
@@ -97,6 +114,14 @@ export default function Home() {
     },
     enabled: !!selectedVideo?.id && showComments,
   });
+
+  // Fetch wallet balance for tip modal
+  const { data: walletData } = useQuery({
+    queryKey: ['wallet', user?.id],
+    queryFn: () => api.payments.getWallet(),
+    enabled: !!user?.id && showTip,
+  });
+  const walletBalance = walletData?.available_balance ?? walletData?.balance ?? 0;
 
   // Fetch user follows
    const { data: userFollows = [] } = useQuery({
@@ -139,7 +164,7 @@ export default function Home() {
     [userFollows]
   );
 
-  // Create stable string from video IDs to detect actual changes
+  // Create stable string from video IDs to detect actual changes (abonnements)
   const videoIdsString = useMemo(() => 
     videos.map(v => `${v.id}:${v.creator_id}`).sort().join(','), 
     [videos]
@@ -197,19 +222,28 @@ export default function Home() {
           return next;
         });
         
-        // Mettre à jour le compteur de likes dans la vidéo
-        queryClient.setQueryData(['videos', activeTab, user?.id], (oldData) => {
-          if (!oldData) return oldData;
-          return oldData.map(v => {
-            if (v.id === data.video.id) {
-              return {
-                ...v,
-                likes: data.isLiked ? (v.likes || 0) + 1 : Math.max(0, (v.likes || 0) - 1)
-              };
-            }
-            return v;
+        // Mettre à jour le compteur de likes (feed ou videos selon l'onglet)
+        if (activeTab === 'pourtoi') {
+          queryClient.setQueryData(['feed', user?.id], (oldItems) => {
+            if (!Array.isArray(oldItems)) return oldItems;
+            return oldItems.map(it => {
+              if (it.type === 'video' && it.video?.id === data.video.id) {
+                return { ...it, video: { ...it.video, likes: data.isLiked ? (it.video.likes || 0) + 1 : Math.max(0, (it.video.likes || 0) - 1) } };
+              }
+              return it;
+            });
           });
-        });
+        } else {
+          queryClient.setQueryData(['videos', user?.id], (oldData) => {
+            if (!oldData) return oldData;
+            return oldData.map(v => {
+              if (v.id === data.video.id) {
+                return { ...v, likes: data.isLiked ? (v.likes || 0) + 1 : Math.max(0, (v.likes || 0) - 1) };
+              }
+              return v;
+            });
+          });
+        }
         
         // Mettre à jour aussi followingVideos si nécessaire
         setFollowingVideos(prev => prev.map(v => {
@@ -223,6 +257,7 @@ export default function Home() {
         }));
         
         queryClient.invalidateQueries({ queryKey: ['videos'] });
+        queryClient.invalidateQueries({ queryKey: ['feed'] });
       }
     }
   });
@@ -304,8 +339,8 @@ export default function Home() {
       
       // Invalider les queries pour recharger depuis le backend et persister les données
       queryClient.invalidateQueries({ queryKey: ['comments', selectedVideo?.id] });
-      queryClient.invalidateQueries({ queryKey: ['videos', activeTab, user?.id] });
       queryClient.invalidateQueries({ queryKey: ['videos'] });
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
       toast.success('Commentaire ajouté');
     }
   });
@@ -443,16 +478,18 @@ export default function Home() {
     const screenHeight = window.innerHeight;
     const newIndex = Math.round(scrollTop / screenHeight);
     
-    const currentVideos = activeTab === 'pourtoi' ? videos : followingVideos;
+    const currentItems = activeTab === 'pourtoi' ? feedItems : followingVideos.map(v => ({ type: 'video', video: v }));
     
     if (
       newIndex !== currentIndex &&
       newIndex >= 0 &&
-      newIndex < currentVideos.length
+      newIndex < currentItems.length
     ) {
       // Save view history for previous video
-      if (user?.id && currentIndex >= 0 && currentVideos[currentIndex]) {
-        const video = currentVideos[currentIndex];
+      const prevItem = currentItems[currentIndex];
+      const prevVideo = prevItem?.type === 'video' ? prevItem.video : prevItem;
+      if (user?.id && currentIndex >= 0 && prevVideo?.id) {
+        const video = prevVideo;
         // TODO: Track view history
         // api.videos.trackView(video.id, {
         //   category: video.category,
@@ -463,21 +500,37 @@ export default function Home() {
       
       setCurrentIndex(newIndex);
     }
-  }, [currentIndex, activeTab, videos, followingVideos, user?.id, isPulling]);
+  }, [currentIndex, activeTab, feedItems, followingVideos, user?.id, isPulling]);
 
-  const handleTip = async (amount, method) => {
-    if (!user) {
+  const handleTip = async (amount, method, extra = {}) => {
+    if (!user || !selectedVideo) {
       toast.error('Connectez-vous pour envoyer un tip');
       return;
     }
-    
-    // TODO: Implement tip feature in backend
-    await api.payments.addToWallet(amount, `Tip to creator`);
-    
-    // Send notification to creator
-    NotificationService.notifyTipReceived(user.id, selectedVideo.creator_id, amount, selectedVideo.id);
-
-    toast.success(`Tip de ${amount} FCFA envoyé !`);
+    try {
+      if (method === 'wallet') {
+        await api.videos.tipWithWallet(selectedVideo.id, { amount, message: extra.message });
+        toast.success(`Tip de ${amount} FCFA envoyé !`);
+      } else if (method === 'orange_money' && extra.phone) {
+        const result = await api.videos.tip(selectedVideo.id, {
+          amount,
+          phone: extra.phone,
+          message: extra.message,
+        });
+        if (result?.paymentUrl) {
+          window.location.href = result.paymentUrl;
+        } else {
+          toast.success('Tip initié. Validez sur Orange Money.');
+        }
+      } else if (['wave', 'mtn_money'].includes(method)) {
+        toast.info('Cette méthode de paiement sera disponible prochainement.');
+      } else {
+        toast.error('Sélectionnez Mon Wallet ou Orange Money avec un numéro.');
+      }
+    } catch (err) {
+      toast.error(err?.apiMessage || 'Erreur lors de l\'envoi du tip');
+      throw err;
+    }
   };
 
   if (isLoading) {
@@ -495,7 +548,7 @@ export default function Home() {
         onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
         className={cn(
           "absolute top-4 left-4 z-50 pointer-events-auto group transition-opacity duration-300",
-          (showComments || showShare || showTip || showGift || showMenu) ? "opacity-0 pointer-events-none" : "opacity-100"
+          (showComments || showShare || showTip || showGift || isMenuOpen) ? "opacity-0 pointer-events-none" : "opacity-100"
         )}
       >
         <AfriWonderLogo size="sm" className="shadow-lg group-hover:shadow-xl transition-shadow" />
@@ -505,7 +558,7 @@ export default function Home() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         showTabs={true}
-        onMenuOpen={() => setShowMenu(true)}
+        onMenuOpen={openMenu}
         followingCount={followingCount}
         title={undefined}
         onToggleDarkMode={undefined}
@@ -579,7 +632,7 @@ export default function Home() {
               </button>
             )}
           </div>
-        ) : activeTab === 'pourtoi' && videos.length === 0 ? (
+        ) : activeTab === 'pourtoi' && feedItems.length === 0 ? (
           <div className="h-full w-full flex flex-col items-center justify-center text-white px-8 text-center">
             <p className="text-xl font-semibold mb-2">Aucune vidéo pour l'instant</p>
             <p className="text-gray-400 mb-4">Soyez le premier à partager !</p>
@@ -600,7 +653,25 @@ export default function Home() {
             )}
           </div>
         ) : (
-           (activeTab === 'pourtoi' ? videos : followingVideos).map((video, index) => (
+           (activeTab === 'pourtoi' ? feedItems : followingVideos.map(v => ({ type: 'video', video: v }))).map((item, index) => {
+             if (item.type === 'ad') {
+               return (
+                 <div
+                   key={`ad-${item.ad?.id || index}`}
+                   className="relative w-full h-screen snap-start snap-always flex items-center justify-center overflow-hidden"
+                 >
+                   <AdCard
+                     ad={item.ad}
+                     isActive={index === currentIndex}
+                     isMuted={isMuted}
+                     onMuteToggle={() => setIsMuted(!isMuted)}
+                     hideActions={showComments || showShare || showTip || showGift || showMenu}
+                   />
+                 </div>
+               );
+             }
+             const video = item.video;
+             return (
              <div 
                key={video.id} 
                className="relative w-full h-screen snap-start snap-always flex items-center justify-center overflow-hidden"
@@ -653,7 +724,8 @@ export default function Home() {
                  hideActions={showComments || showShare || showTip || showGift || showMenu}
               />
             </div>
-          ))
+          );
+          })
         )}
       </div>
 
@@ -682,6 +754,7 @@ export default function Home() {
           avatar: selectedVideo?.creator_avatar
         }}
         onSendTip={handleTip}
+        walletBalance={walletBalance}
       />
 
       {/* Share Sheet */}
@@ -722,6 +795,7 @@ export default function Home() {
               
               // Invalider les queries pour recharger depuis le backend
               queryClient.invalidateQueries({ queryKey: ['videos'] });
+              queryClient.invalidateQueries({ queryKey: ['feed'] });
             } catch (error) {
               console.error('Error tracking share:', error);
               // Ne pas bloquer l'utilisateur si l'API échoue
@@ -736,13 +810,6 @@ export default function Home() {
         onClose={() => setShowGift(false)}
         receiverId={selectedVideo?.creator_id}
         liveId={null}
-      />
-
-      {/* Menu Plus */}
-      <MenuPlus
-        isOpen={showMenu}
-        onClose={() => setShowMenu(false)}
-        user={user}
       />
 
       <style>{`

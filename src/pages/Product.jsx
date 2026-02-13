@@ -394,7 +394,7 @@ export default function Product() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => navigate(`/Chat?_userId=${seller.id}`)}
+                  onClick={() => navigate(`${createPageUrl('Chat')}?_userId=${seller.id}`)}
                 >
                   Contacter
                 </Button>

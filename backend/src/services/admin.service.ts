@@ -573,7 +573,9 @@ class AdminService {
     const revenueBySource = new Map((platformRevenueRows30d || []).map((r) => [String(r.source || '').trim(), Number(r.amount || 0)]));
     const commissionRevenue30d = revenueBySource.get('marketplace') ?? 0;
     const subscriptionRevenue30d = revenueBySource.get('subscriptions') ?? 0;
-    const totalPlatformRevenue30d = commissionRevenue30d + subscriptionRevenue30d;
+    const adsRevenue30d = revenueBySource.get('ads') ?? 0;
+    const giftsTipsRevenue30d = (revenueBySource.get('gifts_tips') ?? 0) + (revenueBySource.get('video_tips') ?? 0) + (revenueBySource.get('live_gifts') ?? 0);
+    const totalPlatformRevenue30d = commissionRevenue30d + subscriptionRevenue30d + adsRevenue30d + giftsTipsRevenue30d;
     const npsPromoters30d = Number(npsRows30d?.[0]?.promoters ?? 0);
     const npsDetractors30d = Number(npsRows30d?.[0]?.detractors ?? 0);
     const npsRespondents30d = Number(npsRows30d?.[0]?.total ?? 0);
@@ -624,6 +626,8 @@ class AdminService {
       visitorToBuyerConversionRate30d: Math.round(visitorToBuyerConversionRate30d * 100) / 100,
       commissionRevenue30d: Math.round(commissionRevenue30d * 100) / 100,
       subscriptionRevenue30d: Math.round(subscriptionRevenue30d * 100) / 100,
+      adsRevenue30d: Math.round(adsRevenue30d * 100) / 100,
+      giftsTipsRevenue30d: Math.round(giftsTipsRevenue30d * 100) / 100,
       totalPlatformRevenue30d: Math.round(totalPlatformRevenue30d * 100) / 100,
       nps30d: Math.round(nps30d * 100) / 100,
       npsRespondents30d,

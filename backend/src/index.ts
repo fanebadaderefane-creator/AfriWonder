@@ -8,6 +8,7 @@ import messageService from './services/message.service.js';
 import { setMessageIo } from './services/message.service.js';
 import { startAccountDeletionJobs } from './jobs/accountDeletion.job.js';
 import { startDataRetentionJob, initializeRetentionPolicies } from './jobs/dataRetention.job.js';
+import { startAdsExpirationJob } from './jobs/adsExpiration.job.js';
 import { startLiveScheduledReminderJob } from './jobs/liveScheduledReminder.job.js';
 import { startModerationTimeoutJob } from './jobs/moderationTimeout.job.js';
 import { initRedis } from './utils/cache.js';
@@ -132,6 +133,7 @@ httpServer.listen(PORT, async () => {
   // Démarrer les jobs automatiques
   startAccountDeletionJobs();
   startDataRetentionJob();
+  startAdsExpirationJob();
   startLiveScheduledReminderJob();
   startModerationTimeoutJob();
 

@@ -90,6 +90,11 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
         continue-on-error: true
 
+      - name: npm audit (backend)
+        working-directory: backend
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
   test-frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -125,6 +130,27 @@ jobs:
           files: ./coverage/coverage-final.json
           flags: frontend
           token: ${{ secrets.CODECOV_TOKEN }}
+        continue-on-error: true
+
+      - name: npm audit (frontend)
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install root
+        run: npm ci
+      - name: Install backend
+        working-directory: backend
+        run: npm ci
+      - name: Security audit
+        run: node scripts/security-audit.js
         continue-on-error: true
 
   security-scan:
@@ -214,6 +240,11 @@ jobs:
           done
           echo "Backend did not start in time"
           exit 1
+
+      - name: Verify ads/feed connectivity
+        run: node scripts/verify-ads-feed-connectivity.js
+        env:
+          API_URL: http://127.0.0.1:3000
 
       - name: Start frontend (Vite dev server)
         env:

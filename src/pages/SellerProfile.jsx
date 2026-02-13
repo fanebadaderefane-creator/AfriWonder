@@ -241,7 +241,7 @@ export default function SellerProfile() {
             <Button
               variant="outline"
               className="flex-1"
-              onClick={() => window.location.href = `/Chat?_userId=${sellerId}`}
+              onClick={() => window.location.href = `${createPageUrl('Chat')}?_userId=${sellerId}`}
             >
               <MessageSquare className="w-4 h-4 mr-2" />
               Contacter

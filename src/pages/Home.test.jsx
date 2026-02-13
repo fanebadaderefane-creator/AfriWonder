@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { AppMenuProvider } from '../contexts/AppMenuContext';
 import Home from './Home';
 
 let videosLoading = true;
@@ -41,16 +42,20 @@ vi.mock('@/api/expressClient', () => ({
 vi.mock('@tanstack/react-query', () => ({
   useQuery: vi.fn().mockImplementation(({ queryKey }) => {
     const key = Array.isArray(queryKey) ? queryKey[0] : queryKey;
+    const base = { refetch: refetchMock };
     if (key === 'videos') {
-      return { data: videosData, isLoading: videosLoading, refetch: refetchMock };
+      return { ...base, data: videosData, isLoading: videosLoading };
+    }
+    if (key === 'feed') {
+      return { ...base, data: videosData, isLoading: videosLoading };
     }
     if (key === 'comments') {
-      return { data: [] };
+      return { ...base, data: [] };
     }
     if (key === 'user-follows') {
-      return { data: [] };
+      return { ...base, data: [] };
     }
-    return { data: [] };
+    return { ...base, data: [] };
   }),
   useMutation: () => ({
     mutate: vi.fn(),
@@ -122,7 +127,9 @@ describe('Home page', () => {
   it('affiche le loader pendant le chargement des vidéos', () => {
     render(
       <MemoryRouter>
-        <Home />
+        <AppMenuProvider>
+          <Home />
+        </AppMenuProvider>
       </MemoryRouter>
     );
     expect(document.querySelector('.animate-spin')).toBeInTheDocument();
@@ -134,7 +141,9 @@ describe('Home page', () => {
 
     render(
       <MemoryRouter>
-        <Home />
+        <AppMenuProvider>
+          <Home />
+        </AppMenuProvider>
       </MemoryRouter>
     );
 

@@ -308,16 +308,15 @@ class PaymentService {
       throw new Error(`Erreur Orange Money Mali: ${error.message || 'Impossible d\'initier le paiement'}`);
     }
   }
-  /** Vérifie la signature du webhook Orange Money. En test ou sans secret configuré, accepte. */
+  /** Vérifie la signature du webhook Orange Money. En prod: ORANGE_MONEY_WEBHOOK_SECRET obligatoire. */
   verifyOrangeMoneyWebhookSignature(body: string | Buffer, signature?: string): boolean {
     const env = process.env.ORANGE_MONEY_ENV || process.env.NODE_ENV;
     const secret = process.env.ORANGE_MONEY_WEBHOOK_SECRET;
-    if (env === 'test' || !secret) {
-      if (!secret && env === 'production') {
-        logger.warn('Orange Money webhook: ORANGE_MONEY_WEBHOOK_SECRET manquant en production');
-      }
-      return true;
+    if (env === 'production' && !secret) {
+      logger.warn('Orange Money webhook: ORANGE_MONEY_WEBHOOK_SECRET manquant - rejet en production');
+      return false;
     }
+    if (env === 'test' || !secret) return true;
     if (!signature) return false;
     const raw = typeof body === 'string' ? body : body.toString('utf8');
     const expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');
@@ -482,12 +481,11 @@ class PaymentService {
   verifyMoovWebhookSignature(body: string | Buffer, signature?: string): boolean {
     const env = process.env.MOOV_MONEY_ENV || process.env.NODE_ENV;
     const secret = process.env.MOOV_MONEY_WEBHOOK_SECRET;
-    if (env === 'test' || !secret) {
-      if (!secret && env === 'production') {
-        logger.warn('Moov Money webhook: MOOV_MONEY_WEBHOOK_SECRET manquant en production');
-      }
-      return true;
+    if (env === 'production' && !secret) {
+      logger.warn('Moov Money webhook: MOOV_MONEY_WEBHOOK_SECRET manquant - rejet en production');
+      return false;
     }
+    if (env === 'test' || !secret) return true;
     if (!signature) return false;
     const raw = typeof body === 'string' ? body : body.toString('utf8');
     const expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');

@@ -8,6 +8,7 @@ import { BrowserRouter as Router, Route, Routes, useNavigate, useLocation, Navig
 import { useEffect } from 'react';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
+import { FeatureFlagsProvider } from '@/contexts/FeatureFlagsContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import TranslationProvider from '@/components/common/TranslationProvider';
 import CookieBanner from '@/components/legal/CookieBanner';
@@ -121,13 +122,15 @@ function App() {
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="afriwonder-theme">
       <AuthProvider>
         <QueryClientProvider client={queryClientInstance}>
-          <Router>
-            <TranslationProvider>
-              <NavigationTracker />
-              <AuthenticatedApp />
-              <CookieBanner />
-            </TranslationProvider>
-          </Router>
+          <FeatureFlagsProvider>
+            <Router>
+              <TranslationProvider>
+                <NavigationTracker />
+                <AuthenticatedApp />
+                <CookieBanner />
+              </TranslationProvider>
+            </Router>
+          </FeatureFlagsProvider>
           <Toaster />
         </QueryClientProvider>
       </AuthProvider>

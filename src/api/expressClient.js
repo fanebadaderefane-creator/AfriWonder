@@ -120,6 +120,17 @@ export const api = {
   patch: (url, data, config) => axiosInstance.patch(url, data, config),
   delete: (url, config) => axiosInstance.delete(url, config),
 
+  platform: {
+    async getFeatureFlags() {
+      const { data } = await axiosInstance.get('/platform/feature-flags');
+      return data.data || {};
+    },
+    async getConfig() {
+      const { data } = await axiosInstance.get('/platform/config');
+      return data.data;
+    },
+  },
+
   auth: {
     async login(email, password) {
       const { data } = await axiosInstance.post('/auth/login', { email, password });
@@ -197,6 +208,102 @@ export const api = {
         deviceId: deviceId || (typeof localStorage !== 'undefined' ? localStorage.getItem('afw_device_id') : null),
       });
       return data;
+    },
+    async tip(id, { amount, phone, message }) {
+      const { data } = await axiosInstance.post(`/videos/${id}/tip`, { amount, phone, message });
+      return data.data;
+    },
+    async tipWithWallet(id, { amount, message }) {
+      const { data } = await axiosInstance.post(`/videos/${id}/tip-wallet`, { amount, message });
+      return data.data;
+    },
+  },
+  feed: {
+    async list(params = {}) {
+      const { data } = await axiosInstance.get('/feed', { params });
+      return data.data;
+    },
+  },
+  ads: {
+    async recordImpression(creativeId, campaignId, deviceId) {
+      const { data } = await axiosInstance.post('/ads/impression', {
+        creative_id: creativeId,
+        campaign_id: campaignId,
+        device_id: deviceId,
+      });
+      return data;
+    },
+    async recordClick(creativeId, campaignId, deviceId) {
+      const { data } = await axiosInstance.post('/ads/click', {
+        creative_id: creativeId,
+        campaign_id: campaignId,
+        device_id: deviceId,
+      });
+      return data;
+    },
+    async getPricing() {
+      const { data } = await axiosInstance.get('/ads/pricing');
+      return data.data;
+    },
+    async getCampaigns(params = {}) {
+      const { data } = await axiosInstance.get('/ads/campaigns', { params });
+      return data.data;
+    },
+    async getCampaignStats(id) {
+      const { data } = await axiosInstance.get(`/ads/campaigns/${id}`);
+      return data.data;
+    },
+    async createCampaign(payload) {
+      const { data } = await axiosInstance.post('/ads/campaigns', payload);
+      return data.data;
+    },
+    async addCreative(campaignId, payload) {
+      const { data } = await axiosInstance.post(`/ads/campaigns/${campaignId}/creatives`, payload);
+      return data.data;
+    },
+    async submitCampaign(campaignId) {
+      const { data } = await axiosInstance.post(`/ads/campaigns/${campaignId}/submit`);
+      return data.data;
+    },
+    async getPendingCampaigns() {
+      const { data } = await axiosInstance.get('/ads/campaigns/pending');
+      return data.data;
+    },
+    async approveCampaign(campaignId) {
+      const { data } = await axiosInstance.post(`/ads/campaigns/${campaignId}/approve`);
+      return data.data;
+    },
+    async rejectCampaign(campaignId, reason) {
+      const { data } = await axiosInstance.post(`/ads/campaigns/${campaignId}/reject`, { reason });
+      return data.data;
+    },
+  },
+  creatorSupport: {
+    async support(creatorId, { amount_fcfa, message }) {
+      const { data } = await axiosInstance.post(`/creator-support/${creatorId}`, { amount_fcfa, message });
+      return data.data;
+    },
+    async getStats(creatorId) {
+      const { data } = await axiosInstance.get(`/creator-support/${creatorId}/stats`);
+      return data.data;
+    },
+  },
+  creatorSubscription: {
+    async getTiers() {
+      const { data } = await axiosInstance.get('/creator-subscription/tiers');
+      return data.data;
+    },
+    async subscribe(tier) {
+      const { data } = await axiosInstance.post('/creator-subscription/subscribe', { tier });
+      return data.data;
+    },
+    async getMySubscription() {
+      const { data } = await axiosInstance.get('/creator-subscription/me');
+      return data.data;
+    },
+    async getCreatorSubscription(creatorId) {
+      const { data } = await axiosInstance.get(`/creator-subscription/${creatorId}`);
+      return data.data;
     },
   },
   users: {
@@ -583,6 +690,14 @@ export const api = {
     },
     async updateKillSwitch(body) {
       const { data } = await axiosInstance.patch('/admin/kill-switch', body);
+      return data.data;
+    },
+    async getFeatureFlags() {
+      const { data } = await axiosInstance.get('/admin/feature-flags');
+      return data.data || [];
+    },
+    async setFeatureFlag(key, enabled) {
+      const { data } = await axiosInstance.patch(`/admin/feature-flags/${key}`, { enabled });
       return data.data;
     },
     async getAuditLogs(params = {}) {

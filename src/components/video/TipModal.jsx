@@ -32,17 +32,21 @@ export default function TipModal({
   const [selectedAmount, setSelectedAmount] = useState(null);
   const [customAmount, setCustomAmount] = useState('');
   const [selectedMethod, setSelectedMethod] = useState('wallet');
+  const [phone, setPhone] = useState('');
   const [step, setStep] = useState('amount'); // 'amount' | 'payment' | 'success'
   const [isLoading, setIsLoading] = useState(false);
 
   const finalAmount = selectedAmount || parseInt(customAmount) || 0;
+  const needsPhone = selectedMethod === 'orange_money';
+  const canSend = finalAmount >= 50 && (!needsPhone || (phone && phone.replace(/\D/g, '').length >= 8));
 
   const handleSendTip = async () => {
     if (!finalAmount || finalAmount < 50) return;
+    if (needsPhone && !phone) return;
     
     setIsLoading(true);
     try {
-      await onSendTip(finalAmount, selectedMethod);
+      await onSendTip(finalAmount, selectedMethod, needsPhone ? { phone: phone.replace(/\D/g, '') } : {});
       setStep('success');
     } catch (err) {
       console.error('Tip failed:', err);
@@ -177,6 +181,19 @@ export default function TipModal({
               ))}
             </div>
 
+            {needsPhone && (
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Numéro Orange Money</label>
+                <Input
+                  type="tel"
+                  placeholder="77 123 45 67"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="rounded-xl"
+                />
+              </div>
+            )}
+
             <div className="bg-gray-50 rounded-xl p-4 mb-6">
               <div className="flex justify-between items-center">
                 <span className="text-gray-500">Montant</span>
@@ -194,7 +211,7 @@ export default function TipModal({
               </Button>
               <Button
                 onClick={handleSendTip}
-                disabled={isLoading}
+                disabled={isLoading || !canSend}
                 className="flex-1 py-6 rounded-xl bg-gradient-to-r from-orange-500 to-red-500"
               >
                 {isLoading ? 'Envoi...' : 'Envoyer'}

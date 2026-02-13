@@ -5,7 +5,7 @@
  * Aligné sur pages.config.js (PAGES) et App.jsx.
  */
 import { test, expect } from '@playwright/test';
-import { dismissCookieBanner } from './helpers';
+import { dismissCookieBanner, waitForAppVisible } from './helpers';
 
 const PUBLIC_PATHS = [
   '/',
@@ -57,7 +57,7 @@ test.describe('Architecture complète - Pages publiques', () => {
     test(`${path || '/'} s'affiche sans erreur`, async ({ page }) => {
       await page.goto(path || '/', { waitUntil: 'load', timeout: 25000 });
       await dismissCookieBanner(page);
-      await expect(page.locator('#root').locator('*').first()).toBeVisible({ timeout: 25000 });
+      await waitForAppVisible(page, 25000);
       await expect(page).not.toHaveURL(/error|404/i);
     });
   }
@@ -114,7 +114,7 @@ test.describe('Architecture complète - Pages protégées (après login)', () =>
       try {
         await page.goto(`/${route}`, { waitUntil: 'domcontentloaded', timeout: 20000 });
         await dismissCookieBanner(page);
-        await expect(page.locator('#root').locator('*').first()).toBeVisible({ timeout: 15000 });
+        await waitForAppVisible(page, 15000);
         const url = page.url();
         
         // 🔥 Détection perte de session
@@ -165,7 +165,7 @@ test.describe('Architecture complète - Sections clés (smoke par domaine)', () 
     for (const path of ['/Transport', '/FoodDelivery', '/Telemedicine', '/RealEstate', '/Insurance', '/Ticketing', '/Utilities']) {
       await page.goto(path, { waitUntil: 'load', timeout: 30000 });
       await dismissCookieBanner(page);
-      await expect(page.locator('#root').locator('*').first()).toBeVisible({ timeout: 25000 });
+      await waitForAppVisible(page, 25000);
     }
   });
 
@@ -175,7 +175,7 @@ test.describe('Architecture complète - Sections clés (smoke par domaine)', () 
     for (const path of ['/News', '/Courses', '/Jobs', '/Civic', '/Crowdfunding', '/Microcredit']) {
       await page.goto(path, { waitUntil: 'load', timeout: 30000 });
       await dismissCookieBanner(page);
-      await expect(page.locator('#root').locator('*').first()).toBeVisible({ timeout: 25000 });
+      await waitForAppVisible(page, 25000);
     }
   });
 

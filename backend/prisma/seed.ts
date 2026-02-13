@@ -150,6 +150,38 @@ async function main() {
     console.log('   ✓', VIDEOS.length, 'vidéos fictives créées');
   }
 
+  // Feature flags — Lancement 26 février (Phase 2 modules cachés, réactivables en 1 clic)
+  try {
+    const LAUNCH_FLAGS = [
+      { key: 'FEATURE_TRANSPORT', enabled: false, description: 'Transport & Courses' },
+      { key: 'FEATURE_FOOD', enabled: false, description: 'Restaurants & Livraison' },
+      { key: 'FEATURE_TELEMEDECINE', enabled: false, description: 'Santé & Télémedecine' },
+      { key: 'FEATURE_REALESTATE', enabled: false, description: 'Immobilier' },
+      { key: 'FEATURE_INSURANCE', enabled: false, description: 'Assurances' },
+      { key: 'FEATURE_UTILITIES', enabled: false, description: 'Airtime & Factures' },
+      { key: 'FEATURE_TICKETING', enabled: false, description: 'Billets & Événements' },
+      { key: 'FEATURE_SERVICES', enabled: false, description: 'Services locaux' },
+      { key: 'FEATURE_EDUCATION', enabled: false, description: 'Formations' },
+      { key: 'FEATURE_JOBS', enabled: false, description: "Offres d'emploi" },
+      { key: 'FEATURE_CIVIC', enabled: false, description: 'Services publics' },
+      { key: 'FEATURE_CROWDFUNDING', enabled: false, description: 'Crowdfunding' },
+      { key: 'FEATURE_MICROCREDIT', enabled: false, description: 'Microcrédit' },
+      { key: 'FEATURE_NEWS', enabled: false, description: 'Actualités' },
+      { key: 'FEATURE_OFFLINE', enabled: false, description: 'Mode hors-ligne' },
+      { key: 'FEATURE_QRCODE', enabled: false, description: 'Mon QR Code' },
+    ];
+    for (const f of LAUNCH_FLAGS) {
+      await prisma.featureFlag.upsert({
+        where: { key: f.key },
+        create: f,
+        update: { description: f.description },
+      });
+    }
+    console.log('   ✓ Feature flags (Phase 2) initialisés');
+  } catch (err: any) {
+    console.warn('   ⚠ Feature flags non initialisés (table feature_flags absente?). Exécutez: npx prisma migrate deploy');
+  }
+
   console.log('✅ Seed completed.');
 }
 

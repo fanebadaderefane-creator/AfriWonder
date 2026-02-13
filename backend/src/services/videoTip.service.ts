@@ -115,6 +115,128 @@ class VideoTipService {
   }
 
   /**
+   * Créer un tip avec le wallet (débit immédiat, crédit créateur 70%, plateforme 30%)
+   */
+  async createTipWithWallet(senderId: string, videoId: string, data: { amount: number; message?: string }) {
+    const video = await prisma.video.findUnique({
+      where: { id: videoId },
+      include: { creator: true },
+    });
+
+    if (!video) {
+      const error: any = new Error('Vidéo non trouvée');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (senderId === video.creator_id) {
+      const error: any = new Error('Vous ne pouvez pas vous donner un tip à vous-même');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const { platform: afriwonderFee, creator: creatorEarnings } = commissionService.videoSocialTips(data.amount);
+
+    const ledgerService = (await import('./ledger.service.js')).default;
+    const withdrawalService = (await import('./withdrawal.service.js')).default;
+
+    const senderWallet = await ledgerService.getOrCreateUserWallet(senderId, 'XOF');
+    const available = (senderWallet as any).available_balance ?? senderWallet.balance ?? 0;
+    if (available < data.amount) {
+      const error: any = new Error('Solde insuffisant dans votre wallet');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const tip = await prisma.videoTip.create({
+      data: {
+        video_id: videoId,
+        sender_id: senderId,
+        receiver_id: video.creator_id,
+        amount: data.amount,
+        currency: 'XOF',
+        payment_method: 'wallet',
+        message: data.message,
+        status: 'pending',
+        afriwonder_fee: afriwonderFee,
+        creator_earnings: creatorEarnings,
+      },
+    });
+
+    await ledgerService.debit(senderWallet.id, data.amount, {
+      referenceId: tip.id,
+      referenceType: 'tip',
+      description: `Tip pour la vidéo "${video.title}"`,
+    });
+
+    const sellerWallet = await withdrawalService.getSellerWallet(video.creator_id);
+    await prisma.sellerWallet.update({
+      where: { id: sellerWallet.id },
+      data: { balance: { increment: creatorEarnings } },
+    });
+
+    await prisma.videoTip.update({
+      where: { id: tip.id },
+      data: { status: 'completed' },
+    });
+
+    await platformRevenueService.addRevenue(
+      afriwonderFee,
+      'video_tips',
+      `Commission sur tip vidéo (${data.amount} FCFA)`,
+      tip.id
+    );
+
+    await prisma.transaction.create({
+      data: {
+        user_id: senderId,
+        type: 'video_tip',
+        amount: data.amount,
+        currency: 'XOF',
+        status: 'completed',
+        payment_method: 'wallet',
+        description: `Tip pour la vidéo "${video.title}"`,
+        reference_id: tip.id,
+      },
+    });
+
+    await prisma.transaction.create({
+      data: {
+        user_id: video.creator_id,
+        type: 'tip_received',
+        amount: creatorEarnings,
+        currency: 'XOF',
+        status: 'completed',
+        description: `Tip reçu pour la vidéo (${data.amount} FCFA - commission: ${afriwonderFee} FCFA)`,
+        reference_id: tip.id,
+        payment_method: 'internal',
+      },
+    });
+
+    await prisma.notification.create({
+      data: {
+        user_id: video.creator_id,
+        type: 'tip_received',
+        title: 'Nouveau tip reçu ! 🎁',
+        message: `Vous avez reçu un tip de ${data.amount} FCFA pour votre vidéo`,
+        reference_id: videoId,
+        reference_type: 'video',
+        from_user_id: senderId,
+      },
+    });
+
+    logger.info('Tip wallet complété', {
+      tipId: tip.id,
+      videoId,
+      senderId,
+      receiverId: video.creator_id,
+      amount: data.amount,
+    });
+
+    return { ...tip, status: 'completed' };
+  }
+
+  /**
    * Vérifier et compléter un tip après paiement Orange Money
    */
   async completeTip(tipId: string, paymentStatus: string) {

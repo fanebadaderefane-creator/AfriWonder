@@ -181,12 +181,12 @@ export default function ReferralsPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            {stats?.referrals?.length === 0 ? (
+            {(stats?.referrals?.length ?? 0) === 0 ? (
               <p className="text-center text-gray-600 py-8">
                 Aucun parrainage pour le moment. Commencez à partager!
               </p>
             ) : (
-              stats?.referrals.map(referral => (
+              (stats?.referrals ?? []).map(referral => (
                 <motion.div
                   key={referral.id}
                   whileHover={{ x: 5 }}
