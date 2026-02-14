@@ -610,6 +610,28 @@ class ProductService {
       throw err;
     }
 
+    // CDC: limite produits selon formule (free: 10, starter: 100, business/enterprise: illimitÃ©)
+    const SELLER_MAX_PRODUCTS: Record<string, number> = {
+      free: 10,
+      starter: 100,
+      business: -1,
+      enterprise: -1,
+    };
+    const tier = sellerProfile.subscription_tier || 'free';
+    const maxProducts = SELLER_MAX_PRODUCTS[tier] ?? 10;
+    if (maxProducts >= 0) {
+      const count = await prisma.product.count({
+        where: { seller_id: data.seller_id, status: 'active' },
+      });
+      if (count >= maxProducts) {
+        const err: any = new Error(
+          `Limite atteinte (${maxProducts} produits pour la formule ${tier}). Passez Ã  une formule supÃ©rieure.`
+        );
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+
     const createData: any = {
       name: data.name,
       description: data.description,

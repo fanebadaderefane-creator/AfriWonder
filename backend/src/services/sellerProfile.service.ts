@@ -92,7 +92,8 @@ class SellerProfileService {
         ...(data.city != null && { city: data.city.trim() || null }),
         ...(data.store_logo != null && { store_logo: data.store_logo || null }),
         ...(data.store_banner != null && { store_banner: data.store_banner || null }),
-        ...(data.subscription_tier != null && ['free', 'starter', 'business', 'enterprise'].includes(data.subscription_tier) && { subscription_tier: data.subscription_tier }),
+        // subscription_tier payant : utiliser /api/seller-subscription/subscribe (Phase 1)
+        ...(data.subscription_tier === 'free' && { subscription_tier: 'free' }),
       },
       include: {
         user: {

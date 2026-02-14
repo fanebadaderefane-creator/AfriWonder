@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/api/expressClient';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -14,9 +16,20 @@ import { useNavigate } from 'react-router-dom';
 import BottomNav from '../components/navigation/BottomNav';
 import AfriWonderLogo from '@/components/common/AfriWonderLogo';
 
+function formatStat(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return n.toLocaleString();
+}
+
 export default function About() {
   const navigate = useNavigate();
   const [showRateDialog, setShowRateDialog] = useState(false);
+  const { data: platformStats } = useQuery({
+    queryKey: ['platform-stats'],
+    queryFn: () => api.platform.getStats(),
+    staleTime: 5 * 60 * 1000,
+  });
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -51,9 +64,9 @@ export default function About() {
 
         <div className="grid grid-cols-3 gap-3">
           {[
-            { icon: Users, value: '1M+', label: 'Utilisateurs' },
+            { icon: Users, value: formatStat(platformStats?.totalUsers ?? 0), label: 'Utilisateurs' },
             { icon: Globe, value: '15', label: 'Pays' },
-            { icon: Heart, value: '50M+', label: 'Interactions' },
+            { icon: Heart, value: formatStat(platformStats?.totalVideos ?? 0), label: 'Vidéos' },
           ].map((stat) => (
             <Card key={stat.label} className="p-4 text-center border-orange-100 hover:border-orange-200 transition-colors">
               <stat.icon className="w-6 h-6 mx-auto text-orange-500 mb-2" />

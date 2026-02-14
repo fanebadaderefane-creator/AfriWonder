@@ -67,6 +67,7 @@ model User {
   withdrawals                Withdrawal[]
   wishlist                   Wishlist[]
   seller_profile             SellerProfile?
+  seller_subscriptions       SellerSubscription[]     @relation("SellerSubscriptions")
   seller_reviews_received    SellerReview[]            @relation("SellerReviewed")
   seller_reviews_given       SellerReview[]            @relation("SellerReviewAuthor")
   order_buyer_reviews_given  OrderBuyerReview[]        @relation("BuyerReviewSeller")
@@ -1344,6 +1345,55 @@ model PlatformSettings {
   @@index([key])
 }
 
+/// Early Access — liste d'attente quand max utilisateurs atteint
+model EarlyAccessWaitlist {
+  id         String   @id @default(uuid())
+  email      String
+  full_name  String?
+  created_at DateTime @default(now())
+
+  @@unique([email])
+  @@index([email])
+}
+
+/// Early Access — dons / soutien financier pour AfriWonder
+model PlatformDonation {
+  id                 String   @id @default(uuid())
+  amount_fcfa        Int      // Montant en FCFA
+  donor_email        String?
+  donor_phone        String   // Obligatoire pour Orange Money / Mobile Money
+  donor_name         String?  // Nom complet ou prénom
+  donor_first_name   String?  // Prénom
+  donor_age          Int?    // Âge (optionnel)
+  donor_country      String?  // Pays
+  donor_city         String?  // Ville
+  donor_message      String?  @db.Text // Message optionnel pour remerciement
+  show_in_contributors Boolean @default(false) // Apparaître dans la liste des contributeurs
+  payment_method     String? // orange_money | mtn_money | stripe | manual
+  status             String   @default("pending") // pending | completed | failed
+  external_id        String?  // ID paiement externe (Orange Money, etc.)
+  created_at         DateTime @default(now())
+  completed_at       DateTime?
+
+  @@index([status])
+  @@index([created_at])
+  @@index([show_in_contributors])
+}
+
+/// Early Access — feedback (bug, suggestion, commentaire)
+model PlatformFeedback {
+  id         String   @id @default(uuid())
+  type       String   // bug | suggestion | comment
+  content    String   @db.Text
+  email      String?
+  join_whatsapp Boolean @default(false)
+  join_mailing Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  @@index([type])
+  @@index([created_at])
+}
+
 // Journal d'audit admin — traçabilité totale (RBAC, kill switch, finance, modération)
 model AdminLog {
   id          String   @id @default(uuid())
@@ -1690,6 +1740,25 @@ model SellerProfile {
   @@index([status])
   @@index([status, is_verified])
   @@index([country, status])
+}
+
+/// Phase 1 Marketplace: abonnements payants (comme CreatorSubscription)
+model SellerSubscription {
+  id              String   @id @default(uuid())
+  seller_id       String
+  tier            String   // free | starter | business | enterprise
+  price_fcfa      Float
+  status          String   @default("active") // active | cancelled | expired
+  starts_at       DateTime
+  expires_at      DateTime
+  payment_method  String?  // wallet | orange_money
+  transaction_id  String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  seller          User     @relation("SellerSubscriptions", fields: [seller_id], references: [id], onDelete: Cascade)
+
+  @@index([seller_id])
+  @@index([status, expires_at])
 }
 
 model ExchangeRate {
@@ -2528,6 +2597,13 @@ model ServiceProvider {
   total_earnings     Float                   @default(0)
   payout_method      String? // orange_money/mtn_money/wave/bank_transfer
   payout_account     String? // Numéro de compte pour payout
+  phone              String? // Téléphone principal
+  whatsapp           String? // Numéro WhatsApp (ex: +22370123456)
+  email              String? // Email professionnel
+  address            String? // Adresse de travail
+  city               String? // Ville
+  country            String? // Pays
+  bio                String? // Description / présentation
   created_at         DateTime                @default(now())
   updated_at         DateTime                @updatedAt
   user               User                    @relation("ServiceProvider", fields: [user_id], references: [id], onDelete: Cascade)

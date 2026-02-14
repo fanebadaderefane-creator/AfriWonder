@@ -5,6 +5,7 @@ import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import VideoCard from '../components/video/VideoCard';
 import AdCard from '../components/video/AdCard';
+import AdBannerCard from '../components/video/AdBannerCard';
 import CommentSheet from '../components/video/CommentSheet';
 import TipModal from '../components/video/TipModal';
 import ShareSheet from '../components/video/ShareSheet';
@@ -70,7 +71,7 @@ export default function Home() {
     ...cacheStrategy,
     queryFn: async () => {
       const result = await api.feed.list({ page: 1, limit: 50 });
-      return result?.items || [];
+      return result?.items ?? [];
     },
     enabled: activeTab === 'pourtoi',
   });
@@ -86,7 +87,45 @@ export default function Home() {
     enabled: activeTab === 'abonnements',
   });
 
-  const feedItems = feedData || [];
+  // Masquer pubs (CDC §4) - stockage localStorage
+  const [hiddenAdIds, setHiddenAdIds] = useState(() => {
+    try {
+      const raw = localStorage.getItem('afw_hidden_ads');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const handleHideAd = useCallback((campaignId) => {
+    setHiddenAdIds((prev) => {
+      if (prev.includes(campaignId)) return prev;
+      const next = [...prev, campaignId];
+      try {
+        localStorage.setItem('afw_hidden_ads', JSON.stringify(next));
+      } catch (_e) {}
+      return next;
+    });
+  }, []);
+
+  const feedItemsRaw = feedData || [];
+  const feedItems = useMemo(() => {
+    if (hiddenAdIds.length === 0) return feedItemsRaw;
+    return feedItemsRaw.filter(
+      (item) =>
+        (item.type !== 'ad' && item.type !== 'top_banner') ||
+        !hiddenAdIds.includes(item.ad?.campaign_id)
+    );
+  }, [feedItemsRaw, hiddenAdIds]);
+
+  const topBannerItems = useMemo(
+    () => feedItems.filter((i) => i.type === 'top_banner'),
+    [feedItems]
+  );
+  const mainFeedItems = useMemo(
+    () => feedItems.filter((i) => i.type !== 'top_banner'),
+    [feedItems]
+  );
   const isLoading = activeTab === 'pourtoi' ? feedLoading : videosLoading;
   const refetch = activeTab === 'pourtoi' ? refetchFeed : refetchVideos;
 
@@ -653,7 +692,22 @@ export default function Home() {
             )}
           </div>
         ) : (
-           (activeTab === 'pourtoi' ? feedItems : followingVideos.map(v => ({ type: 'video', video: v }))).map((item, index) => {
+          <>
+            {activeTab === 'pourtoi' && topBannerItems.length > 0 && (
+              <div className="w-full flex-shrink-0 px-3 pt-2 pb-1 gap-2 flex overflow-x-auto no-scrollbar snap-x snap-mandatory">
+                {topBannerItems.map((item, i) => (
+                  <div key={`top-${item.ad?.campaign_id || i}`} className="flex-shrink-0 w-[85vw] max-w-[320px]">
+                    <AdBannerCard
+                      ad={item.ad}
+                      isActive={true}
+                      onHide={handleHideAd}
+                      hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+            {(activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map(v => ({ type: 'video', video: v }))).map((item, index) => {
              if (item.type === 'ad') {
                return (
                  <div
@@ -665,7 +719,8 @@ export default function Home() {
                      isActive={index === currentIndex}
                      isMuted={isMuted}
                      onMuteToggle={() => setIsMuted(!isMuted)}
-                     hideActions={showComments || showShare || showTip || showGift || showMenu}
+                     onHide={handleHideAd}
+                     hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
                    />
                  </div>
                );
@@ -721,11 +776,12 @@ export default function Home() {
                  onProfileClick={(creatorId) => {
                    window.location.href = `/Profile?_userId=${creatorId}`;
                  }}
-                 hideActions={showComments || showShare || showTip || showGift || showMenu}
+                 hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
               />
             </div>
           );
-          })
+          })}
+          </>
         )}
       </div>
 

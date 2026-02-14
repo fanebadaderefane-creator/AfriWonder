@@ -13,7 +13,7 @@ class AdminService {
       recentUsers,
       recentOrders,
     ] = await Promise.all([
-      prisma.user.count(),
+      prisma.user.count({ where: { account_suspended: false } }),
       prisma.video.count(),
       prisma.product.count(),
       prisma.order.count(),
@@ -22,6 +22,7 @@ class AdminService {
         _sum: { total_amount: true },
       }),
       prisma.user.findMany({
+        where: { account_suspended: false },
         take: 10,
         orderBy: { created_at: 'desc' },
         select: {
@@ -69,6 +70,7 @@ class AdminService {
         select: {
           id: true,
           username: true,
+          full_name: true,
           email: true,
           role: true,
           is_verified: true,
@@ -109,6 +111,12 @@ class AdminService {
     const expiryDate = banData.durationDays
       ? new Date(Date.now() + banData.durationDays * 24 * 60 * 60 * 1000)
       : null;
+
+    // Désactiver tout bannissement actif existant (contrainte unique user_id + is_active)
+    await prisma.userBan.updateMany({
+      where: { user_id: userId, is_active: true },
+      data: { is_active: false },
+    });
 
     const ban = await prisma.userBan.create({
       data: {
@@ -632,6 +640,123 @@ class AdminService {
       nps30d: Math.round(nps30d * 100) / 100,
       npsRespondents30d,
       npsNote: 'NPS proxy derive des avis verifies: 5=promoteur, 4=passif, 1-3=detracteur',
+    };
+  }
+
+  /**
+   * Revenus live par créateur (gifts + tips) pour l'admin
+   * Permet de savoir quel créateur a gagné combien et la part plateforme
+   */
+  async getLiveRevenueByCreator(params: { from?: string; to?: string; page?: number; limit?: number }) {
+    const to = params.to ? new Date(params.to) : new Date();
+    const from = params.from ? new Date(params.from) : new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const page = Math.max(1, params.page ?? 1);
+    const limit = Math.min(100, Math.max(1, params.limit ?? 20));
+    const skip = (page - 1) * limit;
+
+    const [giftsByCreator, tipsByCreator] = await Promise.all([
+      prisma.liveGift.groupBy({
+        by: ['creator_id'],
+        where: { created_at: { gte: from, lte: to } },
+        _sum: { total_amount: true, creator_earnings: true, platform_commission: true },
+        _count: true,
+      }),
+      prisma.liveTip.groupBy({
+        by: ['creator_id'],
+        where: { created_at: { gte: from, lte: to } },
+        _sum: { amount: true, creator_earnings: true, platform_commission: true },
+        _count: true,
+      }),
+    ]);
+
+    const creatorMap = new Map<string, {
+      creator_id: string;
+      total_gifts_amount: number;
+      total_tips_amount: number;
+      creator_earnings: number;
+      platform_commission: number;
+      gifts_count: number;
+      tips_count: number;
+      lives_count: number;
+    }>();
+
+    for (const g of giftsByCreator) {
+      creatorMap.set(g.creator_id, {
+        creator_id: g.creator_id,
+        total_gifts_amount: g._sum.total_amount ?? 0,
+        total_tips_amount: 0,
+        creator_earnings: g._sum.creator_earnings ?? 0,
+        platform_commission: g._sum.platform_commission ?? 0,
+        gifts_count: g._count,
+        tips_count: 0,
+        lives_count: 0,
+      });
+    }
+
+    for (const t of tipsByCreator) {
+      const existing = creatorMap.get(t.creator_id);
+      if (existing) {
+        existing.total_tips_amount = t._sum.amount ?? 0;
+        existing.creator_earnings += t._sum.creator_earnings ?? 0;
+        existing.platform_commission += t._sum.platform_commission ?? 0;
+        existing.tips_count = t._count;
+      } else {
+        creatorMap.set(t.creator_id, {
+          creator_id: t.creator_id,
+          total_gifts_amount: 0,
+          total_tips_amount: t._sum.amount ?? 0,
+          creator_earnings: t._sum.creator_earnings ?? 0,
+          platform_commission: t._sum.platform_commission ?? 0,
+          gifts_count: 0,
+          tips_count: t._count,
+          lives_count: 0,
+        });
+      }
+    }
+
+    const creators = await prisma.user.findMany({
+      where: { id: { in: Array.from(creatorMap.keys()) } },
+      select: { id: true, username: true, full_name: true, profile_image: true },
+    });
+
+    const creatorInfoMap = new Map(creators.map((c) => [c.id, c]));
+
+    const livesCountByCreator = await prisma.liveStream.groupBy({
+      by: ['creator_id'],
+      where: {
+        creator_id: { in: Array.from(creatorMap.keys()) },
+        status: 'ended',
+        ended_at: { gte: from, lte: to },
+      },
+      _count: true,
+    });
+    for (const l of livesCountByCreator) {
+      const row = creatorMap.get(l.creator_id);
+      if (row) row.lives_count = l._count;
+    }
+
+    const rows = Array.from(creatorMap.values())
+      .map((r) => ({
+        ...r,
+        total_amount: r.total_gifts_amount + r.total_tips_amount,
+        creator: creatorInfoMap.get(r.creator_id),
+      }))
+      .filter((r) => r.total_amount > 0)
+      .sort((a, b) => b.total_amount - a.total_amount);
+
+    const total = rows.length;
+    const paginated = rows.slice(skip, skip + limit);
+
+    return {
+      rows: paginated,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      period: { from, to },
+      summary: {
+        totalGiftsAmount: rows.reduce((s, r) => s + r.total_gifts_amount, 0),
+        totalTipsAmount: rows.reduce((s, r) => s + r.total_tips_amount, 0),
+        totalCreatorEarnings: rows.reduce((s, r) => s + r.creator_earnings, 0),
+        totalPlatformCommission: rows.reduce((s, r) => s + r.platform_commission, 0),
+      },
     };
   }
 }

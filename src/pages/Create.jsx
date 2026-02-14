@@ -99,6 +99,8 @@ export default function Create() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const isAdMode = searchParams.get('mode') === 'ad';
+  const adCampaignId = searchParams.get('campaignId');
   const fileInputRef = useRef(null);
 
   const cameraInputRef = useRef(null);
@@ -964,17 +966,53 @@ export default function Create() {
 
   const handlePublish = async () => {
 
-    if (!videoData.title.trim()) {
+    if (!editingVideoId && !selectedFile) {
 
-      toast.error('Ajoutez un titre');
+      toast.error('Sélectionnez une vidéo');
 
       return;
 
     }
 
-    if (!editingVideoId && !selectedFile) {
+    // Mode campagne pub : upload + addCreative, redirection vers CreateAdCampaign
+    if (isAdMode && adCampaignId && selectedFile) {
+      if (adCampaignId.length < 30) {
+        toast.error('ID de campagne invalide. Retournez à la création de campagne.');
+        return;
+      }
+      setStep('uploading');
+      setUploadProgress(0);
+      try {
+        const uploadResult = await api.upload.video(selectedFile, (p) =>
+          setUploadProgress(Math.min(p, 90))
+        );
+        const videoUrl = uploadResult?.file_url || uploadResult?.url || '';
+        if (!videoUrl) {
+          toast.error('Échec du téléchargement');
+          setStep('details');
+          return;
+        }
+        await api.ads.addCreative(adCampaignId, {
+          media_type: 'video',
+          media_url: videoUrl,
+          thumbnail_url: videoUrl,
+          cta_type: 'visit',
+          cta_label: 'Découvrir',
+        });
+        setUploadProgress(100);
+        toast.success('Vidéo ajoutée à la campagne !');
+        navigate(createPageUrl('CreateAdCampaign') + `?campaignId=${adCampaignId}&step=3`);
+      } catch (err) {
+        const msg = err?.apiMessage ?? err?.response?.data?.error?.message ?? err?.response?.data?.error ?? err?.message;
+        toast.error(typeof msg === 'string' ? msg : "Erreur lors de l'ajout");
+        setStep('details');
+      }
+      return;
+    }
 
-      toast.error('Sélectionnez une vidéo');
+    if (!videoData.title.trim()) {
+
+      toast.error('Ajoutez un titre');
 
       return;
 
@@ -1084,11 +1122,18 @@ export default function Create() {
 
       setUploadProgress(100);
 
+      // Inclure les hashtags dans la description (comme pour la mise à jour) pour affichage cohérent
+      const hashtagsText = videoData.hashtags?.length > 0
+        ? '\n\n#' + videoData.hashtags.join(' #')
+        : '';
+
+      const fullDescription = [videoData.description || '', hashtagsText].filter(Boolean).join('');
+
       const videoRecord = {
 
         title: videoData.title,
 
-        description: videoData.description || '',
+        description: fullDescription,
 
         video_url: videoUrl,
 
@@ -2058,7 +2103,9 @@ export default function Create() {
 
                 </Button>
 
-                <h1 className="text-lg font-bold">{editingVideoId ? 'Modifier la vidéo' : 'Détails'}</h1>
+                <h1 className="text-lg font-bold">
+                  {isAdMode ? 'Vidéo pour la pub' : editingVideoId ? 'Modifier la vidéo' : 'Détails'}
+                </h1>
 
                 <Button
 
@@ -2068,7 +2115,7 @@ export default function Create() {
 
                 >
 
-                  Publier
+                  {isAdMode ? 'Ajouter à la campagne' : 'Publier'}
 
                 </Button>
 
@@ -2114,26 +2161,30 @@ export default function Create() {
 
                 </div>
 
-                <div className="flex-1">
+                {!isAdMode && (
+                  <div className="flex-1">
 
-                  <Textarea
+                    <Textarea
 
-                    placeholder="Décrivez votre vidéo..."
+                      placeholder="Décrivez votre vidéo..."
 
-                    value={videoData.description}
+                      value={videoData.description}
 
-                    onChange={(e) => setVideoData(prev => ({ ...prev, description: e.target.value }))}
+                      onChange={(e) => setVideoData(prev => ({ ...prev, description: e.target.value }))}
 
-                    className="h-32 resize-none rounded-xl"
+                      className="h-32 resize-none rounded-xl"
 
-                  />
+                    />
 
-                </div>
+                  </div>
+                )}
 
               </div>
 
 
 
+              {!isAdMode && (
+              <>
               <div>
 
                 <Label className="text-gray-600 text-sm">Titre</Label>
@@ -2489,6 +2540,9 @@ export default function Create() {
                 </div>
 
               </div>
+
+              </>
+              )}
 
             </div>
 

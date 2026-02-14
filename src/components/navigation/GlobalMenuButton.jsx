@@ -9,14 +9,16 @@ import { Menu } from 'lucide-react';
 import { useAppMenu } from '@/contexts/AppMenuContext';
 import { cn } from '@/lib/utils';
 
-export default function GlobalMenuButton({ hideOnHome = true, className }) {
+export default function GlobalMenuButton({ hideOnHome = true, hideOnAdmin = true, hideOnLanding = true, className }) {
   const { openMenu } = useAppMenu();
   const { pathname } = useLocation();
   const isHome = pathname === '/' || pathname === '/Home' || pathname.toLowerCase() === '/home';
+  const isAdmin = pathname === '/AdminDashboard' || pathname.toLowerCase().includes('admindashboard');
+  const isLanding = pathname === '/Landing' || pathname.toLowerCase() === '/landing';
 
-  if (hideOnHome && isHome) {
-    return null;
-  }
+  if (hideOnHome && isHome) return null;
+  if (hideOnAdmin && isAdmin) return null;
+  if (hideOnLanding && isLanding) return null;
 
   return (
     <Button

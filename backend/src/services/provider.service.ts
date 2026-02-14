@@ -11,6 +11,13 @@ class ProviderService {
     location_type?: string;
     payout_method?: string;
     payout_account?: string;
+    phone?: string;
+    whatsapp?: string;
+    email?: string;
+    address?: string;
+    city?: string;
+    country?: string;
+    bio?: string;
   }) {
     const existing = await prisma.serviceProvider.findUnique({
       where: { user_id: userId },
@@ -27,6 +34,13 @@ class ProviderService {
         location_type: data.location_type || 'both',
         payout_method: data.payout_method,
         payout_account: data.payout_account,
+        phone: data.phone?.trim() || null,
+        whatsapp: data.whatsapp?.trim() || null,
+        email: data.email?.trim() || null,
+        address: data.address?.trim() || null,
+        city: data.city?.trim() || null,
+        country: data.country?.trim() || null,
+        bio: data.bio?.trim() || null,
         status: 'pending',
       },
       include: {
@@ -51,6 +65,13 @@ class ProviderService {
     location_type?: string;
     payout_method?: string;
     payout_account?: string;
+    phone?: string;
+    whatsapp?: string;
+    email?: string;
+    address?: string;
+    city?: string;
+    country?: string;
+    bio?: string;
   }) {
     const provider = await prisma.serviceProvider.update({
       where: { id: providerId },
@@ -60,6 +81,13 @@ class ProviderService {
         ...(data.location_type && { location_type: data.location_type }),
         ...(data.payout_method !== undefined && { payout_method: data.payout_method }),
         ...(data.payout_account !== undefined && { payout_account: data.payout_account }),
+        ...(data.phone !== undefined && { phone: data.phone?.trim() || null }),
+        ...(data.whatsapp !== undefined && { whatsapp: data.whatsapp?.trim() || null }),
+        ...(data.email !== undefined && { email: data.email?.trim() || null }),
+        ...(data.address !== undefined && { address: data.address?.trim() || null }),
+        ...(data.city !== undefined && { city: data.city?.trim() || null }),
+        ...(data.country !== undefined && { country: data.country?.trim() || null }),
+        ...(data.bio !== undefined && { bio: data.bio?.trim() || null }),
       },
       include: {
         user: {

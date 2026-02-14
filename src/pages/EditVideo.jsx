@@ -188,7 +188,9 @@ export default function EditVideo() {
 
           visibility: data.visibility || 'public',
 
-          hashtags: hashtags
+          hashtags: hashtags,
+
+          music_title: data.music_title || ''
 
         });
 
@@ -224,7 +226,7 @@ export default function EditVideo() {
 
       
 
-      // Préparer les données à envoyer
+      // Préparer les données à envoyer (hashtags et music_title pour affichage correct)
 
       const updateData = {
 
@@ -235,6 +237,10 @@ export default function EditVideo() {
         category: videoData.category,
 
         visibility: videoData.visibility,
+
+        hashtags: videoData.hashtags?.length > 0 ? videoData.hashtags : [],
+
+        ...(videoData.music_title && { music_title: videoData.music_title }),
 
         // Ajouter language si l'API le supporte
 

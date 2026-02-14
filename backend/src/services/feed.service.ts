@@ -9,7 +9,7 @@ const AD_FREQUENCY_MIN = 4; // 1 ad après au moins 4 vidéos
 const AD_FREQUENCY_MAX = 5;
 
 export interface FeedItem {
-  type: 'video' | 'ad';
+  type: 'video' | 'ad' | 'top_banner';
   index: number;
   video?: any;
   ad?: {
@@ -42,7 +42,7 @@ class FeedService {
     const limit = options.limit || 50;
     const page = options.page || 1;
 
-    const [videoResult, ads] = await Promise.all([
+    const [videoResult, inFeedAds, topBannerAds] = await Promise.all([
       videoService.list({
         page,
         limit: limit + 20, // Buffer pour insertion des pubs
@@ -59,12 +59,36 @@ class FeedService {
         age: options.age,
         gender: options.gender,
       }),
+      adsService.getTopBannerAds(2, {
+        userId: options.userId,
+        deviceId: options.deviceId,
+        country: options.country,
+        city: options.city,
+        age: options.age,
+        gender: options.gender,
+      }),
     ]);
 
     const videos = videoResult.videos || [];
     const pagination = videoResult.pagination || { page, limit, total: videos.length, totalPages: 1 };
 
     const items: FeedItem[] = [];
+
+    // CDC §2 Top Banner Ads - en haut du feed
+    for (let i = 0; i < topBannerAds.length; i++) {
+      const ad = topBannerAds[i];
+      items.push({
+        type: 'top_banner',
+        index: items.length,
+        ad: {
+          id: ad.creative?.id || ad.campaign_id,
+          campaign_id: ad.campaign_id,
+          creative: ad.creative,
+          advertiser: ad.advertiser,
+          ad_type: 'top_banner',
+        },
+      });
+    }
     let videoIdx = 0;
     let adIdx = 0;
     let sinceLastAd = 0;
@@ -72,8 +96,8 @@ class FeedService {
 
     while (videoIdx < videos.length && items.length < limit) {
       // Insérer une pub tous les adInterval contenus
-      if (ads.length > 0 && sinceLastAd >= adInterval && adIdx < ads.length) {
-        const ad = ads[adIdx];
+      if (inFeedAds.length > 0 && sinceLastAd >= adInterval && adIdx < inFeedAds.length) {
+        const ad = inFeedAds[adIdx];
         items.push({
           type: 'ad',
           index: items.length,

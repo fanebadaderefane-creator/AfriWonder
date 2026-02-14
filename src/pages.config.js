@@ -51,6 +51,7 @@ import About from './pages/About';
 import Achievements from './pages/Achievements';
 import AddProduct from './pages/AddProduct';
 import AdvertiserDashboard from './pages/AdvertiserDashboard';
+import AdvertiserRegistration from './pages/AdvertiserRegistration';
 import BecomeSeller from './pages/BecomeSeller';
 import AddService from './pages/AddService';
 import Addresses from './pages/Addresses';
@@ -74,6 +75,7 @@ import CourseDetails from './pages/CourseDetails';
 import Courses from './pages/Courses';
 import Create from './pages/Create';
 import CreateCampaign from './pages/CreateCampaign';
+import CreateAdCampaign from './pages/CreateAdCampaign';
 import CreateCommunity from './pages/CreateCommunity';
 import CreateCourse from './pages/CreateCourse';
 import CreateEvent from './pages/CreateEvent';
@@ -185,6 +187,7 @@ export const PAGES = {
     "Achievements": Achievements,
     "AddProduct": AddProduct,
     "AdvertiserDashboard": AdvertiserDashboard,
+    "AdvertiserRegistration": AdvertiserRegistration,
     "BecomeSeller": BecomeSeller,
     "AddService": AddService,
     "Addresses": Addresses,
@@ -208,6 +211,7 @@ export const PAGES = {
     "Courses": Courses,
     "Create": Create,
     "CreateCampaign": CreateCampaign,
+    "CreateAdCampaign": CreateAdCampaign,
     "CreateCommunity": CreateCommunity,
     "CreateCourse": CreateCourse,
     "CreateEvent": CreateEvent,

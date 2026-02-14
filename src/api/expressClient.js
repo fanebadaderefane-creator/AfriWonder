@@ -129,6 +129,43 @@ export const api = {
       const { data } = await axiosInstance.get('/platform/config');
       return data.data;
     },
+    async getStats() {
+      const { data } = await axiosInstance.get('/platform/stats');
+      return data.data || { totalUsers: 0, totalVideos: 0, totalCreators: 0 };
+    },
+  },
+
+  earlyAccess: {
+    async getConfig() {
+      const { data } = await axiosInstance.get('/early-access/config');
+      return data.data || { maxUsers: 1000, totalUsers: 0, isFull: false, spotsLeft: 1000 };
+    },
+    async joinWaitlist(email, fullName) {
+      const { data } = await axiosInstance.post('/early-access/waitlist', { email, full_name: fullName });
+      return data.data;
+    },
+    async setMaxUsers(max) {
+      const { data } = await axiosInstance.put('/early-access/max-users', { maxUsers: max });
+      return data.data;
+    },
+    async getWaitlist() {
+      const { data } = await axiosInstance.get('/early-access/waitlist');
+      return data.data;
+    },
+  },
+
+  platformDonations: {
+    async create(donation) {
+      const { data } = await axiosInstance.post('/platform-donations', donation);
+      return data.data;
+    },
+  },
+
+  platformFeedback: {
+    async create(feedback) {
+      const { data } = await axiosInstance.post('/platform-feedback', feedback);
+      return data.data;
+    },
   },
 
   auth: {
@@ -241,6 +278,10 @@ export const api = {
       });
       return data;
     },
+    async reportAd(campaignId, reason) {
+      const { data } = await axiosInstance.post('/ads/report', { campaign_id: campaignId, reason });
+      return data;
+    },
     async getPricing() {
       const { data } = await axiosInstance.get('/ads/pricing');
       return data.data;
@@ -252,6 +293,14 @@ export const api = {
     async getCampaignStats(id) {
       const { data } = await axiosInstance.get(`/ads/campaigns/${id}`);
       return data.data;
+    },
+    async updateCampaign(id, payload) {
+      const { data } = await axiosInstance.put(`/ads/campaigns/${id}`, payload);
+      return data.data;
+    },
+    async deleteCampaign(id) {
+      const { data } = await axiosInstance.delete(`/ads/campaigns/${id}`);
+      return data;
     },
     async createCampaign(payload) {
       const { data } = await axiosInstance.post('/ads/campaigns', payload);
@@ -267,6 +316,12 @@ export const api = {
     },
     async getPendingCampaigns() {
       const { data } = await axiosInstance.get('/ads/campaigns/pending');
+      return data.data;
+    },
+    async getAdminCampaigns(status) {
+      const { data } = await axiosInstance.get('/ads/campaigns/admin', {
+        params: status ? { status } : {},
+      });
       return data.data;
     },
     async approveCampaign(campaignId) {
@@ -538,6 +593,20 @@ export const api = {
       return data.data;
     },
   },
+  sellerSubscription: {
+    async subscribe(tier, options = {}) {
+      const { data } = await axiosInstance.post('/seller-subscription/subscribe', {
+        tier,
+        payment_method: options.payment_method || 'wallet',
+        orange_money_phone: options.orange_money_phone,
+      });
+      return data.data;
+    },
+    async getActive() {
+      const { data } = await axiosInstance.get('/seller-subscription/active');
+      return data.data;
+    },
+  },
   sellerReviews: {
     async listBySeller(sellerId, params = {}) {
       const { data } = await axiosInstance.get(`/seller-reviews/seller/${sellerId}`, { params });
@@ -714,6 +783,10 @@ export const api = {
     },
     async getStrategicAnalytics(params = {}) {
       const { data } = await axiosInstance.get('/admin/analytics/strategic', { params });
+      return data.data;
+    },
+    async getLiveRevenueByCreator(params = {}) {
+      const { data } = await axiosInstance.get('/admin/live-revenue-by-creator', { params });
       return data.data;
     },
     async exportStrategicAnalytics(params = {}) {
@@ -1187,6 +1260,18 @@ export const api = {
     },
     async list(params = {}) {
       const { data } = await axiosInstance.get('/withdrawals', { params });
+      return data.data;
+    },
+    async getPending(params = {}) {
+      const { data } = await axiosInstance.get('/withdrawals/pending', { params });
+      return data.data;
+    },
+    async process(id, payload = {}) {
+      const { data } = await axiosInstance.post(`/withdrawals/${id}/process`, payload);
+      return data.data;
+    },
+    async cancel(id) {
+      const { data } = await axiosInstance.post(`/withdrawals/${id}/cancel`);
       return data.data;
     },
   },

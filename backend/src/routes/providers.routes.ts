@@ -48,13 +48,20 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
-    const { service_categories, service_radius_km, location_type, payout_method, payout_account } = req.body;
+    const { service_categories, service_radius_km, location_type, payout_method, payout_account, phone, whatsapp, email, address, city, country, bio } = req.body;
     const provider = await providerService.createProvider(userId, {
       service_categories: service_categories || [],
       service_radius_km,
       location_type,
       payout_method,
       payout_account,
+      phone,
+      whatsapp,
+      email,
+      address,
+      city,
+      country,
+      bio,
     });
     res.status(201).json({ success: true, data: provider });
   } catch (error: any) {
@@ -69,13 +76,20 @@ router.put('/:id', authenticate, async (req: AuthRequest, res, next) => {
     if (!provider || provider.id !== param(req, 'id')) {
       return res.status(403).json({ success: false, message: 'Non autorisé' });
     }
-    const { service_categories, service_radius_km, location_type, payout_method, payout_account } = req.body;
+    const { service_categories, service_radius_km, location_type, payout_method, payout_account, phone, whatsapp, email, address, city, country, bio } = req.body;
     const updated = await providerService.updateProvider(param(req, 'id'), {
       service_categories,
       service_radius_km,
       location_type,
       payout_method,
       payout_account,
+      phone,
+      whatsapp,
+      email,
+      address,
+      city,
+      country,
+      bio,
     });
     res.json({ success: true, data: updated });
   } catch (error: any) {

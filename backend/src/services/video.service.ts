@@ -316,24 +316,23 @@ class VideoService {
 
     const timeBucket = Math.floor(Date.now() / 1000 / 1800);
 
-    try {
-      await prisma.videoView.create({
-        data: {
-          video_id: videoId,
-          viewer_key: viewerKey,
-          time_bucket: timeBucket,
-        },
-      });
-      const updated = await prisma.video.update({
-        where: { id: videoId },
-        data: { views: { increment: 1 } },
-        select: { views: true },
-      });
-      return { recorded: true, views: updated.views };
-    } catch (e: any) {
-      if (e?.code === 'P2002') return { recorded: false, views: video.views };
-      throw e;
-    }
+    const result = await prisma.videoView.createMany({
+      data: [{
+        video_id: videoId,
+        viewer_key: viewerKey,
+        time_bucket: timeBucket,
+      }],
+      skipDuplicates: true,
+    });
+
+    if (result.count === 0) return { recorded: false, views: video.views };
+
+    const updated = await prisma.video.update({
+      where: { id: videoId },
+      data: { views: { increment: 1 } },
+      select: { views: true },
+    });
+    return { recorded: true, views: updated.views };
   }
 
   async create(data: {
@@ -419,6 +418,9 @@ class VideoService {
     visibility: string;
     category: string;
     is_featured: boolean;
+    hashtags?: string[];
+    music_title?: string;
+    thumbnail_url?: string;
   }>, userId: string) {
     // Vérifier que l'utilisateur est le créateur
     const video = await prisma.video.findUnique({
@@ -434,9 +436,16 @@ class VideoService {
       throw new Error('Non autorisé');
     }
 
+    const hashtagsArray = Array.isArray(data.hashtags) ? data.hashtags : undefined;
+    const updateData: Record<string, unknown> = { ...data };
+
+    if (hashtagsArray !== undefined) {
+      updateData.hashtags = hashtagsArray.length ? JSON.stringify(hashtagsArray) : null;
+    }
+
     const updated = await prisma.video.update({
       where: { id },
-      data,
+      data: updateData,
       include: {
         creator: {
           select: {
@@ -448,6 +457,19 @@ class VideoService {
         },
       },
     });
+
+    if (hashtagsArray !== undefined) {
+      await prisma.videoHashtag.deleteMany({ where: { video_id: id } });
+      if (hashtagsArray.length > 0) {
+        await prisma.videoHashtag.createMany({
+          data: hashtagsArray.map((tag: string) => ({
+            video_id: id,
+            tag_name: String(tag).replace(/^#/, '').toLowerCase(),
+          })),
+          skipDuplicates: true,
+        });
+      }
+    }
 
     return updated;
   }

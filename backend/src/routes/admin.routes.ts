@@ -570,6 +570,20 @@ router.get('/audit-logs', authenticate, requireDataAdmin, async (req: AuthReques
   }
 });
 
+// GET /api/admin/live-revenue-by-creator — Revenus live par créateur (gifts + tips)
+router.get('/live-revenue-by-creator', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const from = req.query.from as string;
+    const to = req.query.to as string;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const data = await adminService.getLiveRevenueByCreator({ from, to, page, limit });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // GET /api/admin/analytics/strategic — Growth, retention, ARPU, conversion (data_admin)
 router.get('/analytics/strategic', authenticate, requireDataAdmin, async (req: AuthRequest, res, next) => {
   try {

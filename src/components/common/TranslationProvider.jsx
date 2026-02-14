@@ -42,7 +42,7 @@ const translations = {
     mark_all_as_read: "Marquer tout comme lu",
     like: "J'aime",
     comment: "Commentaire",
-    follow: "Suivi",
+    follow_notification: "Suivi",
     message: "Message",
     order_update: "Mise à jour de commande",
     
@@ -134,7 +134,7 @@ const translations = {
     mark_all_as_read: "Mark all as read",
     like: "Like",
     comment: "Comment",
-    follow: "Follow",
+    follow_notification: "Follow",
     message: "Message",
     order_update: "Order Update",
     
@@ -226,7 +226,7 @@ const translations = {
     mark_all_as_read: "وضع علامة على جميع القراءات",
     like: "إعجاب",
     comment: "تعليق",
-    follow: "متابعة",
+    follow_notification: "متابعة",
     message: "رسالة",
     order_update: "تحديث الطلب",
     

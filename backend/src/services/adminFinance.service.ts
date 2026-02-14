@@ -8,6 +8,7 @@ export interface FinanceDashboard {
     totalBalance: number;
     totalUserWallets: number;
     totalEscrowBalance: number;
+    list?: Array<{ id: string; user_id: string; username?: string; balance: number; status: string }>;
   };
   transactions: {
     volumeLast24h: number;
@@ -102,6 +103,13 @@ class AdminFinanceService {
     });
 
     const totalUserBalance = walletSums._sum.available_balance ?? 0;
+
+    const walletList = await prisma.wallet.findMany({
+      where: { wallet_type: 'user' },
+      take: 30,
+      orderBy: { available_balance: 'desc' },
+      include: { user: { select: { username: true } } },
+    });
     const activeLoanAmount = activeLoans.reduce((s, l) => s + (l.current_amount ?? 0), 0);
     const fundedTotal = fundedLoans._sum.current_amount ?? 0;
     const defaultedCount = defaultedLoans;
@@ -120,6 +128,13 @@ class AdminFinanceService {
         totalBalance: totalUserBalance,
         totalUserWallets: await prisma.wallet.count({ where: { wallet_type: 'user' } }),
         totalEscrowBalance: escrowSum._sum.available_balance ?? 0,
+        list: walletList.map((w) => ({
+          id: w.id,
+          user_id: w.user_id,
+          username: (w.user as { username?: string })?.username,
+          balance: w.available_balance ?? w.balance ?? 0,
+          status: w.status,
+        })),
       },
       transactions: {
         volumeLast24h: tx24._sum.amount ?? 0,

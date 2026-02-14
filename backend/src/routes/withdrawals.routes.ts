@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
-import { requireAnyAdmin } from '../middleware/adminRbac.js';
+import { requireAnyAdmin, isAdminRole } from '../middleware/adminRbac.js';
 import { param } from '../utils/params.js';
 import withdrawalService from '../services/withdrawal.service.js';
 
@@ -98,7 +98,7 @@ router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => 
   try {
     const userId = req.user!.id;
     const withdrawalId = param(req, 'id');
-    const isAdmin = req.user!.role === 'admin';
+    const isAdmin = isAdminRole(req.user!.role || '');
 
     const withdrawal = await withdrawalService.cancelWithdrawal(withdrawalId, userId, isAdmin);
 

@@ -76,8 +76,18 @@ function VideoCardContent({
   const viewRecordedRef = useRef(false);
   const navigate = useNavigate();
   
-  // Extraire les hashtags et la musique de la description si les champs n'existent pas
-  const hashtags = video.hashtags || extractHashtags(video.description || '');
+  // Extraire les hashtags et la musique - gérer le cas où hashtags peut être une chaîne JSON
+  let hashtags = video.hashtags;
+  if (typeof hashtags === 'string') {
+    try {
+      hashtags = JSON.parse(hashtags);
+    } catch {
+      hashtags = extractHashtags(video.description || '');
+    }
+  }
+  if (!Array.isArray(hashtags) || hashtags.length === 0) {
+    hashtags = extractHashtags(video.description || '');
+  }
   const musicTitle = video.music_title || extractMusicTitle(video.description || '');
   const displayDescription = cleanDescription(video.description || '');
 
@@ -944,8 +954,8 @@ function VideoCardContent({
           </div>
         )}
 
-        {/* Hashtags supplémentaires si pas dans le texte */}
-        {hashtags.length > 0 && fullText && !fullText.match(/#\w+/g) && (
+        {/* Hashtags - afficher quand présents et non déjà dans le texte */}
+        {hashtags.length > 0 && (!fullText || !fullText.match(/#\w+/g)) && (
           <div className="flex flex-wrap gap-2 mb-2">
             {hashtags.slice(0, 3).map((tag, index) => (
               <button

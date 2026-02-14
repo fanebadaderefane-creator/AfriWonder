@@ -6,6 +6,7 @@ import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import { adsService, AD_PRICING_BY_DURATION } from '../services/ads.service.js';
 import { requireAnyAdmin } from '../middleware/adminRbac.js';
+import moderationService from '../services/moderation.service.js';
 
 const router = Router();
 
@@ -46,6 +47,24 @@ router.post('/impression', optionalAuth, async (req: AuthRequest, res, next) => 
     await adsService.recordImpression(creativeId, campaignId, viewerKey);
 
     res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/ads/report - Signaler une publicité (CDC §4 Utilisateur peut signaler une pub)
+router.post('/report', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { campaign_id: campaignId, reason } = req.body;
+    if (!campaignId || !reason || typeof reason !== 'string' || !reason.trim()) {
+      return res.status(400).json({ success: false, error: 'campaign_id et reason requis' });
+    }
+    await moderationService.createReport(req.user!.id, {
+      contentType: 'ad',
+      contentId: campaignId,
+      reason: reason.trim(),
+    });
+    res.json({ success: true, message: 'Signalement enregistré.' });
   } catch (error) {
     next(error);
   }
@@ -118,6 +137,19 @@ router.get('/campaigns/pending', authenticate, requireAnyAdmin, async (req: Auth
   }
 });
 
+// GET /api/ads/campaigns/admin - Toutes les campagnes (admin)
+router.get('/campaigns/admin', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const { status } = req.query;
+    const campaigns = await adsService.getAllCampaignsForAdmin(
+      typeof status === 'string' && status ? status : undefined
+    );
+    res.json({ success: true, data: campaigns });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /api/ads/campaigns/:id - Stats d'une campagne
 router.get('/campaigns/:id', authenticate, async (req: AuthRequest, res, next) => {
   try {
@@ -125,6 +157,30 @@ router.get('/campaigns/:id', authenticate, async (req: AuthRequest, res, next) =
     const campaignId = param(req, 'id');
     const stats = await adsService.getCampaignStats(campaignId, userId);
     res.json({ success: true, data: stats });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PUT /api/ads/campaigns/:id - Modifier une campagne (brouillon uniquement)
+router.put('/campaigns/:id', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const campaignId = param(req, 'id');
+    const campaign = await adsService.updateCampaign(campaignId, userId, req.body);
+    res.json({ success: true, data: campaign });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/ads/campaigns/:id - Supprimer une campagne (brouillon uniquement)
+router.delete('/campaigns/:id', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const campaignId = param(req, 'id');
+    await adsService.deleteCampaign(campaignId, userId);
+    res.json({ success: true });
   } catch (error) {
     next(error);
   }

@@ -16,6 +16,8 @@ export default function RechargeWallet() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const transactionId = searchParams.get('transactionId');
+  const returnUrl = searchParams.get('returnUrl');
+  const amountParam = searchParams.get('amount');
   const [user, setUser] = useState(null);
   const [amount, setAmount] = useState('');
   const [phone, setPhone] = useState('');
@@ -31,18 +33,35 @@ export default function RechargeWallet() {
   }, [navigate]);
 
   useEffect(() => {
+    if (amountParam && !amount) setAmount(amountParam);
+  }, [amountParam, amount]);
+
+  useEffect(() => {
     if (transactionId && user) {
       api.live.confirmWalletRecharge(transactionId)
         .then((res) => {
+          const redirectUrl = returnUrl || sessionStorage.getItem('adCampaignRechargeReturnUrl');
           toast.success(`Recharge confirmée ! Solde : ${res.new_balance?.toLocaleString()} FCFA`);
           refetchWallet();
+          const doRedirect = () => {
+            if (redirectUrl) {
+              sessionStorage.removeItem('adCampaignRechargeReturnUrl');
+              window.location.href = redirectUrl;
+            } else {
+              navigate(createPageUrl('AdvertiserDashboard'));
+            }
+          };
+          setTimeout(doRedirect, 1200);
         })
-        .catch((e) => toast.error(e.response?.data?.error || e.message || 'Erreur'));
+        .catch((e) => {
+          const msg = e?.apiMessage ?? (typeof e?.response?.data?.error === 'string' ? e.response.data.error : e?.response?.data?.error?.message) ?? e?.message ?? 'Erreur';
+          toast.error(msg);
+        });
     }
-  }, [transactionId, user, refetchWallet]);
+  }, [transactionId, user, refetchWallet, returnUrl, navigate]);
 
   const rechargeMutation = useMutation({
-    mutationFn: () => api.live.rechargeWallet({ amount: Number(amount) || 0, phone: phone || undefined }),
+    mutationFn: () => api.live.rechargeWallet({ amount: Number(amount) || 0, phone: (phone || '').replace(/\D/g, '') }),
     onSuccess: (res) => {
       if (res.payment_url) {
         window.location.href = res.payment_url;
@@ -50,7 +69,10 @@ export default function RechargeWallet() {
         toast.success('Demande envoyée');
       }
     },
-    onError: (e) => toast.error(e.response?.data?.error || e.message || 'Erreur'),
+    onError: (e) => {
+      const msg = e?.apiMessage ?? (typeof e?.response?.data?.error === 'string' ? e.response?.data?.error : e?.response?.data?.error?.message) ?? e?.message ?? 'Erreur lors de la recharge';
+      toast.error(msg);
+    },
   });
 
   const handleRecharge = () => {
@@ -61,6 +83,11 @@ export default function RechargeWallet() {
     }
     if (num > 1000000) {
       toast.error('Maximum 1 000 000 FCFA');
+      return;
+    }
+    const phoneDigits = (phone || '').replace(/\D/g, '');
+    if (phoneDigits.length < 8) {
+      toast.error('Numéro Orange Money requis (ex: 77 XX XX XX XX)');
       return;
     }
     rechargeMutation.mutate();
@@ -128,13 +155,13 @@ export default function RechargeWallet() {
             />
             <Input
               type="tel"
-              placeholder="Numéro Orange Money (optionnel)"
+              placeholder="Numéro Orange Money (ex: 77 XX XX XX XX) *"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
             />
             <Button
               className="w-full bg-orange-500 hover:bg-orange-600"
-              disabled={!amount || Number(amount) < 100 || rechargeMutation.isPending}
+              disabled={!amount || Number(amount) < 100 || !phone?.replace(/\D/g, '').length || phone.replace(/\D/g, '').length < 8 || rechargeMutation.isPending}
               onClick={handleRecharge}
             >
               {rechargeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Payer avec Orange Money'}

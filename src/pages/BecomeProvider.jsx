@@ -45,6 +45,13 @@ export default function BecomeProvider() {
     location_type: 'both',
     payout_method: '',
     payout_account: '',
+    phone: '',
+    whatsapp: '',
+    email: '',
+    address: '',
+    city: '',
+    country: '',
+    bio: '',
   });
 
   const createProviderMutation = useMutation({
@@ -210,12 +217,70 @@ export default function BecomeProvider() {
           >
             <Card>
               <CardHeader>
-                <CardTitle>Informations de paiement</CardTitle>
+                <CardTitle>Contact et paiement</CardTitle>
                 <p className="text-sm text-gray-600">
-                  Comment souhaitez-vous recevoir vos paiements?
+                  Vos coordonnées et comment recevoir vos paiements
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div>
+                  <Label>Téléphone</Label>
+                  <Input
+                    placeholder="Ex: +223 70 12 34 56"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
+                <div>
+                  <Label>WhatsApp</Label>
+                  <Input
+                    placeholder="Ex: +223 70 12 34 56"
+                    value={formData.whatsapp}
+                    onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
+                <div>
+                  <Label>Email professionnel</Label>
+                  <Input
+                    type="email"
+                    placeholder="contact@exemple.com"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
+                <div>
+                  <Label>Adresse / Ville / Pays</Label>
+                  <Input
+                    placeholder="Adresse"
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    className="mt-2"
+                  />
+                  <div className="flex gap-2 mt-2">
+                    <Input
+                      placeholder="Ville"
+                      value={formData.city}
+                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                    />
+                    <Input
+                      placeholder="Pays"
+                      value={formData.country}
+                      onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label>Présentation (optionnel)</Label>
+                  <Input
+                    placeholder="Décrivez vos services en quelques mots"
+                    value={formData.bio}
+                    onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
                 <div>
                   <Label>Méthode de paiement</Label>
                   <Select

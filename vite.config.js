@@ -12,7 +12,7 @@ try {
 
 // https://vite.dev/config/
 export default defineConfig({
-  logLevel: 'error',
+  logLevel: 'info',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -22,9 +22,8 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
   },
   optimizeDeps: {
-    include: ['react', 'react-dom'],
+    include: ['react', 'react-dom', 'react-router-dom'],
     exclude: [],
-    force: true,
     esbuildOptions: {
       resolveExtensions: ['.jsx', '.js', '.ts', '.tsx'],
     },

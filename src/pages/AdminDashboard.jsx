@@ -11,19 +11,23 @@ import SettingsPanel from '@/components/admin/SettingsPanel';
 import AuditPanel from '@/components/admin/AuditPanel';
 import LogisticsPanel from '@/components/admin/LogisticsPanel';
 import AdsCampaignsPanel from '@/components/admin/AdsCampaignsPanel';
+import VerificationsPanel from '@/components/admin/VerificationsPanel';
+import EarlyAccessPanel from '@/components/admin/EarlyAccessPanel';
 
 const SUPER_ADMIN_EMAIL = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com').toLowerCase();
 const ADMIN_ROLES = ['super_admin', 'admin', 'finance_admin', 'moderation_admin', 'support_admin', 'data_admin'];
 const isAllowedAdmin = (u) => u?.email?.toLowerCase() === SUPER_ADMIN_EMAIL && ADMIN_ROLES.includes(u?.role);
 
-function ActivePanel({ activeTab, user }) {
+function ActivePanel({ activeTab, user, onTabChange }) {
   switch (activeTab) {
     case 'overview':
-      return <OverviewPanel />;
+      return <OverviewPanel onTabChange={onTabChange} />;
     case 'users':
       return <UsersPanel />;
     case 'finance':
       return <FinancePanel />;
+    case 'verifications':
+      return <VerificationsPanel />;
     case 'campagnes':
       return <AdsCampaignsPanel />;
     case 'videos':
@@ -44,6 +48,8 @@ function ActivePanel({ activeTab, user }) {
       return <AnalyticsPanel />;
     case 'audit':
       return <AuditPanel />;
+    case 'earlyaccess':
+      return <EarlyAccessPanel />;
     case 'settings':
       return <SettingsPanel userRole={user?.role} />;
     default:
@@ -89,7 +95,7 @@ export default function AdminDashboard() {
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
     >
-      <ActivePanel activeTab={activeTab} user={user} />
+      <ActivePanel activeTab={activeTab} user={user} onTabChange={setActiveTab} />
     </AdminLayout>
   );
 }

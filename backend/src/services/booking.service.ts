@@ -42,10 +42,16 @@ class BookingService {
       throw new Error('Service non disponible');
     }
 
-    // Calculer les montants (Services pro AfriWonder : 15-20%, défaut 17.5%)
-    const commissionService = (await import('./commission.service.js')).default;
+    // Calculer les montants. Phase 1: MARKETPLACE_PHASE1_SUBSCRIPTION_ONLY → 0% commission (abonnements uniquement)
     const totalPrice = service.price + (service.travel_fee || 0);
-    const { platform: platformFee, provider: providerEarnings } = commissionService.servicesProvider(totalPrice);
+    let platformFee = 0;
+    let providerEarnings = totalPrice;
+    if (process.env.MARKETPLACE_PHASE1_SUBSCRIPTION_ONLY !== 'true') {
+      const commissionService = (await import('./commission.service.js')).default;
+      const calc = commissionService.servicesProvider(totalPrice);
+      platformFee = calc.platform;
+      providerEarnings = calc.provider;
+    }
     const depositAmount = data.deposit_only
       ? totalPrice * this.DEFAULT_DEPOSIT_RATE
       : totalPrice;
@@ -571,13 +577,15 @@ class BookingService {
         },
       });
 
-      // Créditer la plateforme (commission)
-      await platformRevenueService.addRevenue(
-        booking.platform_fee,
-        'services',
-        `Commission service - ${booking.service.title} (${booking.total_price} FCFA)`,
-        bookingId
-      );
+      // Créditer la plateforme (commission) — Phase 1: 0 si abonnements uniquement
+      if (booking.platform_fee > 0) {
+        await platformRevenueService.addRevenue(
+          booking.platform_fee,
+          'services',
+          `Commission service - ${booking.service.title} (${booking.total_price} FCFA)`,
+          bookingId
+        );
+      }
 
       // Mettre à jour les stats du prestataire
       await providerService.updateStats(providerId);

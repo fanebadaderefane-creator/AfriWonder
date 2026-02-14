@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { ArrowLeft, Bell, Smartphone } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import PushNotificationService from '@/components/common/PushNotificationService';
@@ -30,9 +31,14 @@ export default function NotificationSettings() {
       try {
         const u = await api.auth.me();
         setUser(u);
-        await loadPreferences(u.id);
+        try {
+          await loadPreferences(u.id);
+        } catch (_prefErr) {
+          // Ne pas rediriger si le chargement des préférences échoue (API absente, etc.)
+          console.error('Erreur chargement préférences:', _prefErr);
+        }
       } catch (_e) {
-        navigate('/');
+        navigate(createPageUrl('Landing'));
       }
     };
     getUser();
@@ -41,11 +47,11 @@ export default function NotificationSettings() {
   const loadPreferences = async (userId) => {
     try {
       const prefs = await PushNotificationService.getNotificationPreference(userId);
-      if (prefs) {
-        setPreferences(prefs);
+      if (prefs && typeof prefs === 'object') {
+        setPreferences((prev) => ({ ...prev, ...prefs }));
       }
     } catch (_error) {
-      console.error('Erreur chargement préférences:', error);
+      console.error('Erreur chargement préférences:', _error);
     }
   };
 
@@ -63,7 +69,7 @@ export default function NotificationSettings() {
       toast.success('Préférences mises à jour');
     } catch (_error) {
       toast.error('Erreur lors de la mise à jour');
-      console.error(error);
+      console.error(_error);
     } finally {
       setLoading(false);
     }

@@ -82,21 +82,21 @@ export default function LogisticsPanel() {
           Logistique Marketplace
         </h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-4 bg-white/5 rounded-lg">
-            <p className="text-sm text-white/70">Transporteurs actifs</p>
-            <p className="text-2xl font-bold">{providers.length}</p>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10">
+            <p className="text-sm text-white font-medium">Transporteurs actifs</p>
+            <p className="text-2xl font-bold text-white">{providers.length}</p>
           </div>
-          <div className="p-4 bg-white/5 rounded-lg">
-            <p className="text-sm text-white/70">Tarifs actifs</p>
-            <p className="text-2xl font-bold">{rates.filter((r) => r.is_active).length}</p>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10">
+            <p className="text-sm text-white font-medium">Tarifs actifs</p>
+            <p className="text-2xl font-bold text-white">{rates.filter((r) => r.is_active).length}</p>
           </div>
-          <div className="p-4 bg-white/5 rounded-lg">
-            <p className="text-sm text-white/70">Points relais actifs</p>
-            <p className="text-2xl font-bold">{pickupPoints.filter((p) => p.is_active).length}</p>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10">
+            <p className="text-sm text-white font-medium">Points relais actifs</p>
+            <p className="text-2xl font-bold text-white">{pickupPoints.filter((p) => p.is_active).length}</p>
           </div>
-          <div className="p-4 bg-white/5 rounded-lg">
-            <p className="text-sm text-white/70">Pays couverts</p>
-            <p className="text-2xl font-bold">{countryStats.length}</p>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10">
+            <p className="text-sm text-white font-medium">Pays couverts</p>
+            <p className="text-2xl font-bold text-white">{countryStats.length}</p>
           </div>
         </div>
       </Card>
@@ -197,7 +197,7 @@ export default function LogisticsPanel() {
         <div className="space-y-2 max-h-80 overflow-y-auto">
           {providers.length === 0 && <p className="text-white/60 text-sm">Aucun transporteur configure.</p>}
           {providers.map((p) => (
-            <div key={p.name} className="p-3 bg-white/5 rounded-lg flex items-center justify-between">
+            <div key={p.name} className="p-3 rounded-lg border border-white/20 bg-white/10 flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold">{p.name}</p>
                 <p className="text-xs text-white/70">{p.active_rates} tarifs actifs</p>

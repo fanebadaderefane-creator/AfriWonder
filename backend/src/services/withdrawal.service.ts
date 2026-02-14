@@ -155,14 +155,38 @@ class WithdrawalService {
         amount: withdrawalFee,
         currency: 'XOF',
         status: 'completed',
-        description: `Frais de retrait (3%)`,
+        description: `Frais de retrait (500 FCFA)`,
         reference_id: withdrawal.id,
         payment_method: 'internal',
       },
     });
 
-    // TODO: Envoyer une notification à l'admin pour traiter le retrait
-    // await notificationService.notifyAdmin('Nouvelle demande de retrait', ...);
+    // Notifier les admins (finance_admin, admin, super_admin)
+    try {
+      const admins = await prisma.user.findMany({
+        where: { role: { in: ['super_admin', 'admin', 'finance_admin'] } },
+        select: { id: true },
+      });
+      const creator = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { username: true },
+      });
+      const creatorName = creator?.username || 'Un créateur';
+      for (const admin of admins) {
+        await prisma.notification.create({
+          data: {
+            user_id: admin.id,
+            type: 'withdrawal_requested',
+            title: 'Nouvelle demande de retrait',
+            message: `${creatorName} demande un retrait de ${data.amount.toLocaleString()} FCFA vers ${data.orange_money_phone}. Traitement sous 24-48h.`,
+            reference_type: 'withdrawal',
+            reference_id: withdrawal.id,
+          },
+        });
+      }
+    } catch (notifErr) {
+      logger.warn('Notification admin retrait', { err: (notifErr as Error).message });
+    }
 
     logger.info('Demande de retrait créée', {
       withdrawalId: withdrawal.id,
@@ -275,7 +299,7 @@ class WithdrawalService {
     } catch (error: any) {
       // En cas d'erreur, rembourser le wallet (montant + frais) et marquer comme failed
       const wallet = await this.getSellerWallet(withdrawal.user_id);
-      const withdrawalFee = withdrawal.amount * this.WITHDRAWAL_FEE_RATE;
+      const withdrawalFee = this.WITHDRAWAL_FEE_FIXED;
       const totalRefund = withdrawal.amount + withdrawalFee;
       
       await prisma.sellerWallet.update({
@@ -443,7 +467,7 @@ class WithdrawalService {
 
     // Rembourser le wallet (montant + frais)
     const wallet = await this.getSellerWallet(withdrawal.user_id);
-    const withdrawalFee = withdrawal.amount * this.WITHDRAWAL_FEE_RATE;
+    const withdrawalFee = this.WITHDRAWAL_FEE_FIXED;
     const totalRefund = withdrawal.amount + withdrawalFee;
     
     await prisma.sellerWallet.update({

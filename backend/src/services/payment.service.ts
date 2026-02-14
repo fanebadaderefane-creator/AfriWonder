@@ -241,7 +241,9 @@ class PaymentService {
     amount: number;
     phone: string;
     returnUrl: string;
-  }) {
+  }, options?: { useOrderPayment?: boolean; transactionType?: string }) {
+    const useOrderPayment = options?.useOrderPayment !== false;
+    const transactionType = options?.transactionType || 'payment';
     const merchantId = process.env.ORANGE_MONEY_MERCHANT_ID || process.env.VITE_ORANGE_MERCHANT_ID;
     const apiKey = process.env.ORANGE_MONEY_API_KEY || process.env.VITE_ORANGE_API_KEY;
 
@@ -278,11 +280,11 @@ class PaymentService {
       await prisma.transaction.create({
         data: {
           user_id: userId,
-          type: 'payment',
+          type: transactionType,
           amount: data.amount,
           currency: 'XOF',
           status: 'pending',
-          description: `Paiement Orange Money - Commande ${orderId}`,
+          description: `Paiement Orange Money - ${orderId}`,
           reference_id: orderId,
           payment_method: 'orange_money',
           phone_number: data.phone,
@@ -290,7 +292,9 @@ class PaymentService {
       });
 
       const reference = paymentResponse.data?.reference || orderId;
-      await this.markPaymentAttemptPending(orderId, 'orange_money', data.amount, reference);
+      if (useOrderPayment) {
+        await this.markPaymentAttemptPending(orderId, 'orange_money', data.amount, reference);
+      }
 
       logger.info('Paiement Orange Money Mali initie', { userId, orderId, amount: data.amount, reference });
       return {
@@ -366,7 +370,11 @@ class PaymentService {
             where: { reference_id: orderId, status: 'pending' },
             data: { status: 'completed', payment_method: 'orange_money' },
           });
-          await this.markPaymentAttemptFinal(orderId, 'orange_money', 'completed', data.pay_token);
+          try {
+            await this.markPaymentAttemptFinal(orderId, 'orange_money', 'completed', data.pay_token);
+          } catch {
+            // Référence non-Order (ex: seller_subscription) — ignorer OrderPayment
+          }
           return {
             success: true,
             status: 'paid',

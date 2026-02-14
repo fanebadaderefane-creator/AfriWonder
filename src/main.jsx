@@ -1,8 +1,33 @@
+import * as Sentry from '@sentry/react'
 import React, { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from '@/App.jsx'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import '@/index.css'
+
+// Sentry — initialiser le plus tôt possible
+const sentryDsn = import.meta.env.VITE_SENTRY_DSN
+if (sentryDsn) {
+  const isProd = import.meta.env.PROD
+  if (import.meta.env.DEV) {
+    console.log('[SENTRY] Monitoring frontend activé')
+  }
+  Sentry.init({
+    dsn: sentryDsn,
+    environment: import.meta.env.VITE_REACT_APP_ENV || import.meta.env.MODE,
+    sendDefaultPii: true,
+    integrations: [
+      Sentry.browserTracingIntegration(),
+      Sentry.replayIntegration(),
+    ],
+    tracesSampleRate: 1.0,
+    tracePropagationTargets: ['localhost', /^https?:\/\/[^/]+/],
+    replaysSessionSampleRate: isProd ? 0.1 : 1.0,
+    replaysOnErrorSampleRate: 1.0,
+    enableLogs: true,
+  })
+  window.Sentry = Sentry
+}
 
 // Désenregistrer les service workers en développement pour éviter les conflits avec Vite
 if ('serviceWorker' in navigator && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {

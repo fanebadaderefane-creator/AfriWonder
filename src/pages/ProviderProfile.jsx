@@ -289,6 +289,50 @@ export default function ProviderProfile() {
                 <CardTitle>Informations</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {provider.bio && (
+                  <div>
+                    <p className="text-sm text-gray-600 mb-1">Présentation</p>
+                    <p className="font-medium">{provider.bio}</p>
+                  </div>
+                )}
+                {(provider.phone || provider.whatsapp) && (
+                  <div>
+                    <p className="text-sm text-gray-600 mb-1">Contact</p>
+                    <div className="flex flex-wrap gap-3">
+                      {provider.phone && (
+                        <a href={`tel:${provider.phone}`} className="text-orange-600 hover:underline font-medium">
+                          {provider.phone}
+                        </a>
+                      )}
+                      {provider.whatsapp && (
+                        <a
+                          href={`https://wa.me/${provider.whatsapp.replace(/\D/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-green-600 hover:underline font-medium"
+                        >
+                          WhatsApp: {provider.whatsapp}
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {provider.email && (
+                  <div>
+                    <p className="text-sm text-gray-600 mb-1">Email</p>
+                    <a href={`mailto:${provider.email}`} className="text-orange-600 hover:underline font-medium">
+                      {provider.email}
+                    </a>
+                  </div>
+                )}
+                {(provider.address || provider.city) && (
+                  <div>
+                    <p className="text-sm text-gray-600 mb-1">Adresse</p>
+                    <p className="font-medium">
+                      {[provider.address, provider.city, provider.country].filter(Boolean).join(', ')}
+                    </p>
+                  </div>
+                )}
                 {provider.location_type && (
                   <div>
                     <p className="text-sm text-gray-600 mb-1">Type de service</p>

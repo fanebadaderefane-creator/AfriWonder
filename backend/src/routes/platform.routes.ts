@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import prisma from '../config/database.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { requireAnyAdmin } from '../middleware/adminRbac.js';
 import platformRevenueService from '../services/platformRevenue.service.js';
@@ -25,6 +26,23 @@ router.get('/config', (_req, res) => {
       environment: process.env.NODE_ENV || 'development',
     },
   });
+});
+
+// GET /api/platform/stats — Public, statistiques réelles pour Landing/About (sans auth)
+router.get('/stats', async (_req, res, next) => {
+  try {
+    const [totalUsers, totalVideos, totalCreators] = await Promise.all([
+      prisma.user.count({ where: { account_suspended: false } }),
+      prisma.video.count(),
+      prisma.user.count({ where: { account_suspended: false, videos: { some: {} } } }),
+    ]);
+    res.json({
+      success: true,
+      data: { totalUsers, totalVideos, totalCreators },
+    });
+  } catch (error: any) {
+    next(error);
+  }
 });
 
 // GET /api/platform/feature-flags — Public, pour le frontend (menu, visibilité modules)

@@ -10,7 +10,10 @@ import ledgerService from './ledger.service.js';
 
 class EscrowService {
   private readonly DEFAULT_RELEASE_DAYS = 7;
-  private readonly PLATFORM_COMMISSION_RATE = 0.1;
+  // Phase 1: MARKETPLACE_PHASE1_SUBSCRIPTION_ONLY=true → 0% commission (abonnements uniquement)
+  private get marketplaceCommissionRate() {
+    return process.env.MARKETPLACE_PHASE1_SUBSCRIPTION_ONLY === 'true' ? 0 : 0.1;
+  }
 
   async holdFunds(orderId: string) {
     const order = await prisma.order.findUnique({
@@ -36,19 +39,21 @@ class EscrowService {
     for (const item of order.items) {
       const sellerId = item.product.seller_id;
       const itemTotal = (item as any).unit_price ? (item as any).unit_price * item.quantity : (item as any).price * item.quantity;
-      const platformFee = itemTotal * this.PLATFORM_COMMISSION_RATE;
+      const platformFee = itemTotal * this.marketplaceCommissionRate;
       const sellerEarnings = itemTotal - platformFee;
 
       if (!sellerAmounts[sellerId]) sellerAmounts[sellerId] = { amount: 0, platformFee: 0 };
       sellerAmounts[sellerId].amount += sellerEarnings;
       sellerAmounts[sellerId].platformFee += platformFee;
 
-      await platformRevenueService.addRevenue(
-        platformFee,
-        'marketplace',
-        `Commission - Commande ${orderId}`,
-        `${orderId}-${item.id}`
-      );
+      if (platformFee > 0) {
+        await platformRevenueService.addRevenue(
+          platformFee,
+          'marketplace',
+          `Commission - Commande ${orderId}`,
+          `${orderId}-${item.id}`
+        );
+      }
     }
 
     await prisma.order.update({
@@ -86,7 +91,7 @@ class EscrowService {
     for (const item of order.items) {
       const sellerId = item.product.seller_id;
       const itemTotal = (item as any).unit_price ? (item as any).unit_price * item.quantity : (item as any).price * item.quantity;
-      const platformFee = itemTotal * this.PLATFORM_COMMISSION_RATE;
+      const platformFee = itemTotal * this.marketplaceCommissionRate;
       if (!sellerAmounts[sellerId]) sellerAmounts[sellerId] = 0;
       sellerAmounts[sellerId] += itemTotal - platformFee;
     }
@@ -205,7 +210,7 @@ class EscrowService {
       const itemTotal = (item as any).unit_price
         ? (item as any).unit_price * item.quantity
         : (item as any).price * item.quantity;
-      const platformFee = itemTotal * this.PLATFORM_COMMISSION_RATE;
+      const platformFee = itemTotal * this.marketplaceCommissionRate;
       if (!sellerRaw[sellerId]) sellerRaw[sellerId] = 0;
       sellerRaw[sellerId] += itemTotal - platformFee;
     }

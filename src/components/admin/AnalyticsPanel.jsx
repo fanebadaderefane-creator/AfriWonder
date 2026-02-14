@@ -52,77 +52,77 @@ export default function AnalyticsPanel() {
           </Button>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Croissance revenus</p><p className="text-2xl font-bold">{data.growthRate ?? 0}%</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Nouveaux users 7j</p><p className="text-2xl font-bold">{data.newUsersLast7d ?? 0}</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">ARPU</p><p className="text-2xl font-bold">{(data.arpu ?? 0).toLocaleString()} XOF</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Conversion</p><p className="text-2xl font-bold">{data.conversionMarketplace ?? 0}%</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Croissance revenus</p><p className="text-2xl font-bold text-white">{data.growthRate ?? 0}%</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Nouveaux users 7j</p><p className="text-2xl font-bold text-white">{data.newUsersLast7d ?? 0}</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">ARPU</p><p className="text-2xl font-bold text-white">{(data.arpu ?? 0).toLocaleString()} XOF</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Conversion</p><p className="text-2xl font-bold text-white">{data.conversionMarketplace ?? 0}%</p></div>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">MAU 30j</p><p className="text-2xl font-bold">{data.mau ?? 0}</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Retention 30j</p><p className="text-2xl font-bold">{data.retentionRate30d ?? 0}%</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Retention 90j</p><p className="text-2xl font-bold">{data.retentionRate90d ?? 0}%</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Abandon panier 7j</p><p className="text-2xl font-bold">{data.cartAbandonmentRate7d ?? 0}%</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">MAU 30j</p><p className="text-2xl font-bold text-white">{data.mau ?? 0}</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Retention 30j</p><p className="text-2xl font-bold text-white">{data.retentionRate30d ?? 0}%</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Retention 90j</p><p className="text-2xl font-bold text-white">{data.retentionRate90d ?? 0}%</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Abandon panier 7j</p><p className="text-2xl font-bold text-white">{data.cartAbandonmentRate7d ?? 0}%</p></div>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Nouveaux users 30j</p><p className="text-2xl font-bold">{data.newUsers30d ?? 0}</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Users actives 30j</p><p className="text-2xl font-bold">{data.activatedUsers30d ?? 0}</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Activation 30j</p><p className="text-2xl font-bold">{data.activationRate30d ?? 0}%</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Activation 7j</p><p className="text-2xl font-bold">{data.activationRate7d ?? 0}%</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Nouveaux users 30j</p><p className="text-2xl font-bold text-white">{data.newUsers30d ?? 0}</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Users actives 30j</p><p className="text-2xl font-bold text-white">{data.activatedUsers30d ?? 0}</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Activation 30j</p><p className="text-2xl font-bold text-white">{data.activationRate30d ?? 0}%</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Activation 7j</p><p className="text-2xl font-bold text-white">{data.activationRate7d ?? 0}%</p></div>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Paiements tentes 30j</p><p className="text-2xl font-bold">{data.paymentsAttempted30d ?? 0}</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Paiements reussis 30j</p><p className="text-2xl font-bold">{data.paymentsSuccess30d ?? 0}</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Paiements echoues 30j</p><p className="text-2xl font-bold">{data.paymentsFailed30d ?? 0}</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Succes paiement 30j</p><p className="text-2xl font-bold">{data.paymentSuccessRate30d ?? 0}%</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Paiements tentes 30j</p><p className="text-2xl font-bold text-white">{data.paymentsAttempted30d ?? 0}</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Paiements reussis 30j</p><p className="text-2xl font-bold text-white">{data.paymentsSuccess30d ?? 0}</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Paiements echoues 30j</p><p className="text-2xl font-bold text-white">{data.paymentsFailed30d ?? 0}</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Succes paiement 30j</p><p className="text-2xl font-bold text-white">{data.paymentSuccessRate30d ?? 0}%</p></div>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Vendeurs total</p><p className="text-2xl font-bold">{data.sellersTotal ?? 0}</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Vendeurs actifs 30j</p><p className="text-2xl font-bold">{data.activeSellers30d ?? 0}</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Produits / vendeur</p><p className="text-2xl font-bold">{data.avgProductsPerSeller ?? 0}</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Note moyenne vendeur</p><p className="text-2xl font-bold">{data.avgSellerRating ?? 0}/5</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Vendeurs total</p><p className="text-2xl font-bold text-white">{data.sellersTotal ?? 0}</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Vendeurs actifs 30j</p><p className="text-2xl font-bold text-white">{data.activeSellers30d ?? 0}</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Produits / vendeur</p><p className="text-2xl font-bold text-white">{data.avgProductsPerSeller ?? 0}</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Note moyenne vendeur</p><p className="text-2xl font-bold text-white">{data.avgSellerRating ?? 0}/5</p></div>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Annonces creees 30j</p><p className="text-2xl font-bold">{data.listingsCreated30d ?? 0}</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Annonces vendues 30j</p><p className="text-2xl font-bold">{data.soldListings30d ?? 0}</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Conversion annonce vente</p><p className="text-2xl font-bold">{data.listingToSaleConversionRate30d ?? 0}%</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Delai traitement moyen</p><p className="text-2xl font-bold">{data.avgOrderProcessingHours30d ?? 0}h</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Annonces creees 30j</p><p className="text-2xl font-bold text-white">{data.listingsCreated30d ?? 0}</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Annonces vendues 30j</p><p className="text-2xl font-bold text-white">{data.soldListings30d ?? 0}</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Conversion annonce vente</p><p className="text-2xl font-bold text-white">{data.listingToSaleConversionRate30d ?? 0}%</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Delai traitement moyen</p><p className="text-2xl font-bold text-white">{data.avgOrderProcessingHours30d ?? 0}h</p></div>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">GMV 30j</p><p className="text-2xl font-bold">{(data.gmv30d ?? 0).toLocaleString()} XOF</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Panier moyen 30j</p><p className="text-2xl font-bold">{(data.avgBasket30d ?? 0).toLocaleString()} XOF</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Visiteurs 30j</p><p className="text-2xl font-bold">{data.visitors30d ?? 0}</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Conv visiteur acheteur</p><p className="text-2xl font-bold">{data.visitorToBuyerConversionRate30d ?? 0}%</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">GMV 30j</p><p className="text-2xl font-bold text-white">{(data.gmv30d ?? 0).toLocaleString()} XOF</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Panier moyen 30j</p><p className="text-2xl font-bold text-white">{(data.avgBasket30d ?? 0).toLocaleString()} XOF</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Visiteurs 30j</p><p className="text-2xl font-bold text-white">{data.visitors30d ?? 0}</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Conv visiteur acheteur</p><p className="text-2xl font-bold text-white">{data.visitorToBuyerConversionRate30d ?? 0}%</p></div>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Revenus pub 30j</p><p className="text-2xl font-bold">{(data.adsRevenue30d ?? 0).toLocaleString()} XOF</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Revenus gifts/tips 30j</p><p className="text-2xl font-bold">{(data.giftsTipsRevenue30d ?? 0).toLocaleString()} XOF</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Revenus marketplace 30j</p><p className="text-2xl font-bold">{(data.commissionRevenue30d ?? 0).toLocaleString()} XOF</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Revenus abonnements 30j</p><p className="text-2xl font-bold">{(data.subscriptionRevenue30d ?? 0).toLocaleString()} XOF</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Revenus pub 30j</p><p className="text-2xl font-bold text-white">{(data.adsRevenue30d ?? 0).toLocaleString()} XOF</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Revenus gifts/tips 30j</p><p className="text-2xl font-bold text-white">{(data.giftsTipsRevenue30d ?? 0).toLocaleString()} XOF</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Revenus marketplace 30j</p><p className="text-2xl font-bold text-white">{(data.commissionRevenue30d ?? 0).toLocaleString()} XOF</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Revenus abonnements 30j</p><p className="text-2xl font-bold text-white">{(data.subscriptionRevenue30d ?? 0).toLocaleString()} XOF</p></div>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">Total revenus plateforme 30j</p><p className="text-2xl font-bold">{(data.totalPlatformRevenue30d ?? 0).toLocaleString()} XOF</p></div>
-          <div className="p-4 bg-white/5 rounded-lg"><p className="text-sm text-white/70">NPS 30j</p><p className="text-2xl font-bold">{data.nps30d ?? 0}</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">Total revenus plateforme 30j</p><p className="text-2xl font-bold text-white">{(data.totalPlatformRevenue30d ?? 0).toLocaleString()} XOF</p></div>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10"><p className="text-sm text-white font-medium">NPS 30j</p><p className="text-2xl font-bold text-white">{data.nps30d ?? 0}</p></div>
         </div>
       </Card>
 
       <Card className="p-6 bg-white/10 backdrop-blur border-white/20 text-white">
         <h3 className="font-bold mb-4">Monitoring API (temps reel)</h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-4 bg-white/5 rounded-lg">
-            <p className="text-sm text-white/70">Requetes total</p>
-            <p className="text-2xl font-bold">{httpMetrics?.total_requests ?? 0}</p>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10">
+            <p className="text-sm text-white font-medium">Requetes total</p>
+            <p className="text-2xl font-bold text-white">{httpMetrics?.total_requests ?? 0}</p>
           </div>
-          <div className="p-4 bg-white/5 rounded-lg">
-            <p className="text-sm text-white/70">Taux erreurs</p>
-            <p className="text-2xl font-bold">{((httpMetrics?.error_rate ?? 0) * 100).toFixed(2)}%</p>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10">
+            <p className="text-sm text-white font-medium">Taux erreurs</p>
+            <p className="text-2xl font-bold text-white">{((httpMetrics?.error_rate ?? 0) * 100).toFixed(2)}%</p>
           </div>
-          <div className="p-4 bg-white/5 rounded-lg">
-            <p className="text-sm text-white/70">Latence p95</p>
-            <p className="text-2xl font-bold">{httpMetrics?.p95_ms != null ? `${Math.round(httpMetrics.p95_ms)} ms` : '-'}</p>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10">
+            <p className="text-sm text-white font-medium">Latence p95</p>
+            <p className="text-2xl font-bold text-white">{httpMetrics?.p95_ms != null ? `${Math.round(httpMetrics.p95_ms)} ms` : '-'}</p>
           </div>
-          <div className="p-4 bg-white/5 rounded-lg">
-            <p className="text-sm text-white/70">Erreurs 24h</p>
-            <p className="text-2xl font-bold">{errorMetrics?.countLast24h ?? 0}</p>
+          <div className="p-4 rounded-lg border border-white/20 bg-white/10">
+            <p className="text-sm text-white font-medium">Erreurs 24h</p>
+            <p className="text-2xl font-bold text-white">{errorMetrics?.countLast24h ?? 0}</p>
           </div>
         </div>
       </Card>

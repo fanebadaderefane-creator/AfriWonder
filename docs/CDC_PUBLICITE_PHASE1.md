@@ -117,6 +117,15 @@ Chaque publicité doit obligatoirement avoir une durée définie :
 | Stockage CDN optimisé | ✅ | URLs externes (S3) |
 | Compression automatique | ⚠️ Optionnel | - |
 
+### 👑 VALIDATION ADMIN — Comment approuver les campagnes
+
+1. **Accès** : Se connecter avec un compte admin (super_admin, admin, finance_admin ou moderation_admin)
+2. **Navigation** : Aller sur **AdminDashboard** (Centre de Contrôle) → onglet **« Campagnes pub »**
+3. **Liste** : Les campagnes en statut `pending_review` s'affichent avec aperçu du créatif
+4. **Aperçu** : Cliquer sur la miniature pour voir l'image/vidéo en grand avant de décider
+5. **Approuver** : Bouton vert « Approuver » → la campagne passe en `active` et apparaît dans le feed
+6. **Rejeter** : Optionnellement saisir une raison, puis bouton rouge « Rejeter » → la campagne passe en `rejected`
+
 ---
 
 ### 🚨 RÈGLES IMPORTANTES
@@ -291,12 +300,24 @@ Ce module est **critique**. Il doit être :
 | CreatorSubscription (unit) | `creatorSubscription.service.test.ts` | Tiers, abonnement actif, expiration |
 | PlatformRevenue (unit) | `platformRevenue.service.test.ts` | `getRevenueByType` |
 
+### Implémenté (13 fév 2026 - suite CDC complet)
+
+| Fonctionnalité | Statut | Implémentation |
+|----------------|--------|----------------|
+| Signaler une pub | ✅ | `POST /api/ads/report` + AdCard menu |
+| Masquer une pub | ✅ | `localStorage` afw_hidden_ads + filtre Home |
+| Ciblage campagne | ✅ | CreateAdCampaign: pays, ville, âge, sexe |
+| Objectifs CTA | ✅ | Acheter, Contacter, WhatsApp, Voir plus |
+| Top Banner Ads | ✅ | En haut du feed, AdBannerCard.jsx |
+| Boost Post | ✅ | Sponsoriser sa propre vidéo (CreateAdCampaign) |
+| Page inscription annonceur | ✅ | AdvertiserRegistration.jsx |
+| Option Orange Money | ✅ | Lien RechargeWallet dans CreateAdCampaign |
+
 ### À faire (optionnel)
 
 - Mode CPM/CPC (tarification par performance)
 - Story Ads (si story activée)
-- Dashboard annonceur : page dédiée enrichie (si besoin)
-- Intégration paiement campagnes (Orange Money / Stripe pour création campagne)
+- Intégration paiement direct Orange Money pour campagnes (actuellement : portefeuille + recharge)
 
 ---
 

@@ -3,6 +3,7 @@ import jwt, { SignOptions } from 'jsonwebtoken';
 import speakeasy from 'speakeasy';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
+import * as earlyAccessService from './earlyAccess.service.js';
 
 interface RegisterData {
   email: string;
@@ -13,6 +14,14 @@ interface RegisterData {
 
 class AuthService {
   async register(data: RegisterData) {
+    // Early Access: vérifier la limite d'utilisateurs
+    const earlyCheck = await earlyAccessService.canRegister();
+    if (!earlyCheck.allowed) {
+      const error: any = new Error(earlyCheck.message);
+      error.statusCode = 403;
+      throw error;
+    }
+
     // Valider les données requises
     if (!data.email || !data.username || !data.password) {
       const error: any = new Error('Email, nom d\'utilisateur et mot de passe sont requis');
@@ -269,6 +278,14 @@ class AuthService {
 
     // Si l'utilisateur n'existe pas, le créer
     if (!user) {
+      // Early Access: vérifier la limite d'utilisateurs avant création
+      const earlyCheck = await earlyAccessService.canRegister();
+      if (!earlyCheck.allowed) {
+        const error: any = new Error(earlyCheck.message);
+        error.statusCode = 403;
+        throw error;
+      }
+
       // Générer un username unique à partir de l'email
       const baseUsername = data.email.split('@')[0];
       let username = baseUsername;

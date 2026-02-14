@@ -106,6 +106,10 @@ import adsRoutes from './routes/ads.routes.js';
 import feedRoutes from './routes/feed.routes.js';
 import creatorSupportRoutes from './routes/creatorSupport.routes.js';
 import creatorSubscriptionRoutes from './routes/creatorSubscription.routes.js';
+import sellerSubscriptionRoutes from './routes/sellerSubscription.routes.js';
+import earlyAccessRoutes from './routes/earlyAccess.routes.js';
+import platformDonationsRoutes from './routes/platformDonations.routes.js';
+import platformFeedbackRoutes from './routes/platformFeedback.routes.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -131,7 +135,7 @@ app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'baggage', 'sentry-trace'],
 }));
 app.options('*', cors());
 
@@ -141,6 +145,13 @@ app.options('*', cors());
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), env: process.env.NODE_ENV || 'development' });
 });
+// Test Sentry backend (dev) — GET /test-sentry pour déclencher une erreur
+app.get('/test-sentry', (req, res) => {
+  const err = new Error('[AfriWonder] Test Sentry Backend - ' + new Date().toISOString())
+  Sentry.captureException(err)
+  res.json({ ok: true, message: 'Erreur envoyée à Sentry. Vérifie https://fbf-global-el.sentry.io/issues/?project=4510885269209168' })
+})
+
 app.get('/health/ready', async (req, res) => {
   try {
     const prisma = (await import('./config/database.js')).default;
@@ -250,6 +261,9 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/saves', savesRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/platform', platformRoutes);
+app.use('/api/early-access', earlyAccessRoutes);
+app.use('/api/platform-donations', platformDonationsRoutes);
+app.use('/api/platform-feedback', platformFeedbackRoutes);
 app.use('/api/commissions', commissionsRoutes);
 app.use('/api/withdrawals', withdrawalsRoutes);
 app.use('/api/subscriptions', subscriptionsRoutes);
@@ -289,6 +303,7 @@ app.use('/api/refunds', refundsRoutes);
 app.use('/api/returns', returnsRoutes);
 app.use('/api/addresses', addressesRoutes);
 app.use('/api/seller-profile', sellerProfileRoutes);
+app.use('/api/seller-subscription', sellerSubscriptionRoutes);
 app.use('/api/verification', verificationRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/seller', sellerRoutes);

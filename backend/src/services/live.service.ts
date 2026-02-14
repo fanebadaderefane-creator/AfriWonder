@@ -1229,6 +1229,21 @@ class LiveService {
     });
     const baseUrl = process.env.CORS_ORIGIN || process.env.APP_URL || 'http://localhost:5173';
     const returnUrl = `${baseUrl}/RechargeWallet?transactionId=${tx.id}`;
+
+    // Mode simulation : si Orange Money non configuré en dev, simule une redirection immédiate
+    const merchantId = process.env.ORANGE_MONEY_MERCHANT_ID || process.env.VITE_ORANGE_MERCHANT_ID;
+    const apiKey = process.env.ORANGE_MONEY_API_KEY || process.env.VITE_ORANGE_API_KEY;
+    const useMock = !merchantId || !apiKey;
+
+    if (useMock && (process.env.NODE_ENV === 'development' || process.env.ORANGE_MONEY_MOCK === 'true')) {
+      logger.info('Recharge wallet en mode simulation (Orange Money non configuré)', { userId, amount, transactionId: tx.id });
+      return { transaction_id: tx.id, payment_url: returnUrl, amount };
+    }
+
+    if (useMock) {
+      throw new Error('Orange Money Mali non configuré. Vérifiez ORANGE_MONEY_MERCHANT_ID et ORANGE_MONEY_API_KEY');
+    }
+
     const result = await paymentService.initiateOrangeMoneyPayment(userId, tx.id, {
       amount,
       phone: phone || '',

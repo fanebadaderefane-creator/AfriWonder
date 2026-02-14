@@ -283,6 +283,16 @@ router.post('/orange-money/verify', authenticate, async (req: AuthRequest, res, 
         // Continuer
       }
 
+      // 4b. Vérifier si c'est un abonnement vendeur
+      try {
+        const sellerSubscriptionService = (await import('../services/sellerSubscription.service.js')).default;
+        await sellerSubscriptionService.confirmSubscription(orderId);
+        logger.info('Abonnement vendeur confirmé', { orderId });
+        return res.json({ success: true, data: result, type: 'seller_subscription' });
+      } catch (error) {
+        // Continuer
+      }
+
       // 5. Vérifier si c'est une commande marketplace
       try {
         const orderService = (await import('../services/order.service.js')).default;
@@ -555,6 +565,13 @@ router.post('/orange-money/webhook', async (req, res, next) => {
         const subscriptionService = (await import('../services/subscription.service.js')).default;
         await subscriptionService.confirmSubscription(orderId);
         logger.info('Abonnement confirmé via webhook', { orderId });
+      } catch (error) {}
+
+      // 4b. Seller subscription (abonnement vendeur)
+      try {
+        const sellerSubscriptionService = (await import('../services/sellerSubscription.service.js')).default;
+        await sellerSubscriptionService.confirmSubscription(orderId);
+        logger.info('Abonnement vendeur confirmé via webhook', { orderId });
       } catch (error) {}
 
       // 5. Order
