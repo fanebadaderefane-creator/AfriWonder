@@ -1,11 +1,57 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery } from '@tanstack/react-query';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, X, Loader2, Video, User } from 'lucide-react';
+import { Search, X, Loader2, Video, User, Package } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { motion, AnimatePresence } from 'framer-motion';
+
+/** Affiche la miniature du créateur, sinon la première image de la vidéo */
+function VideoThumbnail({ video }) {
+  const [showThumb, setShowThumb] = useState(!!video.thumbnail_url);
+  const [showVideo, setShowVideo] = useState(!video.thumbnail_url && !!video.video_url);
+  const [showIcon, setShowIcon] = useState(!video.thumbnail_url && !video.video_url);
+
+  const onThumbError = () => {
+    setShowThumb(false);
+    if (video.video_url) setShowVideo(true);
+    else setShowIcon(true);
+  };
+  const onVideoError = () => {
+    setShowVideo(false);
+    setShowIcon(true);
+  };
+
+  return (
+    <div className="w-24 h-16 rounded-lg bg-gray-900 flex-shrink-0 overflow-hidden relative">
+      {video.thumbnail_url && showThumb && (
+        <img
+          src={video.thumbnail_url}
+          alt={video.title}
+          className="w-full h-full object-cover absolute inset-0"
+          onError={onThumbError}
+        />
+      )}
+      {video.video_url && showVideo && (
+        <video
+          src={video.video_url}
+          className="w-full h-full object-cover absolute inset-0"
+          muted
+          playsInline
+          preload="metadata"
+          aria-label={video.title}
+          onError={onVideoError}
+        />
+      )}
+      {showIcon && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
+          <Video className="w-8 h-8 text-gray-500" />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function SearchPage() {
   const navigate = useNavigate();
@@ -14,14 +60,19 @@ export default function SearchPage() {
   const category = searchParams.get('category') || '';
   const [localQuery, setLocalQuery] = useState(query);
   const [filters, setFilters] = useState({
-    type: 'all', // videos, users, products
+    type: 'all', // all, videos, users, products
     sort: 'recent',
     category: category,
     duration: 'all' // all, short (< 1 min), medium (1-10 min), long (> 10 min)
   });
 
+  useEffect(() => {
+    setLocalQuery(query);
+  }, [query]);
+
   const handleSearch = (q) => {
-    setSearchParams({ q, category: filters.category });
+    const term = (typeof q === 'string' ? q : localQuery)?.trim() || '';
+    setSearchParams(term ? { q: term, category: filters.category } : {});
   };
 
   const isHashtagSearch = query.trim().startsWith('#') || /^#?\w+$/.test(query.trim());
@@ -35,7 +86,7 @@ export default function SearchPage() {
 
       if (hashtagForApi && filters.type !== 'users' && filters.type !== 'products') {
         const res = await api.videos.list({ page: 1, limit: 50, hashtag: hashtagForApi });
-        let results = res?.videos || [];
+        let results = Array.isArray(res) ? res : (res?.videos || []);
         if (filters.category && filters.category !== 'all') {
           results = results.filter((v) => v.category === filters.category);
         }
@@ -51,17 +102,13 @@ export default function SearchPage() {
         return results.slice(0, 20);
       }
 
-      const videoResult = await api.videos.list({ page: 1, limit: 50, hashtag: hashtagForApi || undefined });
-      let results = videoResult.videos || [];
-      if (!hashtagForApi) {
-        results = results.filter(
-          (v) =>
-            v.title?.toLowerCase().includes(query.toLowerCase()) ||
-            v.description?.toLowerCase().includes(query.toLowerCase()) ||
-            (v.hashtags && (Array.isArray(v.hashtags) ? v.hashtags : []).some((h) => String(h).toLowerCase().includes(query.toLowerCase()))) ||
-            v.music_title?.toLowerCase().includes(query.toLowerCase())
-        );
-      }
+      const videoResult = await api.videos.list({ 
+        page: 1, 
+        limit: 50, 
+        hashtag: hashtagForApi || undefined,
+        search: !hashtagForApi ? query.trim() : undefined
+      });
+      let results = Array.isArray(videoResult) ? videoResult : (videoResult?.videos || []);
 
       if (filters.category && filters.category !== 'all') {
         results = results.filter((v) => v.category === filters.category);
@@ -82,11 +129,11 @@ export default function SearchPage() {
 
   // Fetch users
   const { data: users, isLoading: usersLoading } = useQuery({
-    queryKey: ['searchUsers', query],
+    queryKey: ['searchUsers', query, filters.type],
     queryFn: async () => {
       if (!query.trim()) return [];
-      // TODO: Implement user search endpoint
-      return [];
+      const result = await api.users.list({ page: 1, limit: 20, search: query.trim() });
+      return Array.isArray(result) ? result : (result?.users || []);
     },
     enabled: !!(query && (filters.type === 'all' || filters.type === 'users'))
   });
@@ -98,12 +145,12 @@ export default function SearchPage() {
       if (!query.trim()) return [];
       
       const result = await api.products.list({ 
-        search: query, 
+        search: query.trim(), 
         category: filters.category !== 'all' ? filters.category : undefined,
         page: 1, 
         limit: 50 
       });
-      return result.products || [];
+      return Array.isArray(result) ? result : (result?.products || []);
     },
     enabled: !!(query && (filters.type === 'all' || filters.type === 'products'))
   });
@@ -117,32 +164,42 @@ export default function SearchPage() {
       <div className="sticky top-0 bg-white border-b z-10">
         <div className="p-4 space-y-3">
           <div className="flex items-center gap-2 bg-gray-100 rounded-full px-4 py-2">
-            <Search className="w-5 h-5 text-gray-400" />
+            <Search className="w-5 h-5 text-gray-400 flex-shrink-0" />
             <input
               type="text"
               placeholder="Vidéos, utilisateurs, produits..."
               value={localQuery}
               onChange={(e) => setLocalQuery(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSearch(localQuery)}
-              className="flex-1 bg-transparent outline-none text-gray-900"
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch(localQuery)}
+              className="flex-1 bg-transparent outline-none text-gray-900 min-w-0"
               autoFocus
             />
-            {localQuery && (
-              <button onClick={() => setLocalQuery('')}>
+            {localQuery ? (
+              <button type="button" onClick={() => { setLocalQuery(''); setSearchParams({}); }} className="p-1 hover:bg-gray-200 rounded-full">
                 <X className="w-5 h-5 text-gray-400" />
               </button>
-            )}
+            ) : null}
+            <button
+              type="button"
+              onClick={() => handleSearch(localQuery)}
+              className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-full font-medium text-sm flex-shrink-0"
+            >
+              Rechercher
+            </button>
           </div>
 
-          {/* Filter tabs */}
-          <Tabs value={filters.type} onValueChange={(v) => setFilters({ ...filters, type: v })}>
-            <TabsList className="grid w-full grid-cols-3 bg-gray-100">
+          {/* Filter tabs — déclenchent le rafraîchissement des résultats */}
+          <Tabs value={filters.type} onValueChange={(v) => setFilters((prev) => ({ ...prev, type: v }))}>
+            <TabsList className="grid w-full grid-cols-4 bg-gray-100">
               <TabsTrigger value="all">Tous</TabsTrigger>
               <TabsTrigger value="videos" className="flex gap-1">
                 <Video className="w-4 h-4" /> Vidéos
               </TabsTrigger>
               <TabsTrigger value="users" className="flex gap-1">
                 <User className="w-4 h-4" /> Users
+              </TabsTrigger>
+              <TabsTrigger value="products" className="flex gap-1">
+                <Package className="w-4 h-4" /> Produits
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -165,8 +222,8 @@ export default function SearchPage() {
           </div>
         ) : (
           <>
-            {/* Videos */}
-            {videos && videos.length > 0 && (
+            {/* Videos — affiché pour Tous ou Vidéos */}
+            {(filters.type === 'all' || filters.type === 'videos') && videos && videos.length > 0 && (
               <div className="space-y-3">
                 <h2 className="text-lg font-bold">Vidéos</h2>
                 <div className="space-y-2">
@@ -179,15 +236,11 @@ export default function SearchPage() {
                         onClick={() => navigate(createPageUrl('VideoView') + `?_videoId=${video.id}`)}
                         className="bg-white rounded-lg p-3 flex gap-3 cursor-pointer hover:bg-gray-50"
                       >
-                        <div className="w-24 h-16 rounded-lg bg-gray-300 flex-shrink-0 overflow-hidden">
-                          {video.thumbnail_url && (
-                            <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover" />
-                          )}
-                        </div>
+                        <VideoThumbnail video={video} />
                         <div className="flex-1 min-w-0">
                           <h3 className="font-semibold text-gray-900 truncate">{video.title}</h3>
                           <p className="text-xs text-gray-500">{video.creator_name}</p>
-                          <p className="text-xs text-gray-400 mt-1">{video.views_count || 0} vues</p>
+                          <p className="text-xs text-gray-400 mt-1">{video.views ?? video.views_count ?? 0} vues</p>
                         </div>
                       </motion.div>
                     ))}
@@ -196,8 +249,8 @@ export default function SearchPage() {
               </div>
             )}
 
-            {/* Users */}
-            {users && users.length > 0 && (
+            {/* Users — affiché pour Tous ou Users */}
+            {(filters.type === 'all' || filters.type === 'users') && users && users.length > 0 && (
               <div className="space-y-3">
                 <h2 className="text-lg font-bold">Utilisateurs</h2>
                 <div className="grid grid-cols-2 gap-3">
@@ -220,8 +273,8 @@ export default function SearchPage() {
               </div>
             )}
 
-            {/* Products */}
-            {products && products.length > 0 && (
+            {/* Products — affiché pour Tous ou Produits */}
+            {(filters.type === 'all' || filters.type === 'products') && products && products.length > 0 && (
               <div className="space-y-3">
                 <h2 className="text-lg font-bold">Produits</h2>
                 <div className="space-y-2">

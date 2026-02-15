@@ -6,6 +6,7 @@ import NavigationTracker from '@/lib/NavigationTracker'
 import { pagesConfig } from './pages.config'
 import { BrowserRouter as Router, Route, Routes, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
+import { getItem } from '@/utils/safeStorage';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { FeatureFlagsProvider } from '@/contexts/FeatureFlagsContext';
@@ -32,7 +33,7 @@ const AuthenticatedApp = () => {
   // Redirect to Landing ONLY if not authenticated AND on a non-public page
   useEffect(() => {
     if (!isLoadingAuth && !isAuthenticated) {
-      const hasTokens = localStorage.getItem('access_token') || localStorage.getItem('refresh_token');
+      const hasTokens = getItem('access_token') || getItem('refresh_token');
       if (!hasTokens) {
         const isPublicPath = publicPaths.includes(location.pathname);
         if (!isPublicPath) {

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api } from '@/api/expressClient';
+import { getItem, setItem } from '@/utils/safeStorage';
 
 const STORAGE_KEY = 'marketplace_currency';
 
@@ -11,12 +12,12 @@ const MarketplaceCurrencyContext = createContext({
 });
 
 export function MarketplaceCurrencyProvider({ children }) {
-  const [currency, setCurrencyState] = useState(() => localStorage.getItem(STORAGE_KEY) || 'XOF');
+  const [currency, setCurrencyState] = useState(() => getItem(STORAGE_KEY) || 'XOF');
   const [eurToXofRate, setEurToXofRate] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, currency);
+    setItem(STORAGE_KEY, currency);
   }, [currency]);
 
   useEffect(() => {

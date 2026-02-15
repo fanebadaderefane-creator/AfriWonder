@@ -19,6 +19,7 @@ import { Loader2, RefreshCw } from 'lucide-react';
 import { toast } from "sonner";
 import { useNetworkStatus, getCacheStrategy, scheduleTask } from '../components/common/PerformanceOptimizer';
 import { cn } from "@/lib/utils";
+import { getJSON, setJSON } from '@/utils/safeStorage';
 
 const PULL_THRESHOLD = 80; // Distance en pixels pour déclencher le refresh
 
@@ -87,23 +88,17 @@ export default function Home() {
     enabled: activeTab === 'abonnements',
   });
 
-  // Masquer pubs (CDC §4) - stockage localStorage
+  // Masquer pubs (CDC §4) - stockage sécurisé
   const [hiddenAdIds, setHiddenAdIds] = useState(() => {
-    try {
-      const raw = localStorage.getItem('afw_hidden_ads');
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
+    const cached = getJSON('afw_hidden_ads', []);
+    return Array.isArray(cached) ? cached : [];
   });
 
   const handleHideAd = useCallback((campaignId) => {
     setHiddenAdIds((prev) => {
       if (prev.includes(campaignId)) return prev;
       const next = [...prev, campaignId];
-      try {
-        localStorage.setItem('afw_hidden_ads', JSON.stringify(next));
-      } catch (_e) {}
+      setJSON('afw_hidden_ads', next);
       return next;
     });
   }, []);

@@ -4,11 +4,21 @@ import { validateUrl } from '../utils/urlValidator.js';
 import GamificationEngine from './gamification.service.js';
 
 class UserService {
-  async list(page: number = 1, limit: number = 20) {
+  async list(page: number = 1, limit: number = 20, search?: string) {
     const skip = (page - 1) * limit;
+    const where: any = {};
+    if (search && search.trim().length >= 2) {
+      const term = search.trim();
+      where.OR = [
+        { username: { contains: term, mode: 'insensitive' } },
+        { full_name: { contains: term, mode: 'insensitive' } },
+        { email: { contains: term, mode: 'insensitive' } },
+      ];
+    }
 
     const [users, total] = await Promise.all([
       prisma.user.findMany({
+        where,
         select: {
           id: true,
           email: true,
@@ -31,7 +41,7 @@ class UserService {
         skip,
         take: limit,
       }),
-      prisma.user.count(),
+      prisma.user.count({ where }),
     ]);
 
     return {

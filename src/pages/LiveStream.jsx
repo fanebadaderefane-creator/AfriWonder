@@ -117,7 +117,7 @@ export default function LiveStreamPage() {
     enabled: step === 'streaming' && !!liveStream?.id && !!(tokenData && !tokenData?.appId),
   });
   const agoraToken = tokenData?.token != null ? tokenData : null;
-  const { localVideoTrack, localAudioTrack, leave: leaveAgora, error: agoraError, audioOnlyMode } = useAgoraHost(agoraToken, localVideoRef);
+  const { localVideoTrack, localAudioTrack, leave: leaveAgora, error: agoraError, audioOnlyMode, retry: retryAgora } = useAgoraHost(agoraToken, localVideoRef);
   const hasAgora = !!(agoraToken?.appId && agoraToken?.channel);
   const agoraDiagnostic = !hasAgora && step === 'streaming'
     ? (tokenError ? 'Backend inaccessible. Lancez : cd backend && npm run dev' : agoraStatus?.message || (tokenData && !tokenData?.appId ? 'Redémarrez le backend (cd backend && npm run dev) après avoir ajouté AGORA_APP_ID et AGORA_APP_CERTIFICATE dans backend/.env' : 'Configurez Agora (backend) pour le flux vidéo réel'))
@@ -382,7 +382,7 @@ export default function LiveStreamPage() {
                 <>
                   <div ref={localVideoRef} className="absolute inset-0 w-full h-full bg-black object-contain [&>video]:object-contain [&>video]:w-full [&>video]:h-full" />
                   {!localVideoTrack && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70">
                       <div className="text-center text-white">
                         {audioOnlyMode ? (
                           <>
@@ -397,8 +397,36 @@ export default function LiveStreamPage() {
                             <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
                               <Camera className="w-8 h-8 text-red-400" />
                             </div>
-                            <p className="font-medium text-red-300">Caméra/micro : {agoraError}</p>
-                            <p className="text-sm text-gray-400 mt-2">Vérifiez : permissions navigateur, caméra branchée, essayez Chrome.</p>
+                            <p className="font-medium text-red-300">Caméra ou micro introuvable</p>
+                            <p className="text-sm text-gray-400 mt-2 max-w-xs mx-auto">
+                              Vérifiez les permissions du navigateur, branchez une caméra, ou essayez Chrome.
+                            </p>
+                            <div className="flex flex-col sm:flex-row gap-3 justify-center mt-6">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  retryAgora?.();
+                                }}
+                                className="px-6 py-3 rounded-lg border-2 border-white/50 bg-white/10 text-white font-medium hover:bg-white/20 transition-colors"
+                              >
+                                Réessayer
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  await leaveAgora();
+                                  try {
+                                    if (liveStream?.id) await api.live.end(liveStream.id);
+                                  } catch (_e) {}
+                                  navigate(createPageUrl('Lives'));
+                                }}
+                                className="px-6 py-3 rounded-lg border-2 border-orange-500 bg-orange-500/20 text-orange-300 font-medium hover:bg-orange-500/30 transition-colors"
+                              >
+                                Retour
+                              </button>
+                            </div>
                           </>
                         ) : (
                           <>

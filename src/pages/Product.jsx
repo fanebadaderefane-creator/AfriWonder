@@ -6,12 +6,20 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { 
   ArrowLeft, Star, MapPin, Truck, ShoppingCart,
   Heart, Share2, BadgeCheck, ChevronLeft, ChevronRight, Shield, HelpCircle, Send,
-  Flag, MessageCircle
+  Flag, MessageCircle, MessageCircleMore
 } from 'lucide-react';
+
+/** Génère l'URL WhatsApp (Phase 1: contact direct, pas de paiement sur AfriWonder) */
+function getWhatsAppUrl(phoneOrWhatsapp, message = '') {
+  const raw = (phoneOrWhatsapp || '').replace(/\D/g, '');
+  if (!raw || raw.length < 8) return null;
+  const num = raw.startsWith('221') || raw.startsWith('223') ? raw : `221${raw}`;
+  const text = message ? `&text=${encodeURIComponent(message)}` : '';
+  return `https://wa.me/${num}${text}`;
+}
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
@@ -35,16 +43,9 @@ export default function Product() {
   const [user, setUser] = useState(null);
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
-  const [showCheckout, setShowCheckout] = useState(false);
   const [newQuestion, setNewQuestion] = useState('');
   const [answeringQuestionId, setAnsweringQuestionId] = useState(null);
   const [answerText, setAnswerText] = useState('');
-  const [deliveryInfo, setDeliveryInfo] = useState({
-    address: '',
-    phone: '',
-    method: 'livraison_moto'
-  });
-  const [paymentMethod, setPaymentMethod] = useState('orange_money');
   const [replyingToReviewId, setReplyingToReviewId] = useState(null);
   const [replyText, setReplyText] = useState('');
   const [reportingReviewId, setReportingReviewId] = useState(null);
@@ -60,11 +61,6 @@ export default function Product() {
       try {
         const u = await api.auth.me();
         setUser(u);
-        setDeliveryInfo(prev => ({
-          ...prev,
-          phone: u.phone || '',
-          address: u.location || ''
-        }));
       } catch (_e) {}
     };
     getUser();
@@ -163,55 +159,6 @@ export default function Product() {
       toast.error(e.response?.data?.message || e.message || 'Erreur');
     }
   });
-
-  const createOrderMutation = useMutation({
-    mutationFn: async () => {
-      if (!user) throw new Error('Vous devez être connecté');
-      const result = await api.orders.create({
-        shipping_address: deliveryInfo.address,
-        payment_method: paymentMethod,
-        items: [{ product_id: product.id, quantity }],
-      });
-      const order = result.orders ? result.orders[0] : result;
-      const orderId = order?.id;
-      if (orderId && product.seller?.id) {
-        try {
-          const { default: NotificationService } = await import('../components/notifications/NotificationService');
-          await NotificationService.notifyNewOrder(
-            product.seller.id,
-            orderId,
-            product.name,
-            user.full_name || user.email
-          );
-        } catch (_) {}
-      }
-      return order;
-    },
-    onSuccess: (order) => {
-      if (!order?.id) return;
-      toast.success('Commande créée ! Procédez au paiement.');
-      navigate(`${createPageUrl('OrderTracking')}?id=${order.id}`);
-    },
-    onError: (error) => {
-      toast.error(error.response?.data?.message || error.message || 'Erreur lors de la commande');
-    }
-  });
-
-  const handleBuyNow = () => {
-    if (!user) {
-      navigate('/');
-      return;
-    }
-    setShowCheckout(true);
-  };
-
-  const handleConfirmOrder = () => {
-    if (!deliveryInfo.address || !deliveryInfo.phone) {
-      toast.error('Veuillez remplir toutes les informations de livraison');
-      return;
-    }
-    createOrderMutation.mutate();
-  };
 
   if (isLoading || !product) {
     return (
@@ -390,15 +337,28 @@ export default function Product() {
                 >
                   Modifier
                 </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate(`${createPageUrl('Chat')}?_userId=${seller.id}`)}
-                >
-                  Contacter
-                </Button>
-              )}
+              ) : (() => {
+                const whatsapp = product.seller?.seller_profile?.whatsapp || product.seller?.seller_profile?.phone || seller?.seller_profile?.whatsapp || seller?.seller_profile?.phone;
+                const waUrl = getWhatsAppUrl(whatsapp, `Bonjour, je m'intéresse à "${product.name}"`);
+                return waUrl ? (
+                  <Button
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700"
+                    onClick={() => window.open(waUrl, '_blank')}
+                  >
+                    <MessageCircleMore className="w-4 h-4 mr-1" />
+                    WhatsApp
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate(`${createPageUrl('Chat')}?_userId=${seller.id}`)}
+                  >
+                    Contacter
+                  </Button>
+                );
+              })()}
             </div>
             {(product.seller?.seller_profile?.city || product.seller?.seller_profile?.country || product.location) && (
               <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -687,24 +647,9 @@ export default function Product() {
         )}
       </div>
 
-      {/* Bottom Action Bar */}
+      {/* Bottom Action Bar — Phase 1: contact direct vendeur, pas de paiement sur AfriWonder */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 z-40 safe-area-pb">
         <div className="max-w-lg mx-auto flex items-center gap-3">
-          <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2">
-            <button
-              onClick={() => setQuantity(prev => Math.max(1, prev - 1))}
-              className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center"
-            >
-              -
-            </button>
-            <span className="font-semibold min-w-[24px] text-center">{quantity}</span>
-            <button
-              onClick={() => setQuantity(prev => Math.min(product.stock ?? 999, prev + 1))}
-              className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center"
-            >
-              +
-            </button>
-          </div>
           <Button
             variant="outline"
             onClick={() => {
@@ -718,118 +663,36 @@ export default function Product() {
             className="py-6 border-orange-500 text-orange-600 hover:bg-orange-50"
           >
             <ShoppingCart className="w-5 h-5 mr-2" />
-            Ajouter au panier
+            Panier
           </Button>
-          <Button
-            onClick={handleBuyNow}
-            disabled={(product.stock ?? 0) === 0 || createOrderMutation.isPending}
-            className="flex-1 py-6 bg-gradient-to-r from-orange-500 to-red-500 text-white text-lg"
-          >
-            Acheter maintenant
-          </Button>
+          {(() => {
+            const whatsapp = product.seller?.seller_profile?.whatsapp || product.seller?.seller_profile?.phone;
+            const waUrl = getWhatsAppUrl(whatsapp, `Bonjour, je m'intéresse à "${product.name}" (${quantity} unité${quantity > 1 ? 's' : ''})`);
+            return waUrl ? (
+              <Button
+                onClick={() => window.open(waUrl, '_blank')}
+                className="flex-1 py-6 bg-green-600 hover:bg-green-700 text-white text-lg"
+              >
+                <MessageCircleMore className="w-5 h-5 mr-2" />
+                Contacter le vendeur
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={() => navigate(`${createPageUrl('Chat')}?_userId=${sellerId}`)}
+                className="flex-1 py-6"
+              >
+                <MessageCircle className="w-5 h-5 mr-2" />
+                Contacter le vendeur
+              </Button>
+            );
+          })()}
         </div>
       </div>
 
-      {/* Checkout Sheet */}
-      <Sheet open={showCheckout} onOpenChange={setShowCheckout}>
-        <SheetContent side="bottom" className="h-[90vh]">
-          <SheetHeader className="mb-4">
-            <SheetTitle>Finaliser la commande</SheetTitle>
-          </SheetHeader>
-
-          <div className="space-y-4">
-            {/* Order Summary */}
-            <Card className="p-4">
-              <div className="flex gap-3 mb-3">
-                <img
-                  src={images[0]}
-                  alt={product.name}
-                  className="w-16 h-16 rounded-lg object-cover"
-                />
-                <div className="flex-1">
-                  <p className="font-medium text-sm">{product.name}</p>
-                  <p className="text-sm text-gray-500">Quantité: {quantity}</p>
-                </div>
-              </div>
-              <div className="space-y-1 text-sm pt-3 border-t">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Sous-total</span>
-                  <span>{formatPrice(totalPrice)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Frais livraison (CDC, poids)</span>
-                  <span className="text-orange-600">
-                    {formatPrice(Math.round(500 + ((product.weight_kg ?? 1) * quantity) * 150))}
-                  </span>
-                </div>
-                <div className="flex justify-between font-bold pt-2 border-t">
-                  <span>Total</span>
-                  <span className="text-orange-500">
-                    {formatPrice(totalPrice + Math.round(500 + ((product.weight_kg ?? 1) * quantity) * 150))}
-                  </span>
-                </div>
-              </div>
-            </Card>
-
-            {/* Payment method */}
-            <Card className="p-4">
-              <h3 className="font-semibold mb-3">Mode de paiement</h3>
-              <div className="space-y-2">
-                {[
-                  { id: 'orange_money', label: 'Orange Money', emoji: '🟠' },
-                  { id: 'moov_money', label: 'Moov Money', emoji: '🔵' },
-                  { id: 'cod', label: 'Paiement à la livraison', emoji: '💵' }
-                ].map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setPaymentMethod(m.id)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 text-left transition-colors ${paymentMethod === m.id ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-gray-300'}`}
-                  >
-                    <span className="text-xl">{m.emoji}</span>
-                    <span className="font-medium">{m.label}</span>
-                  </button>
-                ))}
-              </div>
-            </Card>
-
-            {/* Delivery Info */}
-            <Card className="p-4">
-              <h3 className="font-semibold mb-3">Informations de livraison</h3>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-sm font-medium mb-1 block">Adresse</label>
-                  <Input
-                    placeholder="Entrez votre adresse"
-                    value={deliveryInfo.address}
-                    onChange={(e) => setDeliveryInfo(prev => ({ ...prev, address: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-1 block">Téléphone</label>
-                  <Input
-                    placeholder="Votre numéro de téléphone"
-                    value={deliveryInfo.phone}
-                    onChange={(e) => setDeliveryInfo(prev => ({ ...prev, phone: e.target.value }))}
-                  />
-                </div>
-              </div>
-            </Card>
-
-            <Button
-              onClick={handleConfirmOrder}
-              disabled={createOrderMutation.isPending}
-              className="w-full py-6 bg-gradient-to-r from-orange-500 to-red-500 text-white"
-            >
-              {createOrderMutation.isPending ? 'Création...' : 'Confirmer la commande'}
-            </Button>
-
-            <p className="text-xs text-center text-gray-500">
-              🔒 Paiement sécurisé en escrow. Vos fonds sont protégés jusqu'à la livraison.
-            </p>
-          </div>
-        </SheetContent>
-      </Sheet>
+      <p className="text-xs text-center text-gray-500 mt-2 pb-4 px-4">
+        Phase 1: Paiement et livraison à organiser directement avec le vendeur.
+      </p>
 
       <BottomNav />
     </div>

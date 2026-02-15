@@ -37,6 +37,14 @@ if ('serviceWorker' in navigator && (window.location.hostname === 'localhost' ||
   });
 }
 
+// Gestion des rejets non gérés — log en dev, évite crash en prod
+window.addEventListener('unhandledrejection', (event) => {
+  if (import.meta.env.DEV) {
+    const msg = event?.reason?.message || String(event?.reason);
+    console.warn('[Unhandled rejection]', msg);
+  }
+});
+
 // Vérifier que React est bien chargé
 if (!React || !React.useState) {
   console.error('❌ React n\'est pas correctement chargé!');

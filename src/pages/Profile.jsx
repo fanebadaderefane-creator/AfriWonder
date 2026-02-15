@@ -10,7 +10,7 @@ import { Grid3X3, Bookmark, Heart, ShoppingBag, Play, ArrowLeft, Pencil, Trash2,
 
 import { motion } from 'framer-motion';
 
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { createPageUrl } from "@/utils";
 import { getVideoPlaybackUrl } from "@/lib/utils";
@@ -57,61 +57,36 @@ export default function Profile() {
 
 
 
-  // Get URL params
+  const [searchParams] = useSearchParams();
 
+  // Déterminer profileUserId depuis l'URL (userId ou _userId) puis charger l'utilisateur courant
   useEffect(() => {
-
-    const params = new URLSearchParams(window.location.search);
-
-    const userId = params.get('userId');
-
-    setProfileUserId(userId);
-
-  }, []);
-
-
-
-  // Get current user
-
-  useEffect(() => {
+    const urlUserId = searchParams.get('userId') || searchParams.get('_userId');
 
     const getUser = async () => {
-
       try {
-
         const u = await api.auth.me();
-
         setUser(u);
-
-        if (!profileUserId || profileUserId === u.id) {
-
+        // Ne jamais écraser : si l'URL a un userId, c'est le profil à afficher
+        if (!urlUserId || urlUserId === u.id) {
           setIsOwnProfile(true);
-
           setProfileUserId(u.id);
-
         } else {
-
           setIsOwnProfile(false);
-
+          setProfileUserId(urlUserId);
         }
-
       } catch (e) {
-
-        // Not logged in
-
-        if (!profileUserId) {
-
+        if (!urlUserId) {
           navigate('/');
-
+        } else {
+          setProfileUserId(urlUserId);
+          setIsOwnProfile(false);
         }
-
       }
-
     };
 
     getUser();
-
-  }, [profileUserId, navigate]);
+  }, [searchParams, navigate]);
 
 
 
@@ -153,8 +128,9 @@ export default function Profile() {
         ? { creator_id: profileUserId, visibility: 'creator', page: 1, limit: 0 }
         : { creator_id: profileUserId, page: 1, limit: 0 };
       const result = await api.videos.list(params);
-
-      return result?.videos || (Array.isArray(result) ? result : []);
+      const list = result?.videos || (Array.isArray(result) ? result : []);
+      // Garde-fou : ne garder que les vidéos du créateur demandé
+      return list.filter((v) => (v.creator_id || v.creator?.id) === profileUserId);
 
     },
 

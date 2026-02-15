@@ -1755,9 +1755,14 @@ model SellerProfile {
   total_sales       Int      @default(0)
   total_revenue     Float    @default(0)
   is_verified       Boolean  @default(false)
-  status            String   @default("active") // active | suspended | blocked
+  status            String   @default("pending") // pending | active | suspended | blocked — admin approuve
   country           String?
   city              String?
+  phone             String?  // Téléphone
+  whatsapp          String?  // WhatsApp
+  tiktok_url        String?  // TikTok
+  instagram_url     String?  // Instagram
+  x_url             String?  // X (Twitter)
   subscription_tier String   @default("free") // CDC: free | starter | business | enterprise
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt

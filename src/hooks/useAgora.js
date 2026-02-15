@@ -25,6 +25,7 @@ export function useAgoraHost(tokenData, videoContainerRef) {
   const [localAudioTrack, setLocalAudioTrack] = useState(null);
   const [error, setError] = useState(null);
   const [audioOnlyMode, setAudioOnlyMode] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   const clientRef = useRef(null);
   const tracksRef = useRef([]);
 
@@ -48,6 +49,13 @@ export function useAgoraHost(tokenData, videoContainerRef) {
       console.warn('Agora leave error', e);
     }
   }, []);
+
+  const retry = useCallback(async () => {
+    setError(null);
+    await leave();
+    await new Promise((r) => setTimeout(r, 500));
+    setRetryKey((k) => k + 1);
+  }, [leave]);
 
   useEffect(() => {
     if (!tokenData?.appId || !tokenData?.channel || !tokenData?.token) return;
@@ -114,9 +122,9 @@ export function useAgoraHost(tokenData, videoContainerRef) {
       cancelled = true;
       leave();
     };
-  }, [tokenData?.appId, tokenData?.channel, tokenData?.token, tokenData?.uid]);
+  }, [tokenData?.appId, tokenData?.channel, tokenData?.token, tokenData?.uid, retryKey]);
 
-  return { localVideoTrack, localAudioTrack, error, audioOnlyMode, leave };
+  return { localVideoTrack, localAudioTrack, error, audioOnlyMode, leave, retry };
 }
 
 /** Agora stream type: 0 = high, 1 = low (160p/audio) — CDC mode données réduites */

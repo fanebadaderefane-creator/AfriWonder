@@ -8,11 +8,12 @@
 
 **Phase 1** : AfriWonder ne s'occupe pas de la livraison. Revenus = **abonnements uniquement** (0% commission sur les ventes).
 
-- **Curatelle** : sélection des bons prestataires, rejet des mauvais
+- **Curatelle** : sélection des bons prestataires via dashboard admin — les vendeurs créent leur boutique (status `pending`), l'admin approuve (`active`) ou rejette (`blocked`)
+- **Boutique** : localisation, téléphone, WhatsApp, TikTok, Instagram, X, images/vidéos produits (comme Amazon)
 - **Abonnements** : chaque vendeur/prestataire paie un abonnement mensuel
 - **Commission** : 0% sur les ventes (désactivée via `MARKETPLACE_PHASE1_SUBSCRIPTION_ONLY=true`)
 
-**Phase 2** (futur) : Quand AfriWonder aura une équipe, prise en charge de la livraison + commission.
+**Phase 2** (futur) : Quand AfriWonder aura une équipe solide, prise en charge de la livraison + commission.
 
 ---
 

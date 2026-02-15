@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/api/expressClient';
+
+/** Phase 1: pas de paiement sur AfriWonder — revenus via abonnements prestataires uniquement */
+const MARKETPLACE_PHASE1 = import.meta.env.VITE_MARKETPLACE_PHASE1_NO_PAYMENT === 'true';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +16,7 @@ import {
   Plus, Check
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 import { toast } from "sonner";
 
 const paymentIcons = {
@@ -68,6 +72,13 @@ export default function Checkout() {
     };
     getUser();
   }, []);
+
+  // Phase 1: redirection vers le panier (boutons WhatsApp par vendeur)
+  useEffect(() => {
+    if (MARKETPLACE_PHASE1) {
+      navigate(createPageUrl('Cart'), { replace: true });
+    }
+  }, [MARKETPLACE_PHASE1, navigate]);
 
   const { data: cart } = useQuery({
     queryKey: ['cart', user?.id],
@@ -211,6 +222,14 @@ export default function Checkout() {
     const total = subtotal + deliveryFee + platformFees;
     return { subtotal, deliveryFee, tax, total, platformFees };
   };
+
+  if (MARKETPLACE_PHASE1) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (!user || (user && cart === undefined)) {
     return (

@@ -9,7 +9,7 @@ const router = Router();
 // GET /api/videos - Liste des vidéos
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
-    const { page = '1', limit, category, visibility = 'public', creator_id: creatorId, hashtag } = req.query;
+    const { page = '1', limit, category, visibility = 'public', creator_id: creatorId, hashtag, search } = req.query;
     const userId = req.user?.id;
     const limitValue = limit ? parseInt(limit as string) : 0;
 
@@ -21,6 +21,7 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       userId,
       creator_id: creatorId as string,
       hashtag: hashtag as string,
+      search: search as string,
     });
 
     res.json({

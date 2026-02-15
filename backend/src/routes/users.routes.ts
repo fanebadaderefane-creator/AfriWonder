@@ -5,12 +5,14 @@ import userService from '../services/user.service.js';
 
 const router = Router();
 
-// GET /api/users - Liste des utilisateurs
-router.get('/', authenticate, async (req: AuthRequest, res, next) => {
+// GET /api/users - Liste des utilisateurs (search: recherche par username, full_name, email)
+// optionalAuth: recherche accessible sans login (page Search)
+router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
-    const result = await userService.list(page, limit);
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+    const search = (req.query.search as string)?.trim();
+    const result = await userService.list(page, limit, search);
     res.json({ success: true, data: result });
   } catch (error: any) {
     next(error);

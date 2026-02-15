@@ -2,25 +2,20 @@ import { createContext, useState, useContext, useEffect, useCallback, useRef } f
 import { api } from '@/api/expressClient';
 import { logger } from '@/lib/logger';
 import axios from 'axios';
+import { getItem, setItem, removeItem, getJSON } from '@/utils/safeStorage';
 
 const AuthContext = createContext();
-
 const AUTH_USER_KEY = 'afriwonder_auth_user';
 
 function getCachedUser() {
-  try {
-    const tok = typeof window !== 'undefined' && (localStorage.getItem('access_token') || localStorage.getItem('refresh_token'));
-    const cached = typeof window !== 'undefined' && localStorage.getItem(AUTH_USER_KEY);
-    if (tok && cached) return JSON.parse(cached);
-  } catch (e) {}
-  return null;
+  const tok = getItem('access_token') || getItem('refresh_token');
+  const cached = getJSON(AUTH_USER_KEY);
+  return tok && cached ? cached : null;
 }
 
 function setCachedUser(user) {
-  try {
-    if (user) localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
-    else localStorage.removeItem(AUTH_USER_KEY);
-  } catch (e) {}
+  if (user) setItem(AUTH_USER_KEY, JSON.stringify(user));
+  else removeItem(AUTH_USER_KEY);
 }
 
 export const AuthProvider = ({ children }) => {
@@ -36,8 +31,8 @@ export const AuthProvider = ({ children }) => {
       isCheckingAuthRef.current = true;
       setAuthError(null);
 
-      const token = localStorage.getItem('access_token');
-      const refreshToken = localStorage.getItem('refresh_token');
+      const token = getItem('access_token');
+      const refreshToken = getItem('refresh_token');
 
       if (!token && !refreshToken) {
         setUser(null);
@@ -50,15 +45,15 @@ export const AuthProvider = ({ children }) => {
         try {
           const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
           const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
-          localStorage.setItem('access_token', data.data.accessToken);
-          localStorage.setItem('refresh_token', data.data.refreshToken);
+          setItem('access_token', data.data.accessToken);
+          setItem('refresh_token', data.data.refreshToken);
           const currentUser = await api.auth.me();
           setUser(currentUser);
           setIsAuthenticated(true);
           setCachedUser(currentUser);
         } catch {
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('refresh_token');
+          removeItem('access_token');
+          removeItem('refresh_token');
           setCachedUser(null);
           setUser(null);
           setIsAuthenticated(false);
@@ -76,15 +71,15 @@ export const AuthProvider = ({ children }) => {
           try {
             const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
             const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
-            localStorage.setItem('access_token', data.data.accessToken);
-            localStorage.setItem('refresh_token', data.data.refreshToken);
+            setItem('access_token', data.data.accessToken);
+            setItem('refresh_token', data.data.refreshToken);
             const currentUser = await api.auth.me();
             setUser(currentUser);
             setIsAuthenticated(true);
             setCachedUser(currentUser);
           } catch {
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('refresh_token');
+            removeItem('access_token');
+            removeItem('refresh_token');
             setCachedUser(null);
             setUser(null);
             setIsAuthenticated(false);
@@ -109,11 +104,13 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     // Persister le code parrainage pour l'inscription (au cas où l'utilisateur navigue avant de s'inscrire)
     if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const refCode = params.get('ref') || params.get('referral_code');
-      if (refCode?.trim()) {
-        sessionStorage.setItem('afriwonder_referral_code', refCode.trim());
-      }
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const refCode = params.get('ref') || params.get('referral_code');
+        if (refCode?.trim()) {
+          window.sessionStorage?.setItem('afriwonder_referral_code', refCode.trim());
+        }
+      } catch (_e) {}
     }
   }, []);
 
@@ -170,13 +167,17 @@ export const AuthProvider = ({ children }) => {
       const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
       let refCode = params?.get('ref') || params?.get('referral_code');
       if (!refCode && typeof window !== 'undefined') {
-        refCode = sessionStorage.getItem('afriwonder_referral_code');
+        try {
+          refCode = window.sessionStorage?.getItem('afriwonder_referral_code');
+        } catch (_e) {}
       }
       const payload = { ...userData };
       if (refCode) payload.referral_code = refCode;
       const newUser = await api.auth.register(payload);
       if (refCode && typeof window !== 'undefined') {
-        sessionStorage.removeItem('afriwonder_referral_code');
+        try {
+          window.sessionStorage?.removeItem('afriwonder_referral_code');
+        } catch (_e) {}
       }
       setUser(newUser);
       setIsAuthenticated(true);

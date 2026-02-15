@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { createPageUrl } from '@/utils';
 import { useTranslation } from '@/components/common/useTranslation';
 import { api } from '@/api/expressClient';
+import { getItem } from '@/utils/safeStorage';
 
 export default function BottomNav() {
   const location = useLocation();
@@ -15,7 +16,7 @@ export default function BottomNav() {
   const { data: unreadData } = useQuery({
     queryKey: ['messages-unread-count'],
     queryFn: () => api.messages.getUnreadCount(),
-    enabled: typeof window !== 'undefined' && !!localStorage.getItem('access_token'),
+    enabled: typeof window !== 'undefined' && !!getItem('access_token'),
     refetchInterval: 30000,
   });
   const unreadCount = unreadData?.count ?? 0;
@@ -23,7 +24,7 @@ export default function BottomNav() {
   const { data: cartData } = useQuery({
     queryKey: ['cart-badge'],
     queryFn: () => api.cart.get(),
-    enabled: typeof window !== 'undefined' && !!localStorage.getItem('access_token'),
+    enabled: typeof window !== 'undefined' && !!getItem('access_token'),
   });
   const cartCount = (cartData?.items || []).reduce((sum, i) => sum + (i.quantity || 1), 0);
 

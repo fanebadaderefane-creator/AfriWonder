@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getItem, setItem, removeItem } from '@/utils/safeStorage';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
@@ -11,11 +12,10 @@ const axiosInstance = axios.create({
 });
 
 axiosInstance.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
+  const token = getItem('access_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-  // Ne pas afficher d'avertissement pour les routes publiques
   return config;
 });
 
@@ -44,11 +44,10 @@ axiosInstance.interceptors.response.use(
       // Vérifier si la requête avait un token au départ
       const hadToken = originalRequest.headers.Authorization?.startsWith('Bearer ');
       
-      // Si la requête n'avait pas de token, ne pas essayer de rafraîchir
       if (!hadToken) {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        localStorage.removeItem('afriwonder_auth_user');
+        removeItem('access_token');
+        removeItem('refresh_token');
+        removeItem('afriwonder_auth_user');
         return Promise.reject(error);
       }
 
@@ -70,12 +69,11 @@ axiosInstance.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshToken = localStorage.getItem('refresh_token');
-        // Ne pas essayer de rafraîchir si pas de refresh token
+        const refreshToken = getItem('refresh_token');
         if (!refreshToken) {
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('refresh_token');
-          localStorage.removeItem('afriwonder_auth_user');
+          removeItem('access_token');
+          removeItem('refresh_token');
+          removeItem('afriwonder_auth_user');
           processQueue(error);
           isRefreshing = false;
           return Promise.reject(error);
@@ -83,8 +81,8 @@ axiosInstance.interceptors.response.use(
         
         const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
         const newToken = data.data.accessToken;
-        localStorage.setItem('access_token', newToken);
-        localStorage.setItem('refresh_token', data.data.refreshToken);
+        setItem('access_token', newToken);
+        setItem('refresh_token', data.data.refreshToken);
         
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         processQueue(null, newToken);
@@ -92,9 +90,9 @@ axiosInstance.interceptors.response.use(
         
         return axiosInstance(originalRequest);
       } catch (_refreshError) {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        localStorage.removeItem('afriwonder_auth_user');
+        removeItem('access_token');
+        removeItem('refresh_token');
+        removeItem('afriwonder_auth_user');
         processQueue(_refreshError);
         isRefreshing = false;
         
@@ -175,19 +173,18 @@ export const api = {
   auth: {
     async login(email, password) {
       const { data } = await axiosInstance.post('/auth/login', { email, password });
-      localStorage.setItem('access_token', data.data.accessToken);
-      localStorage.setItem('refresh_token', data.data.refreshToken);
+      setItem('access_token', data.data.accessToken);
+      setItem('refresh_token', data.data.refreshToken);
       return data.data.user;
     },
     async register(userData) {
       const { data } = await axiosInstance.post('/auth/register', userData);
-      localStorage.setItem('access_token', data.data.accessToken);
-      localStorage.setItem('refresh_token', data.data.refreshToken);
+      setItem('access_token', data.data.accessToken);
+      setItem('refresh_token', data.data.refreshToken);
       return data.data.user;
     },
     async me() {
-      // Vérifier d'abord s'il y a un token avant de faire la requête
-      const token = localStorage.getItem('access_token');
+      const token = getItem('access_token');
       if (!token) {
         const error = new Error('No token available');
         error.response = { status: 401 };
@@ -197,9 +194,9 @@ export const api = {
       return data.data;
     },
     async logout() {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('afriwonder_auth_user');
+      removeItem('access_token');
+      removeItem('refresh_token');
+      removeItem('afriwonder_auth_user');
     },
     async updateMe(userData) {
       const { data } = await axiosInstance.put('/users/me', userData);
@@ -246,7 +243,7 @@ export const api = {
       const { data } = await axiosInstance.post(`/videos/${id}/view`, {
         watchSeconds,
         watchPercent,
-        deviceId: deviceId || (typeof localStorage !== 'undefined' ? localStorage.getItem('afw_device_id') : null),
+        deviceId: deviceId || getItem('afw_device_id'),
         scrollSlow,
         interactionDetected,
       });
@@ -398,6 +395,11 @@ export const api = {
     },
   },
   users: {
+    async list(params = {}) {
+      const { data } = await axiosInstance.get('/users', { params });
+      const result = data.data;
+      return Array.isArray(result) ? result : (result?.users || []);
+    },
     async getById(id) {
       const { data } = await axiosInstance.get(`/users/${id}`);
       return data.data;
@@ -2556,7 +2558,7 @@ export const api = {
       return data.data;
     },
     getPdfUrl(certificateId) {
-      const token = localStorage.getItem('access_token');
+      const token = getItem('access_token');
       const base = axiosInstance.defaults.baseURL || '';
       return `${base}/certificates/${certificateId}/pdf${token ? `?Authorization=Bearer%20${encodeURIComponent(token)}` : ''}`;
     },

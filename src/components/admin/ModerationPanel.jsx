@@ -89,10 +89,19 @@ export default function ModerationPanel({ subTab }) {
     queryFn: () => api.admin.getOrders({ page, limit: PAGE }),
     enabled: subTab === 'orders',
   });
-  const { data: sellersData } = useQuery({
-    queryKey: ['admin-sellers', page],
-    queryFn: () => api.admin.getSellers({ page, limit: PAGE }),
+  const [sellerStatusFilter, setSellerStatusFilter] = useState('pending');
+  const { data: sellersData, refetch: refetchSellers } = useQuery({
+    queryKey: ['admin-sellers', page, sellerStatusFilter],
+    queryFn: () => api.admin.getSellers({ page, limit: PAGE, status: sellerStatusFilter === 'all' ? undefined : sellerStatusFilter }),
     enabled: subTab === 'sellers',
+  });
+  const updateSellerStatusMutation = useMutation({
+    mutationFn: ({ id, status }) => api.admin.updateSellerStatus(id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-sellers'] });
+      toast.success('Statut vendeur mis à jour');
+    },
+    onError: (e) => toast.error(e?.response?.data?.error || e?.message || 'Erreur'),
   });
   const { data: disputesData } = useQuery({
     queryKey: ['admin-disputes', page],
@@ -192,10 +201,40 @@ export default function ModerationPanel({ subTab }) {
     return (
       <Card className="p-6 bg-white/10 backdrop-blur border-white/20 text-white">
         <h3 className="font-bold mb-4"><ShoppingBag className="w-5 h-5 inline mr-2" /> Vendeurs</h3>
+        <div className="flex gap-2 mb-4">
+          <Button size="sm" variant={sellerStatusFilter === 'pending' ? 'default' : 'outline'} className="border-white/30" onClick={() => { setSellerStatusFilter('pending'); setPage(1); }}>
+            En attente
+          </Button>
+          <Button size="sm" variant={sellerStatusFilter === 'active' ? 'default' : 'outline'} className="border-white/30" onClick={() => { setSellerStatusFilter('active'); setPage(1); }}>
+            Actifs
+          </Button>
+          <Button size="sm" variant={sellerStatusFilter === 'all' ? 'default' : 'outline'} className="border-white/30" onClick={() => { setSellerStatusFilter('all'); setPage(1); }}>
+            Tous
+          </Button>
+        </div>
         <div className="space-y-2">
           {sellers.length === 0 && <p className="text-white font-medium text-center py-8 rounded-lg border border-dashed border-white/30 bg-white/5">Aucun vendeur</p>}
           {sellers.map((s) => (
-            <div key={s.id} className="p-4 rounded-lg border border-white/20 bg-white/10 flex justify-between"><div><p className="font-semibold text-white">{s.store_name}</p><p className="text-xs text-white/70">{s.user?.username}</p></div><Badge>{s.status}</Badge></div>
+            <div key={s.id} className="p-4 rounded-lg border border-white/20 bg-white/10 flex justify-between items-center">
+              <div>
+                <p className="font-semibold text-white">{s.store_name}</p>
+                <p className="text-xs text-white/70">@{s.user?.username} • {s.user?.email}</p>
+                {(s.phone || s.whatsapp) && <p className="text-xs text-white/60 mt-1">{s.phone || s.whatsapp}</p>}
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant={s.status === 'pending' ? 'secondary' : s.status === 'active' ? 'default' : 'destructive'}>{s.status}</Badge>
+                {s.status === 'pending' && (
+                  <>
+                    <Button size="sm" variant="outline" className="border-green-400 text-green-300 hover:bg-green-500/20" onClick={() => updateSellerStatusMutation.mutate({ id: s.id, status: 'active' })} disabled={updateSellerStatusMutation.isPending}>
+                      Approuver
+                    </Button>
+                    <Button size="sm" variant="outline" className="border-red-400 text-red-300 hover:bg-red-500/20" onClick={() => updateSellerStatusMutation.mutate({ id: s.id, status: 'blocked' })} disabled={updateSellerStatusMutation.isPending}>
+                      Rejeter
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
           ))}
         </div>
         <div className="flex justify-between items-center mt-4 pt-4 border-t border-white/20">

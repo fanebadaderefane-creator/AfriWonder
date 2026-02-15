@@ -13,6 +13,7 @@ interface ListOptions {
   userId?: string;
   creator_id?: string;
   hashtag?: string;
+  search?: string;
 }
 
 class VideoService {
@@ -58,7 +59,7 @@ class VideoService {
     }
   }
   async list(options: ListOptions) {
-    const { page, limit, category, category_id, visibility = 'public', userId, creator_id: creatorId, hashtag } = options;
+    const { page, limit, category, category_id, visibility = 'public', userId, creator_id: creatorId, hashtag, search } = options;
     // Si limit n'est pas spécifié ou est 0, récupérer toutes les vidéos
     const shouldGetAll = !limit || limit === 0;
     const skip = shouldGetAll ? undefined : (page - 1) * (limit || 0);
@@ -115,6 +116,17 @@ class VideoService {
     if (hashtag && hashtag.trim()) {
       const tag = String(hashtag).replace(/^#/, '').toLowerCase();
       where.video_hashtags = { some: { tag_name: tag } };
+    }
+
+    // Recherche texte (titre, description, hashtags, music_title)
+    if (search && search.trim()) {
+      const term = `%${search.trim().toLowerCase()}%`;
+      where.OR = [
+        { title: { contains: search.trim(), mode: 'insensitive' } },
+        { description: { contains: search.trim(), mode: 'insensitive' } },
+        { music_title: { contains: search.trim(), mode: 'insensitive' } },
+        { video_hashtags: { some: { tag_name: { contains: search.trim().replace(/^#/, ''), mode: 'insensitive' } } } },
+      ];
     }
 
     let videos: any[];
@@ -594,6 +606,22 @@ class VideoService {
   }
 
   async toggleLike(videoId: string, userId: string) {
+    if (!videoId?.trim() || !userId?.trim()) {
+      const err: any = new Error('Paramètres invalides');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const video = await prisma.video.findUnique({
+      where: { id: videoId },
+      select: { id: true, likes: true },
+    });
+    if (!video) {
+      const err: any = new Error('Vidéo introuvable');
+      err.statusCode = 404;
+      throw err;
+    }
+
     const existingLike = await prisma.like.findFirst({
       where: {
         video_id: videoId,
@@ -602,39 +630,31 @@ class VideoService {
     });
 
     if (existingLike) {
-      // Retirer le like
-      await prisma.like.delete({
-        where: { id: existingLike.id },
-      });
-
-      await prisma.video.update({
-        where: { id: videoId },
-        data: {
-          likes: {
-            decrement: 1,
+      await prisma.$transaction([
+        prisma.like.delete({ where: { id: existingLike.id } }),
+        prisma.video.update({
+          where: { id: videoId },
+          data: {
+            likes: Math.max(0, (video.likes ?? 0) - 1),
           },
-        },
-      });
-
+        }),
+      ]);
       return { liked: false };
     } else {
-      // Ajouter le like
-      await prisma.like.create({
-        data: {
-          video_id: videoId,
-          user_id: userId,
-        },
-      });
-
-      await prisma.video.update({
-        where: { id: videoId },
-        data: {
-          likes: {
-            increment: 1,
+      await prisma.$transaction([
+        prisma.like.create({
+          data: {
+            video_id: videoId,
+            user_id: userId,
           },
-        },
-      });
-
+        }),
+        prisma.video.update({
+          where: { id: videoId },
+          data: {
+            likes: { increment: 1 },
+          },
+        }),
+      ]);
       return { liked: true };
     }
   }

@@ -193,10 +193,20 @@ class CartService {
       bySeller[sellerId].sellerAmount += sellerAmount;
       bySeller[sellerId].itemCount += 1;
     }
+    const sellerIds = [...new Set(Object.keys(bySeller))];
+    const sellerProfiles = await prisma.sellerProfile.findMany({
+      where: { user_id: { in: sellerIds } },
+      select: { user_id: true, store_name: true, phone: true, whatsapp: true },
+    });
+    const sellerContactMap = Object.fromEntries(sellerProfiles.map((s) => [s.user_id, s]));
+
     const feesBySeller = Object.values(bySeller).map((v) => ({
       ...v,
       platformFee: Math.round(v.platformFee * 100) / 100,
       sellerAmount: Math.round(v.sellerAmount * 100) / 100,
+      store_name: sellerContactMap[v.sellerId]?.store_name,
+      phone: sellerContactMap[v.sellerId]?.phone,
+      whatsapp: sellerContactMap[v.sellerId]?.whatsapp,
     }));
     const totalFees = feesBySeller.reduce((s, v) => s + v.platformFee, 0);
     return { ...cart, feesBySeller, totalFees };

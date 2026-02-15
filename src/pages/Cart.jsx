@@ -3,12 +3,21 @@ import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Trash2, Plus, Minus, ShoppingCart, ArrowLeft } from 'lucide-react';
+import { Trash2, Plus, Minus, ShoppingCart, ArrowLeft, MessageCircleMore } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import CommissionNotice from '@/components/CommissionNotice';
+
+/** Génère l'URL WhatsApp (Phase 1: contact direct, pas de paiement sur AfriWonder) */
+function getWhatsAppUrl(phoneOrWhatsapp, message = '') {
+  const raw = (phoneOrWhatsapp || '').replace(/\D/g, '');
+  if (!raw || raw.length < 8) return null;
+  const num = raw.startsWith('221') || raw.startsWith('223') ? raw : `221${raw}`;
+  const text = message ? `&text=${encodeURIComponent(message)}` : '';
+  return `https://wa.me/${num}${text}`;
+}
 
 export default function CartPage() {
   const navigate = useNavigate();
@@ -31,6 +40,12 @@ export default function CartPage() {
     queryKey: ['cart', user?.id],
     queryFn: () => api.cart.get(),
     enabled: !!user?.id
+  });
+
+  const { data: cartBreakdown } = useQuery({
+    queryKey: ['cart', 'breakdown', user?.id],
+    queryFn: () => api.cart.getBreakdown(),
+    enabled: !!user?.id && !!(cart?.items?.length)
   });
 
   const updateQuantityMutation = useMutation({
@@ -174,12 +189,46 @@ export default function CartPage() {
             </CardContent>
           </Card>
 
-          <Button
-            onClick={() => navigate(createPageUrl('Checkout'))}
-            className="w-full bg-orange-500 hover:bg-orange-600 text-white py-6 text-lg"
-          >
-            Passer la commande →
-          </Button>
+          {/* Phase 1: pas de paiement sur AfriWonder — contacter les vendeurs directement */}
+          {!cartBreakdown && items.length > 0 ? (
+            <Button disabled className="w-full py-6">
+              Chargement des vendeurs...
+            </Button>
+          ) : (cartBreakdown?.feesBySeller || []).length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-sm text-gray-600 font-medium">Contacter les vendeurs</p>
+              {(cartBreakdown.feesBySeller || []).map((f) => {
+                const wa = f.whatsapp || f.phone;
+                const storeName = f.store_name || 'Vendeur';
+                const msg = `Bonjour, je souhaite commander les articles de mon panier (${f.itemCount} article${f.itemCount > 1 ? 's' : ''}) — Total: ${(f.subtotal || 0).toLocaleString()} XOF`;
+                const waUrl = getWhatsAppUrl(wa, msg);
+                return waUrl ? (
+                  <Button
+                    key={f.sellerId}
+                    onClick={() => window.open(waUrl, '_blank')}
+                    className="w-full py-5 bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <MessageCircleMore className="w-5 h-5 mr-2" />
+                    {storeName} (WhatsApp)
+                  </Button>
+                ) : (
+                  <Button key={f.sellerId} variant="outline" className="w-full py-5" disabled>
+                    {storeName} — pas de contact
+                  </Button>
+                );
+              })}
+              <p className="text-xs text-gray-500 mt-2">
+                Phase 1: Paiement et livraison à organiser directement avec le vendeur.
+              </p>
+            </div>
+          ) : (
+            <Button
+              onClick={() => navigate(createPageUrl('Checkout'))}
+              className="w-full bg-orange-500 hover:bg-orange-600 text-white py-6 text-lg"
+            >
+              Passer la commande →
+            </Button>
+          )}
           <Button
             onClick={() => navigate(createPageUrl('Marketplace'))}
             variant="outline"

@@ -26,6 +26,11 @@ class SellerProfileService {
     city?: string;
     store_logo?: string;
     store_banner?: string;
+    phone?: string;
+    whatsapp?: string;
+    tiktok_url?: string;
+    instagram_url?: string;
+    x_url?: string;
   }) {
     const existing = await prisma.sellerProfile.findUnique({
       where: { user_id: userId },
@@ -40,6 +45,7 @@ class SellerProfileService {
       err.statusCode = 400;
       throw err;
     }
+    // Phase 1: status "pending" — admin doit approuver via dashboard
     const profile = await prisma.sellerProfile.create({
       data: {
         user_id: userId,
@@ -49,7 +55,12 @@ class SellerProfileService {
         city: data.city?.trim() || null,
         store_logo: data.store_logo || null,
         store_banner: data.store_banner || null,
-        status: 'active',
+        phone: data.phone?.trim() || null,
+        whatsapp: data.whatsapp?.trim() || null,
+        tiktok_url: data.tiktok_url?.trim() || null,
+        instagram_url: data.instagram_url?.trim() || null,
+        x_url: data.x_url?.trim() || null,
+        status: 'pending',
       },
       include: {
         user: {
@@ -73,6 +84,11 @@ class SellerProfileService {
     city: string;
     store_logo: string;
     store_banner: string;
+    phone: string;
+    whatsapp: string;
+    tiktok_url: string;
+    instagram_url: string;
+    x_url: string;
     subscription_tier: string; // CDC: free | starter | business | enterprise
   }>) {
     const profile = await prisma.sellerProfile.findUnique({
@@ -92,7 +108,11 @@ class SellerProfileService {
         ...(data.city != null && { city: data.city.trim() || null }),
         ...(data.store_logo != null && { store_logo: data.store_logo || null }),
         ...(data.store_banner != null && { store_banner: data.store_banner || null }),
-        // subscription_tier payant : utiliser /api/seller-subscription/subscribe (Phase 1)
+        ...(data.phone != null && { phone: data.phone.trim() || null }),
+        ...(data.whatsapp != null && { whatsapp: data.whatsapp.trim() || null }),
+        ...(data.tiktok_url != null && { tiktok_url: data.tiktok_url.trim() || null }),
+        ...(data.instagram_url != null && { instagram_url: data.instagram_url.trim() || null }),
+        ...(data.x_url != null && { x_url: data.x_url.trim() || null }),
         ...(data.subscription_tier === 'free' && { subscription_tier: 'free' }),
       },
       include: {

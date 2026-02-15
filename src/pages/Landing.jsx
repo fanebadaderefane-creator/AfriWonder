@@ -250,6 +250,9 @@ export default function Landing() {
           </div>
 
           <p className="text-gray-400 mb-6 italic">Where Africa Wows the World</p>
+          <p className="text-sm text-amber-200/90 mb-6 px-4">
+            Seuls les prestataires vérifiés par AfriWonder — AfriWonder Abonnement pour nos prestataires.
+          </p>
 
           {/* Compteur utilisateurs */}
           <div className="flex items-center justify-center gap-2 mb-8">

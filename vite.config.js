@@ -39,7 +39,7 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'sw-custom.js',
       injectManifest: {
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MiB (bundle peut dépasser 2 MiB)
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4 MiB (bundle ~3.4 MiB)
       },
       manifest: {
         id: '/',

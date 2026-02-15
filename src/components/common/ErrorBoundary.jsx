@@ -1,8 +1,8 @@
 import { Component } from 'react';
 
 /**
- * Error boundary global : affiche une UI de repli en cas d'erreur React non gérée.
- * Production-ready : évite écran blanc et permet rechargement.
+ * Error boundary global : évite écran blanc, permet réessai sans rechargement complet.
+ * Production-ready : l'app reste utilisable après une erreur transitoire.
  */
 export default class ErrorBoundary extends Component {
   state = { hasError: false, error: null };
@@ -12,11 +12,17 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('ErrorBoundary caught:', error, errorInfo);
+    if (import.meta.env.DEV) {
+      console.error('ErrorBoundary caught:', error, errorInfo);
+    }
     if (window.Sentry) {
       window.Sentry.captureException(error, { extra: { componentStack: errorInfo?.componentStack } });
     }
   }
+
+  handleRetry = () => {
+    this.setState({ hasError: false, error: null });
+  };
 
   render() {
     if (this.state.hasError) {
@@ -24,15 +30,24 @@ export default class ErrorBoundary extends Component {
         <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50 text-slate-800">
           <h1 className="text-xl font-semibold mb-2">Une erreur est survenue</h1>
           <p className="text-slate-600 text-center mb-6 max-w-md">
-            Rechargez la page pour réessayer. Si le problème persiste, contactez le support.
+            Réessayez ou rechargez la page. Si le problème persiste, contactez le support.
           </p>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700"
-          >
-            Recharger la page
-          </button>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={this.handleRetry}
+              className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600"
+            >
+              Réessayer
+            </button>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700"
+            >
+              Recharger
+            </button>
+          </div>
         </div>
       );
     }

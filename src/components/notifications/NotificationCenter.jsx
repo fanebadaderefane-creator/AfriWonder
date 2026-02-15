@@ -4,14 +4,16 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { 
-  Bell, Package, Star, MessageCircle, DollarSign, 
-  Heart, UserPlus, CheckCheck 
+import {
+  Bell, Package, Star, MessageCircle, DollarSign,
+  Heart, UserPlus, CheckCheck, Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from "sonner";
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 
 const notificationIcons = {
   order: Package,
@@ -40,22 +42,16 @@ const notificationColors = {
 export default function NotificationCenter({ isOpen, onClose, userId }) {
   const queryClient = useQueryClient();
 
-  const { data: notificationsData, _refetch } = useQuery({
+  const { data: notificationsData } = useQuery({
     queryKey: ['notifications', userId],
     queryFn: async () => {
-      const result = await api.notifications.list();
-      // Handle different response formats
-      if (Array.isArray(result)) {
-        return result;
-      } else if (result && Array.isArray(result.notifications)) {
-        return result.notifications;
-      } else if (result && result.data && Array.isArray(result.data.notifications)) {
-        return result.data.notifications;
-      }
-      return [];
+      const result = await api.notifications.list({ limit: 50 });
+      const data = result?.data || result;
+      const list = data?.notifications ?? result?.notifications ?? result;
+      return Array.isArray(list) ? list : [];
     },
-    enabled: !!userId,
-    refetchInterval: 10000 // Poll every 10 seconds
+    enabled: !!userId && isOpen,
+    refetchInterval: isOpen ? 10000 : false,
   });
 
   // Ensure notifications is always an array
@@ -64,75 +60,93 @@ export default function NotificationCenter({ isOpen, onClose, userId }) {
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
   const markAsReadMutation = useMutation({
-    mutationFn: async (notificationId) => {
-      await api.entities.Notification.update(notificationId, { is_read: true });
-    },
+    mutationFn: (notificationId) => api.notifications.markAsRead(notificationId),
     onSuccess: () => {
-      queryClient.invalidateQueries(['notifications']);
-    }
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
   });
 
   const markAllAsReadMutation = useMutation({
-    mutationFn: async () => {
-      const unread = notifications.filter(n => !n.is_read);
-      await Promise.all(unread.map(n => 
-        api.entities.Notification.update(n.id, { is_read: true })
-      ));
-    },
+    mutationFn: () => api.notifications.markAllAsRead(),
     onSuccess: () => {
-      queryClient.invalidateQueries(['notifications']);
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
       toast.success('Toutes les notifications marquées comme lues');
-    }
+    },
   });
 
   const handleNotificationClick = (notification) => {
     if (!notification.is_read) {
       markAsReadMutation.mutate(notification.id);
     }
-
-    // Navigate based on type
-    if (notification.reference_type === 'order') {
-      window.location.href = `/OrderTracking?id=${notification.reference_id}`;
+    const base = window.location.origin + (window.location.pathname.includes('/Profile') ? '' : '/');
+    if (notification.action_url) {
+      window.location.href = notification.action_url.startsWith('http') ? notification.action_url : base + notification.action_url;
+    } else if (notification.reference_type === 'order') {
+      window.location.href = `${base}OrderTracking?id=${notification.reference_id}`;
     } else if (notification.reference_type === 'video') {
-      window.location.href = `/VideoView?id=${notification.reference_id}`;
+      window.location.href = `${base}VideoView?_videoId=${notification.reference_id}`;
     } else if (notification.reference_type === 'product') {
-      window.location.href = `/Product?id=${notification.reference_id}`;
-    } else if (notification.reference_type === '_user') {
-      window.location.href = `/Profile?userId=${notification.reference_id}`;
+      window.location.href = `${base}Product?id=${notification.reference_id}`;
+    } else if (notification.reference_type === '_user' || notification.reference_type === 'user') {
+      window.location.href = `${base}Profile?_userId=${notification.reference_id}`;
+    } else if (notification.from_user_id) {
+      window.location.href = `${base}Profile?_userId=${notification.from_user_id}`;
     }
     onClose();
   };
 
+  const formatDate = (n) => {
+    const d = n.created_at || n.created_date;
+    if (!d) return '';
+    try {
+      return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr });
+    } catch {
+      return '';
+    }
+  };
+
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent side="right" className="w-full sm:max-w-md p-0">
-        <SheetHeader className="px-4 py-3 border-b">
+      <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
+        <SheetHeader className="px-4 py-3 border-b shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <SheetTitle>Notifications</SheetTitle>
+              <Bell className="w-5 h-5 text-orange-500" />
+              <SheetTitle className="text-lg">Notifications</SheetTitle>
               {unreadCount > 0 && (
-                <Badge className="bg-orange-500">{unreadCount}</Badge>
+                <Badge className="bg-orange-500 text-white">{unreadCount}</Badge>
               )}
             </div>
-            {unreadCount > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => markAllAsReadMutation.mutate()}
-                disabled={markAllAsReadMutation.isPending}
-              >
-                <CheckCheck className="w-4 h-4 mr-1" />
-                Tout lire
-              </Button>
-            )}
+            <div className="flex items-center gap-1">
+              {unreadCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => markAllAsReadMutation.mutate()}
+                  disabled={markAllAsReadMutation.isPending}
+                  className="text-xs"
+                >
+                  <CheckCheck className="w-4 h-4 mr-1" />
+                  Tout lire
+                </Button>
+              )}
+              <Link to={createPageUrl('NotificationSettings')} onClick={onClose}>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Settings className="w-4 h-4" />
+                </Button>
+              </Link>
+            </div>
           </div>
         </SheetHeader>
 
-        <div className="overflow-y-auto h-[calc(100vh-80px)]">
+        <div className="overflow-y-auto flex-1 min-h-0">
           {notifications.length === 0 ? (
-            <div className="text-center py-12 px-4">
-              <Bell className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500">Aucune notification</p>
+            <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+              <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center mb-4">
+                <Bell className="w-8 h-8 text-orange-500" />
+              </div>
+              <p className="font-medium text-gray-800 mb-1">Aucune notification</p>
+              <p className="text-sm text-gray-500">Vous serez notifié des likes, commentaires et suivis</p>
             </div>
           ) : (
             <div className="divide-y">
@@ -159,13 +173,10 @@ export default function NotificationCenter({ isOpen, onClose, userId }) {
                             {notif.title}
                           </p>
                           <p className="text-sm text-gray-600 line-clamp-2 mt-0.5">
-                            {notif._message}
+                            {notif.message || notif._message}
                           </p>
                           <p className="text-xs text-gray-400 mt-1">
-                            {formatDistanceToNow(new Date(notif.created_date), { 
-                              addSuffix: true, 
-                              locale: fr 
-                            })}
+                            {formatDate(notif)}
                           </p>
                         </div>
                         {!notif.is_read && (

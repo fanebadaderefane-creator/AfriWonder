@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 
 
-import { Search, Bell, WifiOff, Menu } from 'lucide-react';
+import { Search, Bell, MessageCircle, WifiOff, Menu } from 'lucide-react';
 
 import { motion } from 'framer-motion';
 
@@ -79,32 +79,28 @@ export default function TopHeader({
 
 
 
-  // Fetch unread count
-
+  // Fetch notifications + messages unread count
   const { data: notificationsData } = useQuery({
-
     queryKey: ['notifications', user?.id],
-
     queryFn: async () => {
-
       const result = await api.notifications.list({ limit: 50 });
-
-      return result.notifications || [];
-
+      const data = result?.data || result;
+      return data?.notifications || result?.notifications || [];
     },
-
     enabled: !!user?.id,
-
-    refetchInterval: 10000
-
+    refetchInterval: 10000,
   });
 
+  const { data: messagesUnread } = useQuery({
+    queryKey: ['messages-unread-count'],
+    queryFn: () => api.messages.getUnreadCount(),
+    enabled: !!user?.id,
+    refetchInterval: 15000,
+  });
 
-
-  // Ensure notifications is always an array
   const notifications = Array.isArray(notificationsData) ? notificationsData : [];
-
-  const unreadCount = notifications.filter(n => !n.is_read).length;
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
+  const messagesCount = messagesUnread?.count ?? 0;
 
 
 
@@ -223,34 +219,34 @@ export default function TopHeader({
           <div className="flex items-center gap-1">
 
             <Link to={createPageUrl('Search')}>
-
               <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 h-9 w-9">
-
                 <Search className="w-5 h-5" />
-
               </Button>
-
             </Link>
 
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Link to={createPageUrl('Inbox')}>
+              <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 h-9 w-9 relative">
+                <MessageCircle className="w-5 h-5" />
+                {messagesCount > 0 && (
+                  <span className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 bg-orange-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
+                    {messagesCount > 99 ? '99+' : messagesCount}
+                  </span>
+                )}
+              </Button>
+            </Link>
+
+            <Button
+              variant="ghost"
+              size="icon"
               className="text-white hover:bg-white/10 h-9 w-9 relative"
               onClick={() => setShowNotifications(true)}
             >
-
               <Bell className="w-5 h-5" />
-
               {unreadCount > 0 && (
-
-                <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
-
-                  {unreadCount > 9 ? '9+' : unreadCount}
-
+                <span className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
+                  {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
-
               )}
-
             </Button>
 
             <Button 

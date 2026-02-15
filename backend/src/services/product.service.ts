@@ -102,16 +102,13 @@ class ProductService {
       where.price = { lte: max_price };
     }
 
-    const sellerWhere: any = {};
+    const sellerWhere: any = { status: 'active' }; // Phase 1: vendeurs approuvés uniquement
     if (verified_seller === true) {
       sellerWhere.is_verified = true;
-      sellerWhere.status = 'active';
     }
     if (seller_country) sellerWhere.country = seller_country;
     if (min_rating != null && min_rating > 0) sellerWhere.rating = { gte: min_rating };
-    if (Object.keys(sellerWhere).length > 0) {
-      where.seller = { seller_profile: sellerWhere };
-    }
+    where.seller = { seller_profile: sellerWhere };
 
     if (delivery_option) {
       where.delivery_options = { not: null };
@@ -187,6 +184,8 @@ class ProductService {
                 country: true,
                 city: true,
                 status: true,
+                phone: true,
+                whatsapp: true,
               },
             },
           },
@@ -254,9 +253,10 @@ class ProductService {
     const tLimit = Math.max(1, Math.min(trendingLimit || 8, 20));
     const nLimit = Math.max(1, Math.min(newestLimit || 8, 20));
 
+    const baseWhere = { status: 'active' as const, seller: { seller_profile: { status: 'active' as const } } };
     const [trending, newest] = await Promise.all([
       prisma.product.findMany({
-        where: { status: 'active' },
+        where: baseWhere,
         include: {
           seller: {
             select: {
@@ -281,7 +281,7 @@ class ProductService {
         take: tLimit,
       }),
       prisma.product.findMany({
-        where: { status: 'active' },
+        where: baseWhere,
         include: {
           seller: {
             select: {
@@ -333,10 +333,11 @@ class ProductService {
       },
     } as const;
 
+    const baseWhere = { status: 'active' as const, seller: { seller_profile: { status: 'active' as const } } };
     // Visiteur: fallback recommandations génériques (tendance + récent)
     if (!options.userId) {
       return prisma.product.findMany({
-        where: { status: 'active' },
+        where: baseWhere,
         include: includeSeller,
         orderBy: [{ order_items: { _count: 'desc' } }, { created_at: 'desc' }],
         take: limit,
@@ -421,7 +422,7 @@ class ProductService {
       .map(([k]) => k);
 
     const personalizedWhere: any = {
-      status: 'active',
+      ...baseWhere,
       id: { notIn: [...excludedIds] },
     };
     if (topCategories.length > 0 || topBrands.length > 0) {
@@ -440,7 +441,7 @@ class ProductService {
     if (items.length < limit) {
       const filled = await prisma.product.findMany({
         where: {
-          status: 'active',
+          ...baseWhere,
           id: { notIn: [...excludedIds, ...items.map((i) => i.id)] },
         },
         include: includeSeller,
@@ -461,6 +462,7 @@ class ProductService {
 
     const whereClauses: Prisma.Sql[] = [
       Prisma.sql`p.status = 'active'`,
+      Prisma.sql`sp.status = 'active'`,
       Prisma.sql`p.latitude IS NOT NULL`,
       Prisma.sql`p.longitude IS NOT NULL`,
     ];
@@ -604,8 +606,8 @@ class ProductService {
       err.statusCode = 400;
       throw err;
     }
-    if (sellerProfile.status !== 'active') {
-      const err: any = new Error('Votre compte vendeur est suspendu ou bloquÃ©');
+    if (!['pending', 'active'].includes(sellerProfile.status)) {
+      const err: any = new Error('Votre compte vendeur est suspendu ou bloqué');
       err.statusCode = 403;
       throw err;
     }

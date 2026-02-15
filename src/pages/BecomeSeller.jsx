@@ -37,6 +37,11 @@ export default function BecomeSeller() {
     store_description: '',
     country: '',
     city: '',
+    phone: '',
+    whatsapp: '',
+    tiktok_url: '',
+    instagram_url: '',
+    x_url: '',
   });
 
   useEffect(() => {
@@ -46,6 +51,11 @@ export default function BecomeSeller() {
         store_description: profile.store_description || '',
         country: profile.country || '',
         city: profile.city || '',
+        phone: profile.phone || '',
+        whatsapp: profile.whatsapp || '',
+        tiktok_url: profile.tiktok_url || '',
+        instagram_url: profile.instagram_url || '',
+        x_url: profile.x_url || '',
       });
     }
   }, [profile]);
@@ -54,8 +64,8 @@ export default function BecomeSeller() {
     mutationFn: () => api.sellerProfile.create(form),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['seller-profile', user?.id] });
-      toast.success('Compte vendeur créé !');
-      navigate(createPageUrl('AddProduct'));
+      toast.success('Demande envoyée ! Votre boutique sera visible après validation par AfriWonder.');
+      navigate(createPageUrl('BecomeSeller'));
     },
     onError: (e) => toast.error(e.response?.data?.error || e.message || 'Erreur')
   });
@@ -111,10 +121,16 @@ export default function BecomeSeller() {
       </div>
 
       <div className="p-4 max-w-xl mx-auto">
-        {profile && (
+        {profile?.status === 'pending' && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-amber-800">
+            <Loader2 className="w-5 h-5 flex-shrink-0 animate-spin" />
+            <span className="text-sm font-medium">En attente de validation par AfriWonder. Vous serez notifié une fois approuvé.</span>
+          </div>
+        )}
+        {profile?.status === 'active' && (
           <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-800">
             <CheckCircle className="w-5 h-5 flex-shrink-0" />
-            <span className="text-sm font-medium">Vous avez déjà un compte vendeur.</span>
+            <span className="text-sm font-medium">Votre boutique est active.</span>
           </div>
         )}
 
@@ -155,6 +171,22 @@ export default function BecomeSeller() {
                   <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Dakar" />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Téléphone</Label>
+                  <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+221 77 123 45 67" />
+                </div>
+                <div>
+                  <Label>WhatsApp</Label>
+                  <Input value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} placeholder="+221 77 123 45 67" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Réseaux sociaux (optionnel)</Label>
+                <Input value={form.tiktok_url} onChange={(e) => setForm({ ...form, tiktok_url: e.target.value })} placeholder="TikTok: https://tiktok.com/@..." />
+                <Input value={form.instagram_url} onChange={(e) => setForm({ ...form, instagram_url: e.target.value })} placeholder="Instagram: https://instagram.com/..." />
+                <Input value={form.x_url} onChange={(e) => setForm({ ...form, x_url: e.target.value })} placeholder="X (Twitter): https://x.com/..." />
+              </div>
               <Button type="submit" className="w-full" disabled={isPending}>
                 {isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : profile ? 'Enregistrer' : 'Créer mon compte vendeur'}
               </Button>
@@ -162,11 +194,14 @@ export default function BecomeSeller() {
           </CardContent>
         </Card>
 
-        {profile && (
+        {profile && (profile.status === 'active' || profile.status === 'pending') && (
           <div className="mt-4 flex gap-2">
             <Button variant="outline" className="flex-1" onClick={() => navigate(createPageUrl('AddProduct'))}>Ajouter un produit</Button>
             <Button variant="outline" className="flex-1" onClick={() => navigate(createPageUrl('SellerDashboard'))}>Tableau de bord</Button>
           </div>
+        )}
+        {profile?.status === 'pending' && (
+          <p className="mt-2 text-sm text-gray-500">Préparez vos produits. Ils seront visibles une fois votre boutique approuvée.</p>
         )}
 
         <Card className="mt-6">

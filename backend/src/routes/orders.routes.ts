@@ -136,6 +136,12 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
 // POST /api/orders
 router.post('/', authenticate, orderActionLimiter, async (req: AuthRequest, res, next) => {
   try {
+    // Phase 1: pas de paiement sur AfriWonder — contact direct vendeur (WhatsApp)
+    if (process.env.MARKETPLACE_PHASE1_NO_PAYMENT === 'true') {
+      const err: any = new Error('Phase 1: Paiement et livraison à organiser directement avec le vendeur. Utilisez le bouton "Contacter le vendeur".');
+      err.statusCode = 403;
+      throw err;
+    }
     const userId = req.user!.id;
     const order = await orderService.createFromCart(userId, req.body);
     res.status(201).json({ success: true, data: order });
