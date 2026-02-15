@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/expressClient';
 import { motion } from 'framer-motion';
+import { useAuth } from '@/lib/AuthContext';
 import {
   Download,
   Heart,
@@ -33,6 +34,17 @@ function isIOS() {
 const EARLY_ACCESS_MESSAGE = "AfriWonder est en version Beta / Early Access. Nous construisons ensemble. Vos retours sont précieux et certains bugs peuvent exister. Merci de votre soutien !";
 
 export default function Landing() {
+  const { login, register, authError } = useAuth();
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [regFullName, setRegFullName] = useState('');
+  const [regUsername, setRegUsername] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regAcceptTerms, setRegAcceptTerms] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+
   const { data: earlyAccessConfig, isLoading: loadingConfig } = useQuery({
     queryKey: ['early-access-config'],
     queryFn: () => api.earlyAccess.getConfig(),
@@ -202,7 +214,18 @@ export default function Landing() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-black text-white overflow-hidden" style={{ overscrollBehavior: 'none', touchAction: 'pan-y' }}>
+    <div
+      className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-black text-white"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        WebkitOverflowScrolling: 'touch',
+        overscrollBehavior: 'auto',
+        touchAction: 'pan-y',
+      }}
+    >
       {/* Navigation */}
       <nav className="fixed top-0 w-full z-50 bg-transparent backdrop-blur-none">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
@@ -213,9 +236,7 @@ export default function Landing() {
             </span>
           </div>
           <a
-            href={APP_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+            href="#auth"
             className="absolute right-4 sm:right-6 lg:right-8 px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 font-medium text-sm flex items-center gap-2"
           >
             <ExternalLink className="w-4 h-4" />
@@ -282,9 +303,7 @@ export default function Landing() {
               Télécharger PWA
             </motion.button>
             <motion.a
-              href={APP_URL}
-              target="_blank"
-              rel="noopener noreferrer"
+              href="#auth"
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
               className="px-8 py-4 bg-gray-700 hover:bg-gray-600 rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-2"
@@ -343,6 +362,191 @@ export default function Landing() {
             <ChevronDown className="w-8 h-8 mx-auto" />
           </motion.div>
         </motion.div>
+      </section>
+
+      {/* Section Authentification — Connexion / Inscription */}
+      <section id="auth" className="py-20 px-4 relative scroll-mt-20">
+        <div className="max-w-md mx-auto">
+          <motion.h2
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            className="text-3xl font-black text-center mb-6 bg-gradient-to-r from-orange-400 to-red-400 bg-clip-text text-transparent"
+          >
+            {authMode === 'login' ? 'Se connecter' : 'Créer un compte'}
+          </motion.h2>
+
+          {authError?.message && (
+            <div className="mb-4 p-3 rounded-lg bg-red-500/20 border border-red-500/40 text-red-200 text-sm">
+              {authError.message}
+            </div>
+          )}
+
+          {authMode === 'login' ? (
+            <motion.form
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!loginEmail?.trim() || !loginPassword) {
+                  toast.error('Email et mot de passe requis');
+                  return;
+                }
+                setAuthLoading(true);
+                try {
+                  await login(loginEmail.trim(), loginPassword);
+                  toast.success('Connexion réussie !');
+                  window.location.href = '/';
+                } catch {
+                  // authError already set by AuthContext
+                } finally {
+                  setAuthLoading(false);
+                }
+              }}
+              className="bg-gray-800/50 border border-gray-700 rounded-2xl p-6 space-y-4"
+            >
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Email</label>
+                <input
+                  type="email"
+                  placeholder="votre@email.com"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Mot de passe</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full px-6 py-3 bg-orange-500 hover:bg-orange-600 rounded-lg font-bold disabled:opacity-50"
+              >
+                {authLoading ? 'Connexion...' : 'Se connecter'}
+              </button>
+              <p className="text-center text-sm text-gray-400">
+                Pas encore de compte ?{' '}
+                <button type="button" onClick={() => setAuthMode('register')} className="text-orange-400 hover:underline font-medium">
+                  S'inscrire
+                </button>
+              </p>
+            </motion.form>
+          ) : (
+            <motion.form
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!regFullName?.trim() || !regUsername?.trim() || !regEmail?.trim() || !regPassword) {
+                  toast.error('Tous les champs sont requis');
+                  return;
+                }
+                if (!regAcceptTerms) {
+                  toast.error('Veuillez accepter les conditions d\'utilisation');
+                  return;
+                }
+                setAuthLoading(true);
+                try {
+                  await register({
+                    full_name: regFullName.trim(),
+                    username: regUsername.trim(),
+                    email: regEmail.trim(),
+                    password: regPassword,
+                  });
+                  toast.success('Compte créé ! Bienvenue sur AfriWonder.');
+                  window.location.href = '/';
+                } catch {
+                  // authError already set
+                } finally {
+                  setAuthLoading(false);
+                }
+              }}
+              className="bg-gray-800/50 border border-gray-700 rounded-2xl p-6 space-y-4"
+            >
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Nom complet</label>
+                <input
+                  type="text"
+                  placeholder="Jean Dupont"
+                  value={regFullName}
+                  onChange={(e) => setRegFullName(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Nom d'utilisateur</label>
+                <input
+                  type="text"
+                  placeholder="jeandupont"
+                  value={regUsername}
+                  onChange={(e) => setRegUsername(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Email</label>
+                <input
+                  type="email"
+                  placeholder="votre@email.com"
+                  value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Mot de passe</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={regPassword}
+                  onChange={(e) => setRegPassword(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                  required
+                />
+              </div>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={regAcceptTerms}
+                  onChange={(e) => setRegAcceptTerms(e.target.checked)}
+                  className="rounded mt-1"
+                />
+                <span className="text-sm text-gray-300">
+                  J'accepte les{' '}
+                  <Link to="/TermsOfService" className="text-orange-400 hover:underline">conditions d'utilisation</Link>
+                  {' '}et la{' '}
+                  <Link to="/PrivacyPolicy" className="text-orange-400 hover:underline">politique de confidentialité</Link>
+                </span>
+              </label>
+              <button
+                type="submit"
+                disabled={authLoading || !regAcceptTerms}
+                className="w-full px-6 py-3 bg-orange-500 hover:bg-orange-600 rounded-lg font-bold disabled:opacity-50"
+              >
+                {authLoading ? 'Inscription...' : "S'inscrire"}
+              </button>
+              <p className="text-center text-sm text-gray-400">
+                Déjà un compte ?{' '}
+                <button type="button" onClick={() => setAuthMode('login')} className="text-orange-400 hover:underline font-medium">
+                  Se connecter
+                </button>
+              </p>
+            </motion.form>
+          )}
+        </div>
       </section>
 
       {/* Soutien financier / Donations */}

@@ -40,8 +40,10 @@ vi.mock('@/api/expressClient', () => ({
     post: vi.fn(),
     get: vi.fn(),
     earlyAccess: {
-      getConfig: vi.fn().mockResolvedValue({ showWaitlist: true, showDonate: false }),
+      getConfig: vi.fn().mockResolvedValue({ showWaitlist: true, showDonate: false, isFull: false, maxUsers: 10000, totalUsers: 0 }),
     },
+    platformDonations: { create: vi.fn() },
+    platformFeedback: { create: vi.fn() },
   },
 }));
 
