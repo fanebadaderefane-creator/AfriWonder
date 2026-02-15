@@ -17,6 +17,7 @@ import { addToBlacklist } from '../services/blacklist.service.js';
 import * as amlService from '../services/aml.service.js';
 import featureFlagService from '../services/featureFlag.service.js';
 import commissionSettingsService from '../services/commissionSettings.service.js';
+import * as monetizationService from '../services/monetization.service.js';
 
 const router = Router();
 
@@ -50,11 +51,13 @@ router.get('/dashboard', authenticate, requireAnyAdmin, async (req: AuthRequest,
 });
 
 // GET /api/admin/users (pagination obligatoire, limit max 100)
+// ?includeTest=true pour inclure les utilisateurs de test (@example.com, E2E, etc.)
 router.get('/users', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
   try {
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
-    const result = await adminService.getUsers(page, limit);
+    const includeTest = req.query.includeTest === 'true' || req.query.includeTest === '1';
+    const result = await adminService.getUsers(page, limit, { includeTest });
     res.json({ success: true, data: result });
   } catch (error: any) {
     next(error);
@@ -803,6 +806,41 @@ router.post('/commissions/config/reset', authenticate, requireFinanceAdmin, asyn
         effective,
       },
     });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/admin/monetization-requests - Demandes de monétisation en attente
+router.get('/monetization-requests', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const requests = await monetizationService.getPendingMonetizationRequests();
+    res.json({ success: true, data: requests });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/admin/monetization-requests/:id/approve - Approuver une demande
+router.post('/monetization-requests/:id/approve', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const result = await monetizationService.approveMonetizationRequest(id, req.user!.id);
+    await auditLog(req, 'monetization_approve', 'monetization_request', id);
+    res.json({ success: result.success, message: result.message });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/admin/monetization-requests/:id/reject - Rejeter une demande
+router.post('/monetization-requests/:id/reject', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const { reason } = req.body || {};
+    const result = await monetizationService.rejectMonetizationRequest(id, req.user!.id, reason);
+    await auditLog(req, 'monetization_reject', 'monetization_request', id, { reason });
+    res.json({ success: result.success, message: result.message });
   } catch (error: any) {
     next(error);
   }

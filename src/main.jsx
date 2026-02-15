@@ -5,13 +5,10 @@ import App from '@/App.jsx'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import '@/index.css'
 
-// Sentry — initialiser le plus tôt possible
+// Sentry — initialiser le plus tôt possible (désactivé en dev si bloqué par le navigateur)
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN
-if (sentryDsn) {
-  const isProd = import.meta.env.PROD
-  if (import.meta.env.DEV) {
-    console.log('[SENTRY] Monitoring frontend activé')
-  }
+const isDev = import.meta.env.DEV
+if (sentryDsn && !isDev) {
   Sentry.init({
     dsn: sentryDsn,
     environment: import.meta.env.VITE_REACT_APP_ENV || import.meta.env.MODE,
@@ -22,7 +19,7 @@ if (sentryDsn) {
     ],
     tracesSampleRate: 1.0,
     tracePropagationTargets: ['localhost', /^https?:\/\/[^/]+/],
-    replaysSessionSampleRate: isProd ? 0.1 : 1.0,
+    replaysSessionSampleRate: import.meta.env.PROD ? 0.1 : 1.0,
     replaysOnErrorSampleRate: 1.0,
     enableLogs: true,
   })

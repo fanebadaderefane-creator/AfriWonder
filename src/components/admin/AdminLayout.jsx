@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import {
   ArrowLeft, BarChart3, Users, Package, Video, ShoppingBag, Flag, AlertCircle, Settings,
   Shield, Activity, Search, DollarSign, TrendingUp, FileText, Truck, RotateCcw, Megaphone, UserCheck,
-  Zap,
+  Zap, Coins,
 } from 'lucide-react';
 import PlatformHealth from './PlatformHealth';
 
@@ -18,6 +18,7 @@ const TABS = [
   { id: 'verifications', label: 'KYC', icon: UserCheck },
   { id: 'campagnes', label: 'Campagnes pub', icon: Megaphone },
   { id: 'finance', label: 'Finance', icon: DollarSign },
+  { id: 'monetization', label: 'Monétisation', icon: Coins },
   { id: 'reports', label: 'Signalements', icon: Flag },
   { id: 'disputes', label: 'Litiges', icon: AlertCircle },
   { id: 'returns', label: 'Retours', icon: RotateCcw },
@@ -30,8 +31,8 @@ const TABS = [
 
 const ROLE_ACCESS = {
   super_admin: new Set(TABS.map((t) => t.id)),
-  admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'verifications', 'campagnes', 'reports', 'disputes', 'returns', 'finance', 'logistics', 'analytics', 'audit', 'earlyaccess', 'settings']),
-  finance_admin: new Set(['overview', 'finance', 'orders', 'audit', 'logistics', 'campagnes', 'verifications', 'earlyaccess']),
+  admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'verifications', 'campagnes', 'reports', 'disputes', 'returns', 'finance', 'monetization', 'logistics', 'analytics', 'audit', 'earlyaccess', 'settings']),
+  finance_admin: new Set(['overview', 'finance', 'monetization', 'orders', 'audit', 'logistics', 'campagnes', 'verifications', 'earlyaccess']),
   moderation_admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'campagnes', 'reports', 'disputes', 'returns', 'logistics', 'verifications']),
   support_admin: new Set(['overview', 'users', 'disputes', 'returns', 'reports', 'logistics']),
   data_admin: new Set(['overview', 'analytics', 'audit', 'orders', 'users', 'logistics']),

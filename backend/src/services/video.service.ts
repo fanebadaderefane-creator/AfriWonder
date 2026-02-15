@@ -1,5 +1,6 @@
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
+import * as qualifiedViewService from './qualifiedView.service.js';
 import { validateUrl } from '../utils/urlValidator.js';
 import GamificationEngine from './gamification.service.js';
 
@@ -116,34 +117,61 @@ class VideoService {
       where.video_hashtags = { some: { tag_name: tag } };
     }
 
-    const [videos, total] = await Promise.all([
-      prisma.video.findMany({
-        where,
-        include: {
-          creator: {
-            select: {
-              id: true,
-              username: true,
-              full_name: true,
-              profile_image: true,
+    let videos: any[];
+    let total: number;
+
+    try {
+      [videos, total] = await Promise.all([
+        prisma.video.findMany({
+          where,
+          include: {
+            creator: {
+              select: {
+                id: true,
+                username: true,
+                full_name: true,
+                profile_image: true,
+              },
+            },
+            video_hashtags: { select: { tag_name: true } },
+            _count: {
+              select: {
+                video_likes: true,
+                video_comments: true,
+              },
             },
           },
-          video_hashtags: { select: { tag_name: true } },
-          _count: {
-            select: {
-              video_likes: true,
-              video_comments: true,
-            },
-          },
-        },
-        orderBy: {
-          created_at: 'desc',
-        },
-        ...(skip !== undefined && { skip }),
-        ...(!shouldGetAll && limit && { take: limit }),
-      }),
-      prisma.video.count({ where }),
-    ]);
+          orderBy: { created_at: 'desc' },
+          ...(skip !== undefined && { skip }),
+          ...(!shouldGetAll && limit && { take: limit }),
+        }),
+        prisma.video.count({ where }),
+      ]);
+    } catch (err) {
+      logger.warn('video.list Prisma failed, using raw SQL fallback', { err: (err as Error)?.message });
+      const takeVal = shouldGetAll ? 9999 : (limit || 20);
+      const skipVal = shouldGetAll ? 0 : (skip ?? 0);
+      const rows = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT v.*, u.id as "creator_id", u.username, u.full_name as "creator_name", u.profile_image as "creator_avatar"
+         FROM "Video" v
+         JOIN "User" u ON u.id = v.creator_id
+         WHERE v.visibility = 'public' AND (v.video_url IS NULL OR v.video_url NOT LIKE '%example.com%')
+         ORDER BY v.created_at DESC
+         LIMIT $1 OFFSET $2`,
+        takeVal,
+        skipVal
+      );
+      const countRows = await prisma.$queryRawUnsafe<[{ count: bigint | number }][]>(
+        `SELECT COUNT(*)::int as count FROM "Video" v WHERE v.visibility = 'public' AND (v.video_url IS NULL OR v.video_url NOT LIKE '%example.com%')`
+      );
+      total = Number(countRows[0]?.count ?? 0);
+      videos = rows.map((r: any) => ({
+        ...r,
+        creator: { id: r.creator_id, username: r.username, full_name: r.creator_name, profile_image: r.creator_avatar },
+        video_hashtags: [],
+        _count: { video_likes: r.likes ?? 0, video_comments: r.comments_count ?? 0 },
+      }));
+    }
 
     // Formater les vidéos pour correspondre au format attendu par le frontend
     // IMPORTANT: Ne JAMAIS modifier les URLs ici - elles doivent être stables pour React
@@ -293,9 +321,11 @@ class VideoService {
     deviceId?: string;
     watchSeconds?: number;
     watchPercent?: number;
+    scrollSlow?: boolean;
+    interactionDetected?: boolean;
     ip?: string;
   }): Promise<{ recorded: boolean; views: number }> {
-    const { userId, deviceId, watchSeconds = 0, watchPercent = 0, ip } = options;
+    const { userId, deviceId, watchSeconds = 0, watchPercent = 0, scrollSlow, interactionDetected, ip } = options;
     const viewerKey = userId ? `u:${userId}` : (deviceId ? `d:${deviceId}` : ip ? `i:${ip}` : null);
 
     if (!viewerKey) {
@@ -304,8 +334,9 @@ class VideoService {
 
     const video = await prisma.video.findUnique({
       where: { id: videoId },
-      select: { id: true, creator_id: true, views: true },
+      select: { id: true, creator_id: true, views: true, avg_retention_pct: true },
     });
+    const prevViews = video?.views ?? 0;
 
     if (!video) return { recorded: false, views: 0 };
 
@@ -325,15 +356,62 @@ class VideoService {
       skipDuplicates: true,
     });
 
-    if (result.count === 0) return { recorded: false, views: video.views };
+    if (result.count === 0) {
+      if ((scrollSlow || interactionDetected) && watchSeconds >= 5) {
+        await qualifiedViewService.recordQualifiedView(videoId, {
+          userId,
+          deviceId: deviceId || undefined,
+          watchSeconds,
+          watchPercent,
+          scrollSlow,
+          interactionDetected,
+        });
+      }
+      return { recorded: false, views: video.views };
+    }
+
+    const newViews = video.views + 1;
+    const newAvgRetention = video.avg_retention_pct != null
+      ? (video.avg_retention_pct * video.views + watchPercent) / newViews
+      : watchPercent;
 
     const updated = await prisma.video.update({
       where: { id: videoId },
-      data: { views: { increment: 1 } },
+      data: {
+        views: { increment: 1 },
+        avg_retention_pct: newAvgRetention,
+      },
       select: { views: true },
     });
+
+    if (watchSeconds >= 5) {
+      await qualifiedViewService.recordQualifiedView(videoId, {
+        userId,
+        deviceId: deviceId || undefined,
+        watchSeconds,
+        watchPercent,
+        scrollSlow,
+        interactionDetected,
+      });
+    }
+    const [viralBonusService, videoAlgoService, dailyMissionsService] = await Promise.all([
+      import('./viralBonus.service.js'),
+      import('./videoAlgo.service.js'),
+      import('./dailyMissions.service.js'),
+    ]);
+    viralBonusService.checkAndCreateViralBonuses(videoId, updated.views).catch(() => {});
+    videoAlgoService.updateVideoAlgoTier(videoId).catch(() => {});
+    if (prevViews < 1000 && updated.views >= 1000) {
+      dailyMissionsService.checkAndAwardReach1000Views(video.creator_id, videoId).catch(() => {});
+    }
     return { recorded: true, views: updated.views };
   }
+
+  private readonly SPAM_PATTERNS = [
+    /\b(viagra|cialis|casino|lottery|winner|click here|buy now)\b/i,
+    /(https?:\/\/[^\s]+){3,}/,
+    /(.)\1{15,}/,
+  ];
 
   async create(data: {
     title: string;
@@ -349,6 +427,24 @@ class VideoService {
     // Valider les données requises
     if (!data.title || !data.video_url) {
       const error: any = new Error('Titre et URL vidéo sont requis');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const textToCheck = `${data.title} ${data.description || ''}`;
+    if (this.SPAM_PATTERNS.some((p) => p.test(textToCheck))) {
+      const error: any = new Error('Contenu identifié comme spam');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const existingSameUrl = await prisma.video.findFirst({
+      where: { video_url: data.video_url },
+    });
+    if (existingSameUrl) {
+      const error: any = existingSameUrl.creator_id === data.creator_id
+        ? new Error('Vous avez déjà publié cette vidéo (contenu dupliqué)')
+        : new Error('Cette vidéo a déjà été publiée par un autre créateur (repost non autorisé)');
       error.statusCode = 400;
       throw error;
     }
@@ -408,6 +504,7 @@ class VideoService {
     GamificationEngine.onVideoUpload(data.creator_id).catch((e) =>
       logger.warn('Gamification onVideoUpload', { creatorId: data.creator_id, err: e })
     );
+    (await import('./dailyMissions.service.js')).checkAndAwardPostVideo(data.creator_id).catch(() => {});
 
     return video;
   }

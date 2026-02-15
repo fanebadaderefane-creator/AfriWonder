@@ -1,8 +1,19 @@
 import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import prisma from '../config/database.js';
+import * as dailyMissionsService from '../services/dailyMissions.service.js';
 
 const router = Router();
+
+router.get('/daily-missions', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const missions = await dailyMissionsService.getDailyMissions(userId);
+    res.json({ success: true, data: missions });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
 
 const POINTS_MAP: Record<string, number> = {
   like: 5,

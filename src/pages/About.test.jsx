@@ -3,7 +3,36 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import About from './About';
+
+const mockGetStats = vi.fn().mockResolvedValue({
+  totalUsers: 1_000_000,
+  totalVideos: 50_000_000,
+});
+vi.mock('@/api/expressClient', () => ({
+  api: {
+    platform: {
+      getStats: () => mockGetStats(),
+    },
+  },
+}));
+
+const testQueryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: false },
+  },
+});
+
+function renderAbout() {
+  return render(
+    <QueryClientProvider client={testQueryClient}>
+      <MemoryRouter>
+        <About />
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
@@ -29,11 +58,7 @@ describe('About page', () => {
   });
 
   it('affiche le titre À propos et le logo', () => {
-    render(
-      <MemoryRouter>
-        <About />
-      </MemoryRouter>
-    );
+    renderAbout();
     expect(screen.getByRole('heading', { name: /À propos/i })).toBeInTheDocument();
     expect(screen.getByTestId('afriwonder-logo')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'AfriWonder', level: 2 })).toBeInTheDocument();
@@ -41,36 +66,26 @@ describe('About page', () => {
   });
 
   it('appelle navigate(-1) au clic sur le bouton retour', async () => {
-    render(
-      <MemoryRouter>
-        <About />
-      </MemoryRouter>
-    );
+    renderAbout();
     const backButton = screen.getAllByRole('button')[0];
     await userEvent.click(backButton);
     expect(mockNavigate).toHaveBeenCalledWith(-1);
   });
 
-  it('affiche les stats (Utilisateurs, Pays, Interactions)', () => {
-    render(
-      <MemoryRouter>
-        <About />
-      </MemoryRouter>
-    );
-    expect(screen.getByText('1M+')).toBeInTheDocument();
-    expect(screen.getByText('15')).toBeInTheDocument();
-    expect(screen.getByText('50M+')).toBeInTheDocument();
+  it('affiche les stats (Utilisateurs, Pays, Vidéos)', async () => {
+    renderAbout();
+    await waitFor(() => {
+      expect(screen.getByText('1.0M')).toBeInTheDocument();
+      expect(screen.getByText('15')).toBeInTheDocument();
+      expect(screen.getByText('50.0M')).toBeInTheDocument();
+    });
     expect(screen.getByText('Utilisateurs')).toBeInTheDocument();
     expect(screen.getByText('Pays')).toBeInTheDocument();
-    expect(screen.getByText('Interactions')).toBeInTheDocument();
+    expect(screen.getByText('Vidéos')).toBeInTheDocument();
   });
 
   it('affiche Notre mission et les liens utiles', () => {
-    render(
-      <MemoryRouter>
-        <About />
-      </MemoryRouter>
-    );
+    renderAbout();
     expect(screen.getByRole('heading', { name: /Notre mission/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Liens utiles/i })).toBeInTheDocument();
     expect(screen.getByText(/Conditions d'utilisation/)).toBeInTheDocument();
@@ -79,11 +94,7 @@ describe('About page', () => {
   });
 
   it('ouvre le dialogue Noter l\'application au clic puis le ferme avec OK', async () => {
-    render(
-      <MemoryRouter>
-        <About />
-      </MemoryRouter>
-    );
+    renderAbout();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     const rateButtons = screen.getAllByText(/Noter l'application/);
     await act(async () => {
@@ -104,11 +115,7 @@ describe('About page', () => {
   });
 
   it('affiche BottomNav et le copyright', () => {
-    render(
-      <MemoryRouter>
-        <About />
-      </MemoryRouter>
-    );
+    renderAbout();
     expect(screen.getByTestId('bottom-nav')).toBeInTheDocument();
     expect(screen.getByText(/© 2026 AfriWonder/)).toBeInTheDocument();
   });

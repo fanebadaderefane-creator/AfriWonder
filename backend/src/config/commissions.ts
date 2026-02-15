@@ -7,7 +7,9 @@
 export const COMMISSION_VERTICALS = {
   /** 1. VIDÉO SOCIAL (TikTok-style / Live streaming) */
   video_social: {
-    tips_platform_pct: 0.30,           // 30% sur tips/cadeaux virtuels (hors live)
+    // Dons créateurs: 85% créateur, 15% plateforme (priorité au début)
+    tips_platform_pct: 0.15,
+    tips_creator_pct: 0.85,
     // CDC Live Streaming Mali : 85 % créateur, 15 % plateforme sur les dons/tips live
     live_gift_creator_pct: 0.85,       // 85% créateur
     live_gift_platform_pct: 0.15,      // 15% plateforme

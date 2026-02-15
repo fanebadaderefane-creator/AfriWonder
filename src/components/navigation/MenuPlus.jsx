@@ -54,6 +54,7 @@ const menuSections = [
       { id: 'live', label: 'Regarder les lives', icon: Radio, page: 'Lives', color: 'bg-pink-100 text-pink-600', badge: 'Live' },
       { id: 'live-stream', label: 'Démarrer un live', icon: Video, page: 'LiveStream', color: 'bg-red-100 text-red-600' },
       { id: 'creator-tools', label: 'Outils créateurs', icon: Sparkles, page: 'CreatorTools', color: 'bg-amber-100 text-amber-600' },
+      { id: 'referrals', label: 'Parrainage', icon: Share2, page: 'Referrals', color: 'bg-orange-100 text-orange-600' },
       { id: 'advertiser-dashboard', label: 'Mes campagnes pub', icon: Megaphone, page: 'AdvertiserDashboard', color: 'bg-orange-100 text-orange-600', badge: 'Pub' },
       { id: 'analytics', label: 'Statistiques', icon: TrendingUp, page: 'Analytics', color: 'bg-indigo-100 text-indigo-600' },
     ]

@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Users, Ban, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -20,10 +21,11 @@ export default function UsersPanel() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [includeTest, setIncludeTest] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-users', page, pageSize],
-    queryFn: () => api.admin.getUsers({ page, limit: pageSize }),
+    queryKey: ['admin-users', page, pageSize, includeTest],
+    queryFn: () => api.admin.getUsers({ page, limit: pageSize, includeTest: includeTest || undefined }),
   });
 
   const banMutation = useMutation({
@@ -60,7 +62,14 @@ export default function UsersPanel() {
               ))}
             </SelectContent>
           </Select>
-          <Button size="sm" className="bg-white/20 hover:bg-white/30 border-none"><Filter className="w-4 h-4 mr-2" />Filtrer</Button>
+          <label className="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
+            <Checkbox
+              checked={includeTest}
+              onCheckedChange={(c) => { setIncludeTest(!!c); setPage(1); }}
+              className="border-white/40 data-[state=checked]:bg-orange-500"
+            />
+            Inclure comptes test
+          </label>
         </div>
       </div>
       <p className="text-sm text-white/50 mb-2">

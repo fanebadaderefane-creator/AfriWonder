@@ -10,18 +10,21 @@ const router = Router();
 router.post('/request', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
-    const { amount, orange_money_phone, pin } = req.body;
+    const { amount, orange_money_phone, phone, payment_method, paypal_email, pin } = req.body;
 
-    if (!amount || !orange_money_phone) {
+    if (!amount) {
       return res.status(400).json({
         success: false,
-        error: { message: 'Montant et numÃ©ro Orange Money requis' },
+        error: { message: 'Montant requis' },
       });
     }
 
     const withdrawal = await withdrawalService.requestWithdrawal(userId, {
       amount,
-      orange_money_phone,
+      orange_money_phone: orange_money_phone || phone,
+      phone,
+      payment_method: payment_method || 'orange_money',
+      paypal_email,
       pin,
     });
 

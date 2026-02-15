@@ -230,12 +230,16 @@ class AdsService {
       ),
     ]);
 
-    await platformRevenueService.addRevenue(
-      campaign.price_fcfa,
-      'ads',
-      `Campagne pub "${campaign.name}" (${campaign.price_fcfa} FCFA)`,
-      campaignId
-    );
+    try {
+      await platformRevenueService.addRevenue(
+        campaign.price_fcfa ?? 0,
+        'ads',
+        `Campagne pub "${campaign.name}" (${campaign.price_fcfa ?? 0} FCFA)`,
+        campaignId
+      );
+    } catch (err) {
+      logger.warn('ads.approveCampaign: addRevenue failed (campaign approved)', { err: (err as Error)?.message, campaignId });
+    }
 
     return prisma.adCampaign.findUnique({
       where: { id: campaignId },

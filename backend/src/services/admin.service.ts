@@ -2,8 +2,31 @@ import prisma from '../config/database.js';
 import { Prisma } from '@prisma/client';
 import { logger } from '../utils/logger.js';
 
+/** Filtre pour exclure les utilisateurs de test/demo (E2E, @example.com, etc.) */
+const REAL_USER_WHERE: Prisma.UserWhereInput = {
+  NOT: {
+    OR: [
+      { email: { endsWith: '@example.com' } },
+      { email: { endsWith: '@test.com' } },
+      { email: { endsWith: '@example.org' } },
+      { username: { contains: 'e2e', mode: 'insensitive' } },
+      { username: { contains: 'demo', mode: 'insensitive' } },
+      { full_name: { contains: 'E2E', mode: 'insensitive' } },
+      { full_name: { contains: 'demo', mode: 'insensitive' } },
+    ],
+  },
+};
+
+function realUserWhere(includeTest?: boolean): Prisma.UserWhereInput {
+  return includeTest ? {} : REAL_USER_WHERE;
+}
+
+/** Fragment SQL pour filtrer les vrais utilisateurs (exclut test/demo) */
+const REAL_USER_SQL = Prisma.sql`(SELECT id FROM "User" u WHERE u.email NOT LIKE '%@example.com' AND u.email NOT LIKE '%@test.com' AND u.email NOT LIKE '%@example.org' AND (u.username IS NULL OR (u.username NOT ILIKE '%e2e%' AND u.username NOT ILIKE '%demo%')) AND (u.full_name IS NULL OR (u.full_name NOT ILIKE '%E2E%' AND u.full_name NOT ILIKE '%demo%')))`;
+
 class AdminService {
   async getDashboard() {
+    const userWhere = { ...realUserWhere(false), account_suspended: false };
     const [
       totalUsers,
       totalVideos,
@@ -13,16 +36,22 @@ class AdminService {
       recentUsers,
       recentOrders,
     ] = await Promise.all([
-      prisma.user.count({ where: { account_suspended: false } }),
-      prisma.video.count(),
-      prisma.product.count(),
-      prisma.order.count(),
+      prisma.user.count({ where: userWhere }),
+      prisma.video.count({
+        where: { creator: realUserWhere(false) },
+      }),
+      prisma.product.count({
+        where: { seller: realUserWhere(false) },
+      }),
+      prisma.order.count({
+        where: { user: realUserWhere(false) },
+      }),
       prisma.order.aggregate({
-        where: { status: 'completed' },
+        where: { status: 'completed', user: realUserWhere(false) },
         _sum: { total_amount: true },
       }),
       prisma.user.findMany({
-        where: { account_suspended: false },
+        where: userWhere,
         take: 10,
         orderBy: { created_at: 'desc' },
         select: {
@@ -33,6 +62,7 @@ class AdminService {
         },
       }),
       prisma.order.findMany({
+        where: { user: realUserWhere(false) },
         take: 10,
         orderBy: { created_at: 'desc' },
         include: {
@@ -59,11 +89,13 @@ class AdminService {
     };
   }
 
-  async getUsers(page: number = 1, limit: number = 20) {
+  async getUsers(page: number = 1, limit: number = 20, options?: { includeTest?: boolean }) {
     const skip = (page - 1) * limit;
+    const where = realUserWhere(options?.includeTest);
 
     const [users, total] = await Promise.all([
       prisma.user.findMany({
+        where,
         skip,
         take: limit,
         orderBy: { created_at: 'desc' },
@@ -77,7 +109,7 @@ class AdminService {
           created_at: true,
         },
       }),
-      prisma.user.count(),
+      prisma.user.count({ where }),
     ]);
 
     return {
@@ -112,10 +144,9 @@ class AdminService {
       ? new Date(Date.now() + banData.durationDays * 24 * 60 * 60 * 1000)
       : null;
 
-    // Désactiver tout bannissement actif existant (contrainte unique user_id + is_active)
-    await prisma.userBan.updateMany({
+    // Supprimer les bannissements actifs existants (contrainte unique user_id + is_active)
+    await prisma.userBan.deleteMany({
       where: { user_id: userId, is_active: true },
-      data: { is_active: false },
     });
 
     const ban = await prisma.userBan.create({
@@ -137,7 +168,7 @@ class AdminService {
 
   async getSellers(page: number = 1, limit: number = 20, status?: string, search?: string) {
     const skip = (page - 1) * limit;
-    const where: any = {};
+    const where: any = { user: realUserWhere(false) };
     if (status) where.status = status;
     if (search && search.trim()) {
       where.OR = [
@@ -195,7 +226,7 @@ class AdminService {
 
   async getProducts(page: number = 1, limit: number = 20, status?: string, seller_id?: string, search?: string) {
     const skip = (page - 1) * limit;
-    const where: any = {};
+    const where: any = { seller: realUserWhere(false) };
     if (status) where.status = status;
     if (seller_id) where.seller_id = seller_id;
     if (search && search.trim()) {
@@ -240,7 +271,8 @@ class AdminService {
 
   async getDisputes(page: number = 1, limit: number = 20, status?: string) {
     const skip = (page - 1) * limit;
-    const where = status ? { status } : {};
+    const where: any = { order: { user: realUserWhere(false) } };
+    if (status) where.status = status;
     const [disputes, total] = await Promise.all([
       prisma.dispute.findMany({
         where,
@@ -258,7 +290,8 @@ class AdminService {
 
   async getAllOrders(page: number = 1, limit: number = 20, status?: string) {
     const skip = (page - 1) * limit;
-    const where = status ? { status } : {};
+    const where: any = { user: realUserWhere(false) };
+    if (status) where.status = status;
     const [orders, total] = await Promise.all([
       prisma.order.findMany({
         where,
@@ -287,6 +320,7 @@ class AdminService {
     const toDate = new Date(to);
     const transactions = await prisma.transaction.findMany({
       where: {
+        user: realUserWhere(false),
         created_at: { gte: fromDate, lte: toDate },
       },
       orderBy: { created_at: 'asc' },
@@ -306,6 +340,8 @@ class AdminService {
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const prevWeekStart = new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000);
 
+    const userWhere = realUserWhere(false);
+    const orderWhere = { user: userWhere };
     const [
       totalUsers,
       newUsersLast7d,
@@ -317,40 +353,40 @@ class AdminService {
       revenuePrev30d,
       txCountLast24h,
     ] = await Promise.all([
-      prisma.user.count(),
-      prisma.user.count({ where: { created_at: { gte: weekAgo } } }),
-      prisma.user.count({ where: { created_at: { gte: prevWeekStart, lt: weekAgo } } }),
-      prisma.user.count({ where: { created_at: { gte: dayAgo } } }),
-      prisma.order.count({ where: { status: { in: ['completed', 'delivered'] } } }),
-      prisma.order.count(),
+      prisma.user.count({ where: userWhere }),
+      prisma.user.count({ where: { ...userWhere, created_at: { gte: weekAgo } } }),
+      prisma.user.count({ where: { ...userWhere, created_at: { gte: prevWeekStart, lt: weekAgo } } }),
+      prisma.user.count({ where: { ...userWhere, created_at: { gte: dayAgo } } }),
+      prisma.order.count({ where: { ...orderWhere, status: { in: ['completed', 'delivered'] } } }),
+      prisma.order.count({ where: orderWhere }),
       prisma.order.aggregate({
-        where: { status: 'completed', created_at: { gte: from } },
+        where: { ...orderWhere, status: 'completed', created_at: { gte: from } },
         _sum: { total_amount: true },
       }),
       prisma.order.aggregate({
-        where: { status: 'completed', created_at: { gte: new Date(from.getTime() - 30 * 24 * 60 * 60 * 1000), lt: from } },
+        where: { ...orderWhere, status: 'completed', created_at: { gte: new Date(from.getTime() - 30 * 24 * 60 * 60 * 1000), lt: from } },
         _sum: { total_amount: true },
       }),
-      prisma.transaction.count({ where: { created_at: { gte: dayAgo } } }),
+      prisma.transaction.count({ where: { user: userWhere, created_at: { gte: dayAgo } } }),
     ]);
 
     const getActiveUserIds = async (since: Date): Promise<string[]> => {
       const [orderUsers, transactionUsers, viewUsers, cartUsers] = await Promise.all([
         prisma.order.groupBy({
           by: ['user_id'],
-          where: { created_at: { gte: since } },
+          where: { user: userWhere, created_at: { gte: since } },
         }),
         prisma.transaction.groupBy({
           by: ['user_id'],
-          where: { created_at: { gte: since } },
+          where: { user: userWhere, created_at: { gte: since } },
         }),
         prisma.viewHistory.groupBy({
           by: ['user_id'],
-          where: { created_at: { gte: since } },
+          where: { user: userWhere, created_at: { gte: since } },
         }),
         prisma.cart.groupBy({
           by: ['user_id'],
-          where: { last_updated: { gte: since } },
+          where: { user: userWhere, last_updated: { gte: since } },
         }),
       ]);
 
@@ -373,19 +409,21 @@ class AdminService {
     ]);
 
     const [eligibleRetention30d, retainedRetention30d, eligibleRetention90d, retainedRetention90d] = await Promise.all([
-      prisma.user.count({ where: { created_at: { lt: thirtyDaysAgo } } }),
+      prisma.user.count({ where: { ...userWhere, created_at: { lt: thirtyDaysAgo } } }),
       activeUserIds30d.length > 0
         ? prisma.user.count({
             where: {
+              ...userWhere,
               id: { in: activeUserIds30d },
               created_at: { lt: thirtyDaysAgo },
             },
           })
         : Promise.resolve(0),
-      prisma.user.count({ where: { created_at: { lt: ninetyDaysAgo } } }),
+      prisma.user.count({ where: { ...userWhere, created_at: { lt: ninetyDaysAgo } } }),
       activeUserIds90d.length > 0
         ? prisma.user.count({
             where: {
+              ...userWhere,
               id: { in: activeUserIds90d },
               created_at: { lt: ninetyDaysAgo },
             },
@@ -394,9 +432,10 @@ class AdminService {
     ]);
 
     const [newUsers30d, activatedUsers30d, newUsers7d, activatedUsers7d] = await Promise.all([
-      prisma.user.count({ where: { created_at: { gte: thirtyDaysAgo } } }),
+      prisma.user.count({ where: { ...userWhere, created_at: { gte: thirtyDaysAgo } } }),
       prisma.user.count({
         where: {
+          ...userWhere,
           created_at: { gte: thirtyDaysAgo },
           OR: [
             { orders: { some: {} } },
@@ -406,9 +445,10 @@ class AdminService {
           ],
         },
       }),
-      prisma.user.count({ where: { created_at: { gte: weekAgo } } }),
+      prisma.user.count({ where: { ...userWhere, created_at: { gte: weekAgo } } }),
       prisma.user.count({
         where: {
+          ...userWhere,
           created_at: { gte: weekAgo },
           OR: [
             { orders: { some: {} } },
@@ -423,19 +463,21 @@ class AdminService {
     const [cartsWithItemsLast7d, cartsConvertedLast7d] = await Promise.all([
       prisma.cart.count({
         where: {
+          user: userWhere,
           last_updated: { gte: weekAgo },
           subtotal: { gt: 0 },
         },
       }),
       prisma.cart.count({
         where: {
-          last_updated: { gte: weekAgo },
-          subtotal: { gt: 0 },
           user: {
+            ...userWhere,
             orders: {
               some: { created_at: { gte: weekAgo } },
             },
           },
+          last_updated: { gte: weekAgo },
+          subtotal: { gt: 0 },
         },
       }),
     ]);
@@ -443,24 +485,28 @@ class AdminService {
     const [orderPaymentsCompleted30d, orderPaymentsFailed30d, ordersPaid30d, ordersFailed30d] = await Promise.all([
       prisma.orderPayment.count({
         where: {
+          order: { user: userWhere },
           created_at: { gte: from },
           status: 'completed',
         },
       }),
       prisma.orderPayment.count({
         where: {
+          order: { user: userWhere },
           created_at: { gte: from },
           status: 'failed',
         },
       }),
       prisma.order.count({
         where: {
+          user: userWhere,
           created_at: { gte: from },
           payment_status: 'paid',
         },
       }),
       prisma.order.count({
         where: {
+          user: userWhere,
           created_at: { gte: from },
           payment_status: 'failed',
         },
@@ -480,23 +526,24 @@ class AdminService {
       platformRevenueRows30d,
       npsRows30d,
     ] = await Promise.all([
-      prisma.sellerProfile.count(),
-      prisma.product.count({ where: { status: 'active' } }),
-      prisma.product.count({ where: { created_at: { gte: from } } }),
+      prisma.sellerProfile.count({ where: { user: userWhere } }),
+      prisma.product.count({ where: { seller: userWhere, status: 'active' } }),
+      prisma.product.count({ where: { seller: userWhere, created_at: { gte: from } } }),
       prisma.sellerProfile.aggregate({
         _avg: { rating: true },
-        where: { rating: { gt: 0 } },
+        where: { user: userWhere, rating: { gt: 0 } },
       }),
       prisma.order.groupBy({
         by: ['user_id'],
         where: {
+          user: userWhere,
           created_at: { gte: from },
           status: { notIn: ['cancelled'] },
         },
       }),
       prisma.viewHistory.groupBy({
         by: ['user_id'],
-        where: { created_at: { gte: from } },
+        where: { user: userWhere, created_at: { gte: from } },
       }),
       prisma.$queryRaw<{ sold_count: bigint | number }[]>(Prisma.sql`
         SELECT COUNT(DISTINCT oi.product_id) AS sold_count
@@ -504,17 +551,20 @@ class AdminService {
         INNER JOIN "Order" o ON o.id = oi.order_id
         WHERE o.created_at >= ${from}
           AND o.status IN ('completed', 'delivered')
+          AND o.user_id IN ${REAL_USER_SQL}
       `),
       prisma.$queryRaw<{ active_sellers: bigint | number }[]>(Prisma.sql`
         SELECT COUNT(DISTINCT seller_id) AS active_sellers
         FROM (
           SELECT p.seller_id
           FROM "Product" p
-          WHERE p.created_at >= ${from} OR p.updated_at >= ${from}
+          WHERE (p.created_at >= ${from} OR p.updated_at >= ${from})
+            AND p.seller_id IN ${REAL_USER_SQL}
           UNION
           SELECT o.seller_id
           FROM "Order" o
           WHERE o.created_at >= ${from} AND o.seller_id IS NOT NULL
+            AND o.user_id IN ${REAL_USER_SQL}
         ) s
       `),
       prisma.$queryRaw<{ avg_hours: number | null }[]>(Prisma.sql`
@@ -522,6 +572,7 @@ class AdminService {
         FROM "Order" o
         WHERE o.created_at >= ${from}
           AND o.shipped_at IS NOT NULL
+          AND o.user_id IN ${REAL_USER_SQL}
       `),
       prisma.$queryRaw<{ source: string; amount: number | null }[]>(Prisma.sql`
         SELECT
@@ -532,6 +583,7 @@ class AdminService {
           AND t.status = 'completed'
           AND t.created_at >= ${from}
           AND t.description IS NOT NULL
+          AND t.user_id IN ${REAL_USER_SQL}
         GROUP BY split_part(t.description, ':', 1)
       `),
       prisma.$queryRaw<{ promoters: bigint | number; detractors: bigint | number; total: bigint | number }[]>(Prisma.sql`
@@ -543,6 +595,7 @@ class AdminService {
         WHERE orv.created_at >= ${from}
           AND orv.is_verified = true
           AND orv.status = 'approved'
+          AND orv.user_id IN ${REAL_USER_SQL}
       `),
     ]);
 

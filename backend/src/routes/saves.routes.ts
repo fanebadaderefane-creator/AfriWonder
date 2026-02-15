@@ -47,16 +47,45 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
     const shouldGetAll = !limit || limit === 0;
     const skip = shouldGetAll ? undefined : (page - 1) * limit;
 
-    const [saves, total] = await Promise.all([
-      prisma.save.findMany({
-        where: { user_id: userId },
-        include: { video: { include: { creator: true } } },
-        orderBy: { created_at: 'desc' },
-        ...(skip !== undefined && { skip }),
-        ...(!shouldGetAll && { take: limit }),
-      }),
-      prisma.save.count({ where: { user_id: userId } }),
-    ]);
+    let saves: any[];
+    let total: number;
+    try {
+      [saves, total] = await Promise.all([
+        prisma.save.findMany({
+          where: { user_id: userId },
+          include: {
+            video: {
+              include: {
+                creator: {
+                  select: { id: true, username: true, full_name: true, profile_image: true },
+                },
+              },
+            },
+          },
+          orderBy: { created_at: 'desc' },
+          ...(skip !== undefined && { skip }),
+          ...(!shouldGetAll && { take: limit }),
+        }),
+        prisma.save.count({ where: { user_id: userId } }),
+      ]);
+    } catch {
+      total = await prisma.save.count({ where: { user_id: userId } });
+      const rows = await prisma.$queryRaw<any[]>`
+        SELECT v.*, u.id as "creator_id", u.username, u.full_name as "creator_name", u.profile_image as "creator_avatar"
+        FROM "Save" s
+        JOIN "Video" v ON v.id = s.video_id
+        JOIN "User" u ON u.id = v.creator_id
+        WHERE s.user_id = ${userId}
+        ORDER BY s.created_at DESC
+        LIMIT ${shouldGetAll ? 9999 : limit} OFFSET ${skip ?? 0}
+      `;
+      saves = rows.map((r: any) => ({
+        video: {
+          ...r,
+          creator: { id: r.creator_id, username: r.username, full_name: r.creator_name, profile_image: r.creator_avatar },
+        },
+      }));
+    }
 
     res.json({
       success: true,

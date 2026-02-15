@@ -13,6 +13,7 @@ import LogisticsPanel from '@/components/admin/LogisticsPanel';
 import AdsCampaignsPanel from '@/components/admin/AdsCampaignsPanel';
 import VerificationsPanel from '@/components/admin/VerificationsPanel';
 import EarlyAccessPanel from '@/components/admin/EarlyAccessPanel';
+import MonetizationRequestsPanel from '@/components/admin/MonetizationRequestsPanel';
 
 const SUPER_ADMIN_EMAIL = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com').toLowerCase();
 const ADMIN_ROLES = ['super_admin', 'admin', 'finance_admin', 'moderation_admin', 'support_admin', 'data_admin'];
@@ -26,6 +27,8 @@ function ActivePanel({ activeTab, user, onTabChange }) {
       return <UsersPanel />;
     case 'finance':
       return <FinancePanel />;
+    case 'monetization':
+      return <MonetizationRequestsPanel />;
     case 'verifications':
       return <VerificationsPanel />;
     case 'campagnes':

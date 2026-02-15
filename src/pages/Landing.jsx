@@ -21,8 +21,8 @@ const APP_URL = import.meta.env.VITE_APP_URL || '/';
 
 function formatStat(n) {
   if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
-  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
-  return n.toLocaleString();
+  if (n >= 1e3) return n.toLocaleString('fr-FR') || (n / 1e3).toFixed(1) + 'K';
+  return n.toLocaleString('fr-FR');
 }
 
 function isIOS() {
@@ -70,7 +70,7 @@ export default function Landing() {
   const [feedbackLoading, setFeedbackLoading] = useState(false);
 
   const isFull = earlyAccessConfig?.isFull ?? false;
-  const maxUsers = earlyAccessConfig?.maxUsers ?? 1000;
+  const maxUsers = earlyAccessConfig?.maxUsers ?? 10000;
   const totalUsers = earlyAccessConfig?.totalUsers ?? 0;
 
   useEffect(() => {
@@ -115,8 +115,8 @@ export default function Landing() {
   const handleDonate = async (e) => {
     e?.preventDefault();
     const amount = donationAmount ?? parseInt(donationCustom, 10);
-    if (!amount || amount < 500) {
-      toast.error('Montant minimum 500 FCFA');
+    if (!amount || amount < 100) {
+      toast.error('Montant minimum 100 FCFA');
       return;
     }
     const phone = donationPhone?.trim();
@@ -398,7 +398,7 @@ export default function Landing() {
               Chaque paiement sera libellé « Soutien AfriWonder » pour faciliter la traçabilité.
             </p>
             <div className="flex flex-wrap gap-3 justify-center mb-6">
-              {[1000, 5000, 10000].map((amt) => (
+              {[100, 500, 1000, 5000].map((amt) => (
                 <button
                   key={amt}
                   type="button"
@@ -411,10 +411,10 @@ export default function Landing() {
             </div>
             <form onSubmit={handleDonate} className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Montant libre (min 500 FCFA)</label>
+                <label className="block text-sm text-gray-400 mb-1">Montant libre (min 100 FCFA)</label>
                 <input
                   type="number"
-                  min={500}
+                  min={100}
                   placeholder="Ex: 2500"
                   value={donationCustom}
                   onChange={(e) => { setDonationCustom(e.target.value); setDonationAmount(null); }}

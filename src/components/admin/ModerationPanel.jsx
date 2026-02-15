@@ -84,14 +84,6 @@ export default function ModerationPanel({ subTab }) {
     setPage(1);
   }, [subTab]);
 
-  const videosPaginationData = videosData?.pagination;
-  const videosTotalPages = videosPaginationData?.totalPages ?? 1;
-  useEffect(() => {
-    if (subTab === 'videos' && videosTotalPages >= 1 && page > videosTotalPages) {
-      setPage(videosTotalPages);
-    }
-  }, [subTab, page, videosTotalPages]);
-
   const { data: ordersData } = useQuery({
     queryKey: ['admin-orders', page],
     queryFn: () => api.admin.getOrders({ page, limit: PAGE }),
@@ -117,6 +109,13 @@ export default function ModerationPanel({ subTab }) {
     queryFn: () => api.returns.list('admin'),
     enabled: subTab === 'returns',
   });
+
+  const videosTotalPages = videosData?.pagination?.totalPages ?? 1;
+  useEffect(() => {
+    if (subTab === 'videos' && videosTotalPages >= 1 && page > videosTotalPages) {
+      setPage(videosTotalPages);
+    }
+  }, [subTab, page, videosTotalPages]);
 
   const updateReturnMutation = useMutation({
     mutationFn: ({ id, payload }) => api.returns.updateStatus(id, payload),

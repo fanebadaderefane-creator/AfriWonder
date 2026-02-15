@@ -4,12 +4,14 @@ import speakeasy from 'speakeasy';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import * as earlyAccessService from './earlyAccess.service.js';
+import * as referralService from './referral.service.js';
 
 interface RegisterData {
   email: string;
   username: string;
   password: string;
   full_name?: string;
+  referral_code?: string;
 }
 
 class AuthService {
@@ -75,7 +77,10 @@ class AuthService {
       },
     });
 
-    // Générer les tokens
+    if (data.referral_code?.trim()) {
+      await referralService.applyReferralCode(user.id, data.referral_code.trim());
+    }
+
     const tokens = this.generateTokens(user.id, user.email);
 
     logger.info('Utilisateur créé', { userId: user.id, email: user.email });

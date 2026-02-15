@@ -85,7 +85,7 @@ router.post('/:id/view', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const userId = req.user?.id;
-    const { watchSeconds, watchPercent, deviceId } = req.body || {};
+    const { watchSeconds, watchPercent, deviceId, scrollSlow, interactionDetected } = req.body || {};
     const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || (req.socket as any)?.remoteAddress;
 
     const result = await videoService.recordView(id, {
@@ -93,6 +93,8 @@ router.post('/:id/view', optionalAuth, async (req: AuthRequest, res, next) => {
       deviceId,
       watchSeconds,
       watchPercent,
+      scrollSlow,
+      interactionDetected,
       ip,
     });
 

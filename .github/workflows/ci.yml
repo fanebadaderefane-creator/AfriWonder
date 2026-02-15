@@ -5,6 +5,8 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  # Lancer à la main : Actions → CI/CD AfriWonder → Run workflow
+  workflow_dispatch:
 
 permissions:
   contents: read

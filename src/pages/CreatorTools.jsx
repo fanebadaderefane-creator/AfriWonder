@@ -3,7 +3,7 @@ import { api } from "@/api/expressClient";
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, BarChart3, Upload, Share2 } from "lucide-react";
+import { ArrowLeft, BarChart3, Upload, Share2, Coins } from "lucide-react";
 import { motion } from "framer-motion";
 import { useTranslation } from "@/components/common/useTranslation";
 import { createPageUrl } from "@/utils";
@@ -11,6 +11,8 @@ import { Link } from "react-router-dom";
 import AnalyticsDashboard from "@/components/analytics/AnalyticsDashboard";
 import BulkUploadManager from "@/components/creator/BulkUploadManager";
 import RevenueSharing from "@/components/creator/RevenueSharing";
+import CreatorMonetizationDashboard from "@/components/creator/CreatorMonetizationDashboard";
+import DailyMissionsCard from "@/components/creator/DailyMissionsCard";
 import { toast } from "sonner";
 
 export default function CreatorTools() {
@@ -155,8 +157,12 @@ export default function CreatorTools() {
       </div>
 
       <div className="max-w-6xl mx-auto p-6">
-        <Tabs defaultValue="analytics" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs defaultValue="monetization" className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="monetization" className="flex items-center gap-2">
+              <Coins className="w-4 h-4" />
+              Monétisation
+            </TabsTrigger>
             <TabsTrigger value="analytics" className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4" />
               Analytics
@@ -170,6 +176,11 @@ export default function CreatorTools() {
               Partage
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="monetization" className="mt-6 space-y-6">
+            <DailyMissionsCard />
+            <CreatorMonetizationDashboard />
+          </TabsContent>
 
           {/* Analytics Tab */}
           <TabsContent value="analytics" className="mt-6">

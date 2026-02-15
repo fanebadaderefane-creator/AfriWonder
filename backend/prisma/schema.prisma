@@ -24,6 +24,11 @@ model User {
   suspended_reason           String? // fraud, abuse, legal, user_request
   replay_premium             Boolean                   @default(false) // 90j replays vs 14j
   data_saver_mode            Boolean                   @default(false) // Mode données réduites
+  referral_code              String?                   @unique // Code parrainage unique
+  phone_verified             Boolean                   @default(false) // OTP téléphone
+  monetization_enabled       Boolean                   @default(false)
+  monetization_suspended_at  DateTime?
+  shadow_banned              Boolean                   @default(false) // Anti-fraude: contenu masqué
   created_at                 DateTime                  @default(now())
   updated_at                 DateTime                  @updatedAt
   addresses                  Address[]
@@ -81,6 +86,7 @@ model User {
   course_reviews             CourseReview[]
   course_wishlist            CourseWishlist[]
   user_level                 UserLevel?
+  daily_mission_completions  DailyMissionCompletion[]
   conversations_user1        Conversation[]            @relation("User1")
   conversations_user2        Conversation[]            @relation("User2")
   stories                    Story[]
@@ -171,6 +177,22 @@ model User {
   creator_subscriptions     CreatorSubscription[]
   creator_support_given     CreatorSupport[]         @relation("CreatorSupportGiven")
   creator_support_received  CreatorSupport[]        @relation("CreatorSupportReceived")
+  monetization_requests    MonetizationRequest[]
+}
+
+/// Demande de monétisation — créateur envoie, admin valide
+model MonetizationRequest {
+  id          String   @id @default(uuid())
+  creator_id  String
+  status      String   @default("pending") // pending | approved | rejected
+  reviewed_by String?
+  reviewed_at DateTime?
+  reject_reason String?
+  created_at  DateTime @default(now())
+  creator     User     @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+
+  @@index([creator_id])
+  @@index([status])
 }
 
 model VideoHashtag {
@@ -220,12 +242,15 @@ model Video {
   video_hashtags        VideoHashtag[]
   video_categories      VideoCategory[]
   views                 Int                   @default(0)
+  qualified_views_count Int                   @default(0) // Vues qualifiées (≥5 sec)
   likes                 Int                   @default(0)
   comments_count        Int                   @default(0)
   shares                Int                   @default(0)
   saves                 Int                   @default(0)
   duration              Int?
   is_featured           Boolean               @default(false)
+  algo_tier             String?               @default("test") // test | tier_500 | tier_1k | tier_10k | tier_100k | dead
+  avg_retention_pct     Float?                // % moyen regardé (algo)
   created_at            DateTime              @default(now())
   updated_at            DateTime              @updatedAt
   collaborator_revenues CollaboratorRevenue[]
@@ -237,6 +262,7 @@ model Video {
   analytics             VideoAnalytics[]
   view_history          ViewHistory[]
   video_views           VideoView[]
+  qualified_video_views  QualifiedVideoView[]
   playlist_items        PlaylistItem[]
 
   @@index([creator_id, created_at])
@@ -1647,9 +1673,11 @@ model Withdrawal {
   user_id               String
   amount                Float
   currency              String    @default("XOF")
-  orange_money_phone    String // Numéro Orange Money du créateur
+  payment_method        String    @default("orange_money") // orange_money | mtn_money | wave | paypal
+  orange_money_phone    String?   // Téléphone (Orange/MTN/Wave)
+  paypal_email          String?   // Email PayPal (si payment_method=paypal)
   status                String    @default("pending") // pending, processing, completed, failed, cancelled
-  transaction_reference String? // Référence du transfert Orange Money
+  transaction_reference String? // Référence du transfert
   admin_notes           String? // Notes de l'admin
   processed_by          String? // ID de l'admin qui a traité
   created_at            DateTime  @default(now())
@@ -2009,6 +2037,20 @@ model UserLevel {
 
   @@index([user_id])
   @@index([level])
+}
+
+/// Missions journalières (rétention) — récompense = XP / visibilité
+model DailyMissionCompletion {
+  id         String   @id @default(uuid())
+  user_id    String
+  mission_type String  // post_video | reach_1000_views | like_5_videos
+  completed_date DateTime @db.Date
+  created_at DateTime @default(now())
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, mission_type, completed_date])
+  @@index([user_id])
+  @@index([completed_date])
 }
 
 model Enrollment {
@@ -4332,4 +4374,50 @@ model PlatformRevenue {
 
   @@index([source])
   @@index([recorded_at])
+}
+
+// Vues qualifiées: ≥5 sec, utilisateur réel (monétisation vidéo)
+model QualifiedVideoView {
+  id                 String   @id @default(uuid())
+  video_id           String
+  viewer_key         String   // u:{userId} ou d:{deviceId}
+  watch_seconds      Int      @default(0)
+  watch_percent      Float?
+  scroll_slow        Boolean? // scroll lent détecté
+  interaction_detected Boolean? // like/comment/share détecté
+  time_bucket        Int      // Unix / 1800
+  created_at         DateTime @default(now())
+  video              Video    @relation(fields: [video_id], references: [id], onDelete: Cascade)
+
+  @@unique([video_id, viewer_key, time_bucket])
+  @@index([video_id])
+  @@index([video_id, time_bucket])
+}
+
+// Bonus viraux: 100K, 500K, 1M vues (paiement manuel)
+model ViralBonus {
+  id          String    @id @default(uuid())
+  video_id    String
+  creator_id  String
+  milestone   String    // 100k | 500k | 1m
+  amount_fcfa Float
+  status      String    @default("pending") // pending | paid
+  paid_at     DateTime?
+  created_at  DateTime  @default(now())
+
+  @@index([creator_id])
+  @@index([video_id])
+}
+
+// Récompenses parrainage (badge, boost visibilité, etc.)
+model CreatorReferralReward {
+  id            String    @id @default(uuid())
+  user_id       String
+  invites_count Int
+  reward_type   String    // early_supporter | visibility_boost | algorithm_priority | special_badge | fast_monetization
+  reward_value  String?
+  claimed_at    DateTime?
+  created_at    DateTime  @default(now())
+
+  @@index([user_id])
 }

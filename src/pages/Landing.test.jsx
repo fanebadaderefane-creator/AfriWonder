@@ -1,9 +1,26 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Landing from './Landing';
+
+const testQueryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: false },
+  },
+});
+
+function renderLanding() {
+  return render(
+    <QueryClientProvider client={testQueryClient}>
+      <MemoryRouter>
+        <Landing />
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
 
 const loginMock = vi.fn();
 const registerMock = vi.fn();
@@ -22,6 +39,9 @@ vi.mock('@/api/expressClient', () => ({
   api: {
     post: vi.fn(),
     get: vi.fn(),
+    earlyAccess: {
+      getConfig: vi.fn().mockResolvedValue({ showWaitlist: true, showDonate: false }),
+    },
   },
 }));
 
@@ -31,11 +51,7 @@ describe('Landing page (auth)', () => {
   });
 
   it('affiche les boutons S\'inscrire et Se connecter (mobile-first)', () => {
-    render(
-      <MemoryRouter>
-        <Landing />
-      </MemoryRouter>
-    );
+    renderLanding();
     const signupButtons = screen.getAllByRole('button', { name: /s'inscrire/i });
     const loginButtons = screen.getAllByRole('button', { name: /se connecter/i });
     expect(signupButtons.length).toBeGreaterThanOrEqual(1);
@@ -44,11 +60,7 @@ describe('Landing page (auth)', () => {
 
   it('ouvre le formulaire d\'inscription au clic sur S\'inscrire', async () => {
     const user = userEvent.setup();
-    render(
-      <MemoryRouter>
-        <Landing />
-      </MemoryRouter>
-    );
+    renderLanding();
     const signupBtn = screen.getAllByRole('button', { name: /s'inscrire/i })[0];
     await user.click(signupBtn);
     expect(screen.getByPlaceholderText(/nom complet/i)).toBeInTheDocument();
@@ -61,11 +73,7 @@ describe('Landing page (auth)', () => {
     "désactive l'inscription tant que les conditions ne sont pas acceptées",
     async () => {
       const user = userEvent.setup();
-      render(
-        <MemoryRouter>
-          <Landing />
-        </MemoryRouter>
-      );
+      renderLanding();
 
       await user.click(screen.getAllByRole('button', { name: /s'inscrire/i })[0]);
       await screen.findByPlaceholderText(/nom complet/i, {}, { timeout: 3000 });
@@ -91,11 +99,7 @@ describe('Landing page (auth)', () => {
     const user = userEvent.setup();
     registerMock.mockResolvedValueOnce({ ok: true });
 
-    render(
-      <MemoryRouter>
-        <Landing />
-      </MemoryRouter>
-    );
+    renderLanding();
 
     await user.click(screen.getAllByRole('button', { name: /s'inscrire/i })[0]);
     await screen.findByPlaceholderText(/nom complet/i, {}, { timeout: 3000 });
@@ -128,11 +132,7 @@ describe('Landing page (auth)', () => {
       const user = userEvent.setup();
       loginMock.mockRejectedValueOnce(new Error('Email ou mot de passe incorrect'));
 
-      render(
-        <MemoryRouter>
-          <Landing />
-        </MemoryRouter>
-      );
+      renderLanding();
 
       await act(async () => {
         await user.type(screen.getByPlaceholderText(/^email$/i), 'bad@example.com');

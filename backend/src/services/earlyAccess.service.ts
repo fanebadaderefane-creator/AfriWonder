@@ -1,29 +1,88 @@
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
-const DEFAULT_MAX_USERS = 1000;
+const DEFAULT_MAX_USERS = 10000;
 
 async function getMaxUsers(): Promise<number> {
-  const row = await prisma.platformSettings.findUnique({
-    where: { key: 'early_access_max_users' },
-  });
-  if (!row || row.value == null) return DEFAULT_MAX_USERS;
-  const v = row.value as number;
-  return typeof v === 'number' ? v : DEFAULT_MAX_USERS;
+  try {
+    const row = await prisma.platformSettings.findUnique({
+      where: { key: 'early_access_max_users' },
+    });
+    if (!row || row.value == null) return DEFAULT_MAX_USERS;
+    const v = row.value as number;
+    return typeof v === 'number' ? v : DEFAULT_MAX_USERS;
+  } catch {
+    return DEFAULT_MAX_USERS;
+  }
+}
+
+const DEFAULT_MAX_MONETIZED = 50;
+
+async function getMaxMonetizedCreators(): Promise<number> {
+  try {
+    const row = await prisma.platformSettings.findUnique({
+      where: { key: 'early_access_max_monetized_creators' },
+    });
+    if (!row || row.value == null) return DEFAULT_MAX_MONETIZED;
+    const v = row.value as number;
+    return typeof v === 'number' ? v : DEFAULT_MAX_MONETIZED;
+  } catch {
+    return DEFAULT_MAX_MONETIZED;
+  }
+}
+
+async function getMonetizedCount(): Promise<number> {
+  try {
+    return await prisma.user.count({ where: { monetization_enabled: true } });
+  } catch {
+    const r = await prisma.$queryRaw<[{ count: number }]>`
+      SELECT COUNT(*)::int as count FROM "User" WHERE monetization_enabled = true`;
+    return r[0]?.count ?? 0;
+  }
+}
+
+async function getTotalUsersCount(): Promise<number> {
+  try {
+    const r = await prisma.$queryRawUnsafe<[{ count: bigint | number }][]>(`SELECT COUNT(*)::int as count FROM "User"`);
+    const n = r[0]?.count;
+    return typeof n === 'bigint' ? Number(n) : (n ?? 0);
+  } catch {
+    try {
+      return await prisma.user.count();
+    } catch {
+      return 0;
+    }
+  }
 }
 
 export async function getEarlyAccessConfig() {
-  const [maxUsers, totalUsers] = await Promise.all([
-    getMaxUsers(),
-    prisma.user.count({ where: { account_suspended: false } }),
-  ]);
-  const isFull = totalUsers >= maxUsers;
-  return {
-    maxUsers,
-    totalUsers,
-    isFull,
-    spotsLeft: Math.max(0, maxUsers - totalUsers),
-  };
+  try {
+    const [maxUsers, totalUsers, monetizedCount, maxMonetized] = await Promise.all([
+      getMaxUsers(),
+      getTotalUsersCount(),
+      getMonetizedCount(),
+      getMaxMonetizedCreators(),
+    ]);
+    const isFull = totalUsers >= maxUsers;
+    return {
+      maxUsers,
+      totalUsers,
+      isFull,
+      spotsLeft: Math.max(0, maxUsers - totalUsers),
+      monetizedCreators: monetizedCount,
+      maxMonetizedCreators: maxMonetized,
+    };
+  } catch (err) {
+    logger.warn('getEarlyAccessConfig failed', err);
+    return {
+      maxUsers: DEFAULT_MAX_USERS,
+      totalUsers: 0,
+      isFull: false,
+      spotsLeft: DEFAULT_MAX_USERS,
+      monetizedCreators: 0,
+      maxMonetizedCreators: DEFAULT_MAX_MONETIZED,
+    };
+  }
 }
 
 export async function joinWaitlist(email: string, fullName?: string) {
@@ -38,6 +97,28 @@ export async function joinWaitlist(email: string, fullName?: string) {
   });
   logger.info('Early Access waitlist join', { email });
   return { success: true, message: 'Vous avez rejoint la liste d\'attente. Nous vous contacterons bientôt !' };
+}
+
+export async function setMaxMonetizedCreators(max: number, adminId: string) {
+  const existing = await prisma.platformSettings.findUnique({
+    where: { key: 'early_access_max_monetized_creators' },
+  });
+  if (existing) {
+    await prisma.platformSettings.update({
+      where: { key: 'early_access_max_monetized_creators' },
+      data: { value: max },
+    });
+  } else {
+    await prisma.platformSettings.create({
+      data: {
+        id: 'ps-early_access_max_monetized',
+        key: 'early_access_max_monetized_creators',
+        value: max,
+      },
+    });
+  }
+  logger.info('Early Access max monetized creators updated', { max, adminId });
+  return { maxMonetizedCreators: max };
 }
 
 export async function setMaxUsers(max: number, adminId: string) {

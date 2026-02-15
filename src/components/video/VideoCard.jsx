@@ -193,16 +193,21 @@ function VideoCardContent({
     if (!wasLiked) {
       setIsAnimating(true);
       setShowParticles(true);
-      
-      // Réinitialiser l'animation après 600ms
-      setTimeout(() => {
-        setIsAnimating(false);
-      }, 600);
-      
-      // Réinitialiser les particules après 800ms
-      setTimeout(() => {
-        setShowParticles(false);
-      }, 800);
+      const startTime = video.start_time || 0;
+      const endTime = video.end_time || videoRef.current?.duration || 60;
+      const safeRange = Math.max(0.001, endTime - startTime);
+      const ct = videoRef.current?.currentTime ?? 0;
+      const pct = ((ct - startTime) / safeRange) * 100;
+      let deviceId = null;
+      try { deviceId = localStorage.getItem('afw_device_id'); } catch (_) {}
+      api.videos.recordView(video.id, {
+        watchSeconds: Math.max(0, ct - startTime),
+        watchPercent: pct,
+        deviceId,
+        interactionDetected: true,
+      }).catch(() => {});
+      setTimeout(() => setIsAnimating(false), 600);
+      setTimeout(() => setShowParticles(false), 800);
     }
     
     // Mise à jour optimiste du compteur

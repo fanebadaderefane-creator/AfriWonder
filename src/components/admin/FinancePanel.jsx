@@ -4,7 +4,7 @@ import { api } from '@/api/expressClient';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { DollarSign, Wallet, AlertTriangle, Lock, Unlock, Radio, ChevronLeft, ChevronRight, Copy, Banknote, Check, X } from 'lucide-react';
+import { DollarSign, Wallet, AlertTriangle, Lock, Unlock, Radio, ChevronLeft, ChevronRight, Copy, Banknote, Check, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function FinancePanel() {
@@ -40,6 +40,10 @@ export default function FinancePanel() {
   const { data: pendingWithdrawals, isLoading: loadingWithdrawals } = useQuery({
     queryKey: ['admin-withdrawals-pending', withdrawalsPage],
     queryFn: () => api.withdrawals.getPending({ page: withdrawalsPage, limit: 10 }),
+  });
+  const { data: viralBonuses, isLoading: loadingViralBonuses } = useQuery({
+    queryKey: ['admin-viral-bonuses'],
+    queryFn: () => api.viralBonuses.getPending(),
   });
 
   React.useEffect(() => {
@@ -106,7 +110,6 @@ export default function FinancePanel() {
       queryClient.invalidateQueries({ queryKey: ['admin-withdrawals-pending'] });
       queryClient.invalidateQueries({ queryKey: ['admin-finance-dashboard'] });
       setProcessForm({ id: null, transaction_reference: '', notes: '' });
-      setProcessingId(null);
       toast.success('Retrait traite');
     },
     onError: (e) => toast.error(e?.apiMessage || e?.message || 'Erreur'),
@@ -118,6 +121,15 @@ export default function FinancePanel() {
       queryClient.invalidateQueries({ queryKey: ['admin-withdrawals-pending'] });
       queryClient.invalidateQueries({ queryKey: ['admin-finance-dashboard'] });
       toast.success('Retrait annule');
+    },
+    onError: (e) => toast.error(e?.apiMessage || e?.message || 'Erreur'),
+  });
+
+  const payViralBonusMutation = useMutation({
+    mutationFn: (id) => api.viralBonuses.pay(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-viral-bonuses'] });
+      toast.success('Bonus virale paye');
     },
     onError: (e) => toast.error(e?.apiMessage || e?.message || 'Erreur'),
   });
@@ -183,6 +195,24 @@ export default function FinancePanel() {
       </Card>
 
       <Card className="p-6 bg-white/10 backdrop-blur border-white/20 text-white">
+        <h3 className="font-bold mb-4 flex items-center gap-2"><TrendingUp className="w-5 h-5" /> Bonus viraux (100K, 500K, 1M vues)</h3>
+        <p className="text-sm text-white/70 mb-4">Paiement manuel valide par admin.</p>
+        {loadingViralBonuses ? (
+          <p className="text-white/60">Chargement...</p>
+        ) : (
+          <div className="space-y-2 max-h-40 overflow-y-auto mb-6">
+            {((viralBonuses ?? []).length === 0) && <p className="text-white/60 text-sm">Aucun bonus en attente.</p>}
+            {(viralBonuses ?? []).map((b) => (
+              <div key={b.id} className="flex items-center justify-between p-2 rounded bg-white/5">
+                <span className="text-sm">Video {b.video_id?.slice(0, 8)}… • {b.milestone} • {(b.amount_fcfa ?? 0).toLocaleString()} FCFA</span>
+                <Button size="sm" className="bg-green-500 hover:bg-green-600" onClick={() => payViralBonusMutation.mutate(b.id)} disabled={payViralBonusMutation.isPending}>Payer</Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-6 bg-white/10 backdrop-blur border-white/20 text-white">
         <h3 className="font-bold mb-4 flex items-center gap-2"><Banknote className="w-5 h-5" /> Retraits en attente</h3>
         <p className="text-sm text-white/70 mb-4">Demandes de retrait des createurs (tips, live, etc.). Traitez sous 24-48h.</p>
         {loadingWithdrawals ? (
@@ -197,7 +227,10 @@ export default function FinancePanel() {
                 <div key={w.id} className="flex items-center justify-between p-3 rounded-lg border border-white/20 bg-white/10">
                   <div>
                     <p className="font-semibold text-white">{w.user?.username ?? w.user?.full_name ?? w.user_id?.slice(0, 8)}</p>
-                    <p className="text-xs text-white/70">{w.orange_money_phone} • {(w.amount ?? 0).toLocaleString()} FCFA</p>
+                    <p className="text-xs text-white/70">
+                      {w.payment_method === 'paypal' ? w.paypal_email : w.orange_money_phone} • {(w.amount ?? 0).toLocaleString()} FCFA
+                      {w.payment_method === 'paypal' && <Badge variant="outline" className="ml-2 text-xs border-white/30">PayPal</Badge>}
+                    </p>
                     <p className="text-xs text-white/50">{new Date(w.created_at).toLocaleString()}</p>
                   </div>
                   <div className="flex gap-2">

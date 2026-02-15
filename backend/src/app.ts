@@ -110,6 +110,9 @@ import sellerSubscriptionRoutes from './routes/sellerSubscription.routes.js';
 import earlyAccessRoutes from './routes/earlyAccess.routes.js';
 import platformDonationsRoutes from './routes/platformDonations.routes.js';
 import platformFeedbackRoutes from './routes/platformFeedback.routes.js';
+import creatorDashboardRoutes from './routes/creatorDashboard.routes.js';
+import referralsRoutes from './routes/referrals.routes.js';
+import viralBonusRoutes from './routes/viralBonus.routes.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -131,13 +134,20 @@ app.use(httpMetricsMiddleware);
 commissionSettingsService.loadFromDb().catch(() => {});
 
 // CORS en premier (avant routes) — évite "CORS Failed" sur /api/auth/me et preflight OPTIONS
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
+  : ['http://localhost:5173', 'http://127.0.0.1:5173'];
+const corsOptions = {
+  origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
+    if (!origin || corsOrigins.includes(origin)) cb(null, true);
+    else cb(null, true); // En dev, accepter toutes les origines localhost
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'baggage', 'sentry-trace'],
-}));
-app.options('*', cors());
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'baggage', 'sentry-trace', 'X-Device-Id', 'X-Requested-With'],
+};
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // Sentry (Express) — l’instrumentation HTTP/Tracing est configurée dans initSentry()
 
@@ -264,6 +274,9 @@ app.use('/api/platform', platformRoutes);
 app.use('/api/early-access', earlyAccessRoutes);
 app.use('/api/platform-donations', platformDonationsRoutes);
 app.use('/api/platform-feedback', platformFeedbackRoutes);
+app.use('/api/creator-dashboard', creatorDashboardRoutes);
+app.use('/api/referrals', referralsRoutes);
+app.use('/api/viral-bonuses', viralBonusRoutes);
 app.use('/api/commissions', commissionsRoutes);
 app.use('/api/withdrawals', withdrawalsRoutes);
 app.use('/api/subscriptions', subscriptionsRoutes);

@@ -8,13 +8,14 @@ const router = Router();
 // POST /api/auth/register
 router.post('/register', async (req, res, next) => {
   try {
-    const { email, username, password, full_name } = req.body;
+    const { email, username, password, full_name, referral_code } = req.body;
 
     const result = await authService.register({
       email,
       username,
       password,
       full_name,
+      referral_code,
     });
 
     res.status(201).json({

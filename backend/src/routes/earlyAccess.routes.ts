@@ -44,6 +44,20 @@ router.put('/max-users', authenticate, requireAnyAdmin, async (req: AuthRequest,
   }
 });
 
+// PUT /api/early-access/max-monetized — Admin only
+router.put('/max-monetized', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const max = parseInt(req.body.maxMonetizedCreators ?? req.body.max_monetized_creators, 10);
+    if (isNaN(max) || max < 1) {
+      return res.status(400).json({ success: false, message: 'maxMonetizedCreators doit être un nombre positif' });
+    }
+    const result = await earlyAccessService.setMaxMonetizedCreators(max, req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // GET /api/early-access/waitlist — Admin, liste des inscrits
 router.get('/waitlist', authenticate, requireAnyAdmin, async (_req, res, next) => {
   try {

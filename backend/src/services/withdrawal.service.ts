@@ -7,8 +7,8 @@ import axios from 'axios';
  * Les créateurs peuvent retirer leur argent depuis leur wallet vers leur compte Orange Money
  */
 class WithdrawalService {
-  // CDC Live Streaming Mali: min 10 000 FCFA, frais 500 FCFA fixe
-  private readonly MIN_WITHDRAWAL_AMOUNT = 10_000;
+  // Prompt: min 5 000 FCFA (Orange Money, MTN, Wave)
+  private readonly MIN_WITHDRAWAL_AMOUNT = 5_000;
   private readonly WITHDRAWAL_FEE_FIXED = 500;
   // CDC: délai retrait 24–48h paramétrable via WITHDRAWAL_DELAY_HOURS (défaut: 48)
   private readonly WITHDRAWAL_DELAY_HOURS = (() => {
@@ -38,11 +38,14 @@ class WithdrawalService {
   }
 
   /**
-   * Demander un retrait
+   * Demander un retrait — Orange Money, MTN Money, Wave
    */
   async requestWithdrawal(userId: string, data: {
     amount: number;
-    orange_money_phone: string;
+    orange_money_phone?: string;
+    phone?: string;
+    payment_method?: 'orange_money' | 'mtn_money' | 'wave' | 'paypal';
+    paypal_email?: string;
     pin?: string;
   }) {
     const walletSecurity = (await import('./walletSecurity.service.js')).default;
@@ -79,6 +82,32 @@ class WithdrawalService {
       throw err;
     }
 
+    const paymentMethod = data.payment_method || 'orange_money';
+    const isPayPal = paymentMethod === 'paypal';
+    const paypalEmail = (data.paypal_email || '').trim().toLowerCase();
+    const phone = (data.orange_money_phone || data.phone || '').replace(/\D/g, '');
+
+    if (isPayPal) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!paypalEmail || !emailRegex.test(paypalEmail)) {
+        const error: any = new Error('Email PayPal requis et valide');
+        error.statusCode = 400;
+        throw error;
+      }
+    } else {
+      if (!phone || phone.length < 8) {
+        const error: any = new Error('Numéro de téléphone requis (Orange Money, MTN Money ou Wave)');
+        error.statusCode = 400;
+        throw error;
+      }
+      const phoneRegex = /^(77|76|70|78|69|65|66|67)\d{7,8}$/;
+      if (!phoneRegex.test(phone)) {
+        const error: any = new Error('Numéro invalide. Format: 77XXXXXXXX (Orange), 76XXXXXXXX (MTN), etc.');
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+
     // Obtenir le wallet
     const wallet = await this.getSellerWallet(userId);
 
@@ -88,14 +117,6 @@ class WithdrawalService {
     // Vérifier le solde (doit couvrir montant + frais)
     if (wallet.balance < totalDeduction) {
       const error: any = new Error(`Solde insuffisant. Montant requis: ${totalDeduction} FCFA (${data.amount} + ${withdrawalFee} frais)`);
-      error.statusCode = 400;
-      throw error;
-    }
-
-    // Valider le numéro Orange Money (format Mali: 77XXXXXXXX)
-    const phoneRegex = /^77\d{8}$/;
-    if (!phoneRegex.test(data.orange_money_phone)) {
-      const error: any = new Error('Numéro Orange Money invalide. Format attendu: 77XXXXXXXX');
       error.statusCode = 400;
       throw error;
     }
@@ -112,27 +133,29 @@ class WithdrawalService {
 
     // Créditer la plateforme (frais 500 FCFA fixe CDC)
     const platformRevenueService = (await import('./platformRevenue.service.js')).default;
+    const destForLog = isPayPal ? paypalEmail : phone;
     await platformRevenueService.addRevenue(
       withdrawalFee,
       'withdrawal_fees',
-      `Frais retrait - ${data.orange_money_phone} (${data.amount} FCFA)`,
+      `Frais retrait - ${paymentMethod} ${destForLog} (${data.amount} FCFA)`,
       undefined
     );
 
     await walletSecurity.recordWithdrawal(userId, data.amount);
 
-    // Créer la demande de retrait
     const withdrawal = await prisma.withdrawal.create({
       data: {
         user_id: userId,
-        amount: data.amount, // Montant net reçu par l'utilisateur
+        amount: data.amount,
         currency: 'XOF',
-        orange_money_phone: data.orange_money_phone,
+        payment_method: paymentMethod,
+        orange_money_phone: isPayPal ? null : phone,
+        paypal_email: isPayPal ? paypalEmail : null,
         status: 'pending',
       },
     });
 
-    // Créer une transaction pour le retrait
+    const destLabel = isPayPal ? paypalEmail : phone;
     await prisma.transaction.create({
       data: {
         user_id: userId,
@@ -140,10 +163,10 @@ class WithdrawalService {
         amount: data.amount,
         currency: 'XOF',
         status: 'pending',
-        description: `Demande de retrait vers ${data.orange_money_phone} (frais: ${withdrawalFee} FCFA)`,
+        description: `Demande de retrait vers ${paymentMethod} ${destLabel} (frais: ${withdrawalFee} FCFA)`,
         reference_id: withdrawal.id,
-        payment_method: 'orange_money',
-        phone_number: data.orange_money_phone,
+        payment_method: paymentMethod,
+        phone_number: isPayPal ? null : phone,
       },
     });
 
@@ -172,13 +195,14 @@ class WithdrawalService {
         select: { username: true },
       });
       const creatorName = creator?.username || 'Un créateur';
+      const destMsg = isPayPal ? paypalEmail : phone;
       for (const admin of admins) {
         await prisma.notification.create({
           data: {
             user_id: admin.id,
             type: 'withdrawal_requested',
             title: 'Nouvelle demande de retrait',
-            message: `${creatorName} demande un retrait de ${data.amount.toLocaleString()} FCFA vers ${data.orange_money_phone}. Traitement sous 24-48h.`,
+            message: `${creatorName} demande un retrait de ${data.amount.toLocaleString()} FCFA vers ${paymentMethod} ${destMsg}. Traitement sous 24-48h.`,
             reference_type: 'withdrawal',
             reference_id: withdrawal.id,
           },
@@ -192,7 +216,8 @@ class WithdrawalService {
       withdrawalId: withdrawal.id,
       userId,
       amount: data.amount,
-      phone: data.orange_money_phone,
+      payment_method: paymentMethod,
+      ...(isPayPal ? { paypal_email: paypalEmail } : { phone }),
     });
 
     return withdrawal;
@@ -243,13 +268,21 @@ class WithdrawalService {
       },
     });
 
-    // Transférer l'argent via Orange Money API
     try {
-      const transferResult = await this.transferToOrangeMoney(
-        withdrawal.orange_money_phone,
-        withdrawal.amount,
-        `Retrait AfriWonder - ${withdrawal.id}`
-      );
+      let transferResult: { reference?: string };
+      if (withdrawal.payment_method === 'paypal') {
+        transferResult = await this.transferToPayPal(
+          withdrawal.paypal_email!,
+          withdrawal.amount,
+          `Retrait AfriWonder - ${withdrawal.id}`
+        );
+      } else {
+        transferResult = await this.transferToOrangeMoney(
+          withdrawal.orange_money_phone!,
+          withdrawal.amount,
+          `Retrait AfriWonder - ${withdrawal.id}`
+        );
+      }
 
       // Si le transfert réussit, marquer comme complété
       await prisma.withdrawal.update({
@@ -272,13 +305,15 @@ class WithdrawalService {
         },
       });
 
-      // Créer une notification pour le créateur
+      const destLabel = withdrawal.payment_method === 'paypal'
+        ? withdrawal.paypal_email
+        : withdrawal.orange_money_phone;
       await prisma.notification.create({
         data: {
           user_id: withdrawal.user_id,
           type: 'withdrawal_completed',
           title: 'Retrait complété ✅',
-          message: `Votre retrait de ${withdrawal.amount} FCFA a été transféré vers ${withdrawal.orange_money_phone}`,
+          message: `Votre retrait de ${withdrawal.amount} FCFA a été transféré vers ${destLabel}`,
           reference_id: withdrawalId,
           reference_type: 'withdrawal',
         },
@@ -371,6 +406,57 @@ class WithdrawalService {
         amount,
       });
       throw new Error(`Erreur transfert Orange Money: ${error.message || 'Transfert échoué'}`);
+    }
+  }
+
+  private async transferToPayPal(email: string, amount: number, description: string) {
+    const clientId = process.env.PAYPAL_CLIENT_ID;
+    const secret = process.env.PAYPAL_CLIENT_SECRET;
+    if (!clientId || !secret) {
+      throw new Error('PayPal non configuré (PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET)');
+    }
+    try {
+      const response = await axios.post(
+        `${process.env.PAYPAL_API_URL || 'https://api-m.paypal.com'}/v1/oauth2/token`,
+        'grant_type=client_credentials',
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Authorization: `Basic ${Buffer.from(`${clientId}:${secret}`).toString('base64')}`,
+          },
+        }
+      );
+      const accessToken = response.data.access_token;
+      const payoutAmount = Math.round((amount / 655.957) * 100) / 100;
+      const payoutRes = await axios.post(
+        `${process.env.PAYPAL_API_URL || 'https://api-m.paypal.com'}/v1/payments/payouts`,
+        {
+          sender_batch_header: {
+            sender_batch_id: `afw_${Date.now()}`,
+            email_subject: 'Retrait AfriWonder',
+          },
+          items: [{
+            recipient_type: 'EMAIL',
+            amount: { value: payoutAmount.toString(), currency: 'USD' },
+            receiver: email,
+            note: description,
+          }],
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+      return {
+        success: true,
+        reference: payoutRes.data?.batch_header?.payout_batch_id,
+        message: 'Paiement PayPal initié',
+      };
+    } catch (error: any) {
+      logger.error('Erreur transfert PayPal', { error: error.message, email, amount });
+      throw new Error(`Erreur transfert PayPal: ${error.response?.data?.message || error.message || 'Transfert échoué'}`);
     }
   }
 

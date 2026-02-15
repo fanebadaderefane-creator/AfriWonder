@@ -16,6 +16,7 @@ export default function WalletPage() {
     amount: '',
     method: 'orange_money',
     orange_money_phone: '',
+    paypal_email: '',
     bank_name: '',
     account_number: '',
     account_holder: '',
@@ -55,10 +56,19 @@ export default function WalletPage() {
       const amount = parseFloat(data.amount);
       if (!amount || amount <= 0) throw new Error('Montant invalide');
       const pinOpt = needsPin ? { pin: data.pin } : {};
-      if (data.method === 'orange_money') {
-        if (!data.orange_money_phone?.trim()) throw new Error('Numéro Orange Money requis');
+      if (['orange_money', 'mtn_money', 'wave'].includes(data.method)) {
+        const phone = data.orange_money_phone?.trim() || data.phone?.trim();
+        if (!phone) throw new Error('Numéro de téléphone requis');
+        if (amount < 5000) throw new Error('Montant minimum: 5 000 FCFA');
         if (needsPin && !data.pin) throw new Error('PIN wallet requis pour ce retrait');
-        return api.withdrawals.request(amount, data.orange_money_phone.trim(), pinOpt);
+        return api.withdrawals.request(amount, phone, { ...pinOpt, payment_method: data.method });
+      }
+      if (data.method === 'paypal') {
+        const email = data.paypal_email?.trim();
+        if (!email) throw new Error('Email PayPal requis');
+        if (amount < 5000) throw new Error('Montant minimum: 5 000 FCFA');
+        if (needsPin && !data.pin) throw new Error('PIN wallet requis pour ce retrait');
+        return api.withdrawals.request(amount, null, { ...pinOpt, payment_method: 'paypal', paypal_email: email });
       }
       if (wallet && wallet.available_balance < amount) throw new Error('Solde insuffisant');
       if (needsPin && !data.pin) throw new Error('PIN wallet requis pour ce retrait');
@@ -73,6 +83,7 @@ export default function WalletPage() {
         amount: '',
         method: 'orange_money',
         orange_money_phone: '',
+        paypal_email: '',
         bank_name: '',
         account_number: '',
         account_holder: '',
@@ -206,20 +217,38 @@ export default function WalletPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="orange_money">Orange Money</SelectItem>
-                  <SelectItem value="bank_transfer">Virement bancaire</SelectItem>
+                  <SelectItem value="mtn_money">MTN Money</SelectItem>
                   <SelectItem value="wave">Wave</SelectItem>
+                  <SelectItem value="paypal">PayPal</SelectItem>
+                  <SelectItem value="bank_transfer">Virement bancaire</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {withdrawData.method === 'orange_money' && (
+            {['orange_money', 'mtn_money', 'wave'].includes(withdrawData.method) && (
               <div>
-                <label className="text-sm font-semibold block mb-2">Numéro Orange Money *</label>
+                <label className="text-sm font-semibold block mb-2">
+                  Numéro {withdrawData.method === 'orange_money' ? 'Orange Money' : withdrawData.method === 'mtn_money' ? 'MTN Money' : 'Wave'} *
+                </label>
                 <Input
-                  placeholder="77 123 45 67"
+                  placeholder="77 12 34 56 78 ou 76 12 34 56 78"
                   value={withdrawData.orange_money_phone}
                   onChange={(e) => setWithdrawData({...withdrawData, orange_money_phone: e.target.value})}
                 />
+                <p className="text-xs text-gray-500 mt-1">Min. 5 000 FCFA • Délai 2-7 jours</p>
+              </div>
+            )}
+
+            {withdrawData.method === 'paypal' && (
+              <div>
+                <label className="text-sm font-semibold block mb-2">Email PayPal *</label>
+                <Input
+                  type="email"
+                  placeholder="votre@email.com"
+                  value={withdrawData.paypal_email}
+                  onChange={(e) => setWithdrawData({...withdrawData, paypal_email: e.target.value})}
+                />
+                <p className="text-xs text-gray-500 mt-1">Min. 5 000 FCFA • Conversion XOF→USD</p>
               </div>
             )}
 
@@ -260,7 +289,7 @@ export default function WalletPage() {
             <div className="flex gap-2">
               <Button
                 onClick={() => withdrawMutation.mutate(withdrawData)}
-                disabled={withdrawMutation.isPending || !withdrawData.amount || (withdrawData.method === 'orange_money' && !withdrawData.orange_money_phone?.trim()) || (needsPin && !withdrawData.pin)}
+                disabled={withdrawMutation.isPending || !withdrawData.amount || (['orange_money', 'mtn_money', 'wave'].includes(withdrawData.method) && !withdrawData.orange_money_phone?.trim()) || (withdrawData.method === 'paypal' && !withdrawData.paypal_email?.trim()) || (needsPin && !withdrawData.pin) || (parseFloat(withdrawData.amount) < 5000)}
                 className="flex-1 bg-orange-500 hover:bg-orange-600"
               >
                 {withdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirmer'}
@@ -288,7 +317,7 @@ export default function WalletPage() {
             {payouts?.map((payout) => (
               <div key={payout.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div>
-                  <p className="font-semibold">{payout.orange_money_phone || payout.payout_method || 'Orange Money'}</p>
+                  <p className="font-semibold">{payout.payment_method === 'paypal' ? payout.paypal_email : (payout.orange_money_phone || payout.payout_method || 'Mobile Money')}</p>
                   <p className="text-sm text-gray-600">{new Date(payout.created_at || payout.requested_date).toLocaleDateString('fr-FR')}</p>
                 </div>
                 <div className="text-right">

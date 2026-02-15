@@ -252,6 +252,21 @@ class UserService {
           following_id: followingId,
         },
       });
+      const follower = await prisma.user.findUnique({
+        where: { id: followerId },
+        select: { username: true, full_name: true },
+      });
+      const followerName = follower?.full_name || follower?.username || 'Quelqu\'un';
+      await prisma.notification.create({
+        data: {
+          user_id: followingId,
+          type: 'new_follower',
+          title: 'Nouveau follower',
+          message: `${followerName} te suit maintenant`,
+          reference_type: 'user',
+          reference_id: followerId,
+        },
+      });
       await prisma.wonderRelation.upsert({
         where: {
           follower_id_creator_id: { follower_id: followerId, creator_id: followingId },
@@ -311,6 +326,21 @@ class UserService {
           status: 'active',
         },
         update: { status: 'active', updated_at: new Date() },
+      });
+      const wonderer = await prisma.user.findUnique({
+        where: { id: followerId },
+        select: { username: true, full_name: true },
+      });
+      const wondererName = wonderer?.full_name || wonderer?.username || 'Quelqu\'un';
+      await prisma.notification.create({
+        data: {
+          user_id: creatorId,
+          type: 'new_wonder',
+          title: 'Nouveau Wonder',
+          message: `${wondererName} est dans ton Wonder ✨`,
+          reference_type: 'user',
+          reference_id: followerId,
+        },
       });
       await prisma.follow.upsert({
         where: {
@@ -386,50 +416,63 @@ class UserService {
   }
 
   async getLikedVideos(userId: string, page: number = 1, limit?: number) {
-    // Si limit n'est pas spécifié ou est 0, récupérer toutes les vidéos
     const shouldGetAll = !limit || limit === 0;
-    const actualLimit = shouldGetAll ? undefined : limit;
-    const skip = shouldGetAll ? undefined : (page - 1) * (limit || 0);
+    const actualLimit = shouldGetAll ? 9999 : limit!;
+    const skip = shouldGetAll ? 0 : (page - 1) * limit!;
 
-    const [likes, total] = await Promise.all([
-      prisma.like.findMany({
-        where: { user_id: userId },
-        include: {
-          video: {
-            include: {
-              creator: {
-                select: {
-                  id: true,
-                  username: true,
-                  full_name: true,
-                  profile_image: true,
-                },
-              },
-              _count: {
-                select: {
-                  video_likes: true,
-                  video_comments: true,
+    try {
+      const [likes, total] = await Promise.all([
+        prisma.like.findMany({
+          where: { user_id: userId },
+          include: {
+            video: {
+              include: {
+                creator: {
+                  select: { id: true, username: true, full_name: true, profile_image: true },
                 },
               },
             },
           },
-        },
-        orderBy: { created_at: 'desc' },
-        ...(skip !== undefined && { skip }),
-        ...(actualLimit !== undefined && { take: actualLimit }),
-      }),
-      prisma.like.count({ where: { user_id: userId } }),
-    ]);
+          orderBy: { created_at: 'desc' },
+          skip,
+          take: actualLimit,
+        }),
+        prisma.like.count({ where: { user_id: userId } }),
+      ]);
 
-    return {
-      videos: likes.map(like => like.video).filter(Boolean),
-      pagination: {
-        page: shouldGetAll ? 1 : page,
-        limit: shouldGetAll ? total : (actualLimit || total),
-        total,
-        totalPages: shouldGetAll ? 1 : Math.ceil(total / (actualLimit || total)),
-      },
-    };
+      return {
+        videos: likes.map(like => like.video).filter(Boolean),
+        pagination: {
+          page: shouldGetAll ? 1 : page,
+          limit: shouldGetAll ? total : actualLimit,
+          total,
+          totalPages: shouldGetAll ? 1 : Math.ceil(total / actualLimit),
+        },
+      };
+    } catch {
+      try {
+        const total = await prisma.like.count({ where: { user_id: userId } });
+        const rows = await prisma.$queryRaw<any[]>`
+          SELECT v.*, u.id as "creator_id", u.username, u.full_name as "creator_name", u.profile_image as "creator_avatar"
+          FROM "Like" l
+          JOIN "Video" v ON v.id = l.video_id
+          JOIN "User" u ON u.id = v.creator_id
+          WHERE l.user_id = ${userId}
+          ORDER BY l.created_at DESC
+          LIMIT ${actualLimit} OFFSET ${skip}
+        `;
+        const videos = rows.map((r: any) => ({
+          ...r,
+          creator: { id: r.creator_id, username: r.username, full_name: r.creator_name, profile_image: r.creator_avatar },
+        }));
+        return {
+          videos,
+          pagination: { page: shouldGetAll ? 1 : page, limit: actualLimit, total, totalPages: Math.ceil(total / actualLimit) },
+        };
+      } catch {
+        return { videos: [], pagination: { page: 1, limit: 0, total: 0, totalPages: 0 } };
+      }
+    }
   }
 }
 

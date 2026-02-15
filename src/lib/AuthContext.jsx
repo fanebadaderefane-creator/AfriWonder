@@ -107,6 +107,17 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
+    // Persister le code parrainage pour l'inscription (au cas où l'utilisateur navigue avant de s'inscrire)
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const refCode = params.get('ref') || params.get('referral_code');
+      if (refCode?.trim()) {
+        sessionStorage.setItem('afriwonder_referral_code', refCode.trim());
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     checkAuth();
     
     // Écouter les changements de localStorage pour détecter les tokens OAuth
@@ -156,7 +167,17 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (userData) => {
     try {
-      const newUser = await api.auth.register(userData);
+      const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+      let refCode = params?.get('ref') || params?.get('referral_code');
+      if (!refCode && typeof window !== 'undefined') {
+        refCode = sessionStorage.getItem('afriwonder_referral_code');
+      }
+      const payload = { ...userData };
+      if (refCode) payload.referral_code = refCode;
+      const newUser = await api.auth.register(payload);
+      if (refCode && typeof window !== 'undefined') {
+        sessionStorage.removeItem('afriwonder_referral_code');
+      }
       setUser(newUser);
       setIsAuthenticated(true);
       setAuthError(null);

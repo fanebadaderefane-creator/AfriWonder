@@ -138,7 +138,7 @@ export const api = {
   earlyAccess: {
     async getConfig() {
       const { data } = await axiosInstance.get('/early-access/config');
-      return data.data || { maxUsers: 1000, totalUsers: 0, isFull: false, spotsLeft: 1000 };
+      return data.data || { maxUsers: 10000, totalUsers: 0, isFull: false, spotsLeft: 10000 };
     },
     async joinWaitlist(email, fullName) {
       const { data } = await axiosInstance.post('/early-access/waitlist', { email, full_name: fullName });
@@ -146,6 +146,10 @@ export const api = {
     },
     async setMaxUsers(max) {
       const { data } = await axiosInstance.put('/early-access/max-users', { maxUsers: max });
+      return data.data;
+    },
+    async setMaxMonetizedCreators(max) {
+      const { data } = await axiosInstance.put('/early-access/max-monetized', { maxMonetizedCreators: max });
       return data.data;
     },
     async getWaitlist() {
@@ -238,11 +242,13 @@ export const api = {
       const { data } = await axiosInstance.post(`/videos/${id}/share`);
       return data.data;
     },
-    async recordView(id, { watchSeconds = 0, watchPercent = 0, deviceId } = {}) {
+    async recordView(id, { watchSeconds = 0, watchPercent = 0, deviceId, scrollSlow, interactionDetected } = {}) {
       const { data } = await axiosInstance.post(`/videos/${id}/view`, {
         watchSeconds,
         watchPercent,
         deviceId: deviceId || (typeof localStorage !== 'undefined' ? localStorage.getItem('afw_device_id') : null),
+        scrollSlow,
+        interactionDetected,
       });
       return data;
     },
@@ -340,6 +346,36 @@ export const api = {
     },
     async getStats(creatorId) {
       const { data } = await axiosInstance.get(`/creator-support/${creatorId}/stats`);
+      return data.data;
+    },
+  },
+  creatorDashboard: {
+    async getDashboard() {
+      const { data } = await axiosInstance.get('/creator-dashboard');
+      return data.data ?? data;
+    },
+    async requestMonetization() {
+      const { data } = await axiosInstance.post('/creator-dashboard/request-monetization');
+      return data;
+    },
+  },
+  referrals: {
+    async getStats() {
+      const { data } = await axiosInstance.get('/referrals/stats');
+      return data.data;
+    },
+    async getCode() {
+      const { data } = await axiosInstance.get('/referrals/code');
+      return data.data?.code;
+    },
+  },
+  viralBonuses: {
+    async getPending() {
+      const { data } = await axiosInstance.get('/viral-bonuses/pending');
+      return data.data;
+    },
+    async pay(id) {
+      const { data } = await axiosInstance.post(`/viral-bonuses/${id}/pay`);
       return data.data;
     },
   },
@@ -680,6 +716,18 @@ export const api = {
     async getFinanceDashboard() {
       const { data } = await axiosInstance.get('/admin/finance/dashboard');
       return data.data;
+    },
+    async getMonetizationRequests() {
+      const { data } = await axiosInstance.get('/admin/monetization-requests');
+      return data.data || [];
+    },
+    async approveMonetizationRequest(id) {
+      const { data } = await axiosInstance.post(`/admin/monetization-requests/${id}/approve`);
+      return data;
+    },
+    async rejectMonetizationRequest(id, reason) {
+      const { data } = await axiosInstance.post(`/admin/monetization-requests/${id}/reject`, { reason });
+      return data;
     },
     async getSellers(params = {}) {
       const { data } = await axiosInstance.get('/admin/sellers', { params });
@@ -1254,8 +1302,17 @@ export const api = {
     },
   },
   withdrawals: {
-    async request(amount, orange_money_phone, options = {}) {
-      const { data } = await axiosInstance.post('/withdrawals/request', { amount, orange_money_phone, pin: options.pin });
+    async request(amount, phoneOrOrange, options = {}) {
+      const isPayPal = options.payment_method === 'paypal';
+      const payload = {
+        amount,
+        orange_money_phone: isPayPal ? undefined : phoneOrOrange,
+        phone: isPayPal ? undefined : phoneOrOrange,
+        payment_method: options.payment_method || 'orange_money',
+        paypal_email: options.paypal_email,
+        pin: options.pin,
+      };
+      const { data } = await axiosInstance.post('/withdrawals/request', payload);
       return data.data;
     },
     async list(params = {}) {
@@ -1481,6 +1538,10 @@ export const api = {
     async getMe() {
       const { data } = await axiosInstance.get('/gamification/me');
       return data.data;
+    },
+    async getDailyMissions() {
+      const { data } = await axiosInstance.get('/gamification/daily-missions');
+      return data.data ?? [];
     },
     async awardPoints(payload) {
       const { data } = await axiosInstance.post('/gamification/award', payload);
