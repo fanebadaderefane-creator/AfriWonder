@@ -117,8 +117,8 @@ io.on('connection', (socket) => {
 // Export io for use in routes
 export { io };
 
-// Start server
-httpServer.listen(PORT, async () => {
+// Start server — écouter sur 0.0.0.0 pour accepter les connexions externes (Railway, Docker)
+httpServer.listen(PORT, '0.0.0.0', async () => {
   logger.info(`🚀 Server running on port ${PORT}`);
   logger.info(`📡 WebSocket server ready`);
   logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
