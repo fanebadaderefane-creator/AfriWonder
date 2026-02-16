@@ -82,6 +82,7 @@ jobs:
           CORS_ORIGIN: http://localhost:5173
           FRAUD_MAX_SUCCESS_IN_WINDOW: "100"
           FRAUD_MAX_PAYMENT_AMOUNT: "999999999"
+          SUPER_ADMIN_EMAIL: admin@test.example.com
 
       - name: Upload coverage
         if: always()

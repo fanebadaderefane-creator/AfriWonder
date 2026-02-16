@@ -1,11 +1,14 @@
 /**
  * QA - Admin: dashboard et routes protegees
+ * requireAnyAdmin exige email = SUPER_ADMIN_EMAIL + rôle admin. On utilise un email de test aligné avec CI.
  */
 import request from 'supertest';
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import app from '../src/app.js';
 import { prisma } from './setup.js';
 import bcrypt from 'bcryptjs';
+
+const TEST_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'admin@test.example.com';
 
 describe('Admin API', () => {
   let adminUser: any;
@@ -17,7 +20,7 @@ describe('Admin API', () => {
     const hashed = await bcrypt.hash('Test123!@#', 10);
     adminUser = await prisma.user.create({
       data: {
-        email: `admin${Date.now()}@example.com`,
+        email: TEST_ADMIN_EMAIL,
         password_hash: hashed,
         username: `admin${Date.now()}`,
         full_name: 'Admin User',
