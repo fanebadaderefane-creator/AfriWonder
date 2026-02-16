@@ -137,14 +137,23 @@ commissionSettingsService.loadFromDb().catch(() => {});
 const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
   : ['http://localhost:5173', 'http://127.0.0.1:5173'];
+
+function isOriginAllowed(origin: string | undefined): boolean {
+  if (!origin) return true;
+  if (corsOrigins.includes(origin)) return true;
+  // Vercel previews: *.vercel.app
+  if (origin.endsWith('.vercel.app')) return true;
+  return true; // permissif par défaut
+}
+
 const corsOptions = {
   origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
-    if (!origin || corsOrigins.includes(origin)) cb(null, true);
-    else cb(null, true); // En dev, accepter toutes les origines localhost
+    cb(null, isOriginAllowed(origin));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'baggage', 'sentry-trace', 'X-Device-Id', 'X-Requested-With'],
+  preflightContinue: false,
 };
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));

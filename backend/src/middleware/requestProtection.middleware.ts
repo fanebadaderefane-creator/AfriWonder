@@ -68,7 +68,10 @@ export const csrfProtectionMiddleware = (req: Request, res: Response, next: Next
 
   const origin = String(req.headers.origin || '');
   const referer = String(req.headers.referer || '');
-  const allowed = allowedOrigins.some((base) => origin.startsWith(base) || referer.startsWith(base));
+  const allowed =
+    allowedOrigins.some((base) => origin.startsWith(base) || referer.startsWith(base)) ||
+    origin.endsWith('.vercel.app') ||
+    (referer && referer.includes('.vercel.app'));
 
   if (!allowed) {
     return res.status(403).json({
