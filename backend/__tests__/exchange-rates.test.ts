@@ -56,7 +56,10 @@ describe('Exchange rates API', () => {
     await prisma.exchangeRate.deleteMany({});
     await prisma.user.deleteMany({
       where: {
-        email: { contains: 'rexch' },
+        OR: [
+          { email: { contains: 'rexch' } },
+          { email: TEST_ADMIN_EMAIL },
+        ],
       },
     });
   });
