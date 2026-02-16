@@ -1,10 +1,9 @@
-# Frontend build context (root Dockerfile)
+# Build context (Dockerfile.backend a besoin de backend/, Dockerfile frontend aussi)
 node_modules
 .git
 .env
 .env.*
 *.log
-backend
 dist
 coverage
 .cursor

@@ -1,5 +1,6 @@
 # Configuration Railway pour AfriWonder - Backend uniquement
-# Ce fichier force Railway à utiliser le dossier backend
+# IMPORTANT : Root Directory doit rester VIDE dans Railway Settings.
+# Ce Dockerfile build depuis la racine du repo (COPY backend/...).
 
 [build]
 builder = "DOCKERFILE"

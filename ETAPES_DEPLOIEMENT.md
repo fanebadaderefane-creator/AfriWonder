@@ -33,9 +33,11 @@
 ## A4. Configurer le service Backend
 1. Clique sur le service (ton repo AfriWonder)
 2. **Settings** (icône engrenage)
-3. **Root Directory** : `backend`
-4. **Build Command** : `npm run build`
-5. **Start Command** : `npm run start`
+3. **Root Directory** : **laisser vide** (ne pas mettre `backend`)
+   - Le projet utilise `Dockerfile.backend` à la racine qui fait `COPY backend/...`
+   - Si Root Directory = `backend`, erreur : `lstat .../backend: no such file or directory`
+4. **Build Command** : laissé vide (Dockerfile gère le build)
+5. **Start Command** : laissé vide (CMD du Dockerfile : `node dist/index.js`)
 
 ---
 
@@ -135,3 +137,12 @@ Ouvre l'URL Vercel → inscris-toi → vérifie que ça marche.
 
 # Si tu es bloqué
 **Capture d'écran** + **numéro d'étape** (A1, A4, B2…) + **message d'erreur** (si visible).
+
+---
+
+# Dépannage Railway
+
+## Erreur : `lstat .../backend: no such file or directory` (Build Failed)
+- **Cause** : Root Directory est réglé sur `backend` dans les paramètres du service.
+- **Solution** : Settings → Source → **Root Directory** → supprimer la valeur (laisser vide).
+- Le `Dockerfile.backend` à la racine attend le repo complet pour `COPY backend/...`.
