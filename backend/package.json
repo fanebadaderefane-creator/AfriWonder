@@ -27,6 +27,7 @@
     "load-test": "node scripts/load-test-node.js"
   },
   "dependencies": {
+    "prisma": "^7.3.0",
     "@aws-sdk/client-s3": "^3.700.0",
     "@prisma/adapter-pg": "^7.3.0",
     "@prisma/client": "^7.3.0",
