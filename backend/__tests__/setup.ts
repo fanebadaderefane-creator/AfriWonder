@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { beforeAll } from '@jest/globals';
+import { beforeAll, afterAll } from '@jest/globals';
 
 // Charger .env.test AVANT d'importer database (qui lit DATABASE_URL)
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -73,5 +73,9 @@ beforeAll(async () => {
     console.warn('⚠️ Erreur création utilisateur plateforme:', err.message);
   }
 }, 60000);
+
+afterAll(async () => {
+  await prisma.$disconnect();
+});
 
 export { prisma };
