@@ -4,15 +4,11 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copier les fichiers du backend
-COPY backend/package*.json ./
-COPY backend/prisma ./prisma/
+# Copier tout le backend (évite erreur "backend/prisma not found" sur Railway)
+COPY backend/ .
 
 # Installer les dépendances
 RUN npm ci
-
-# Copier le reste du backend
-COPY backend/ .
 
 # Générer Prisma + build
 RUN npx prisma generate && npm run build
