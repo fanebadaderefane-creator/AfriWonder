@@ -1,10 +1,19 @@
 import { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
-import { api } from '@/api/expressClient';
+import { api, API_URL } from '@/api/expressClient';
 import { logger } from '@/lib/logger';
 import axios from 'axios';
 import { getItem, setItem, removeItem, getJSON } from '@/utils/safeStorage';
 
-const AuthContext = createContext();
+const AuthContext = createContext({
+  user: null,
+  isAuthenticated: false,
+  isLoadingAuth: true,
+  authError: null,
+  login: async (email, password) => { void email; void password; },
+  register: async (userData) => { void userData; },
+  logout: () => {},
+  checkAuth: async () => {},
+});
 const AUTH_USER_KEY = 'afriwonder_auth_user';
 
 function getCachedUser() {
@@ -43,7 +52,6 @@ export const AuthProvider = ({ children }) => {
 
       if (!token && refreshToken) {
         try {
-          const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
           const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
           setItem('access_token', data.data.accessToken);
           setItem('refresh_token', data.data.refreshToken);
@@ -69,7 +77,6 @@ export const AuthProvider = ({ children }) => {
       } catch (meError) {
         if (meError.response?.status === 401 && refreshToken) {
           try {
-            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
             const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
             setItem('access_token', data.data.accessToken);
             setItem('refresh_token', data.data.refreshToken);

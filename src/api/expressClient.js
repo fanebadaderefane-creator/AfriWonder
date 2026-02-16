@@ -1,7 +1,12 @@
 import axios from 'axios';
 import { getItem, setItem, removeItem } from '@/utils/safeStorage';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+// En production sans VITE_API_URL : utiliser le proxy Vercel (/api) pour éviter CORS
+// Le proxy api/[...path].js redirige vers Railway en same-origin
+const API_URL = import.meta.env.VITE_API_URL
+  ?? (import.meta.env.DEV ? 'http://localhost:3000/api' : '/api');
+
+export { API_URL };
 
 const axiosInstance = axios.create({
   baseURL: API_URL,
@@ -186,8 +191,7 @@ export const api = {
     async me() {
       const token = getItem('access_token');
       if (!token) {
-        const error = new Error('No token available');
-        error.response = { status: 401 };
+        const error = Object.assign(new Error('No token available'), { response: { status: 401 } });
         throw error;
       }
       const { data } = await axiosInstance.get('/auth/me');
@@ -239,7 +243,8 @@ export const api = {
       const { data } = await axiosInstance.post(`/videos/${id}/share`);
       return data.data;
     },
-    async recordView(id, { watchSeconds = 0, watchPercent = 0, deviceId, scrollSlow, interactionDetected } = {}) {
+    async recordView(id, opts = {}) {
+      const { watchSeconds = 0, watchPercent = 0, deviceId, scrollSlow, interactionDetected } = opts;
       const { data } = await axiosInstance.post(`/videos/${id}/view`, {
         watchSeconds,
         watchPercent,
@@ -1000,6 +1005,14 @@ export const api = {
       const { data } = await axiosInstance.patch(`/disputes/${id}`, payload);
       return data.data;
     },
+    async addMessage(id, messageData) {
+      const { data } = await axiosInstance.post(`/disputes/${id}/messages`, messageData);
+      return data.data;
+    },
+    async resolve(id, resolutionData) {
+      const { data } = await axiosInstance.post(`/disputes/${id}/resolve`, resolutionData);
+      return data.data;
+    },
   },
   orders: {
     async list(params = {}) {
@@ -1159,28 +1172,6 @@ export const api = {
       return data.data;
     },
   },
-  disputes: {
-    async create(disputeData) {
-      const { data } = await axiosInstance.post('/disputes', disputeData);
-      return data.data;
-    },
-    async list(params = {}) {
-      const { data } = await axiosInstance.get('/disputes', { params });
-      return data.data;
-    },
-    async getById(id) {
-      const { data } = await axiosInstance.get(`/disputes/${id}`);
-      return data.data;
-    },
-    async addMessage(id, messageData) {
-      const { data } = await axiosInstance.post(`/disputes/${id}/messages`, messageData);
-      return data.data;
-    },
-    async resolve(id, resolutionData) {
-      const { data } = await axiosInstance.post(`/disputes/${id}/resolve`, resolutionData);
-      return data.data;
-    },
-  },
   shipments: {
     async create(shipmentData) {
       const { data } = await axiosInstance.post('/shipments', shipmentData);
@@ -1241,15 +1232,12 @@ export const api = {
       return data.data;
     },
     async initiateOrangeMoney(orderId, amount, phone, returnUrl, idempotencyKey) {
-      const headers = {};
-      if (idempotencyKey && idempotencyKey.length >= 8) {
-        headers['Idempotency-Key'] = idempotencyKey;
-      } else {
-        headers['Idempotency-Key'] = `om-${orderId}-${Date.now()}`;
-      }
+      const idemKey = (idempotencyKey && idempotencyKey.length >= 8)
+        ? idempotencyKey
+        : `om-${orderId}-${Date.now()}`;
       const { data } = await axiosInstance.post('/payments/orange-money', {
         orderId, amount, phone, returnUrl
-      }, { headers });
+      }, { headers: { 'Idempotency-Key': idemKey } });
       return data.data;
     },
     async verifyOrangeMoney(orderId, status, payToken) {
@@ -1432,101 +1420,6 @@ export const api = {
     },
     async report(messageId, reason) {
       const { data } = await axiosInstance.post('/messages/report', { messageId, reason });
-      return data.data;
-    },
-  },
-  courses: {
-    async list(params = {}) {
-      const { data } = await axiosInstance.get('/courses', {
-        params: {
-          page: params.page || 1,
-          limit: params.limit || 20,
-          search: params.search,
-          category: params.category,
-          level: params.level,
-          price: params.price || 'all',
-          sort: params.sort || 'popular',
-        },
-      });
-      return data.data;
-    },
-    async getById(courseId) {
-      const { data } = await axiosInstance.get(`/courses/${courseId}`);
-      return data.data;
-    },
-    async getRecommendations(limit = 10) {
-      const { data } = await axiosInstance.get('/courses/recommendations', { params: { limit } });
-      return data.data;
-    },
-    async getEnrollment(courseId) {
-      const { data } = await axiosInstance.get(`/courses/${courseId}/enrollment`);
-      return data.data;
-    },
-    async getReviews(courseId, page = 1, limit = 20) {
-      const { data } = await axiosInstance.get(`/courses/${courseId}/reviews`, { params: { page, limit } });
-      return data.data;
-    },
-    async addReview(courseId, rating, comment) {
-      const { data } = await axiosInstance.post(`/courses/${courseId}/reviews`, { rating, comment });
-      return data.data;
-    },
-    async wishlist(page = 1, limit = 20) {
-      const { data } = await axiosInstance.get('/courses/wishlist', { params: { page, limit } });
-      return data.data;
-    },
-    async wishlistAdd(courseId) {
-      const { data } = await axiosInstance.post(`/courses/${courseId}/wishlist`);
-      return data.data;
-    },
-    async wishlistRemove(courseId) {
-      const { data } = await axiosInstance.delete(`/courses/${courseId}/wishlist`);
-      return data.data;
-    },
-    async enroll(courseId, options = {}) {
-      const { data } = await axiosInstance.post(`/courses/${courseId}/enroll`, options);
-      return data.data;
-    },
-    async updateProgress(enrollmentId, progress) {
-      const { data } = await axiosInstance.put(`/courses/enrollments/${enrollmentId}/progress`, { progress });
-      return data.data;
-    },
-    async completeLesson(enrollmentId, lessonId) {
-      const { data } = await axiosInstance.post(`/courses/enrollments/${enrollmentId}/lessons/${lessonId}/complete`);
-      return data.data;
-    },
-    async create(payload) {
-      const { data } = await axiosInstance.post('/courses', {
-        title: payload.title,
-        description: payload.description,
-        thumbnailUrl: payload.thumbnailUrl,
-        trailerUrl: payload.trailerUrl,
-        price: payload.price ?? 0,
-        category: payload.category,
-        level: payload.level,
-        durationHours: payload.durationHours ?? payload.duration_hours,
-        currency: payload.currency,
-        language: payload.language,
-        certificateEnabled: payload.certificateEnabled ?? payload.certificate ?? true,
-      });
-      return data.data;
-    },
-    async getInstructorDashboard() {
-      const { data } = await axiosInstance.get('/courses/instructor/dashboard');
-      return data.data;
-    },
-    async getLessonStream(enrollmentId, lessonId, quality) {
-      const params = quality ? { quality } : {};
-      const { data } = await axiosInstance.get(`/courses/enrollments/${enrollmentId}/lessons/${lessonId}/stream`, { params });
-      return data.data;
-    },
-  },
-  certificates: {
-    async list() {
-      const { data } = await axiosInstance.get('/certificates');
-      return data.data;
-    },
-    async verify(token) {
-      const { data } = await axiosInstance.get(`/certificates/verify/${token}`);
       return data.data;
     },
   },
@@ -2142,6 +2035,7 @@ export const api = {
       async filter(params = {}, sort = '', limit = 0) {
         try {
           // Convertir les paramètres vers le format API Express
+          /** @type {Record<string, unknown>} */
           const apiParams = { ...params };
           
           // Gérer le tri (ex. '-created_date' -> { sort: 'created_date', order: 'desc' })

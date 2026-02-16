@@ -16,8 +16,11 @@ export default async function handler(req, res) {
     }
 
     const opts = { method: req.method, headers };
-    if (req.method !== 'GET' && req.method !== 'HEAD' && req.body !== undefined) {
-      opts.body = typeof req.body === 'string' || Buffer.isBuffer(req.body) ? req.body : JSON.stringify(req.body);
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      const body = req.body;
+      if (body != null && body !== '') {
+        opts.body = typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
+      }
     }
 
     const resp = await fetch(targetUrl, opts);
