@@ -4,6 +4,10 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 import MenuPlus from './MenuPlus';
 
+vi.mock('@/contexts/FeatureFlagsContext', () => ({
+  useFeatureFlags: () => ({ isEnabled: () => true }),
+}));
+
 describe('MenuPlus', () => {
   it('renders when open with user and section titles', () => {
     render(

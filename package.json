@@ -11,7 +11,7 @@
     "typecheck": "tsc -p ./jsconfig.json",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:ci:frontend": "vitest run --maxWorkers=2 --reporter=dot",
+    "test:ci:frontend": "vitest run --reporter=dot",
     "test:ui": "vitest --ui",
     "test:coverage": "node --max-old-space-size=8192 ./node_modules/vitest/vitest.mjs run --coverage",
     "test:watch": "vitest --watch",

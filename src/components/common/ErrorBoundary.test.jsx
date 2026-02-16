@@ -36,8 +36,8 @@ describe('ErrorBoundary', () => {
     await waitFor(() => {
       expect(screen.getByText('Une erreur est survenue')).toBeInTheDocument();
     });
-    expect(screen.getByText(/Rechargez la page pour réessayer/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Recharger la page/i })).toBeInTheDocument();
+    expect(screen.getByText(/Réessayez ou rechargez la page/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Recharger/i })).toBeInTheDocument();
   });
 
   it('reload button triggers window.location.reload', async () => {
@@ -49,9 +49,9 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>
     );
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Recharger la page/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Recharger/i })).toBeInTheDocument();
     });
-    await userEvent.click(screen.getByRole('button', { name: /Recharger la page/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Recharger/i }));
     expect(reloadMock).toHaveBeenCalled();
   });
 });

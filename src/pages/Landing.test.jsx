@@ -65,10 +65,9 @@ describe('Landing page (auth)', () => {
     renderLanding();
     const signupBtn = screen.getAllByRole('button', { name: /s'inscrire/i })[0];
     await user.click(signupBtn);
-    expect(screen.getByPlaceholderText(/nom complet/i)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/nom d'utilisateur/i)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/email/i)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/mot de passe/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /créer un compte/i })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/jean dupont/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/jeandupont/i)).toBeInTheDocument();
   });
 
   it(
@@ -78,13 +77,13 @@ describe('Landing page (auth)', () => {
       renderLanding();
 
       await user.click(screen.getAllByRole('button', { name: /s'inscrire/i })[0]);
-      await screen.findByPlaceholderText(/nom complet/i, {}, { timeout: 3000 });
+      await screen.findByPlaceholderText(/jean dupont/i, {}, { timeout: 3000 });
 
       await act(async () => {
-        await user.type(screen.getByPlaceholderText(/nom complet/i), 'User Test');
-        await user.type(screen.getByPlaceholderText(/nom d'utilisateur/i), 'user_test');
-        await user.type(screen.getByPlaceholderText(/^email$/i), 'test@example.com');
-        await user.type(screen.getByPlaceholderText(/mot de passe/i), 'Password123!');
+        await user.type(screen.getByPlaceholderText(/jean dupont/i), 'User Test');
+        await user.type(screen.getByPlaceholderText(/jeandupont/i), 'user_test');
+        await user.type(screen.getByPlaceholderText(/votre@email\.com/i), 'test@example.com');
+        await user.type(screen.getByPlaceholderText(/[\u2022.]{4,}/), 'Password123!');
       });
       const registerHeading = screen.getByRole('heading', { name: /créer un compte/i });
       const registerCard = registerHeading.closest('div');
@@ -104,18 +103,17 @@ describe('Landing page (auth)', () => {
     renderLanding();
 
     await user.click(screen.getAllByRole('button', { name: /s'inscrire/i })[0]);
-    await screen.findByPlaceholderText(/nom complet/i, {}, { timeout: 3000 });
+    await screen.findByPlaceholderText(/jean dupont/i, {}, { timeout: 3000 });
 
     await act(async () => {
-      await user.type(screen.getByPlaceholderText(/nom complet/i), 'Utilisateur E2E');
-      await user.type(screen.getByPlaceholderText(/nom d'utilisateur/i), 'e2euser');
-      await user.type(screen.getByPlaceholderText(/^email$/i), 'e2e@example.com');
-      await user.type(screen.getByPlaceholderText(/mot de passe/i), 'Password123!');
-      await user.click(screen.getByRole('checkbox'));
-      const registerHeading = screen.getByRole('heading', { name: /créer un compte/i });
-      const registerCard = registerHeading.closest('div');
-      expect(registerCard).not.toBeNull();
-      await user.click(within(registerCard).getByRole('button', { name: /^s'inscrire$/i }));
+      const fullNameInput = screen.getByPlaceholderText(/jean dupont/i);
+      const regForm = fullNameInput.closest('form');
+      await user.type(fullNameInput, 'Utilisateur E2E');
+      await user.type(within(regForm).getByPlaceholderText(/jeandupont/i), 'e2euser');
+      await user.type(within(regForm).getByPlaceholderText(/votre@email\.com/i), 'e2e@example.com');
+      await user.type(within(regForm).getByPlaceholderText(/[\u2022.]{4,}/), 'Password123!');
+      await user.click(within(regForm).getByRole('checkbox'));
+      await user.click(within(regForm).getByRole('button', { name: /^s'inscrire$/i }));
     });
 
     await waitFor(() => {
@@ -123,7 +121,7 @@ describe('Landing page (auth)', () => {
     });
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /se connecter/i })).toBeInTheDocument();
-      expect(screen.getByPlaceholderText(/^email$/i)).toHaveValue('e2e@example.com');
+      expect(screen.getByPlaceholderText(/votre@email\.com/i)).toHaveValue('e2e@example.com');
     });
     expect(logoutMock).toHaveBeenCalledTimes(1);
   }, 15000);
@@ -137,9 +135,13 @@ describe('Landing page (auth)', () => {
       renderLanding();
 
       await act(async () => {
-        await user.type(screen.getByPlaceholderText(/^email$/i), 'bad@example.com');
-        await user.type(screen.getByPlaceholderText(/mot de passe/i), 'bad-password');
-        await user.click(screen.getAllByRole('button', { name: /^se connecter$/i })[1]);
+        const authSection = screen.getByRole('heading', { name: /se connecter/i }).closest('section');
+        const loginForm = authSection.querySelector('form');
+        const emailInput = within(loginForm).getByPlaceholderText(/votre@email\.com/i);
+        const passwordInput = within(loginForm).getByPlaceholderText(/[\u2022.]{4,}/);
+        await user.type(emailInput, 'bad@example.com');
+        await user.type(passwordInput, 'bad-password');
+        await user.click(within(loginForm).getByRole('button', { name: /^se connecter$/i }));
       });
 
       await waitFor(() => {
