@@ -7,6 +7,8 @@ import bcrypt from 'bcryptjs';
 import app from '../src/app.js';
 import { prisma } from './setup.js';
 
+const TEST_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'admin@test.example.com';
+
 describe('Exchange rates API', () => {
   let userToken: string;
   let adminToken: string;
@@ -19,7 +21,7 @@ describe('Exchange rates API', () => {
 
     const admin = await prisma.user.create({
       data: {
-        email: `${base}-admin@example.com`,
+        email: TEST_ADMIN_EMAIL,
         username: `${base}-admin`,
         full_name: 'Admin User',
         password_hash: passwordHash,

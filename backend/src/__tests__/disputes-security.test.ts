@@ -4,6 +4,8 @@ import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import app from '../app.js';
 import { prisma } from './setup.js';
 
+const TEST_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'admin@test.example.com';
+
 describe('Disputes security', () => {
   let buyer: any;
   let seller: any;
@@ -42,7 +44,7 @@ describe('Disputes security', () => {
     });
     admin = await prisma.user.create({
       data: {
-        email: `admin.dispute.${ts}@example.com`,
+        email: TEST_ADMIN_EMAIL,
         username: `admin_dispute_${ts}`,
         password_hash: pwd,
         full_name: 'Admin Dispute',

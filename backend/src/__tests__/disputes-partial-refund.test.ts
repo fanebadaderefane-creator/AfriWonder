@@ -42,9 +42,10 @@ describe('Disputes partial refund', () => {
         full_name: 'Seller Partial',
       },
     });
+    const TEST_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'admin@test.example.com';
     admin = await prisma.user.create({
       data: {
-        email: `admin.partial.${ts}@example.com`,
+        email: TEST_ADMIN_EMAIL,
         username: `admin_partial_${ts}`,
         password_hash: pwd,
         full_name: 'Admin Partial',

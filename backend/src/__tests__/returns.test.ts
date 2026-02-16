@@ -60,9 +60,10 @@ describe('Returns routes', () => {
       },
     });
 
+    const TEST_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'admin@test.example.com';
     const admin = await prisma.user.create({
       data: {
-        email: `admin-return-${unique}@example.com`,
+        email: TEST_ADMIN_EMAIL,
         username: `admin_return_${unique}`,
         password_hash: passwordHash,
         full_name: 'Admin Return',

@@ -12,6 +12,8 @@ import prisma from '../config/database.js';
 import * as liveReminder from '../jobs/liveScheduledReminder.job.js';
 import * as moderationSanctions from '../services/moderationSanctions.service.js';
 
+const TEST_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'admin@test.example.com';
+
 describe('CDC Live Streaming Mali', () => {
   let adminToken: string;
   let adminId: string;
@@ -21,7 +23,7 @@ describe('CDC Live Streaming Mali', () => {
     const hashed = await bcrypt.hash('Admin123!@#', 10);
     const admin = await prisma.user.create({
       data: {
-        email: `cdcadmin${Date.now()}@example.com`,
+        email: TEST_ADMIN_EMAIL,
         password_hash: hashed,
         username: `cdcadmin${Date.now()}`,
         full_name: 'CDC Admin',
