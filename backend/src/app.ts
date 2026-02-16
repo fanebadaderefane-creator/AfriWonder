@@ -127,36 +127,20 @@ import commissionSettingsService from './services/commissionSettings.service.js'
 const app = express();
 app.set('trust proxy', 1);
 app.set('etag', 'strong');
+// CORS en tout premier — CRITIQUE pour preflight OPTIONS (évite 502)
+app.options('*', cors());
+app.use(cors({
+  origin: true, // reflète l'Origin de la requête (accepte tout)
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'baggage', 'sentry-trace', 'X-Device-Id', 'X-Requested-With'],
+}));
+
 app.use(attachRequestId);
 app.use(httpMetricsMiddleware);
 
 // Charger les overrides de commissions au demarrage (sans bloquer le boot)
 commissionSettingsService.loadFromDb().catch(() => {});
-
-// CORS en premier (avant routes) — évite "CORS Failed" sur /api/auth/me et preflight OPTIONS
-const corsOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
-  : ['http://localhost:5173', 'http://127.0.0.1:5173'];
-
-function isOriginAllowed(origin: string | undefined): boolean {
-  if (!origin) return true;
-  if (corsOrigins.includes(origin)) return true;
-  // Vercel previews: *.vercel.app
-  if (origin.endsWith('.vercel.app')) return true;
-  return true; // permissif par défaut
-}
-
-const corsOptions = {
-  origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
-    cb(null, isOriginAllowed(origin));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'baggage', 'sentry-trace', 'X-Device-Id', 'X-Requested-With'],
-  preflightContinue: false,
-};
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
 
 // Sentry (Express) — l’instrumentation HTTP/Tracing est configurée dans initSentry()
 
