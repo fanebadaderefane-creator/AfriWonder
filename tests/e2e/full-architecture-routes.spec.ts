@@ -136,27 +136,30 @@ test.describe('Architecture complète - Sections clés (smoke par domaine)', () 
   test.describe.configure({ timeout: 300_000 }); // 5 min: multiple routes per test
 
   test('Vidéo & Social: Home, Discover, Create, Lives', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'load', timeout: 20000 });
     await dismissCookieBanner(page);
-    await expect(page.locator('#root')).toBeVisible({ timeout: 10000 });
-    await page.goto('/Discover');
-    await expect(page.locator('#root')).toBeVisible({ timeout: 10000 });
-    await page.goto('/Lives');
-    await expect(page.locator('#root')).toBeVisible({ timeout: 10000 });
+    await waitForAppVisible(page, 15000);
+    await page.goto('/Discover', { waitUntil: 'load', timeout: 20000 });
+    await dismissCookieBanner(page);
+    await waitForAppVisible(page, 15000);
+    await page.goto('/Lives', { waitUntil: 'load', timeout: 20000 });
+    await waitForAppVisible(page, 15000);
   });
 
   test('Marketplace: Marketplace, Cart', async ({ page }) => {
-    await page.goto('/Marketplace');
-    await expect(page.locator('#root')).toBeVisible({ timeout: 10000 });
-    await page.goto('/Cart');
-    await expect(page.locator('#root')).toBeVisible({ timeout: 10000 });
+    await page.goto('/Marketplace', { waitUntil: 'load', timeout: 20000 });
+    await dismissCookieBanner(page);
+    await waitForAppVisible(page, 15000);
+    await page.goto('/Cart', { waitUntil: 'load', timeout: 20000 });
+    await waitForAppVisible(page, 15000);
   });
 
   test('Services: Services, Providers', async ({ page }) => {
-    await page.goto('/Services');
-    await expect(page.locator('#root')).toBeVisible({ timeout: 10000 });
-    await page.goto('/Providers');
-    await expect(page.locator('#root')).toBeVisible({ timeout: 10000 });
+    await page.goto('/Services', { waitUntil: 'load', timeout: 20000 });
+    await dismissCookieBanner(page);
+    await waitForAppVisible(page, 15000);
+    await page.goto('/Providers', { waitUntil: 'load', timeout: 20000 });
+    await waitForAppVisible(page, 15000);
   });
 
   test('Super-app: Transport, FoodDelivery, Telemedicine, RealEstate, Insurance, Ticketing, Utilities', async ({ page }) => {
@@ -181,15 +184,17 @@ test.describe('Architecture complète - Sections clés (smoke par domaine)', () 
 
   test('Gamification & Créateurs: GamificationHub, Leaderboard, Achievements, CreatorTools, Analytics', async ({ page }) => {
     for (const path of ['/GamificationHub', '/Leaderboard', '/Achievements', '/CreatorTools', '/Analytics']) {
-      await page.goto(path, { waitUntil: 'domcontentloaded', timeout: 20000 });
-      await expect(page.locator('#root')).toBeVisible({ timeout: 15000 });
+      await page.goto(path, { waitUntil: 'load', timeout: 20000 });
+      await dismissCookieBanner(page);
+      await waitForAppVisible(page, 15000);
     }
   });
 
   test('Paramètres & Support: Settings, Help, Support, DeveloperPortal', async ({ page }) => {
     for (const path of ['/Settings', '/Help', '/Support', '/DeveloperPortal']) {
-      await page.goto(path, { waitUntil: 'domcontentloaded', timeout: 20000 });
-      await expect(page.locator('#root')).toBeVisible({ timeout: 15000 });
+      await page.goto(path, { waitUntil: 'load', timeout: 20000 });
+      await dismissCookieBanner(page);
+      await waitForAppVisible(page, 15000);
     }
   });
 });

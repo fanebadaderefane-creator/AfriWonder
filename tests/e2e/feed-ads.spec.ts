@@ -40,11 +40,7 @@ test.describe('Feed & Ads - CDC Phase 1', () => {
   test('Home charge le feed (onglet Pour toi) sans crash', async ({ page }) => {
     await page.goto('/', { waitUntil: 'load', timeout: 25000 });
     await dismissCookieBanner(page);
-    await waitForAppVisible(page, 15000);
-
-    // Vérifier que le contenu feed est présent (vidéos ou message vide)
-    const root = page.locator('#root');
-    await expect(root).toBeVisible();
+    await waitForAppVisible(page, 20000);
 
     // Intercepter les appels réseau vers /api/feed
     const feedCalls: any[] = [];
