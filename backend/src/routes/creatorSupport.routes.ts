@@ -11,7 +11,8 @@ const router = Router();
 router.post('/:creatorId', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const supporterId = req.user!.id;
-    const creatorId = typeof req.params.creatorId === 'string' ? req.params.creatorId : req.params.creatorId?.[0] ?? '';
+    const raw = req.params.creatorId;
+    const creatorId: string = Array.isArray(raw) ? (raw[0] ?? '') : (raw ?? '');
     const { amount_fcfa, message } = req.body;
 
     if (!amount_fcfa || amount_fcfa < 50) {
@@ -38,7 +39,8 @@ router.post('/:creatorId', authenticate, async (req: AuthRequest, res, next) => 
 // GET /api/creator-support/:creatorId/stats - Stats support d'un créateur (pour le créateur lui-même)
 router.get('/:creatorId/stats', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const creatorId = req.params.creatorId;
+    const raw = req.params.creatorId;
+    const creatorId: string = Array.isArray(raw) ? (raw[0] ?? '') : (raw ?? '');
     const userId = req.user!.id;
 
     if (creatorId !== userId) {

@@ -21,14 +21,16 @@ describe('CDC Live Streaming Mali', () => {
 
   beforeAll(async () => {
     const hashed = await bcrypt.hash('Admin123!@#', 10);
-    const admin = await prisma.user.create({
-      data: {
+    const admin = await prisma.user.upsert({
+      where: { email: TEST_ADMIN_EMAIL },
+      create: {
         email: TEST_ADMIN_EMAIL,
         password_hash: hashed,
         username: `cdcadmin${Date.now()}`,
         full_name: 'CDC Admin',
         role: 'admin',
       },
+      update: { password_hash: hashed, role: 'admin' },
     });
     adminId = admin.id;
     const login = await request(app)

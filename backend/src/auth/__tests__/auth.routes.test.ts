@@ -3,11 +3,17 @@
  * Vérifient: statut HTTP, structure JSON, création utilisateur en base, hash du mot de passe
  */
 import request from 'supertest';
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, beforeAll } from '@jest/globals';
 import bcrypt from 'bcryptjs';
 import speakeasy from 'speakeasy';
 import app from '../../app.js';
 import { prisma } from '../../../__tests__/setup.js';
+
+// Aligner les secrets JWT avec le middleware auth (comme ads.test / autres tests d’intégration)
+beforeAll(() => {
+  process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_for_auth_routes';
+  process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'test_refresh_secret_for_auth_routes';
+});
 
 describe('Auth routes', () => {
   const timestamp = Date.now();
@@ -128,7 +134,11 @@ describe('Auth routes', () => {
     });
 
     it('returns 401 when 2FA enabled and code missing', async () => {
-      const user = await prisma.user.findUniqueOrThrow({ where: { email: validUser.email } });
+      let user = await prisma.user.findUnique({ where: { email: validUser.email } });
+      if (!user) {
+        await request(app).post('/api/auth/register').send(validUser).expect(201);
+        user = await prisma.user.findUniqueOrThrow({ where: { email: validUser.email } });
+      }
       const secret = speakeasy.generateSecret({ name: 'AfriWonder', length: 32 }).base32;
       await prisma.user2FA.upsert({
         where: { user_id: user.id },
@@ -158,7 +168,11 @@ describe('Auth routes', () => {
     });
 
     it('returns 401 when 2FA enabled and code invalid', async () => {
-      const user = await prisma.user.findUniqueOrThrow({ where: { email: validUser.email } });
+      let user = await prisma.user.findUnique({ where: { email: validUser.email } });
+      if (!user) {
+        await request(app).post('/api/auth/register').send(validUser).expect(201);
+        user = await prisma.user.findUniqueOrThrow({ where: { email: validUser.email } });
+      }
       const secret = speakeasy.generateSecret({ name: 'AfriWonder', length: 32 }).base32;
       await prisma.user2FA.upsert({
         where: { user_id: user.id },
@@ -186,7 +200,11 @@ describe('Auth routes', () => {
     });
 
     it('returns 200 when 2FA enabled and TOTP code valid', async () => {
-      const user = await prisma.user.findUniqueOrThrow({ where: { email: validUser.email } });
+      let user = await prisma.user.findUnique({ where: { email: validUser.email } });
+      if (!user) {
+        await request(app).post('/api/auth/register').send(validUser).expect(201);
+        user = await prisma.user.findUniqueOrThrow({ where: { email: validUser.email } });
+      }
       const secret = speakeasy.generateSecret({ name: 'AfriWonder', length: 32 }).base32;
       await prisma.user2FA.upsert({
         where: { user_id: user.id },

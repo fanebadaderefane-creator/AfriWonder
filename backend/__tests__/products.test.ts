@@ -147,7 +147,14 @@ describe('Products API', () => {
           description: 'New Description',
           price: 20000,
           category: 'electronics',
-          stock: 5
+          stock: 5,
+          images: [
+            'https://cdn.afriwonder.com/p1.jpg',
+            'https://cdn.afriwonder.com/p2.jpg',
+            'https://cdn.afriwonder.com/p3.jpg',
+            'https://cdn.afriwonder.com/p4.jpg',
+            'https://cdn.afriwonder.com/p5.jpg',
+          ],
         });
 
       expect(response.status).toBe(201);

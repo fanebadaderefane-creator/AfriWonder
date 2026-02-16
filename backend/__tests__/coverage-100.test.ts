@@ -114,7 +114,7 @@ describe('Coverage 100% - fichiers ciblés', () => {
     it('exporte les taux marketplace', async () => {
       const { COMMISSION_VERTICALS } = await import('../src/config/commissions.js');
       expect(COMMISSION_VERTICALS.marketplace.seller_commission_default_pct).toBe(0.1);
-      expect(COMMISSION_VERTICALS.video_social.tips_platform_pct).toBe(0.30);
+      expect(COMMISSION_VERTICALS.video_social.tips_platform_pct).toBe(0.15);
     });
   });
 

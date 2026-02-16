@@ -148,6 +148,11 @@ describe('Ads API', () => {
   });
 
   it('POST /api/ads/campaigns/:id/submit soumet pour review', async () => {
+    // Submit debits the campaign price from the advertiser wallet; ensure sufficient balance
+    const ledgerService = (await import('../src/services/ledger.service.js')).default;
+    const wallet = await ledgerService.getOrCreateUserWallet(advertiserId, 'XOF');
+    await ledgerService.credit(wallet.id, 50000, { referenceType: 'deposit', description: 'Test credit' });
+
     const res = await request(app)
       .post(`/api/ads/campaigns/${campaignId}/submit`)
       .set('Authorization', `Bearer ${advertiserToken}`);

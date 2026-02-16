@@ -214,7 +214,7 @@ class ProductService {
     });
 
     if (!product) {
-      const error: any = new Error('Produit non trouvÃ©');
+      const error: any = new Error('Produit non trouvé');
       error.statusCode = 404;
       throw error;
     }
@@ -732,11 +732,11 @@ class ProductService {
     });
 
     if (!product) {
-      throw new Error('Produit non trouvÃ©');
+      throw new Error('Produit non trouvé');
     }
 
     if (product.seller_id !== sellerId) {
-      throw new Error('Non autorisÃ©');
+      throw new Error('Non autorisé');
     }
 
     const sanitizedData: any = { ...data };
@@ -777,11 +777,11 @@ class ProductService {
     });
 
     if (!product) {
-      throw new Error('Produit non trouvÃ©');
+      throw new Error('Produit non trouvé');
     }
 
     if (product.seller_id !== sellerId) {
-      throw new Error('Non autorisÃ©');
+      throw new Error('Non autorisé');
     }
 
     await prisma.product.delete({
@@ -798,11 +798,11 @@ class ProductService {
     });
 
     if (!product) {
-      throw new Error('Produit non trouvÃ©');
+      throw new Error('Produit non trouvé');
     }
 
     if (product.seller_id !== sellerId) {
-      throw new Error('Non autorisÃ©');
+      throw new Error('Non autorisé');
     }
 
     const newStock = product.stock + quantity;

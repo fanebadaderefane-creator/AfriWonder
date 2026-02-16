@@ -15,6 +15,11 @@ import { AuthRequest } from './auth.js';
 /** Email autorisé pour l'accès admin — seul ce compte peut utiliser le centre de contrôle */
 export const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com';
 
+/** Lit l'email admin à l'exécution (pour les tests où l'env est défini après le chargement du module) */
+function getSuperAdminEmail(): string {
+  return process.env.SUPER_ADMIN_EMAIL || SUPER_ADMIN_EMAIL;
+}
+
 export const ADMIN_ROLES = [
   'super_admin',
   'admin',
@@ -32,7 +37,7 @@ export function isAdminRole(role: string): role is AdminRole {
 
 /** Vérifie que l'utilisateur est l'admin autorisé (email whitelist) — exporté pour usage dans d'autres routes */
 export function isAllowedAdminEmail(email: string | undefined): boolean {
-  return !!email && email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+  return !!email && email.toLowerCase() === getSuperAdminEmail().toLowerCase();
 }
 
 /** Accès au centre de contrôle (email whitelist + rôle admin) */

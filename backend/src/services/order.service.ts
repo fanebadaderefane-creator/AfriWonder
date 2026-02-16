@@ -205,7 +205,7 @@ class OrderService {
     });
 
     if (!order) {
-      throw new Error('Commande non trouvÃ©e');
+      throw new Error('Commande non trouvée');
     }
 
     // VÃ©rifier autorisation (acheteur ou vendeur)
@@ -213,7 +213,7 @@ class OrderService {
     const isSeller = order.seller_id === userId || order.items.some(item => item.product.seller?.id === userId);
     
     if (!isBuyer && !isSeller) {
-      throw new Error('Non autorisÃ©');
+      throw new Error('Non autorisé');
     }
 
     return order;
@@ -281,7 +281,7 @@ class OrderService {
       });
 
       if (!product) {
-        throw new Error(`Produit ${item.product_id} non trouvÃ©`);
+        throw new Error(`Produit ${item.product_id} non trouvé`);
       }
       if ((product.stock ?? 0) < item.quantity) {
         throw new Error(`Stock insuffisant pour ${product.name}`);
@@ -317,7 +317,7 @@ class OrderService {
 
     const fraud = await fraudCheck.checkPayment(userId, totalAmount, data.payment_method || 'unknown', {});
     if (!fraud.allowed) {
-      throw new Error(fraud.reason || 'Paiement refusÃ© pour des raisons de sÃ©curitÃ©.');
+      throw new Error(fraud.reason || 'Paiement refusé pour des raisons de sécurité.');
     }
 
     const createdOrders: any[] = [];
@@ -531,7 +531,7 @@ class OrderService {
     });
 
     if (!order) {
-      throw new Error('Commande non trouvÃ©e');
+      throw new Error('Commande non trouvée');
     }
 
     // Idempotence webhook : dÃ©jÃ  payÃ©e = succÃ¨s (Ã©vite double traitement et retries)
@@ -542,16 +542,16 @@ class OrderService {
       throw new Error('La commande a dÃ©jÃ  Ã©tÃ© traitÃ©e');
     }
 
-    // VÃ©rification anti-fraude avant de traiter le paiement
+    // Vérification anti-fraude avant de traiter le paiement
     const fraud = await fraudCheck.checkPayment(order.user_id, order.total_amount, order.payment_method || 'unknown', { orderId });
     if (!fraud.allowed) {
-      throw new Error(fraud.reason || 'Paiement refusÃ© pour des raisons de sÃ©curitÃ©.');
+      throw new Error(fraud.reason || 'Paiement refusé pour des raisons de sécurité.');
     }
 
-    // Bloquer les fonds dans escrow au lieu de les distribuer immÃ©diatement
+    // Bloquer les fonds dans escrow au lieu de les distribuer immédiatement
     await escrowService.holdFunds(orderId);
 
-    // CrÃ©er enregistrement de paiement
+    // Créer enregistrement de paiement
     await prisma.orderPayment.create({
       data: {
         order_id: orderId,
@@ -746,14 +746,14 @@ class OrderService {
       where: { id },
       select: { user_id: true, status: true, payment_status: true, created_at: true },
     });
-    if (!order) throw new Error('Commande non trouvÃ©e');
-    if (order.user_id !== userId) throw new Error('Non autorisÃ©');
+    if (!order) throw new Error('Commande non trouvée');
+    if (order.user_id !== userId) throw new Error('Non autorisé');
     if (order.status !== 'pending' && order.status !== 'pending_payment') {
       throw new Error('Annulation impossible : la commande a dÃ©jÃ  Ã©tÃ© traitÃ©e.');
     }
     const deadlineMs = deadlineHours * 60 * 60 * 1000;
     if (Date.now() - new Date(order.created_at).getTime() > deadlineMs) {
-      throw new Error(`Annulation impossible aprÃ¨s ${deadlineHours}h. Contactez le support.`);
+      throw new Error(`Annulation impossible après ${deadlineHours}h. Contactez le support.`);
     }
     // Si dÃ©jÃ  payÃ©, le remboursement sera gÃ©rÃ© par escrow (refund) si implÃ©mentÃ© cÃ´tÃ© webhook/annulation
     return this.updateStatus(id, 'cancelled', userId);
@@ -766,11 +766,11 @@ class OrderService {
     });
 
     if (!order) {
-      throw new Error('Commande non trouvÃ©e');
+      throw new Error('Commande non trouvée');
     }
 
     if (order.user_id !== userId) {
-      throw new Error('Non autorisÃ©');
+      throw new Error('Non autorisé');
     }
 
     // DÃ©bloquer les fonds escrow vers le vendeur

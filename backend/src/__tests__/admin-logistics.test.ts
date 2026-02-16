@@ -46,11 +46,17 @@ describe('Admin logistics routes', () => {
     const adminLogin = await request(app)
       .post('/api/auth/login')
       .send({ email: admin.email, password: 'AdminLog123!@#' });
+    if (adminLogin.status !== 200 || !adminLogin.body.data?.accessToken) {
+      throw new Error(`Admin login failed: ${adminLogin.status} ${JSON.stringify(adminLogin.body)}`);
+    }
     adminToken = adminLogin.body.data.accessToken;
 
     const userLogin = await request(app)
       .post('/api/auth/login')
       .send({ email: user.email, password: 'AdminLog123!@#' });
+    if (userLogin.status !== 200 || !userLogin.body.data?.accessToken) {
+      throw new Error(`User login failed: ${userLogin.status} ${JSON.stringify(userLogin.body)}`);
+    }
     userToken = userLogin.body.data.accessToken;
   });
 

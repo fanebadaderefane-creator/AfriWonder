@@ -134,7 +134,7 @@ describe('Videos API', () => {
         .send({
           title: 'New Video',
           description: 'New Description',
-          video_url: 'https://cdn.afriwonder.com/video.mp4',
+          video_url: `https://cdn.afriwonder.com/video-new-${Date.now()}.mp4`,
           thumbnail_url: 'https://cdn.afriwonder.com/thumb.jpg',
           visibility: 'public',
           category: 'entertainment'
@@ -143,7 +143,8 @@ describe('Videos API', () => {
       expect(response.status).toBe(201);
       expect(response.body.success).toBe(true);
       expect(response.body.data.title).toBe('New Video');
-      expect(response.body.data.creator_id).toBe(testUser.id);
+      const creatorId = response.body.data.creator_id ?? response.body.data.creator?.id;
+      expect(creatorId).toBe(testUser.id);
     });
 
     it('devrait rejeter une vidéo sans titre', async () => {

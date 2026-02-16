@@ -9,7 +9,7 @@
     "build": "prisma generate && tsc",
     "start": "node dist/index.js",
     "test:db:prepare": "node scripts/migrate-test-db.js",
-    "test": "npm run test:db:prepare && cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js",
+    "test": "npm run test:db:prepare && cross-env NODE_ENV=test NODE_OPTIONS=--max-old-space-size=4096 node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js",
     "test:watch": "cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js --watch",
     "test:coverage": "npm run test:db:prepare && cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js --coverage --runInBand",
     "setup:env": "node create-env.js",
