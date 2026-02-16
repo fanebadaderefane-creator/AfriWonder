@@ -31,12 +31,11 @@ describe('Platform API', () => {
     await prisma.user.deleteMany({ where: { email: { contains: 'platform' } } }).catch(() => {});
   });
 
-  it('GET /api/platform/revenue requires auth', async () => {
+  it('GET /api/platform/revenue requires admin (normal user gets 403)', async () => {
     const res = await request(app)
       .get('/api/platform/revenue')
       .set('Authorization', `Bearer ${token}`);
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data).toBeDefined();
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
   });
 });

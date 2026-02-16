@@ -38,7 +38,7 @@ describe('Saves API (saved videos)', () => {
 
   afterAll(async () => {
     await prisma.save.deleteMany({}).catch(() => {});
-    await prisma.video.deleteMany({ where: { id: video.id } }).catch(() => {});
+    if (video?.id) await prisma.video.deleteMany({ where: { id: video.id } }).catch(() => {});
     await prisma.user.deleteMany({ where: { email: { contains: 'save' } } }).catch(() => {});
   });
 
