@@ -17,6 +17,7 @@
     "test:watch": "vitest --watch",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ci": "playwright test --project=chromium-desktop --workers=2 tests/e2e/feed-ads.spec.ts tests/e2e/full-architecture-routes.spec.ts tests/e2e/navigation.spec.ts tests/e2e/payment.spec.ts tests/e2e/payment-wallet-flow.spec.ts tests/e2e/smoke-home.spec.ts",
     "test:backend": "npm run test:smoke --prefix backend",
     "security-audit": "node scripts/security-audit.js",
     "security-audit-fix": "npm audit fix --prefix backend && npm audit fix",

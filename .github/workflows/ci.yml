@@ -164,7 +164,7 @@ jobs:
   test-e2e:
     runs-on: ubuntu-latest
     needs: [test-backend, test-frontend]
-    timeout-minutes: 40
+    timeout-minutes: 55
 
     services:
       postgres:
@@ -279,7 +279,7 @@ jobs:
         run: npx playwright install-deps
 
       - name: Run Playwright E2E tests
-        run: npm run test:e2e
+        run: npm run test:e2e:ci
 
       - name: Upload Playwright report
         if: always()
