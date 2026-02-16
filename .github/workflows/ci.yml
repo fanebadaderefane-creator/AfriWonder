@@ -294,6 +294,22 @@ jobs:
           name: playwright-traces-videos
           path: test-results/
 
+  # Déploie sur Vercel quand la CI passe sur main
+  deploy-vercel:
+    runs-on: ubuntu-latest
+    if: success() && github.ref == 'refs/heads/main'
+    needs: [test-backend, test-frontend, test-e2e]
+    steps:
+      - name: Trigger Vercel deployment
+        run: |
+          if [ -n "${{ secrets.VERCEL_DEPLOY_HOOK }}" ]; then
+            curl -sS -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}"
+            echo "Vercel deploy triggered"
+          else
+            echo "VERCEL_DEPLOY_HOOK secret not set - skip"
+          fi
+        continue-on-error: true
+
   # Alerte si CI échoue sur main (configurer CI_ALERT_WEBHOOK_URL dans GitHub Secrets)
   notify-on-failure:
     runs-on: ubuntu-latest
