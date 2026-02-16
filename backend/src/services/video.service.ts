@@ -173,7 +173,7 @@ class VideoService {
         takeVal,
         skipVal
       );
-      const countRows = await prisma.$queryRawUnsafe<[{ count: bigint | number }][]>(
+      const countRows = await prisma.$queryRawUnsafe<Array<{ count: bigint | number }>>(
         `SELECT COUNT(*)::int as count FROM "Video" v WHERE v.visibility = 'public' AND (v.video_url IS NULL OR v.video_url NOT LIKE '%example.com%')`
       );
       total = Number(countRows[0]?.count ?? 0);

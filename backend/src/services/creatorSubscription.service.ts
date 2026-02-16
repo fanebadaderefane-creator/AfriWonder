@@ -88,7 +88,7 @@ class CreatorSubscriptionService {
       data: { status: 'expired' },
     });
     if (result.count > 0) {
-      logger.info({ count: result.count }, 'Creator subscriptions expired');
+      logger.info('Creator subscriptions expired', { count: result.count });
     }
     return result.count;
   }

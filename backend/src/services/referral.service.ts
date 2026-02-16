@@ -23,7 +23,7 @@ async function ensureReferralCodeColumn(): Promise<void> {
     await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "referral_code" TEXT`);
     await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "User_referral_code_key" ON "User"("referral_code")`).catch(() => {});
   } catch (e) {
-    logger.warn('Referral: ensureReferralCodeColumn failed', e);
+    logger.warn('Referral: ensureReferralCodeColumn failed', { err: e instanceof Error ? e.message : String(e) });
   }
 }
 

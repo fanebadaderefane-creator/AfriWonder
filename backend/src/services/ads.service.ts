@@ -517,7 +517,7 @@ class AdsService {
       data: { status: 'expired' },
     });
     if (result.count > 0) {
-      logger.info({ count: result.count }, 'Campagnes publicitaires expirées');
+      logger.info('Campagnes publicitaires expirées', { count: result.count });
     }
     return result.count;
   }

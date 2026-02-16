@@ -17,7 +17,7 @@ router.post('/subscribe', authenticate, async (req: AuthRequest, res, next) => {
     }
     const method = payment_method === 'orange_money' ? 'orange_money' : 'wallet';
     const subscription = await sellerSubscriptionService.subscribe(userId, tier, method, orange_money_phone);
-    const isPending = subscription.paymentUrl != null;
+    const isPending = (subscription as { paymentUrl?: string | null }).paymentUrl != null;
     res.status(201).json({
       success: true,
       data: subscription,

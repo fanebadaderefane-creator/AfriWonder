@@ -12,10 +12,10 @@ export function startAdsExpirationJob() {
     try {
       const count = await adsService.expireCampaigns();
       if (count > 0) {
-        logger.info({ expired: count }, 'Campagnes publicitaires expirées');
+        logger.info('Campagnes publicitaires expirées', { expired: count });
       }
     } catch (err: any) {
-      logger.error({ err: err?.message }, 'Erreur expiration campagnes pub');
+      logger.error('Erreur expiration campagnes pub', err, { err: err?.message });
     }
   };
 

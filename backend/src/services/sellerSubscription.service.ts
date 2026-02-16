@@ -231,7 +231,7 @@ class SellerSubscriptionService {
       }),
     ]);
 
-    logger.info({ count: expired.length }, 'Seller subscriptions expired');
+    logger.info('Seller subscriptions expired', { count: expired.length });
     return expired.length;
   }
 }

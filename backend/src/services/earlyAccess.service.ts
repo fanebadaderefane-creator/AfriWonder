@@ -43,7 +43,7 @@ async function getMonetizedCount(): Promise<number> {
 
 async function getTotalUsersCount(): Promise<number> {
   try {
-    const r = await prisma.$queryRawUnsafe<[{ count: bigint | number }][]>(`SELECT COUNT(*)::int as count FROM "User"`);
+    const r = await prisma.$queryRawUnsafe<Array<{ count: bigint | number }>>(`SELECT COUNT(*)::int as count FROM "User"`);
     const n = r[0]?.count;
     return typeof n === 'bigint' ? Number(n) : (n ?? 0);
   } catch {
@@ -73,7 +73,7 @@ export async function getEarlyAccessConfig() {
       maxMonetizedCreators: maxMonetized,
     };
   } catch (err) {
-    logger.warn('getEarlyAccessConfig failed', err);
+    logger.warn('getEarlyAccessConfig failed', { err: err instanceof Error ? err.message : String(err) });
     return {
       maxUsers: DEFAULT_MAX_USERS,
       totalUsers: 0,

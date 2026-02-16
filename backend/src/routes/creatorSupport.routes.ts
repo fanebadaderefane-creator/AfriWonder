@@ -11,7 +11,7 @@ const router = Router();
 router.post('/:creatorId', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const supporterId = req.user!.id;
-    const creatorId = req.params.creatorId;
+    const creatorId = typeof req.params.creatorId === 'string' ? req.params.creatorId : req.params.creatorId?.[0] ?? '';
     const { amount_fcfa, message } = req.body;
 
     if (!amount_fcfa || amount_fcfa < 50) {
