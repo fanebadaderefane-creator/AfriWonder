@@ -158,7 +158,7 @@ describe('OverviewPanel', () => {
         <OverviewPanel />
       </MemoryRouter>
     );
-    expect(screen.getByText(/1[\s\u202f]?000 XOF/)).toBeInTheDocument();
+    expect(screen.getByText(/1[\s,\u202f]?000 XOF/)).toBeInTheDocument();
     expect(screen.getByText('pending')).toBeInTheDocument();
   });
 
@@ -191,7 +191,7 @@ describe('OverviewPanel', () => {
         <OverviewPanel />
       </MemoryRouter>
     );
-    expect(screen.getByText(/3[\s\u202f]?000 XOF.*alice/)).toBeInTheDocument();
+    expect(screen.getByText(/3[\s,\u202f]?000 XOF.*alice/)).toBeInTheDocument();
   });
 
   it('renders order with user but no username (no bullet)', () => {
