@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Users, Ban, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, Ban, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
