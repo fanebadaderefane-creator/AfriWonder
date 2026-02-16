@@ -10,6 +10,9 @@ COPY backend/ .
 # Installer les dépendances
 RUN npm ci
 
+# prisma.config.ts exige DATABASE_URL ; prisma generate n'utilise pas la DB, placeholder suffit
+ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
+
 # Générer Prisma + build
 RUN npx prisma generate && npm run build
 
