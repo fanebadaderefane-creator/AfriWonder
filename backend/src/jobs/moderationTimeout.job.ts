@@ -35,7 +35,13 @@ export async function processSuspensionTimeouts() {
     }
     return { success: true, unsuspended };
   } catch (error) {
-    logger.error('Job levée timeouts', { err: (error as Error).message });
+    const err = error as Error & { code?: string };
+    // Si la table UserStrike n'existe pas (migrations non appliquées), ne pas faire échouer le job
+    if (err?.name === 'PrismaClientKnownRequestError' && err?.message?.includes('does not exist')) {
+      logger.warn('Job levée timeouts: table UserStrike absente (migrations à appliquer)');
+      return { success: false, unsuspended: 0 };
+    }
+    logger.error('Job levée timeouts', { err: err?.message });
     throw error;
   }
 }

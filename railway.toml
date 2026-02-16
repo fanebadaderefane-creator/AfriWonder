@@ -9,3 +9,4 @@ dockerfilePath = "Dockerfile.backend"
 [deploy]
 startCommand = "sh scripts/start-with-migrate.sh"
 healthcheckPath = "/health"
+healthcheckTimeout = 600
