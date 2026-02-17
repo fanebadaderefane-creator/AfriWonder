@@ -112,6 +112,16 @@ body {
   height: 100dvh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  /* Masquer la scrollbar mais garder le scroll fonctionnel */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+/* Masquer la scrollbar WebKit (Chrome, Safari) */
+.screen::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 body {

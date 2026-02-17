@@ -56,7 +56,8 @@ export default function Inbox() {
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 shadow-sm">
         <div className="flex items-center justify-between px-4 py-3">
           <h1 className="text-xl font-bold text-gray-900">Messages</h1>
-          <Link to={createPageUrl('Search')}>
+          {/* Nouveau message — ouvre la recherche en mode "messages" comme Instagram */}
+          <Link to={createPageUrl('Search') + '?from=inbox&mode=messages'}>
             <Button variant="ghost" size="icon">
               <Edit className="w-5 h-5" />
             </Button>

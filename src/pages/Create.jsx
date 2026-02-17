@@ -1970,7 +1970,7 @@ export default function Create() {
             initial={{ opacity: 0, x: 100 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -100 }}
-            className="flex flex-col min-h-0 h-full"
+            className="flex flex-col h-full"
           >
 
             <div className="flex-shrink-0 flex items-center justify-between p-4">
@@ -2017,7 +2017,7 @@ export default function Create() {
 
 
 
-            <div className="flex-1 min-h-0 p-4 bg-zinc-900 overflow-y-auto overflow-x-hidden overscroll-contain">
+            <div className="flex-1 p-4 bg-zinc-900">
 
               <VideoEditor
 

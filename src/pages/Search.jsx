@@ -8,6 +8,7 @@ import { createPageUrl } from "@/utils";
 import { isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG } from "@/lib/utils";
 import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 /** Affiche la miniature (image valide), sinon image de secours — évite cadre noir sur Chrome/mobile */
 function VideoThumbnail({ video }) {
@@ -52,6 +53,8 @@ export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get('q') || '';
   const category = searchParams.get('category') || '';
+  const from = searchParams.get('from') || '';
+  const mode = searchParams.get('mode') || '';
   const [localQuery, setLocalQuery] = useState(query);
   const [filters, setFilters] = useState({
     type: 'all', // all, videos, users, products
@@ -73,7 +76,7 @@ export default function SearchPage() {
   const hashtagForApi = isHashtagSearch ? query.trim().replace(/^#/, '') : '';
 
   // Fetch videos (utilise l'API hashtag si recherche par hashtag)
-  const { data: videos, isLoading: videosLoading } = useQuery({
+  const { data: videos, isLoading: videosLoading, error: videosError } = useQuery({
     queryKey: ['searchVideos', query, filters, hashtagForApi],
     queryFn: async () => {
       if (!query.trim()) return [];
@@ -118,39 +121,63 @@ export default function SearchPage() {
       }
       return results.slice(0, 20);
     },
-    enabled: !!(query && (filters.type === 'all' || filters.type === 'videos')),
+    enabled: !!(query && (isMessagesContext ? false : (filters.type === 'all' || filters.type === 'videos'))),
+    retry: 1,
+    onError: (err) => {
+      console.error('Erreur recherche vidéos:', err);
+    },
   });
 
   // Fetch users
-  const { data: users, isLoading: usersLoading } = useQuery({
+  const { data: users, isLoading: usersLoading, error: usersError } = useQuery({
     queryKey: ['searchUsers', query, filters.type],
     queryFn: async () => {
       if (!query.trim()) return [];
-      const result = await api.users.list({ page: 1, limit: 20, search: query.trim() });
-      return Array.isArray(result) ? result : (result?.users || []);
+      try {
+        const result = await api.users.list({ page: 1, limit: 20, search: query.trim() });
+        return Array.isArray(result) ? result : (result?.users || []);
+      } catch (err) {
+        console.error('Erreur recherche utilisateurs:', err);
+        throw err;
+      }
     },
-    enabled: !!(query && (filters.type === 'all' || filters.type === 'users'))
+    enabled: !!(query && (isMessagesContext || filters.type === 'all' || filters.type === 'users')),
+    retry: 1,
   });
 
   // Fetch products
-  const { data: products, isLoading: productsLoading } = useQuery({
+  const { data: products, isLoading: productsLoading, error: productsError } = useQuery({
     queryKey: ['searchProducts', query, filters],
     queryFn: async () => {
       if (!query.trim()) return [];
-      
-      const result = await api.products.list({ 
-        search: query.trim(), 
-        category: filters.category !== 'all' ? filters.category : undefined,
-        page: 1, 
-        limit: 50 
-      });
-      return Array.isArray(result) ? result : (result?.products || []);
+      try {
+        const result = await api.products.list({ 
+          search: query.trim(), 
+          category: filters.category !== 'all' ? filters.category : undefined,
+          page: 1, 
+          limit: 50 
+        });
+        return Array.isArray(result) ? result : (result?.products || []);
+      } catch (err) {
+        console.error('Erreur recherche produits:', err);
+        throw err;
+      }
     },
-    enabled: !!(query && (filters.type === 'all' || filters.type === 'products'))
+    enabled: !!(query && (isMessagesContext ? false : (filters.type === 'all' || filters.type === 'products'))),
+    retry: 1,
   });
 
   const isLoading = videosLoading || usersLoading || productsLoading;
+  const hasError = videosError || usersError || productsError;
   const totalResults = (videos?.length || 0) + (users?.length || 0) + (products?.length || 0);
+
+  const isMessagesContext = from === 'inbox' || mode === 'messages';
+  
+  // En mode messages, forcer le filtre users et toujours afficher les résultats users
+  const effectiveFilterType = isMessagesContext ? 'users' : filters.type;
+  const shouldShowUsers = isMessagesContext || filters.type === 'all' || filters.type === 'users';
+  const shouldShowVideos = !isMessagesContext && (filters.type === 'all' || filters.type === 'videos');
+  const shouldShowProducts = !isMessagesContext && (filters.type === 'all' || filters.type === 'products');
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -161,7 +188,7 @@ export default function SearchPage() {
             <Search className="w-5 h-5 text-gray-400 flex-shrink-0" />
             <input
               type="text"
-              placeholder="Vidéos, utilisateurs, produits..."
+              placeholder={isMessagesContext ? "Rechercher un utilisateur..." : "Vidéos, utilisateurs, produits..."}
               value={localQuery}
               onChange={(e) => setLocalQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch(localQuery)}
@@ -183,20 +210,26 @@ export default function SearchPage() {
           </div>
 
           {/* Filter tabs — déclenchent le rafraîchissement des résultats */}
-          <Tabs value={filters.type} onValueChange={(v) => setFilters((prev) => ({ ...prev, type: v }))}>
-            <TabsList className="grid w-full grid-cols-4 bg-gray-100">
-              <TabsTrigger value="all">Tous</TabsTrigger>
-              <TabsTrigger value="videos" className="flex gap-1">
-                <Video className="w-4 h-4" /> Vidéos
-              </TabsTrigger>
-              <TabsTrigger value="users" className="flex gap-1">
-                <User className="w-4 h-4" /> Users
-              </TabsTrigger>
-              <TabsTrigger value="products" className="flex gap-1">
-                <Package className="w-4 h-4" /> Produits
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          {isMessagesContext ? (
+            <div className="text-sm text-gray-600 text-center py-2">
+              Recherchez un utilisateur pour démarrer une conversation
+            </div>
+          ) : (
+            <Tabs value={filters.type} onValueChange={(v) => setFilters((prev) => ({ ...prev, type: v }))}>
+              <TabsList className="grid w-full grid-cols-4 bg-gray-100">
+                <TabsTrigger value="all">Tous</TabsTrigger>
+                <TabsTrigger value="videos" className="flex gap-1">
+                  <Video className="w-4 h-4" /> Vidéos
+                </TabsTrigger>
+                <TabsTrigger value="users" className="flex gap-1">
+                  <User className="w-4 h-4" /> Users
+                </TabsTrigger>
+                <TabsTrigger value="products" className="flex gap-1">
+                  <Package className="w-4 h-4" /> Produits
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
         </div>
       </div>
 
@@ -205,6 +238,19 @@ export default function SearchPage() {
           <div className="text-center py-12 text-gray-500">
             <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
             <p>Cherchez vidéos, utilisateurs ou produits</p>
+            {isMessagesContext && (
+              <p className="text-sm text-gray-400 mt-2">Tapez le nom ou l'email d'un utilisateur pour démarrer une conversation</p>
+            )}
+          </div>
+        ) : hasError ? (
+          <div className="text-center py-12 text-red-500">
+            <p className="font-semibold mb-2">Erreur de connexion</p>
+            <p className="text-sm text-gray-600">
+              {hasError?.response?.status === 404 || hasError?.message?.includes('Network')
+                ? 'Vérifiez que le backend est lancé sur http://localhost:3000'
+                : hasError?.apiMessage || hasError?.message || 'Impossible de charger les résultats'}
+            </p>
+            <p className="text-xs text-gray-400 mt-2">Ouvrez la console (F12) pour plus de détails</p>
           </div>
         ) : isLoading ? (
           <div className="flex justify-center py-8">
@@ -212,12 +258,17 @@ export default function SearchPage() {
           </div>
         ) : totalResults === 0 ? (
           <div className="text-center py-12 text-gray-500">
-            <p>Aucun résultat pour "{query}"</p>
+            <p className="font-semibold mb-2">Aucun résultat pour "{query}"</p>
+            <p className="text-sm text-gray-400">
+              {isMessagesContext 
+                ? 'Essayez avec un autre nom d\'utilisateur ou email'
+                : 'Essayez avec d\'autres mots-clés'}
+            </p>
           </div>
         ) : (
           <>
             {/* Videos — affiché pour Tous ou Vidéos */}
-            {(filters.type === 'all' || filters.type === 'videos') && videos && videos.length > 0 && (
+            {shouldShowVideos && videos && videos.length > 0 && (
               <div className="space-y-3">
                 <h2 className="text-lg font-bold">Vidéos</h2>
                 <div className="space-y-2">
@@ -243,8 +294,8 @@ export default function SearchPage() {
               </div>
             )}
 
-            {/* Users — affiché pour Tous ou Users */}
-            {(filters.type === 'all' || filters.type === 'users') && users && users.length > 0 && (
+            {/* Users — affiché pour Tous ou Users (ou toujours en mode messages) */}
+            {shouldShowUsers && users && users.length > 0 && (
               <div className="space-y-3">
                 <h2 className="text-lg font-bold">Utilisateurs</h2>
                 <div className="grid grid-cols-2 gap-3">
@@ -254,12 +305,24 @@ export default function SearchPage() {
                         key={u.id}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        onClick={() => navigate(createPageUrl('Profile') + `?_userId=${u.id}`)}
+                        onClick={() => {
+                          if (isMessagesContext) {
+                            // Depuis Inbox: se comporte comme Instagram/X — ouvrir directement une conversation
+                            navigate(createPageUrl('Chat') + `?_userId=${u.id}`);
+                          } else {
+                            navigate(createPageUrl('Profile') + `?_userId=${u.id}`);
+                          }
+                        }}
                         className="bg-white rounded-lg p-3 text-center cursor-pointer hover:bg-gray-50"
                       >
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-red-500 mx-auto mb-2" />
-                        <p className="font-semibold text-sm text-gray-900 truncate">{u.full_name || 'User'}</p>
-                        <p className="text-xs text-gray-500 truncate">{u.email}</p>
+                        <Avatar className="w-12 h-12 mx-auto mb-2 ring-2 ring-white shadow-md">
+                          <AvatarImage src={u.profile_image} />
+                          <AvatarFallback className="bg-gradient-to-br from-orange-400 to-red-500 text-white font-semibold">
+                            {(u.full_name || u.username || u.email || 'U')?.[0]?.toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <p className="font-semibold text-sm text-gray-900 truncate">{u.full_name || u.username || 'Utilisateur'}</p>
+                        <p className="text-xs text-gray-500 truncate">@{u.username || u.email?.split('@')[0] || 'user'}</p>
                       </motion.div>
                     ))}
                   </AnimatePresence>
@@ -268,7 +331,7 @@ export default function SearchPage() {
             )}
 
             {/* Products — affiché pour Tous ou Produits */}
-            {(filters.type === 'all' || filters.type === 'products') && products && products.length > 0 && (
+            {shouldShowProducts && products && products.length > 0 && (
               <div className="space-y-3">
                 <h2 className="text-lg font-bold">Produits</h2>
                 <div className="space-y-2">
