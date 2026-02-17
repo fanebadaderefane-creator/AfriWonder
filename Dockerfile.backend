@@ -30,9 +30,10 @@ COPY --from=builder /app/scripts/start-with-migrate.sh ./scripts/
 
 RUN npm prune --production && chmod +x scripts/start-with-migrate.sh
 
-EXPOSE 3000
+EXPOSE 10000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://127.0.0.1:3000/health', (r)=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>process.exit(r.statusCode===200?0:1));}).on('error',()=>process.exit(1))"
+# Render utilise PORT=10000 par défaut — le healthcheck doit utiliser la même variable
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+  CMD node -e "const p=process.env.PORT||10000; require('http').get('http://127.0.0.1:'+p+'/health', (r)=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>process.exit(r.statusCode===200?0:1));}).on('error',()=>process.exit(1))"
 
 CMD ["sh", "scripts/start-with-migrate.sh"]

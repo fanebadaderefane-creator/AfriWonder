@@ -1,0 +1,18 @@
+# Render Blueprint — Backend AfriWonder
+# Ce fichier configure le déploiement Docker du backend sur Render.
+# IMPORTANT : Si le service existe déjà, lie-le via Dashboard → New → Blueprint.
+
+services:
+  - type: web
+    name: AfriWonder
+    runtime: docker
+    # Utiliser le Dockerfile backend (pas le frontend nginx)
+    dockerfilePath: ./Dockerfile.backend
+    region: oregon
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # DATABASE_URL, JWT_SECRET, JWT_REFRESH_SECRET, CORS_ORIGIN : à définir dans le Dashboard
+      # Ne PAS définir PORT : Render l'injecte automatiquement (10000)
