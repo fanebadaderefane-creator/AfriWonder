@@ -868,8 +868,10 @@ export default function Home() {
           -ms-overflow-style: none; /* IE / Edge */
           scrollbar-width: none; /* Firefox */
         }
-        .no-scrollbar::-webkit-scrollbar {
-          display: none; /* Chrome / Safari */
+        @supports selector(::-webkit-scrollbar) {
+          .no-scrollbar::-webkit-scrollbar {
+            display: none; /* Chrome / Safari */
+          }
         }
       `}</style>
     </div>

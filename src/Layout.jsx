@@ -141,23 +141,22 @@ function LayoutContent({ children, currentPageName }) {
           padding-top: max(16px, env(safe-area-inset-top));
         }
         
-        /* Custom scrollbar */
-        ::-webkit-scrollbar {
-          width: 4px;
-          height: 4px;
-        }
-        
-        ::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        
-        ::-webkit-scrollbar-thumb {
-          background: #d1d5db;
-          border-radius: 2px;
-        }
-        
-        ::-webkit-scrollbar-thumb:hover {
-          background: #9ca3af;
+        /* Custom scrollbar — @supports évite "bad selector" dans Firefox */
+        @supports selector(::-webkit-scrollbar) {
+          ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+          }
+          ::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          ::-webkit-scrollbar-thumb {
+            background: #d1d5db;
+            border-radius: 2px;
+          }
+          ::-webkit-scrollbar-thumb:hover {
+            background: #9ca3af;
+          }
         }
         
         /* Smooth transitions */

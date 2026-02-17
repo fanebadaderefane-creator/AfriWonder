@@ -391,17 +391,13 @@ export default function Profile() {
     style.id = 'profile-scrollbar-hide';
 
     style.textContent = `
-
-      body.hide-scrollbar-profile::-webkit-scrollbar,
-
-      html.hide-scrollbar-profile::-webkit-scrollbar {
-
-        display: none !important;
-
-        width: 0 !important;
-
-        height: 0 !important;
-
+      @supports selector(::-webkit-scrollbar) {
+        body.hide-scrollbar-profile::-webkit-scrollbar,
+        html.hide-scrollbar-profile::-webkit-scrollbar {
+          display: none !important;
+          width: 0 !important;
+          height: 0 !important;
+        }
       }
 
       body.hide-scrollbar-profile {
@@ -737,8 +733,10 @@ export default function Profile() {
           -ms-overflow-style: none; /* IE / Edge */
           scrollbar-width: none; /* Firefox */
         }
-        .no-scrollbar::-webkit-scrollbar {
-          display: none; /* Chrome / Safari / Opera */
+        @supports selector(::-webkit-scrollbar) {
+          .no-scrollbar::-webkit-scrollbar {
+            display: none; /* Chrome / Safari / Opera */
+          }
         }
       `}</style>
 

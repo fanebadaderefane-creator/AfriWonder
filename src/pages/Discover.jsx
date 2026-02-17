@@ -603,12 +603,14 @@ export default function Discover() {
       <BottomNav />
 
       <style>{`
-        .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-        }
         .scrollbar-hide {
           -ms-overflow-style: none;
           scrollbar-width: none;
+        }
+        @supports selector(::-webkit-scrollbar) {
+          .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+          }
         }
       `}</style>
     </div>
