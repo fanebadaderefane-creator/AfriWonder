@@ -2,9 +2,11 @@ import axios from 'axios';
 import { getItem, setItem, removeItem } from '@/utils/safeStorage';
 
 // En production sans VITE_API_URL : utiliser le proxy Vercel (/api) pour éviter CORS
-// Le proxy api/[...path].js redirige vers Railway en same-origin
-const API_URL = import.meta.env.VITE_API_URL
-  ?? (import.meta.env.DEV ? 'http://localhost:3000/api' : '/api');
+// Si VITE_API_URL est défini, on normalise pour qu'il se termine par /api (backend attend /api/auth, etc.)
+const raw = import.meta.env.VITE_API_URL;
+const API_URL = raw
+  ? `${raw.replace(/\/api\/?$/, '')}/api`
+  : (import.meta.env.DEV ? 'http://localhost:3000/api' : '/api');
 
 export { API_URL };
 
