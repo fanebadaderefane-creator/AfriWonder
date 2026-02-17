@@ -500,7 +500,7 @@ function VideoCardContent({
 
   return (
     <div 
-      className="relative w-full h-screen bg-black overflow-hidden"
+      className="relative w-full h-[100dvh] bg-black overflow-hidden"
       style={{ touchAction: 'pan-y' }}
     >
       <div className="absolute inset-0 overflow-hidden">

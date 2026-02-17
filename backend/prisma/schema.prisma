@@ -7,189 +7,193 @@ datasource db {
 }
 
 model User {
-  id                         String                    @id @default(uuid())
-  email                      String                    @unique
-  username                   String                    @unique
-  password_hash              String
-  full_name                  String?
-  profile_image              String?
-  bio                        String?
-  location                   String?
-  website                    String?
-  country                    String? // Pays pour leaderboard / profil
-  role                       String                    @default("user")
-  is_verified                Boolean                   @default(false)
-  account_suspended          Boolean                   @default(false)
-  suspended_at               DateTime?
-  suspended_reason           String? // fraud, abuse, legal, user_request
-  replay_premium             Boolean                   @default(false) // 90j replays vs 14j
-  data_saver_mode            Boolean                   @default(false) // Mode données réduites
-  referral_code              String?                   @unique // Code parrainage unique
-  phone_verified             Boolean                   @default(false) // OTP téléphone
-  monetization_enabled       Boolean                   @default(false)
-  monetization_suspended_at  DateTime?
-  shadow_banned              Boolean                   @default(false) // Anti-fraude: contenu masqué
-  created_at                 DateTime                  @default(now())
-  updated_at                 DateTime                  @updatedAt
-  addresses                  Address[]
-  cart                       Cart?
-  comments                   Comment[]
-  follows                    Follow[]                  @relation("Follower")
-  following                  Follow[]                  @relation("Following")
-  wonder_relations_given     WonderRelation[]          @relation("Wonderer")
-  wonder_relations_received  WonderRelation[]          @relation("WonderCreator")
-  likes                      Like[]
-  live_streams               LiveStream[]
-  live_viewers               LiveViewer[]
-  live_moderator_of          LiveModerator[]
-  live_likes                 LiveLike[]
-  live_top_donors            LiveTopDonor[]
-  live_subscriptions_created LiveCreatorSubscription[]   @relation("LiveSubscriptionsCreated")
-  live_subscriptions_given   LiveCreatorSubscription[]  @relation("LiveSubscriptionsGiven")
-  creator_level              CreatorLevel?
-  moderation_reports         Moderation[]              @relation("ModerationReporter")
-  user_strikes               UserStrike[]             // CDC: 3 strikes = ban
-  notifications              Notification[]
-  notification_logs          NotificationLog[]
-  notification_preference    NotificationPreference?
-  orders                     Order[]
-  order_reviews              OrderReview[]             @relation("OrderReviewUser")
-  products                   Product[]
-  reports                    Report[]                  @relation("Reporter")
-  reviews                    Review[]
-  saves                      Save[]
-  subscriptions              Subscription[]
-  transactions               Transaction[]
-  video_tips_sent            VideoTip[]                @relation("TipSender")
-  video_tips_received        VideoTip[]                @relation("TipReceiver")
-  user_badges                UserBadge[]
-  user_points                UserPoints?
-  videos                     Video[]
-  view_history               ViewHistory[]
-  wallets                    Wallet[]
-  wallet_security            WalletSecurity?
-  seller_wallet              SellerWallet?
-  withdrawals                Withdrawal[]
-  wishlist                   Wishlist[]
-  seller_profile             SellerProfile?
-  seller_subscriptions       SellerSubscription[]     @relation("SellerSubscriptions")
-  seller_reviews_received    SellerReview[]            @relation("SellerReviewed")
-  seller_reviews_given       SellerReview[]            @relation("SellerReviewAuthor")
-  order_buyer_reviews_given  OrderBuyerReview[]        @relation("BuyerReviewSeller")
-  order_buyer_reviews_received OrderBuyerReview[]     @relation("BuyerReviewBuyer")
-  product_questions          ProductQuestion[]         @relation("ProductQuestionAuthor")
-  support_tickets            SupportTicket[]
-  support_messages           SupportMessage[]
-  enrollments                Enrollment[]
-  certificates               Certificate[]
-  courses_created            Course[]
-  course_reviews             CourseReview[]
-  course_wishlist            CourseWishlist[]
-  user_level                 UserLevel?
-  daily_mission_completions  DailyMissionCompletion[]
-  conversations_user1        Conversation[]            @relation("User1")
-  conversations_user2        Conversation[]            @relation("User2")
-  stories                    Story[]
-  playlists                  Playlist[]
-  community_members          CommunityMember[]
-  communities_created        Community[]
-  referrals_sent             Referral[]                @relation("Referrer")
-  referrals_received         Referral[]                @relation("Referred")
-  user_verification          UserVerification?
-  service_provider           ServiceProvider?          @relation("ServiceProvider")
-  service_bookings_customer  ServiceBooking[]          @relation("BookingCustomer")
-  service_reviews            ServiceReview[]           @relation("ServiceReviewCustomer")
-  events_organized           Event[]
-  event_tickets              EventTicket[]
-  event_attendances          EventAttendance[]
-  event_payments             EventPayment[]
-  event_likes                EventLike[]
-  event_comments             EventComment[]
-  event_featured_payments    EventFeaturedPayment[]
-  event_chat_messages        EventChatMessage[]
-  news_articles_authored     NewsArticle[]
-  article_views              ArticleView[]
-  article_likes              ArticleLike[]
-  article_comments           ArticleComment[]
-  user_news_preference       UserNewsPreference?
-  news_premium_subscriptions NewsPremiumSubscription[]
-  presence                   UserPresence?
-  blocked_by                 UserBlock[]               @relation("Blocked")
-  blocking                   UserBlock[]               @relation("Blocker")
-  messages_sent              Message[]
-  message_reports            MessageReport[]
-  loan_requests_borrowed     LoanRequest[]
-  civic_petitions_created    CivicPetition[]
-  jobs_created               Job[]
-  job_applications           JobApplication[]
-  candidate_profile          CandidateProfile?
-  company_profile            CompanyProfile?
-  petition_comments          PetitionComment[]
-  petition_comment_likes     PetitionCommentLike[]
-  company_ratings_received   CompanyRating[]           @relation("CompanyRatingsReceived")
-  company_ratings_given      CompanyRating[]           @relation("CompanyRatingsGiven")
-  candidate_ratings_received CandidateRating[]         @relation("CandidateRatingsReceived")
-  candidate_ratings_given    CandidateRating[]         @relation("CandidateRatingsGiven")
-  saved_jobs                 SavedJob[]
-  saved_petitions            SavedPetition[]
-  petition_signatures        PetitionSignature[]       @relation("PetitionSigner")
-  coupons_created            Coupon[]
-  user_loyalty_entries       UserLoyalty[]
-  loyalty_program            LoyaltyProgram?
+  id                           String                    @id @default(uuid())
+  email                        String                    @unique
+  username                     String                    @unique
+  password_hash                String
+  full_name                    String?
+  profile_image                String?
+  bio                          String?
+  location                     String?
+  website                      String?
+  country                      String? // Pays pour leaderboard / profil
+  role                         String                    @default("user")
+  is_verified                  Boolean                   @default(false)
+  account_suspended            Boolean                   @default(false)
+  suspended_at                 DateTime?
+  suspended_reason             String? // fraud, abuse, legal, user_request
+  replay_premium               Boolean                   @default(false) // 90j replays vs 14j
+  data_saver_mode              Boolean                   @default(false) // Mode données réduites
+  referral_code                String?                   @unique // Code parrainage unique
+  phone_verified               Boolean                   @default(false) // OTP téléphone
+  monetization_enabled         Boolean                   @default(false)
+  monetization_suspended_at    DateTime?
+  shadow_banned                Boolean                   @default(false) // Anti-fraude: contenu masqué
+  created_at                   DateTime                  @default(now())
+  updated_at                   DateTime                  @updatedAt
+  addresses                    Address[]
+  cart                         Cart?
+  comments                     Comment[]
+  follows                      Follow[]                  @relation("Follower")
+  following                    Follow[]                  @relation("Following")
+  wonder_relations_given       WonderRelation[]          @relation("Wonderer")
+  wonder_relations_received    WonderRelation[]          @relation("WonderCreator")
+  likes                        Like[]
+  live_streams                 LiveStream[]
+  live_viewers                 LiveViewer[]
+  live_moderator_of            LiveModerator[]
+  live_likes                   LiveLike[]
+  live_top_donors              LiveTopDonor[]
+  live_subscriptions_created   LiveCreatorSubscription[] @relation("LiveSubscriptionsCreated")
+  live_subscriptions_given     LiveCreatorSubscription[] @relation("LiveSubscriptionsGiven")
+  live_polls_created           LivePoll[]
+  live_poll_votes              LivePollVote[]
+  live_cohosts_as_creator      LiveCoHost[]              @relation("LiveCoHostCreator")
+  live_cohosts_as_guest        LiveCoHost[]              @relation("LiveCoHostGuest")
+  creator_level                CreatorLevel?
+  moderation_reports           Moderation[]              @relation("ModerationReporter")
+  user_strikes                 UserStrike[] // CDC: 3 strikes = ban
+  notifications                Notification[]
+  notification_logs            NotificationLog[]
+  notification_preference      NotificationPreference?
+  orders                       Order[]
+  order_reviews                OrderReview[]             @relation("OrderReviewUser")
+  products                     Product[]
+  reports                      Report[]                  @relation("Reporter")
+  reviews                      Review[]
+  saves                        Save[]
+  subscriptions                Subscription[]
+  transactions                 Transaction[]
+  video_tips_sent              VideoTip[]                @relation("TipSender")
+  video_tips_received          VideoTip[]                @relation("TipReceiver")
+  user_badges                  UserBadge[]
+  user_points                  UserPoints?
+  videos                       Video[]
+  view_history                 ViewHistory[]
+  wallets                      Wallet[]
+  wallet_security              WalletSecurity?
+  seller_wallet                SellerWallet?
+  withdrawals                  Withdrawal[]
+  wishlist                     Wishlist[]
+  seller_profile               SellerProfile?
+  seller_subscriptions         SellerSubscription[]      @relation("SellerSubscriptions")
+  seller_reviews_received      SellerReview[]            @relation("SellerReviewed")
+  seller_reviews_given         SellerReview[]            @relation("SellerReviewAuthor")
+  order_buyer_reviews_given    OrderBuyerReview[]        @relation("BuyerReviewSeller")
+  order_buyer_reviews_received OrderBuyerReview[]        @relation("BuyerReviewBuyer")
+  product_questions            ProductQuestion[]         @relation("ProductQuestionAuthor")
+  support_tickets              SupportTicket[]
+  support_messages             SupportMessage[]
+  enrollments                  Enrollment[]
+  certificates                 Certificate[]
+  courses_created              Course[]
+  course_reviews               CourseReview[]
+  course_wishlist              CourseWishlist[]
+  user_level                   UserLevel?
+  daily_mission_completions    DailyMissionCompletion[]
+  conversations_user1          Conversation[]            @relation("User1")
+  conversations_user2          Conversation[]            @relation("User2")
+  stories                      Story[]
+  playlists                    Playlist[]
+  community_members            CommunityMember[]
+  communities_created          Community[]
+  referrals_sent               Referral[]                @relation("Referrer")
+  referrals_received           Referral[]                @relation("Referred")
+  user_verification            UserVerification?
+  service_provider             ServiceProvider?          @relation("ServiceProvider")
+  service_bookings_customer    ServiceBooking[]          @relation("BookingCustomer")
+  service_reviews              ServiceReview[]           @relation("ServiceReviewCustomer")
+  events_organized             Event[]
+  event_tickets                EventTicket[]
+  event_attendances            EventAttendance[]
+  event_payments               EventPayment[]
+  event_likes                  EventLike[]
+  event_comments               EventComment[]
+  event_featured_payments      EventFeaturedPayment[]
+  event_chat_messages          EventChatMessage[]
+  news_articles_authored       NewsArticle[]
+  article_views                ArticleView[]
+  article_likes                ArticleLike[]
+  article_comments             ArticleComment[]
+  user_news_preference         UserNewsPreference?
+  news_premium_subscriptions   NewsPremiumSubscription[]
+  presence                     UserPresence?
+  blocked_by                   UserBlock[]               @relation("Blocked")
+  blocking                     UserBlock[]               @relation("Blocker")
+  messages_sent                Message[]
+  message_reports              MessageReport[]
+  loan_requests_borrowed       LoanRequest[]
+  civic_petitions_created      CivicPetition[]
+  jobs_created                 Job[]
+  job_applications             JobApplication[]
+  candidate_profile            CandidateProfile?
+  company_profile              CompanyProfile?
+  petition_comments            PetitionComment[]
+  petition_comment_likes       PetitionCommentLike[]
+  company_ratings_received     CompanyRating[]           @relation("CompanyRatingsReceived")
+  company_ratings_given        CompanyRating[]           @relation("CompanyRatingsGiven")
+  candidate_ratings_received   CandidateRating[]         @relation("CandidateRatingsReceived")
+  candidate_ratings_given      CandidateRating[]         @relation("CandidateRatingsGiven")
+  saved_jobs                   SavedJob[]
+  saved_petitions              SavedPetition[]
+  petition_signatures          PetitionSignature[]       @relation("PetitionSigner")
+  coupons_created              Coupon[]
+  user_loyalty_entries         UserLoyalty[]
+  loyalty_program              LoyaltyProgram?
   // Legal & Security Relations
-  legal_acceptances          UserLegalAcceptance[]
-  cookie_preferences         UserCookiePreference?
-  data_export_requests       DataExportRequest[]
-  account_deletion_requests  AccountDeletionRequest[]
-  security_logs              SecurityLog[]
-  two_factor_auth            User2FA?
-  admin_audit_logs           AdminAuditLog[]
-  suspicious_activity_alerts SuspiciousActivityAlert[]
+  legal_acceptances            UserLegalAcceptance[]
+  cookie_preferences           UserCookiePreference?
+  data_export_requests         DataExportRequest[]
+  account_deletion_requests    AccountDeletionRequest[]
+  security_logs                SecurityLog[]
+  two_factor_auth              User2FA?
+  admin_audit_logs             AdminAuditLog[]
+  suspicious_activity_alerts   SuspiciousActivityAlert[]
   // Ride / Transport
-  rides_as_passenger         Ride[]                    @relation("RidePassenger")
-  rides_as_driver            Ride[]                    @relation("RideDriver")
+  rides_as_passenger           Ride[]                    @relation("RidePassenger")
+  rides_as_driver              Ride[]                    @relation("RideDriver")
   // Driver profile (user_id on Driver)
-  driver_profile             Driver?
+  driver_profile               Driver?
   // Restaurant owner
-  restaurants_owned          Restaurant[]
+  restaurants_owned            Restaurant[]
   // Food orders (customer + delivery person)
-  food_orders_customer       FoodOrder[]               @relation("FoodOrderCustomer")
-  food_orders_delivery       FoodOrder[]               @relation("FoodOrderDelivery")
+  food_orders_customer         FoodOrder[]               @relation("FoodOrderCustomer")
+  food_orders_delivery         FoodOrder[]               @relation("FoodOrderDelivery")
   // Airtime & Bills
-  airtime_recharges          AirtimeRecharge[]
-  bill_payments              BillPayment[]
+  airtime_recharges            AirtimeRecharge[]
+  bill_payments                BillPayment[]
   // Tickets
-  tickets                    Ticket[]
+  tickets                      Ticket[]
   // Health: Doctor profile + Appointments
-  doctor_profile             Doctor?
-  appointments_as_patient    Appointment[]             @relation("AppointmentPatient")
+  doctor_profile               Doctor?
+  appointments_as_patient      Appointment[]             @relation("AppointmentPatient")
   // Pharmacy owner
-  pharmacies_owned           Pharmacy[]
+  pharmacies_owned             Pharmacy[]
   // Property owner
-  properties_owned           Property[]
+  properties_owned             Property[]
   // Insurance
-  insurance_policies         InsurancePolicy[]
-  insurance_claims           InsuranceClaim[]
+  insurance_policies           InsurancePolicy[]
+  insurance_claims             InsuranceClaim[]
   // Property visit requests
-  property_visit_requests    PropertyVisitRequest[]
+  property_visit_requests      PropertyVisitRequest[]
   // CDC Phase 1: Publicité & monétisation
-  ad_campaigns              AdCampaign[]
-  creator_subscriptions     CreatorSubscription[]
-  creator_support_given     CreatorSupport[]         @relation("CreatorSupportGiven")
-  creator_support_received  CreatorSupport[]        @relation("CreatorSupportReceived")
-  monetization_requests    MonetizationRequest[]
+  ad_campaigns                 AdCampaign[]
+  creator_subscriptions        CreatorSubscription[]
+  creator_support_given        CreatorSupport[]          @relation("CreatorSupportGiven")
+  creator_support_received     CreatorSupport[]          @relation("CreatorSupportReceived")
+  monetization_requests        MonetizationRequest[]
 }
 
 /// Demande de monétisation — créateur envoie, admin valide
 model MonetizationRequest {
-  id          String   @id @default(uuid())
-  creator_id  String
-  status      String   @default("pending") // pending | approved | rejected
-  reviewed_by String?
-  reviewed_at DateTime?
+  id            String    @id @default(uuid())
+  creator_id    String
+  status        String    @default("pending") // pending | approved | rejected
+  reviewed_by   String?
+  reviewed_at   DateTime?
   reject_reason String?
-  created_at  DateTime @default(now())
-  creator     User     @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+  created_at    DateTime  @default(now())
+  creator       User      @relation(fields: [creator_id], references: [id], onDelete: Cascade)
 
   @@index([creator_id])
   @@index([status])
@@ -221,8 +225,8 @@ model VideoCategory {
 }
 
 model Category {
-  id             String          @id @default(uuid())
-  name           String          @unique
+  id               String          @id @default(uuid())
+  name             String          @unique
   video_categories VideoCategory[]
 
   @@index([name])
@@ -250,7 +254,7 @@ model Video {
   duration              Int?
   is_featured           Boolean               @default(false)
   algo_tier             String?               @default("test") // test | tier_500 | tier_1k | tier_10k | tier_100k | dead
-  avg_retention_pct     Float?                // % moyen regardé (algo)
+  avg_retention_pct     Float? // % moyen regardé (algo)
   created_at            DateTime              @default(now())
   updated_at            DateTime              @updatedAt
   collaborator_revenues CollaboratorRevenue[]
@@ -262,7 +266,7 @@ model Video {
   analytics             VideoAnalytics[]
   view_history          ViewHistory[]
   video_views           VideoView[]
-  qualified_video_views  QualifiedVideoView[]
+  qualified_video_views QualifiedVideoView[]
   playlist_items        PlaylistItem[]
 
   @@index([creator_id, created_at])
@@ -316,14 +320,14 @@ model Follow {
 }
 
 model WonderRelation {
-  id           String   @id @default(uuid())
-  follower_id  String
-  creator_id   String
-  status       String   @default("active") // pending | active
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
-  wonderer     User     @relation("Wonderer", fields: [follower_id], references: [id], onDelete: Cascade)
-  creator      User     @relation("WonderCreator", fields: [creator_id], references: [id], onDelete: Cascade)
+  id          String   @id @default(uuid())
+  follower_id String
+  creator_id  String
+  status      String   @default("active") // pending | active
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  wonderer    User     @relation("Wonderer", fields: [follower_id], references: [id], onDelete: Cascade)
+  creator     User     @relation("WonderCreator", fields: [creator_id], references: [id], onDelete: Cascade)
 
   @@unique([follower_id, creator_id])
   @@index([follower_id])
@@ -362,8 +366,8 @@ model ViewHistory {
 model VideoView {
   id          String   @id @default(uuid())
   video_id    String
-  viewer_key  String   // "u:{userId}" ou "d:{deviceId}" (anonyme)
-  time_bucket Int      // Unix timestamp / 1800 (fenêtre 30 min)
+  viewer_key  String // "u:{userId}" ou "d:{deviceId}" (anonyme)
+  time_bucket Int // Unix timestamp / 1800 (fenêtre 30 min)
   created_at  DateTime @default(now())
   video       Video    @relation(fields: [video_id], references: [id], onDelete: Cascade)
 
@@ -415,33 +419,33 @@ model Product {
 }
 
 model ProductQuestion {
-  id         String    @id @default(uuid())
-  product_id String
-  user_id    String
-  question   String
-  answer     String?
+  id          String    @id @default(uuid())
+  product_id  String
+  user_id     String
+  question    String
+  answer      String?
   answered_at DateTime?
-  created_at DateTime  @default(now())
-  product    Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
-  user       User      @relation("ProductQuestionAuthor", fields: [user_id], references: [id], onDelete: Cascade)
+  created_at  DateTime  @default(now())
+  product     Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  user        User      @relation("ProductQuestionAuthor", fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([product_id])
   @@index([user_id])
 }
 
 model Order {
-  id                      String         @id @default(uuid())
+  id                      String             @id @default(uuid())
   user_id                 String
   seller_id               String? // Vendeur principal (pour optimisation)
-  status                  String         @default("pending") // pending, pending_payment, paid, processing, preparing, in_transit, delivered, completed, cancelled, refunded
-  currency                String         @default("XOF")
+  status                  String             @default("pending") // pending, pending_payment, paid, processing, preparing, in_transit, delivered, completed, cancelled, refunded
+  currency                String             @default("XOF")
   display_currency        String? // Devise d'affichage
   exchange_rate           Float? // Taux de change au moment de la commande
   subtotal_amount         Float // Sous-total produits
-  shipping_amount         Float          @default(0) // Frais livraison
-  tax_amount              Float          @default(0) // Taxes
+  shipping_amount         Float              @default(0) // Frais livraison
+  tax_amount              Float              @default(0) // Taxes
   total_amount            Float
-  payment_status          String         @default("pending") // pending, paid, failed, refunded, escrow, released
+  payment_status          String             @default("pending") // pending, paid, failed, refunded, escrow, released
   payment_method          String? // orange_money, mtn_money, wave, flutterwave, paystack, card, cod, wallet
   transaction_id          String? // ID transaction paiement
   provider                String? // Provider paiement utilisé
@@ -451,20 +455,20 @@ model Order {
   carrier                 String? // Transporteur
   estimated_delivery_date DateTime? // Date livraison estimée
   actual_delivery_date    DateTime? // Date livraison réelle
-  escrow_status           String         @default("pending") // pending, held, released, refunded
+  escrow_status           String             @default("pending") // pending, held, released, refunded
   dispute_status          String? // open, investigating, resolved, rejected
   customer_notes          String? // Notes client
-  source                  String         @default("marketplace") // marketplace | live (Acheté pendant live)
+  source                  String             @default("marketplace") // marketplace | live (Acheté pendant live)
   live_id                 String? // ID du live si source = live
   logistics_fee           Float? // Commission logistique plateforme
   insurance_amount        Float? // Assurance livraison payante
   priority_fee            Float? // Traitement prioritaire payant
-  created_at              DateTime       @default(now())
-  updated_at              DateTime       @updatedAt
+  created_at              DateTime           @default(now())
+  updated_at              DateTime           @updatedAt
   paid_at                 DateTime?
   shipped_at              DateTime?
   delivered_at            DateTime?
-  user                    User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user                    User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
   items                   OrderItem[]
   shipping                Shipping?
   refunds                 Refund[]
@@ -555,58 +559,60 @@ model UserBadge {
 }
 
 model LiveStream {
-  id                  String                  @id @default(uuid())
-  creator_id          String
-  creator_name        String
-  title               String
-  description         String?
-  category            String?
-  stream_url          String
-  stream_token        String? // Token sécurisé Agora/LiveKit/IVS
-  stream_key          String? // Clé RTMP (AWS IVS / Mux / Agora)
-  rtmp_url            String? // URL d’ingestion RTMP
-  playback_url        String? // URL de lecture HLS/DASH
-  thumbnail_url       String?
-  replay_url          String?
-  status              String                  @default("live") // scheduled | live | ended
-  viewers_count       Int                     @default(0)
-  peak_viewers        Int                     @default(0)
-  total_watch_time    Int? // Somme des temps de visionnage (secondes)
-  started_at          DateTime                @default(now())
-  ended_at            DateTime?
-  duration_minutes    Int?
-  total_gifts_amount  Float                   @default(0)
-  total_tips_amount   Float                   @default(0)
-  total_messages      Int                     @default(0)
-  total_likes         Int                     @default(0)
-  is_featured         Boolean                 @default(false)
-  region              String? // Pays/région (SN, CI, FR…)
-  language            String? // fr, en, ar…
-  room_id             String                  @unique
-  scheduled_at        DateTime? // Si status = scheduled
-  tags                String[]                // CDC: max 5
-  age_restriction     String                  @default("all") // all | 13+ | 18+
-  donations_enabled   Boolean                 @default(true)
-  private_mode        Boolean                 @default(false)
-  goal_amount         Float?
-  goal_target         Float?
-  delay_seconds       Int                     @default(0)
-  max_quality         String                  @default("auto")
-  replay_retention_days Int                   @default(14)
-  created_at          DateTime                @default(now())
-  updated_at          DateTime                @updatedAt
-  chat_messages       LiveChat[]
-  gifts               LiveGift[]
-  tips                LiveTip[]
-  replay_chapters     LiveReplayChapter[]
-  bans                LiveStreamBan[]
-  viewers             LiveViewer[]
-  moderation_settings LiveModerationSettings?
-  moderators          LiveModerator[]
-  likes               LiveLike[]
-  top_donors          LiveTopDonor[]
-  analytics           LiveAnalytics?
-  creator             User                    @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+  id                    String                  @id @default(uuid())
+  creator_id            String
+  creator_name          String
+  title                 String
+  description           String?
+  category              String?
+  stream_url            String
+  stream_token          String? // Token sécurisé Agora/LiveKit/IVS
+  stream_key            String? // Clé RTMP (AWS IVS / Mux / Agora)
+  rtmp_url              String? // URL d’ingestion RTMP
+  playback_url          String? // URL de lecture HLS/DASH
+  thumbnail_url         String?
+  replay_url            String?
+  status                String                  @default("live") // scheduled | live | ended
+  viewers_count         Int                     @default(0)
+  peak_viewers          Int                     @default(0)
+  total_watch_time      Int? // Somme des temps de visionnage (secondes)
+  started_at            DateTime                @default(now())
+  ended_at              DateTime?
+  duration_minutes      Int?
+  total_gifts_amount    Float                   @default(0)
+  total_tips_amount     Float                   @default(0)
+  total_messages        Int                     @default(0)
+  total_likes           Int                     @default(0)
+  is_featured           Boolean                 @default(false)
+  region                String? // Pays/région (SN, CI, FR…)
+  language              String? // fr, en, ar…
+  room_id               String                  @unique
+  scheduled_at          DateTime? // Si status = scheduled
+  tags                  String[] // CDC: max 5
+  age_restriction       String                  @default("all") // all | 13+ | 18+
+  donations_enabled     Boolean                 @default(true)
+  private_mode          Boolean                 @default(false)
+  goal_amount           Float?
+  goal_target           Float?
+  delay_seconds         Int                     @default(0)
+  max_quality           String                  @default("auto")
+  replay_retention_days Int                     @default(14)
+  created_at            DateTime                @default(now())
+  updated_at            DateTime                @updatedAt
+  chat_messages         LiveChat[]
+  gifts                 LiveGift[]
+  tips                  LiveTip[]
+  replay_chapters       LiveReplayChapter[]
+  bans                  LiveStreamBan[]
+  viewers               LiveViewer[]
+  moderation_settings   LiveModerationSettings?
+  moderators            LiveModerator[]
+  likes                 LiveLike[]
+  top_donors            LiveTopDonor[]
+  analytics             LiveAnalytics?
+  polls                 LivePoll[]
+  cohosts               LiveCoHost[]
+  creator               User                    @relation(fields: [creator_id], references: [id], onDelete: Cascade)
 
   @@index([creator_id])
   @@index([status])
@@ -676,28 +682,28 @@ model LiveLike {
 }
 
 model LiveReplayChapter {
-  id           String     @id @default(uuid())
-  live_id      String
-  title        String
+  id            String     @id @default(uuid())
+  live_id       String
+  title         String
   start_seconds Int
-  end_seconds  Int?
-  created_at   DateTime   @default(now())
-  live_stream  LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
+  end_seconds   Int?
+  created_at    DateTime   @default(now())
+  live_stream   LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
 
   @@index([live_id])
 }
 
 model LiveCreatorSubscription {
-  id             String   @id @default(uuid())
-  creator_id     String
-  subscriber_id  String
-  amount_fcfa    Float
-  status         String   @default("active")
-  started_at     DateTime @default(now())
+  id              String    @id @default(uuid())
+  creator_id      String
+  subscriber_id   String
+  amount_fcfa     Float
+  status          String    @default("active")
+  started_at      DateTime  @default(now())
   next_billing_at DateTime?
-  created_at     DateTime @default(now())
-  creator        User     @relation("LiveSubscriptionsCreated", fields: [creator_id], references: [id], onDelete: Cascade)
-  subscriber     User     @relation("LiveSubscriptionsGiven", fields: [subscriber_id], references: [id], onDelete: Cascade)
+  created_at      DateTime  @default(now())
+  creator         User      @relation("LiveSubscriptionsCreated", fields: [creator_id], references: [id], onDelete: Cascade)
+  subscriber      User      @relation("LiveSubscriptionsGiven", fields: [subscriber_id], references: [id], onDelete: Cascade)
 
   @@unique([creator_id, subscriber_id])
   @@index([creator_id])
@@ -796,25 +802,83 @@ model LiveTip {
 }
 
 model LiveChat {
-  id            String     @id @default(uuid())
-  live_id       String
-  sender_id     String
-  sender_name   String
-  sender_avatar String?
-  sender_role   String     @default("viewer") // viewer | moderator | creator
-  message       String
-  message_type  String     @default("text") // text | gift | system
-  is_deleted    Boolean    @default(false)
-  is_pinned     Boolean    @default(false)
+  id             String     @id @default(uuid())
+  live_id        String
+  sender_id      String
+  sender_name    String
+  sender_avatar  String?
+  sender_role    String     @default("viewer") // viewer | moderator | creator
+  message        String
+  message_type   String     @default("text") // text | gift | system | question
+  is_deleted     Boolean    @default(false)
+  is_pinned      Boolean    @default(false)
   pin_expires_at DateTime? // CDC: auto-unpin après 30s (premium) / 2min (vip)
-  is_moderated  Boolean    @default(false) // Modéré (caché ou averti)
-  created_date  DateTime   @default(now())
-  live_stream   LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
+  is_moderated   Boolean    @default(false) // Modéré (caché ou averti)
+  is_question    Boolean    @default(false) // Question pour Q&A
+  is_answered    Boolean    @default(false) // Question répondue
+  created_date   DateTime   @default(now())
+  live_stream    LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
 
   @@index([live_id])
   @@index([sender_id])
   @@index([created_date])
   @@index([is_pinned])
+  @@index([is_question])
+}
+
+model LivePoll {
+  id          String         @id @default(uuid())
+  live_id     String
+  creator_id  String
+  question    String
+  options     Json // [{ text: "Option 1", votes: 0 }, { text: "Option 2", votes: 0 }]
+  total_votes Int            @default(0)
+  status      String         @default("active") // active | ended
+  created_at  DateTime       @default(now())
+  ended_at    DateTime?
+  live_stream LiveStream     @relation(fields: [live_id], references: [id], onDelete: Cascade)
+  creator     User           @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+  votes       LivePollVote[]
+
+  @@index([live_id])
+  @@index([creator_id])
+  @@index([status])
+}
+
+model LivePollVote {
+  id           String   @id @default(uuid())
+  poll_id      String
+  live_id      String
+  user_id      String
+  option_index Int // Index de l'option choisie (0, 1, 2...)
+  created_at   DateTime @default(now())
+  poll         LivePoll @relation(fields: [poll_id], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([poll_id, user_id])
+  @@index([poll_id])
+  @@index([live_id])
+  @@index([user_id])
+}
+
+model LiveCoHost {
+  id          String     @id @default(uuid())
+  live_id     String
+  creator_id  String // Créateur du live
+  cohost_id   String // Invité co-host
+  status      String     @default("pending") // pending | accepted | rejected | removed
+  invited_at  DateTime   @default(now())
+  accepted_at DateTime?
+  removed_at  DateTime?
+  live_stream LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
+  creator     User       @relation("LiveCoHostCreator", fields: [creator_id], references: [id], onDelete: Cascade)
+  cohost      User       @relation("LiveCoHostGuest", fields: [cohost_id], references: [id], onDelete: Cascade)
+
+  @@unique([live_id, cohost_id])
+  @@index([live_id])
+  @@index([creator_id])
+  @@index([cohost_id])
+  @@index([status])
 }
 
 model Wallet {
@@ -1384,22 +1448,22 @@ model EarlyAccessWaitlist {
 
 /// Early Access — dons / soutien financier pour AfriWonder
 model PlatformDonation {
-  id                 String   @id @default(uuid())
-  amount_fcfa        Int      // Montant en FCFA
-  donor_email        String?
-  donor_phone        String   // Obligatoire pour Orange Money / Mobile Money
-  donor_name         String?  // Nom complet ou prénom
-  donor_first_name   String?  // Prénom
-  donor_age          Int?    // Âge (optionnel)
-  donor_country      String?  // Pays
-  donor_city         String?  // Ville
-  donor_message      String?  @db.Text // Message optionnel pour remerciement
-  show_in_contributors Boolean @default(false) // Apparaître dans la liste des contributeurs
-  payment_method     String? // orange_money | mtn_money | stripe | manual
-  status             String   @default("pending") // pending | completed | failed
-  external_id        String?  // ID paiement externe (Orange Money, etc.)
-  created_at         DateTime @default(now())
-  completed_at       DateTime?
+  id                   String    @id @default(uuid())
+  amount_fcfa          Int // Montant en FCFA
+  donor_email          String?
+  donor_phone          String // Obligatoire pour Orange Money / Mobile Money
+  donor_name           String? // Nom complet ou prénom
+  donor_first_name     String? // Prénom
+  donor_age            Int? // Âge (optionnel)
+  donor_country        String? // Pays
+  donor_city           String? // Ville
+  donor_message        String?   @db.Text // Message optionnel pour remerciement
+  show_in_contributors Boolean   @default(false) // Apparaître dans la liste des contributeurs
+  payment_method       String? // orange_money | mtn_money | stripe | manual
+  status               String    @default("pending") // pending | completed | failed
+  external_id          String? // ID paiement externe (Orange Money, etc.)
+  created_at           DateTime  @default(now())
+  completed_at         DateTime?
 
   @@index([status])
   @@index([created_at])
@@ -1408,13 +1472,13 @@ model PlatformDonation {
 
 /// Early Access — feedback (bug, suggestion, commentaire)
 model PlatformFeedback {
-  id         String   @id @default(uuid())
-  type       String   // bug | suggestion | comment
-  content    String   @db.Text
-  email      String?
-  join_whatsapp Boolean @default(false)
-  join_mailing Boolean  @default(false)
-  created_at DateTime @default(now())
+  id            String   @id @default(uuid())
+  type          String // bug | suggestion | comment
+  content       String   @db.Text
+  email         String?
+  join_whatsapp Boolean  @default(false)
+  join_mailing  Boolean  @default(false)
+  created_at    DateTime @default(now())
 
   @@index([type])
   @@index([created_at])
@@ -1463,18 +1527,18 @@ model Moderation {
 
 /// CDC Modération: 3 strikes = ban. Grille sanctions Live Streaming Mali.
 model UserStrike {
-  id             String   @id @default(uuid())
-  user_id        String
-  infraction     String   // inappropriate_language | spam | violence | nudity | harassment | cp | copyright | fraud | algorithm_manipulation
-  severity       String   @default("medium") // low | medium | high | critical
-  reason         String   @db.Text
-  context_type   String?  // live | video | comment | chat
-  context_id     String?
-  issued_by      String   // admin_id ou système
-  suspension_days Int?    // 0 = ban immédiat, null = strike seul
-  suspension_hours Int?  // CDC: timeout court (ex. spam 1ère fois = 1h)
-  created_at     DateTime @default(now())
-  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id               String   @id @default(uuid())
+  user_id          String
+  infraction       String // inappropriate_language | spam | violence | nudity | harassment | cp | copyright | fraud | algorithm_manipulation
+  severity         String   @default("medium") // low | medium | high | critical
+  reason           String   @db.Text
+  context_type     String? // live | video | comment | chat
+  context_id       String?
+  issued_by        String // admin_id ou système
+  suspension_days  Int? // 0 = ban immédiat, null = strike seul
+  suspension_hours Int? // CDC: timeout court (ex. spam 1ère fois = 1h)
+  created_at       DateTime @default(now())
+  user             User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@index([infraction])
@@ -1528,32 +1592,32 @@ model OrderPayment {
 }
 
 model OrderReview {
-  id             String     @id @default(uuid())
-  order_id       String
-  order_item_id  String?    @unique // Item spécifique de la commande (unique pour one-to-one)
-  product_id     String
-  seller_id      String
-  user_id        String
-  product_rating      Int // Note produit (1-5)
-  seller_rating       Int? // Note vendeur (1-5)
-  quality_rating      Int? // CDC: critère qualité
+  id                   String     @id @default(uuid())
+  order_id             String
+  order_item_id        String?    @unique // Item spécifique de la commande (unique pour one-to-one)
+  product_id           String
+  seller_id            String
+  user_id              String
+  product_rating       Int // Note produit (1-5)
+  seller_rating        Int? // Note vendeur (1-5)
+  quality_rating       Int? // CDC: critère qualité
   communication_rating Int? // CDC: critère communication
   delivery_rating      Int? // CDC: critère délai livraison
-  conformity_rating   Int? // CDC: critère conformité
-  title               String?
-  content             String
-  photos              String[]   @default([])
-  seller_reply        String? // CDC: réponse vendeur aux avis
-  seller_reply_at     DateTime?
-  is_verified         Boolean    @default(true) // Acheteur vérifié (a acheté)
-  helpful_count       Int        @default(0)
-  status              String     @default("approved") // pending, approved, rejected
-  created_at     DateTime   @default(now())
-  updated_at     DateTime   @updatedAt
-  order          Order      @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  order_item     OrderItem? @relation(fields: [order_item_id], references: [id], onDelete: SetNull)
-  product        Product    @relation(fields: [product_id], references: [id], onDelete: Cascade)
-  user           User       @relation("OrderReviewUser", fields: [user_id], references: [id], onDelete: Cascade)
+  conformity_rating    Int? // CDC: critère conformité
+  title                String?
+  content              String
+  photos               String[]   @default([])
+  seller_reply         String? // CDC: réponse vendeur aux avis
+  seller_reply_at      DateTime?
+  is_verified          Boolean    @default(true) // Acheteur vérifié (a acheté)
+  helpful_count        Int        @default(0)
+  status               String     @default("approved") // pending, approved, rejected
+  created_at           DateTime   @default(now())
+  updated_at           DateTime   @updatedAt
+  order                Order      @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  order_item           OrderItem? @relation(fields: [order_item_id], references: [id], onDelete: SetNull)
+  product              Product    @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  user                 User       @relation("OrderReviewUser", fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([order_id, product_id]) // Un avis par produit par commande
   @@index([order_id])
@@ -1569,8 +1633,8 @@ model OrderBuyerReview {
   order_id   String
   seller_id  String
   buyer_id   String
-  rating     Int      // 1-5
-  content    String?  // Commentaire optionnel
+  rating     Int // 1-5
+  content    String? // Commentaire optionnel
   created_at DateTime @default(now())
   order      Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
   seller     User     @relation("BuyerReviewSeller", fields: [seller_id], references: [id], onDelete: Cascade)
@@ -1674,8 +1738,8 @@ model Withdrawal {
   amount                Float
   currency              String    @default("XOF")
   payment_method        String    @default("orange_money") // orange_money | mtn_money | wave | paypal
-  orange_money_phone    String?   // Téléphone (Orange/MTN/Wave)
-  paypal_email          String?   // Email PayPal (si payment_method=paypal)
+  orange_money_phone    String? // Téléphone (Orange/MTN/Wave)
+  paypal_email          String? // Email PayPal (si payment_method=paypal)
   status                String    @default("pending") // pending, processing, completed, failed, cancelled
   transaction_reference String? // Référence du transfert
   admin_notes           String? // Notes de l'admin
@@ -1758,11 +1822,11 @@ model SellerProfile {
   status            String   @default("pending") // pending | active | suspended | blocked — admin approuve
   country           String?
   city              String?
-  phone             String?  // Téléphone
-  whatsapp          String?  // WhatsApp
-  tiktok_url        String?  // TikTok
-  instagram_url     String?  // Instagram
-  x_url             String?  // X (Twitter)
+  phone             String? // Téléphone
+  whatsapp          String? // WhatsApp
+  tiktok_url        String? // TikTok
+  instagram_url     String? // Instagram
+  x_url             String? // X (Twitter)
   subscription_tier String   @default("free") // CDC: free | starter | business | enterprise
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt
@@ -1777,18 +1841,18 @@ model SellerProfile {
 
 /// Phase 1 Marketplace: abonnements payants (comme CreatorSubscription)
 model SellerSubscription {
-  id              String   @id @default(uuid())
-  seller_id       String
-  tier            String   // free | starter | business | enterprise
-  price_fcfa      Float
-  status          String   @default("active") // active | cancelled | expired
-  starts_at       DateTime
-  expires_at      DateTime
-  payment_method  String?  // wallet | orange_money
-  transaction_id  String?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
-  seller          User     @relation("SellerSubscriptions", fields: [seller_id], references: [id], onDelete: Cascade)
+  id             String   @id @default(uuid())
+  seller_id      String
+  tier           String // free | starter | business | enterprise
+  price_fcfa     Float
+  status         String   @default("active") // active | cancelled | expired
+  starts_at      DateTime
+  expires_at     DateTime
+  payment_method String? // wallet | orange_money
+  transaction_id String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+  seller         User     @relation("SellerSubscriptions", fields: [seller_id], references: [id], onDelete: Cascade)
 
   @@index([seller_id])
   @@index([status, expires_at])
@@ -2046,12 +2110,12 @@ model UserLevel {
 
 /// Missions journalières (rétention) — récompense = XP / visibilité
 model DailyMissionCompletion {
-  id         String   @id @default(uuid())
-  user_id    String
-  mission_type String  // post_video | reach_1000_views | like_5_videos
+  id             String   @id @default(uuid())
+  user_id        String
+  mission_type   String // post_video | reach_1000_views | like_5_videos
   completed_date DateTime @db.Date
-  created_at DateTime @default(now())
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  created_at     DateTime @default(now())
+  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([user_id, mission_type, completed_date])
   @@index([user_id])
@@ -4249,30 +4313,30 @@ model ConsentLog {
 // =====================================================
 
 model AdCampaign {
-  id               String       @id @default(uuid())
+  id               String         @id @default(uuid())
   advertiser_id    String
   name             String
-  status           String       @default("draft") // draft | pending_review | approved | active | paused | expired
-  ad_type          String       @default("in_feed") // in_feed | sponsored_video | business_campaign | story
-  duration_days    Int          // 1, 3, 7, 14, 30, 60, 90
+  status           String         @default("draft") // draft | pending_review | approved | active | paused | expired
+  ad_type          String         @default("in_feed") // in_feed | sponsored_video | business_campaign | story
+  duration_days    Int // 1, 3, 7, 14, 30, 60, 90
   price_fcfa       Float
   starts_at        DateTime
   ends_at          DateTime
-  target_countries String[]     @default([])
-  target_cities    String[]     @default([])
+  target_countries String[]       @default([])
+  target_cities    String[]       @default([])
   target_age_min   Int?
   target_age_max   Int?
-  target_gender    String?      // male | female | all
-  target_interests String[]     @default([])
-  total_views      Int          @default(0)
-  total_clicks     Int          @default(0)
-  total_spent_fcfa Float        @default(0)
-  created_at       DateTime     @default(now())
-  updated_at       DateTime     @updatedAt
-  advertiser       User         @relation(fields: [advertiser_id], references: [id], onDelete: Cascade)
+  target_gender    String? // male | female | all
+  target_interests String[]       @default([])
+  total_views      Int            @default(0)
+  total_clicks     Int            @default(0)
+  total_spent_fcfa Float          @default(0)
+  created_at       DateTime       @default(now())
+  updated_at       DateTime       @updatedAt
+  advertiser       User           @relation(fields: [advertiser_id], references: [id], onDelete: Cascade)
   creatives        AdCreative[]
-  impressions       AdImpression[]
-  clicks            AdClick[]
+  impressions      AdImpression[]
+  clicks           AdClick[]
 
   @@index([advertiser_id])
   @@index([status])
@@ -4281,36 +4345,36 @@ model AdCampaign {
 }
 
 model AdCreative {
-  id             String      @id @default(uuid())
-  campaign_id    String
-  media_type     String      // video | image
-  media_url      String
-  thumbnail_url  String?
-  title          String?
-  description    String?
-  cta_type       String      @default("visit") // buy | visit | install
-  cta_url        String?
-  cta_label      String?     @default("Découvrir")
-  is_approved    Boolean     @default(false)
-  approved_at    DateTime?
-  approved_by    String?
+  id               String         @id @default(uuid())
+  campaign_id      String
+  media_type       String // video | image
+  media_url        String
+  thumbnail_url    String?
+  title            String?
+  description      String?
+  cta_type         String         @default("visit") // buy | visit | install
+  cta_url          String?
+  cta_label        String?        @default("Découvrir")
+  is_approved      Boolean        @default(false)
+  approved_at      DateTime?
+  approved_by      String?
   rejection_reason String?
-  created_at    DateTime    @default(now())
-  updated_at     DateTime    @updatedAt
-  campaign       AdCampaign  @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
-  impressions    AdImpression[]
-  clicks         AdClick[]
+  created_at       DateTime       @default(now())
+  updated_at       DateTime       @updatedAt
+  campaign         AdCampaign     @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+  impressions      AdImpression[]
+  clicks           AdClick[]
 
   @@index([campaign_id])
   @@index([is_approved])
 }
 
 model AdImpression {
-  id          String    @id @default(uuid())
+  id          String     @id @default(uuid())
   creative_id String
   campaign_id String
-  viewer_key  String    // "u:{userId}" ou "d:{deviceId}"
-  viewed_at   DateTime  @default(now())
+  viewer_key  String // "u:{userId}" ou "d:{deviceId}"
+  viewed_at   DateTime   @default(now())
   creative    AdCreative @relation(fields: [creative_id], references: [id], onDelete: Cascade)
   campaign    AdCampaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
 
@@ -4320,11 +4384,11 @@ model AdImpression {
 }
 
 model AdClick {
-  id          String    @id @default(uuid())
+  id          String     @id @default(uuid())
   creative_id String
   campaign_id String
   viewer_key  String
-  clicked_at  DateTime  @default(now())
+  clicked_at  DateTime   @default(now())
   creative    AdCreative @relation(fields: [creative_id], references: [id], onDelete: Cascade)
   campaign    AdCampaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
 
@@ -4334,48 +4398,48 @@ model AdClick {
 }
 
 model CreatorSubscription {
-  id              String   @id @default(uuid())
-  creator_id      String
-  tier            String   // basic | pro
-  price_fcfa      Float
-  status          String   @default("active") // active | cancelled | expired
-  starts_at       DateTime
-  expires_at      DateTime
-  payment_method  String?
-  transaction_id  String?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
-  creator         User     @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+  id             String   @id @default(uuid())
+  creator_id     String
+  tier           String // basic | pro
+  price_fcfa     Float
+  status         String   @default("active") // active | cancelled | expired
+  starts_at      DateTime
+  expires_at     DateTime
+  payment_method String?
+  transaction_id String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+  creator        User     @relation(fields: [creator_id], references: [id], onDelete: Cascade)
 
   @@index([creator_id])
   @@index([status, expires_at])
 }
 
 model CreatorSupport {
-  id              String   @id @default(uuid())
-  supporter_id    String
-  creator_id     String
-  amount_fcfa     Float
-  message         String?
-  payment_method  String   @default("wallet")
-  transaction_id  String?
-  creator_earnings Float   @default(0)
-  platform_fee    Float    @default(0)
-  created_at      DateTime @default(now())
-  supporter       User     @relation("CreatorSupportGiven", fields: [supporter_id], references: [id], onDelete: Cascade)
-  creator         User     @relation("CreatorSupportReceived", fields: [creator_id], references: [id], onDelete: Cascade)
+  id               String   @id @default(uuid())
+  supporter_id     String
+  creator_id       String
+  amount_fcfa      Float
+  message          String?
+  payment_method   String   @default("wallet")
+  transaction_id   String?
+  creator_earnings Float    @default(0)
+  platform_fee     Float    @default(0)
+  created_at       DateTime @default(now())
+  supporter        User     @relation("CreatorSupportGiven", fields: [supporter_id], references: [id], onDelete: Cascade)
+  creator          User     @relation("CreatorSupportReceived", fields: [creator_id], references: [id], onDelete: Cascade)
 
   @@index([creator_id])
   @@index([supporter_id])
 }
 
 model PlatformRevenue {
-  id            String   @id @default(uuid())
-  source        String   // ads | gifts_tips | marketplace
-  amount_fcfa   Float
+  id             String   @id @default(uuid())
+  source         String // ads | gifts_tips | marketplace
+  amount_fcfa    Float
   reference_type String?
-  reference_id  String?
-  recorded_at   DateTime @default(now())
+  reference_id   String?
+  recorded_at    DateTime @default(now())
 
   @@index([source])
   @@index([recorded_at])
@@ -4383,16 +4447,16 @@ model PlatformRevenue {
 
 // Vues qualifiées: ≥5 sec, utilisateur réel (monétisation vidéo)
 model QualifiedVideoView {
-  id                 String   @id @default(uuid())
-  video_id           String
-  viewer_key         String   // u:{userId} ou d:{deviceId}
-  watch_seconds      Int      @default(0)
-  watch_percent      Float?
-  scroll_slow        Boolean? // scroll lent détecté
+  id                   String   @id @default(uuid())
+  video_id             String
+  viewer_key           String // u:{userId} ou d:{deviceId}
+  watch_seconds        Int      @default(0)
+  watch_percent        Float?
+  scroll_slow          Boolean? // scroll lent détecté
   interaction_detected Boolean? // like/comment/share détecté
-  time_bucket        Int      // Unix / 1800
-  created_at         DateTime @default(now())
-  video              Video    @relation(fields: [video_id], references: [id], onDelete: Cascade)
+  time_bucket          Int // Unix / 1800
+  created_at           DateTime @default(now())
+  video                Video    @relation(fields: [video_id], references: [id], onDelete: Cascade)
 
   @@unique([video_id, viewer_key, time_bucket])
   @@index([video_id])
@@ -4404,7 +4468,7 @@ model ViralBonus {
   id          String    @id @default(uuid())
   video_id    String
   creator_id  String
-  milestone   String    // 100k | 500k | 1m
+  milestone   String // 100k | 500k | 1m
   amount_fcfa Float
   status      String    @default("pending") // pending | paid
   paid_at     DateTime?
@@ -4419,7 +4483,7 @@ model CreatorReferralReward {
   id            String    @id @default(uuid())
   user_id       String
   invites_count Int
-  reward_type   String    // early_supporter | visibility_boost | algorithm_priority | special_badge | fast_monetization
+  reward_type   String // early_supporter | visibility_boost | algorithm_priority | special_badge | fast_monetization
   reward_value  String?
   claimed_at    DateTime?
   created_at    DateTime  @default(now())

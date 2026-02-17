@@ -97,6 +97,19 @@ router.get('/discovery', optionalAuth, async (req: AuthRequest, res, next) => {
   }
 });
 
+// GET /api/live/recommendations - Recommandations intelligentes basées sur l'activité utilisateur
+router.get('/recommendations', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 10;
+    const excludeLiveId = req.query.excludeLiveId as string | undefined;
+    const userId = req.user?.id ?? null;
+    const result = await liveService.getRecommendations(userId, { limit, excludeLiveId });
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // GET /api/live/categories - CDC: catégories, langues, restriction âge
 router.get('/categories', (_req, res) => {
   res.json({ success: true, data: { categories: LIVE_CATEGORIES, languages: LIVE_LANGUAGES, ageRestrictions: LIVE_AGE_RESTRICTIONS } });
@@ -491,6 +504,19 @@ router.patch('/:id/chat/:messageId/pin', authenticate, async (req: AuthRequest, 
   }
 });
 
+// PATCH /api/live/:id/chat/:messageId - Mettre à jour un message (is_answered, is_question, etc.)
+router.patch('/:id/chat/:messageId', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const streamId = param(req, 'id');
+    const messageId = param(req, 'messageId');
+    const updates = req.body; // { is_answered, is_question, etc. }
+    const message = await liveService.updateChatMessage(streamId, messageId, req.user!.id, updates);
+    res.json({ success: true, data: message });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // DELETE /api/live/:id/replay - Supprimer l’URL de replay (créateur)
 router.delete('/:id/replay', authenticate, async (req: AuthRequest, res, next) => {
   try {
@@ -528,6 +554,115 @@ router.put('/:id/viewers', async (req, res, next) => {
     const { count } = req.body;
     const stream = await liveService.updateViewers(param(req, 'id'), count);
     res.json({ success: true, data: stream });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/:id/polls - Créer un sondage
+router.post('/:id/polls', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const streamId = param(req, 'id');
+    const { question, options } = req.body;
+    if (!question || !Array.isArray(options) || options.length < 2) {
+      return res.status(400).json({ success: false, error: { message: 'Question et au moins 2 options requises' } });
+    }
+    const poll = await liveService.createPoll(streamId, req.user!.id, { question, options });
+    res.json({ success: true, data: poll });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/:id/polls/:pollId/vote - Voter pour un sondage
+router.post('/:id/polls/:pollId/vote', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const streamId = param(req, 'id');
+    const pollId = param(req, 'pollId');
+    const { optionIndex } = req.body;
+    if (typeof optionIndex !== 'number' || optionIndex < 0) {
+      return res.status(400).json({ success: false, error: { message: 'optionIndex invalide' } });
+    }
+    const result = await liveService.votePoll(streamId, pollId, req.user!.id, optionIndex);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/live/:id/polls - Récupérer les sondages actifs
+router.get('/:id/polls', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const streamId = param(req, 'id');
+    const userId = req.user?.id ?? null;
+    const polls = await liveService.getPolls(streamId, userId);
+    res.json({ success: true, data: polls });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/live/:id/polls/:pollId/my-vote - Récupérer le vote de l'utilisateur pour un poll
+router.get('/:id/polls/:pollId/my-vote', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const streamId = param(req, 'id');
+    const pollId = param(req, 'pollId');
+    const userId = req.user!.id;
+    const vote = await liveService.getUserPollVote(streamId, pollId, userId);
+    res.json({ success: true, data: vote });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/:id/polls/:pollId/end - Terminer un sondage
+router.post('/:id/polls/:pollId/end', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const streamId = param(req, 'id');
+    const pollId = param(req, 'pollId');
+    const poll = await liveService.endPoll(streamId, pollId, req.user!.id);
+    res.json({ success: true, data: poll });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/:id/cohost/invite - Inviter un co-host
+router.post('/:id/cohost/invite', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const streamId = param(req, 'id');
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ success: false, error: { message: 'userId requis' } });
+    }
+    const invite = await liveService.inviteCoHost(streamId, req.user!.id, userId);
+    res.json({ success: true, data: invite });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/:id/cohost/accept - Accepter une invitation co-host
+router.post('/:id/cohost/accept', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const streamId = param(req, 'id');
+    const result = await liveService.acceptCoHostInvite(streamId, req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/:id/cohost/remove - Retirer un co-host
+router.post('/:id/cohost/remove', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const streamId = param(req, 'id');
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ success: false, error: { message: 'userId requis' } });
+    }
+    await liveService.removeCoHost(streamId, req.user!.id, userId);
+    res.json({ success: true });
   } catch (error: any) {
     next(error);
   }

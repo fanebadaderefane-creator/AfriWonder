@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Radio, Plus, Calendar, Eye, ArrowLeft, Play } from 'lucide-react';
+import { Radio, Plus, Calendar, Eye, ArrowLeft, Play, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
@@ -46,6 +46,14 @@ export default function Lives() {
       return res?.streams ?? res?.data?.streams ?? [];
     },
     refetchInterval: 10000
+  });
+
+  // Récupérer les recommandations
+  const { data: recommendations = [] } = useQuery({
+    queryKey: ['live-recommendations', user?.id],
+    queryFn: () => api.live.getRecommendations({ limit: 5 }),
+    enabled: !!user,
+    refetchInterval: 30000
   });
 
   const { data: discoveryData } = useQuery({
@@ -175,6 +183,44 @@ export default function Lives() {
                 {c.name}
               </button>
             ))}
+          </div>
+        )}
+
+        {/* Recommandations personnalisées */}
+        {recommendations.length > 0 && (
+          <div>
+            <h2 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-orange-500" />
+              Recommandé pour vous
+            </h2>
+            <div className="space-y-3">
+              {recommendations.map((live) => (
+                <Link key={live.id} to={`${createPageUrl('LiveView')}?id=${live.id}`}>
+                  <motion.div whileHover={{ scale: 1.02 }} className="bg-white rounded-xl overflow-hidden shadow-sm border-2 border-orange-200">
+                    <div className="relative aspect-video bg-gradient-to-br from-orange-500 to-red-500">
+                      <img src={live.thumbnail_url || 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=600'} className="w-full h-full object-cover" alt="" />
+                      <div className="absolute top-3 left-3 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold flex items-center gap-1 animate-pulse">
+                        <Radio className="w-3 h-3" /> LIVE
+                      </div>
+                      <div className="absolute bottom-3 left-3 bg-black/60 text-white px-2 py-1 rounded text-xs flex items-center gap-1">
+                        <Eye className="w-3 h-3" /> {live.viewers_count || 0}
+                      </div>
+                    </div>
+                    <div className="p-4">
+                      <h3 className="font-semibold text-gray-800 mb-1">{live.title}</h3>
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <span>{live.creator?.username || live.creator_name || 'Créateur'}</span>
+                        {live.category && (
+                          <Badge variant="outline" className="text-xs">
+                            {live.category}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                </Link>
+              ))}
+            </div>
           </div>
         )}
 

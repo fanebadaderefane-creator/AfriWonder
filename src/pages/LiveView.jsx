@@ -4,13 +4,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Send, Gift, Eye, Shield, X, Volume2, VolumeX, Languages, Heart, ThumbsUp, Flame, Download, Share2, Flag, Maximize2 } from 'lucide-react';
+import { ArrowLeft, Send, Gift, Eye, Shield, X, Volume2, VolumeX, Languages, Heart, ThumbsUp, Flame, Download, Share2, Flag, Maximize2, BarChart3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import GiftAnimation from '../components/live/GiftAnimation';
+import AdvancedGiftAnimation from '../components/live/AdvancedGiftAnimation';
 import LiveReplayPlayer from '../components/live/LiveReplayPlayer';
 import { useAgoraAudience } from '@/hooks/useAgora';
 import { useLiveSocket } from '@/hooks/useLiveSocket';
@@ -47,6 +48,8 @@ export default function LiveView() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason] = useState('');
   const [reportDescription, setReportDescription] = useState('');
+  const [showPolls, setShowPolls] = useState(false);
+  const [activePolls, setActivePolls] = useState([]);
   const chatEndRef = useRef(null);
   const sessionIdRef = useRef(null);
   const heartbeatRef = useRef(null);
@@ -71,6 +74,20 @@ export default function LiveView() {
     enabled: !!liveId,
     refetchInterval: 30000,
   });
+
+  // Récupérer les polls actifs (avec votes utilisateur si connecté)
+  const { data: pollsData = [] } = useQuery({
+    queryKey: ['live-polls', liveId, user?.id],
+    queryFn: () => api.live.getPolls(liveId),
+    enabled: !!liveId && live?.status === 'live',
+    refetchInterval: 5000,
+  });
+
+  useEffect(() => {
+    if (pollsData && pollsData.length > 0) {
+      setActivePolls(pollsData);
+    }
+  }, [pollsData]);
 
   useLiveSocket({
     streamId: liveId,
@@ -129,6 +146,23 @@ export default function LiveView() {
     },
     onBanned: (payload) => {
       if (payload?.userId === user?.id) setIsBanned(true);
+    },
+    onPollCreated: (poll) => {
+      setActivePolls(prev => [...prev, poll]);
+      toast.info('Nouveau sondage disponible !');
+      // Rafraîchir les polls pour récupérer le vote utilisateur
+      queryClient.invalidateQueries({ queryKey: ['live-polls', liveId] });
+    },
+    onPollUpdated: (poll) => {
+      setActivePolls(prev => prev.map(p => p.id === poll.id ? {
+        ...poll,
+        userVote: poll.userVote ?? p.userVote
+      } : p));
+      // Rafraîchir les polls pour récupérer le vote utilisateur
+      queryClient.invalidateQueries({ queryKey: ['live-polls', liveId] });
+    },
+    onPollEnded: (poll) => {
+      setActivePolls(prev => prev.filter(p => p.id !== poll.id));
     },
   });
 
@@ -339,11 +373,11 @@ export default function LiveView() {
   }, [messages]);
 
   if (!live) {
-    return <div className="h-screen flex items-center justify-center text-white bg-black">Live non trouvé</div>;
+    return <div className="h-[100dvh] flex items-center justify-center text-white bg-black">Live non trouvé</div>;
   }
 
   return (
-    <div className="h-screen flex flex-col bg-black overflow-hidden">
+    <div className="h-[100dvh] flex flex-col bg-black overflow-hidden">
       {/* Video Stream: Agora si token disponible, sinon placeholder */}
       <div ref={videoAreaRef} className="relative flex-1 bg-gradient-to-br from-gray-900 to-black flex items-center justify-center overflow-hidden">
         {hasAgora ? (
@@ -543,19 +577,23 @@ export default function LiveView() {
           </div>
         </div>
 
-        {/* Gift Animations */}
+        {/* Gift Animations - Utiliser AdvancedGiftAnimation pour premium/vip */}
         <AnimatePresence>
-          {giftAnimations.map(anim => (
-            <GiftAnimation
-              key={anim.id}
-              gift={anim.gift}
-              position={anim.position}
-              tier={anim.tier}
-              onComplete={() => {
-                setGiftAnimations(prev => prev.filter(g => g.id !== anim.id));
-              }}
-            />
-          ))}
+          {giftAnimations.map(anim => {
+            const useAdvanced = anim.tier === 'premium' || anim.tier === 'vip';
+            const AnimationComponent = useAdvanced ? AdvancedGiftAnimation : GiftAnimation;
+            return (
+              <AnimationComponent
+                key={anim.id}
+                gift={anim.gift}
+                position={anim.position}
+                tier={anim.tier}
+                onComplete={() => {
+                  setGiftAnimations(prev => prev.filter(g => g.id !== anim.id));
+                }}
+              />
+            );
+          })}
         </AnimatePresence>
       </div>
 
@@ -701,6 +739,21 @@ export default function LiveView() {
               >
                 <Gift className="w-3 h-3" />
               </Button>
+              {activePolls.length > 0 && (
+                <Button
+                  onClick={() => setShowPolls(!showPolls)}
+                  size="icon"
+                  className="h-8 w-8 bg-purple-600 hover:bg-purple-700 relative"
+                  title="Sondages"
+                >
+                  <BarChart3 className="w-3 h-3" />
+                  {activePolls.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+                      {activePolls.length}
+                    </span>
+                  )}
+                </Button>
+              )}
 
               {showGifts && (
                 <div className="absolute bottom-12 right-0 bg-gray-800 rounded-lg p-2 space-y-1 z-50 min-w-[180px]">
@@ -726,6 +779,84 @@ export default function LiveView() {
                       {gift.name} ({gift.amount.toLocaleString()} FCFA)
                     </button>
                   ))}
+                </div>
+              )}
+
+              {/* Panneau Polls pour spectateurs */}
+              {showPolls && activePolls.length > 0 && (
+                <div className="absolute bottom-12 right-0 bg-gray-800 rounded-lg p-3 space-y-3 z-50 min-w-[280px] max-h-[400px] overflow-y-auto">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-white font-bold text-sm flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4" />
+                      Sondages
+                    </h4>
+                    <button onClick={() => setShowPolls(false)} className="text-gray-400 hover:text-white">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {activePolls.map((poll) => {
+                    const options = poll.options || [];
+                    const totalVotes = poll.total_votes || 0;
+                    const userVote = poll.userVote ?? null; // Vote de l'utilisateur récupéré depuis l'API
+                    const hasVoted = userVote !== null;
+                    return (
+                      <div key={poll.id} className="bg-gray-900/50 rounded-lg p-3">
+                        <p className="text-white text-xs font-medium mb-2">{poll.question}</p>
+                        {options.map((opt, idx) => {
+                          const percentage = totalVotes > 0 ? ((opt.votes || 0) / totalVotes) * 100 : 0;
+                          const isVoted = userVote === idx;
+                          return (
+                            <button
+                              key={idx}
+                              onClick={async () => {
+                                if (!user) {
+                                  toast.error('Connectez-vous pour voter');
+                                  return;
+                                }
+                                if (hasVoted) {
+                                  toast.info('Vous avez déjà voté pour ce sondage');
+                                  return;
+                                }
+                                try {
+                                  await api.live.votePoll(liveId, poll.id, idx);
+                                  toast.success('Vote enregistré !');
+                                  // Rafraîchir les polls pour mettre à jour le vote
+                                  queryClient.invalidateQueries({ queryKey: ['live-polls', liveId] });
+                                } catch (err) {
+                                  toast.error(err?.apiMessage || err?.message || 'Erreur vote');
+                                }
+                              }}
+                              disabled={hasVoted}
+                              className={`w-full text-left mb-2 p-2 rounded text-xs transition-all ${
+                                isVoted
+                                  ? 'bg-orange-500/30 border border-orange-500 cursor-default'
+                                  : hasVoted
+                                    ? 'bg-gray-800/50 cursor-not-allowed opacity-60'
+                                    : 'bg-gray-800 hover:bg-gray-700'
+                              }`}
+                            >
+                              <div className="flex justify-between text-white mb-1">
+                                <span className={isVoted ? 'font-semibold' : ''}>{opt.text}</span>
+                                <span className="text-orange-400">{percentage.toFixed(0)}%</span>
+                              </div>
+                              <div className="w-full bg-gray-700 rounded-full h-1.5">
+                                <motion.div
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${percentage}%` }}
+                                  className="bg-orange-500 h-1.5 rounded-full"
+                                />
+                              </div>
+                              {isVoted && <span className="text-orange-400 text-xs mt-1 block flex items-center gap-1">✓ Votre vote</span>}
+                            </button>
+                          );
+                        })}
+                        <p className="text-gray-400 text-xs mt-2 text-center">
+                          {totalVotes} vote{totalVotes !== 1 ? 's' : ''}
+                          {hasVoted && <span className="text-orange-400 ml-2">• Vous avez voté</span>}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

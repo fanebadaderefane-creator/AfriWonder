@@ -6,13 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Bell, Package, Star, MessageCircle, DollarSign,
-  Heart, UserPlus, CheckCheck, Settings
+  Heart, UserPlus, CheckCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from "sonner";
-import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
 const notificationIcons = {
@@ -107,8 +106,8 @@ export default function NotificationCenter({ isOpen, onClose, userId }) {
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
-        <SheetHeader className="px-4 py-3 border-b shrink-0">
+      <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col bg-white">
+        <SheetHeader className="px-4 pr-12 py-3 border-b shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Bell className="w-5 h-5 text-orange-500" />
@@ -117,25 +116,18 @@ export default function NotificationCenter({ isOpen, onClose, userId }) {
                 <Badge className="bg-orange-500 text-white">{unreadCount}</Badge>
               )}
             </div>
-            <div className="flex items-center gap-1">
-              {unreadCount > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => markAllAsReadMutation.mutate()}
-                  disabled={markAllAsReadMutation.isPending}
-                  className="text-xs"
-                >
-                  <CheckCheck className="w-4 h-4 mr-1" />
-                  Tout lire
-                </Button>
-              )}
-              <Link to={createPageUrl('NotificationSettings')} onClick={onClose}>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <Settings className="w-4 h-4" />
-                </Button>
-              </Link>
-            </div>
+            {unreadCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => markAllAsReadMutation.mutate()}
+                disabled={markAllAsReadMutation.isPending}
+                className="text-xs"
+              >
+                <CheckCheck className="w-4 h-4 mr-1" />
+                Tout lire
+              </Button>
+            )}
           </div>
         </SheetHeader>
 

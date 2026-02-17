@@ -25,11 +25,23 @@ export function useLiveSocket(options) {
     onEnded,
     onChatClear,
     onBanned,
+    onPollCreated,
+    onPollUpdated,
+    onPollEnded,
+    onCoHostInvited,
+    onCoHostAccepted,
+    onCoHostRemoved,
   } = options || {};
 
   const socketRef = useRef(null);
-  const callbacksRef = useRef({ onChat, onGift, onTip, onViewers, onLike, onEnded, onChatClear, onBanned });
-  callbacksRef.current = { onChat, onGift, onTip, onViewers, onLike, onEnded, onChatClear, onBanned };
+  const callbacksRef = useRef({ 
+    onChat, onGift, onTip, onViewers, onLike, onEnded, onChatClear, onBanned,
+    onPollCreated, onPollUpdated, onPollEnded, onCoHostInvited, onCoHostAccepted, onCoHostRemoved
+  });
+  callbacksRef.current = { 
+    onChat, onGift, onTip, onViewers, onLike, onEnded, onChatClear, onBanned,
+    onPollCreated, onPollUpdated, onPollEnded, onCoHostInvited, onCoHostAccepted, onCoHostRemoved
+  };
 
   useEffect(() => {
     if (!streamId || !streamId.trim()) return;
@@ -77,6 +89,30 @@ export function useLiveSocket(options) {
 
     socket.on('live:banned', (payload) => {
       if (callbacksRef.current.onBanned) callbacksRef.current.onBanned(payload);
+    });
+
+    socket.on('live:poll:created', (payload) => {
+      if (callbacksRef.current.onPollCreated) callbacksRef.current.onPollCreated(payload);
+    });
+
+    socket.on('live:poll:updated', (payload) => {
+      if (callbacksRef.current.onPollUpdated) callbacksRef.current.onPollUpdated(payload);
+    });
+
+    socket.on('live:poll:ended', (payload) => {
+      if (callbacksRef.current.onPollEnded) callbacksRef.current.onPollEnded(payload);
+    });
+
+    socket.on('live:cohost:invited', (payload) => {
+      if (callbacksRef.current.onCoHostInvited) callbacksRef.current.onCoHostInvited(payload);
+    });
+
+    socket.on('live:cohost:accepted', (payload) => {
+      if (callbacksRef.current.onCoHostAccepted) callbacksRef.current.onCoHostAccepted(payload);
+    });
+
+    socket.on('live:cohost:removed', (payload) => {
+      if (callbacksRef.current.onCoHostRemoved) callbacksRef.current.onCoHostRemoved(payload);
     });
 
     return () => {

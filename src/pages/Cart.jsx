@@ -83,7 +83,7 @@ export default function CartPage() {
   };
 
   if (!user || !cart) {
-    return <div className="h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>;
+    return <div className="h-[100dvh] flex items-center justify-center"><div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>;
   }
 
   const items = cart.items || [];

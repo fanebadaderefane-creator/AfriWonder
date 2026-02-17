@@ -421,7 +421,7 @@ export default function Home() {
 
   if (isLoading) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-black">
+      <div className="h-[100dvh] w-full flex items-center justify-center bg-black">
         <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
       </div>
     );
@@ -429,10 +429,12 @@ export default function Home() {
 
   return (
     <div 
-      className="h-screen w-full bg-black overflow-hidden"
+      className="h-[100dvh] w-full bg-black overflow-hidden"
       style={{
         paddingLeft: 'env(safe-area-inset-left)',
-        paddingRight: 'env(safe-area-inset-right)'
+        paddingRight: 'env(safe-area-inset-right)',
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)'
       }}
     >
       <div className="relative w-full h-full flex flex-col bg-black">

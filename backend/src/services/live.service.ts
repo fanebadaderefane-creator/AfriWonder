@@ -356,6 +356,117 @@ class LiveService {
     return { streams, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
+  /** Recommandations intelligentes basées sur l'activité utilisateur */
+  async getRecommendations(userId: string | null, options?: { limit?: number; excludeLiveId?: string }) {
+    const limit = Math.min(options?.limit ?? 10, 20);
+    const where: any = { status: 'live' };
+    if (options?.excludeLiveId) {
+      where.id = { not: options.excludeLiveId };
+    }
+
+    // Si utilisateur connecté, recommandations personnalisées
+    if (userId) {
+      // 1. Lives des créateurs suivis (priorité haute)
+      const followedCreators = await prisma.follow.findMany({
+        where: { follower_id: userId },
+        select: { following_id: true },
+      });
+      const followedCreatorIds = followedCreators.map(f => f.following_id);
+
+      if (followedCreatorIds.length > 0) {
+        const followedLives = await prisma.liveStream.findMany({
+          where: {
+            ...where,
+            creator_id: { in: followedCreatorIds },
+          },
+          orderBy: [
+            { viewers_count: 'desc' },
+            { started_at: 'desc' },
+          ],
+          take: Math.floor(limit * 0.4), // 40% des recommandations
+          include: {
+            creator: {
+              select: {
+                id: true,
+                username: true,
+                profile_image: true,
+                full_name: true,
+              },
+            },
+          },
+        });
+
+        if (followedLives.length >= limit) {
+          return followedLives;
+        }
+      }
+
+      // 2. Catégories préférées basées sur l'historique
+      const userLivesHistory = await prisma.liveViewer.findMany({
+        where: { user_id: userId },
+        include: { live_stream: { select: { category: true } } },
+        take: 50,
+      });
+      const categoryCounts = new Map<string, number>();
+      userLivesHistory.forEach(v => {
+        if (v.live_stream?.category) {
+          categoryCounts.set(v.live_stream.category, (categoryCounts.get(v.live_stream.category) || 0) + 1);
+        }
+      });
+      const topCategories = Array.from(categoryCounts.entries())
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 3)
+        .map(([cat]) => cat);
+
+      // 3. Lives populaires dans les catégories préférées + trending
+      const recommended = await prisma.liveStream.findMany({
+        where: {
+          ...where,
+          ...(topCategories.length > 0 ? { category: { in: topCategories } } : {}),
+        },
+        orderBy: [
+          { viewers_count: 'desc' },
+          { total_likes: 'desc' },
+          { started_at: 'desc' },
+        ],
+        take: limit,
+        include: {
+          creator: {
+            select: {
+              id: true,
+              username: true,
+              profile_image: true,
+              full_name: true,
+            },
+          },
+        },
+      });
+
+      return recommended;
+    }
+
+    // Si non connecté, retourner les lives les plus populaires
+    return prisma.liveStream.findMany({
+      where,
+      orderBy: [
+        { viewers_count: 'desc' },
+        { total_likes: 'desc' },
+        { started_at: 'desc' },
+      ],
+      take: limit,
+      include: {
+        creator: {
+          select: {
+            id: true,
+            username: true,
+            profile_image: true,
+            full_name: true,
+          },
+        },
+      },
+    });
+  }
+
   /** Découverte : populaires, régionaux, par catégorie, des comptes suivis, trending (algorithme recommandation) */
   async getDiscovery(userId: string | null, options?: { type?: 'popular' | 'regional' | 'followed' | 'category' | 'trending'; region?: string; category?: string; limit?: number }) {
     const limit = Math.min(options?.limit ?? 20, 50);
@@ -780,6 +891,9 @@ class LiveService {
     }
     if (!cleanMessage) throw new Error('Message vide.');
 
+    // Détecter automatiquement les questions (contient "?")
+    const isQuestion = cleanMessage.includes('?') && !cleanMessage.startsWith('/');
+
     if (settings?.followers_only) {
       const follow = await prisma.follow.findUnique({
         where: { follower_id_following_id: { follower_id: userId, following_id: stream.creator_id } },
@@ -802,6 +916,8 @@ class LiveService {
         sender_role: senderRole,
         message: cleanMessage,
         message_type: 'text',
+        is_question: isQuestion,
+        is_answered: false,
       },
     });
 
@@ -1082,6 +1198,33 @@ class LiveService {
     return { ok: true };
   }
 
+  /** Mettre à jour un message chat (is_answered, is_question, etc.) */
+  async updateChatMessage(streamId: string, messageId: string, userId: string, updates: { is_answered?: boolean; is_question?: boolean; [key: string]: any }) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream) throw new Error('Stream not found');
+    
+    const message = await prisma.liveChat.findUnique({ where: { id: messageId } });
+    if (!message || message.live_id !== streamId) throw new Error('Message not found');
+    
+    // Seul le créateur ou un modérateur peut mettre à jour
+    const isCreator = stream.creator_id === userId;
+    const isModerator = await prisma.liveModerator.findUnique({
+      where: { live_id_user_id: { live_id: streamId, user_id: userId } },
+    });
+    
+    if (!isCreator && !isModerator) throw new Error('Unauthorized');
+    
+    const updated = await prisma.liveChat.update({
+      where: { id: messageId },
+      data: updates,
+    });
+    
+    const io = getIO();
+    if (io) io.to(`stream:${streamId}`).emit('live:chat:updated', updated);
+    
+    return updated;
+  }
+
   /** Épingler / désépingler un message (créateur ou modérateur) */
   async pinChatMessage(streamId: string, messageId: string, userId: string, pin: boolean) {
     const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
@@ -1329,6 +1472,263 @@ class LiveService {
       where: { creator_id: creatorId, subscriber_id: subscriberId },
       data: { status: 'cancelled' },
     });
+    return { ok: true };
+  }
+
+  /** Créer un sondage pendant le live */
+  async createPoll(streamId: string, creatorId: string, data: { question: string; options: Array<{ text: string; votes?: number }> }) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream || stream.creator_id !== creatorId) throw new Error('Unauthorized');
+    if (stream.status !== 'live') throw new Error('Stream must be live');
+    
+    const options = data.options.map(opt => ({ text: opt.text, votes: opt.votes || 0 }));
+    const poll = await prisma.livePoll.create({
+      data: {
+        live_id: streamId,
+        creator_id: creatorId,
+        question: data.question,
+        options: options as any,
+        total_votes: 0,
+        status: 'active',
+      },
+    });
+    
+    // Le créateur n'a pas encore voté, donc userVote = null
+    const pollWithVote = {
+      ...poll,
+      userVote: null,
+    };
+    
+    const io = getIO();
+    if (io) io.to(`stream:${streamId}`).emit('live:poll:created', pollWithVote);
+    
+    return poll;
+  }
+
+  /** Voter pour un sondage */
+  async votePoll(streamId: string, pollId: string, userId: string, optionIndex: number) {
+    const poll = await prisma.livePoll.findUnique({ where: { id: pollId } });
+    if (!poll || poll.live_id !== streamId || poll.status !== 'active') throw new Error('Poll not found or inactive');
+    
+    const options = poll.options as Array<{ text: string; votes: number }>;
+    if (optionIndex < 0 || optionIndex >= options.length) throw new Error('Invalid option index');
+    
+    // Vérifier si l'utilisateur a déjà voté
+    const existingVote = await prisma.livePollVote.findUnique({
+      where: { poll_id_user_id: { poll_id: pollId, user_id: userId } },
+    });
+    
+    if (existingVote) {
+      // Mettre à jour le vote existant
+      const oldIndex = existingVote.option_index;
+      options[oldIndex].votes = Math.max(0, options[oldIndex].votes - 1);
+      options[optionIndex].votes = (options[optionIndex].votes || 0) + 1;
+      
+      await prisma.livePollVote.update({
+        where: { id: existingVote.id },
+        data: { option_index: optionIndex },
+      });
+    } else {
+      // Nouveau vote
+      options[optionIndex].votes = (options[optionIndex].votes || 0) + 1;
+      await prisma.livePollVote.create({
+        data: {
+          poll_id: pollId,
+          live_id: streamId,
+          user_id: userId,
+          option_index: optionIndex,
+        },
+      });
+    }
+    
+    const totalVotes = options.reduce((sum, opt) => sum + (opt.votes || 0), 0);
+    const updatedPoll = await prisma.livePoll.update({
+      where: { id: pollId },
+      data: {
+        options: options as any,
+        total_votes: totalVotes,
+      },
+    });
+    
+    // Récupérer le vote de l'utilisateur pour l'inclure dans l'événement
+    const userVote = await prisma.livePollVote.findUnique({
+      where: { poll_id_user_id: { poll_id: pollId, user_id: userId } },
+      select: { option_index: true },
+    });
+    
+    const pollWithVote = {
+      ...updatedPoll,
+      userVote: userVote?.option_index ?? null,
+    };
+    
+    const io = getIO();
+    if (io) io.to(`stream:${streamId}`).emit('live:poll:updated', pollWithVote);
+    
+    return updatedPoll;
+  }
+
+  /** Récupérer les sondages actifs d'un live avec les votes de l'utilisateur si connecté */
+  async getPolls(streamId: string, userId: string | null = null) {
+    const polls = await prisma.livePoll.findMany({
+      where: { live_id: streamId, status: 'active' },
+      orderBy: { created_at: 'desc' },
+    });
+
+    // Si un utilisateur est connecté, récupérer ses votes pour chaque poll
+    if (userId) {
+      const pollIds = polls.map(p => p.id);
+      const userVotes = await prisma.livePollVote.findMany({
+        where: {
+          poll_id: { in: pollIds },
+          user_id: userId,
+        },
+        select: {
+          poll_id: true,
+          option_index: true,
+        },
+      });
+
+      const voteMap = new Map(userVotes.map(v => [v.poll_id, v.option_index]));
+
+      // Ajouter le vote de l'utilisateur à chaque poll
+      return polls.map(poll => ({
+        ...poll,
+        userVote: voteMap.get(poll.id) ?? null,
+      }));
+    }
+
+    return polls;
+  }
+
+  /** Récupérer le vote d'un utilisateur pour un poll spécifique */
+  async getUserPollVote(streamId: string, pollId: string, userId: string) {
+    const poll = await prisma.livePoll.findUnique({ where: { id: pollId } });
+    if (!poll || poll.live_id !== streamId) throw new Error('Poll not found');
+
+    const vote = await prisma.livePollVote.findUnique({
+      where: {
+        poll_id_user_id: { poll_id: pollId, user_id: userId },
+      },
+      select: {
+        option_index: true,
+        created_at: true,
+      },
+    });
+
+    return vote ? { optionIndex: vote.option_index, votedAt: vote.created_at } : null;
+  }
+
+  /** Terminer un sondage */
+  async endPoll(streamId: string, pollId: string, creatorId: string) {
+    const poll = await prisma.livePoll.findUnique({ where: { id: pollId } });
+    if (!poll || poll.live_id !== streamId || poll.creator_id !== creatorId) throw new Error('Unauthorized');
+    
+    const endedPoll = await prisma.livePoll.update({
+      where: { id: pollId },
+      data: {
+        status: 'ended',
+        ended_at: new Date(),
+      },
+    });
+    
+    const io = getIO();
+    if (io) io.to(`stream:${streamId}`).emit('live:poll:ended', endedPoll);
+    
+    return endedPoll;
+  }
+
+  /** Inviter un co-host */
+  async inviteCoHost(streamId: string, creatorId: string, cohostId: string) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream || stream.creator_id !== creatorId) throw new Error('Unauthorized');
+    if (stream.status !== 'live') throw new Error('Stream must be live');
+    if (cohostId === creatorId) throw new Error('Cannot invite yourself');
+    
+    const existing = await prisma.liveCoHost.findUnique({
+      where: { live_id_cohost_id: { live_id: streamId, cohost_id: cohostId } },
+    });
+    
+    if (existing && existing.status === 'pending') throw new Error('Invitation already pending');
+    if (existing && existing.status === 'accepted') throw new Error('User is already a co-host');
+    
+    const invite = await prisma.liveCoHost.upsert({
+      where: { live_id_cohost_id: { live_id: streamId, cohost_id: cohostId } },
+      update: { status: 'pending', invited_at: new Date() },
+      create: {
+        live_id: streamId,
+        creator_id: creatorId,
+        cohost_id: cohostId,
+        status: 'pending',
+      },
+    });
+    
+    // Notification au co-host invité
+    try {
+      await notificationService.create(cohostId, {
+        type: 'live_cohost_invite',
+        title: 'Invitation co-host',
+        message: `${stream.creator_name} vous invite à rejoindre son live : ${stream.title}`,
+        reference_type: 'live',
+        reference_id: streamId,
+      });
+    } catch (_) {}
+    
+    const io = getIO();
+    if (io) io.to(`stream:${streamId}`).emit('live:cohost:invited', invite);
+    
+    return invite;
+  }
+
+  /** Accepter une invitation co-host */
+  async acceptCoHostInvite(streamId: string, userId: string) {
+    const invite = await prisma.liveCoHost.findUnique({
+      where: { live_id_cohost_id: { live_id: streamId, cohost_id: userId } },
+    });
+    
+    if (!invite || invite.status !== 'pending') throw new Error('Invitation not found or already processed');
+    
+    const accepted = await prisma.liveCoHost.update({
+      where: { id: invite.id },
+      data: {
+        status: 'accepted',
+        accepted_at: new Date(),
+      },
+    });
+    
+    const io = getIO();
+    if (io) {
+      io.to(`stream:${streamId}`).emit('live:cohost:accepted', accepted);
+      // TODO: Générer token Agora pour le co-host avec rôle 'host'
+    }
+    
+    return accepted;
+  }
+
+  /** Retirer un co-host */
+  async removeCoHost(streamId: string, creatorId: string, cohostId: string) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream || stream.creator_id !== creatorId) throw new Error('Unauthorized');
+    
+    const cohost = await prisma.liveCoHost.findUnique({
+      where: { live_id_cohost_id: { live_id: streamId, cohost_id: cohostId } },
+    });
+    
+    if (!cohost) throw new Error('Co-host not found');
+    
+    await prisma.liveCoHost.update({
+      where: { id: cohost.id },
+      data: {
+        status: 'removed',
+        removed_at: new Date(),
+      },
+    });
+    
+    const io = getIO();
+    if (io) {
+      io.to(`stream:${streamId}`).emit('live:cohost:removed', { cohostId });
+      // TODO: Déconnecter le co-host d'Agora
+    }
+    
     return { ok: true };
   }
 

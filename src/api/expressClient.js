@@ -1503,6 +1503,10 @@ export const api = {
       const { data } = await axiosInstance.get('/live/discovery', { params });
       return data.data;
     },
+    async getRecommendations(params = {}) {
+      const { data } = await axiosInstance.get('/live/recommendations', { params });
+      return data.data;
+    },
     async getCategories() {
       const { data } = await axiosInstance.get('/live/categories');
       return data.data;
@@ -1618,6 +1622,38 @@ export const api = {
       const { data } = await axiosInstance.get(`/live/${id}/top-donors`, { params: { limit } });
       return data.data;
     },
+    async createPoll(id, pollData) {
+      const { data } = await axiosInstance.post(`/live/${id}/polls`, pollData);
+      return data.data;
+    },
+    async votePoll(id, pollId, optionIndex) {
+      const { data } = await axiosInstance.post(`/live/${id}/polls/${pollId}/vote`, { optionIndex });
+      return data.data;
+    },
+    async getPolls(id) {
+      const { data } = await axiosInstance.get(`/live/${id}/polls`);
+      return data.data;
+    },
+    async getMyPollVote(id, pollId) {
+      const { data } = await axiosInstance.get(`/live/${id}/polls/${pollId}/my-vote`);
+      return data.data;
+    },
+    async endPoll(id, pollId) {
+      const { data } = await axiosInstance.post(`/live/${id}/polls/${pollId}/end`);
+      return data.data;
+    },
+    async inviteCoHost(id, userId) {
+      const { data } = await axiosInstance.post(`/live/${id}/cohost/invite`, { userId });
+      return data.data;
+    },
+    async acceptCoHostInvite(id) {
+      const { data } = await axiosInstance.post(`/live/${id}/cohost/accept`);
+      return data.data;
+    },
+    async removeCoHost(id, userId) {
+      const { data } = await axiosInstance.post(`/live/${id}/cohost/remove`, { userId });
+      return data.data;
+    },
     async getAnalytics(id) {
       const { data } = await axiosInstance.get(`/live/${id}/analytics`);
       return data.data;
@@ -1653,6 +1689,10 @@ export const api = {
     },
     async deleteChatMessage(id, messageId) {
       await axiosInstance.delete(`/live/${id}/chat/${messageId}`);
+    },
+    async updateChatMessage(id, messageId, updates) {
+      const { data } = await axiosInstance.patch(`/live/${id}/chat/${messageId}`, updates);
+      return data.data;
     },
     async pinChatMessage(id, messageId, pin = true) {
       const { data } = await axiosInstance.patch(`/live/${id}/chat/${messageId}/pin`, { pin });
