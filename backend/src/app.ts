@@ -127,14 +127,29 @@ import commissionSettingsService from './services/commissionSettings.service.js'
 const app = express();
 app.set('trust proxy', 1);
 app.set('etag', 'strong');
-// CORS en tout premier — CRITIQUE pour preflight OPTIONS (évite 502)
-app.options('*', cors());
-app.use(cors({
-  origin: true, // reflète l'Origin de la requête (accepte tout)
+// CORS — avec credentials, on doit renvoyer une origine explicite (pas *)
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, cb) => {
+    const allowed = [
+      process.env.CORS_ORIGIN,
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'https://afri-wonder.vercel.app',
+    ].filter(Boolean) as string[];
+    // Préviews Vercel : *.vercel.app
+    const isVercelPreview = origin?.endsWith('.vercel.app');
+    if (!origin || allowed.includes(origin) || isVercelPreview) {
+      cb(null, origin || true);
+    } else {
+      cb(null, allowed[0] || true);
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'baggage', 'sentry-trace', 'X-Device-Id', 'X-Requested-With'],
-}));
+};
+app.options('*', cors(corsOptions));
+app.use(cors(corsOptions));
 
 app.use(attachRequestId);
 app.use(httpMetricsMiddleware);
