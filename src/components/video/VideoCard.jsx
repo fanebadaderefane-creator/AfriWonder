@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn, getVideoPlaybackUrl } from "@/lib/utils";
+import { cn, getVideoPlaybackUrl, isValidThumbnailUrl } from "@/lib/utils";
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { useTranslation } from "@/components/common/useTranslation";
@@ -100,6 +100,16 @@ function VideoCardContent({
   const [duration, setDuration] = useState(0);
   const [currentUser, setCurrentUser] = useState(null);
   const [following, setFollowing] = useState(isFollowing || false);
+
+  // Détection iOS / mobile pour adapter le comportement vidéo
+  // Important pour éviter les bugs de décodage vidéo et de ressources sur Safari iOS
+  const isIOS =
+    typeof navigator !== 'undefined' &&
+    /iP(ad|hone|od)/i.test(navigator.userAgent || '');
+  const isTouchDevice =
+    typeof window !== 'undefined' &&
+    ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  const enablePreviewScrub = !isIOS && !isTouchDevice;
   
   // Synchroniser avec la prop isFollowing
   useEffect(() => {
@@ -112,6 +122,10 @@ function VideoCardContent({
 
   // URL stable pour éviter remontage vidéo et NS_BINDING_ABORTED (ne change pas à chaque render)
   const videoUrl = useMemo(() => getVideoPlaybackUrl(video.video_url) || '', [video.video_url]);
+  const posterUrl = useMemo(
+    () => (isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? video.thumbnail_url : ''),
+    [video.thumbnail_url, video.video_url]
+  );
 
   const [loadError, setLoadError] = useState(false);
 
@@ -369,6 +383,9 @@ function VideoCardContent({
 
   // Prévisualisation au survol/drag de la barre
   useEffect(() => {
+    // Sur iOS / mobile, on désactive la vidéo cachée de prévisualisation
+    // pour éviter les bugs "vidéo indisponible" après la première lecture.
+    if (!enablePreviewScrub) return;
     if (!isDragging || !previewVideoRef.current || !previewCanvasRef.current || !videoUrl) return;
     const prev = previewVideoRef.current;
     const canvas = previewCanvasRef.current;
@@ -509,7 +526,7 @@ function VideoCardContent({
         key={video.id}
         ref={videoRef}
         src={videoUrl}
-        poster={video.thumbnail_url || ''}
+        poster={posterUrl}
         className="absolute top-0 left-0 w-full h-full object-cover"
         preload="metadata"
         loop
@@ -549,12 +566,12 @@ function VideoCardContent({
         }}
       />
       {/* Vidéo cachée pour la prévisualisation au scrub */}
-      {videoUrl && (
+      {videoUrl && enablePreviewScrub && (
         <video
           ref={previewVideoRef}
           src={videoUrl}
           muted
-          preload="auto"
+          preload="metadata"
           playsInline
           onSeeked={handlePreviewSeeked}
           className="absolute opacity-0 pointer-events-none w-0 h-0"
@@ -566,19 +583,19 @@ function VideoCardContent({
       {/* ================= ERREUR DE CHARGEMENT ================= */}
       {loadError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-[50] p-4">
-          {video.thumbnail_url ? (
+          {posterUrl ? (
             <img
-              src={video.thumbnail_url}
+              src={posterUrl}
               alt=""
               className="max-w-full max-h-[50%] object-contain rounded-lg opacity-80"
             />
           ) : null}
-          <p className="text-white text-center mt-4 font-medium">Vidéo indisponible</p>
-          <p className="text-white/70 text-sm text-center mt-1">Impossible de charger la vidéo</p>
+          <p className="text-white text-center mt-4 font-medium ios-text-render">Vidéo indisponible</p>
+          <p className="text-white/70 text-sm text-center mt-1 ios-text-render">Impossible de charger la vidéo</p>
           <button
             type="button"
             onClick={handleRetryLoad}
-            className="mt-4 px-6 py-2.5 bg-white text-black rounded-full font-semibold hover:bg-gray-200 active:scale-95 transition-transform"
+            className="mt-4 px-6 py-2.5 bg-white text-black rounded-full font-semibold hover:bg-gray-200 active:scale-95 transition-transform ios-text-render"
           >
             Réessayer
           </button>

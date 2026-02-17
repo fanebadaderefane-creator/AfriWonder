@@ -1102,18 +1102,18 @@ export default function Create() {
 
         });
 
-        videoUrl = uploadResult.file_url;
+        videoUrl = uploadResult?.file_url ?? uploadResult?.url ?? '';
 
       } catch (uploadError) {
 
-        console.error('Upload file error:', uploadError);
-
+        const status = uploadError?.response?.status;
+        const msg = uploadError?.response?.data?.error || uploadError?.response?.data?.message || uploadError?.message;
+        if (import.meta.env.DEV) {
+          console.error('[Create] Upload vidéo échoué:', { status, msg, err: uploadError });
+        }
         clearInterval(progressInterval);
-
-        toast.error('Erreur lors de l\'upload de la vidéo');
-
+        toast.error(msg || 'Erreur lors de l\'upload de la vidéo');
         setStep('details');
-
         return;
 
       }
@@ -1121,6 +1121,12 @@ export default function Create() {
       clearInterval(progressInterval);
 
       setUploadProgress(100);
+
+      if (!videoUrl) {
+        toast.error('Upload réussi mais URL vidéo manquante');
+        setStep('details');
+        return;
+      }
 
       // Inclure les hashtags dans la description (comme pour la mise à jour) pour affichage cohérent
       const hashtagsText = videoData.hashtags?.length > 0
@@ -1317,7 +1323,7 @@ export default function Create() {
 
               type="file"
 
-              accept="video/*"
+              accept="video/*,video/mp4,video/quicktime,video/x-m4v"
 
               onChange={handleFileSelect}
 
@@ -1970,7 +1976,7 @@ export default function Create() {
             initial={{ opacity: 0, x: 100 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -100 }}
-            className="flex flex-col h-full"
+            className="flex flex-col min-h-full"
           >
 
             <div className="flex-shrink-0 flex items-center justify-between p-4">
@@ -2017,7 +2023,7 @@ export default function Create() {
 
 
 
-            <div className="flex-1 p-4 bg-zinc-900">
+            <div className="p-4 bg-zinc-900">
 
               <VideoEditor
 

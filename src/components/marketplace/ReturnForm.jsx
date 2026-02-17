@@ -41,8 +41,9 @@ export default function ReturnForm({ orderId, productId, onSuccess }) {
     if (!file) return;
 
     try {
-      const { file_url } = await api.upload.video({ file });
-      setUploadedImages((prev) => [...prev, file_url]);
+      const result = await api.upload.image(file);
+      const file_url = result?.file_url ?? result?.url;
+      if (file_url) setUploadedImages((prev) => [...prev, file_url]);
       toast.success('Image uploadee');
     } catch (_error) {
       toast.error("Erreur lors de l'upload");

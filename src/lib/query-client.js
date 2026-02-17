@@ -3,7 +3,8 @@ import { QueryClient } from '@tanstack/react-query';
 export const queryClientInstance = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
       retry: (failureCount, error) => {
         if (failureCount >= 2) return false;
         const status = error?.response?.status;

@@ -852,7 +852,7 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
 
           <p className="text-sm text-white/70">Sélectionner un effet</p>
 
-          <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+          <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto scrollbar-hide" style={{ WebkitOverflowScrolling: 'touch' }}>
 
             {VIDEO_EFFECTS.map(f => (
 
@@ -964,7 +964,7 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
 
           </div>
 
-          <div className="space-y-2 max-h-40 overflow-y-auto">
+          <div className="space-y-2 max-h-40 overflow-y-auto scrollbar-hide" style={{ WebkitOverflowScrolling: 'touch' }}>
 
             {musicLibrary.map(music => (
 

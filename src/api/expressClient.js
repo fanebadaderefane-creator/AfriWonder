@@ -1,12 +1,12 @@
 import axios from 'axios';
 import { getItem, setItem, removeItem } from '@/utils/safeStorage';
 
-// En production sans VITE_API_URL : utiliser le proxy Vercel (/api) → pas de CORS, credentials OK
-// Si VITE_API_URL est défini (ex: https://afriwonder.onrender.com), appels directs → CORS requis côté backend (CORS_ORIGIN)
+// En dev : utiliser le proxy Vite (/api → localhost:3000) pour éviter CORS.
+// En prod sans VITE_API_URL : proxy Vercel (/api). Avec VITE_API_URL : appels directs (CORS requis).
 const raw = import.meta.env.VITE_API_URL;
 const API_URL = raw
   ? `${raw.replace(/\/api\/?$/, '')}/api`
-  : (import.meta.env.DEV ? 'http://localhost:3000/api' : '/api');
+  : (import.meta.env.DEV ? '/api' : '/api');
 
 export { API_URL };
 
@@ -116,6 +116,18 @@ axiosInstance.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+/** Config pour upload (image/vidéo) : ne pas envoyer Content-Type pour que le navigateur envoie multipart/form-data avec boundary (Chrome/Safari/iOS). */
+function uploadConfig() {
+  return {
+    transformRequest: [(data, headers) => {
+      if (typeof FormData !== 'undefined' && data instanceof FormData) {
+        delete headers['Content-Type'];
+      }
+      return data;
+    }],
+  };
+}
 
 export const api = {
   // Délégation directe pour les routes non encapsulées (legal, privacy, etc.)
@@ -1328,22 +1340,28 @@ export const api = {
     async image(file) {
       const formData = new FormData();
       formData.append('file', file);
-      const { data } = await axiosInstance.post('/upload/image', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      return data.data;
+      const { data } = await axiosInstance.post('/upload/image', formData, uploadConfig());
+      const result = data?.data ?? data;
+      return result?.file_url != null ? result : { file_url: result?.file_url ?? result?.url };
     },
     async video(file, onProgress) {
       const formData = new FormData();
-      formData.append('file', file);
+      const blob = file instanceof File ? file : new File([file], file.name || 'video.mp4', { type: file.type || 'video/mp4' });
+      formData.append('file', blob);
       const { data } = await axiosInstance.post('/upload/video', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        ...uploadConfig(),
         onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          onProgress?.(percentCompleted);
+          const total = progressEvent.total || 1;
+          const pct = Math.min(100, Math.round((progressEvent.loaded * 100) / total));
+          onProgress?.(pct);
         },
       });
-      return data.data;
+      const result = data?.data ?? data;
+      const fileUrl = result?.file_url ?? result?.url;
+      if (fileUrl == null && import.meta.env.DEV) {
+        console.warn('[upload.video] Réponse sans file_url:', { data, result });
+      }
+      return fileUrl != null ? { file_url: fileUrl } : (result || {});
     },
   },
   saves: {

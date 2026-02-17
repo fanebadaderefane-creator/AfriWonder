@@ -81,9 +81,15 @@ export default defineConfig({
       },
     },
   },
-  // Mobile optimization
+  // Mobile optimization + proxy API en dev (évite CORS front 5173 → backend 3000)
   server: {
     host: '0.0.0.0', // Permet accès depuis mobile sur réseau local
     port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+    },
   },
 });

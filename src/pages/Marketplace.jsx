@@ -256,7 +256,7 @@ export default function Marketplace() {
   });
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-gray-50 pb-20 overflow-x-hidden">
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40">
         <div className="px-4 py-3">
@@ -566,18 +566,24 @@ export default function Marketplace() {
       {/* Sell & Orders CTAs */}
       <div className="fixed bottom-24 right-4 flex flex-col gap-3">
         <Link to={createPageUrl('SellerOrders')}>
-          <Button variant="outline" className="rounded-full h-12 px-5 bg-white shadow-lg">
+          <Button
+            variant="outline"
+            className="rounded-full h-12 px-5 bg-white shadow-lg text-gray-900 font-semibold ios-text-visible"
+          >
             <Package className="w-4 h-4 mr-2" />
             {labels.mySales}
           </Button>
         </Link>
         <Link to={createPageUrl('SellerSubscription')}>
-          <Button variant="outline" className="rounded-full h-12 px-5 bg-white shadow-lg">
+          <Button
+            variant="outline"
+            className="rounded-full h-12 px-5 bg-white shadow-lg text-gray-900 font-semibold ios-text-visible"
+          >
             {labels.sellerPlans}
           </Button>
         </Link>
         <Link to={createPageUrl('AddProduct')}>
-          <Button className="rounded-full h-14 px-6 bg-gradient-to-r from-orange-500 to-red-500 shadow-lg shadow-orange-500/30">
+          <Button className="rounded-full h-14 px-6 bg-gradient-to-r from-orange-500 to-red-500 shadow-lg shadow-orange-500/30 text-white font-semibold ios-text-visible">
             <span className="mr-2">+</span> {labels.sell}
           </Button>
         </Link>
@@ -591,18 +597,6 @@ export default function Marketplace() {
       />
 
       <BottomNav />
-
-      <style>{`
-        .scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-        @supports selector(::-webkit-scrollbar) {
-          .scrollbar-hide::-webkit-scrollbar {
-            display: none;
-          }
-        }
-      `}</style>
     </div>
   );
 }
