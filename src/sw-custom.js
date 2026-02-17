@@ -5,10 +5,11 @@
 const MEDIA_CACHE = 'afriwonder-media-v1';
 const API_CACHE = 'afriwonder-api-v1';
 const PRECACHE = self.__WB_MANIFEST || [];
+const SW_VERSION = 'v2'; // Bypass CDN pour éviter erreur SW sur vidéos
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open('afriwonder-precache-v1').then((cache) => {
+    caches.open(`afriwonder-precache-${SW_VERSION}`).then((cache) => {
       const urls = Array.isArray(PRECACHE)
         ? PRECACHE.map((e) => (typeof e === 'string' ? e : e.url))
         : [];
@@ -21,7 +22,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((names) => {
       const toDelete = names.filter(
-        (n) => n !== MEDIA_CACHE && n !== API_CACHE && n !== 'afriwonder-precache-v1'
+        (n) => n !== MEDIA_CACHE && n !== API_CACHE && n !== `afriwonder-precache-${SW_VERSION}`
       );
       return Promise.all(toDelete.map((n) => caches.delete(n)));
     }).then(() => self.clients.claim())
@@ -39,6 +40,13 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
+
+  // Ne pas intercepter les vidéos CDN — évite "Un service worker a intercepté la requête et a rencontré une erreur"
+  // Les vidéos volumineuses posent problème avec le SW (cache, streaming, Range requests)
+  const cdnHosts = ['cdn.afriwonder.com', 'cdn.africonnect.com'];
+  const isCdnMedia = cdnHosts.includes(url.hostname) || url.hostname.endsWith('.r2.dev');
+  const isVideoRequest = request.destination === 'video';
+  if (isCdnMedia || isVideoRequest) return;
 
   event.respondWith((async () => {
     // 1) Média : d’abord le cache (vidéos téléchargées)
