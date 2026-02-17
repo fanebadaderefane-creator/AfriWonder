@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 import { api } from '@/api/expressClient';
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -13,7 +13,8 @@ import { motion } from 'framer-motion';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { createPageUrl } from "@/utils";
-import { getVideoPlaybackUrl } from "@/lib/utils";
+import { getVideoPlaybackUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG } from "@/lib/utils";
+import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 
 import { toast } from "sonner";
 
@@ -112,33 +113,39 @@ export default function Profile() {
 
   const queryClient = useQueryClient();
 
-  // Fetch videos
-
-  const { data: videos = [], isLoading: videosLoading, refetch: refetchVideos } = useQuery({
-
+  // Fetch videos avec pagination "Voir plus"
+  const PROFILE_VIDEOS_LIMIT = 30;
+  const {
+    data: videosData,
+    isLoading: videosLoading,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+    refetch: refetchVideos,
+  } = useInfiniteQuery({
     queryKey: ['profile-videos', profileUserId, user?.id],
-
-    queryFn: async () => {
-
-      if (!profileUserId) return [];
-
-      // Profil propre : visibility='creator' pour inclure les brouillons (vidéos privées)
+    queryFn: async ({ pageParam = 1 }) => {
+      if (!profileUserId) return { videos: [], pagination: { page: 1, totalPages: 1 } };
       const ownProfile = user?.id === profileUserId;
       const params = ownProfile
-        ? { creator_id: profileUserId, visibility: 'creator', page: 1, limit: 0 }
-        : { creator_id: profileUserId, page: 1, limit: 0 };
+        ? { creator_id: profileUserId, visibility: 'creator', page: pageParam, limit: PROFILE_VIDEOS_LIMIT }
+        : { creator_id: profileUserId, page: pageParam, limit: PROFILE_VIDEOS_LIMIT };
       const result = await api.videos.list(params);
       const list = result?.videos || (Array.isArray(result) ? result : []);
-      // Garde-fou : ne garder que les vidéos du créateur demandé
-      return list.filter((v) => (v.creator_id || v.creator?.id) === profileUserId);
-
+      const filtered = list.filter((v) => (v.creator_id || v.creator?.id) === profileUserId);
+      return { videos: filtered, pagination: result?.pagination || { page: pageParam, totalPages: 1 } };
     },
-
+    getNextPageParam: (last) => {
+      const p = last?.pagination;
+      if (!p || p.page >= (p.totalPages || 1)) return undefined;
+      return (p.page || 1) + 1;
+    },
+    initialPageParam: 1,
     enabled: !!profileUserId,
-
-    staleTime: 0
-
+    staleTime: 0,
   });
+
+  const videos = videosData?.pages?.flatMap((p) => p.videos ?? []) ?? [];
 
   const handleDeleteVideo = async (video) => {
 
@@ -180,7 +187,7 @@ export default function Profile() {
 
       // Récupérer toutes les vidéos sauvegardées sans limite
 
-      const result = await api.saves.list({ user_id: profileUserId, page: 1, limit: 0 });
+      const result = await api.saves.list({ user_id: profileUserId, page: 1, limit: 30 });
 
       return result?.videos || [];
 
@@ -206,7 +213,7 @@ export default function Profile() {
 
         // Utiliser la méthode dédiée pour les vidéos likées (sans limite)
 
-        const videos = await api.users.getLikedVideos(profileUserId, { limit: 0 });
+        const videos = await api.users.getLikedVideos(profileUserId, { limit: 30 });
 
         if (videos && Array.isArray(videos) && videos.length > 0) {
 
@@ -268,7 +275,7 @@ export default function Profile() {
 
       // Récupérer tous les produits sans limite
 
-      const result = await api.products.list({ seller_id: profileUserId, page: 1, limit: 0 });
+      const result = await api.products.list({ seller_id: profileUserId, page: 1, limit: 50 });
 
       return result?.products || (Array.isArray(result) ? result : []);
 
@@ -374,75 +381,6 @@ export default function Profile() {
 
 
 
-  // Hide scrollbar on mount
-
-  useEffect(() => {
-
-    // Add class to body to hide scrollbar
-
-    document.body.classList.add('hide-scrollbar-profile');
-
-    
-
-    // Add CSS to hide scrollbar
-
-    const style = document.createElement('style');
-
-    style.id = 'profile-scrollbar-hide';
-
-    style.textContent = `
-      @supports selector(::-webkit-scrollbar) {
-        body.hide-scrollbar-profile::-webkit-scrollbar,
-        html.hide-scrollbar-profile::-webkit-scrollbar {
-          display: none !important;
-          width: 0 !important;
-          height: 0 !important;
-        }
-      }
-
-      body.hide-scrollbar-profile {
-
-        -ms-overflow-style: none !important;
-
-        scrollbar-width: none !important;
-
-      }
-
-      html.hide-scrollbar-profile {
-
-        -ms-overflow-style: none !important;
-
-        scrollbar-width: none !important;
-
-      }
-
-    `;
-
-    document.head.appendChild(style);
-
-    document.documentElement.classList.add('hide-scrollbar-profile');
-
-    
-
-    return () => {
-
-      // Cleanup
-
-      document.body.classList.remove('hide-scrollbar-profile');
-
-      document.documentElement.classList.remove('hide-scrollbar-profile');
-
-      const existingStyle = document.getElementById('profile-scrollbar-hide');
-
-      if (existingStyle) {
-
-        document.head.removeChild(existingStyle);
-
-      }
-
-    };
-
-  }, []);
 
 
 
@@ -561,80 +499,45 @@ export default function Profile() {
 
             >
 
-              {video.video_url ? (
-
+              {video.video_url && isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
                 <video
-
                   src={getVideoPlaybackUrl(video.video_url)}
-
-                  poster={video.thumbnail_url || undefined}
-
+                  poster={video.thumbnail_url}
                   className="w-full h-full object-cover"
-
-                  preload={video.thumbnail_url ? 'metadata' : 'auto'}
-
+                  preload="metadata"
                   muted
-
                   playsInline
-
-                  onLoadedMetadata={(e) => {
-
-                    const videoEl = e.currentTarget;
-
-                    if (!video.thumbnail_url && videoEl?.duration) {
-
-                      videoEl.currentTime = Math.min(1, videoEl.duration / 10);
-
-                    }
-
-                  }}
-
                   onError={(e) => {
-
                     const videoEl = e.currentTarget;
-
                     if (videoEl?.style) {
-
                       videoEl.style.display = 'none';
-
                       const fallbackImg = videoEl.parentElement?.querySelector('.video-fallback-img');
-
                       if (fallbackImg instanceof HTMLElement) fallbackImg.style.display = 'block';
-
                     }
-
                   }}
-
                 />
-
               ) : null}
-
-              {!video.video_url && video.thumbnail_url && (
-
+              {/* Sans miniature valide : extraire une frame de la vidéo, sinon image de secours */}
+              {!isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
+                video.video_url ? (
+                  <VideoFrameThumbnail
+                    videoUrl={video.video_url}
+                    alt={video.title}
+                  />
+                ) : (
+                  <img
+                    src={VIDEO_PLACEHOLDER_IMG}
+                    alt={video.title}
+                    className="w-full h-full object-cover"
+                  />
+                )
+              ) : null}
+              {!video.video_url && isValidThumbnailUrl(video.thumbnail_url, video.video_url) && (
                 <img
-
                   src={video.thumbnail_url}
-
                   alt={video.title}
-
                   className="w-full h-full object-cover"
-
                 />
-
-              )}
-
-              {(!video.video_url && !video.thumbnail_url) && (
-
-                <img
-
-                  src="https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=300"
-
-                  alt={video.title}
-
-                  className="w-full h-full object-cover video-fallback-img"
-
-                />
-
               )}
 
               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
@@ -727,18 +630,7 @@ export default function Profile() {
 
   return (
 
-    <div className="min-h-screen bg-gray-50 pb-32 no-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-      <style>{`
-        .no-scrollbar {
-          -ms-overflow-style: none; /* IE / Edge */
-          scrollbar-width: none; /* Firefox */
-        }
-        @supports selector(::-webkit-scrollbar) {
-          .no-scrollbar::-webkit-scrollbar {
-            display: none; /* Chrome / Safari / Opera */
-          }
-        }
-      `}</style>
+    <div className="min-h-screen bg-gray-50 pb-32">
 
       {/* Back Button */}
 
@@ -1019,72 +911,76 @@ export default function Profile() {
 
               <div className="relative aspect-video bg-gray-200 rounded-2xl overflow-hidden">
 
-                {featuredVideo.video_url ? (
+                {featuredVideo.video_url && isValidThumbnailUrl(featuredVideo.thumbnail_url, featuredVideo.video_url) ? (
 
-                  <video
+                  <>
 
-                    src={getVideoPlaybackUrl(featuredVideo.video_url)}
+                    <video
 
-                    poster={featuredVideo.thumbnail_url || undefined}
+                      src={getVideoPlaybackUrl(featuredVideo.video_url)}
 
-                    className="w-full h-full object-cover"
+                      poster={featuredVideo.thumbnail_url}
 
-                    preload={featuredVideo.thumbnail_url ? 'metadata' : 'auto'}
+                      className="w-full h-full object-cover"
 
-                    muted
+                      preload="metadata"
 
-                    playsInline
+                      muted
 
-                    onLoadedMetadata={(e) => {
+                      playsInline
 
-                      const videoEl = e.currentTarget;
+                      onError={(e) => {
 
-                      if (!featuredVideo.thumbnail_url && videoEl && videoEl.duration) {
+                        const videoEl = e.currentTarget;
 
-                        videoEl.currentTime = Math.min(1, videoEl.duration / 10);
+                        if (videoEl?.style) {
 
-                      }
+                          videoEl.style.display = 'none';
 
-                    }}
+                          const fallbackImg = videoEl.parentElement?.querySelector('.featured-fallback-img');
 
-                    onError={(e) => {
+                          if (fallbackImg instanceof HTMLElement) fallbackImg.style.display = 'block';
 
-                      const videoEl = e.currentTarget;
+                        }
 
-                      if (videoEl?.style) {
+                      }}
 
-                        videoEl.style.display = 'none';
+                    />
 
-                        const fallbackImg = videoEl.parentElement?.querySelector('.featured-fallback-img');
+                    <img
 
-                        if (fallbackImg instanceof HTMLElement) fallbackImg.style.display = 'block';
+                      src={VIDEO_PLACEHOLDER_IMG}
 
-                      }
+                      alt={featuredVideo.title}
 
-                    }}
+                      className="w-full h-full object-cover featured-fallback-img hidden"
 
-                  />
+                    />
+
+                  </>
 
                 ) : null}
 
-                {!featuredVideo.video_url && featuredVideo.thumbnail_url && (
+                {featuredVideo.video_url && !isValidThumbnailUrl(featuredVideo.thumbnail_url, featuredVideo.video_url) ? (
+                  <VideoFrameThumbnail
+                    videoUrl={featuredVideo.video_url}
+                    alt={featuredVideo.title}
+                    className="w-full h-full"
+                  />
+                ) : null}
+
+                {!featuredVideo.video_url && isValidThumbnailUrl(featuredVideo.thumbnail_url, featuredVideo.video_url) && (
 
                   <img src={featuredVideo.thumbnail_url} alt={featuredVideo.title} className="w-full h-full object-cover" />
 
                 )}
 
-                {(!featuredVideo.video_url && !featuredVideo.thumbnail_url) && (
-
+                {!featuredVideo.video_url && !isValidThumbnailUrl(featuredVideo.thumbnail_url, featuredVideo.video_url) && (
                   <img
-
-                    src="https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=600"
-
+                    src={VIDEO_PLACEHOLDER_IMG}
                     alt={featuredVideo.title}
-
-                    className="w-full h-full object-cover featured-fallback-img"
-
+                    className="w-full h-full object-cover"
                   />
-
                 )}
 
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
@@ -1161,7 +1057,23 @@ export default function Profile() {
 
           ) : publishedVideos.length > 0 ? (
 
-            <VideoGrid videos={publishedVideos} isOwnProfile={isOwnProfile} onDeleteVideo={handleDeleteVideo} />
+            <>
+
+              <VideoGrid videos={publishedVideos} isOwnProfile={isOwnProfile} onDeleteVideo={handleDeleteVideo} />
+
+              {hasNextPage && (
+                <div className="p-4 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => fetchNextPage()}
+                    disabled={isFetchingNextPage}
+                    className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-medium rounded-full transition-colors"
+                  >
+                    {isFetchingNextPage ? 'Chargement...' : 'Voir plus'}
+                  </button>
+                </div>
+              )}
+            </>
 
           ) : null
 

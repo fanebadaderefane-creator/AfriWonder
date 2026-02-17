@@ -15,13 +15,11 @@ import BottomNav from '../components/navigation/BottomNav';
 import AfriWonderLogo from '../components/common/AfriWonderLogo';
 import { useAppMenu } from '@/contexts/AppMenuContext';
 import NotificationService from '../components/notifications/NotificationService';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { toast } from "sonner";
 import { useNetworkStatus, getCacheStrategy, scheduleTask } from '../components/common/PerformanceOptimizer';
 import { cn } from "@/lib/utils";
 import { getJSON, setJSON } from '@/utils/safeStorage';
-
-const PULL_THRESHOLD = 80; // Distance en pixels pour déclencher le refresh
 
 export default function Home() {
   const _navigate = useNavigate();
@@ -39,13 +37,6 @@ export default function Home() {
   const [savedVideos, setSavedVideos] = useState(new Set());
   const [followingCount, setFollowingCount] = useState(0);
   const [followingVideos, setFollowingVideos] = useState([]);
-  
-  // Pull-to-refresh states
-  const [pullDistance, setPullDistance] = useState(0);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isPulling, setIsPulling] = useState(false);
-  const touchStartY = useRef(0);
-  const touchStartScrollTop = useRef(0);
   
   const containerRef = useRef(null);
   const queryClient = useQueryClient();
@@ -71,7 +62,7 @@ export default function Home() {
     queryKey: ['feed', user?.id],
     ...cacheStrategy,
     queryFn: async () => {
-      const result = await api.feed.list({ page: 1, limit: 50 });
+      const result = await api.feed.list({ page: 1, limit: 25 });
       return result?.items ?? [];
     },
     enabled: activeTab === 'pourtoi',
@@ -82,7 +73,7 @@ export default function Home() {
     queryKey: ['videos', user?.id],
     ...cacheStrategy,
     queryFn: async () => {
-      const result = await api.videos.list({ page: 1, limit: 50 });
+      const result = await api.videos.list({ page: 1, limit: 25 });
       return result.videos || [];
     },
     enabled: activeTab === 'abonnements',
@@ -379,162 +370,23 @@ export default function Home() {
     }
   });
 
-  // Pull-to-refresh handlers
-  const handleTouchStart = useCallback((e) => {
-    const container = containerRef.current;
-    if (!container) return;
-    
-    // Seulement si on est en haut du scroll
-    if (container.scrollTop <= 0) {
-      touchStartY.current = e.touches[0].clientY;
-      touchStartScrollTop.current = container.scrollTop;
-      setIsPulling(true);
-    }
-  }, []);
-  
-  const handleTouchMove = useCallback((e) => {
-    if (!isPulling) return;
-    
-    const container = containerRef.current;
-    if (!container) return;
-    
-    const currentY = e.touches[0].clientY;
-    const deltaY = currentY - touchStartY.current;
-    
-    // Seulement si on tire vers le bas
-    if (deltaY > 0 && container.scrollTop <= 0) {
-      const distance = Math.min(deltaY * 0.5, PULL_THRESHOLD * 1.5); // Réduction pour un effet plus doux
-      setPullDistance(distance);
-      
-      // Empêcher le scroll par défaut si on tire assez
-      if (distance > 10) {
-        e.preventDefault();
-      }
-    } else {
-      setPullDistance(0);
-      setIsPulling(false);
-    }
-  }, [isPulling]);
-  
-  const handleTouchEnd = useCallback(async () => {
-    if (!isPulling) return;
-    
-    setIsPulling(false);
-    
-    // Si on a tiré assez loin, déclencher le refresh
-    if (pullDistance >= PULL_THRESHOLD) {
-      setIsRefreshing(true);
-      setPullDistance(PULL_THRESHOLD);
-      
-      try {
-        // Rafraîchir les vidéos
-        await refetch();
-        
-        // Rafraîchir aussi les abonnements si nécessaire
-        if (activeTab === 'abonnements') {
-          queryClient.invalidateQueries({ queryKey: ['user-follows', user?.id] });
-        }
-        
-        // Rafraîchir les sauvegardes
-        if (user?.id) {
-          try {
-            const savesResult = await api.saves.list();
-            setSavedVideos(new Set((savesResult.videos || []).map(v => v.id)));
-          } catch (_e) {}
-        }
-        
-        toast.success('Actualisé avec succès');
-      } catch (error) {
-        toast.error('Erreur lors de l\'actualisation');
-      } finally {
-        // Animation de retour
-        setTimeout(() => {
-          setPullDistance(0);
-          setIsRefreshing(false);
-        }, 500);
-      }
-    } else {
-      // Retour animé si pas assez tiré
-      setPullDistance(0);
-    }
-  }, [isPulling, pullDistance, refetch, activeTab, queryClient, user?.id]);
-  
-  // Handlers pour souris (desktop)
-  const handleMouseDown = useCallback((e) => {
-    const container = containerRef.current;
-    if (!container) return;
-    
-    if (container.scrollTop <= 0) {
-      touchStartY.current = e.clientY;
-      touchStartScrollTop.current = container.scrollTop;
-      setIsPulling(true);
-    }
-  }, []);
-  
-  const handleMouseMove = useCallback((e) => {
-    if (!isPulling) return;
-    
-    const container = containerRef.current;
-    if (!container) return;
-    
-    const currentY = e.clientY;
-    const deltaY = currentY - touchStartY.current;
-    
-    if (deltaY > 0 && container.scrollTop <= 0) {
-      const distance = Math.min(deltaY * 0.5, PULL_THRESHOLD * 1.5);
-      setPullDistance(distance);
-      
-      if (distance > 10) {
-        e.preventDefault();
-      }
-    } else {
-      setPullDistance(0);
-      setIsPulling(false);
-    }
-  }, [isPulling]);
-  
-  const handleMouseUp = useCallback(() => {
-    handleTouchEnd();
-  }, [handleTouchEnd]);
-  
-  // Handle scroll and track view history
+
+
+
+
+
+  // Handle scroll - Calcul simple de l'index actif
   const handleScroll = useCallback(() => {
     const container = containerRef.current;
     if (!container) return;
-    
-    // Réinitialiser le pull si on scroll
-    if (container.scrollTop > 0 && isPulling) {
-      setIsPulling(false);
-      setPullDistance(0);
+
+    // Calculer l'index de la vidéo visible basé sur la hauteur réelle du container
+    const index = Math.round(container.scrollTop / container.clientHeight);
+
+    if (index !== currentIndex) {
+      setCurrentIndex(index);
     }
-    
-    const scrollTop = container.scrollTop;
-    const screenHeight = window.innerHeight;
-    const newIndex = Math.round(scrollTop / screenHeight);
-    
-    const currentItems = activeTab === 'pourtoi' ? feedItems : followingVideos.map(v => ({ type: 'video', video: v }));
-    
-    if (
-      newIndex !== currentIndex &&
-      newIndex >= 0 &&
-      newIndex < currentItems.length
-    ) {
-      // Save view history for previous video
-      const prevItem = currentItems[currentIndex];
-      const prevVideo = prevItem?.type === 'video' ? prevItem.video : prevItem;
-      if (user?.id && currentIndex >= 0 && prevVideo?.id) {
-        const video = prevVideo;
-        // TODO: Track view history
-        // api.videos.trackView(video.id, {
-        //   category: video.category,
-        //   watch_duration: 0,
-        //   completed: false
-        // }).catch(() => {});
-      }
-      
-      setCurrentIndex(newIndex);
-    }
-  }, [currentIndex, activeTab, feedItems, followingVideos, user?.id, isPulling]);
+  }, [currentIndex]);
 
   const handleTip = async (amount, method, extra = {}) => {
     if (!user || !selectedVideo) {
@@ -576,83 +428,71 @@ export default function Home() {
   }
 
   return (
-    <div className="w-full h-[100dvh] bg-black relative overflow-hidden">
-      {/* AfriWonder Logo */}
-      <button
-        onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
-        className={cn(
-          "absolute top-4 left-4 z-50 pointer-events-auto group transition-opacity duration-300",
-          (showComments || showShare || showTip || showGift || isMenuOpen) ? "opacity-0 pointer-events-none" : "opacity-100"
+    <div 
+      className="h-screen w-full bg-black overflow-hidden"
+      style={{
+        paddingLeft: 'env(safe-area-inset-left)',
+        paddingRight: 'env(safe-area-inset-right)'
+      }}
+    >
+      <div className="relative w-full h-full flex flex-col bg-black">
+        {/* AfriWonder Logo */}
+        <button
+          onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+          className={cn(
+            "absolute top-4 left-4 z-50 pointer-events-auto group transition-opacity duration-300",
+            (showComments || showShare || showTip || showGift || isMenuOpen) ? "opacity-0 pointer-events-none" : "opacity-100"
+          )}
+        >
+          <AfriWonderLogo size="sm" className="shadow-lg group-hover:shadow-xl transition-shadow" />
+        </button>
+
+        <TopHeader 
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          showTabs={true}
+          onMenuOpen={openMenu}
+          followingCount={followingCount}
+          title={undefined}
+          onToggleDarkMode={undefined}
+        />
+
+
+        {/* Bannières en position fixe */}
+        {activeTab === 'pourtoi' && topBannerItems.length > 0 && currentIndex === 0 && (
+          <div className="fixed top-16 left-0 right-0 z-40 px-3 pt-2 pb-1 gap-2 flex overflow-x-auto overflow-y-hidden no-scrollbar snap-x snap-mandatory pointer-events-auto">
+            {topBannerItems.map((item, i) => (
+              <div key={`top-${item.ad?.campaign_id || i}`} className="flex-shrink-0 w-[85vw] max-w-[320px]">
+                <AdBannerCard
+                  ad={item.ad}
+                  isActive={true}
+                  onHide={handleHideAd}
+                  hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
+                />
+              </div>
+            ))}
+          </div>
         )}
-      >
-        <AfriWonderLogo size="sm" className="shadow-lg group-hover:shadow-xl transition-shadow" />
-      </button>
 
-      <TopHeader 
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        showTabs={true}
-        onMenuOpen={openMenu}
-        followingCount={followingCount}
-        title={undefined}
-        onToggleDarkMode={undefined}
-      />
 
-      {/* Pull-to-refresh indicator */}
-      {pullDistance > 0 && (
+        {/* FEED - Video Feed avec CSS Snap natif */}
         <div 
-          className="absolute top-0 left-0 right-0 z-50 flex items-center justify-center pointer-events-none"
-          style={{
-            transform: `translateY(${pullDistance}px)`,
-            transition: isRefreshing ? 'transform 0.3s ease' : 'none'
+          ref={containerRef}
+          onScroll={handleScroll}
+          className="snap-y snap-mandatory"
+          style={{ 
+            flex: 1,
+            width: '100%',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+            WebkitOverflowScrolling: 'touch',
+            touchAction: 'pan-y',
+            scrollSnapType: 'y mandatory',
+            WebkitScrollSnapType: 'y mandatory',
           }}
         >
-          <div className="flex flex-col items-center gap-2 pt-4">
-            {isRefreshing ? (
-              <Loader2 className="w-6 h-6 text-orange-500 animate-spin" />
-            ) : (
-              <RefreshCw 
-                className="w-6 h-6 text-white transition-transform"
-                style={{
-                  transform: `rotate(${pullDistance >= PULL_THRESHOLD ? 180 : pullDistance * 2.25}deg)`
-                }}
-              />
-            )}
-            {pullDistance >= PULL_THRESHOLD && !isRefreshing && (
-              <p className="text-white text-xs font-medium">Relâchez pour actualiser</p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Video Feed - Vertical Scroll */}
-      <div 
-        ref={containerRef}
-        onScroll={handleScroll}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={() => {
-          if (isPulling) {
-            setIsPulling(false);
-            setPullDistance(0);
-          }
-        }}
-        data-scroll-container="true"
-        className="absolute top-0 left-0 right-0 bottom-0 overflow-y-scroll overflow-x-hidden snap-y snap-mandatory no-scrollbar"
-        style={{ 
-          scrollSnapType: 'y mandatory',
-          WebkitOverflowScrolling: 'touch',
-          scrollbarWidth: 'none',
-          msOverflowStyle: 'none',
-          height: '100vh',
-          transform: pullDistance > 0 ? `translateY(${pullDistance}px)` : 'none',
-          transition: isRefreshing ? 'transform 0.3s ease' : 'none'
-        }}
-      >
         {activeTab === 'abonnements' && followingVideos.length === 0 ? (
           <div className="h-full w-full flex flex-col items-center justify-center text-white px-8 text-center">
             <p className="text-xl font-semibold mb-2">Aucune vidéo de vos abonnements</p>
@@ -688,26 +528,13 @@ export default function Home() {
           </div>
         ) : (
           <>
-            {activeTab === 'pourtoi' && topBannerItems.length > 0 && (
-              <div className="w-full flex-shrink-0 px-3 pt-2 pb-1 gap-2 flex overflow-x-auto no-scrollbar snap-x snap-mandatory">
-                {topBannerItems.map((item, i) => (
-                  <div key={`top-${item.ad?.campaign_id || i}`} className="flex-shrink-0 w-[85vw] max-w-[320px]">
-                    <AdBannerCard
-                      ad={item.ad}
-                      isActive={true}
-                      onHide={handleHideAd}
-                      hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
             {(activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map(v => ({ type: 'video', video: v }))).map((item, index) => {
              if (item.type === 'ad') {
                return (
                  <div
                    key={`ad-${item.ad?.id || index}`}
-                   className="relative w-full h-screen snap-start snap-always flex items-center justify-center overflow-hidden"
+                   className="relative w-full snap-start overflow-hidden"
+                   style={{ height: '100vh', touchAction: 'pan-y' }}
                  >
                    <AdCard
                      ad={item.ad}
@@ -723,8 +550,9 @@ export default function Home() {
              const video = item.video;
              return (
              <div 
-               key={video.id} 
-               className="relative w-full h-screen snap-start snap-always flex items-center justify-center overflow-hidden"
+               key={video.id}
+               className="relative w-full snap-start overflow-hidden"
+               style={{ height: '100vh', touchAction: 'pan-y' }}
              >
                <VideoCard
                 video={video}
@@ -780,7 +608,8 @@ export default function Home() {
         )}
       </div>
 
-      <BottomNav />
+        <BottomNav />
+      </div>
 
       {/* Comments Sheet */}
       <CommentSheet
@@ -864,14 +693,27 @@ export default function Home() {
       />
 
       <style>{`
-        .no-scrollbar {
-          -ms-overflow-style: none; /* IE / Edge */
-          scrollbar-width: none; /* Firefox */
+        html, body {
+          width: 100%;
+          height: 100%;
+          margin: 0;
+          padding: 0;
+          overflow: hidden;
         }
-        @supports selector(::-webkit-scrollbar) {
-          .no-scrollbar::-webkit-scrollbar {
-            display: none; /* Chrome / Safari */
-          }
+
+        * {
+          box-sizing: border-box;
+        }
+
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+
+        ::-webkit-scrollbar {
+          width: 0px;
+          height: 0px;
+          display: none;
         }
       `}</style>
     </div>

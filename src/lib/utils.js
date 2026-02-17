@@ -8,6 +8,29 @@ export function cn(...inputs) {
 
 export const isIframe = window.self !== window.top;
 
+/** Placeholder neutre (gris + play) pour vidéos sans miniature — évite toute ressemblance avec logos tiers */
+export const VIDEO_PLACEHOLDER_IMG = 'data:image/svg+xml,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400" fill="%23374151">' +
+  '<rect width="300" height="400" fill="%23374151"/>' +
+  '<path d="M120 100v200l120-100z" fill="%239ca3af" opacity="0.8"/>' +
+  '</svg>'
+);
+
+/** Extensions vidéo : si thumbnail_url pointe vers une vidéo, ce n'est pas une vraie miniature. */
+const VIDEO_EXT = /\.(mp4|webm|mov|m3u8|m4v|avi|mkv)(\?|$)/i;
+
+/**
+ * Indique si thumbnail_url est une vraie image (miniature) et non une URL vidéo.
+ * Le backend peut stocker video_url comme thumbnail_url quand aucune miniature n'est fournie ;
+ * Chrome/mobile n'affichent pas de frame avec poster=videoUrl.
+ */
+export function isValidThumbnailUrl(thumbnailUrl, videoUrl) {
+  if (!thumbnailUrl || typeof thumbnailUrl !== 'string') return false;
+  if (thumbnailUrl === videoUrl) return false;
+  if (VIDEO_EXT.test(thumbnailUrl)) return false;
+  return true;
+}
+
 /**
  * Retourne l'URL de lecture d'une vidéo. Pour les URLs externes (CDN), passe par le proxy
  * backend pour éviter les erreurs CORS (Failed to open media).

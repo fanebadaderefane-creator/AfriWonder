@@ -5,37 +5,8 @@ import { Star, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from "sonner";
 import { api } from '@/api/expressClient';
-import { getVideoPlaybackUrl } from '@/lib/utils';
-
-/** Affiche une frame de la vidéo (même logique que la grille du profil) */
-function VideoThumbnail({ videoUrl }) {
-  const [error, setError] = React.useState(false);
-  if (error) {
-    return (
-      <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs bg-gray-800">
-        Erreur chargement
-      </div>
-    );
-  }
-  return (
-    <video
-      src={getVideoPlaybackUrl(videoUrl)}
-      className="w-full h-full object-cover"
-      preload="auto"
-      muted
-      playsInline
-      onLoadedMetadata={(e) => {
-        const el = e.currentTarget;
-        if (el?.duration) el.currentTime = Math.min(1, el.duration / 10);
-      }}
-      onLoadedData={(e) => {
-        const el = e.currentTarget;
-        if (el?.duration && el.currentTime === 0) el.currentTime = Math.min(1, el.duration / 10);
-      }}
-      onError={() => setError(true)}
-    />
-  );
-}
+import { isValidThumbnailUrl } from '@/lib/utils';
+import VideoFrameThumbnail from './VideoFrameThumbnail';
 
 export default function FeaturedVideoSelector({ isOpen, onClose, videos, currentFeaturedId, _userId, onSuccess }) {
   const handleSetFeatured = async (videoId) => {
@@ -83,14 +54,14 @@ export default function FeaturedVideoSelector({ isOpen, onClose, videos, current
               }`}
             >
               <div className="aspect-video bg-gray-900">
-                {video.thumbnail_url ? (
+                {isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
                   <img
                     src={video.thumbnail_url}
                     alt={video.title}
                     className="w-full h-full object-cover"
                   />
                 ) : video.video_url ? (
-                  <VideoThumbnail videoUrl={video.video_url} />
+                  <VideoFrameThumbnail videoUrl={video.video_url} alt={video.title} />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">Pas de miniature</div>
                 )}

@@ -2,7 +2,7 @@ import React from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { BadgeCheck, Settings, Share2, MapPin, Link as LinkIcon, Edit2, ShoppingBag, Wallet, Crown } from 'lucide-react';
+import { BadgeCheck, Share2, MapPin, Link as LinkIcon, Edit2, ShoppingBag, Wallet, Crown } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { api } from '@/api/expressClient';
 import { toast } from "sonner";
@@ -67,21 +67,8 @@ export default function ProfileHeader({
 
   return (
     <div className="bg-white">
-      {/* Cover gradient */}
-      <div className="h-24 bg-gradient-to-br from-orange-400 via-red-500 to-pink-500 relative">
-        {isOwnProfile && (
-          <div className="absolute top-3 right-3 flex gap-2">
-            <Button 
-              variant="ghost" 
-              size="icon"
-              onClick={onSettings}
-              className="bg-white/20 text-white hover:bg-white/30 backdrop-blur"
-            >
-              <Settings className="w-5 h-5" />
-            </Button>
-          </div>
-        )}
-      </div>
+      {/* Cover gradient — pas de bouton Settings ici : évite doublon avec le menu global (hamburger) en haut à droite */}
+      <div className="h-24 bg-gradient-to-br from-orange-400 via-red-500 to-pink-500 relative" />
 
       <div className="px-4 pb-4">
         {/* Avatar */}

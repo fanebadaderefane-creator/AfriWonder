@@ -85,6 +85,7 @@ router.get('/media', async (req: Request, res: ExpressResponse) => {
     });
 
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
 
     const stream = response.body;
     if (!stream) {

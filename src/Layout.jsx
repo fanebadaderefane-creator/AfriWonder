@@ -35,20 +35,14 @@ function LayoutContent({ children, currentPageName }) {
     };
 
     const preventElasticScroll = (e) => {
-      // Ne bloquer QUE le scroll du body/window, pas les conteneurs internes
+      const path = e.composedPath ? e.composedPath() : [e.target];
+      const isScrollingContainer = path.some((el) => el?.closest?.('[data-scroll-container]') || el?.closest?.('.overflow-y-scroll') || el?.closest?.('.overflow-scroll'));
+      if (isScrollingContainer) return;
+      
       const target = e.target;
-      const isScrollingContainer = target.closest('[data-scroll-container]') || 
-                                    target.classList.contains('overflow-y-scroll') ||
-                                    target.classList.contains('overflow-scroll');
-      
-      // Si c'est un conteneur de scroll interne, NE PAS bloquer
-      if (isScrollingContainer) {
-        return;
-      }
-      
-      const scrollTop = target.scrollTop || window.pageYOffset;
-      const scrollHeight = target.scrollHeight || document.documentElement.scrollHeight;
-      const clientHeight = target.clientHeight || window.innerHeight;
+      const scrollTop = target?.scrollTop ?? window.pageYOffset;
+      const scrollHeight = target?.scrollHeight ?? document.documentElement.scrollHeight;
+      const clientHeight = target?.clientHeight ?? window.innerHeight;
       
       // Prevent overscroll at top
       if (scrollTop <= 0 && e.deltaY < 0) {
@@ -60,37 +54,36 @@ function LayoutContent({ children, currentPageName }) {
       }
     };
 
-    // Touch events
-    document.addEventListener('touchstart', (e) => {
-      if (window.scrollY === 0) {
-        const touch = e.touches[0];
-        const startY = touch.clientY;
-        document.body.setAttribute('data-start-y', startY);
+    const handleTouchStart = (e) => {
+      if (window.scrollY === 0 && e.touches?.[0]) {
+        document.body.setAttribute('data-start-y', String(e.touches[0].clientY));
       }
-    }, { passive: true });
+    };
+    const handleTouchMove = (e) => {
+      // Sur Home, ne jamais bloquer le touch — le feed vidéo a son propre scroll
+      if (currentPageName === 'Home') return;
 
-    document.addEventListener('touchmove', (e) => {
       // Ne bloquer QUE le scroll du body/window, pas les conteneurs internes
-      const target = e.target;
-      const isScrollingContainer = target.closest('[data-scroll-container]') ||
-                                    target.classList.contains('overflow-y-scroll') ||
-                                    target.classList.contains('overflow-scroll');
+      const path = e.composedPath ? e.composedPath() : [e.target];
+      const isScrollingContainer = path.some((el) => {
+        if (!el || typeof el.closest !== 'function') return false;
+        return el.closest('[data-scroll-container]') || el.closest('.overflow-y-scroll') || el.closest('.overflow-scroll') || el.closest('.overflow-y-auto');
+      });
 
-      // Si c'est un conteneur de scroll interne, NE PAS bloquer
-      if (isScrollingContainer) {
-        return;
-      }
+      if (isScrollingContainer) return;
 
       preventPullToRefresh(e);
       const startY = parseFloat(document.body.getAttribute('data-start-y') || '0');
       const touch = e.touches[0];
       const currentY = touch.clientY;
 
-      // Prevent pull-to-refresh when at top and scrolling down
       if (window.scrollY === 0 && currentY > startY) {
         e.preventDefault();
       }
-    }, { passive: false });
+    };
+
+    document.addEventListener('touchstart', handleTouchStart, { passive: true });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
 
     // Wheel events for desktop
     document.addEventListener('wheel', preventElasticScroll, { passive: false });
@@ -110,11 +103,13 @@ function LayoutContent({ children, currentPageName }) {
 
     return () => {
       window.removeEventListener('resize', setViewportHeight);
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('wheel', preventElasticScroll);
       document.body.style.overscrollBehavior = '';
       document.documentElement.style.overscrollBehavior = '';
     };
-  }, []);
+  }, [currentPageName]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -141,21 +136,22 @@ function LayoutContent({ children, currentPageName }) {
           padding-top: max(16px, env(safe-area-inset-top));
         }
         
-        /* Custom scrollbar — @supports évite "bad selector" dans Firefox */
+        /* Barre de défilement visible (Chrome/Safari) — globals.css gère Firefox */
         @supports selector(::-webkit-scrollbar) {
           ::-webkit-scrollbar {
-            width: 4px;
-            height: 4px;
+            width: 10px;
+            height: 10px;
           }
           ::-webkit-scrollbar-track {
-            background: transparent;
+            background: #e5e7eb;
+            border-radius: 5px;
           }
           ::-webkit-scrollbar-thumb {
-            background: #d1d5db;
-            border-radius: 2px;
+            background: #9ca3af;
+            border-radius: 5px;
           }
           ::-webkit-scrollbar-thumb:hover {
-            background: #9ca3af;
+            background: #6b7280;
           }
         }
         

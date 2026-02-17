@@ -5,49 +5,43 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, X, Loader2, Video, User, Package } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
+import { isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG } from "@/lib/utils";
+import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 import { motion, AnimatePresence } from 'framer-motion';
 
-/** Affiche la miniature du créateur, sinon la première image de la vidéo */
+/** Affiche la miniature (image valide), sinon image de secours — évite cadre noir sur Chrome/mobile */
 function VideoThumbnail({ video }) {
-  const [showThumb, setShowThumb] = useState(!!video.thumbnail_url);
-  const [showVideo, setShowVideo] = useState(!video.thumbnail_url && !!video.video_url);
-  const [showIcon, setShowIcon] = useState(!video.thumbnail_url && !video.video_url);
+  const hasValidThumb = isValidThumbnailUrl(video.thumbnail_url, video.video_url);
+  const [showThumb, setShowThumb] = useState(hasValidThumb);
+  const [thumbError, setThumbError] = useState(false);
 
-  const onThumbError = () => {
-    setShowThumb(false);
-    if (video.video_url) setShowVideo(true);
-    else setShowIcon(true);
-  };
-  const onVideoError = () => {
-    setShowVideo(false);
-    setShowIcon(true);
-  };
+  const onThumbError = () => setThumbError(true);
 
+  if (!hasValidThumb && !video.video_url) {
+    return (
+      <div className="w-24 h-16 rounded-lg bg-gray-900 flex-shrink-0 overflow-hidden relative flex items-center justify-center">
+        <Video className="w-8 h-8 text-gray-500" />
+      </div>
+    );
+  }
+  if (!hasValidThumb && video.video_url) {
+    return (
+      <div className="w-24 h-16 rounded-lg overflow-hidden flex-shrink-0">
+        <VideoFrameThumbnail videoUrl={video.video_url} alt={video.title} />
+      </div>
+    );
+  }
   return (
     <div className="w-24 h-16 rounded-lg bg-gray-900 flex-shrink-0 overflow-hidden relative">
-      {video.thumbnail_url && showThumb && (
+      {showThumb && !thumbError ? (
         <img
           src={video.thumbnail_url}
           alt={video.title}
           className="w-full h-full object-cover absolute inset-0"
           onError={onThumbError}
         />
-      )}
-      {video.video_url && showVideo && (
-        <video
-          src={video.video_url}
-          className="w-full h-full object-cover absolute inset-0"
-          muted
-          playsInline
-          preload="metadata"
-          aria-label={video.title}
-          onError={onVideoError}
-        />
-      )}
-      {showIcon && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
-          <Video className="w-8 h-8 text-gray-500" />
-        </div>
+      ) : (
+        <img src={VIDEO_PLACEHOLDER_IMG} alt={video.title} className="w-full h-full object-cover absolute inset-0" />
       )}
     </div>
   );

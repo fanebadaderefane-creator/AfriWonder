@@ -448,7 +448,6 @@ function VideoCardContent({
 
     const handleTouchMove = (e) => {
       if (!e.touches || e.touches.length === 0) return;
-      e.preventDefault();
       handleSeek(e.touches[0].clientX);
     };
 
@@ -460,7 +459,7 @@ function VideoCardContent({
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchmove', handleTouchMove);
     window.addEventListener('touchend', handleTouchEnd);
     window.addEventListener('touchcancel', handleTouchEnd);
 
@@ -483,7 +482,6 @@ function VideoCardContent({
   };
 
   const handleProgressTouchStart = (e) => {
-    e.preventDefault();
     e.stopPropagation();
     if (!e.touches || e.touches.length === 0) return;
     setIsDragging(true);
@@ -501,7 +499,10 @@ function VideoCardContent({
   /* ================= RENDER ================= */
 
   return (
-    <div className="relative w-full h-screen bg-black overflow-hidden">
+    <div 
+      className="relative w-full h-screen bg-black overflow-hidden"
+      style={{ touchAction: 'pan-y' }}
+    >
       <div className="absolute inset-0 overflow-hidden">
       {/* ================= VIDEO ================= */}
       <video
@@ -538,6 +539,7 @@ function VideoCardContent({
         onLoadStart={() => setLoadError(false)}
         onLoadedData={() => setLoadError(false)}
         style={{ 
+          touchAction: 'pan-y',
           filter: video.filter === 'Normal' || !video.filter ? 'none' :
                   video.filter === 'Noir & Blanc' ? 'grayscale(100%)' :
                   video.filter === 'Sépia' ? 'sepia(100%)' :
@@ -594,6 +596,7 @@ function VideoCardContent({
           pointer-events-none
           z-[20]
         "
+        style={{ touchAction: 'pan-y' }}
       />
 
       {/* ================= PLAY / PAUSE ================= */}
@@ -628,13 +631,12 @@ function VideoCardContent({
           <div 
             ref={progressBarRef}
             className={cn(
-              "flex-1 h-12 relative select-none touch-manipulation",
+              "flex-1 h-12 relative select-none",
               isDragging ? "cursor-grabbing" : "cursor-grab"
             )}
             onMouseDown={handleProgressMouseDown}
             onTouchStart={handleProgressTouchStart}
             onClick={handleProgressClick}
-            style={{ touchAction: 'none' }}
           >
             {/* Prévisualisation au survol/drag (style YouTube) */}
             {isDragging && (
@@ -883,10 +885,13 @@ function VideoCardContent({
       )}
 
       {/* ================= INFOS BAS ================= */}
-      <div className={cn(
-        "absolute left-0 right-20 bottom-24 px-4 pb-20 z-[90] transition-opacity duration-300",
-        hideActions ? "opacity-0 pointer-events-none" : "opacity-100"
-      )}>
+      <div 
+        className={cn(
+          "absolute left-0 right-20 bottom-24 px-4 pb-20 z-[90] transition-opacity duration-300",
+          hideActions ? "opacity-0 pointer-events-none" : "opacity-100"
+        )}
+        style={{ touchAction: 'pan-y' }}
+      >
         <div className="flex items-center gap-2 mb-2">
           <button
             onClick={() => onProfileClick(video.creator_id)}

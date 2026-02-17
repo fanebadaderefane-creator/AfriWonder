@@ -7,6 +7,8 @@ import { Search, TrendingUp, Hash, Flame, Music2, Utensils, Shirt, Briefcase, Du
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
+import { isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG } from "@/lib/utils";
+import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 import BottomNav from '../components/navigation/BottomNav';
 import ProductCard from '../components/marketplace/ProductCard';
 import RecommendationEngine from '../components/common/RecommendationEngine';
@@ -137,7 +139,7 @@ export default function Discover() {
   const { data: trendingCreators = [] } = useQuery({
     queryKey: ['trending-creators'],
     queryFn: async () => {
-      const result = await api.videos.list({ page: 1, limit: 50 });
+      const result = await api.videos.list({ page: 1, limit: 25 });
       const allVideos = result.videos || [];
       const creatorStats = {};
       
@@ -260,11 +262,13 @@ export default function Discover() {
                       transition={{ delay: index * 0.03 }}
                       className="relative aspect-[9/16] bg-gray-200 rounded-lg overflow-hidden"
                     >
-                      <img
-                        src={video.thumbnail_url || 'https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=300'}
-                        alt={video.title}
-                        className="w-full h-full object-cover"
-                      />
+                      {isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
+                        <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover" />
+                      ) : video.video_url ? (
+                        <VideoFrameThumbnail videoUrl={video.video_url} alt={video.title} />
+                      ) : (
+                        <img src={VIDEO_PLACEHOLDER_IMG} alt={video.title} className="w-full h-full object-cover" />
+                      )}
                       <div className="absolute top-1 right-1 bg-gradient-to-r from-orange-500 to-red-500 text-white px-1.5 py-0.5 rounded text-[10px] font-bold">
                         VIRAL
                       </div>
@@ -357,11 +361,13 @@ export default function Discover() {
                       transition={{ delay: index * 0.03 }}
                       className="relative aspect-[9/16] bg-gray-200 rounded-lg overflow-hidden"
                     >
-                      <img
-                        src={video.thumbnail_url || 'https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=300'}
-                        alt={video.title}
-                        className="w-full h-full object-cover"
-                      />
+                      {isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
+                        <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover" />
+                      ) : video.video_url ? (
+                        <VideoFrameThumbnail videoUrl={video.video_url} alt={video.title} />
+                      ) : (
+                        <img src={VIDEO_PLACEHOLDER_IMG} alt={video.title} className="w-full h-full object-cover" />
+                      )}
                       <div className="absolute bottom-1 left-1 bg-black/60 px-1.5 py-0.5 rounded text-[10px] text-white font-medium">
                         {video.views >= 1000 ? `${(video.views/1000).toFixed(0)}K` : video.views} vues
                       </div>
@@ -443,11 +449,13 @@ export default function Discover() {
                       transition={{ delay: idx * 0.03 }}
                       className="relative aspect-[9/16] bg-gray-200 rounded-lg overflow-hidden"
                     >
-                      <img
-                        src={video.thumbnail_url || 'https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=300'}
-                        alt={video.title}
-                        className="w-full h-full object-cover"
-                      />
+                      {isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
+                        <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover" />
+                      ) : video.video_url ? (
+                        <VideoFrameThumbnail videoUrl={video.video_url} alt={video.title} />
+                      ) : (
+                        <img src={VIDEO_PLACEHOLDER_IMG} alt={video.title} className="w-full h-full object-cover" />
+                      )}
                       <div className="absolute bottom-1 left-1 bg-black/60 px-1.5 py-0.5 rounded text-[10px] text-white font-medium">
                         {video.views >= 1000 ? `${(video.views/1000).toFixed(0)}K` : video.views} vues
                       </div>
