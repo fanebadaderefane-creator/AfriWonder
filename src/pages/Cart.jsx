@@ -94,13 +94,21 @@ export default function CartPage() {
 
   if (items.length === 0) {
     return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto p-4 text-center py-12">
-        <ShoppingCart className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-        <h1 className="text-2xl font-bold mb-2">Votre panier est vide</h1>
-        <p className="text-gray-600 mb-6">Commencez à acheter pour remplir votre panier</p>
-        <Button onClick={() => navigate(createPageUrl('Marketplace'))} className="bg-orange-500 hover:bg-orange-600">
-          Retour au marketplace
-        </Button>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto p-4 py-12">
+        <div className="flex items-center gap-3 mb-8">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <h1 className="text-xl font-bold">Mon panier</h1>
+        </div>
+        <div className="text-center">
+          <ShoppingCart className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+          <h2 className="text-2xl font-bold mb-2">Votre panier est vide</h2>
+          <p className="text-gray-600 mb-6">Commencez à acheter pour remplir votre panier</p>
+          <Button onClick={() => navigate(createPageUrl('Marketplace'))} className="bg-orange-500 hover:bg-orange-600">
+            Retour au marketplace
+          </Button>
+        </div>
       </motion.div>
     );
   }

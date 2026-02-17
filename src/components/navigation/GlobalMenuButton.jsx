@@ -15,10 +15,26 @@ export default function GlobalMenuButton({ hideOnHome = true, hideOnAdmin = true
   const isHome = pathname === '/' || pathname === '/Home' || pathname.toLowerCase() === '/home';
   const isAdmin = pathname === '/AdminDashboard' || pathname.toLowerCase().includes('admindashboard');
   const isLanding = pathname === '/Landing' || pathname.toLowerCase() === '/landing';
+  // Écrans immersifs (vidéo / live / création) ou contextes où le bouton flottant gêne l'expérience
+  const fullscreenPaths = [
+    '/Create',
+    '/LiveStream',
+    '/Lives',
+    '/EditVideo',
+    '/Cart',
+    '/Discover',
+    '/Civic',
+    '/Wallet',
+    '/Chat',
+    '/Inbox',
+    '/DirectMessage',
+  ];
+  const isFullscreenFlow = fullscreenPaths.some((basePath) => pathname === basePath || pathname.startsWith(`${basePath}/`));
 
   if (hideOnHome && isHome) return null;
   if (hideOnAdmin && isAdmin) return null;
   if (hideOnLanding && isLanding) return null;
+  if (isFullscreenFlow) return null;
 
   return (
     <Button
