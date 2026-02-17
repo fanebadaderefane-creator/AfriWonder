@@ -70,6 +70,9 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
     setTimeout(() => {
       navigator.serviceWorker.register('/sw-custom.js', { scope: '/' })
         .then((reg) => {
+          // Always check for an updated service worker on load
+          reg.update();
+
           reg.addEventListener('updatefound', () => {
             const newWorker = reg.installing;
             newWorker?.addEventListener('statechange', () => {

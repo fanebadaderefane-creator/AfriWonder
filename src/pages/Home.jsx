@@ -531,11 +531,11 @@ export default function Home() {
             {(activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map(v => ({ type: 'video', video: v }))).map((item, index) => {
              if (item.type === 'ad') {
                return (
-                 <div
-                   key={`ad-${item.ad?.id || index}`}
-                   className="relative w-full snap-start overflow-hidden"
-                   style={{ height: '100vh', touchAction: 'pan-y' }}
-                 >
+                <div
+                  key={`ad-${item.ad?.id || index}`}
+                  className="relative w-full snap-start overflow-hidden"
+                  style={{ height: '100dvh', touchAction: 'pan-y' }}
+                >
                    <AdCard
                      ad={item.ad}
                      isActive={index === currentIndex}
@@ -549,11 +549,11 @@ export default function Home() {
              }
              const video = item.video;
              return (
-             <div 
-               key={video.id}
-               className="relative w-full snap-start overflow-hidden"
-               style={{ height: '100vh', touchAction: 'pan-y' }}
-             >
+            <div 
+              key={video.id}
+              className="relative w-full snap-start overflow-hidden"
+              style={{ height: '100dvh', touchAction: 'pan-y' }}
+            >
                <VideoCard
                 video={video}
                 isActive={index === currentIndex}

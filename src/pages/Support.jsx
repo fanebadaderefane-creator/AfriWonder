@@ -130,7 +130,7 @@ export default function Support() {
           </div>
         </Card>
       ) : (
-        <div className="flex flex-col md:flex-row h-[calc(100vh-140px)]">
+        <div className="flex flex-col md:flex-row h-[calc(100dvh-140px)]">
           <div className="w-full md:w-80 border-r bg-white overflow-y-auto">
             {tickets.length === 0 ? (
               <div className="p-4 text-center text-gray-500">

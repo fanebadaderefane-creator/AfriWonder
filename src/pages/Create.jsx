@@ -1171,7 +1171,7 @@ export default function Create() {
 
   return (
 
-    <div className="min-h-screen bg-black">
+    <div className="screen bg-black">
 
       <AnimatePresence mode="wait">
 
@@ -1180,17 +1180,11 @@ export default function Create() {
         {step === 'select' && (
 
           <motion.div
-
             key="select"
-
             initial={{ opacity: 0 }}
-
             animate={{ opacity: 1 }}
-
             exit={{ opacity: 0 }}
-
-            className="h-screen flex flex-col"
-
+            className="flex flex-col h-full"
           >
 
             <div className="flex items-center justify-between p-4">
@@ -1342,17 +1336,11 @@ export default function Create() {
         {step === 'camera' && (
 
           <motion.div
-
             key="camera"
-
             initial={{ opacity: 0 }}
-
             animate={{ opacity: 1 }}
-
             exit={{ opacity: 0 }}
-
-            className="h-screen flex flex-col bg-black relative"
-
+            className="flex flex-col bg-black relative h-full"
           >
 
             {/* Camera Preview */}
@@ -1741,17 +1729,11 @@ export default function Create() {
         {step === 'live' && (
 
           <motion.div
-
             key="live"
-
             initial={{ opacity: 0 }}
-
             animate={{ opacity: 1 }}
-
             exit={{ opacity: 0 }}
-
-            className="h-screen flex flex-col bg-black relative"
-
+            className="flex flex-col bg-black relative h-full"
           >
 
             {/* Live Camera Preview */}
@@ -1984,17 +1966,11 @@ export default function Create() {
         {step === 'edit' && (
 
           <motion.div
-
             key="edit"
-
             initial={{ opacity: 0, x: 100 }}
-
             animate={{ opacity: 1, x: 0 }}
-
             exit={{ opacity: 0, x: -100 }}
-
-            className="h-screen flex flex-col min-h-0"
-
+            className="flex flex-col min-h-0 h-full"
           >
 
             <div className="flex-shrink-0 flex items-center justify-between p-4">
@@ -2557,15 +2533,10 @@ export default function Create() {
         {step === 'uploading' && (
 
           <motion.div
-
             key="uploading"
-
             initial={{ opacity: 0 }}
-
             animate={{ opacity: 1 }}
-
-            className="h-screen flex flex-col items-center justify-center bg-black text-white p-8"
-
+            className="flex flex-col items-center justify-center bg-black text-white p-8 h-full"
           >
 
             <div className="w-24 h-24 rounded-full bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center mb-6">

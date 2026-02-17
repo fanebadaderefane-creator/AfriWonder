@@ -5,8 +5,8 @@
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",
-  "theme_color": "#f97316",
-  "orientation": "any",
+  "theme_color": "#000000",
+  "orientation": "portrait",
   "scope": "/",
   "icons": [
     {
@@ -69,4 +69,3 @@
   "dir": "ltr",
   "prefer_related_applications": false
 }
-

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Toaster } from "@/components/ui/sonner";
 import TranslationProvider from "@/components/common/TranslationProvider";
 import { MarketplaceCurrencyProvider } from "@/contexts/MarketplaceCurrencyContext";
@@ -24,92 +24,6 @@ function LayoutContent({ children, currentPageName }) {
   const isFullScreen = fullScreenPages.includes(currentPageName);
   const { user } = useAuth();
   const { isOpen: isMenuOpen, closeMenu } = useAppMenu();
-
-  useEffect(() => {
-    // Disable pull-to-refresh and elastic bounce
-    const preventPullToRefresh = (e) => {
-      const startY = document.body.getAttribute('data-start-y');
-      if (window.scrollY === 0 && e.touches?.[0] && startY != null && e.touches[0].clientY > parseFloat(startY)) {
-        e.preventDefault();
-      }
-    };
-
-    const preventElasticScroll = (e) => {
-      const path = e.composedPath ? e.composedPath() : [e.target];
-      const isScrollingContainer = path.some((el) => el?.closest?.('[data-scroll-container]') || el?.closest?.('.overflow-y-scroll') || el?.closest?.('.overflow-scroll'));
-      if (isScrollingContainer) return;
-      
-      const target = e.target;
-      const scrollTop = target?.scrollTop ?? window.pageYOffset;
-      const scrollHeight = target?.scrollHeight ?? document.documentElement.scrollHeight;
-      const clientHeight = target?.clientHeight ?? window.innerHeight;
-      
-      // Prevent overscroll at top
-      if (scrollTop <= 0 && e.deltaY < 0) {
-        e.preventDefault();
-      }
-      // Prevent overscroll at bottom
-      if (scrollTop + clientHeight >= scrollHeight && e.deltaY > 0) {
-        e.preventDefault();
-      }
-    };
-
-    const handleTouchStart = (e) => {
-      if (window.scrollY === 0 && e.touches?.[0]) {
-        document.body.setAttribute('data-start-y', String(e.touches[0].clientY));
-      }
-    };
-    const handleTouchMove = (e) => {
-      // Sur Home, ne jamais bloquer le touch — le feed vidéo a son propre scroll
-      if (currentPageName === 'Home') return;
-
-      // Ne bloquer QUE le scroll du body/window, pas les conteneurs internes
-      const path = e.composedPath ? e.composedPath() : [e.target];
-      const isScrollingContainer = path.some((el) => {
-        if (!el || typeof el.closest !== 'function') return false;
-        return el.closest('[data-scroll-container]') || el.closest('.overflow-y-scroll') || el.closest('.overflow-scroll') || el.closest('.overflow-y-auto');
-      });
-
-      if (isScrollingContainer) return;
-
-      preventPullToRefresh(e);
-      const startY = parseFloat(document.body.getAttribute('data-start-y') || '0');
-      const touch = e.touches[0];
-      const currentY = touch.clientY;
-
-      if (window.scrollY === 0 && currentY > startY) {
-        e.preventDefault();
-      }
-    };
-
-    document.addEventListener('touchstart', handleTouchStart, { passive: true });
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
-
-    // Wheel events for desktop
-    document.addEventListener('wheel', preventElasticScroll, { passive: false });
-
-    // CSS to prevent overscroll
-    document.body.style.overscrollBehavior = 'none';
-    document.documentElement.style.overscrollBehavior = 'none';
-
-    // Fix viewport height on mobile
-    const setViewportHeight = () => {
-      const vh = window.innerHeight * 0.01;
-      document.documentElement.style.setProperty('--vh', `${vh}px`);
-    };
-    
-    setViewportHeight();
-    window.addEventListener('resize', setViewportHeight);
-
-    return () => {
-      window.removeEventListener('resize', setViewportHeight);
-      document.removeEventListener('touchstart', handleTouchStart);
-      document.removeEventListener('touchmove', handleTouchMove);
-      document.removeEventListener('wheel', preventElasticScroll);
-      document.body.style.overscrollBehavior = '';
-      document.documentElement.style.overscrollBehavior = '';
-    };
-  }, [currentPageName]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -201,14 +115,11 @@ function LayoutContent({ children, currentPageName }) {
           }
           
           body {
-            height: 100vh;
             height: 100dvh;
-            height: calc(var(--vh, 1vh) * 100);
           }
           
           main {
             height: 100%;
-            /* overflow: hidden; REMOVED - bloque le scroll du feed */
           }
         }
 
@@ -223,21 +134,12 @@ function LayoutContent({ children, currentPageName }) {
         html {
           scroll-behavior: smooth;
           -webkit-overflow-scrolling: touch;
-          overscroll-behavior: none;
-          overscroll-behavior-y: none;
         }
 
         /* Fix viewport on mobile */
         body {
           position: relative;
           overflow-x: hidden;
-          overscroll-behavior: none;
-          overscroll-behavior-y: none;
-        }
-        
-        /* Prevent elastic bounce on all elements */
-        * {
-          overscroll-behavior: none;
         }
         
         /* Touch optimizations */
@@ -258,7 +160,6 @@ function LayoutContent({ children, currentPageName }) {
           --primary-pink: #ec4899;
           --gradient-start: #f97316;
           --gradient-end: #ef4444;
-          --vh: 1vh;
         }
 
         /* Image optimization */
@@ -326,7 +227,7 @@ function LayoutContent({ children, currentPageName }) {
 
       <TranslationProvider>
         <MarketplaceCurrencyProvider>
-          <main id="main-content" className={isFullScreen ? '' : ''} tabIndex={-1}>
+          <main id="main-content" className={`screen ${isFullScreen ? '' : ''}`} tabIndex={-1}>
             {children}
           </main>
         </MarketplaceCurrencyProvider>

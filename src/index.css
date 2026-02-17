@@ -87,6 +87,42 @@
   }
 }
 
+/* Global reset for predictable layout on mobile */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  touch-action: manipulation;
+}
+
+#root,
+#app {
+  height: 100dvh;
+  width: 100%;
+  position: relative;
+}
+
+/* Single scrollable area per screen */
+.screen {
+  height: 100dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+body {
+  overscroll-behavior: none;
+}
+
+.scrollable {
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+
 /* Fix for logo transparency - remove any black background artifacts */
 .afriwonder-logo,
 .afriwonder-logo *,
