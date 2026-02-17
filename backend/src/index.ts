@@ -48,7 +48,7 @@ const io = new Server(httpServer, {
 
 setMessageIo(io);
 
-const PORT = process.env.PORT || 3000;
+const PORT = parseInt(process.env.PORT || '3000', 10);
 
 // WebSocket connection
 io.on('connection', (socket) => {
