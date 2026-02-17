@@ -1,8 +1,8 @@
 import axios from 'axios';
 import { getItem, setItem, removeItem } from '@/utils/safeStorage';
 
-// En production sans VITE_API_URL : utiliser le proxy Vercel (/api) pour éviter CORS
-// Si VITE_API_URL est défini, on normalise pour qu'il se termine par /api (backend attend /api/auth, etc.)
+// En production sans VITE_API_URL : utiliser le proxy Vercel (/api) → pas de CORS, credentials OK
+// Si VITE_API_URL est défini (ex: https://afriwonder.onrender.com), appels directs → CORS requis côté backend (CORS_ORIGIN)
 const raw = import.meta.env.VITE_API_URL;
 const API_URL = raw
   ? `${raw.replace(/\/api\/?$/, '')}/api`

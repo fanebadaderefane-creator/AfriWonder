@@ -40,9 +40,13 @@ try {
 
 const httpServer = createServer(app);
 const corsOrigins = [
-  process.env.CORS_ORIGIN,
+  ...(process.env.CORS_ORIGIN || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s && s !== '*'),
   'http://localhost:5173',
   'https://afri-wonder.vercel.app',
+  'https://afriwonder.vercel.app',
   /\.vercel\.app$/, // Préviews Vercel
 ].filter(Boolean);
 const io = new Server(httpServer, {

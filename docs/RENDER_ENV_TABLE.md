@@ -19,7 +19,7 @@
 
 | Variable | Valeur | Notes |
 |----------|--------|-------|
-| `CORS_ORIGIN` | `https://afri-wonder.vercel.app` | URL de ton frontend Vercel (ou ton domaine custom) |
+| `CORS_ORIGIN` | `https://afri-wonder.vercel.app` | URL de ton frontend Vercel. **Obligatoire** si `VITE_API_URL` pointe vers Render. Plusieurs URLs séparées par des virgules. Jamais `*` (incompatible avec credentials). |
 | `APP_URL` | `https://afriwonder-backend.onrender.com` | URL de ton backend Render (après déploiement) |
 | `PORT` | *(laisser vide)* | Render injecte automatiquement |
 

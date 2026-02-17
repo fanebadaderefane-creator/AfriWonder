@@ -14,5 +14,6 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # DATABASE_URL, JWT_SECRET, JWT_REFRESH_SECRET, CORS_ORIGIN : à définir dans le Dashboard
+      # DATABASE_URL, JWT_SECRET, JWT_REFRESH_SECRET : obligatoires
+      # CORS_ORIGIN : URL frontend (ex: https://afri-wonder.vercel.app) — OBLIGATOIRE si frontend appelle l'API directement (VITE_API_URL)
       # Ne PAS définir PORT : Render l'injecte automatiquement (10000)

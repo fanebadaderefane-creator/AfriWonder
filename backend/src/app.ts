@@ -128,14 +128,26 @@ const app = express();
 app.set('trust proxy', 1);
 app.set('etag', 'strong');
 // CORS — avec credentials, on doit renvoyer une origine explicite (jamais *)
-const defaultOrigins = ['http://localhost:5173', 'http://localhost:3000', 'https://afri-wonder.vercel.app'];
+// CORS_ORIGIN peut être une URL ou plusieurs séparées par des virgules
+const defaultOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://afri-wonder.vercel.app',
+  'https://afriwonder.vercel.app',
+];
+const corsOriginsFromEnv = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter((s) => s && s !== '*'); // * interdit avec credentials
+const allowedOrigins = [...new Set([...corsOriginsFromEnv, ...defaultOrigins])];
+
 const corsOptions: cors.CorsOptions = {
   origin: (origin, cb) => {
-    const allowed = [process.env.CORS_ORIGIN, ...defaultOrigins].filter(Boolean) as string[];
     const isVercelPreview = origin?.endsWith('.vercel.app');
-    const isAllowed = !origin || allowed.includes(origin) || isVercelPreview;
-    // Toujours renvoyer une chaîne explicite, jamais true (évite *)
-    cb(null, isAllowed ? (origin || allowed[0] || defaultOrigins[0]) : false);
+    const isAllowed = !origin || allowedOrigins.includes(origin) || isVercelPreview;
+    // Toujours renvoyer une chaîne explicite, jamais true (évite Access-Control-Allow-Origin: *)
+    const value = isAllowed ? (origin || allowedOrigins[0] || defaultOrigins[0]) : false;
+    cb(null, value);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
