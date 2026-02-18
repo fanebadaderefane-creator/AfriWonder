@@ -1086,33 +1086,23 @@ export default function Create() {
     }
 
     setStep('uploading');
-
     setUploadProgress(0);
 
+    let progressInterval = null;
     try {
-
-      const progressInterval = setInterval(() => {
-
-        setUploadProgress(prev => Math.min(prev + 10, 90));
-
+      progressInterval = setInterval(() => {
+        setUploadProgress((prev) => Math.min(prev + 10, 90));
       }, 300);
 
       let videoUrl = '';
-
       try {
-
         const uploadResult = await api.upload.video(selectedFile, (progress) => {
-
           setUploadProgress(Math.min(progress, 90));
-
         });
-
         videoUrl = uploadResult?.file_url ?? uploadResult?.url ?? '';
-
       } catch (uploadError) {
-
         const status = uploadError?.response?.status;
-        const rawMsg = uploadError?.response?.data?.error || uploadError?.response?.data?.message || uploadError?.message;
+        const rawMsg = uploadError?.response?.data?.error ?? uploadError?.response?.data?.message ?? (uploadError && typeof uploadError === 'object' && 'message' in uploadError ? String(uploadError.message) : '');
         const isR2NotConfigured = status === 503 && (typeof rawMsg === 'string' && rawMsg.includes('R2 non configuré'));
         const msg = isR2NotConfigured
           ? 'Upload indisponible sur ce serveur. Le stockage R2 doit être configuré côté backend (variables R2_* sur l\'hébergeur).'
@@ -1120,16 +1110,10 @@ export default function Create() {
         if (import.meta.env.DEV) {
           console.error('[Create] Upload vidéo échoué:', { status, rawMsg, err: uploadError });
         }
-        clearInterval(progressInterval);
         toast.error(msg);
         setStep('details');
         return;
-
       }
-
-      clearInterval(progressInterval);
-
-      setUploadProgress(100);
 
       if (!videoUrl) {
         toast.error('Upload réussi mais URL vidéo manquante');
@@ -1137,49 +1121,41 @@ export default function Create() {
         return;
       }
 
-      // Inclure les hashtags dans la description (comme pour la mise à jour) pour affichage cohérent
-      const hashtagsText = videoData.hashtags?.length > 0
-        ? '\n\n#' + videoData.hashtags.join(' #')
-        : '';
+      setUploadProgress(100);
 
+      const hashtagsText = videoData.hashtags?.length > 0 ? '\n\n#' + videoData.hashtags.join(' #') : '';
       const fullDescription = [videoData.description || '', hashtagsText].filter(Boolean).join('');
 
       const videoRecord = {
-
         title: videoData.title,
-
         description: fullDescription,
-
         video_url: videoUrl,
-
         thumbnail_url: videoData.thumbnail_url || videoUrl,
-
         category: videoData.category || 'divertissement',
-
         visibility: videoData.visibility || 'public',
-
         hashtags: videoData.hashtags?.length > 0 ? videoData.hashtags : undefined,
-
         music_title: videoData.music_title || undefined,
-
       };
 
       await api.videos.create(videoRecord);
 
       toast.success('Vidéo publiée avec succès ! 🎉');
-
-      setTimeout(() => navigate(createPageUrl('Home')), 500);
-
+      setTimeout(() => {
+        try {
+          navigate(createPageUrl('Home'));
+        } catch (navErr) {
+          if (import.meta.env.DEV) console.error('[Create] navigate error:', navErr);
+          setStep('details');
+        }
+      }, 500);
     } catch (error) {
-
-      console.error('Publish error:', error);
-
-      toast.error('Erreur lors de la publication: ' + (error.message || 'Erreur inconnue'));
-
+      const errMsg = (error?.response?.data?.error ?? error?.response?.data?.message ?? (error && typeof error === 'object' && 'message' in error ? String(error.message) : null)) || 'Erreur inconnue';
+      if (import.meta.env.DEV) console.error('[Create] Publish error:', error);
+      toast.error('Erreur lors de la publication: ' + errMsg);
       setStep('details');
-
+    } finally {
+      if (progressInterval) clearInterval(progressInterval);
     }
-
   };
 
 
@@ -1985,7 +1961,7 @@ export default function Create() {
             initial={{ opacity: 0, x: 100 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -100 }}
-            className="flex flex-col min-h-full"
+            className="create-preview-step flex flex-col overflow-x-hidden"
           >
 
             <div className="flex-shrink-0 flex items-center justify-between p-4">
@@ -2032,7 +2008,7 @@ export default function Create() {
 
 
 
-            <div className="p-4 bg-zinc-900">
+            <div className="p-4 bg-zinc-900 min-h-0" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 2rem)' }}>
 
               <VideoEditor
 

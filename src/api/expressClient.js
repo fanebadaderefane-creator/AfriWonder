@@ -2206,7 +2206,9 @@ export const api = {
             category: videoData.category || 'divertissement',
             visibility: videoData.visibility || 'public',
           };
-          
+          if (Array.isArray(videoData.hashtags) && videoData.hashtags.length > 0) payload.hashtags = videoData.hashtags;
+          if (videoData.music_title != null && String(videoData.music_title).trim()) payload.music_title = videoData.music_title;
+
           const { data } = await axiosInstance.post('/videos', payload);
           return data.data;
         } catch (error) {

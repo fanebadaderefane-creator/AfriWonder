@@ -150,6 +150,13 @@ body {
   touch-action: pan-y;
 }
 
+/* Écran prévisualisation vidéo (Create) : scroll fluide mobile, une seule zone de scroll */
+.create-preview-step {
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  overflow-x: hidden;
+}
+
 /* Fix iOS text rendering issues (texte invisible) sur certains écrans Marketplace / Mes ventes */
 .ios-text-visible {
   color: #000000 !important;
