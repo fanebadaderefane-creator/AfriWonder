@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 
 
-import { Search, Bell, MessageCircle, WifiOff, Menu } from 'lucide-react';
+import { Search, Bell, MessageCircle, WifiOff, Menu, RefreshCw } from 'lucide-react';
 
 import { motion } from 'framer-motion';
 
@@ -43,7 +43,9 @@ export default function TopHeader({
 
   onMenuOpen,
 
-  followingCount = 0
+  followingCount = 0,
+
+  onRefresh
 
 }) {
 
@@ -217,6 +219,18 @@ export default function TopHeader({
           {/* Right side */}
 
           <div className="flex items-center gap-1">
+
+            {typeof onRefresh === 'function' && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-white hover:bg-white/10 h-9 w-9"
+                onClick={onRefresh}
+                aria-label="Rafraîchir"
+              >
+                <RefreshCw className="w-5 h-5" />
+              </Button>
+            )}
 
             <Link to={createPageUrl('Search')}>
               <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 h-9 w-9">

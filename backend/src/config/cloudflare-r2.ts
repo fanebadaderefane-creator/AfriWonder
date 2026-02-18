@@ -27,6 +27,16 @@ export const r2Client = hasValidEndpoint && accessKeyId && secretAccessKey
     })
   : null;
 
+/** Pour le diagnostic : liste des variables R2 manquantes ou invalides (sans afficher les valeurs) */
+export function getR2ConfigDiagnostic(): string[] {
+  const missing: string[] = [];
+  if (!endpoint.length) missing.push('R2_ENDPOINT (vide ou absent)');
+  else if (!isValidUrl(endpoint)) missing.push('R2_ENDPOINT (URL invalide)');
+  if (!accessKeyId) missing.push('R2_ACCESS_KEY_ID');
+  if (!secretAccessKey) missing.push('R2_SECRET_ACCESS_KEY');
+  return missing;
+}
+
 export const R2_BUCKET_NAME = sanitizeEnv(process.env.R2_BUCKET_NAME) || 'afriwonder';
 
 // URL publique R2
@@ -40,4 +50,7 @@ export const R2_BUCKET_NAME = sanitizeEnv(process.env.R2_BUCKET_NAME) || 'afriwo
 //   2. Ajoutez votre custom domain (ex: cdn.afriwonder.com)
 //   3. Cloudflare configurera automatiquement le DNS
 export const R2_PUBLIC_URL = sanitizeEnv(process.env.R2_PUBLIC_URL) || '';
+
+/** Indique si R2 est utilisable pour l'upload */
+export const isR2Configured = (): boolean => !!(r2Client && R2_PUBLIC_URL);
 

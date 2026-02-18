@@ -139,6 +139,15 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
     if (redis) logger.info('✅ Cache Redis initialisé');
     else logger.info('ℹ️ Cache: mémoire locale (REDIS_URL absent ou connexion indisponible)');
 
+    const r2Config = await import('./config/cloudflare-r2.js');
+    if (r2Config.isR2Configured()) {
+      logger.info('✅ Stockage R2 configuré (upload images/vidéos disponible)');
+    } else {
+      const missing = r2Config.getR2ConfigDiagnostic();
+      if (!r2Config.R2_PUBLIC_URL?.trim()) missing.push('R2_PUBLIC_URL (vide ou absent)');
+      logger.warn('⚠️ R2 non configuré: upload indisponible. Variables à définir sur l’hébergeur:', { missing });
+    }
+
     await initializeRetentionPolicies();
 
     startAccountDeletionJobs();

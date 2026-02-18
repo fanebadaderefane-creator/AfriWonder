@@ -2,7 +2,8 @@ import { Router } from 'express';
 import multer from 'multer';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
-import { r2Client, R2_BUCKET_NAME, R2_PUBLIC_URL } from '../config/cloudflare-r2.js';
+import { r2Client, R2_BUCKET_NAME, R2_PUBLIC_URL, getR2ConfigDiagnostic } from '../config/cloudflare-r2.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
 
@@ -49,6 +50,9 @@ function createSafeFilename(originalName: string): string {
 router.post('/image', authenticate, upload.single('file'), async (req: AuthRequest, res, next) => {
   try {
     if (!r2Client || !R2_PUBLIC_URL) {
+      const why = getR2ConfigDiagnostic();
+      if (!R2_PUBLIC_URL.trim()) why.push('R2_PUBLIC_URL (vide ou absent)');
+      logger.warn('Upload image refusé: R2 non configuré', { missing: why });
       return res.status(503).json({ error: 'Upload non disponible : R2 non configuré (R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_PUBLIC_URL)' });
     }
     if (!req.file) {
@@ -89,6 +93,9 @@ router.post('/image', authenticate, upload.single('file'), async (req: AuthReque
 router.post('/video', authenticate, upload.single('file'), async (req: AuthRequest, res, next) => {
   try {
     if (!r2Client || !R2_PUBLIC_URL) {
+      const why = getR2ConfigDiagnostic();
+      if (!R2_PUBLIC_URL.trim()) why.push('R2_PUBLIC_URL (vide ou absent)');
+      logger.warn('Upload vidéo refusé: R2 non configuré', { missing: why });
       return res.status(503).json({ error: 'Upload non disponible : R2 non configuré (R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_PUBLIC_URL)' });
     }
     if (!req.file) {

@@ -115,11 +115,22 @@ export default function Home() {
   const isLoading = activeTab === 'pourtoi' ? feedLoading : videosLoading;
   const refetch = activeTab === 'pourtoi' ? refetchFeed : refetchVideos;
 
-  // Refetch on mount and when user data changes (e.g., after profile update)
+  const refetchRef = useRef(refetch);
+  refetchRef.current = refetch;
+
+  // Refetch on mount and when tab or user changes
   useEffect(() => {
-    refetch();
-  }, [activeTab, user?.id, refetch]);
-  
+    refetchRef.current?.();
+  }, [activeTab, user?.id]);
+
+  const handleRefreshHome = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['feed'] });
+    queryClient.invalidateQueries({ queryKey: ['videos'] });
+    refetchFeed().catch(() => {});
+    refetchVideos().catch(() => {});
+    refetchRef.current?.().catch(() => {});
+  }, [queryClient, refetchFeed, refetchVideos]);
+
   // Invalider le cache quand l'utilisateur change (après mise à jour du profil)
   useEffect(() => {
     if (user?.id) {
@@ -457,6 +468,7 @@ export default function Home() {
           followingCount={followingCount}
           title={undefined}
           onToggleDarkMode={undefined}
+          onRefresh={handleRefreshHome}
         />
 
 
