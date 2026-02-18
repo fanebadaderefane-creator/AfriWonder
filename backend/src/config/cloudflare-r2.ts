@@ -1,10 +1,25 @@
 import { S3Client } from '@aws-sdk/client-s3';
 
-const endpoint = process.env.R2_ENDPOINT;
-const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+function sanitizeEnv(value: string | undefined): string {
+  if (value == null || typeof value !== 'string') return '';
+  return value.replace(/^["']|["']$/g, '').trim();
+}
 
-export const r2Client = endpoint && accessKeyId && secretAccessKey
+function isValidUrl(s: string): boolean {
+  try {
+    new URL(s);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const endpoint = sanitizeEnv(process.env.R2_ENDPOINT);
+const accessKeyId = sanitizeEnv(process.env.R2_ACCESS_KEY_ID);
+const secretAccessKey = sanitizeEnv(process.env.R2_SECRET_ACCESS_KEY);
+
+const hasValidEndpoint = endpoint.length > 0 && isValidUrl(endpoint);
+export const r2Client = hasValidEndpoint && accessKeyId && secretAccessKey
   ? new S3Client({
       region: 'auto',
       endpoint,
@@ -12,7 +27,7 @@ export const r2Client = endpoint && accessKeyId && secretAccessKey
     })
   : null;
 
-export const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || 'afriwonder';
+export const R2_BUCKET_NAME = sanitizeEnv(process.env.R2_BUCKET_NAME) || 'afriwonder';
 
 // URL publique R2
 // Option 1: Custom domain (recommandé pour production) : https://cdn.afriwonder.com
@@ -24,5 +39,5 @@ export const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || 'afriwonder';
 //   1. Allez dans R2 > votre bucket > Settings > Custom Domains
 //   2. Ajoutez votre custom domain (ex: cdn.afriwonder.com)
 //   3. Cloudflare configurera automatiquement le DNS
-export const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || '';
+export const R2_PUBLIC_URL = sanitizeEnv(process.env.R2_PUBLIC_URL) || '';
 
