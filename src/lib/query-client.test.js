@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { queryClientInstance } from './query-client';
+import { queryClientInstance, queryPersister } from './query-client';
 
 describe('query-client', () => {
   it('exports a QueryClient instance', () => {
@@ -11,5 +11,14 @@ describe('query-client', () => {
     const opts = queryClientInstance.getDefaultOptions?.() ?? queryClientInstance.defaultOptions;
     expect(opts?.queries?.refetchOnWindowFocus).toBe(true);
     expect(typeof opts?.queries?.retry).toBe('function');
+  });
+  it('has gcTime 24h for persistence', () => {
+    const opts = queryClientInstance.getDefaultOptions?.() ?? queryClientInstance.defaultOptions;
+    expect(opts?.queries?.gcTime).toBe(1000 * 60 * 60 * 24);
+  });
+  it('exports queryPersister with persistClient and restoreClient', () => {
+    expect(queryPersister).toBeDefined();
+    expect(typeof queryPersister.persistClient).toBe('function');
+    expect(typeof queryPersister.restoreClient).toBe('function');
   });
 });

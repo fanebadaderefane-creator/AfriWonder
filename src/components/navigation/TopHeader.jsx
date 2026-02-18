@@ -116,7 +116,7 @@ export default function TopHeader({
 
           {/* Left side */}
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-1">
 
             {isLowData && (
 
@@ -138,40 +138,9 @@ export default function TopHeader({
 
            {showTabs ? (
 
-            <div className="flex items-center gap-2 sm:gap-6">
+            <div className="flex items-center gap-4 sm:gap-8 flex-1 justify-center">
 
-              <button
-
-                onClick={() => onTabChange('abonnements')}
-
-                className={cn(
-
-                  "text-sm sm:text-base font-semibold transition-all flex items-center gap-1.5",
-
-                  activeTab === 'abonnements' 
-
-                    ? "text-white" 
-
-                    : "text-white/50"
-
-                )}
-
-              >
-
-                {t('my_wonder')}
-
-                {followingCount > 0 && activeTab === 'abonnements' && (
-
-                  <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded-full">
-
-                    {followingCount}
-
-                  </span>
-
-                )}
-
-              </button>
-
+              {/* forYou à gauche */}
               <button
 
                 onClick={() => onTabChange('pourtoi')}
@@ -206,6 +175,39 @@ export default function TopHeader({
 
               </button>
 
+              {/* Mon Wonder à droite de forYou */}
+              <button
+
+                onClick={() => onTabChange('abonnements')}
+
+                className={cn(
+
+                  "text-sm sm:text-base font-semibold transition-all flex items-center gap-1.5",
+
+                  activeTab === 'abonnements' 
+
+                    ? "text-white" 
+
+                    : "text-white/50"
+
+                )}
+
+              >
+
+                {t('my_wonder')}
+
+                {followingCount > 0 && activeTab === 'abonnements' && (
+
+                  <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded-full">
+
+                    {followingCount}
+
+                  </span>
+
+                )}
+
+              </button>
+
             </div>
 
           ) : (
@@ -218,7 +220,7 @@ export default function TopHeader({
 
           {/* Right side */}
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 flex-1 justify-end">
 
             {typeof onRefresh === 'function' && (
               <Button

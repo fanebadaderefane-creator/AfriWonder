@@ -1,18 +1,21 @@
 import { Toaster } from "@/components/ui/toaster"
 import { ThemeProvider } from 'next-themes'
-import { QueryClientProvider } from '@tanstack/react-query'
-import { queryClientInstance } from '@/lib/query-client'
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
+import { queryClientInstance, queryPersister } from '@/lib/query-client'
 import NavigationTracker from '@/lib/NavigationTracker'
 import { pagesConfig } from './pages.config'
 import { BrowserRouter as Router, Route, Routes, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
 import { getItem } from '@/utils/safeStorage';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { FeatureFlagsProvider } from '@/contexts/FeatureFlagsContext';
+import { PreferencesProvider } from '@/contexts/PreferencesContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import OfflineBanner from '@/components/common/OfflineBanner';
 import TranslationProvider from '@/components/common/TranslationProvider';
 import CookieBanner from '@/components/legal/CookieBanner';
+import PageLoader from '@/components/common/PageLoader';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -43,11 +46,12 @@ const AuthenticatedApp = () => {
     }
   }, [isLoadingAuth, isAuthenticated, navigate, location.pathname]);
 
-  // Show loading spinner while checking auth
+  // Show loading while checking auth
   if (isLoadingAuth) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+      <div className="fixed inset-0 flex flex-col items-center justify-center gap-4 bg-gray-50">
+        <div className="w-10 h-10 border-2 border-slate-200 border-t-orange-500 rounded-full animate-spin" />
+        <p className="text-sm text-slate-500">Chargement...</p>
       </div>
     );
   }
@@ -122,18 +126,26 @@ function App() {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="afriwonder-theme">
       <AuthProvider>
-        <QueryClientProvider client={queryClientInstance}>
+        <PersistQueryClientProvider
+          client={queryClientInstance}
+          persistOptions={{ persister: queryPersister, maxAge: 1000 * 60 * 60 * 24 }}
+        >
+          <Suspense fallback={<PageLoader />}>
           <FeatureFlagsProvider>
-            <Router>
-              <TranslationProvider>
-                <NavigationTracker />
-                <AuthenticatedApp />
-                <CookieBanner />
-              </TranslationProvider>
-            </Router>
+            <PreferencesProvider>
+              <Router>
+                <TranslationProvider>
+                  <OfflineBanner />
+                  <NavigationTracker />
+                  <AuthenticatedApp />
+                  <CookieBanner />
+                </TranslationProvider>
+              </Router>
+            </PreferencesProvider>
           </FeatureFlagsProvider>
+          </Suspense>
           <Toaster />
-        </QueryClientProvider>
+        </PersistQueryClientProvider>
       </AuthProvider>
     </ThemeProvider>
   )

@@ -94,6 +94,10 @@
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 html,
 body {
   height: 100%;
@@ -148,6 +152,14 @@ body {
 .scrollable {
   overflow-y: auto;
   touch-action: pan-y;
+}
+
+/* Optimisation scroll : contenu hors viewport moins coûteux (listes longues) */
+@supports (content-visibility: auto) {
+  .scroll-optimize > * {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 100px;
+  }
 }
 
 /* Écran prévisualisation vidéo (Create) : scroll fluide mobile, une seule zone de scroll */
@@ -223,12 +235,20 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
+/* Transitions fluides — interactions courantes */
+button, a, [role="button"], input, select {
+  transition: color 0.15s, background-color 0.15s, opacity 0.15s, border-color 0.15s;
+}
+
 /* 2.3.3 Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+  html {
+    scroll-behavior: auto;
   }
 }
 

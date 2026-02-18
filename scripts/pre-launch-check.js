@@ -91,8 +91,19 @@ if (testBackend.ok) {
   log('⚠️', 'Tests smoke échoués — vérifier .env.test et DB test');
 }
 
-// 6. Fichiers critiques
-console.log('\n6. Fichiers critiques');
+// 6. Modules persistance (production-ready)
+console.log('\n6. Modules persistance');
+const persistCheck = run('node scripts/verify-persistence.js', ROOT, 'verify-persistence');
+if (persistCheck.ok) {
+  results.ok.push('Modules persistance');
+  log('✅', 'Modules persistance OK');
+} else {
+  results.warn.push('Modules persistance — vérifier scripts/verify-persistence.js');
+  log('⚠️', 'Modules persistance — npm run verify-persistence');
+}
+
+// 7. Fichiers critiques
+console.log('\n7. Fichiers critiques');
 const criticalFiles = [
   [join(BACKEND, 'ecosystem.config.js'), 'PM2 ecosystem'],
   [join(ROOT, 'nginx-production.conf'), 'Nginx config'],
@@ -109,7 +120,7 @@ criticalFiles.forEach(([p, name]) => {
   }
 });
 
-// 7. .gitignore contient .env
+// 8. .gitignore contient .env
 const gitignore = join(ROOT, '.gitignore');
 if (existsSync(gitignore)) {
   const content = readFileSync(gitignore, 'utf8');

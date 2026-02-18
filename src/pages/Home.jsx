@@ -14,6 +14,7 @@ import TopHeader from '../components/navigation/TopHeader';
 import BottomNav from '../components/navigation/BottomNav';
 import AfriWonderLogo from '../components/common/AfriWonderLogo';
 import { useAppMenu } from '@/contexts/AppMenuContext';
+import { usePreferences } from '@/contexts/PreferencesContext';
 import NotificationService from '../components/notifications/NotificationService';
 import { Loader2 } from 'lucide-react';
 import { toast } from "sonner";
@@ -25,18 +26,19 @@ export default function Home() {
   const _navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('pourtoi');
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isMuted, setIsMuted] = useState(true);
   const [showComments, setShowComments] = useState(false);
   const [showTip, setShowTip] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [showGift, setShowGift] = useState(false);
   const { isOpen: isMenuOpen, openMenu } = useAppMenu();
+  const { isMuted, setMuted } = usePreferences();
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [user, setUser] = useState(null);
   const [likedVideos, setLikedVideos] = useState(new Set());
   const [savedVideos, setSavedVideos] = useState(new Set());
   const [followingCount, setFollowingCount] = useState(0);
   const [followingVideos, setFollowingVideos] = useState([]);
+  const [initialDelayDone, setInitialDelayDone] = useState(false);
   
   const containerRef = useRef(null);
   const queryClient = useQueryClient();
@@ -60,6 +62,22 @@ export default function Home() {
 
   const { isSlowConnection } = useNetworkStatus();
   const cacheStrategy = getCacheStrategy(isSlowConnection);
+
+  // Micro-délai humain sur le tout premier affichage pour éviter l'effet "IA instantanée"
+  useEffect(() => {
+    const base = 200;
+    const jitter = Math.floor(Math.random() * 400); // 200–600ms
+    const timeout = setTimeout(() => setInitialDelayDone(true), base + jitter);
+    return () => clearTimeout(timeout);
+  }, []);
+
+  // Config Early Access pour afficher un message discret
+  const { data: earlyAccessConfig } = useQuery({
+    queryKey: ['early-access-config'],
+    queryFn: () => api.earlyAccess.getConfig(),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
 
   // Feed combiné (vidéos + pubs) pour l'onglet Pour toi
   const { data: feedData, isLoading: feedLoading, refetch: refetchFeed } = useQuery({
@@ -469,6 +487,38 @@ export default function Home() {
     }
   };
 
+  // Écran de chargement initial : léger micro-delay + squelette, puis fallback spinner si réseau vraiment lent
+  if (!initialDelayDone) {
+    return (
+      <div className="h-[100dvh] w-full bg-black flex justify-center text-white">
+        <div className="w-full sm:max-w-[400px] h-full relative flex flex-col">
+          <div className="flex items-center justify-between px-4 pt-4 pb-3">
+            <div className="h-6 w-24 rounded-full bg-white/10 animate-pulse" />
+            <div className="flex items-center gap-2">
+              <div className="h-9 w-9 rounded-full bg-white/10 animate-pulse" />
+              <div className="h-9 w-9 rounded-full bg-white/10 animate-pulse" />
+              <div className="h-9 w-9 rounded-full bg-white/10 animate-pulse" />
+            </div>
+          </div>
+          <div className="flex-1 flex flex-col items-center justify-center gap-6 px-8">
+            <div className="w-full max-w-xs aspect-[9/16] rounded-3xl bg-white/5 overflow-hidden animate-pulse" />
+            <div className="space-y-3 w-full max-w-xs">
+              <div className="h-4 w-32 rounded-full bg-white/10 animate-pulse" />
+              <div className="h-3 w-full rounded-full bg-white/10 animate-pulse" />
+              <div className="h-3 w-4/5 rounded-full bg-white/10 animate-pulse" />
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="h-9 w-9 rounded-full bg-white/10 animate-pulse" />
+              <div className="h-9 w-9 rounded-full bg-white/10 animate-pulse" />
+              <div className="h-9 w-9 rounded-full bg-white/10 animate-pulse" />
+            </div>
+          </div>
+          <div className="h-[80px] border-t border-white/10 bg-black/80" />
+        </div>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="h-[100dvh] w-full flex items-center justify-center bg-black">
@@ -479,7 +529,7 @@ export default function Home() {
 
   return (
     <div 
-      className="h-[100dvh] w-full bg-black overflow-hidden"
+      className="h-[100dvh] w-full bg-black overflow-hidden flex justify-center"
       style={{
         paddingLeft: 'env(safe-area-inset-left)',
         paddingRight: 'env(safe-area-inset-right)',
@@ -487,8 +537,9 @@ export default function Home() {
         paddingBottom: 'env(safe-area-inset-bottom)'
       }}
     >
-      <div className="relative w-full h-full flex flex-col bg-black">
-        {/* AfriWonder Logo */}
+      {/* Container vertical fixe - style TikTok desktop (400px max sur desktop, full width sur mobile) */}
+      <div className="w-full sm:max-w-[400px] h-full relative flex flex-col bg-black">
+        {/* AfriWonder Logo - positionné relativement au container */}
         <button
           onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
           className={cn(
@@ -499,22 +550,24 @@ export default function Home() {
           <AfriWonderLogo size="sm" className="shadow-lg group-hover:shadow-xl transition-shadow" />
         </button>
 
-        <TopHeader 
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          showTabs={true}
-          onMenuOpen={openMenu}
-          followingCount={followingCount}
-          title={undefined}
-          onToggleDarkMode={undefined}
-        />
+        {/* TopHeader - limité au container vertical avec padding pour éviter chevauchement logo */}
+        <div className="relative z-40 pl-28 sm:pl-32">
+          <TopHeader 
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            showTabs={true}
+            onMenuOpen={openMenu}
+            followingCount={followingCount}
+            title={undefined}
+            onToggleDarkMode={undefined}
+          />
+        </div>
 
-
-        {/* Bannières en position fixe */}
+        {/* Bannières en position fixe - limitées au container vertical */}
         {activeTab === 'pourtoi' && topBannerItems.length > 0 && currentIndex === 0 && (
-          <div className="fixed top-16 left-0 right-0 z-40 px-3 pt-2 pb-1 gap-2 flex overflow-x-auto overflow-y-hidden no-scrollbar snap-x snap-mandatory pointer-events-auto">
+          <div className="absolute top-16 left-0 right-0 z-40 px-3 pt-2 pb-1 gap-2 flex overflow-x-auto overflow-y-hidden no-scrollbar snap-x snap-mandatory pointer-events-auto">
             {topBannerItems.map((item, i) => (
-              <div key={`top-${item.ad?.campaign_id || i}`} className="flex-shrink-0 w-[85vw] max-w-[320px]">
+              <div key={`top-${item.ad?.campaign_id || i}`} className="flex-shrink-0 w-[85%] max-w-[320px]">
                 <AdBannerCard
                   ad={item.ad}
                   isActive={true}
@@ -546,10 +599,8 @@ export default function Home() {
             if (e.changedTouches.length > 0) handlePullEnd();
           }}
           onTouchCancel={() => handlePullEnd()}
-          className="snap-y snap-mandatory"
+          className="snap-y snap-mandatory flex-1 w-full"
           style={{ 
-            flex: 1,
-            width: '100%',
             overflowY: 'auto',
             overflowX: 'hidden',
             scrollbarWidth: 'none',
@@ -623,84 +674,88 @@ export default function Home() {
         ) : (
           <>
             {(activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map(v => ({ type: 'video', video: v }))).map((item, index) => {
-             if (item.type === 'ad') {
-               return (
-                <div
-                  key={`ad-${item.ad?.id || index}`}
+              const isNeighbor = Math.abs(index - currentIndex) <= 1;
+
+              if (item.type === 'ad') {
+                return (
+                  <div
+                    key={`ad-${item.ad?.id || index}`}
+                    className="relative w-full snap-start overflow-hidden"
+                    style={{ height: '100dvh', touchAction: 'pan-y' }}
+                  >
+                    <AdCard
+                      ad={item.ad}
+                      isActive={index === currentIndex}
+                      isMuted={isMuted}
+                      onMuteToggle={() => setMuted(!isMuted)}
+                      onHide={handleHideAd}
+                      hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
+                    />
+                  </div>
+                );
+              }
+
+              const video = item.video;
+              return (
+                <div 
+                  key={video.id}
                   className="relative w-full snap-start overflow-hidden"
                   style={{ height: '100dvh', touchAction: 'pan-y' }}
                 >
-                   <AdCard
-                     ad={item.ad}
-                     isActive={index === currentIndex}
-                     isMuted={isMuted}
-                     onMuteToggle={() => setIsMuted(!isMuted)}
-                     onHide={handleHideAd}
-                     hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
-                   />
-                 </div>
-               );
-             }
-             const video = item.video;
-             return (
-            <div 
-              key={video.id}
-              className="relative w-full snap-start overflow-hidden"
-              style={{ height: '100dvh', touchAction: 'pan-y' }}
-            >
-               <VideoCard
-                video={video}
-                isActive={index === currentIndex}
-                isLiked={likedVideos.has(video.id)}
-                isSaved={savedVideos.has(video.id)}
-                isMuted={isMuted}
-                onMuteToggle={() => setIsMuted(!isMuted)}
-                onLike={() => likeMutation.mutate(video)}
-                onComment={() => {
-                  setSelectedVideo(video);
-                  setShowComments(true);
-                }}
-                onShare={() => {
-                  setSelectedVideo(video);
-                  setShowShare(true);
-                }}
-                onSave={() => saveMutation.mutate(video)}
-                onTip={() => {
-                  setSelectedVideo(video);
-                  setShowTip(true);
-                }}
-                onSubscribe={async () => {
-                   if (!user) {
-                     _navigate('/');
-                     return;
-                   }
-                   const wasInWonder = userFollows.some(f => f.following_id === video.creator_id);
-                   const result = await api.users.toggleWonder(video.creator_id);
-                   const inWonder = result?.data?.inWonder ?? result?.inWonder ?? !wasInWonder;
+                  <VideoCard
+                    video={video}
+                    isActive={index === currentIndex}
+                    isLiked={likedVideos.has(video.id)}
+                    isSaved={savedVideos.has(video.id)}
+                    isMuted={isMuted}
+                    onMuteToggle={() => setMuted(!isMuted)}
+                    onLike={() => likeMutation.mutate(video)}
+                    onComment={() => {
+                      setSelectedVideo(video);
+                      setShowComments(true);
+                    }}
+                    onShare={() => {
+                      setSelectedVideo(video);
+                      setShowShare(true);
+                    }}
+                    onSave={() => saveMutation.mutate(video)}
+                    onTip={() => {
+                      setSelectedVideo(video);
+                      setShowTip(true);
+                    }}
+                    onSubscribe={async () => {
+                      if (!user) {
+                        _navigate('/');
+                        return;
+                      }
+                      const wasInWonder = userFollows.some(f => f.following_id === video.creator_id);
+                      const result = await api.users.toggleWonder(video.creator_id);
+                      const inWonder = result?.data?.inWonder ?? result?.inWonder ?? !wasInWonder;
 
-                   // Invalider les queries pour mettre à jour l'état
-                   queryClient.invalidateQueries({ queryKey: ['user-follows', user.id] });
-                   queryClient.invalidateQueries({ queryKey: ['follow-stats', video.creator_id] });
-                   
-                   if (inWonder) {
-                     NotificationService.notifyNewFollower(user.id, video.creator_id);
-                     toast.success('Vous êtes maintenant dans son Wonder ✨');
-                   } else {
-                     toast.success(`Vous avez quitté le Wonder de ${video.creator_name}`);
-                   }
-                 }}
-                 isFollowing={userFollows.some(f => f.following_id === video.creator_id)}
-                 onProfileClick={(creatorId) => {
-                   window.location.href = `/Profile?_userId=${creatorId}`;
-                 }}
-                 hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
-              />
-            </div>
-          );
-          })}
+                      // Invalider les queries pour mettre à jour l'état
+                      queryClient.invalidateQueries({ queryKey: ['user-follows', user.id] });
+                      queryClient.invalidateQueries({ queryKey: ['follow-stats', video.creator_id] });
+                      
+                      if (inWonder) {
+                        NotificationService.notifyNewFollower(user.id, video.creator_id);
+                        toast.success('Vous êtes maintenant dans son Wonder ✨');
+                      } else {
+                        toast.success(`Vous avez quitté le Wonder de ${video.creator_name}`);
+                      }
+                    }}
+                    isFollowing={userFollows.some(f => f.following_id === video.creator_id)}
+                    onProfileClick={(creatorId) => {
+                      window.location.href = `/Profile?_userId=${creatorId}`;
+                    }}
+                    hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
+                    preload={isNeighbor ? 'auto' : 'metadata'}
+                  />
+                </div>
+              );
+            })}
           </>
         )}
-      </div>
+        </div>
 
         <BottomNav />
       </div>

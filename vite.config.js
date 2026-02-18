@@ -74,12 +74,21 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu'],
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('react-dom') || id.includes('react/') || id.includes('react-router')) return 'react-vendor';
+            if (id.includes('@tanstack/react-query')) return 'query-vendor';
+            if (id.includes('@radix-ui')) return 'ui-vendor';
+            if (id.includes('framer-motion')) return 'framer-vendor';
+            if (id.includes('recharts')) return 'charts-vendor';
+            if (id.includes('hls.js')) return 'video-vendor';
+            if (id.includes('@stripe')) return 'stripe-vendor';
+            if (id.includes('axios')) return 'axios-vendor';
+          }
         },
       },
     },
+    chunkSizeWarningLimit: 600,
   },
   // Mobile optimization + proxy API en dev (évite CORS front 5173 → backend 3000)
   server: {

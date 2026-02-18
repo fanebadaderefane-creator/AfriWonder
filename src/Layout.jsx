@@ -1,4 +1,5 @@
 import React from 'react';
+import { AnimatePresence } from 'framer-motion';
 import { Toaster } from "@/components/ui/sonner";
 import TranslationProvider from "@/components/common/TranslationProvider";
 import { MarketplaceCurrencyProvider } from "@/contexts/MarketplaceCurrencyContext";
@@ -9,6 +10,7 @@ import PWAInstallBanner from "@/components/pwa/PWAInstallBanner";
 import PWAUpdateToast from "@/components/pwa/PWAUpdateToast";
 import MenuPlus from "@/components/navigation/MenuPlus";
 import GlobalMenuButton from "@/components/navigation/GlobalMenuButton";
+import PageTransition from "@/components/common/PageTransition";
 
 export default function Layout({ children, currentPageName }) {
   return (
@@ -162,16 +164,14 @@ function LayoutContent({ children, currentPageName }) {
           --gradient-end: #ef4444;
         }
 
-        /* Image optimization */
+        /* Image optimization — content-visibility pour scroll fluide */
         img {
           content-visibility: auto;
-          will-change: transform;
         }
 
-        /* Video optimization */
+        /* Video — éviter will-change (trop de layers = saccades) */
         video {
           content-visibility: auto;
-          will-change: transform;
         }
 
         /* Reduce motion for accessibility */
@@ -228,7 +228,11 @@ function LayoutContent({ children, currentPageName }) {
       <TranslationProvider>
         <MarketplaceCurrencyProvider>
           <main id="main-content" className={`screen ${isFullScreen ? '' : ''}`} tabIndex={-1}>
-            {children}
+            <AnimatePresence mode="wait">
+              <PageTransition pageKey={currentPageName}>
+                {children}
+              </PageTransition>
+            </AnimatePresence>
           </main>
         </MarketplaceCurrencyProvider>
       </TranslationProvider>

@@ -37,11 +37,17 @@ if ('serviceWorker' in navigator && (window.location.hostname === 'localhost' ||
   });
 }
 
-// Gestion des rejets non gérés — log en dev, évite crash en prod
+// Gestion des rejets non gérés — log en dev, Sentry en prod, évite crash
 window.addEventListener('unhandledrejection', (event) => {
+  const reason = event?.reason;
+  const msg = reason?.message || (typeof reason === 'string' ? reason : String(reason ?? 'Unknown'));
   if (import.meta.env.DEV) {
-    const msg = event?.reason?.message || String(event?.reason);
     console.warn('[Unhandled rejection]', msg);
+  }
+  if (import.meta.env.PROD && window.Sentry) {
+    window.Sentry.captureException(reason instanceof Error ? reason : new Error(msg), {
+      tags: { type: 'unhandledrejection' },
+    });
   }
 });
 

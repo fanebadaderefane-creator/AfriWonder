@@ -129,15 +129,10 @@ export default function BottomNav() {
               >
 
                 <Icon 
-
                   className={cn(
-
-                    "w-6 h-6 transition-colors",
-
+                    "w-6 h-6 transition-colors duration-200 ease-out",
                     active ? "text-orange-500" : "text-white/70"
-
                   )} 
-
                 />
 
                 {item.id === 'inbox' && unreadCount > 0 && (
@@ -154,11 +149,8 @@ export default function BottomNav() {
               </motion.div>
 
               <span className={cn(
-
-                "text-[10px] transition-colors",
-
+                "text-[10px] transition-colors duration-200 ease-out",
                 active ? "text-orange-500 font-semibold" : "text-white/60"
-
               )}>
 
                 {item.label}

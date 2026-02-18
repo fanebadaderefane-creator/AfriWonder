@@ -10,9 +10,12 @@ const API_URL = raw
 
 export { API_URL };
 
+const DEFAULT_TIMEOUT_MS = 30000; // 30s — adapté aux réseaux lents
+
 const axiosInstance = axios.create({
   baseURL: API_URL,
   withCredentials: true,
+  timeout: DEFAULT_TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -110,9 +113,15 @@ axiosInstance.interceptors.response.use(
         return Promise.reject(_refreshError);
       }
     }
-    // Message d'erreur unifié pour affichage (toasts, formulaires)
-    const raw = error.response?.data?.message ?? error.response?.data?.error ?? error.message;
-    error.apiMessage = typeof raw === 'string' ? raw : (raw && typeof raw === 'object' ? (raw.message || JSON.stringify(raw)) : 'Une erreur est survenue');
+    // Message d'erreur unifié pour affichage (toasts, formulaires) — jamais de détail technique
+    if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+      error.apiMessage = 'La requête a pris trop de temps. Vérifiez votre connexion et réessayez.';
+    } else if (error.code === 'ERR_NETWORK' || !error.response) {
+      error.apiMessage = 'Connexion impossible. Vérifiez votre réseau et réessayez.';
+    } else {
+      const raw = error.response?.data?.message ?? error.response?.data?.error ?? error.message;
+      error.apiMessage = typeof raw === 'string' ? raw : (raw && typeof raw === 'object' ? (raw.message || 'Une erreur est survenue') : 'Une erreur est survenue');
+    }
     return Promise.reject(error);
   }
 );

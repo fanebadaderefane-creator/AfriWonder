@@ -55,13 +55,13 @@ export const initializeServiceWorker = () => {
   }
 };
 
-// Cache Strategy for API Calls
+// Cache Strategy for API Calls (TanStack Query v5: gcTime remplace cacheTime)
 export const getCacheStrategy = (isSlowConnection) => {
   return {
     staleTime: isSlowConnection ? 60000 : 30000,
-    cacheTime: isSlowConnection ? 600000 : 300000,
+    gcTime: isSlowConnection ? 600000 : 300000,
     refetchOnWindowFocus: !isSlowConnection,
-    retry: isSlowConnection ? 3 : 1
+    retry: isSlowConnection ? 3 : 1,
   };
 };
 

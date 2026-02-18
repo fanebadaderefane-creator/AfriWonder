@@ -35,6 +35,8 @@
     "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,json,css,md}\"",
     "generate-icons": "node scripts/generate-icons.js",
     "verify-pwa": "node scripts/verify-pwa.js",
+    "verify-persistence": "node scripts/verify-persistence.js",
+    "pre-production-checklist": "node scripts/pre-production-checklist.js",
     "test-pwa": "node scripts/test-pwa.js",
     "test-server": "node scripts/start-test-server.js"
   },
@@ -71,7 +73,9 @@
     "@sentry/react": "^10.38.0",
     "@stripe/react-stripe-js": "^3.0.0",
     "@stripe/stripe-js": "^5.2.0",
+    "@tanstack/query-sync-storage-persister": "^5.90.22",
     "@tanstack/react-query": "^5.84.1",
+    "@tanstack/react-query-persist-client": "^5.90.22",
     "agora-rtc-sdk-ng": "^4.23.0",
     "axios": "^1.13.4",
     "canvas-confetti": "^1.9.4",

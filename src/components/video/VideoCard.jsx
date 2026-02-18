@@ -66,7 +66,8 @@ function VideoCardContent({
   isMuted,
   onMuteToggle,
   isFollowing,
-  hideActions = false
+  hideActions = false,
+  preload = 'metadata',
 }) {
   const videoRef = useRef(null);
   const progressBarRef = useRef(null);
@@ -310,6 +311,30 @@ function VideoCardContent({
     }
   }, [isMuted]);
 
+  // Autoplay intelligent : pause quand l'utilisateur quitte l'app (onglet masqué), relance naturellement au retour
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const el = videoRef.current;
+      if (!el) return;
+
+      if (document.hidden) {
+        el.pause();
+        setIsPlaying(false);
+      } else if (isActive && !loadError) {
+        el.play().catch(() => {});
+        setIsPlaying(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handleVisibilityChange);
+    };
+  }, [isActive, loadError]);
+
   /* ================= VIDEO ================= */
 
   const handlePlayPause = () => {
@@ -551,7 +576,7 @@ function VideoCardContent({
         src={videoUrl}
         poster={posterUrl}
         className="absolute top-0 left-0 w-full h-full object-cover"
-        preload="metadata"
+        preload={preload}
         loop
         playsInline
         muted={isMuted}
@@ -830,7 +855,11 @@ function VideoCardContent({
               ease: "easeOut"
             }}
           >
-            {likeCount > 0 ? (likeCount >= 1000 ? `${(likeCount / 1000).toFixed(1)}K` : likeCount.toLocaleString()) : ''}
+            {(() => {
+              const safeLikes = Number.isFinite(likeCount) ? likeCount : 0;
+              if (safeLikes >= 1000) return `${(safeLikes / 1000).toFixed(1)}K`;
+              return safeLikes.toLocaleString();
+            })()}
           </motion.span>
         </div>
 
@@ -839,7 +868,12 @@ function VideoCardContent({
             <MessageCircle className="w-7 h-7 text-white" />
           </button>
           <span className="text-white text-xs font-semibold leading-tight min-h-[16px] flex items-center justify-center">
-            {(video.comments_count || 0) > 0 ? ((video.comments_count || 0) >= 1000 ? `${((video.comments_count || 0) / 1000).toFixed(1)}K` : (video.comments_count || 0).toLocaleString()) : ''}
+            {(() => {
+              const raw = video.comments_count ?? 0;
+              const safe = Number.isFinite(raw) ? raw : 0;
+              if (safe >= 1000) return `${(safe / 1000).toFixed(1)}K`;
+              return safe.toLocaleString();
+            })()}
           </span>
         </div>
 
@@ -848,7 +882,12 @@ function VideoCardContent({
             <Share2 className="w-7 h-7 text-white" />
           </button>
           <span className="text-white text-xs font-semibold leading-tight min-h-[16px] flex items-center justify-center">
-            {(video.shares || 0) > 0 ? ((video.shares || 0) >= 1000 ? `${((video.shares || 0) / 1000).toFixed(1)}K` : (video.shares || 0).toLocaleString()) : ''}
+            {(() => {
+              const raw = video.shares ?? 0;
+              const safe = Number.isFinite(raw) ? raw : 0;
+              if (safe >= 1000) return `${(safe / 1000).toFixed(1)}K`;
+              return safe.toLocaleString();
+            })()}
           </span>
         </div>
 
@@ -1009,6 +1048,31 @@ function VideoCardContent({
             )}
           </div>
         )}
+
+        {/* Signal social compact : on montre toujours les compteurs, même faibles */}
+        <div className="flex flex-wrap items-center gap-3 mb-2 text-white/70 text-[11px]">
+          <span>
+            {(() => {
+              const raw = video.views ?? video.views_count ?? 0;
+              const safe = Number.isFinite(raw) ? raw : 0;
+              return `${safe.toLocaleString()} vues`;
+            })()}
+          </span>
+          <span>
+            {(() => {
+              const raw = video.comments_count ?? 0;
+              const safe = Number.isFinite(raw) ? raw : 0;
+              return `${safe.toLocaleString()} commentaires`;
+            })()}
+          </span>
+          <span>
+            {(() => {
+              const raw = video.shares ?? 0;
+              const safe = Number.isFinite(raw) ? raw : 0;
+              return `${safe.toLocaleString()} partages`;
+            })()}
+          </span>
+        </div>
 
         {/* Hashtags - afficher quand présents et non déjà dans le texte */}
         {hashtags.length > 0 && (!fullText || !fullText.match(/#\w+/g)) && (
