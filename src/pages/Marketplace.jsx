@@ -4,8 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
-  Search, Filter, SlidersHorizontal, Grid3X3, List, Package,
-  Shirt, Sparkles, Laptop, Home, UtensilsCrossed, Palette, Wrench, ArrowLeft, Mic, MapPin
+  Search, SlidersHorizontal, Grid3X3, List, Package,
+  Shirt, Sparkles, Laptop, Home, UtensilsCrossed, Palette, Wrench, ArrowLeft, Mic, MapPin, ArrowUpDown
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
@@ -29,8 +29,9 @@ const marketplaceI18n = {
     voiceModeFr: 'Francais',
     voiceModeBm: 'Bambara',
     map: 'Carte',
+    sort: 'Trier',
     filters: 'Filtres',
-    filterTitle: 'Filtres',
+    filterTitle: 'Filtres et tri',
     priceFcfa: 'Prix (FCFA)',
     sortBy: 'Trier par',
     sortRecent: 'Plus recent',
@@ -45,6 +46,8 @@ const marketplaceI18n = {
     newest: 'Nouveautes',
     emptyTitle: 'Aucun produit trouve',
     emptySubtitle: 'Essayez de modifier vos filtres',
+    categoriesLabel: 'Catégories',
+    advancedFilters: 'Filtres avancés',
     mySales: 'Mes ventes',
     sellerPlans: 'Formules vendeurs',
     sell: 'Vendre',
@@ -60,8 +63,9 @@ const marketplaceI18n = {
     voiceModeFr: 'Faransikan',
     voiceModeBm: 'Bamanankan',
     map: 'Karta',
+    sort: 'Sege',
     filters: 'Filtrew',
-    filterTitle: 'Filtrew',
+    filterTitle: 'Filtrew ani sege',
     priceFcfa: 'Songo (FCFA)',
     sortBy: 'Sege sege ka ke',
     sortRecent: 'Kura donnin',
@@ -76,6 +80,8 @@ const marketplaceI18n = {
     newest: 'Kura fenw',
     emptyTitle: 'Fen si ma soro',
     emptySubtitle: 'I ka filtrew bo ka sege sege',
+    categoriesLabel: 'Sɛgɛsɛgɛw',
+    advancedFilters: 'Filtrew caman',
     mySales: 'Ne feereliw',
     sellerPlans: 'Feerelaw planw',
     sell: 'Feere',
@@ -259,7 +265,8 @@ export default function Marketplace() {
     <div className="min-h-screen bg-gray-50 pb-20 overflow-x-hidden">
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40">
-        <div className="px-4 py-3">
+        <div className="px-4 py-3 space-y-3">
+          {/* Ligne 1 : Navigation */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => window.history.back()}
@@ -269,93 +276,91 @@ export default function Marketplace() {
             </button>
             <CurrencySelector />
           </div>
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 z-10" />
-              <Input
-                placeholder={labels.searchPlaceholder}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => searchQuery.length > 1 && setShowSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                className="pl-10 pr-28 py-5 rounded-xl border-gray-200 bg-gray-50"
-              />
-              <div className="absolute right-14 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setVoiceLocale('fr-FR')}
-                  className={`text-[10px] px-2 py-1 rounded-md border ${voiceLocale === 'fr-FR' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-600 border-gray-200'}`}
-                  title={labels.voiceFr}
-                >
-                  FR
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVoiceLocale('bm-ML')}
-                  className={`text-[10px] px-2 py-1 rounded-md border ${voiceLocale === 'bm-ML' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-600 border-gray-200'}`}
-                  title={labels.voiceBm}
-                >
-                  BM
-                </button>
-              </div>
+
+          {/* Ligne 2 : Recherche + options vocales groupées */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 z-10" />
+            <Input
+              placeholder={labels.searchPlaceholder}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => searchQuery.length > 1 && setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+              className="pl-10 pr-24 py-5 rounded-xl border-gray-200 bg-gray-50"
+            />
+            <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={() => setVoiceLocale('fr-FR')}
+                className={`text-[10px] px-2 py-1.5 rounded-md ${voiceLocale === 'fr-FR' ? 'bg-orange-500 text-white' : 'text-gray-600'}`}
+                title={labels.voiceFr}
+              >
+                FR
+              </button>
+              <button
+                type="button"
+                onClick={() => setVoiceLocale('bm-ML')}
+                className={`text-[10px] px-2 py-1.5 rounded-md ${voiceLocale === 'bm-ML' ? 'bg-orange-500 text-white' : 'text-gray-600'}`}
+                title={labels.voiceBm}
+              >
+                BM
+              </button>
+              <div className="w-px h-4 bg-gray-300 mx-0.5" />
               <button
                 type="button"
                 onClick={startVoiceSearch}
                 disabled={isListening}
-                className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${isListening ? 'bg-orange-200 animate-pulse' : 'hover:bg-gray-100'} transition-colors`}
+                className={`p-1.5 rounded-md ${isListening ? 'bg-orange-200 animate-pulse' : 'hover:bg-gray-200'} transition-colors`}
                 title={`Recherche vocale (${voiceLocale === 'bm-ML' ? labels.voiceModeBm : labels.voiceModeFr})`}
               >
-                <Mic className={`w-5 h-5 ${isListening ? 'text-orange-600' : 'text-gray-500'}`} />
+                <Mic className={`w-4 h-4 ${isListening ? 'text-orange-600' : 'text-gray-500'}`} />
               </button>
-
-              {/* Search Suggestions */}
-              {showSuggestions && searchSuggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-lg border border-gray-100 z-50 max-h-64 overflow-y-auto">
-                  {searchSuggestions.map((suggestion, index) => (
-                    <button
-                      key={index}
-                      onClick={() => {
-                        if (suggestion?.id) {
-                          window.location.href = `${createPageUrl('Product')}?id=${suggestion.id}`;
-                        }
-                      }}
-                      className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Search className="w-4 h-4 text-gray-400" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-800">{suggestion.text}</p>
-                          <p className="text-xs text-gray-500">{suggestion.category}</p>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
+
+            {/* Search Suggestions */}
+            {showSuggestions && searchSuggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-lg border border-gray-100 z-50 max-h-64 overflow-y-auto">
+                {searchSuggestions.map((suggestion, index) => (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      if (suggestion?.id) {
+                        window.location.href = `${createPageUrl('Product')}?id=${suggestion.id}`;
+                      }
+                    }}
+                    className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Search className="w-4 h-4 text-gray-400" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-800">{suggestion.text}</p>
+                        <p className="text-xs text-gray-500">{suggestion.category}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Ligne 3 : Actions (Carte, Trier, Filtres) - bien ordonnées */}
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               onClick={() => window.location.href = createPageUrl('MarketplaceMap')}
-              className="rounded-xl h-11 px-4"
+              className="rounded-xl h-10 px-4 flex-1"
             >
-              <MapPin className="w-5 h-5 mr-2" />
-              {labels.map}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setShowAdvancedFilters(true)}
-              className="rounded-xl h-11 px-4"
-            >
-              <SlidersHorizontal className="w-5 h-5 mr-2" />
-              {labels.filters}
+              <MapPin className="w-4 h-4 mr-2 flex-shrink-0" />
+              <span className="text-sm">{labels.map}</span>
             </Button>
             <Sheet open={showFilters} onOpenChange={setShowFilters}>
               <SheetTrigger asChild>
-                <Button variant="outline" size="icon" className="rounded-xl h-11 w-11">
-                  <Filter className="w-5 h-5" />
+                <Button variant="outline" className="rounded-xl h-10 px-4 flex-1">
+                  <ArrowUpDown className="w-4 h-4 mr-2 flex-shrink-0" />
+                  <span className="text-sm">{labels.sort}</span>
                 </Button>
               </SheetTrigger>
-              <SheetContent side="bottom" className="h-[60vh] rounded-t-3xl">
+              <SheetContent side="bottom" className="h-[55vh] rounded-t-3xl">
                 <SheetHeader>
                   <SheetTitle>{labels.filterTitle}</SheetTitle>
                 </SheetHeader>
@@ -403,6 +408,18 @@ export default function Marketplace() {
                   </div>
 
                   <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowFilters(false);
+                      setTimeout(() => setShowAdvancedFilters(true), 300);
+                    }}
+                    className="w-full py-3 rounded-xl"
+                  >
+                    <SlidersHorizontal className="w-4 h-4 mr-2" />
+                    {labels.advancedFilters}
+                  </Button>
+
+                  <Button
                     onClick={() => setShowFilters(false)}
                     className="w-full py-6 rounded-xl bg-gradient-to-r from-orange-500 to-red-500"
                   >
@@ -411,12 +428,22 @@ export default function Marketplace() {
                 </div>
               </SheetContent>
             </Sheet>
+            <Button
+              variant="outline"
+              onClick={() => setShowAdvancedFilters(true)}
+              className="rounded-xl h-10 px-4 flex-1"
+            >
+              <SlidersHorizontal className="w-4 h-4 mr-2 flex-shrink-0" />
+              <span className="text-sm">{labels.filters}</span>
+            </Button>
           </div>
         </div>
 
-        {/* Categories */}
-        <div className="overflow-x-auto px-4 pb-3 scrollbar-hide">
-          <div className="flex gap-2">
+        {/* Catégories - une seule rangée cohérente */}
+        <div className="border-t border-gray-100 pt-3">
+          <p className="px-4 text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">{labels.categoriesLabel}</p>
+          <div className="overflow-x-auto px-4 pb-3 scrollbar-hide">
+            <div className="flex gap-2 min-w-max">
             {categories.map((cat) => {
               const Icon = cat.icon;
               const isActive = selectedCategory === cat.id;
@@ -435,12 +462,13 @@ export default function Marketplace() {
                 </button>
               );
             })}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Results count */}
-      <div className="px-4 py-3 flex items-center justify-between">
+      {/* Results count et vue Grille/Liste */}
+      <div className="px-4 pr-16 sm:pr-4 py-3 flex items-center justify-between">
         <p className="text-sm text-gray-500">
           {filteredProducts.length} {filteredProducts.length > 1 ? labels.productsCountPlural : labels.productsCount}
         </p>
@@ -461,7 +489,7 @@ export default function Marketplace() {
       </div>
 
       {!searchQuery && (
-        <div className="px-4 space-y-5 mb-4">
+        <div className="px-4 pr-16 sm:pr-4 space-y-5 mb-4">
           {recommendedProducts.length > 0 && (
             <section>
               <h3 className="text-sm font-semibold text-gray-800 mb-2">{labels.recommended}</h3>
@@ -531,8 +559,8 @@ export default function Marketplace() {
         </div>
       )}
 
-      {/* Products Grid */}
-      <div className={`px-4 ${viewMode === 'grid' ? 'grid grid-cols-2 gap-3' : 'space-y-3'}`}>
+      {/* Products Grid - marge droite pour le FAB Vendre */}
+      <div className={`px-4 pr-16 sm:pr-4 ${viewMode === 'grid' ? 'grid grid-cols-2 gap-3' : 'space-y-3'}`}>
         {filteredProducts.map((product, index) => (
           <motion.div
             key={product.id}
@@ -563,12 +591,13 @@ export default function Marketplace() {
         </div>
       )}
 
-      {/* Sell & Orders CTAs */}
-      <div className="fixed bottom-24 right-4 flex flex-col gap-3">
+      {/* FAB Vendre - compact, ne masque pas les produits */}
+      <div className="fixed bottom-24 right-4 z-30 flex flex-col items-end gap-2">
         <Link to={createPageUrl('SellerOrders')}>
           <Button
             variant="outline"
-            className="rounded-full h-12 px-5 bg-white shadow-lg text-gray-900 font-semibold ios-text-visible"
+            size="sm"
+            className="rounded-full h-10 px-4 bg-white/95 backdrop-blur shadow-md text-gray-800 text-sm font-medium"
           >
             <Package className="w-4 h-4 mr-2" />
             {labels.mySales}
@@ -577,14 +606,15 @@ export default function Marketplace() {
         <Link to={createPageUrl('SellerSubscription')}>
           <Button
             variant="outline"
-            className="rounded-full h-12 px-5 bg-white shadow-lg text-gray-900 font-semibold ios-text-visible"
+            size="sm"
+            className="rounded-full h-10 px-4 bg-white/95 backdrop-blur shadow-md text-gray-800 text-sm font-medium"
           >
             {labels.sellerPlans}
           </Button>
         </Link>
         <Link to={createPageUrl('AddProduct')}>
-          <Button className="rounded-full h-14 px-6 bg-gradient-to-r from-orange-500 to-red-500 shadow-lg shadow-orange-500/30 text-white font-semibold ios-text-visible">
-            <span className="mr-2">+</span> {labels.sell}
+          <Button size="lg" className="rounded-full h-12 px-5 bg-gradient-to-r from-orange-500 to-red-500 shadow-lg shadow-orange-500/30 text-white font-semibold">
+            <span className="text-lg leading-none mr-1.5">+</span> {labels.sell}
           </Button>
         </Link>
       </div>

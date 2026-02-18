@@ -297,8 +297,7 @@ function VideoCardContent({
       if (video.start_time && video.start_time > 0) {
         videoRef.current.currentTime = video.start_time;
       }
-      videoRef.current.play().catch(() => {});
-      setIsPlaying(true);
+      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
     } else {
       videoRef.current.pause();
       setIsPlaying(false);
@@ -397,6 +396,14 @@ function VideoCardContent({
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
+    }
+  };
+
+  // Lance la lecture dès que la vidéo est prête (évite play/pause manuel)
+  const handleCanPlay = () => {
+    if (!videoRef.current || loadError) return;
+    if (isActive) {
+      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
     }
   };
 
@@ -583,6 +590,7 @@ function VideoCardContent({
         onClick={handlePlayPause}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
+        onCanPlay={handleCanPlay}
         onError={(e) => {
           const videoElement = e.target;
           const errorCode = videoElement.error?.code;

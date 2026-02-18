@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { Toaster } from "@/components/ui/sonner";
 import TranslationProvider from "@/components/common/TranslationProvider";
@@ -21,6 +21,17 @@ export default function Layout({ children, currentPageName }) {
 }
 
 function LayoutContent({ children, currentPageName }) {
+  // Verrouillage orientation portrait sur mobile (PWA Android/iOS)
+  useEffect(() => {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+      || window.navigator.standalone === true
+      || document.referrer.includes('android-app://');
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (isMobile && isStandalone && screen.orientation?.lock) {
+      screen.orientation.lock('portrait').catch(() => {});
+    }
+  }, []);
+
   // Pages that should have no padding and full screen
   const fullScreenPages = ['Home', 'Create'];
   const isFullScreen = fullScreenPages.includes(currentPageName);
