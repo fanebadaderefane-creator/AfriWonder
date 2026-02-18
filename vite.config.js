@@ -3,6 +3,15 @@ import { defineConfig } from 'vite'
 import path from 'path'
 import { createRequire } from 'module'
 
+// =============================================================================
+// COMPATIBILITÉ RECHARTS + VITE (ESM) - NE PAS SUPPRIMER
+// Recharts et ses deps (lodash, eventemitter3, prop-types, react-smooth) sont
+// en CommonJS. Sans ces réglages : "doesn't provide an export named: 'default'"
+// - Alias lodash → lodash-es (version ESM)
+// - optimizeDeps.include : pré-bundle avec interop CJS→ESM
+// - dedupe eventemitter3 : éviter la copie imbriquée dans recharts
+// =============================================================================
+
 // PWA optionnel : si vite-plugin-pwa n'est pas installé, le dev server démarre quand même
 const require = createRequire(import.meta.url)
 let VitePWA = null
@@ -14,16 +23,21 @@ try {
 export default defineConfig({
   logLevel: 'info',
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-      'react': path.resolve(__dirname, './node_modules/react'),
-      'react-dom': path.resolve(__dirname, './node_modules/react-dom'),
-    },
-    dedupe: ['react', 'react-dom'],
+    alias: [
+      // Recharts utilise lodash (CJS). Alias vers lodash-es (ESM) - requis pour Vite
+      { find: /^lodash\/(.*)$/, replacement: 'lodash-es/$1' },
+      { find: 'lodash', replacement: 'lodash-es' },
+      { find: '@', replacement: path.resolve(__dirname, './src') },
+      { find: 'react', replacement: path.resolve(__dirname, './node_modules/react') },
+      { find: 'react-dom', replacement: path.resolve(__dirname, './node_modules/react-dom') },
+      // Recharts peut résoudre react-is depuis recharts/node_modules (version ancienne sans export ESM isFragment).
+      { find: 'react-is', replacement: path.resolve(__dirname, './node_modules/react-is') },
+    ],
+    dedupe: ['react', 'react-dom', 'react-is', 'eventemitter3'],
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom'],
-    exclude: ['recharts'], // Exclure recharts de l'optimisation pour éviter les problèmes d'initialisation
+    // Pré-bundler recharts + deps CJS (prop-types, react-smooth, eventemitter3) pour interop ESM
+    include: ['react', 'react-dom', 'react-router-dom', 'prop-types', 'react-smooth', 'lodash-es', 'recharts', 'eventemitter3'],
     esbuildOptions: {
       resolveExtensions: ['.jsx', '.js', '.ts', '.tsx'],
     },
@@ -50,7 +64,7 @@ export default defineConfig({
         display: 'standalone',
         background_color: '#000000',
         theme_color: '#f97316',
-        orientation: 'any',
+        orientation: 'portrait',
         scope: '/',
         icons: [
           { src: '/icon-72.png', sizes: '72x72', type: 'image/png', purpose: 'any maskable' },
