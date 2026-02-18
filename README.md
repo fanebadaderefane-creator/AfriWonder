@@ -432,6 +432,16 @@ npx prisma migrate deploy
 
 - Vérifier `CORS_ORIGIN` dans `backend/.env` : `http://localhost:5173`
 
+### Erreur Vite "doesn't provide an export named: 'default'" (lodash, eventemitter3, prop-types)
+
+Recharts et ses dépendances sont en CommonJS. La config dans `vite.config.js` (alias lodash→lodash-es, `optimizeDeps.include`, `dedupe`) est **requise** — ne pas la supprimer. Si l'erreur revient :
+
+```bash
+# Supprimer le cache Vite puis redémarrer
+rm -rf node_modules/.vite
+npm run dev
+```
+
 ### Redis manquant (optionnel)
 
 Si Redis n’est pas installé, le backend peut fonctionner sans (rate limit en mémoire). Pour installer :
