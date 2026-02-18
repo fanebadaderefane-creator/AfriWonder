@@ -428,6 +428,20 @@ npx prisma migrate deploy
 - Vérifier `VITE_API_URL` dans `.env.local` : `http://localhost:3000/api`
 - Vérifier que le backend tourne sur le port 3000
 
+### Login renvoie 500 (POST /api/auth/login)
+
+En dev, le front (Vite sur 5173) envoie les requêtes `/api/*` au backend (proxy vers `localhost:3000`). Une erreur 500 signifie que le serveur Express a planté. Vérifier :
+
+1. **Backend lancé** : `cd backend && npm run dev` (écoute sur le port 3000).
+2. **Variables d'environnement** dans `backend/.env` :
+   - `DATABASE_URL` : chaîne de connexion PostgreSQL (ex. Supabase).
+   - `JWT_SECRET` et `JWT_REFRESH_SECRET` : secrets pour les tokens (voir `backend/ENV_TEMPLATE.txt`).
+3. **Logs backend** : le message d'erreur exact s'affiche dans le terminal du backend (ex. « JWT_REFRESH_SECRET non configuré », erreur Prisma, etc.).
+
+### Erreurs CSS dans la console (image-rendering, behavior, filter, etc.)
+
+Les messages du type « Erreur d'analyse… » ou « Propriété inconnue » sur des lignes du document (localhost:5173) viennent souvent du **preflight Tailwind** ou d'**extensions navigateur**. Ils n'impactent en général pas le rendu. On peut les ignorer ou désactiver les extensions pour vérifier.
+
 ### Erreur CORS
 
 - Vérifier `CORS_ORIGIN` dans `backend/.env` : `http://localhost:5173`

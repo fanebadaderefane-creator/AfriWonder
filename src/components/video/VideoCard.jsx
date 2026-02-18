@@ -13,7 +13,8 @@ import {
   Music2,
   DollarSign,
   UserPlus,
-  UserCheck
+  UserCheck,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -129,6 +130,8 @@ function VideoCardContent({
   );
 
   const [loadError, setLoadError] = useState(false);
+  const [isLoadingOrBuffering, setIsLoadingOrBuffering] = useState(true);
+  const [isReadyToPlay, setIsReadyToPlay] = useState(false);
 
   const { t } = useTranslation();
   
@@ -293,16 +296,20 @@ function VideoCardContent({
     if (!videoRef.current) return;
 
     if (isActive) {
-      // Apply start time if video has been cut
+      const el = videoRef.current;
+      const ready = el.readyState >= 3 || isReadyToPlay; // HAVE_FUTURE_DATA ou plus
       if (video.start_time && video.start_time > 0) {
-        videoRef.current.currentTime = video.start_time;
+        el.currentTime = video.start_time;
       }
-      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+      if (el.paused && ready) {
+        el.play().then(() => setIsPlaying(true)).catch(() => {});
+      }
     } else {
       videoRef.current.pause();
       setIsPlaying(false);
+      setIsLoadingOrBuffering(false);
     }
-  }, [isActive, video.start_time]);
+  }, [isActive, video.start_time, isReadyToPlay]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -319,9 +326,10 @@ function VideoCardContent({
       if (document.hidden) {
         el.pause();
         setIsPlaying(false);
-      } else if (isActive && !loadError) {
-        el.play().catch(() => {});
-        setIsPlaying(true);
+      } else if (isActive && !loadError && el.paused) {
+        if (el.readyState >= 3 || isReadyToPlay) {
+          el.play().then(() => setIsPlaying(true)).catch(() => {});
+        }
       }
     };
 
@@ -332,7 +340,7 @@ function VideoCardContent({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('pagehide', handleVisibilityChange);
     };
-  }, [isActive, loadError]);
+  }, [isActive, loadError, isReadyToPlay]);
 
   /* ================= VIDEO ================= */
 
@@ -399,12 +407,26 @@ function VideoCardContent({
     }
   };
 
-  // Lance la lecture dès que la vidéo est prête (évite play/pause manuel)
   const handleCanPlay = () => {
+    setIsReadyToPlay(true);
+    setIsLoadingOrBuffering(false);
     if (!videoRef.current || loadError) return;
-    if (isActive) {
+    if (isActive && videoRef.current.paused) {
       videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
     }
+  };
+
+  const handleWaiting = () => {
+    if (isActive) setIsLoadingOrBuffering(true);
+  };
+
+  const handlePlaying = () => {
+    setIsLoadingOrBuffering(false);
+    setIsPlaying(true);
+  };
+
+  const handlePause = () => {
+    if (!isActive) setIsPlaying(false);
   };
 
   const formatTime = (seconds) => {
@@ -591,7 +613,17 @@ function VideoCardContent({
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onCanPlay={handleCanPlay}
+        onLoadStart={() => {
+          setIsLoadingOrBuffering(true);
+          setIsReadyToPlay(false);
+          setLoadError(false);
+        }}
+        onWaiting={handleWaiting}
+        onPlaying={handlePlaying}
+        onPause={handlePause}
         onError={(e) => {
+          setIsLoadingOrBuffering(false);
+          setIsReadyToPlay(false);
           const videoElement = e.target;
           const errorCode = videoElement.error?.code;
           const errorMessage = videoElement.error?.message;
@@ -609,7 +641,6 @@ function VideoCardContent({
             videoElement.load();
           }
         }}
-        onLoadStart={() => setLoadError(false)}
         onLoadedData={() => setLoadError(false)}
         onSeeked={handleMainVideoSeeked}
         style={{ 
@@ -636,6 +667,15 @@ function VideoCardContent({
         />
       )}
       </div>
+
+      {/* ================= INDICATEUR CHARGEMENT / BUFFER (🔄) ================= */}
+      {isActive && isLoadingOrBuffering && !loadError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-[55] pointer-events-none">
+          <div className="bg-black/60 p-4 rounded-full">
+            <Loader2 className="w-10 h-10 text-white animate-spin" aria-hidden />
+          </div>
+        </div>
+      )}
 
       {/* ================= ERREUR DE CHARGEMENT ================= */}
       {loadError && (

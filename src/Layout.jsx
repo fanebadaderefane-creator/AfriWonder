@@ -32,6 +32,24 @@ function LayoutContent({ children, currentPageName }) {
     }
   }, []);
 
+  // Barre de défilement visible (Chrome/Safari) : injectée uniquement en WebKit pour éviter "Jeu de règles ignoré" sous Firefox
+  useEffect(() => {
+    const isWebKit = typeof document.documentElement.style.webkitAppearance !== 'undefined';
+    if (!isWebKit) return;
+    const id = 'layout-webkit-scrollbar';
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-track { background: #e5e7eb; border-radius: 5px; }
+      ::-webkit-scrollbar-thumb { background: #9ca3af; border-radius: 5px; }
+      ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+    `;
+    document.head.appendChild(style);
+    return () => { style.remove(); };
+  }, []);
+
   // Pages that should have no padding and full screen
   const fullScreenPages = ['Home', 'Create'];
   const isFullScreen = fullScreenPages.includes(currentPageName);
@@ -63,24 +81,7 @@ function LayoutContent({ children, currentPageName }) {
           padding-top: max(16px, env(safe-area-inset-top));
         }
         
-        /* Barre de défilement visible (Chrome/Safari) — globals.css gère Firefox */
-        @supports selector(::-webkit-scrollbar) {
-          ::-webkit-scrollbar {
-            width: 10px;
-            height: 10px;
-          }
-          ::-webkit-scrollbar-track {
-            background: #e5e7eb;
-            border-radius: 5px;
-          }
-          ::-webkit-scrollbar-thumb {
-            background: #9ca3af;
-            border-radius: 5px;
-          }
-          ::-webkit-scrollbar-thumb:hover {
-            background: #6b7280;
-          }
-        }
+        /* Barre de défilement WebKit : injectée en JS pour éviter "mauvais sélecteur" sous Firefox */
         
         /* Smooth transitions */
         * {

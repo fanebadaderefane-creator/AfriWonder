@@ -20,6 +20,7 @@ import { Loader2 } from 'lucide-react';
 import { toast } from "sonner";
 import { useNetworkStatus, getCacheStrategy, scheduleTask } from '../components/common/PerformanceOptimizer';
 import { cn } from "@/lib/utils";
+import { getVideoPlaybackUrl } from '@/lib/utils';
 import { getJSON, setJSON } from '@/utils/safeStorage';
 
 export default function Home() {
@@ -39,7 +40,8 @@ export default function Home() {
   const [followingCount, setFollowingCount] = useState(0);
   const [followingVideos, setFollowingVideos] = useState([]);
   const [initialDelayDone, setInitialDelayDone] = useState(false);
-  
+  const [firstVideoPreloaded, setFirstVideoPreloaded] = useState(false);
+
   const containerRef = useRef(null);
   const queryClient = useQueryClient();
   const [pullDistance, setPullDistance] = useState(0);
@@ -136,6 +138,54 @@ export default function Home() {
   );
   const isLoading = activeTab === 'pourtoi' ? feedLoading : videosLoading;
   const refetch = activeTab === 'pourtoi' ? refetchFeed : refetchVideos;
+
+  // Précharger la première vidéo AVANT d'afficher le feed (first impression = niveau TikTok)
+  useEffect(() => {
+    if (activeTab !== 'pourtoi') {
+      setFirstVideoPreloaded(true);
+      return;
+    }
+    const firstVideoItem = mainFeedItems.find((i) => i.type === 'video');
+    const firstVideo = firstVideoItem?.video;
+    if (!firstVideo?.video_url) {
+      setFirstVideoPreloaded(true);
+      return;
+    }
+    const url = getVideoPlaybackUrl(firstVideo.video_url);
+    if (!url) {
+      setFirstVideoPreloaded(true);
+      return;
+    }
+    setFirstVideoPreloaded(false);
+    const video = document.createElement('video');
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      video.removeAttribute('src');
+      video.load();
+      setFirstVideoPreloaded(true);
+    };
+    const PRELOAD_TIMEOUT_MS = 10000;
+    const t = setTimeout(finish, PRELOAD_TIMEOUT_MS);
+    video.addEventListener('canplay', finish, { once: true });
+    video.addEventListener('canplaythrough', finish, { once: true });
+    video.addEventListener('error', finish, { once: true });
+    video.src = url;
+    video.load();
+    return () => {
+      clearTimeout(t);
+      video.removeEventListener('canplay', finish);
+      video.removeEventListener('canplaythrough', finish);
+      video.removeEventListener('error', finish);
+      video.removeAttribute('src');
+      video.load();
+    };
+  }, [activeTab, mainFeedItems]);
 
   const refetchRef = useRef(refetch);
   refetchRef.current = refetch;
@@ -524,6 +574,20 @@ export default function Home() {
     return (
       <div className="h-[100dvh] w-full flex items-center justify-center bg-black">
         <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
+      </div>
+    );
+  }
+
+  // Première vidéo en préchargement (first impression = lecture instantanée)
+  const waitingFirstVideo =
+    activeTab === 'pourtoi' &&
+    mainFeedItems.length > 0 &&
+    mainFeedItems.some((i) => i.type === 'video') &&
+    !firstVideoPreloaded;
+  if (waitingFirstVideo) {
+    return (
+      <div className="h-[100dvh] w-full flex items-center justify-center bg-black">
+        <Loader2 className="w-10 h-10 text-orange-500 animate-spin" aria-hidden />
       </div>
     );
   }

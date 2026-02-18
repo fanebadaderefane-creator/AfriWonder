@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import messageService from '../services/message.service.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
 
@@ -29,7 +30,8 @@ router.get('/unread/count', authenticate, async (req: AuthRequest, res, next) =>
     const result = await messageService.getUnreadCount(req.user!.id);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
-    next(error);
+    logger.error('messages/unread/count failed', error as Error, { userId: req.user?.id });
+    res.json({ success: true, data: { count: 0 } });
   }
 });
 

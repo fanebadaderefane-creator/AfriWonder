@@ -21,7 +21,7 @@ export default function PWAUpdateToast() {
       setUpdateAvailable(true);
       
       toastId = toast('Mise à jour disponible', {
-        description: 'Une nouvelle version de l\'application est disponible. Cliquez pour mettre à jour.',
+        description: 'Une nouvelle version de l\'application est disponible. Appuyez pour mettre à jour.',
         action: {
           label: 'Mettre à jour',
           onClick: async () => {
@@ -48,6 +48,8 @@ export default function PWAUpdateToast() {
         },
         duration: Infinity,
         id: 'pwa-update',
+        style: { zIndex: 99999 },
+        className: 'pwa-update-toast',
       });
     };
 
@@ -66,18 +68,29 @@ export default function PWAUpdateToast() {
     // Écouter l'événement personnalisé
     window.addEventListener('sw-update-available', onUpdate);
 
+    const checkWaiting = (reg) => {
+      if (reg?.waiting && navigator.serviceWorker.controller) {
+        showUpdateToast(reg.waiting);
+      }
+    };
+
     // Vérifier s'il y a déjà une mise à jour en attente
     navigator.serviceWorker.ready
       .then((reg) => {
         registration = reg;
-        if (reg.waiting && navigator.serviceWorker.controller) {
-          showUpdateToast(reg.waiting);
-        }
+        checkWaiting(reg);
       })
       .catch(() => {
-        // Si le service worker échoue, l'app doit quand même fonctionner
         console.warn('Service Worker non disponible');
       });
+
+    // Sur mobile : revérifier au retour sur l'app (le SW peut finir d'installer en arrière-plan)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        navigator.serviceWorker.ready.then(checkWaiting);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     // Recharger automatiquement quand le nouveau controller est activé
     const handleControllerChange = () => {
@@ -91,6 +104,7 @@ export default function PWAUpdateToast() {
 
     return () => {
       window.removeEventListener('sw-update-available', onUpdate);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
       if (toastId) {
         toast.dismiss(toastId);

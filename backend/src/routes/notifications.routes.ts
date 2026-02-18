@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../config/database.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
 
@@ -9,7 +10,7 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
     const skip = (page - 1) * limit;
 
     const [notifications, total, unreadCount] = await Promise.all([
@@ -32,7 +33,15 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
       },
     });
   } catch (error) {
-    next(error);
+    logger.error('GET /api/notifications failed', error as Error, { userId: req.user?.id });
+    res.status(200).json({
+      success: true,
+      data: {
+        notifications: [],
+        unreadCount: 0,
+        pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+      },
+    });
   }
 });
 

@@ -354,8 +354,15 @@ class AuthService {
   }
 
   private generateTokens(userId: string, email: string) {
-    if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET) {
-      throw new Error('JWT secrets non configurés');
+    if (!process.env.JWT_SECRET?.trim()) {
+      const err: any = new Error('JWT_SECRET non configuré. Vérifiez backend/.env');
+      err.statusCode = 500;
+      throw err;
+    }
+    if (!process.env.JWT_REFRESH_SECRET?.trim()) {
+      const err: any = new Error('JWT_REFRESH_SECRET non configuré. Vérifiez backend/.env');
+      err.statusCode = 500;
+      throw err;
     }
 
     const jwtSecret: string = process.env.JWT_SECRET;

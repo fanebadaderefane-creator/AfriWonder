@@ -143,6 +143,12 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 
         // Vérifier les mises à jour immédiatement
         reg.update().catch(() => {});
+
+        // Sur mobile : revérifier à chaque retour sur l'app (visibilité)
+        const onVis = () => {
+          if (document.visibilityState === 'visible') reg.update().catch(() => {});
+        };
+        document.addEventListener('visibilitychange', onVis);
       })
       .catch((err) => {
         console.warn('⚠️ Échec enregistrement Service Worker:', err);

@@ -21,7 +21,7 @@ dotenv.config();
 initSentry();
 
 if (process.env.NODE_ENV === 'production') {
-  const required = ['DATABASE_URL', 'JWT_SECRET'];
+  const required = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'];
   const missing = required.filter((k) => !process.env[k]?.trim());
   if (missing.length) {
     logger.error('Variables d’environnement manquantes en production: ' + missing.join(', '));

@@ -7,14 +7,17 @@ const API_CACHE = 'afriwonder-api-v1';
 const PRECACHE = self.__WB_MANIFEST || [];
 const SW_VERSION = 'v2'; // Bypass CDN pour éviter erreur SW sur vidéos
 
+// Ne pas appeler skipWaiting() ici : on laisse le nouveau worker en "waiting"
+// pour que l'app affiche "Mettre à jour" (PWAUpdateToast). skipWaiting() est
+// appelé uniquement quand l'utilisateur clique sur "Mettre à jour" (message SKIP_WAITING).
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(`afriwonder-precache-${SW_VERSION}`).then((cache) => {
       const urls = Array.isArray(PRECACHE)
         ? PRECACHE.map((e) => (typeof e === 'string' ? e : e.url))
         : [];
-      return cache.addAll(urls.filter(Boolean)).then(() => self.skipWaiting());
-    }).catch(() => self.skipWaiting())
+      return cache.addAll(urls.filter(Boolean));
+    }).catch(() => {})
   );
 });
 
