@@ -15,7 +15,7 @@ function isStandalone() {
     || document.referrer.includes('android-app://');
 }
 
-export default function PWAInstallBanner() {
+export default function PWAInstallBanner({ isFullScreen = false, currentPageName }) {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showBanner, setShowBanner] = useState(false);
   const [showIOSInstructions, setShowIOSInstructions] = useState(false);
@@ -62,6 +62,15 @@ export default function PWAInstallBanner() {
 
   if (!showBanner && !showIOSInstructions) return null;
 
+  const basePositionStyle = isFullScreen
+    ? {
+        top: 'calc(72px + env(safe-area-inset-top))',
+        bottom: 'auto',
+      }
+    : {
+        bottom: 'calc(80px + env(safe-area-inset-bottom))',
+      };
+
   if (isIOSDevice && showIOSInstructions) {
     return (
       <AnimatePresence>
@@ -70,7 +79,7 @@ export default function PWAInstallBanner() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 20 }}
           className="fixed left-4 right-4 z-[90] mx-auto max-w-md rounded-xl bg-black/95 text-white shadow-xl border border-white/10"
-          style={{ bottom: 'calc(80px + env(safe-area-inset-bottom))' }}
+          style={basePositionStyle}
         >
           <div className="flex items-start justify-between gap-3 p-4">
             <div className="flex-1 min-w-0">
@@ -99,8 +108,8 @@ export default function PWAInstallBanner() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 20 }}
-        className="fixed left-4 right-4 z-[90] mx-auto max-w-md rounded-xl bg-black/95 text-white shadow-xl border border-white/10 flex items-center gap-3 p-4"
-        style={{ bottom: 'calc(80px + env(safe-area-inset-bottom))' }}
+        className="fixed left-4 right-4 z-[90] mx-auto max-w-md rounded-xl bg-black/95 text-white shadow-xl border border-white/10 flex items-center gap-3 p-3 sm:p-4"
+        style={basePositionStyle}
       >
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm">Installer l'app AfriWonder</p>

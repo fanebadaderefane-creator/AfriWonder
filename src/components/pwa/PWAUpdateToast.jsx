@@ -1,40 +1,102 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 /**
  * Écoute les mises à jour du Service Worker et propose de recharger.
+ * Version améliorée pour éviter l'écran blanc après mise à jour.
  */
 export default function PWAUpdateToast() {
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !import.meta.env.PROD) return;
 
+    let registration = null;
+    let toastId = null;
+
     const showUpdateToast = (worker) => {
-      toast('Nouvelle version disponible', {
-        description: 'Actualisez pour profiter des dernières mises à jour.',
+      if (updateAvailable || isUpdating) return; // Éviter les doublons
+      
+      setUpdateAvailable(true);
+      
+      toastId = toast('Mise à jour disponible', {
+        description: 'Une nouvelle version de l\'application est disponible. Cliquez pour mettre à jour.',
         action: {
           label: 'Mettre à jour',
-          onClick: () => worker?.postMessage?.({ type: 'SKIP_WAITING' }),
+          onClick: async () => {
+            setIsUpdating(true);
+            try {
+              // Envoyer le message au worker pour activer la nouvelle version
+              if (worker) {
+                worker.postMessage({ type: 'SKIP_WAITING' });
+              } else if (registration?.waiting) {
+                registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+              }
+              
+              // Attendre un peu pour que le message soit traité
+              await new Promise(resolve => setTimeout(resolve, 500));
+              
+              // Recharger la page pour activer la nouvelle version
+              window.location.reload();
+            } catch (error) {
+              console.error('Erreur lors de la mise à jour:', error);
+              setIsUpdating(false);
+              toast.error('Erreur lors de la mise à jour. Veuillez recharger la page manuellement.');
+            }
+          },
         },
         duration: Infinity,
+        id: 'pwa-update',
       });
     };
 
-    const onUpdate = () => {
-      navigator.serviceWorker.ready.then((reg) => {
-        if (reg.waiting) showUpdateToast(reg.waiting);
-      });
+    const onUpdate = (event) => {
+      const detail = event?.detail;
+      if (detail?.newWorker) {
+        showUpdateToast(detail.newWorker);
+      } else if (detail?.registration) {
+        const reg = detail.registration;
+        if (reg.waiting) {
+          showUpdateToast(reg.waiting);
+        }
+      }
     };
 
+    // Écouter l'événement personnalisé
     window.addEventListener('sw-update-available', onUpdate);
 
-    navigator.serviceWorker.ready.then((reg) => {
-      if (reg.waiting && navigator.serviceWorker.controller) showUpdateToast(reg.waiting);
-    });
+    // Vérifier s'il y a déjà une mise à jour en attente
+    navigator.serviceWorker.ready
+      .then((reg) => {
+        registration = reg;
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          showUpdateToast(reg.waiting);
+        }
+      })
+      .catch(() => {
+        // Si le service worker échoue, l'app doit quand même fonctionner
+        console.warn('Service Worker non disponible');
+      });
 
-    navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload());
+    // Recharger automatiquement quand le nouveau controller est activé
+    const handleControllerChange = () => {
+      if (navigator.serviceWorker.controller) {
+        // Le nouveau service worker est actif, recharger
+        window.location.reload();
+      }
+    };
 
-    return () => window.removeEventListener('sw-update-available', onUpdate);
-  }, []);
+    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
+
+    return () => {
+      window.removeEventListener('sw-update-available', onUpdate);
+      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+      if (toastId) {
+        toast.dismiss(toastId);
+      }
+    };
+  }, [updateAvailable, isUpdating]);
 
   return null;
 }

@@ -30,7 +30,25 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+    // Notifier tous les clients que le nouveau worker est activé
+    self.clients.matchAll().then(clients => {
+      clients.forEach(client => {
+        client.postMessage({ type: 'SW_ACTIVATED' });
+      });
+    });
+  }
+});
+
+// Gérer les erreurs du service worker
+self.addEventListener('error', (event) => {
+  console.error('Service Worker Error:', event.error);
+});
+
+self.addEventListener('unhandledrejection', (event) => {
+  console.error('Service Worker Unhandled Rejection:', event.reason);
+  event.preventDefault();
 });
 
 // 1) Média téléchargé : CacheFirst (lecture offline)
@@ -73,10 +91,70 @@ self.addEventListener('fetch', (event) => {
 
     // 3) Assets / pages : Network first, fallback precache
     try {
-      return await fetch(request);
-    } catch {
+      const networkResponse = await fetch(request);
+      // Vérifier que la réponse est valide
+      if (networkResponse && networkResponse.ok) {
+        return networkResponse;
+      }
+      throw new Error('Network response not ok');
+    } catch (error) {
+      // Essayer le cache precache
       const precache = await caches.match(request);
-      return precache || caches.match('/index.html');
+      if (precache) return precache;
+      
+      // Si c'est une requête HTML, retourner index.html depuis le cache
+      if (request.headers.get('accept')?.includes('text/html')) {
+        const indexHtml = await caches.match('/index.html');
+        if (indexHtml) return indexHtml;
+      }
+      
+      // Dernier recours : retourner une réponse basique pour éviter l'écran blanc
+      if (request.headers.get('accept')?.includes('text/html')) {
+        return new Response(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>AfriWonder - Chargement...</title>
+              <style>
+                body { 
+                  margin: 0; 
+                  padding: 20px; 
+                  font-family: system-ui; 
+                  display: flex; 
+                  flex-direction: column; 
+                  align-items: center; 
+                  justify-content: center; 
+                  min-height: 100vh; 
+                  background: #000; 
+                  color: #fff; 
+                }
+                .spinner {
+                  width: 40px;
+                  height: 40px;
+                  border: 4px solid rgba(255,255,255,0.1);
+                  border-top-color: #f97316;
+                  border-radius: 50%;
+                  animation: spin 1s linear infinite;
+                }
+                @keyframes spin {
+                  to { transform: rotate(360deg); }
+                }
+              </style>
+            </head>
+            <body>
+              <div class="spinner"></div>
+              <p style="margin-top: 20px;">Chargement de l'application...</p>
+              <script>setTimeout(() => window.location.reload(), 2000);</script>
+            </body>
+          </html>
+        `, {
+          headers: { 'Content-Type': 'text/html' }
+        });
+      }
+      
+      throw error;
     }
   })());
 });

@@ -251,9 +251,9 @@ export default function Home() {
      }
    }, [user?.id]);
 
-  // Memoize following IDs to prevent infinite loops
-  const followingIds = useMemo(() => 
-    userFollows.map(f => f.following_id), 
+  // Memoize following creator IDs (backend retourne directement les utilisateurs suivis)
+  const followingIds = useMemo(
+    () => userFollows.map((f) => f.id),
     [userFollows]
   );
 
@@ -265,7 +265,8 @@ export default function Home() {
 
   useEffect(() => {
     setFollowingCount(userFollows.length);
-    const filtered = videos.filter(v => followingIds.includes(v.creator_id));
+    // Ne garder que les vidéos dont le créateur est dans la liste des suivis
+    const filtered = videos.filter((v) => followingIds.includes(v.creator_id));
     setFollowingVideos(filtered);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userFollows.length, followingIds.length, videoIdsString]);
@@ -728,7 +729,7 @@ export default function Home() {
                         _navigate('/');
                         return;
                       }
-                      const wasInWonder = userFollows.some(f => f.following_id === video.creator_id);
+                      const wasInWonder = userFollows.some((f) => f.id === video.creator_id);
                       const result = await api.users.toggleWonder(video.creator_id);
                       const inWonder = result?.data?.inWonder ?? result?.inWonder ?? !wasInWonder;
 
@@ -743,7 +744,7 @@ export default function Home() {
                         toast.success(`Vous avez quitté le Wonder de ${video.creator_name}`);
                       }
                     }}
-                    isFollowing={userFollows.some(f => f.following_id === video.creator_id)}
+                    isFollowing={userFollows.some((f) => f.id === video.creator_id)}
                     onProfileClick={(creatorId) => {
                       window.location.href = `/Profile?_userId=${creatorId}`;
                     }}

@@ -34,7 +34,7 @@ function LayoutContent({ children, currentPageName }) {
         Aller au contenu principal
       </a>
       <OfflineIndicator />
-      <PWAInstallBanner />
+      <PWAInstallBanner isFullScreen={isFullScreen} currentPageName={currentPageName} />
       <PWAUpdateToast />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
