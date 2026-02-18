@@ -1003,8 +1003,13 @@ export default function Create() {
         toast.success('Vidéo ajoutée à la campagne !');
         navigate(createPageUrl('CreateAdCampaign') + `?campaignId=${adCampaignId}&step=3`);
       } catch (err) {
-        const msg = err?.apiMessage ?? err?.response?.data?.error?.message ?? err?.response?.data?.error ?? err?.message;
-        toast.error(typeof msg === 'string' ? msg : "Erreur lors de l'ajout");
+        const status = err?.response?.status;
+        const rawMsg = err?.apiMessage ?? err?.response?.data?.error?.message ?? err?.response?.data?.error ?? err?.message;
+        const isR2NotConfigured = status === 503 && (typeof rawMsg === 'string' && rawMsg.includes('R2 non configuré'));
+        const msg = isR2NotConfigured
+          ? 'Upload indisponible sur ce serveur. Configurez R2 (variables R2_*) sur l\'hébergeur du backend.'
+          : (typeof rawMsg === 'string' ? rawMsg : "Erreur lors de l'ajout");
+        toast.error(msg);
         setStep('details');
       }
       return;
@@ -1107,12 +1112,16 @@ export default function Create() {
       } catch (uploadError) {
 
         const status = uploadError?.response?.status;
-        const msg = uploadError?.response?.data?.error || uploadError?.response?.data?.message || uploadError?.message;
+        const rawMsg = uploadError?.response?.data?.error || uploadError?.response?.data?.message || uploadError?.message;
+        const isR2NotConfigured = status === 503 && (typeof rawMsg === 'string' && rawMsg.includes('R2 non configuré'));
+        const msg = isR2NotConfigured
+          ? 'Upload indisponible sur ce serveur. Le stockage R2 doit être configuré côté backend (variables R2_* sur l\'hébergeur).'
+          : (rawMsg || 'Erreur lors de l\'upload de la vidéo');
         if (import.meta.env.DEV) {
-          console.error('[Create] Upload vidéo échoué:', { status, msg, err: uploadError });
+          console.error('[Create] Upload vidéo échoué:', { status, rawMsg, err: uploadError });
         }
         clearInterval(progressInterval);
-        toast.error(msg || 'Erreur lors de l\'upload de la vidéo');
+        toast.error(msg);
         setStep('details');
         return;
 
