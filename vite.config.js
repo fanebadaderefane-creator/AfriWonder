@@ -23,7 +23,7 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: ['react', 'react-dom', 'react-router-dom'],
-    exclude: [],
+    exclude: ['recharts'], // Exclure recharts de l'optimisation pour éviter les problèmes d'initialisation
     esbuildOptions: {
       resolveExtensions: ['.jsx', '.js', '.ts', '.tsx'],
     },
@@ -76,11 +76,15 @@ export default defineConfig({
       output: {
         manualChunks: (id) => {
           if (id.includes('node_modules')) {
+            // Ne pas chunker recharts - le laisser dans le bundle principal pour éviter les erreurs d'initialisation
+            // Si recharts est présent, ne pas créer de chunk séparé
+            if (id.includes('recharts')) {
+              return; // Pas de chunk séparé, inclus dans le bundle principal
+            }
             if (id.includes('react-dom') || id.includes('react/') || id.includes('react-router')) return 'react-vendor';
             if (id.includes('@tanstack/react-query')) return 'query-vendor';
             if (id.includes('@radix-ui')) return 'ui-vendor';
             if (id.includes('framer-motion')) return 'framer-vendor';
-            if (id.includes('recharts')) return 'charts-vendor';
             if (id.includes('hls.js')) return 'video-vendor';
             if (id.includes('@stripe')) return 'stripe-vendor';
             if (id.includes('axios')) return 'axios-vendor';
@@ -89,6 +93,10 @@ export default defineConfig({
       },
     },
     chunkSizeWarningLimit: 600,
+    commonjsOptions: {
+      include: [/node_modules/],
+      transformMixedEsModules: true,
+    },
   },
   // Mobile optimization + proxy API en dev (évite CORS front 5173 → backend 3000)
   server: {
