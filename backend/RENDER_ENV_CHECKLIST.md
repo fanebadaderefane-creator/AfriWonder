@@ -28,7 +28,7 @@ Copie les **valeurs** depuis ton fichier `backend/.env` (ne les note pas ici pou
 ## Base de données / cache (si utilisé)
 
 - [ ] `SUPABASE_URL` (si utilisé)
-- [ ] `REDIS_URL` (si tu utilises Redis en prod)
+- [ ] `REDIS_URL` — **À ne mettre que si tu as un Redis sur Render** (addon ou service externe). Sinon **supprime cette variable** sur Render pour éviter que l’app reste bloquée au démarrage (connexion impossible).
 
 ## Envoi d’emails
 

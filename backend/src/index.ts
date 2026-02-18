@@ -128,26 +128,28 @@ io.on('connection', (socket) => {
 // Export io for use in routes
 export { io };
 
-// Start server — écouter sur 0.0.0.0 pour accepter les connexions externes (Railway, Docker)
+// Start server — écouter sur 0.0.0.0 pour accepter les connexions externes (Railway, Docker, Render)
 httpServer.listen(PORT, '0.0.0.0', async () => {
   logger.info(`🚀 Server running on port ${PORT}`);
   logger.info(`📡 WebSocket server ready`);
   logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  
-  // Initialize Redis cache
-  await initRedis();
-  logger.info('✅ Cache Redis initialisé');
-  
-  // Initialiser les politiques de rétention
-  await initializeRetentionPolicies();
-  
-  // Démarrer les jobs automatiques
-  startAccountDeletionJobs();
-  startDataRetentionJob();
-  startAdsExpirationJob();
-  startLiveScheduledReminderJob();
-  startModerationTimeoutJob();
 
-  logger.info('✅ Jobs automatiques démarrés (suppression comptes, rétention données, rappel live)');
-  logger.info('🛡️ Sécurité: Rate limiting + Anti-bot + Chiffrement ACTIVÉS');
+  try {
+    const redis = await initRedis();
+    if (redis) logger.info('✅ Cache Redis initialisé');
+    else logger.info('ℹ️ Cache: mémoire locale (REDIS_URL absent ou connexion indisponible)');
+
+    await initializeRetentionPolicies();
+
+    startAccountDeletionJobs();
+    startDataRetentionJob();
+    startAdsExpirationJob();
+    startLiveScheduledReminderJob();
+    startModerationTimeoutJob();
+
+    logger.info('✅ Jobs automatiques démarrés');
+    logger.info('🛡️ Sécurité: Rate limiting + Anti-bot + Chiffrement ACTIVÉS');
+  } catch (err) {
+    logger.error('Erreur post-démarrage (Redis / rétention / jobs):', err);
+  }
 });
