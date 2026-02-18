@@ -40,6 +40,10 @@ export default function Home() {
   
   const containerRef = useRef(null);
   const queryClient = useQueryClient();
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const touchStartYRef = useRef(0);
+  const pullDistanceRef = useRef(0);
 
   // Get current user
   useEffect(() => {
@@ -130,6 +134,41 @@ export default function Home() {
     refetchVideos().catch(() => {});
     refetchRef.current?.().catch(() => {});
   }, [queryClient, refetchFeed, refetchVideos]);
+
+  const PULL_THRESHOLD = 55;
+  const MAX_PULL = 80;
+  const PULL_RESISTANCE = 0.5;
+
+  const handlePullStart = useCallback((clientY) => {
+    touchStartYRef.current = clientY;
+  }, []);
+
+  const handlePullMove = useCallback((clientY) => {
+    const startY = touchStartYRef.current;
+    const scrollTop = containerRef.current?.scrollTop ?? 0;
+    if (scrollTop > 5) return;
+    const delta = clientY - startY;
+    if (delta <= 0) return;
+    const resisted = Math.min(delta * PULL_RESISTANCE, MAX_PULL);
+    pullDistanceRef.current = resisted;
+    setPullDistance(resisted);
+  }, []);
+
+  const handlePullEnd = useCallback(() => {
+    const currentPull = pullDistanceRef.current;
+    if (currentPull >= PULL_THRESHOLD) {
+      setIsRefreshing(true);
+      setPullDistance(0);
+      pullDistanceRef.current = 0;
+      Promise.all([refetchFeed(), refetchVideos()])
+        .catch(() => {})
+        .finally(() => setIsRefreshing(false));
+    } else {
+      setPullDistance(0);
+      pullDistanceRef.current = 0;
+    }
+    touchStartYRef.current = 0;
+  }, [refetchFeed, refetchVideos]);
 
   // Invalider le cache quand l'utilisateur change (après mise à jour du profil)
   useEffect(() => {
@@ -468,7 +507,6 @@ export default function Home() {
           followingCount={followingCount}
           title={undefined}
           onToggleDarkMode={undefined}
-          onRefresh={handleRefreshHome}
         />
 
 
@@ -489,10 +527,25 @@ export default function Home() {
         )}
 
 
-        {/* FEED - Video Feed avec CSS Snap natif */}
+        {/* FEED - Video Feed avec pull-to-refresh (Android, iOS, iPad) */}
         <div 
           ref={containerRef}
           onScroll={handleScroll}
+          onTouchStart={(e) => {
+            if (e.touches.length > 0) handlePullStart(e.touches[0].clientY);
+          }}
+          onTouchMove={(e) => {
+            if (e.touches.length > 0) {
+              handlePullMove(e.touches[0].clientY);
+              if ((containerRef.current?.scrollTop ?? 0) <= 5 && pullDistanceRef.current > 0) {
+                e.preventDefault();
+              }
+            }
+          }}
+          onTouchEnd={(e) => {
+            if (e.changedTouches.length > 0) handlePullEnd();
+          }}
+          onTouchCancel={() => handlePullEnd()}
           className="snap-y snap-mandatory"
           style={{ 
             flex: 1,
@@ -507,6 +560,33 @@ export default function Home() {
             WebkitScrollSnapType: 'y mandatory',
           }}
         >
+        {/* Zone pull-to-refresh : hauteur variable + indicateur (ne participe pas au snap) */}
+        <div
+          className="flex items-center justify-center shrink-0 overflow-hidden transition-[height] duration-150 ease-out bg-black"
+          style={{
+            height: isRefreshing ? 56 : pullDistance,
+            minHeight: isRefreshing ? 56 : 0,
+            scrollSnapAlign: 'none',
+          }}
+          aria-hidden
+        >
+          {(pullDistance > 0 || isRefreshing) && (
+            <div className="flex flex-col items-center gap-1">
+              {isRefreshing ? (
+                <Loader2 className="w-6 h-6 text-white animate-spin" aria-label="Chargement" />
+              ) : (
+                <Loader2
+                  className="w-6 h-6 text-white/80 transition-transform duration-150"
+                  style={{ transform: `rotate(${Math.min(pullDistance * 4, 360)}deg)` }}
+                  aria-hidden
+                />
+              )}
+              <span className="text-white/80 text-xs">
+                {isRefreshing ? 'Actualisation…' : pullDistance >= PULL_THRESHOLD ? 'Relâchez' : 'Tirez pour actualiser'}
+              </span>
+            </div>
+          )}
+        </div>
         {activeTab === 'abonnements' && followingVideos.length === 0 ? (
           <div className="h-full w-full flex flex-col items-center justify-center text-white px-8 text-center">
             <p className="text-xl font-semibold mb-2">Aucune vidéo de vos abonnements</p>

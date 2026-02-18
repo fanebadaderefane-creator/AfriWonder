@@ -394,19 +394,18 @@ function VideoCardContent({
     prev.currentTime = targetTime;
   }, [isDragging, currentTime, videoUrl]);
 
-  const handlePreviewSeeked = () => {
-    const prev = previewVideoRef.current;
-    const canvas = previewCanvasRef.current;
-    if (!prev || !canvas || prev.readyState < 2) return;
-    const ctx = canvas.getContext('2d');
+  /** Dessine une frame vidéo dans le canvas de prévisualisation (desktop: vidéo cachée, mobile: vidéo principale) */
+  const drawVideoFrameToCanvas = (videoEl, canvasEl) => {
+    if (!videoEl || !canvasEl || videoEl.readyState < 2) return;
+    const ctx = canvasEl.getContext('2d');
     if (!ctx) return;
-    const tw = prev.videoWidth;
-    const th = prev.videoHeight;
+    const tw = videoEl.videoWidth;
+    const th = videoEl.videoHeight;
     if (!tw || !th) return;
     const cw = 90;
     const ch = 160;
-    canvas.width = cw;
-    canvas.height = ch;
+    canvasEl.width = cw;
+    canvasEl.height = ch;
     const videoRatio = tw / th;
     const canvasRatio = cw / ch;
     let sx, sy, sw, sh;
@@ -422,9 +421,22 @@ function VideoCardContent({
       sy = (th - sh) / 2;
     }
     try {
-      ctx.drawImage(prev, sx, sy, sw, sh, 0, 0, cw, ch);
+      ctx.drawImage(videoEl, sx, sy, sw, sh, 0, 0, cw, ch);
     } catch (_e) {
       // CORS ou vidéo cross-origin peut bloquer drawImage
+    }
+  };
+
+  const handlePreviewSeeked = () => {
+    const prev = previewVideoRef.current;
+    const canvas = previewCanvasRef.current;
+    if (prev && canvas) drawVideoFrameToCanvas(prev, canvas);
+  };
+
+  /** Sur mobile: quand la vidéo principale a seeked pendant le drag, on dessine la frame dans la carte */
+  const handleMainVideoSeeked = () => {
+    if (!enablePreviewScrub && isDragging && videoRef.current && previewCanvasRef.current) {
+      drawVideoFrameToCanvas(videoRef.current, previewCanvasRef.current);
     }
   };
 
@@ -490,12 +502,22 @@ function VideoCardContent({
     };
   };
 
+  const scheduleMobilePreviewDraw = () => {
+    if (enablePreviewScrub) return;
+    requestAnimationFrame(() => {
+      if (videoRef.current && previewCanvasRef.current) {
+        drawVideoFrameToCanvas(videoRef.current, previewCanvasRef.current);
+      }
+    });
+  };
+
   const handleProgressMouseDown = (e) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(true);
     handleSeek(e.clientX);
     attachDragListeners();
+    scheduleMobilePreviewDraw();
   };
 
   const handleProgressTouchStart = (e) => {
@@ -504,6 +526,7 @@ function VideoCardContent({
     setIsDragging(true);
     handleSeek(e.touches[0].clientX);
     attachDragListeners();
+    scheduleMobilePreviewDraw();
   };
 
   const handleProgressClick = (e) => {
@@ -555,6 +578,7 @@ function VideoCardContent({
         }}
         onLoadStart={() => setLoadError(false)}
         onLoadedData={() => setLoadError(false)}
+        onSeeked={handleMainVideoSeeked}
         style={{ 
           touchAction: 'pan-y',
           filter: video.filter === 'Normal' || !video.filter ? 'none' :
@@ -655,7 +679,7 @@ function VideoCardContent({
             onTouchStart={handleProgressTouchStart}
             onClick={handleProgressClick}
           >
-            {/* Prévisualisation au survol/drag (style YouTube) */}
+            {/* Prévisualisation au survol/drag (style YouTube) — desktop: vidéo cachée remplit le canvas ; mobile: vidéo principale onSeeked remplit le canvas */}
             {isDragging && (
               <div
                 className="absolute bottom-full left-0 mb-2 pointer-events-none"
@@ -665,12 +689,17 @@ function VideoCardContent({
                 }}
               >
                 <div className="bg-black/95 rounded-lg overflow-hidden shadow-xl border border-white/20">
-                  <canvas
-                    ref={previewCanvasRef}
-                    width={90}
-                    height={160}
-                    className="block w-[90px] h-40 object-cover"
-                  />
+                  <div
+                    className="w-[90px] h-40 relative bg-black"
+                    style={posterUrl ? { backgroundImage: `url(${posterUrl})`, backgroundSize: 'cover' } : undefined}
+                  >
+                    <canvas
+                      ref={previewCanvasRef}
+                      width={90}
+                      height={160}
+                      className="block w-[90px] h-40 object-cover absolute inset-0"
+                    />
+                  </div>
                   <div className="px-2 py-1.5 text-center">
                     <span className="text-white text-sm font-semibold">
                       {formatTime(currentTime)}
