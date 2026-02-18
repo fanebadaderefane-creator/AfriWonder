@@ -15,10 +15,11 @@ export default function PWAUpdateToast() {
     let registration = null;
     let toastId = null;
 
-    const showUpdateToast = (worker) => {
-      if (updateAvailable || isUpdating) return; // Éviter les doublons
+    const showUpdateToast = (worker, forceShow = false) => {
+      if (!forceShow && (updateAvailable || isUpdating)) return; // Éviter doublons dans la même vue
       
       setUpdateAvailable(true);
+      toast.dismiss('pwa-update'); // Enlever un ancien toast pour le réafficher proprement
       
       toastId = toast('Mise à jour disponible', {
         description: 'Une nouvelle version de l\'application est disponible. Appuyez pour mettre à jour.',
@@ -68,9 +69,9 @@ export default function PWAUpdateToast() {
     // Écouter l'événement personnalisé
     window.addEventListener('sw-update-available', onUpdate);
 
-    const checkWaiting = (reg) => {
+    const checkWaiting = (reg, forceShow = false) => {
       if (reg?.waiting && navigator.serviceWorker.controller) {
-        showUpdateToast(reg.waiting);
+        showUpdateToast(reg.waiting, forceShow);
       }
     };
 
@@ -84,10 +85,10 @@ export default function PWAUpdateToast() {
         console.warn('Service Worker non disponible');
       });
 
-    // Sur mobile : revérifier au retour sur l'app (le SW peut finir d'installer en arrière-plan)
+    // Sur mobile : revérifier au retour sur l'app et réafficher le toast si une mise à jour est en attente
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        navigator.serviceWorker.ready.then(checkWaiting);
+        navigator.serviceWorker.ready.then((reg) => checkWaiting(reg, true));
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
