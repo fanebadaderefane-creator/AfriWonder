@@ -1,0 +1,31 @@
+---
+description: ⛔ Player vidéo verrouillé — ne jamais modifier (a cassé 3 fois)
+alwaysApply: true
+---
+
+# ⛔ Player vidéo AfriWonder — VERROUILLÉ
+
+La logique de lecture vidéo a **cassé 3 fois** (buffer infini). L'utilisateur a demandé que cette correction ne se casse plus **accidentellement**.
+
+## Règle stricte
+
+- **Ne jamais modifier** la logique de lecture dans `src/components/video/VideoCard.jsx` (section commentée "VIDEO (⛔ VERROUILLÉ)") **sauf si l'utilisateur demande explicitement** un changement sur le player vidéo.
+- Ne pas refactorer, "améliorer", "nettoyer" ou toucher à : autoplay, `handlePause`, `handleCanPlayThrough`, `handleWaiting`, `handlePlaying`, les `useEffect` liés à `isActive`/`isReadyToPlay`, `preload`, ni la gestion du `src` (sauf `handleRetryLoad`).
+- Tout le reste du composant (UI, likes, description, etc.) peut être modifié normalement.
+
+## Corrections à ne jamais supprimer (priorité AfriWonder — connexions lentes / première vidéo)
+
+Ces éléments évitent le cycle **buffer → joue → buffer**. Ne pas les enlever ni les "simplifier" :
+
+- **Buffer minimum** : `minBufferSec` = 5 s tant qu’aucun play réussi OU connexion lente ; 2 s seulement après premier play réussi ET connexion rapide.
+- **`hasPlayedOnceRef`** : rester à `false` jusqu’au premier `handlePlaying` réussi ; dans `handlePlaying`, faire `hasPlayedOnceRef.current = true`. Sans ça, la **première vidéo** repart en buffer→joue→buffer.
+- **`useNetworkStatus()`** : garder `isSlowConnection` et l’utiliser pour `minBufferSec` (5 s si lent).
+- **`readyState >= 4`** : ne lancer play (useEffect actif, visibilitychange) que si `el.readyState >= 4` (HAVE_ENOUGH_DATA).
+- **`handleCanPlayThrough` / `handleProgress`** : exiger au moins `minBufferSec` secondes en buffer (vérifier `buffered.end(0)` vs `currentTime`) avant d’appeler `play()`.
+- **Message connexion lente** : afficher "Connexion lente — chargement pour une lecture fluide…" quand `isSlowConnection && isLoadingOrBuffering`.
+- **preload** : `preload={isActive ? 'auto' : 'metadata'}` pour la vidéo active.
+- **visibilitychange** : ne reprendre la lecture au retour d’onglet que si `el.readyState >= 4`.
+
+## Si l'utilisateur demande explicitement un changement sur le player
+
+Alors tu peux modifier cette section en restant cohérent avec le comportement actuel (pas de reprise forcée en pause, play seulement quand prêt, buffer minimum respecté, première vidéo et connexions lentes prioritaires).

@@ -143,6 +143,8 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 
         // Vérifier les mises à jour immédiatement
         reg.update().catch(() => {});
+        // Revérifier après quelques secondes (au cas où le cache a servi l'ancienne version)
+        setTimeout(() => reg.update().catch(() => {}), 5000);
 
         // Sur mobile : revérifier à chaque retour sur l'app (visibilité)
         const onVis = () => {

@@ -1,4 +1,9 @@
- // @ts-nocheck
+// @ts-nocheck
+/**
+ * ⛔ NE JAMAIS MODIFIER la section "VIDEO" (autoplay, buffer, pause, canPlayThrough, preload, src).
+ * Ce code a cassé 3 fois (buffer infini). Corrections à ne pas casser : hasPlayedOnceRef, minBufferSec (5s première vidéo / connexion lente), readyState >= 4, useNetworkStatus.
+ * Règle détaillée : .cursor/rules/video-player-locked.mdc
+ */
 import React, { useState, useRef, useEffect, useMemo, memo } from 'react';
 import {
   Heart,
@@ -24,6 +29,7 @@ import { createPageUrl } from "@/utils";
 import { useTranslation } from "@/components/common/useTranslation";
 import { api } from '@/api/expressClient';
 import { toast } from 'sonner';
+import { useNetworkStatus } from '@/components/common/PerformanceOptimizer';
 
 // Fonction pour extraire les hashtags de la description
 const extractHashtags = (description) => {
@@ -78,6 +84,7 @@ function VideoCardContent({
   const viewRecordedRef = useRef(false);
   const userPausedRef = useRef(false);
   const lastTimeUpdateRef = useRef(0);
+  const hasPlayedOnceRef = useRef(false); // première vidéo / premier play = buffer conservateur
   const navigate = useNavigate();
   
   // Extraire les hashtags et la musique - gérer le cas où hashtags peut être une chaîne JSON
@@ -134,6 +141,11 @@ function VideoCardContent({
   const [loadError, setLoadError] = useState(false);
   const [isLoadingOrBuffering, setIsLoadingOrBuffering] = useState(true);
   const [isReadyToPlay, setIsReadyToPlay] = useState(false);
+
+  // Priorité AfriWonder : adapter au réseau lent / instable (connexions en Afrique)
+  const { isSlowConnection } = useNetworkStatus();
+  // Première vidéo : isSlowConnection est encore false (détection async) → toujours 5 s pour éviter buffer→joue→buffer
+  const minBufferSec = !hasPlayedOnceRef.current || isSlowConnection ? 5 : 2;
 
   const { t } = useTranslation();
   
@@ -303,8 +315,8 @@ function VideoCardContent({
       if (video.start_time != null && video.start_time > 0) {
         el.currentTime = video.start_time;
       }
-      // Lancer play() seulement si le navigateur a déjà des données (sinon on attend onCanPlayThrough)
-      const ready = el.readyState >= 2 || isReadyToPlay; // HAVE_CURRENT_DATA ou plus
+      // Lancer play() seulement quand le buffer est suffisant (HAVE_ENOUGH_DATA = 4), évite buffer→joue→buffer
+      const ready = el.readyState >= 4 || isReadyToPlay;
       if (ready && el.paused) {
         el.play().then(() => setIsPlaying(true)).catch(() => {});
       }
@@ -322,7 +334,7 @@ function VideoCardContent({
     }
   }, [isMuted]);
 
-  // Onglet masqué → pause ; au retour si carte active → play (simple, pas de lutte)
+  // Onglet masqué → pause ; au retour reprendre seulement si assez de buffer (évite buffer→joue→buffer)
   useEffect(() => {
     const handleVisibilityChange = () => {
       const el = videoRef.current;
@@ -332,7 +344,10 @@ function VideoCardContent({
         el.pause();
         setIsPlaying(false);
       } else if (isActive && !loadError && el.paused) {
-        el.play().then(() => setIsPlaying(true)).catch(() => {});
+        // Reprendre seulement si le navigateur a assez de données
+        if (el.readyState >= 4) {
+          el.play().then(() => setIsPlaying(true)).catch(() => {});
+        }
       }
     };
 
@@ -345,9 +360,11 @@ function VideoCardContent({
     };
   }, [isActive, loadError]);
 
-  /* ================= VIDEO ================= */
-  /* ⚠️ LOGIQUE STABLE — Ne pas modifier (autoplay, buffer, pause, canPlayThrough)
-   * sans demande explicite. Voir .cursor/rules/video-player-do-not-modify.mdc */
+  /* ================= VIDEO (⛔ VERROUILLÉ — NE PAS MODIFIER) =================
+   * Version corrigée déployée : buffer stable (play au canPlayThrough, pas de reprise forcée en pause).
+   * Autoplay, handlePause, handleCanPlayThrough, handleWaiting, handlePlaying,
+   * useEffect isActive/isReadyToPlay, preload="metadata", src via videoUrl uniquement.
+   * Ce bloc a cassé 3 fois. Modifier UNIQUEMENT si l'utilisateur le demande explicitement. */
 
   const handlePlayPause = () => {
     if (!videoRef.current || loadError) return;
@@ -420,17 +437,39 @@ function VideoCardContent({
     }
   };
 
-  const handleCanPlay = () => {
+  // Quand on a assez de buffer (2 s rapide / 5 s connexion lente), démarrer la lecture si pas encore faite
+  const handleProgress = () => {
+    const el = videoRef.current;
+    if (!el || !isActive || loadError || isReadyToPlay) return;
+    if (el.readyState < 4 || !el.paused) return;
+    if (el.buffered.length > 0 && isFinite(el.duration)) {
+      const bufferedEnd = el.buffered.end(0);
+      const need = el.currentTime + minBufferSec;
+      if (bufferedEnd < need && el.duration - el.currentTime > minBufferSec) return;
+    }
     setIsReadyToPlay(true);
     setIsLoadingOrBuffering(false);
+    el.play().then(() => setIsPlaying(true)).catch(() => {});
+  };
+
+  const handleCanPlay = () => {
+    // Ne pas marquer prêt ici : on attend canPlayThrough pour avoir assez de buffer (évite buffer→joue→buffer)
   };
 
   const handleCanPlayThrough = () => {
+    const el = videoRef.current;
+    if (!el || !isActive || loadError) return;
+    // Exiger minBufferSec (2 s rapide / 5 s connexion lente) — priorité AfriWonder
+    let hasEnoughBuffer = el.readyState >= 4;
+    if (el.buffered.length > 0 && isFinite(el.duration)) {
+      const bufferedEnd = el.buffered.end(0);
+      const need = el.currentTime + minBufferSec;
+      hasEnoughBuffer = bufferedEnd >= need || el.duration - el.currentTime <= minBufferSec;
+    }
+    if (!hasEnoughBuffer) return;
     setIsReadyToPlay(true);
     setIsLoadingOrBuffering(false);
-    // Démarrer la lecture une seule fois quand le buffer est prêt (évite de jouer trop tôt)
-    const el = videoRef.current;
-    if (isActive && el && el.paused && !loadError) {
+    if (el.paused) {
       el.play().then(() => setIsPlaying(true)).catch(() => {});
     }
   };
@@ -440,6 +479,7 @@ function VideoCardContent({
   };
 
   const handlePlaying = () => {
+    hasPlayedOnceRef.current = true; // après le premier play réussi, on peut utiliser 2 s en connexion rapide
     setIsLoadingOrBuffering(false);
     setIsPlaying(true);
   };
@@ -623,12 +663,13 @@ function VideoCardContent({
         src={videoUrl}
         poster={posterUrl}
         className="absolute top-0 left-0 w-full h-full object-cover"
-        preload="metadata"
+        preload={isActive ? 'auto' : 'metadata'}
         loop
         playsInline
         muted={isMuted}
         onClick={handlePlayPause}
         onTimeUpdate={handleTimeUpdate}
+        onProgress={handleProgress}
         onLoadedMetadata={handleLoadedMetadata}
         onCanPlay={handleCanPlay}
         onCanPlayThrough={handleCanPlayThrough}
@@ -687,12 +728,17 @@ function VideoCardContent({
       )}
       </div>
 
-      {/* ================= INDICATEUR CHARGEMENT / BUFFER — au centre (poster visible) ================= */}
+      {/* ================= INDICATEUR CHARGEMENT / BUFFER — priorité AfriWonder (connexions lentes) ================= */}
       {isActive && isLoadingOrBuffering && !loadError && (
-        <div className="absolute inset-0 flex items-center justify-center z-[55] pointer-events-none">
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-[55] pointer-events-none gap-2">
           <div className="bg-black/60 p-2 rounded-full">
             <Loader2 className="w-6 h-6 text-white animate-spin" aria-hidden />
           </div>
+          {isSlowConnection && (
+            <p className="text-white/90 text-sm text-center px-4 ios-text-render">
+              Connexion lente — chargement pour une lecture fluide…
+            </p>
+          )}
         </div>
       )}
 
