@@ -77,7 +77,7 @@ function VideoCardContent({
   const lastPreviewTimeRef = useRef(-1);
   const viewRecordedRef = useRef(false);
   const userPausedRef = useRef(false);
-  const resumeTimeoutRef = useRef(null);
+  const lastTimeUpdateRef = useRef(0);
   const navigate = useNavigate();
   
   // Extraire les hashtags et la musique - gérer le cas où hashtags peut être une chaîne JSON
@@ -294,24 +294,22 @@ function VideoCardContent({
     }
   };
 
+  // Ne jouer que quand la vidéo a assez de données (évite buffer → play → buffer)
   useEffect(() => {
-    if (!videoRef.current) return;
+    const el = videoRef.current;
+    if (!el) return;
 
     if (isActive) {
-      const el = videoRef.current;
-      const ready = el.readyState >= 3 || isReadyToPlay; // HAVE_FUTURE_DATA ou plus
-      if (video.start_time && video.start_time > 0) {
+      if (video.start_time != null && video.start_time > 0) {
         el.currentTime = video.start_time;
       }
-      if (el.paused && ready) {
+      // Lancer play() seulement si le navigateur a déjà des données (sinon on attend onCanPlayThrough)
+      const ready = el.readyState >= 2 || isReadyToPlay; // HAVE_CURRENT_DATA ou plus
+      if (ready && el.paused) {
         el.play().then(() => setIsPlaying(true)).catch(() => {});
       }
     } else {
-      if (resumeTimeoutRef.current) {
-        clearTimeout(resumeTimeoutRef.current);
-        resumeTimeoutRef.current = null;
-      }
-      videoRef.current.pause();
+      el.pause();
       setIsPlaying(false);
       setIsLoadingOrBuffering(false);
       userPausedRef.current = false;
@@ -324,7 +322,7 @@ function VideoCardContent({
     }
   }, [isMuted]);
 
-  // Autoplay intelligent : pause quand l'utilisateur quitte l'app (onglet masqué), relance naturellement au retour
+  // Onglet masqué → pause ; au retour si carte active → play (simple, pas de lutte)
   useEffect(() => {
     const handleVisibilityChange = () => {
       const el = videoRef.current;
@@ -334,9 +332,7 @@ function VideoCardContent({
         el.pause();
         setIsPlaying(false);
       } else if (isActive && !loadError && el.paused) {
-        if (el.readyState >= 3 || isReadyToPlay) {
-          el.play().then(() => setIsPlaying(true)).catch(() => {});
-        }
+        el.play().then(() => setIsPlaying(true)).catch(() => {});
       }
     };
 
@@ -347,7 +343,7 @@ function VideoCardContent({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('pagehide', handleVisibilityChange);
     };
-  }, [isActive, loadError, isReadyToPlay]);
+  }, [isActive, loadError]);
 
   /* ================= VIDEO ================= */
 
@@ -370,8 +366,8 @@ function VideoCardContent({
 
   const handleRetryLoad = () => {
     setLoadError(false);
-    if (videoRef.current && video.video_url) {
-      videoRef.current.src = getVideoPlaybackUrl(video.video_url);
+    if (videoRef.current && videoUrl) {
+      videoRef.current.src = videoUrl;
       videoRef.current.load();
     }
   };
@@ -389,8 +385,14 @@ function VideoCardContent({
     const safeRange = Math.max(0.001, endTime - startTime);
     const clampedTime = Math.max(startTime, Math.min(endTime, videoRef.current.currentTime));
     const pct = ((clampedTime - startTime) / safeRange) * 100;
-    setProgress(pct);
-    setCurrentTime(clampedTime);
+
+    // Throttle setState pour limiter les re-renders (surtout mobile)
+    const now = Date.now();
+    if (now - lastTimeUpdateRef.current >= 250) {
+      lastTimeUpdateRef.current = now;
+      setProgress(pct);
+      setCurrentTime(clampedTime);
+    }
 
     if (isActive && !viewRecordedRef.current && (clampedTime - startTime >= 3 || pct >= 25)) {
       viewRecordedRef.current = true;
@@ -419,9 +421,15 @@ function VideoCardContent({
   const handleCanPlay = () => {
     setIsReadyToPlay(true);
     setIsLoadingOrBuffering(false);
-    if (!videoRef.current || loadError) return;
-    if (isActive && videoRef.current.paused) {
-      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+  };
+
+  const handleCanPlayThrough = () => {
+    setIsReadyToPlay(true);
+    setIsLoadingOrBuffering(false);
+    // Démarrer la lecture une seule fois quand le buffer est prêt (évite de jouer trop tôt)
+    const el = videoRef.current;
+    if (isActive && el && el.paused && !loadError) {
+      el.play().then(() => setIsPlaying(true)).catch(() => {});
     }
   };
 
@@ -434,24 +442,8 @@ function VideoCardContent({
     setIsPlaying(true);
   };
 
-  const handlePause = () => {
-    if (!isActive) {
-      setIsPlaying(false);
-      return;
-    }
-    if (userPausedRef.current) return;
-    const el = videoRef.current;
-    if (!el || el.ended || loadError) return;
-    if (el.readyState >= 2) {
-      resumeTimeoutRef.current = setTimeout(() => {
-        resumeTimeoutRef.current = null;
-        if (!videoRef.current || !isActive) return;
-        if (videoRef.current.paused && videoRef.current.readyState >= 2 && !videoRef.current.ended) {
-          videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-        }
-      }, 150);
-    }
-  };
+  // Sync play state only — no auto-resume (évite boucle buffer/play)
+  const handlePause = () => setIsPlaying(false);
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -629,7 +621,7 @@ function VideoCardContent({
         src={videoUrl}
         poster={posterUrl}
         className="absolute top-0 left-0 w-full h-full object-cover"
-        preload={preload}
+        preload="metadata"
         loop
         playsInline
         muted={isMuted}
@@ -637,6 +629,7 @@ function VideoCardContent({
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onCanPlay={handleCanPlay}
+        onCanPlayThrough={handleCanPlayThrough}
         onLoadStart={() => {
           setIsLoadingOrBuffering(true);
           setIsReadyToPlay(false);
