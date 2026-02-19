@@ -552,7 +552,10 @@ class LiveService {
     const result = await prisma.$transaction(async (tx) => {
       await tx.wallet.update({
         where: { id: wallet.id },
-        data: { balance: { decrement: amount } },
+        data: {
+          balance: { decrement: amount },
+          available_balance: { decrement: amount },
+        },
       });
 
       const tip = await tx.liveTip.create({
@@ -681,8 +684,9 @@ class LiveService {
     giftRateLimitMap.set(key, recent);
 
     const wallet = await getOrCreateWallet(senderId);
-    if (wallet.balance < totalAmount) {
-      throw new Error(`Solde insuffisant. Votre solde: ${wallet.balance} FCFA. Rechargez votre portefeuille.`);
+    const bal = wallet.available_balance ?? wallet.balance ?? 0;
+    if (bal < totalAmount) {
+      throw new Error(`Solde insuffisant. Votre solde: ${Math.round(bal).toLocaleString()} FCFA. Rechargez votre portefeuille.`);
     }
 
     // CDC: message accompagnant le don max 200 caractères
@@ -695,7 +699,10 @@ class LiveService {
     const result = await prisma.$transaction(async (tx) => {
       await tx.wallet.update({
         where: { id: wallet.id },
-        data: { balance: { decrement: totalAmount } },
+        data: {
+          balance: { decrement: totalAmount },
+          available_balance: { decrement: totalAmount },
+        },
       });
 
       const gift = await tx.liveGift.create({
@@ -1405,15 +1412,19 @@ class LiveService {
     await prisma.$transaction([
       prisma.wallet.update({
         where: { id: wallet.id },
-        data: { balance: { increment: tx.amount } },
+        data: {
+          balance: { increment: tx.amount },
+          available_balance: { increment: tx.amount },
+        },
       }),
       prisma.transaction.update({
         where: { id: transactionId },
         data: { status: 'completed' },
       }),
     ]);
+    const newBalance = (wallet.available_balance ?? wallet.balance ?? 0) + tx.amount;
     logger.info('Wallet recharge confirmed', { userId: tx.user_id, amount: tx.amount });
-    return { success: true, new_balance: wallet.balance + tx.amount };
+    return { success: true, new_balance: newBalance };
   }
 
   /** CDC: Export données créateur (CSV/Excel) */

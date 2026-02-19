@@ -76,6 +76,8 @@ function VideoCardContent({
   const previewCanvasRef = useRef(null);
   const lastPreviewTimeRef = useRef(-1);
   const viewRecordedRef = useRef(false);
+  const userPausedRef = useRef(false);
+  const resumeTimeoutRef = useRef(null);
   const navigate = useNavigate();
   
   // Extraire les hashtags et la musique - gérer le cas où hashtags peut être une chaîne JSON
@@ -305,9 +307,14 @@ function VideoCardContent({
         el.play().then(() => setIsPlaying(true)).catch(() => {});
       }
     } else {
+      if (resumeTimeoutRef.current) {
+        clearTimeout(resumeTimeoutRef.current);
+        resumeTimeoutRef.current = null;
+      }
       videoRef.current.pause();
       setIsPlaying(false);
       setIsLoadingOrBuffering(false);
+      userPausedRef.current = false;
     }
   }, [isActive, video.start_time, isReadyToPlay]);
 
@@ -348,9 +355,11 @@ function VideoCardContent({
     if (!videoRef.current || loadError) return;
 
     if (isPlaying) {
+      userPausedRef.current = true;
       videoRef.current.pause();
       setIsPlaying(false);
     } else {
+      userPausedRef.current = false;
       videoRef.current.play().catch(() => {});
       setIsPlaying(true);
     }
@@ -426,7 +435,22 @@ function VideoCardContent({
   };
 
   const handlePause = () => {
-    if (!isActive) setIsPlaying(false);
+    if (!isActive) {
+      setIsPlaying(false);
+      return;
+    }
+    if (userPausedRef.current) return;
+    const el = videoRef.current;
+    if (!el || el.ended || loadError) return;
+    if (el.readyState >= 2) {
+      resumeTimeoutRef.current = setTimeout(() => {
+        resumeTimeoutRef.current = null;
+        if (!videoRef.current || !isActive) return;
+        if (videoRef.current.paused && videoRef.current.readyState >= 2 && !videoRef.current.ended) {
+          videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+        }
+      }, 150);
+    }
   };
 
   const formatTime = (seconds) => {
@@ -668,11 +692,11 @@ function VideoCardContent({
       )}
       </div>
 
-      {/* ================= INDICATEUR CHARGEMENT / BUFFER (🔄) ================= */}
+      {/* ================= INDICATEUR CHARGEMENT / BUFFER — au centre (poster visible) ================= */}
       {isActive && isLoadingOrBuffering && !loadError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-[55] pointer-events-none">
-          <div className="bg-black/60 p-4 rounded-full">
-            <Loader2 className="w-10 h-10 text-white animate-spin" aria-hidden />
+        <div className="absolute inset-0 flex items-center justify-center z-[55] pointer-events-none">
+          <div className="bg-black/60 p-2 rounded-full">
+            <Loader2 className="w-6 h-6 text-white animate-spin" aria-hidden />
           </div>
         </div>
       )}

@@ -81,6 +81,14 @@ class AuthService {
       await referralService.applyReferralCode(user.id, data.referral_code.trim());
     }
 
+    // Créer le portefeuille Live dès l'inscription (évite FK au premier don)
+    try {
+      const ledgerService = (await import('./ledger.service.js')).default;
+      await ledgerService.getOrCreateUserWallet(user.id, 'XOF');
+    } catch (e) {
+      logger.warn('Création wallet à l\'inscription ignorée', { userId: user.id, err: (e as Error).message });
+    }
+
     const tokens = this.generateTokens(user.id, user.email);
 
     logger.info('Utilisateur créé', { userId: user.id, email: user.email });
@@ -342,6 +350,13 @@ class AuthService {
     }
 
     if (!user) throw new Error('User not found');
+    // S'assurer que le portefeuille Live existe (évite erreur au premier don)
+    try {
+      const ledgerService = (await import('./ledger.service.js')).default;
+      await ledgerService.getOrCreateUserWallet(user.id, 'XOF');
+    } catch (_e) {
+      // Ignorer si user inexistant (normalement pas le cas ici)
+    }
     // Générer les tokens
     const tokens = this.generateTokens(user.id, user.email);
 

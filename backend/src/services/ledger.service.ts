@@ -25,12 +25,22 @@ export type LedgerReferenceType =
 class LedgerService {
   /**
    * Récupère ou crée le wallet principal (type user) d'un utilisateur.
+   * Vérifie que l'utilisateur existe avant création pour éviter la violation FK Wallet_user_id_fkey.
    */
   async getOrCreateUserWallet(userId: string, currency: string = 'XOF') {
     let wallet = await prisma.wallet.findFirst({
       where: { user_id: userId, wallet_type: 'user' },
     });
     if (!wallet) {
+      const userExists = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true },
+      });
+      if (!userExists) {
+        const err = new Error('Utilisateur introuvable. Reconnectez-vous.') as Error & { statusCode?: number };
+        err.statusCode = 404;
+        throw err;
+      }
       wallet = await prisma.wallet.create({
         data: {
           user_id: userId,

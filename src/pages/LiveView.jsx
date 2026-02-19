@@ -757,8 +757,19 @@ export default function LiveView() {
 
               {showGifts && (
                 <div className="absolute bottom-12 right-0 bg-gray-800 rounded-lg p-2 space-y-1 z-50 min-w-[180px]">
-                  <p className="text-xs text-gray-400 px-1 pb-1 border-b border-gray-700">
-                    Solde : {Number(wallet?.balance ?? 0).toLocaleString()} FCFA
+                  <div className="flex items-center justify-between px-1 pb-1 border-b border-gray-700">
+                    <span className="text-xs font-medium text-white">Cadeaux</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowGifts(false)}
+                      className="p-0.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"
+                      aria-label="Fermer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400 px-1 pb-1">
+                    Solde : {Number(wallet?.available_balance ?? wallet?.balance ?? 0).toLocaleString()} FCFA
                   </p>
                   <p className="text-xs text-gray-500 px-1 py-0.5">
                     CDC: créateur 85%, plateforme 15%.
