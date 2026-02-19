@@ -1,0 +1,19 @@
+---
+description: Ne pas modifier la logique du player vidéo sauf demande explicite
+globs: **/video/VideoCard.jsx
+alwaysApply: false
+---
+
+# Player vidéo AfriWonder — NE PAS MODIFIER
+
+La logique de lecture vidéo dans `VideoCard.jsx` est **stable et validée**. Elle a été corrigée pour éviter les boucles buffer → play → buffer (connexions stables, mobile Afrique).
+
+## Règle
+
+- **Ne pas modifier** la logique de lecture/buffer/pause dans ce fichier **sauf si l'utilisateur demande explicitement** un changement sur le player vidéo.
+- Ne pas "améliorer", refactorer ou "nettoyer" : autoplay, `handlePause`, `handleCanPlayThrough`, `handleWaiting`, `handlePlaying`, `useEffect` lié à `isActive`/`isReadyToPlay`, attributs `preload="metadata"`, ni la gestion du `src` (uniquement via `videoUrl` dans le JSX, pas d’assignation manuelle sauf dans `handleRetryLoad`).
+- Les modifications sur le **reste** du composant (UI, likes, description, etc.) restent autorisées.
+
+## Si l'utilisateur demande un changement sur le player
+
+Alors tu peux modifier cette partie en restant cohérent avec le comportement actuel (pas de reprise forcée en pause, play seulement quand prêt, etc.).

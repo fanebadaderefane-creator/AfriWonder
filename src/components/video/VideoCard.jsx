@@ -346,6 +346,8 @@ function VideoCardContent({
   }, [isActive, loadError]);
 
   /* ================= VIDEO ================= */
+  /* ⚠️ LOGIQUE STABLE — Ne pas modifier (autoplay, buffer, pause, canPlayThrough)
+   * sans demande explicite. Voir .cursor/rules/video-player-do-not-modify.mdc */
 
   const handlePlayPause = () => {
     if (!videoRef.current || loadError) return;
