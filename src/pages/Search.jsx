@@ -5,7 +5,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, X, Loader2, Video, User, Package } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
-import { isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG } from "@/lib/utils";
+import { isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
 import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -344,10 +344,13 @@ export default function SearchPage() {
                         onClick={() => navigate(createPageUrl('Product') + `?id=${product.id}`)}
                         className="bg-white rounded-lg p-3 flex gap-3 cursor-pointer hover:bg-gray-50"
                       >
-                        <div className="w-16 h-16 rounded-lg bg-gray-300 flex-shrink-0">
-                          {product.images?.[0] && (
-                            <img src={product.images[0]} alt={product.name || product.title} className="w-full h-full object-cover rounded-lg" />
-                          )}
+                        <div className="w-16 h-16 min-h-[64px] rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden">
+                          <img
+                            src={getAbsoluteImageUrl(product.images?.[0]) || MARKETPLACE_PLACEHOLDER_IMG}
+                            alt={product.name || product.title}
+                            className="w-full h-full object-cover rounded-lg"
+                            onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
+                          />
                         </div>
                         <div className="flex-1">
                           <h3 className="font-semibold text-gray-900 truncate">{product.name || product.title}</h3>

@@ -45,7 +45,7 @@ export default function PWAUpdateToast() {
       toast.dismiss('pwa-update');
 
       toastId = toast('Mise à jour disponible', {
-        description: 'Une nouvelle version de l\'application est disponible. Appuyez pour mettre à jour.',
+        description: 'Rechargez pour obtenir la dernière version.',
         action: {
           label: 'Mettre à jour',
           onClick: applyUpdate,
@@ -104,7 +104,6 @@ export default function PWAUpdateToast() {
     };
   }, [updateAvailable, isUpdating]);
 
-  // Bannière fixe en haut : "Mettre à jour pour avoir la version corrigée déployée"
   if (!updateAvailable) return null;
 
   return (
@@ -114,7 +113,7 @@ export default function PWAUpdateToast() {
       aria-live="polite"
     >
       <span className="text-sm font-medium text-center flex-1">
-        Mettre à jour pour avoir la version corrigée déployée
+        Nouvelle version disponible. Rechargez l’application.
       </span>
       <button
         type="button"

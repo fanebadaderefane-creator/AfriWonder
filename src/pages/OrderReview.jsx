@@ -9,6 +9,7 @@ import { ArrowLeft, Star, Upload, CheckCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
+import { getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from '@/lib/utils';
 import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 import { toast } from 'sonner';
 
@@ -193,9 +194,10 @@ export default function OrderReview() {
           {selectedItem && (
             <div className="flex gap-3 mb-4">
               <img
-                src={selectedItem.product?.images?.[0] || selectedItem.product_snapshot?.images?.[0] || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200'}
-                alt={selectedItem.product?.name || 'Produit'}
-                className="w-20 h-20 rounded-lg object-cover"
+                src={getAbsoluteImageUrl(selectedItem.product?.images?.[0] || selectedItem.product_snapshot?.images?.[0]) || MARKETPLACE_PLACEHOLDER_IMG}
+                alt={selectedItem.product?.name || selectedItem.product_snapshot?.name || 'Produit'}
+                className="w-20 h-20 rounded-lg object-cover bg-gray-100"
+                onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
               />
               <div className="flex-1">
                 <h3 className="font-semibold">{selectedItem.product?.name || selectedItem.product_snapshot?.name || 'Produit'}</h3>

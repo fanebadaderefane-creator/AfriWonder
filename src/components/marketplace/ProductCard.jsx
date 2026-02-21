@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Heart, MapPin, Star, BadgeCheck, Play, Shield } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { cn } from "@/lib/utils";
+import { cn, getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
 import { useMarketplaceCurrency } from '@/contexts/MarketplaceCurrencyContext';
 
 const paymentIcons = {
@@ -22,10 +22,14 @@ export default function ProductCard({
   isLiked = false 
 }) {
   const { formatPrice: formatPriceFromContext } = useMarketplaceCurrency();
+  const [imgError, setImgError] = useState(false);
   const formatPrice = (price) => {
     if (price == null) return '';
     return formatPriceFromContext(price);
   };
+
+  const imageUrl = product.images?.[0] || product.image_url;
+  const src = imgError ? MARKETPLACE_PLACEHOLDER_IMG : getAbsoluteImageUrl(imageUrl) || MARKETPLACE_PLACEHOLDER_IMG;
 
   return (
     <motion.div
@@ -34,12 +38,15 @@ export default function ProductCard({
       className="cursor-pointer"
     >
       <Card className="overflow-hidden border-0 shadow-sm hover:shadow-md transition-shadow bg-white">
-        {/* Image */}
-        <div className="relative aspect-square">
+        {/* Image — fond visible sur PWA mobile pour éviter cadres vides */}
+        <div className="relative aspect-square w-full min-h-[140px] bg-gray-100">
           <img
-            src={product.images?.[0] || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=300'}
-            alt={product.name}
+            src={src}
+            alt={product.name || product.title || 'Produit'}
             className="w-full h-full object-cover"
+            loading="eager"
+            decoding="async"
+            onError={() => setImgError(true)}
           />
           
           {/* Video indicator */}

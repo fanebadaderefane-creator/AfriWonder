@@ -22,6 +22,7 @@ function getWhatsAppUrl(phoneOrWhatsapp, message = '') {
 }
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
+import { getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from '@/lib/utils';
 import { toast } from "sonner";
 import BottomNav from '../components/navigation/BottomNav';
 import { useMarketplaceCurrency } from '@/contexts/MarketplaceCurrencyContext';
@@ -168,7 +169,10 @@ export default function Product() {
     );
   }
 
-  const images = product.images || [product.image_url || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600'];
+  const rawImages = product.images?.length ? product.images : (product.image_url ? [product.image_url] : []);
+  const images = rawImages.length
+    ? rawImages.map((url) => getAbsoluteImageUrl(url) || MARKETPLACE_PLACEHOLDER_IMG)
+    : [MARKETPLACE_PLACEHOLDER_IMG];
   const totalPrice = product.price * quantity;
 
   return (
@@ -191,13 +195,16 @@ export default function Product() {
         </div>
       </div>
 
-      {/* Image Gallery */}
+      {/* Image Gallery — fond visible PWA mobile */}
       <div className="relative bg-white">
-        <div className="relative aspect-square">
+        <div className="relative aspect-square w-full min-h-[200px] bg-gray-100">
           <img
             src={images[selectedImage]}
             alt={product.name}
             className="w-full h-full object-cover"
+            loading="eager"
+            decoding="async"
+            onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
           />
           {images.length > 1 && (
             <>
@@ -235,11 +242,11 @@ export default function Product() {
               <button
                 key={index}
                 onClick={() => setSelectedImage(index)}
-                className={`w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden border-2 ${
+                className={`w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden border-2 bg-gray-100 ${
                   index === selectedImage ? 'border-orange-500' : 'border-gray-200'
                 }`}
               >
-                <img src={img} alt="" className="w-full h-full object-cover" />
+                <img src={img} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }} />
               </button>
             ))}
           </div>
@@ -629,11 +636,12 @@ export default function Product() {
                   }}
                   className="flex-shrink-0 w-32"
                 >
-                  <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden mb-2">
+                  <div className="aspect-square w-full min-h-[80px] bg-gray-100 rounded-lg overflow-hidden mb-2">
                     <img
-                      src={relatedProduct.images?.[0] || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200'}
+                      src={getAbsoluteImageUrl(relatedProduct.images?.[0] || relatedProduct.image_url) || MARKETPLACE_PLACEHOLDER_IMG}
                       alt={relatedProduct.name}
                       className="w-full h-full object-cover"
+                      onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
                     />
                   </div>
                   <p className="text-xs font-medium text-left truncate">{relatedProduct.name}</p>

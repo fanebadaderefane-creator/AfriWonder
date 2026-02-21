@@ -6,6 +6,7 @@ import {
   Plus, Minus, Trash2, CreditCard, Lock, Eye, EyeOff
 } from "lucide-react";
 import { mockStores, mockProducts, mockLiveStreams, mockGifts, mockCoinPackages, mockVIPLevels } from "@/lib/mock-data";
+import { getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -299,11 +300,13 @@ export default function MarketplacePage() {
                       viewMode === "list" ? "flex" : ""
                     }`}
                   >
-                    <div className={`relative ${viewMode === "grid" ? "aspect-square" : "w-48 h-48 shrink-0"}`}>
+                    <div className={`relative min-h-[140px] bg-gray-100 ${viewMode === "grid" ? "aspect-square w-full" : "w-48 h-48 shrink-0"}`}>
                       <img
-                        src={product.images[0]}
+                        src={getAbsoluteImageUrl(product.images?.[0]) || MARKETPLACE_PLACEHOLDER_IMG}
                         alt={product.title}
                         className="w-full h-full object-cover"
+                        loading="eager"
+                        onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
                       />
                       {discount > 0 && (
                         <span className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">
@@ -476,11 +479,12 @@ export default function MarketplacePage() {
         {selectedProduct && (
           <div className="space-y-4">
             <div className="flex gap-4">
-              <div className="w-1/2">
+              <div className="w-1/2 min-h-[160px] bg-gray-100 rounded-lg overflow-hidden">
                 <img
-                  src={selectedProduct.images[0]}
+                  src={getAbsoluteImageUrl(selectedProduct.images?.[0]) || MARKETPLACE_PLACEHOLDER_IMG}
                   alt={selectedProduct.title}
                   className="w-full aspect-square object-cover rounded-lg"
+                  onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
                 />
               </div>
               <div className="w-1/2 space-y-3">
@@ -567,9 +571,10 @@ export default function MarketplacePage() {
                 {cart.map(item => (
                   <div key={item.id} className="flex gap-3 p-3 bg-gray-50 rounded-lg">
                     <img
-                      src={item.product.images[0]}
+                      src={getAbsoluteImageUrl(item.product.images?.[0]) || MARKETPLACE_PLACEHOLDER_IMG}
                       alt={item.product.title}
-                      className="w-16 h-16 object-cover rounded"
+                      className="w-16 h-16 object-cover rounded bg-gray-100"
+                      onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
                     />
                     <div className="flex-1">
                       <h4 className="font-medium text-sm line-clamp-1">{item.product.title}</h4>

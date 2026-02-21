@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Search, X, TrendingUp, Package, Store } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPageUrl } from "@/utils";
+import { getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
 
 export default function GlobalSearchBar({ onSearch }) {
   const [query, setQuery] = useState('');
@@ -131,9 +132,10 @@ export default function GlobalSearchBar({ onSearch }) {
                     className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg"
                   >
                     <img
-                      src={product.images?.[0] || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100'}
+                      src={getAbsoluteImageUrl(product.images?.[0]) || MARKETPLACE_PLACEHOLDER_IMG}
                       alt={product.name}
-                      className="w-12 h-12 rounded-lg object-cover"
+                      className="w-12 h-12 rounded-lg object-cover bg-gray-100"
+                      onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{product.name}</p>

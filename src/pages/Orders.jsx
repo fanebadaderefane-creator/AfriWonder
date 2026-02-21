@@ -9,6 +9,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { getCachedOrders, setCachedOrders, isOnline } from '@/utils/ordersOfflineCache';
+import { getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from '@/lib/utils';
 import BottomNav from '../components/navigation/BottomNav';
 
 const statusConfig = {
@@ -133,10 +134,11 @@ export default function Orders() {
               <motion.div key={order.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}>
                 <Card className="p-4">
                   <div className="flex gap-3 mb-3">
-                    <img 
-                      src={productImage || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200'} 
-                      alt={productName} 
-                      className="w-20 h-20 rounded-xl object-cover flex-shrink-0" 
+                    <img
+                      src={getAbsoluteImageUrl(productImage) || MARKETPLACE_PLACEHOLDER_IMG}
+                      alt={productName}
+                      className="w-20 h-20 rounded-xl object-cover flex-shrink-0 bg-gray-100"
+                      onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
                     />
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-gray-800 line-clamp-2">{productName}{order.items?.length > 1 ? ` +${order.items.length - 1}` : ''}</h3>

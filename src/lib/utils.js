@@ -2,6 +2,22 @@ import { clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { API_URL } from "@/api/expressClient"
 
+/** Placeholder image pour produits marketplace (cadres vides PWA mobile) */
+export const MARKETPLACE_PLACEHOLDER_IMG = 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400';
+
+/**
+ * Convertit une URL d'image relative en URL absolue (PWA mobile : évite cadres vides).
+ * Les URLs déjà absolues (http/https) ou data: sont renvoyées telles quelles.
+ */
+export function getAbsoluteImageUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:')) return trimmed;
+  const base = API_URL.startsWith('/') ? window.location.origin + API_URL : API_URL;
+  const origin = base.replace(/\/api\/?$/, '');
+  return trimmed.startsWith('/') ? `${origin}${trimmed}` : `${origin}/${trimmed}`;
+}
+
 export function cn(...inputs) {
   return twMerge(clsx(inputs))
 }

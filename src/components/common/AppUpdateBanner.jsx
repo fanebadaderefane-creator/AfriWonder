@@ -1,86 +1,85 @@
 /**
- * Bannière "Mise à jour" en haut de l'app à l'ouverture.
- * Les utilisateurs voient les corrections et nouveautés ; ils peuvent la fermer.
- * Réafficher pour tous en changeant APP_UPDATE_VERSION ci-dessous.
+ * Bannière "Mise à jour" affichée uniquement quand un nouveau déploiement est détecté
+ * (Service Worker en attente après déploiement GitHub → Vercel/Render).
+ * Le X ferme la bannière. Après "Mettre à jour" + rechargement, elle ne réapparaît pas.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Sparkles } from 'lucide-react';
-import { getItem, setItem } from '@/utils/safeStorage';
-
-const STORAGE_KEY = 'afriwonder_app_update_seen';
-// Changer cette valeur à chaque nouvelle mise à jour pour réafficher la bannière à tous
-const APP_UPDATE_VERSION = '2026-02-21';
 
 const APP_UPDATE_MESSAGE = {
   title: 'Mise à jour',
-  items: [
-    'Prestataires : création de compte corrigée, notification admin à chaque nouveau prestataire',
-    'Marketplace services : abonnement FREE/BASIC/PRO, validation admin des services et prestataires',
-    'Améliorations stabilité et expérience',
-  ],
+  text: 'Une nouvelle version de l\'application est disponible.',
 };
 
 export default function AppUpdateBanner() {
   const [visible, setVisible] = useState(false);
 
-  useEffect(() => {
-    try {
-      const seen = getItem(STORAGE_KEY);
-      if (seen !== APP_UPDATE_VERSION) {
-        setVisible(true);
-      }
-    } catch (_) {
-      setVisible(true);
+  const handleDismiss = useCallback((e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
     }
+    setVisible(false);
   }, []);
 
-  const handleDismiss = () => {
-    try {
-      setItem(STORAGE_KEY, APP_UPDATE_VERSION);
-    } catch (_) {}
-    setVisible(false);
-  };
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    const onUpdate = () => setVisible(true);
+    window.addEventListener('sw-update-available', onUpdate);
+    // Au montage : afficher si un worker est déjà en attente (event émis avant mount)
+    navigator.serviceWorker.ready.then((reg) => {
+      if (reg?.waiting && navigator.serviceWorker.controller) setVisible(true);
+    }).catch(() => {});
+    return () => window.removeEventListener('sw-update-available', onUpdate);
+  }, []);
 
   if (!visible) return null;
 
-  return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ height: 0, opacity: 0 }}
-        animate={{ height: 'auto', opacity: 1 }}
-        exit={{ height: 0, opacity: 0 }}
-        transition={{ duration: 0.25 }}
-        className="overflow-hidden"
-      >
-        <div
-          className="bg-gradient-to-r from-orange-500/95 to-red-500/95 text-white safe-area-pt shadow-md"
+  const safeTop = 'max(12px, env(safe-area-inset-top))';
+
+  const banner = (
+    <>
+      <AnimatePresence>
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.25 }}
+          className="overflow-hidden fixed top-0 left-0 right-0 z-[99998] safe-area-pt"
+          style={{ paddingTop: 'max(16px, env(safe-area-inset-top))' }}
           role="region"
           aria-label="Mise à jour de l'application"
         >
-          <div className="max-w-4xl mx-auto px-4 py-3 flex items-start gap-3">
-            <Sparkles className="w-5 h-5 shrink-0 mt-0.5 text-white/90" aria-hidden />
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm flex items-center gap-2">
-                {APP_UPDATE_MESSAGE.title}
-              </p>
-              <ul className="mt-1 text-xs text-white/95 space-y-0.5 list-disc list-inside">
-                {APP_UPDATE_MESSAGE.items.map((item, i) => (
-                  <li key={i}>{item}</li>
-                ))}
-              </ul>
+          <div className="bg-gradient-to-r from-orange-500/95 to-red-500/95 text-white shadow-md relative">
+            <div className="max-w-4xl mx-auto px-4 py-3 flex items-start gap-3 pr-14">
+              <Sparkles className="w-5 h-5 shrink-0 mt-0.5 text-white/90" aria-hidden />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm">{APP_UPDATE_MESSAGE.title}</p>
+                <p className="mt-0.5 text-xs text-white/95">{APP_UPDATE_MESSAGE.text}</p>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={handleDismiss}
-              className="shrink-0 p-1 rounded-full hover:bg-white/20 transition-colors focus:outline-none focus:ring-2 focus:ring-white/50"
-              aria-label="Fermer la mise à jour"
-            >
-              <X className="w-5 h-5" />
-            </button>
           </div>
-        </div>
-      </motion.div>
-    </AnimatePresence>
+        </motion.div>
+      </AnimatePresence>
+      {/* Bouton X dans une couche fixe séparée au-dessus de tout (y compris Accueil) */}
+      <button
+        type="button"
+        onClick={handleDismiss}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleDismiss(e);
+        }}
+        className="fixed min-w-[48px] min-h-[48px] flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 transition-colors focus:outline-none focus:ring-2 focus:ring-white/50 touch-manipulation text-white z-[100000]"
+        style={{ top: safeTop, right: 12 }}
+        aria-label="Fermer la mise à jour"
+      >
+        <X className="w-6 h-6 shrink-0" aria-hidden />
+      </button>
+    </>
   );
+
+  return createPortal(banner, document.body);
 }

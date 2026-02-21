@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft, Package, Truck, Star } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from '@/lib/utils';
 import { toast } from 'sonner';
 
 const statusConfig = {
@@ -178,7 +179,12 @@ export default function SellerOrders() {
                 <Card>
                   <CardContent className="p-4">
                     <div className="flex gap-3 mb-3">
-                      <img src={productImage || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200'} alt={productName} className="w-20 h-20 rounded-lg object-cover" />
+                      <img
+                        src={getAbsoluteImageUrl(productImage) || MARKETPLACE_PLACEHOLDER_IMG}
+                        alt={productName}
+                        className="w-20 h-20 rounded-lg object-cover bg-gray-100"
+                        onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
+                      />
                       <div className="flex-1">
                         <h3 className="font-semibold">{productName}</h3>
                         <p className="text-sm text-gray-600">Acheteur: {buyer?.full_name || buyer?.username || order.user_id?.slice(0, 8) || '—'}</p>

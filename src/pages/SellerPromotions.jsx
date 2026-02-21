@@ -8,6 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Plus, Zap, Star, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from '@/lib/utils';
 import { toast } from "sonner";
 import BottomNav from '../components/navigation/BottomNav';
 
@@ -156,13 +157,14 @@ export default function SellerPromotions() {
               return (
                 <Card key={promo.id} className="p-4">
                   <div className="flex gap-3">
-                    {product && (
+                    <div className="w-16 h-16 min-h-[64px] rounded bg-gray-100 flex-shrink-0 overflow-hidden">
                       <img
-                        src={product.images?.[0]}
-                        alt={product.name}
-                        className="w-16 h-16 rounded object-cover"
+                        src={getAbsoluteImageUrl(product?.images?.[0]) || MARKETPLACE_PLACEHOLDER_IMG}
+                        alt={product?.name || 'Produit'}
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
                       />
-                    )}
+                    </div>
                     <div className="flex-1">
                       <div className="flex items-start justify-between mb-2">
                         <div>

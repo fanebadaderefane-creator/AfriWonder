@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+import { getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from '@/lib/utils';
 import { api } from '@/api/expressClient';
 import BottomNav from '@/components/navigation/BottomNav';
 import 'leaflet/dist/leaflet.css';
@@ -125,9 +126,10 @@ export default function MarketplaceMap() {
               <Popup>
                 <div className="min-w-[180px]">
                   <img
-                    src={p.images?.[0] || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=120'}
+                    src={getAbsoluteImageUrl(p.images?.[0]) || MARKETPLACE_PLACEHOLDER_IMG}
                     alt={p.name}
-                    className="w-full h-20 object-cover rounded mb-2"
+                    className="w-full h-20 object-cover rounded mb-2 bg-gray-100"
+                    onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
                   />
                   <h3 className="font-semibold text-sm">{p.name}</h3>
                   <p className="text-orange-600 font-bold text-sm">{p.price?.toLocaleString()} FCFA</p>

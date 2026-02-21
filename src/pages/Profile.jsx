@@ -13,7 +13,7 @@ import { motion } from 'framer-motion';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { createPageUrl } from "@/utils";
-import { getVideoPlaybackUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG } from "@/lib/utils";
+import { getVideoPlaybackUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
 import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 
 import { toast } from "sonner";
@@ -1187,18 +1187,13 @@ export default function Profile() {
 
               >
 
-                <div className="aspect-square">
-
+                <div className="aspect-square min-h-[140px] bg-gray-100">
                   <img
-
-                    src={product.images?.[0] || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=300'}
-
+                    src={getAbsoluteImageUrl(product.images?.[0]) || MARKETPLACE_PLACEHOLDER_IMG}
                     alt={product.name}
-
                     className="w-full h-full object-cover"
-
+                    onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
                   />
-
                 </div>
 
                 <div className="p-3">
