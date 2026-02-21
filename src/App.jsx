@@ -11,6 +11,7 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { FeatureFlagsProvider } from '@/contexts/FeatureFlagsContext';
 import { PreferencesProvider } from '@/contexts/PreferencesContext';
+import { AdminProvider } from '@/lib/admin-context';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import OfflineBanner from '@/components/common/OfflineBanner';
 import TranslationProvider from '@/components/common/TranslationProvider';
@@ -133,14 +134,16 @@ function App() {
           <Suspense fallback={<PageLoader />}>
           <FeatureFlagsProvider>
             <PreferencesProvider>
-              <Router>
-                <TranslationProvider>
-                  <OfflineBanner />
-                  <NavigationTracker />
-                  <AuthenticatedApp />
-                  <CookieBanner />
-                </TranslationProvider>
-              </Router>
+              <AdminProvider>
+                <Router>
+                  <TranslationProvider>
+                    <OfflineBanner />
+                    <NavigationTracker />
+                    <AuthenticatedApp />
+                    <CookieBanner />
+                  </TranslationProvider>
+                </Router>
+              </AdminProvider>
             </PreferencesProvider>
           </FeatureFlagsProvider>
           </Suspense>

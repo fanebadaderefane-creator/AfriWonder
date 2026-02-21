@@ -80,7 +80,7 @@ export default function DataModeToggle({
       {showOfflineDownload && (
         <button
           onClick={onDownloadForOffline}
-          className="w-full mt-4 flex items-center justify-center gap-2 p-3 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition"
+          className="w-full mt-4 flex items-center justify-center gap-2 p-3 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition shadow-sm"
         >
           <Download className="w-5 h-5" />
           <span className="font-medium">Télécharger pour hors-ligne</span>

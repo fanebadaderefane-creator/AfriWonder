@@ -143,6 +143,7 @@ const processSuccessfulPaymentReference = async (referenceId: string, status: st
     ['loan_contribution', () => import('../services/microcredit.service.js').then(m => m.default.confirmContribution(referenceId))],
     ['campaign_contribution', () => import('../services/crowdfunding.service.js').then(m => m.default.confirmContribution(referenceId))],
     ['subscription', () => import('../services/subscription.service.js').then(m => m.default.confirmSubscription(referenceId))],
+    ['marketplace_subscription', () => import('../services/marketplaceSubscription.service.js').then(m => m.default.confirmSubscription(referenceId))],
     ['order', () => import('../services/order.service.js').then(m => m.default.confirmPayment(referenceId))],
     ['service', () => import('../services/service.service.js').then(m => m.default.confirmServicePayment(referenceId))],
     ['course', () => import('../services/course.service.js').then(m => m.default.confirmCoursePayment(referenceId))],
@@ -289,6 +290,16 @@ router.post('/orange-money/verify', authenticate, async (req: AuthRequest, res, 
         await sellerSubscriptionService.confirmSubscription(orderId);
         logger.info('Abonnement vendeur confirmé', { orderId });
         return res.json({ success: true, data: result, type: 'seller_subscription' });
+      } catch (error) {
+        // Continuer
+      }
+
+      // 4c. Vérifier si c'est un abonnement marketplace
+      try {
+        const marketplaceSubscriptionService = (await import('../services/marketplaceSubscription.service.js')).default;
+        await marketplaceSubscriptionService.confirmSubscription(orderId);
+        logger.info('Abonnement marketplace confirmé', { orderId });
+        return res.json({ success: true, data: result, type: 'marketplace_subscription' });
       } catch (error) {
         // Continuer
       }
@@ -572,6 +583,13 @@ router.post('/orange-money/webhook', async (req, res, next) => {
         const sellerSubscriptionService = (await import('../services/sellerSubscription.service.js')).default;
         await sellerSubscriptionService.confirmSubscription(orderId);
         logger.info('Abonnement vendeur confirmé via webhook', { orderId });
+      } catch (error) {}
+
+      // 4c. Marketplace subscription
+      try {
+        const marketplaceSubscriptionService = (await import('../services/marketplaceSubscription.service.js')).default;
+        await marketplaceSubscriptionService.confirmSubscription(orderId);
+        logger.info('Abonnement marketplace confirmé via webhook', { orderId });
       } catch (error) {}
 
       // 5. Order

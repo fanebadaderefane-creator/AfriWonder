@@ -3,14 +3,16 @@ import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { ArrowLeft, MapPin, Clock, DollarSign, Building, Loader2, CheckCircle, Send, Heart, Flag, Star } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, DollarSign, Building, Loader2, CheckCircle, Send, Heart, Flag, Star, FileUp } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { motion } from 'framer-motion';
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import BottomNav from '../components/navigation/BottomNav';
+import { MOCK_JOBS } from '@/data/jobsMock';
 
 export default function JobDetails() {
   const [searchParams] = useSearchParams();
@@ -36,9 +38,20 @@ export default function JobDetails() {
 
   const { data: job, isLoading } = useQuery({
     queryKey: ['job', jobId],
-    queryFn: () => api.jobs.getById(jobId, true),
+    queryFn: async () => {
+      try {
+        const data = await api.jobs.getById(jobId, true);
+        if (data) return data;
+      } catch (_e) {}
+      const mock = MOCK_JOBS.find((j) => j.id === jobId);
+      if (mock) return { ...mock, applications: mock.applications ?? [] };
+      return null;
+    },
     enabled: !!jobId
   });
+
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [lastAppliedCompany, setLastAppliedCompany] = useState('');
 
   const userApplication = user && job?.applications?.find(a => (a.applicant_id || a.applicant?.id) === user.id);
 
@@ -47,10 +60,21 @@ export default function JobDetails() {
     onSuccess: () => {
       queryClient.invalidateQueries(['job', jobId]);
       setShowApplication(false);
+      setLastAppliedCompany(job?.employer?.full_name || job?.employer?.company_profile?.company_name || 'L\'entreprise');
+      setShowSuccessModal(true);
       setApplicationData({ letter: '', resumeUrl: '' });
-      toast.success('Candidature envoyée !');
     },
-    onError: (err) => toast.error(err?.apiMessage || 'Erreur')
+    onError: (err) => {
+      const isMockJob = MOCK_JOBS.some((j) => j.id === jobId);
+      if (isMockJob) {
+        setLastAppliedCompany(job?.employer?.full_name || job?.employer?.company_profile?.company_name || 'L\'entreprise');
+        setShowApplication(false);
+        setShowSuccessModal(true);
+        setApplicationData({ letter: '', resumeUrl: '' });
+      } else {
+        toast.error(err?.apiMessage || 'Erreur');
+      }
+    }
   });
 
   const saveMutation = useMutation({
@@ -104,6 +128,17 @@ export default function JobDetails() {
         )}
       </div>
 
+      {/* Image de couverture */}
+      {(job.image || job.cover_image) && (
+        <div className="w-full h-48 overflow-hidden bg-gray-100">
+          <img
+            src={job.image || job.cover_image}
+            alt={job.title}
+            className="w-full h-full object-cover"
+          />
+        </div>
+      )}
+
       <div className="bg-white p-4 border-b border-gray-100">
         <div className="flex gap-4 mb-4">
           <div className="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
@@ -115,20 +150,20 @@ export default function JobDetails() {
             {(ratingCount > 0 || companyProfile.is_verified) && (
               <div className="flex items-center gap-2 mb-2 flex-wrap">
                 {ratingCount > 0 && (
-                  <span className="flex items-center gap-1 text-xs text-amber-600">
-                    <Star className="w-3.5 h-3.5 fill-current" />
+                  <span className="flex items-center gap-1 text-xs text-gray-600">
+                    <Star className="w-3.5 h-3.5 fill-current text-[#f97316]" />
                     {Number(ratingAvg).toFixed(1)} ({ratingCount} avis)
                   </span>
                 )}
                 {companyProfile.is_verified && (
-                  <Badge className="text-xs bg-green-100 text-green-800">Vérifié</Badge>
+                  <Badge className="text-xs bg-gray-100 text-gray-700 border border-gray-200">Vérifié</Badge>
                 )}
               </div>
             )}
             <div className="flex gap-2 flex-wrap">
-              <Badge variant="secondary">{job.job_type}</Badge>
-              {job.is_premium && <Badge className="bg-yellow-100 text-yellow-800">⭐ Premium</Badge>}
-              {job.is_urgent && <Badge className="bg-red-100 text-red-700">Urgent</Badge>}
+              <Badge className="bg-[#f97316] text-white border-0">{job.job_type}</Badge>
+              {job.is_premium && <Badge className="bg-[#f97316] text-white border-0">⭐ Premium</Badge>}
+              {job.is_urgent && <Badge className="bg-[#f97316] text-white border-0">Urgent</Badge>}
             </div>
           </div>
         </div>
@@ -139,8 +174,8 @@ export default function JobDetails() {
           </div>
           {(job.salary_min != null) && (
             <div className="flex items-center gap-1">
-              <DollarSign className="w-4 h-4" />
-              <span>{job.salary_min.toLocaleString()} {job.salary_currency || 'XOF'}</span>
+              <DollarSign className="w-4 h-4 text-[#f97316]" />
+              <span className="text-[#f97316] font-semibold">{job.salary_min.toLocaleString()} - {(job.salary_max || job.salary_min).toLocaleString()} {job.salary_currency || 'XOF'}</span>
             </div>
           )}
           <div className="flex items-center gap-1">
@@ -151,12 +186,12 @@ export default function JobDetails() {
       </div>
 
       {applicationStatus && (
-        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mx-4 mt-4 rounded">
+        <div className="bg-gray-50 border-l-4 border-[#f97316] p-4 mx-4 mt-4 rounded">
           <div className="flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-blue-600" />
+            <CheckCircle className="w-5 h-5 text-[#f97316]" />
             <div>
-              <p className="font-medium text-sm text-blue-900">Candidature envoyée</p>
-              <p className="text-xs text-blue-700 capitalize">{applicationStatus}</p>
+              <p className="font-medium text-sm text-gray-900">Candidature envoyée</p>
+              <p className="text-xs text-gray-600 capitalize">{applicationStatus}</p>
             </div>
           </div>
         </div>
@@ -179,7 +214,7 @@ export default function JobDetails() {
                 onClick={() => setCompanyRating(s)}
                 className="p-1 focus:outline-none"
               >
-                <Star className={cn('w-8 h-8', s <= companyRating ? 'text-amber-500 fill-amber-500' : 'text-gray-300')} />
+                <Star className={cn('w-8 h-8', s <= companyRating ? 'text-[#f97316] fill-[#f97316]' : 'text-gray-300')} />
               </button>
             ))}
           </div>
@@ -202,38 +237,99 @@ export default function JobDetails() {
 
       {!userApplication && user && (
         <div className="sticky bottom-0 bg-white border-t border-gray-100 p-4">
-          {!showApplication ? (
-            <Button onClick={() => setShowApplication(true)} className="w-full bg-orange-500 hover:bg-orange-600 h-12">
-              <Send className="w-4 h-4 mr-2" /> Postuler
-            </Button>
-          ) : (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
-              <Textarea
-                placeholder="Lettre de motivation..."
-                value={applicationData.letter}
-                onChange={(e) => setApplicationData({ ...applicationData, letter: e.target.value })}
-                className="h-24"
-              />
-              <input
-                className="w-full border rounded px-3 py-2 text-sm"
-                placeholder="URL CV (optionnel)"
-                value={applicationData.resumeUrl}
-                onChange={(e) => setApplicationData({ ...applicationData, resumeUrl: e.target.value })}
-              />
-              <div className="flex gap-2">
-                <Button onClick={() => setShowApplication(false)} variant="outline" className="flex-1">Annuler</Button>
-                <Button onClick={() => applyMutation.mutate()} disabled={applyMutation.isPending} className="flex-1 bg-orange-500 hover:bg-orange-600">
-                  {applyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Envoyer
-                </Button>
-              </div>
-            </motion.div>
-          )}
+          <Button onClick={() => setShowApplication(true)} className="w-full bg-[#f97316] hover:bg-[#ea580c] h-12 rounded-xl">
+            <Send className="w-4 h-4 mr-2" /> Postuler
+          </Button>
         </div>
       )}
 
+      {/* Modal Postuler */}
+      <Dialog open={showApplication} onOpenChange={setShowApplication}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Postuler — {job?.title}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-xl bg-gray-50 border border-gray-200 p-3">
+              <p className="font-semibold text-gray-900">{job?.title}</p>
+              <p className="text-sm text-gray-600">{companyName} • {job?.location || job?.country || '—'}</p>
+              {(job?.salary_min != null) && (
+                <p className="text-sm font-medium text-gray-800">
+                  {job.salary_min.toLocaleString()} - {(job.salary_max || job.salary_min).toLocaleString()} {job.salary_currency || 'XOF'}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Lettre de motivation</label>
+              <Textarea
+                placeholder="Présentez-vous et expliquez pourquoi vous êtes le candidat idéal..."
+                value={applicationData.letter}
+                onChange={(e) => setApplicationData({ ...applicationData, letter: e.target.value })}
+                className="min-h-[100px] rounded-lg border-gray-200"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">CV (PDF)</label>
+              <div className="border-2 border-dashed border-gray-200 rounded-lg p-4 text-center">
+                <input
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  className="hidden"
+                  id="cv-upload"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f && f.size <= 5 * 1024 * 1024) setApplicationData((d) => ({ ...d, resumeUrl: f.name || '' }));
+                    else if (f) toast.error('PDF max 5 Mo');
+                  }}
+                />
+                <label htmlFor="cv-upload" className="cursor-pointer flex flex-col items-center gap-1 text-gray-500 text-sm">
+                  <FileUp className="w-8 h-8" />
+                  <span>Cliquez pour téléverser votre CV</span>
+                  <span>PDF, max 5MB</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ou collez l'URL de votre CV"
+                  className="mt-2 w-full text-sm border rounded px-2 py-1"
+                  value={applicationData.resumeUrl}
+                  onChange={(e) => setApplicationData({ ...applicationData, resumeUrl: e.target.value })}
+                />
+              </div>
+            </div>
+            <Button
+              onClick={() => applyMutation.mutate()}
+              disabled={applyMutation.isPending}
+              className="w-full bg-[#f97316] hover:bg-[#ea580c] text-white rounded-xl h-11"
+            >
+              {applyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Envoyer ma candidature
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Candidature envoyée */}
+      <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
+        <DialogContent className="sm:max-w-sm rounded-2xl text-center">
+          <div className="flex justify-center mb-4">
+            <div className="w-16 h-16 rounded-full bg-[#f97316] flex items-center justify-center">
+              <CheckCircle className="w-8 h-8 text-white" />
+            </div>
+          </div>
+          <h3 className="text-lg font-bold text-gray-900">Candidature envoyée !</h3>
+          <p className="text-sm text-gray-600 mt-1">{lastAppliedCompany} examinera votre candidature.</p>
+          <Button
+            className="w-full mt-4 bg-[#f97316] hover:bg-[#ea580c] text-white rounded-xl"
+            onClick={() => setShowSuccessModal(false)}
+          >
+            Fermer
+          </Button>
+        </DialogContent>
+      </Dialog>
+
       {!user && (
         <div className="p-4">
-          <Link to={createPageUrl('Home')}><Button className="w-full bg-orange-500">Se connecter pour postuler</Button></Link>
+          <Link to={createPageUrl('Home')}><Button className="w-full bg-[#f97316] hover:bg-[#ea580c]">Se connecter pour postuler</Button></Link>
         </div>
       )}
 

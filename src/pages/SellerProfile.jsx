@@ -166,7 +166,7 @@ export default function SellerProfile() {
                 {seller.full_name?.[0]?.toUpperCase() || seller.email?.[0]?.toUpperCase() || 'V'}
               </div>
               {(seller.seller_profile?.is_verified || seller.is_verified) && (
-                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center" title="Vendeur vérifié">
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center" title="Vendeur vérifié">
                   <BadgeCheck className="w-4 h-4 text-white" />
                 </div>
               )}

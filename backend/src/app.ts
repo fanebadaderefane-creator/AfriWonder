@@ -38,6 +38,7 @@ import platformRoutes from './routes/platform.routes.js';
 import commissionsRoutes from './routes/commissions.routes.js';
 import withdrawalsRoutes from './routes/withdrawals.routes.js';
 import subscriptionsRoutes from './routes/subscriptions.routes.js';
+import marketplaceSubscriptionRoutes from './routes/marketplaceSubscription.routes.js';
 import microcreditRoutes from './routes/microcredit.routes.js';
 import crowdfundingRoutes from './routes/crowdfunding.routes.js';
 import coursesRoutes from './routes/courses.routes.js';
@@ -113,6 +114,12 @@ import platformFeedbackRoutes from './routes/platformFeedback.routes.js';
 import creatorDashboardRoutes from './routes/creatorDashboard.routes.js';
 import referralsRoutes from './routes/referrals.routes.js';
 import viralBonusRoutes from './routes/viralBonus.routes.js';
+// Mini-Apps
+import miniAppsRoutes from './routes/miniApps.routes.js';
+import developerRoutes from './routes/developer.routes.js';
+// AI Engine & Business Intelligence
+import aiEngineRoutes from './routes/aiEngine.routes.js';
+import businessIntelligenceRoutes from './routes/businessIntelligence.routes.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -134,6 +141,8 @@ const defaultOrigins = [
   'http://localhost:3000',
   'https://afri-wonder.vercel.app',
   'https://afriwonder.vercel.app',
+  'https://afriwonder.com',
+  'https://www.afriwonder.com',
 ];
 const corsOriginsFromEnv = (process.env.CORS_ORIGIN || '')
   .split(',')
@@ -293,10 +302,15 @@ app.use('/api/viral-bonuses', viralBonusRoutes);
 app.use('/api/commissions', commissionsRoutes);
 app.use('/api/withdrawals', withdrawalsRoutes);
 app.use('/api/subscriptions', subscriptionsRoutes);
+app.use('/api/marketplace-subscription', marketplaceSubscriptionRoutes);
 app.use('/api/microcredit', microcreditRoutes);
 app.use('/api/crowdfunding', crowdfundingRoutes);
 app.use('/api/courses', coursesRoutes);
 app.use('/api/events', eventsRoutes);
+app.use('/api/mini-apps', miniAppsRoutes);
+app.use('/api/developer', developerRoutes);
+app.use('/api/admin/ai-engine', aiEngineRoutes);
+app.use('/api/admin/business-intelligence', businessIntelligenceRoutes);
 app.use('/api/challenges', challengesRoutes);
 app.use('/api/communities', communitiesRoutes);
 app.use('/api/civic', civicRoutes);
@@ -366,5 +380,4 @@ if (process.env.SENTRY_DSN && process.env.NODE_ENV !== 'test') {
 app.use(errorHandler);
 
 export default app;
-
 

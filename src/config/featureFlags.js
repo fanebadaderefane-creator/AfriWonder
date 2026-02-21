@@ -33,6 +33,7 @@ export const MENU_ITEM_TO_FLAG = {
   property: 'FEATURE_REALESTATE',
   insurance: 'FEATURE_INSURANCE',
   services: 'FEATURE_SERVICES',
+  providers: 'FEATURE_SERVICES',
   events: 'FEATURE_TICKETING',
   news: 'FEATURE_NEWS',
   courses: 'FEATURE_EDUCATION',

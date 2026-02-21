@@ -11,6 +11,7 @@ import {
   Clock, Facebook, Instagram, Twitter
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 import { toast } from "sonner";
 
 export default function SellerStorefront() {
@@ -136,7 +137,7 @@ export default function SellerStorefront() {
                 )}
                 <input
                   type="file"
-                  accept="image/*"
+                  accept={FILE_ACCEPT_IMAGES}
                   onChange={(e) => handleImageUpload(e, 'shop_banner')}
                   className="hidden"
                   id="banner-upload"
@@ -165,7 +166,7 @@ export default function SellerStorefront() {
                 </div>
                 <input
                   type="file"
-                  accept="image/*"
+                  accept={FILE_ACCEPT_IMAGES}
                   onChange={(e) => handleImageUpload(e, 'shop_logo')}
                   className="hidden"
                   id="logo-upload"

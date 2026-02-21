@@ -9,12 +9,30 @@ class ServiceService {
     category?: string;
     isAvailable?: boolean;
     search?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    sortBy?: 'popular' | 'recent' | 'price_asc' | 'price_desc';
+    includePending?: boolean;
   }) {
     const skip = (page - 1) * limit;
-    const where: any = {};
+    const where: any = {
+      provider: { status: 'active' },
+    };
 
     if (filters?.category) where.category = filters.category;
-    if (filters?.isAvailable !== undefined) where.is_available = filters.isAvailable;
+    if (filters?.includePending) {
+      where.is_available = false;
+    } else if (filters?.isAvailable !== undefined) {
+      where.is_available = filters.isAvailable;
+    } else {
+      where.is_available = true;
+    }
+    if (filters?.minPrice !== undefined) {
+      where.price = { ...(where.price || {}), gte: Number(filters.minPrice) };
+    }
+    if (filters?.maxPrice !== undefined) {
+      where.price = { ...(where.price || {}), lte: Number(filters.maxPrice) };
+    }
     if (filters?.search) {
       where.OR = [
         { title: { contains: filters.search, mode: 'insensitive' } },
@@ -22,12 +40,35 @@ class ServiceService {
       ];
     }
 
+    const orderBy =
+      filters?.sortBy === 'recent'
+        ? { created_at: 'desc' as const }
+        : filters?.sortBy === 'price_asc'
+          ? { price: 'asc' as const }
+          : filters?.sortBy === 'price_desc'
+            ? { price: 'desc' as const }
+            : { total_bookings: 'desc' as const };
+
     const [services, total] = await Promise.all([
       prisma.service.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { rating: 'desc' },
+        orderBy,
+        include: {
+          provider: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  full_name: true,
+                  username: true,
+                  profile_image: true,
+                },
+              },
+            },
+          },
+        },
       }),
       prisma.service.count({ where }),
     ]);
@@ -63,6 +104,9 @@ class ServiceService {
     if (!provider) {
       throw new Error('Prestataire non trouvé');
     }
+    if (provider.status !== 'active') {
+      throw new Error('Votre profil prestataire doit être validé par un admin');
+    }
 
     const service = await prisma.service.create({
       data: {
@@ -77,7 +121,7 @@ class ServiceService {
         location: data.location,
         location_type: data.location_type || 'both',
         travel_fee: data.travel_fee || 0,
-        is_available: true,
+        is_available: false,
       },
       include: {
         provider: {
@@ -96,6 +140,46 @@ class ServiceService {
 
     logger.info('Service created', { providerId, serviceId: service.id });
     return service;
+  }
+
+  async getById(serviceId: string) {
+    const service = await prisma.service.findUnique({
+      where: { id: serviceId },
+      include: {
+        provider: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                full_name: true,
+                profile_image: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!service) throw new Error('Service non trouvé');
+    return service;
+  }
+
+  async listPending(page: number = 1, limit: number = 50) {
+    return this.list(page, limit, { includePending: true, sortBy: 'recent' });
+  }
+
+  async approve(serviceId: string) {
+    return prisma.service.update({
+      where: { id: serviceId },
+      data: { is_available: true },
+    });
+  }
+
+  async reject(serviceId: string) {
+    return prisma.service.update({
+      where: { id: serviceId },
+      data: { is_available: false },
+    });
   }
 
   // Commission plateforme : 10% sur les services
@@ -260,4 +344,3 @@ class ServiceService {
 }
 
 export default new ServiceService();
-

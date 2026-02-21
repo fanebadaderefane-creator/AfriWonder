@@ -22,6 +22,7 @@ import { useNetworkStatus, getCacheStrategy, scheduleTask } from '../components/
 import { cn } from "@/lib/utils";
 import { getVideoPlaybackUrl } from '@/lib/utils';
 import { getJSON, setJSON } from '@/utils/safeStorage';
+import { useWakeLock } from '@/hooks/useWakeLock';
 
 export default function Home() {
   const _navigate = useNavigate();
@@ -33,6 +34,10 @@ export default function Home() {
   const [showGift, setShowGift] = useState(false);
   const { isOpen: isMenuOpen, openMenu } = useAppMenu();
   const { isMuted, setMuted } = usePreferences();
+  
+  // Empêcher l'écran de s'éteindre automatiquement (style TikTok)
+  useWakeLock(true);
+  
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [user, setUser] = useState(null);
   const [likedVideos, setLikedVideos] = useState(new Set());
@@ -172,15 +177,13 @@ export default function Home() {
     };
     const PRELOAD_TIMEOUT_MS = 10000;
     const t = setTimeout(finish, PRELOAD_TIMEOUT_MS);
-    video.addEventListener('canplay', finish, { once: true });
-    video.addEventListener('canplaythrough', finish, { once: true });
+    video.addEventListener('loadeddata', finish, { once: true });
     video.addEventListener('error', finish, { once: true });
     video.src = url;
     video.load();
     return () => {
       clearTimeout(t);
-      video.removeEventListener('canplay', finish);
-      video.removeEventListener('canplaythrough', finish);
+      video.removeEventListener('loadeddata', finish);
       video.removeEventListener('error', finish);
       video.removeAttribute('src');
       video.load();
@@ -494,18 +497,47 @@ export default function Home() {
 
 
 
-  // Handle scroll - Calcul simple de l'index actif
+  // Préchargement des +1 et +2 (niveau TikTok) — scroll = lecture instantanée
+  const preloadLinksRef = useRef([]);
+  const preloadVideos = useCallback((items, index) => {
+    if (!items || !Array.isArray(items)) return;
+    const toPreload = [items[index + 1], items[index + 2]].filter(Boolean);
+    toPreload.forEach((item) => {
+      if (item?.type !== 'video' || !item?.video?.video_url) return;
+      const url = getVideoPlaybackUrl(item.video.video_url);
+      if (!url) return;
+      if (preloadLinksRef.current.some((l) => l.href === url)) return;
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'video';
+      link.href = url;
+      document.head.appendChild(link);
+      preloadLinksRef.current.push(link);
+    });
+    while (preloadLinksRef.current.length > 6) {
+      const old = preloadLinksRef.current.shift();
+      if (old?.parentNode) old.parentNode.removeChild(old);
+    }
+  }, []);
+
+  useEffect(() => {
+    const items = activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map((v) => ({ type: 'video', video: v }));
+    preloadVideos(items, currentIndex);
+  }, [currentIndex, activeTab, mainFeedItems, followingVideos, preloadVideos]);
+
+  // Handle scroll - Calcul simple de l'index actif + précharge les 2 suivantes
   const handleScroll = useCallback(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    // Calculer l'index de la vidéo visible basé sur la hauteur réelle du container
     const index = Math.round(container.scrollTop / container.clientHeight);
 
     if (index !== currentIndex) {
       setCurrentIndex(index);
+      const items = activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map((v) => ({ type: 'video', video: v }));
+      preloadVideos(items, index);
     }
-  }, [currentIndex]);
+  }, [currentIndex, activeTab, mainFeedItems, followingVideos, preloadVideos]);
 
   const handleTip = async (amount, method, extra = {}) => {
     if (!user || !selectedVideo) {
@@ -621,6 +653,7 @@ export default function Home() {
             activeTab={activeTab}
             onTabChange={setActiveTab}
             showTabs={true}
+            showMenuButton={true}
             onMenuOpen={openMenu}
             followingCount={followingCount}
             title={undefined}

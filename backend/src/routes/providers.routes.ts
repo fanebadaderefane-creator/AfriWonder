@@ -34,6 +34,20 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+// GET /api/providers/admin/pending - Liste des prestataires en attente (Admin AfriWonder)
+router.get('/admin/pending', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const user = req.user!;
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+      return res.status(403).json({ success: false, message: 'Accès refusé' });
+    }
+    const list = await providerService.getPendingProviders();
+    res.json({ success: true, data: list });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // GET /api/providers/:id - Détail d'un prestataire
 router.get('/:id', async (req, res, next) => {
   try {
@@ -65,6 +79,9 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
     });
     res.status(201).json({ success: true, data: provider });
   } catch (error: any) {
+    if (error?.message === 'Vous êtes déjà prestataire') {
+      return res.status(400).json({ success: false, message: error.message });
+    }
     next(error);
   }
 });
@@ -97,11 +114,31 @@ router.put('/:id', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-// POST /api/providers/:id/verify - Vérifier un prestataire (admin)
+// POST /api/providers/:id/verify - Approuver un prestataire (Admin AfriWonder)
 router.post('/:id/verify', authenticate, async (req: AuthRequest, res, next) => {
   try {
+    const user = req.user!;
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+      return res.status(403).json({ success: false, message: 'Accès refusé' });
+    }
     const provider = await providerService.verifyProvider(param(req, 'id'));
-    res.json({ success: true, data: provider });
+    res.json({ success: true, data: provider, message: 'Prestataire approuvé' });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/providers/:id/reject - Rejeter un prestataire (Admin AfriWonder)
+router.post('/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const user = req.user!;
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+      return res.status(403).json({ success: false, message: 'Accès refusé' });
+    }
+    const id = param(req, 'id');
+    const { reason } = req.body || {};
+    const provider = await providerService.rejectProvider(id, reason);
+    res.json({ success: true, data: provider, message: 'Prestataire rejeté' });
   } catch (error: any) {
     next(error);
   }

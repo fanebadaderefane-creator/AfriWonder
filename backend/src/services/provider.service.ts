@@ -26,21 +26,22 @@ class ProviderService {
       throw new Error('Vous êtes déjà prestataire');
     }
 
+    const str = (v: unknown): string | null => (v == null || v === '') ? null : String(v).trim() || null;
     const provider = await prisma.serviceProvider.create({
       data: {
         user_id: userId,
-        service_categories: data.service_categories || [],
-        service_radius_km: data.service_radius_km ?? 10,
-        location_type: data.location_type || 'both',
-        payout_method: data.payout_method,
-        payout_account: data.payout_account,
-        phone: data.phone?.trim() || null,
-        whatsapp: data.whatsapp?.trim() || null,
-        email: data.email?.trim() || null,
-        address: data.address?.trim() || null,
-        city: data.city?.trim() || null,
-        country: data.country?.trim() || null,
-        bio: data.bio?.trim() || null,
+        service_categories: Array.isArray(data.service_categories) ? data.service_categories : [],
+        service_radius_km: typeof data.service_radius_km === 'number' ? data.service_radius_km : 10,
+        location_type: typeof data.location_type === 'string' ? data.location_type : 'both',
+        payout_method: str(data.payout_method),
+        payout_account: str(data.payout_account),
+        phone: str(data.phone),
+        whatsapp: str(data.whatsapp),
+        email: str(data.email),
+        address: str(data.address),
+        city: str(data.city),
+        country: str(data.country),
+        bio: str(data.bio),
         status: 'pending',
       },
       include: {
@@ -54,6 +55,32 @@ class ProviderService {
         },
       },
     });
+
+    // Notifier les admins AfriWonder pour approbation / rejet
+    try {
+      const admins = await prisma.user.findMany({
+        where: { role: { in: ['super_admin', 'admin', 'moderation_admin'] } },
+        select: { id: true },
+      });
+      const providerName = provider.user?.full_name || provider.user?.username || 'Un prestataire';
+      const categories = (provider as any).service_categories?.length
+        ? (provider as any).service_categories.slice(0, 3).join(', ')
+        : '—';
+      for (const admin of admins) {
+        await prisma.notification.create({
+          data: {
+            user_id: admin.id,
+            type: 'provider_pending_approval',
+            title: 'Nouveau prestataire en attente',
+            message: `${providerName} a demandé à devenir prestataire (${categories}). À approuver ou rejeter dans l’admin.`,
+            reference_type: 'service_provider',
+            reference_id: provider.id,
+          },
+        });
+      }
+    } catch (notifErr) {
+      logger.warn('Notification admin prestataire', { err: (notifErr as Error).message });
+    }
 
     logger.info('Prestataire créé', { providerId: provider.id, userId });
     return provider;
@@ -242,6 +269,30 @@ class ProviderService {
     return prisma.serviceProvider.update({
       where: { id: providerId },
       data: { is_verified: true, verification_badge: 'verified', status: 'active' },
+    });
+  }
+
+  async getPendingProviders() {
+    return prisma.serviceProvider.findMany({
+      where: { status: 'pending' },
+      include: {
+        user: {
+          select: {
+            id: true,
+            full_name: true,
+            email: true,
+            username: true,
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+  }
+
+  async rejectProvider(providerId: string, reason?: string) {
+    return prisma.serviceProvider.update({
+      where: { id: providerId },
+      data: { status: 'blocked' },
     });
   }
 }

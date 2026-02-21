@@ -14,14 +14,14 @@ import BottomNav from '../components/navigation/BottomNav';
 const statusConfig = {
   pending: { label: 'En attente', color: 'bg-gray-100 text-gray-600', icon: Clock },
   pending_payment: { label: 'Paiement en attente', color: 'bg-gray-100 text-gray-600', icon: Clock },
-  paid: { label: 'Payé', color: 'bg-blue-100 text-blue-600', icon: CheckCircle },
-  processing: { label: 'En cours', color: 'bg-blue-100 text-blue-600', icon: Package },
+  paid: { label: 'Payé', color: 'bg-orange-100 text-orange-600', icon: CheckCircle },
+  processing: { label: 'En cours', color: 'bg-orange-100 text-orange-600', icon: Package },
   preparing: { label: 'En préparation', color: 'bg-amber-100 text-amber-600', icon: Package },
   completed: { label: 'Terminé', color: 'bg-green-100 text-green-600', icon: CheckCircle },
   cancelled: { label: 'Annulé', color: 'bg-red-100 text-red-600', icon: Clock },
   in_transit: { label: 'Expédié', color: 'bg-orange-100 text-orange-600', icon: Truck },
   delivered: { label: 'Livré', color: 'bg-green-100 text-green-600', icon: CheckCircle },
-  refunded: { label: 'Remboursé', color: 'bg-purple-100 text-purple-600', icon: Clock },
+  refunded: { label: 'Remboursé', color: 'bg-orange-100 text-orange-600', icon: Clock },
 };
 
 export default function Orders() {
@@ -144,7 +144,7 @@ export default function Orders() {
                       <p className="text-orange-500 font-bold mt-1">{order.total_amount?.toLocaleString()} FCFA</p>
                       <div className="flex items-center gap-2 mt-2 flex-wrap">
                         {order.source === 'live' && (
-                          <Badge className="bg-purple-100 text-purple-700 text-xs">Acheté pendant live</Badge>
+                          <Badge className="bg-orange-100 text-orange-700 text-xs">Acheté pendant live</Badge>
                         )}
                         <Badge className={status.color}>
                           <StatusIcon className="w-3 h-3 mr-1" />

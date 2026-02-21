@@ -59,7 +59,11 @@ export const csrfProtectionMiddleware = (req: Request, res: Response, next: Next
     return next();
   }
 
-  const allowedOrigins = [process.env.CORS_ORIGIN, process.env.APP_URL].filter(
+  const corsOriginList = (process.env.CORS_ORIGIN || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s && s !== '*');
+  const allowedOrigins = [...corsOriginList, process.env.APP_URL].filter(
     (v): v is string => !!v
   );
   if (allowedOrigins.length === 0) {
@@ -71,7 +75,9 @@ export const csrfProtectionMiddleware = (req: Request, res: Response, next: Next
   const allowed =
     allowedOrigins.some((base) => origin.startsWith(base) || referer.startsWith(base)) ||
     origin.endsWith('.vercel.app') ||
-    (referer && referer.includes('.vercel.app'));
+    (referer && referer.includes('.vercel.app')) ||
+    origin.includes('afriwonder.com') ||
+    (referer && referer.includes('afriwonder.com'));
 
   if (!allowed) {
     return res.status(403).json({

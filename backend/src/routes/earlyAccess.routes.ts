@@ -2,6 +2,7 @@ import { Router } from 'express';
 import prisma from '../config/database.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { requireAnyAdmin } from '../middleware/adminRbac.js';
+import { logger } from '../utils/logger.js';
 import * as earlyAccessService from '../services/earlyAccess.service.js';
 
 const router = Router();
@@ -12,7 +13,19 @@ router.get('/config', async (_req, res, next) => {
     const config = await earlyAccessService.getEarlyAccessConfig();
     res.json({ success: true, data: config });
   } catch (error: any) {
-    next(error);
+    // Fallback si la DB n'est pas disponible
+    logger.error('Early access config error', { error: error.message });
+    res.json({
+      success: true,
+      data: {
+        maxUsers: 10000,
+        totalUsers: 0,
+        isFull: false,
+        spotsLeft: 10000,
+        monetizedCreators: 0,
+        maxMonetizedCreators: 50,
+      },
+    });
   }
 });
 

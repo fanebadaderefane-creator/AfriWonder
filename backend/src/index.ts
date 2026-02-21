@@ -47,6 +47,8 @@ const corsOrigins = [
   'http://localhost:5173',
   'https://afri-wonder.vercel.app',
   'https://afriwonder.vercel.app',
+  'https://afriwonder.com',
+  'https://www.afriwonder.com',
   /\.vercel\.app$/, // Préviews Vercel
 ].filter(Boolean);
 const io = new Server(httpServer, {

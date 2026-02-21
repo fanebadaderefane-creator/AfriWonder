@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/api/expressClient';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,6 +12,7 @@ import {
   Heart, GraduationCap, ShoppingCart
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 import { toast } from "sonner";
 
 const serviceCategories = [
@@ -34,6 +35,8 @@ export default function AddService() {
     name: '',
     category: 'restaurant',
     description: '',
+    price: '',
+    delivery_days: '',
     address: '',
     phone: '',
     whatsapp: '',
@@ -60,6 +63,17 @@ export default function AddService() {
     getUser();
   }, []);
 
+  const { data: marketplaceSub } = useQuery({
+    queryKey: ['marketplace-subscription-me'],
+    queryFn: () => api.marketplaceSubscription.getMe(),
+    enabled: !!user,
+  });
+  const { data: providerProfile, isLoading: isProviderLoading } = useQuery({
+    queryKey: ['provider-me', user?.id],
+    queryFn: () => api.providers.getByUserId(user.id),
+    enabled: !!user,
+  });
+
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
@@ -68,8 +82,14 @@ export default function AddService() {
     try {
       const uploadedUrls = [];
       for (const file of files) {
-        const { file_url } = await api.upload.video({ file });
-        uploadedUrls.push(file_url);
+        const result = await api.upload.image(file);
+        const fileUrl = result?.file_url || result?.url;
+        if (fileUrl) {
+          uploadedUrls.push(fileUrl);
+        }
+      }
+      if (uploadedUrls.length === 0) {
+        throw new Error('Aucune URL image reçue');
       }
       setService(prev => ({ ...prev, images: [...prev.images, ...uploadedUrls] }));
       toast.success('Images téléchargées');
@@ -104,19 +124,40 @@ export default function AddService() {
         throw new Error('Veuillez remplir tous les champs obligatoires');
       }
 
-      return api.entities.Service.create({
-        ...service,
-        owner_id: user.id,
-        owner_name: user.full_name || user.email
+      if (!service.price) {
+        throw new Error('Le prix est requis');
+      }
+      if ((marketplaceSub?.plan_type || 'free') !== 'pro') {
+        throw new Error('Abonnement PRO requis pour publier');
+      }
+      if (!providerProfile) {
+        throw new Error("Creez d'abord votre profil prestataire");
+      }
+      if (providerProfile.status !== 'active') {
+        throw new Error('Profil prestataire en attente de validation admin');
+      }
+      return api.services.create({
+        title: service.name,
+        description: service.description || service.name,
+        category: service.category,
+        price: Number(service.price),
+        delivery_time: service.delivery_days ? Number(service.delivery_days) : undefined,
+        location: service.address,
       });
     },
     onSuccess: () => {
-      toast.success('Service créé avec succès !');
-      queryClient.invalidateQueries(['services']);
+      toast.success('Service soumis à validation admin');
+      queryClient.invalidateQueries({ queryKey: ['services-list'] });
       navigate('/Services');
     },
     onError: (error) => {
-      toast.error(error._message || 'Erreur lors de la création');
+      const message =
+        error?.response?.data?.message ||
+        error?.response?.data?.error?.message ||
+        error?.apiMessage ||
+        error?.message ||
+        'Erreur lors de la creation';
+      toast.error(message);
     }
   });
 
@@ -132,10 +173,25 @@ export default function AddService() {
           </div>
           <Button
             onClick={() => createServiceMutation.mutate()}
-            disabled={createServiceMutation.isPending || uploading}
+            disabled={
+              createServiceMutation.isPending ||
+              uploading ||
+              isProviderLoading ||
+              (marketplaceSub?.plan_type || 'free') !== 'pro' ||
+              !providerProfile ||
+              providerProfile?.status !== 'active'
+            }
             className="bg-gradient-to-r from-orange-500 to-red-500"
           >
-            Publier
+            {(marketplaceSub?.plan_type || 'free') !== 'pro'
+              ? 'PRO requis'
+              : isProviderLoading
+                ? 'Verification...'
+                : !providerProfile
+                  ? 'Devenir prestataire'
+                  : providerProfile?.status !== 'active'
+                    ? 'Validation admin...'
+                    : 'Publier'}
           </Button>
         </div>
       </div>
@@ -162,7 +218,7 @@ export default function AddService() {
           </div>
           <input
             type="file"
-            accept="image/*"
+            accept={FILE_ACCEPT_IMAGES}
             multiple
             onChange={handleImageUpload}
             className="hidden"
@@ -221,6 +277,26 @@ export default function AddService() {
               onChange={(e) => setService({ ...service, description: e.target.value })}
               placeholder="Décrivez votre service..."
               rows={4}
+            />
+          </div>
+
+          <div>
+            <Label>Prix (FCFA) *</Label>
+            <Input
+              type="number"
+              value={service.price}
+              onChange={(e) => setService({ ...service, price: e.target.value })}
+              placeholder="Ex: 15000"
+            />
+          </div>
+
+          <div>
+            <Label>Délai (jours)</Label>
+            <Input
+              type="number"
+              value={service.delivery_days}
+              onChange={(e) => setService({ ...service, delivery_days: e.target.value })}
+              placeholder="Ex: 2"
             />
           </div>
         </Card>

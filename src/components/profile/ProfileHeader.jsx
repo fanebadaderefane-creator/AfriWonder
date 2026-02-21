@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { api } from '@/api/expressClient';
 import { toast } from "sonner";
 import { useQueryClient } from '@tanstack/react-query';
+import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 
 export default function ProfileHeader({ 
   user, 
@@ -36,7 +37,7 @@ export default function ProfileHeader({
     if (isOwnProfile) {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = 'image/*';
+      input.accept = FILE_ACCEPT_IMAGES;
       input.onchange = async (e) => {
         const file = e.target.files?.[0];
         if (!file) return;

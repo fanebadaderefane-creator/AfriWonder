@@ -40,6 +40,9 @@ export function getVideoPlaybackUrl(videoUrl) {
   try {
     const u = new URL(videoUrl);
     const apiUrl = new URL(API_URL.startsWith('/') ? window.location.origin + API_URL : API_URL);
+    const host = (u.hostname || '').toLowerCase();
+    const directHosts = ['cdn.afriwonder.com', 'cdn.africonnect.com'];
+    if (directHosts.some((h) => host === h || host.endsWith('.' + h))) return videoUrl;
     if (u.origin === apiUrl.origin) return videoUrl;
   } catch {
     return videoUrl;

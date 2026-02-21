@@ -29,7 +29,8 @@ function isAllowedVideoUrl(url: string): boolean {
 
 /**
  * GET /api/proxy/media?url=...
- * Proxie une vidéo en STREAM depuis le CDN (Range + 206, headers critiques pour Firefox).
+ * Proxie une vidéo en STREAM depuis le CDN (Range + 206).
+ * Headers Content-Range, Accept-Ranges, Content-Length requis pour Firefox et Chrome/mobile.
  */
 router.get('/media', async (req: Request, res: ExpressResponse) => {
   const rawUrl = req.query.url as string;

@@ -8,6 +8,7 @@ import { useTranslation } from "@/components/common/useTranslation";
 import { createPageUrl } from "@/utils";
 import { Link } from "react-router-dom";
 import { api } from "@/api/expressClient";
+import { MOCK_LEADERBOARD } from "@/data/gamificationMock";
 
 const COUNTRY_OPTIONS = [
   { value: '', label: 'Tous les pays' },
@@ -41,31 +42,44 @@ export default function Leaderboard() {
   const [country, setCountry] = useState("");
   const [category, setCategory] = useState("");
 
+  // Production ready : utilise API réelle, mockées seulement en cas d'erreur
   const { data: leaderboardData, isLoading } = useQuery({
     queryKey: ["leaderboard", timeRange, country, category],
     queryFn: async () => {
-      const res = await api.leaderboard.get({
-        range: timeRange,
-        country: country || undefined,
-        category: category || undefined,
-      });
-      return res;
-    }
+      try {
+        const res = await api.leaderboard.get({
+          range: timeRange,
+          country: country || undefined,
+          category: category || undefined,
+        });
+        const leaderboard = Array.isArray(res?.leaderboard) ? res.leaderboard : (Array.isArray(res) ? res : []);
+        // Retourner les vraies données même si vide (pas de fallback mock)
+        return { leaderboard, isMock: false };
+      } catch (_e) {
+        // Seulement en cas d'erreur API, utiliser les mockées pour la démo
+        console.warn('API error, using demo data:', _e);
+        return { leaderboard: MOCK_LEADERBOARD, isMock: true };
+      }
+    },
+    staleTime: 60000, // Cache 1min pour le leaderboard
   });
 
-  const leaderboard = Array.isArray(leaderboardData?.leaderboard) ? leaderboardData.leaderboard : (Array.isArray(leaderboardData) ? leaderboardData : []);
+  const leaderboard = Array.isArray(leaderboardData?.leaderboard) 
+    ? leaderboardData.leaderboard 
+    : (Array.isArray(leaderboardData) ? leaderboardData : []);
+  const isUsingMockData = leaderboardData?.isMock === true;
 
   const getMedalColor = (rank) => {
     if (rank === 1) return "text-yellow-500";
     if (rank === 2) return "text-gray-400";
-    if (rank === 3) return "text-orange-600";
+    if (rank === 3) return "text-[#f97316]";
     return "text-gray-600";
   };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       {/* Header */}
-      <div className="bg-gradient-to-br from-orange-500 to-red-500 text-white p-6">
+      <div className="bg-gradient-to-br from-[#f97316] to-[#ea580c] text-white p-6">
         <div className="max-w-4xl mx-auto">
           <h1 className="text-3xl font-bold flex items-center gap-3">
             <Trophy className="w-8 h-8" />
@@ -78,6 +92,13 @@ export default function Leaderboard() {
       </div>
 
       <div className="max-w-4xl mx-auto p-6 space-y-6">
+        {/* Banner démo si données mockées */}
+        {isUsingMockData && (
+          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800 text-center">
+            📊 Mode démo — Données fictives pour illustration
+          </div>
+        )}
+        
         {/* Période : Global / Hebdo / Mensuel / Annuel */}
         <div className="flex flex-wrap gap-2">
           {[
@@ -91,7 +112,7 @@ export default function Leaderboard() {
               onClick={() => setTimeRange(value)}
               className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                 timeRange === value
-                  ? 'bg-white text-orange-600 shadow'
+                  ? 'bg-white text-[#f97316] shadow'
                   : 'bg-white/20 text-white hover:bg-white/30'
               }`}
             >
@@ -148,7 +169,7 @@ export default function Leaderboard() {
                     transition={{ delay: index * 0.05 }}
                   >
                     <Link to={createPageUrl(`Profile?_userId=${entry.user_id}`)}>
-                      <Card className={`hover:shadow-lg transition-shadow cursor-pointer ${index < 3 ? 'ring-2 ring-orange-200 bg-orange-50/50' : ''}`}>
+                      <Card className={`hover:shadow-lg transition-shadow cursor-pointer ${index < 3 ? 'ring-2 ring-[#f97316]/30 bg-[#f97316]/5' : ''}`}>
                         <CardContent className="p-4 flex items-center gap-4">
                           {/* Rank */}
                           <div className="flex-shrink-0">
@@ -165,7 +186,7 @@ export default function Leaderboard() {
 
                           {/* User Info - Top 3 avec avatar glow */}
                           <div className="flex items-center gap-3 flex-1">
-                            <div className={`relative ${index < 3 ? 'ring-2 ring-orange-400 ring-offset-2 rounded-full' : ''}`}>
+                            <div className={`relative ${index < 3 ? 'ring-2 ring-[#f97316] ring-offset-2 rounded-full' : ''}`}>
                               <img
                                 src={entry.user_avatar || "https://via.placeholder.com/48"}
                                 alt={entry.user_name}
@@ -184,8 +205,8 @@ export default function Leaderboard() {
 
                           {/* Points */}
                           <div className="text-right">
-                            <div className="text-2xl font-bold text-orange-600">
-                              {entry.total_points.toLocaleString()}
+                            <div className="text-2xl font-bold text-[#f97316]">
+                              {entry.total_points?.toLocaleString() || entry.total_points}
                             </div>
                             <p className="text-xs text-gray-500">points</p>
                           </div>
@@ -206,28 +227,127 @@ export default function Leaderboard() {
 
           {/* Level Leaderboard */}
           <TabsContent value="level" className="space-y-4 mt-6">
-            <Card>
-              <CardContent className="py-12 text-center text-gray-500">
-                Les utilisateurs avec le plus haut niveau
-              </CardContent>
-            </Card>
+            {isLoading ? (
+              <Card>
+                <CardContent className="py-12 text-center text-gray-500">
+                  Chargement du classement...
+                </CardContent>
+              </Card>
+            ) : leaderboard.length > 0 ? (
+              <div className="space-y-3">
+                {[...leaderboard].sort((a, b) => (b.level || 0) - (a.level || 0)).map((entry, index) => (
+                  <motion.div
+                    key={entry.user_id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    <Link to={createPageUrl(`Profile?_userId=${entry.user_id}`)}>
+                      <Card className={`hover:shadow-lg transition-shadow cursor-pointer ${index < 3 ? 'ring-2 ring-[#f97316]/30 bg-[#f97316]/5' : ''}`}>
+                        <CardContent className="p-4 flex items-center gap-4">
+                          <div className="flex-shrink-0">
+                            {index < 3 ? (
+                              <Crown className={`w-8 h-8 ${getMedalColor(index + 1)}`} />
+                            ) : (
+                              <div className="w-8 h-8 flex items-center justify-center font-bold text-gray-500">
+                                #{index + 1}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 flex-1">
+                            <img
+                              src={entry.user_avatar || "https://via.placeholder.com/48"}
+                              alt={entry.user_name}
+                              className="w-12 h-12 rounded-full object-cover"
+                            />
+                            <div>
+                              <h3 className="font-semibold text-gray-900">{entry.user_name}</h3>
+                              <p className="text-sm text-gray-500">{entry.total_points?.toLocaleString() || entry.total_points} points • {entry.badges_count} badges</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-2xl font-bold text-[#f97316]">Niveau {entry.level}</div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="py-12 text-center text-gray-500">
+                  Aucun classement disponible
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* Badges Leaderboard */}
           <TabsContent value="badges" className="space-y-4 mt-6">
-            <Card>
-              <CardContent className="py-12 text-center text-gray-500">
-                Les utilisateurs avec le plus de badges
-              </CardContent>
-            </Card>
+            {isLoading ? (
+              <Card>
+                <CardContent className="py-12 text-center text-gray-500">
+                  Chargement du classement...
+                </CardContent>
+              </Card>
+            ) : leaderboard.length > 0 ? (
+              <div className="space-y-3">
+                {[...leaderboard].sort((a, b) => (b.badges_count || 0) - (a.badges_count || 0)).map((entry, index) => (
+                  <motion.div
+                    key={entry.user_id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    <Link to={createPageUrl(`Profile?_userId=${entry.user_id}`)}>
+                      <Card className={`hover:shadow-lg transition-shadow cursor-pointer ${index < 3 ? 'ring-2 ring-[#f97316]/30 bg-[#f97316]/5' : ''}`}>
+                        <CardContent className="p-4 flex items-center gap-4">
+                          <div className="flex-shrink-0">
+                            {index < 3 ? (
+                              <Crown className={`w-8 h-8 ${getMedalColor(index + 1)}`} />
+                            ) : (
+                              <div className="w-8 h-8 flex items-center justify-center font-bold text-gray-500">
+                                #{index + 1}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 flex-1">
+                            <img
+                              src={entry.user_avatar || "https://via.placeholder.com/48"}
+                              alt={entry.user_name}
+                              className="w-12 h-12 rounded-full object-cover"
+                            />
+                            <div>
+                              <h3 className="font-semibold text-gray-900">{entry.user_name}</h3>
+                              <p className="text-sm text-gray-500">Niveau {entry.level} • {entry.total_points?.toLocaleString() || entry.total_points} points</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-2xl font-bold text-[#f97316]">{entry.badges_count}</div>
+                            <p className="text-xs text-gray-500">badges</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="py-12 text-center text-gray-500">
+                  Aucun classement disponible
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
         </Tabs>
 
         {/* Info Card */}
-        <Card className="bg-blue-50 border-blue-200">
+        <Card className="bg-[#f97316]/10 border-[#f97316]/30">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Star className="w-5 h-5 text-blue-600" />
+              <Star className="w-5 h-5 text-[#f97316]" />
               Comment gagner des points?
             </CardTitle>
           </CardHeader>
@@ -237,6 +357,8 @@ export default function Leaderboard() {
             <p>• Partager du contenu: +15 points</p>
             <p>• Recevoir un J'aime: +5 points</p>
             <p>• Débloquer un badge: +points bonus</p>
+            <p>• Faire une vente: +20 points</p>
+            <p>• Compléter votre profil: +100 points</p>
           </CardContent>
         </Card>
       </div>

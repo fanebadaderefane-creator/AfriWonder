@@ -518,7 +518,7 @@ export default function Checkout() {
 
         {/* Security Notice */}
         <div className="flex items-start gap-2 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
-          <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <AlertCircle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
           <p>
             Vos fonds seront sécurisés en escrow et libérés au vendeur uniquement après 
             confirmation de réception de votre commande.

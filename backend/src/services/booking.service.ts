@@ -12,6 +12,21 @@ import providerService from './provider.service.js';
 class BookingService {
   // Acompte par défaut : 30% du montant total
   private readonly DEFAULT_DEPOSIT_RATE = 0.3;
+  private readonly BOOKING_STATUS_ALIASES: Record<string, string> = {
+    confirmed: 'accepted',
+  };
+
+  private normalizeStatus(raw?: string) {
+    const value = String(raw || '').trim();
+    return this.BOOKING_STATUS_ALIASES[value] || value;
+  }
+
+  private normalizeBookingForResponse<T extends { status?: string }>(booking: T): T {
+    if (!booking?.status) return booking;
+    const normalized = this.normalizeStatus(booking.status);
+    if (normalized === booking.status) return booking;
+    return { ...booking, status: normalized };
+  }
 
   /**
    * Créer une réservation
@@ -25,6 +40,9 @@ class BookingService {
     payment_method: string;
     deposit_only?: boolean; // Si true, ne paie que l'acompte
     phone?: string; // Phone number for mobile money payments
+    customer_name?: string; // Nom complet (dénormalisé pour contact prestataire)
+    customer_phone?: string; // Téléphone de contact
+    customer_email?: string; // Email de contact
   }) {
     // Vérifier le service
     const service = await prisma.service.findUnique({
@@ -67,6 +85,9 @@ class BookingService {
         duration: service.duration || 60,
         location_type: data.location_type,
         customer_address_id: data.customer_address_id,
+        customer_name: data.customer_name?.trim() || null,
+        customer_phone: data.customer_phone?.trim() || data.phone?.trim() || null,
+        customer_email: data.customer_email?.trim() || null,
         total_price: totalPrice,
         platform_fee: platformFee,
         provider_earnings: providerEarnings,
@@ -218,7 +239,8 @@ class BookingService {
     const updatedBooking = await prisma.serviceBooking.update({
       where: { id: bookingId },
       data: {
-        status: 'confirmed',
+        // Flow marketplace cible: pending -> accepted -> in_progress -> completed/cancelled
+        status: 'accepted',
         confirmed_at: new Date(),
       },
       include: {
@@ -260,13 +282,13 @@ class BookingService {
     }
 
     logger.info('Réservation confirmée', { bookingId, providerId });
-    return updatedBooking;
+    return this.normalizeBookingForResponse(updatedBooking);
   }
 
   /**
    * Mettre à jour le statut d'une réservation
    */
-  async updateBookingStatus(bookingId: string, userId: string, status: 'in_progress' | 'completed' | 'cancelled' | 'no_show', reason?: string) {
+  async updateBookingStatus(bookingId: string, userId: string, status: string, reason?: string) {
     const booking = await prisma.serviceBooking.findUnique({
       where: { id: bookingId },
     });
@@ -285,20 +307,28 @@ class BookingService {
       throw new Error('Non autorisé');
     }
 
+    const normalizedStatus = this.normalizeStatus(status);
+    const allowedStatuses = new Set(['accepted', 'in_progress', 'completed', 'cancelled']);
+    if (!allowedStatuses.has(normalizedStatus)) {
+      throw new Error('Statut invalide');
+    }
+
     const updateData: any = {
-      status,
+      status: normalizedStatus,
     };
 
-    if (status === 'in_progress') {
+    if (normalizedStatus === 'accepted') {
+      updateData.confirmed_at = new Date();
+    } else if (normalizedStatus === 'in_progress') {
       updateData.started_at = new Date();
-    } else if (status === 'completed') {
+    } else if (normalizedStatus === 'completed') {
       updateData.completed_at = new Date();
       // Si paiement partiel, compléter le paiement
       if (booking.payment_status === 'partial') {
         updateData.payment_status = 'paid';
         // TODO: Déclencher le paiement du solde
       }
-    } else if (status === 'cancelled') {
+    } else if (normalizedStatus === 'cancelled') {
       updateData.cancelled_at = new Date();
       updateData.cancellation_reason = reason;
       updateData.cancelled_by = isCustomer ? 'customer' : isProvider ? 'provider' : 'admin';
@@ -333,8 +363,8 @@ class BookingService {
       },
     });
 
-    logger.info('Statut réservation modifié', { bookingId, status, userId });
-    return updatedBooking;
+    logger.info('Statut réservation modifié', { bookingId, status: normalizedStatus, userId });
+    return this.normalizeBookingForResponse(updatedBooking);
   }
 
   /**
@@ -390,7 +420,7 @@ class BookingService {
       throw new Error('Non autorisé');
     }
 
-    return booking;
+    return this.normalizeBookingForResponse(booking);
   }
 
   /**
@@ -418,7 +448,12 @@ class BookingService {
     }
 
     if (filters.status) {
-      where.status = filters.status;
+      const normalizedStatus = this.normalizeStatus(filters.status);
+      if (normalizedStatus === 'accepted') {
+        where.status = { in: ['accepted', 'confirmed'] };
+      } else {
+        where.status = normalizedStatus;
+      }
     }
 
     const [bookings, total] = await Promise.all([
@@ -461,7 +496,7 @@ class BookingService {
     ]);
 
     return {
-      bookings,
+      bookings: bookings.map((item) => this.normalizeBookingForResponse(item)),
       pagination: {
         page,
         limit,
@@ -536,7 +571,8 @@ class BookingService {
       throw new Error('Non autorisé');
     }
 
-    if (booking.status !== 'in_progress' && booking.status !== 'confirmed') {
+    const normalizedStatus = this.normalizeStatus(booking.status);
+    if (normalizedStatus !== 'in_progress' && normalizedStatus !== 'accepted') {
       throw new Error('Réservation non en cours');
     }
 
@@ -592,7 +628,7 @@ class BookingService {
     }
 
     logger.info('Réservation complétée', { bookingId, providerId });
-    return updatedBooking;
+    return this.normalizeBookingForResponse(updatedBooking);
   }
 }
 

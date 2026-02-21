@@ -11,6 +11,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { toast } from "sonner";
 import { createPageUrl } from "@/utils";
+import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 
 const categories = [
   { value: 'mode', label: 'Mode' },
@@ -208,7 +209,7 @@ export default function AddProduct() {
                 <input
                   type="file"
                   multiple
-                  accept="image/*"
+                  accept={FILE_ACCEPT_IMAGES}
                   onChange={handleImageUpload}
                   className="hidden"
                   disabled={uploadingImages}

@@ -32,6 +32,14 @@ router.post('/login', async (req, res, next) => {
   try {
     const { email, password, twoFactorCode, otpCode, backupCode } = req.body;
 
+    // Validation basique avant d'appeler le service
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Email et mot de passe sont requis' },
+      });
+    }
+
     const result = await authService.login(
       email,
       password,
@@ -43,7 +51,23 @@ router.post('/login', async (req, res, next) => {
       success: true,
       data: result,
     });
-  } catch (error) {
+  } catch (error: any) {
+    // Logger l'erreur pour debug
+    logger.error('Login error', {
+      error: error.message,
+      stack: error.stack,
+      email: req.body?.email,
+    });
+
+    // Si c'est une erreur connue avec statusCode, la passer au handler
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: { message: error.message, code: error.code },
+      });
+    }
+
+    // Sinon, passer à l'error handler global
     next(error);
   }
 });

@@ -22,16 +22,24 @@ export default function InstructorDashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [providerStatus, setProviderStatus] = useState(null);
 
   useEffect(() => {
     const load = async () => {
       try {
         const u = await api.auth.me();
         setUser(u);
+        const provider = await api.courses.providers.getMe();
+        setProviderStatus(provider?.status ?? null);
+        if (provider?.status !== 'approved') {
+          setLoading(false);
+          return;
+        }
         const data = await api.courses.getInstructorDashboard();
         setDashboard(data);
       } catch (e) {
         setError(e?.response?.data?.error?.message || 'Erreur chargement');
+        setProviderStatus(null);
       } finally {
         setLoading(false);
       }
@@ -52,8 +60,33 @@ export default function InstructorDashboard() {
       <div className="min-h-screen flex flex-col items-center justify-center p-4">
         <p className="text-gray-500 mb-4">{error || 'Non connecté'}</p>
         <Button variant="outline" onClick={() => navigate(createPageUrl('Courses'))}>
-          Retour aux cours
+          Retour aux formations
         </Button>
+      </div>
+    );
+  }
+
+  if (providerStatus !== 'approved') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50">
+        <div className="max-w-sm text-center">
+          <BookOpen className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+          <h2 className="text-lg font-bold text-slate-900 mb-2">Espace formateur</h2>
+          <p className="text-slate-600 text-sm mb-6">
+            L&apos;accès à l&apos;espace formateur est réservé aux formateurs approuvés par AfriWonder. Envoyez une demande pour devenir formateur ; une fois approuvée, vous pourrez gérer vos cours ici.
+          </p>
+          <div className="flex flex-col gap-3">
+            <Button
+              className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white border-0"
+              onClick={() => navigate(createPageUrl('BecomeTrainer'))}
+            >
+              Devenir formateur
+            </Button>
+            <Button variant="outline" className="w-full" onClick={() => navigate(createPageUrl('Courses'))}>
+              Retour aux formations
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }

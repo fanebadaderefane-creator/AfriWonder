@@ -17,6 +17,7 @@ import { useAgoraAudience } from '@/hooks/useAgora';
 import { useLiveSocket } from '@/hooks/useLiveSocket';
 import { speak, isTtsSupported } from '@/lib/liveTts';
 import { translateToBambara, translateToFrench, detectLanguage } from '@/lib/liveTranslate';
+import { useWakeLock } from '@/hooks/useWakeLock';
 
 const GIFTS = [
   { id: 'heart', name: 'Cœur', amount: 100, icon: '❤️' },
@@ -54,6 +55,9 @@ export default function LiveView() {
   const sessionIdRef = useRef(null);
   const heartbeatRef = useRef(null);
   const remoteVideoRef = useRef(null);
+
+  // Empêcher l'écran de s'éteindre automatiquement pendant les lives (style TikTok)
+  useWakeLock(true);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

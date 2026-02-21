@@ -1,223 +1,524 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { motion } from 'framer-motion';
+import { Modal } from '@/components/ui/Modal';
 import {
-  ArrowLeft, Search, Clock, Star, MapPin,
-  Flame, TrendingUp, Package, ChefHat
+  Search,
+  Clock,
+  Star,
+  MapPin,
+  Plus,
+  ChefHat,
+  UtensilsCrossed,
 } from 'lucide-react';
 import BottomNav from '@/components/navigation/BottomNav';
-import CommissionNotice from '@/components/CommissionNotice';
-import api from '@/api/expressClient';
+import { api } from '@/api/expressClient';
 
-const MOCK_RESTAURANTS = [
-  { id: 1, name: 'Chez Fatou', cuisine: 'Africain • Sénégalais', rating: 4.8, reviews: 230, deliveryTime: '25-35 min', deliveryFee: 500, image: 'https://images.unsplash.com/photo-1604329760661-e71dc83f8f26?w=400', badge: 'Populaire', badgeColor: 'bg-orange-500' },
-  { id: 2, name: 'Le Palmier d\'Or', cuisine: 'Français • Africain', rating: 4.9, reviews: 450, deliveryTime: '30-40 min', deliveryFee: 1000, image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400', badge: 'Top noté', badgeColor: 'bg-yellow-500' },
-  { id: 3, name: 'Pizza Express', cuisine: 'Italien • Pizza', rating: 4.6, reviews: 180, deliveryTime: '20-30 min', deliveryFee: 500, image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400', badge: 'Rapide', badgeColor: 'bg-green-500' },
+const CATEGORIES = [
+  { id: 'all', label: 'Tous' },
+  { id: 'malienne', label: 'Malienne' },
+  { id: 'africaine', label: 'Africaine' },
+  { id: 'internationale', label: 'Internationale' },
+  { id: 'fast_food', label: 'Fast Food' },
+  { id: 'vegetarien', label: 'Végétarien' },
 ];
+
+// Données mock pour démo (restaurants approuvés)
+const MOCK_RESTAURANTS = [
+  {
+    id: '1',
+    name: 'Le Djembe',
+    cuisine_type: ['malienne'],
+    cuisineLabel: 'Malienne',
+    rating: 4.8,
+    total_reviews: 234,
+    delivery_time_min: 30,
+    address: 'Hamdallaye, Bamako',
+    city: 'Bamako',
+    delivery_fee: 500,
+    minimum_order: 2000,
+    is_open: true,
+    banner_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop',
+  },
+  {
+    id: '2',
+    name: 'Chez Aminata',
+    cuisine_type: ['africaine'],
+    cuisineLabel: 'Africaine',
+    rating: 4.6,
+    total_reviews: 189,
+    delivery_time_min: 25,
+    address: 'ACI 2000, Bamako',
+    city: 'Bamako',
+    delivery_fee: 500,
+    minimum_order: 1500,
+    is_open: true,
+    banner_url: 'https://images.unsplash.com/photo-1604329760661-e71dc83f8f26?w=400&h=300&fit=crop',
+  },
+  {
+    id: '3',
+    name: 'Pizza Mali',
+    cuisine_type: ['internationale', 'fast_food'],
+    cuisineLabel: 'Internationale',
+    rating: 4.5,
+    total_reviews: 312,
+    delivery_time_min: 35,
+    address: 'Badalabougou, Bamako',
+    city: 'Bamako',
+    delivery_fee: 750,
+    minimum_order: 2500,
+    is_open: false,
+    banner_url: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&h=300&fit=crop',
+  },
+];
+
+const MOCK_MENU_ITEMS = [
+  { id: '1', name: 'Tô au gombo', description: 'Plat traditionnel malien', price: 1500, is_popular: true },
+  { id: '2', name: 'Poulet yassa', description: 'Poulet mariné aux oignons', price: 3500, is_popular: true },
+  { id: '3', name: 'Jus de gingembre', description: 'Jus de gingembre frais', price: 500, is_popular: true },
+  { id: '4', name: 'Riz au gras', description: 'Riz savoureux au gras de mouton', price: 2000, is_popular: true },
+  { id: '5', name: 'Jus de bissap', description: 'Jus de fleurs d\'hibiscus', price: 500, is_popular: true },
+];
+
+function formatPrice(n) {
+  return `${Number(n).toLocaleString('fr-FR')} F CFA`;
+}
 
 export default function FoodDelivery() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [restaurants, setRestaurants] = useState(MOCK_RESTAURANTS);
-  const [loadingRestaurants, setLoadingRestaurants] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [restaurants, setRestaurants] = useState([]);
+  const [menuItemsByRestaurant, setMenuItemsByRestaurant] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [showPrestataireModal, setShowPrestataireModal] = useState(false);
+  const [prestataireForm, setPrestataireForm] = useState({
+    name: '',
+    address: '',
+    city: 'Bamako',
+    phone: '',
+    description: '',
+    delivery_time_min: 30,
+    minimum_order: 2000,
+    delivery_fee: 500,
+    cuisine_type: 'malienne',
+  });
+  const [prestataireLoading, setPrestataireLoading] = useState(false);
+  const [prestataireError, setPrestataireError] = useState(null);
+  const [prestataireSuccess, setPrestataireSuccess] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    api.food.restaurants.list({ limit: 20 })
+    api.food.restaurants
+      .list({ limit: 20, search: searchQuery || undefined })
       .then((res) => {
         if (cancelled) return;
         const list = res?.restaurants ?? [];
-        if (list.length) setRestaurants(list.map((r) => ({
-          id: r.id,
-          name: r.name,
-          cuisine: Array.isArray(r.cuisine_type) ? r.cuisine_type.join(' • ') : (r.cuisine_type || 'Restaurant'),
-          rating: r.rating ?? 5,
-          reviews: r.total_reviews ?? 0,
-          deliveryTime: `${r.delivery_time_min ?? 30} min`,
-          deliveryFee: r.delivery_fee ?? 0,
-          image: r.banner_url || r.logo_url || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400',
-          badge: r.is_open ? 'Ouvert' : 'Fermé',
-          badgeColor: r.is_open ? 'bg-green-500' : 'bg-red-500',
-        })));
+        if (list.length) {
+          setRestaurants(
+            list.map((r) => ({
+              id: r.id,
+              name: r.name,
+              cuisine_type: Array.isArray(r.cuisine_type) ? r.cuisine_type : [r.cuisine_type].filter(Boolean),
+              cuisineLabel: Array.isArray(r.cuisine_type) ? r.cuisine_type[0] || 'Restaurant' : (r.cuisine_type || 'Restaurant'),
+              rating: r.rating ?? 4.5,
+              total_reviews: r.total_reviews ?? 0,
+              delivery_time_min: r.delivery_time_min ?? 30,
+              address: r.address || r.city || '',
+              city: r.city || 'Bamako',
+              delivery_fee: r.delivery_fee ?? 500,
+              minimum_order: r.minimum_order ?? 2000,
+              is_open: r.is_open !== false,
+              banner_url: r.banner_url || r.logo_url || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop',
+            }))
+          );
+        } else {
+          setRestaurants(MOCK_RESTAURANTS);
+        }
       })
-      .catch(() => { if (!cancelled) setRestaurants(MOCK_RESTAURANTS); })
-      .finally(() => { if (!cancelled) setLoadingRestaurants(false); });
+      .catch(() => {
+        if (!cancelled) setRestaurants(MOCK_RESTAURANTS);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     return () => { cancelled = true; };
-  }, []);
+  }, [searchQuery]);
 
-  const categories = [
-    { id: 1, name: 'Africain', icon: '🍛', color: 'from-orange-500 to-red-500' },
-    { id: 2, name: 'FastFood', icon: '🍔', color: 'from-yellow-500 to-orange-500' },
-    { id: 3, name: 'Pizza', icon: '🍕', color: 'from-red-500 to-pink-500' },
-    { id: 4, name: 'Asiatique', icon: '🍜', color: 'from-purple-500 to-blue-500' },
-    { id: 5, name: 'Sushi', icon: '🍣', color: 'from-blue-500 to-cyan-500' },
-    { id: 6, name: 'Desserts', icon: '🍰', color: 'from-pink-500 to-rose-500' },
-  ];
+  const filteredRestaurants =
+    selectedCategory === 'all'
+      ? restaurants
+      : restaurants.filter((r) => {
+          const types = r.cuisine_type || [];
+          return types.some((c) => String(c).toLowerCase() === selectedCategory);
+        });
 
-  const trendingDishes = [
-    { id: 1, name: 'Thiéboudienne', restaurant: 'Chez Fatou', price: 3500, image: 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=200' },
-    { id: 2, name: 'Yassa Poulet', restaurant: 'Le Palmier', price: 4000, image: 'https://images.unsplash.com/photo-1604329760661-e71dc83f8f26?w=200' },
-    { id: 3, name: 'Pizza Margherita', restaurant: 'Pizza Express', price: 5000, image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=200' },
-  ];
+  const firstRestaurant = filteredRestaurants[0];
+  const firstRestaurantId = firstRestaurant?.id;
+
+  useEffect(() => {
+    if (!firstRestaurantId) return;
+    let cancelled = false;
+    api.food.menuItems
+      .listByRestaurant(firstRestaurantId)
+      .then((items) => {
+        if (cancelled) return;
+        const list = Array.isArray(items) ? items : items?.menu_items || items?.data || [];
+        if (list.length) {
+          setMenuItemsByRestaurant((prev) => ({ ...prev, [firstRestaurantId]: list }));
+        } else {
+          setMenuItemsByRestaurant((prev) => ({ ...prev, [firstRestaurantId]: MOCK_MENU_ITEMS }));
+        }
+      })
+      .catch(() => {
+        if (!cancelled)
+          setMenuItemsByRestaurant((prev) => ({ ...prev, [firstRestaurantId]: MOCK_MENU_ITEMS }));
+      });
+    return () => { cancelled = true; };
+  }, [firstRestaurantId]);
+
+  const popularMenuItems = (firstRestaurantId && menuItemsByRestaurant[firstRestaurantId]) || MOCK_MENU_ITEMS;
+
+  const handlePrestataireSubmit = async (e) => {
+    e.preventDefault();
+    if (!prestataireForm.name?.trim() || !prestataireForm.address?.trim() || !prestataireForm.phone?.trim()) {
+      setPrestataireError('Veuillez remplir le nom, l\'adresse et le téléphone.');
+      return;
+    }
+    setPrestataireError(null);
+    setPrestataireLoading(true);
+    try {
+      await api.food.restaurants.create({
+        name: prestataireForm.name.trim(),
+        address: prestataireForm.address.trim(),
+        city: prestataireForm.city?.trim() || undefined,
+        phone: prestataireForm.phone.trim(),
+        description: prestataireForm.description?.trim() || undefined,
+        delivery_time_min: Number(prestataireForm.delivery_time_min) || 30,
+        minimum_order: Number(prestataireForm.minimum_order) || 0,
+        delivery_fee: Number(prestataireForm.delivery_fee) || 0,
+        cuisine_type: [prestataireForm.cuisine_type].filter(Boolean),
+      });
+      setPrestataireSuccess(true);
+      setPrestataireForm({
+        name: '',
+        address: '',
+        city: 'Bamako',
+        phone: '',
+        description: '',
+        delivery_time_min: 30,
+        minimum_order: 2000,
+        delivery_fee: 500,
+        cuisine_type: 'malienne',
+      });
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message;
+      setPrestataireError(msg || 'Une erreur est survenue. Connectez-vous pour inscrire votre restaurant.');
+    } finally {
+      setPrestataireLoading(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-orange-900 to-slate-900">
-      {/* Header */}
-      <div className="sticky top-0 z-50 bg-black/40 backdrop-blur-md border-b border-white/10">
-        <div className="flex items-center justify-between p-4">
-          <Link to={createPageUrl('Home')}>
-            <Button variant="ghost" size="icon" className="text-white">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-          </Link>
-          <h1 className="text-xl font-bold text-white">Food Delivery</h1>
-          <Button variant="ghost" size="icon" className="text-white">
-            <Package className="w-5 h-5" />
-          </Button>
+    <div className="min-h-screen bg-gray-50 pb-24">
+      <div className="p-4">
+        <h1 className="text-3xl font-black text-gray-900">Restauration</h1>
+        <p className="text-gray-500 mt-0.5">Commandez vos plats préférés</p>
+
+        {/* Search */}
+        <div className="relative mt-4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Rechercher un restaurant..."
+            className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+          />
         </div>
 
-        {/* Search Bar */}
-        <div className="px-4 pb-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher restaurants, plats..."
-              className="pl-10 bg-white/10 border-white/20 text-white placeholder-gray-400"
-            />
-          </div>
+        {/* Category filters */}
+        <div className="flex gap-2 mt-4 overflow-x-auto pb-1">
+          {CATEGORIES.map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => setSelectedCategory(cat.id)}
+              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                selectedCategory === cat.id
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              {cat.label}
+            </button>
+          ))}
         </div>
-      </div>
 
-      <div className="p-4 pb-24 space-y-6">
-        {/* Delivery Address */}
-        <Card className="bg-white/10 backdrop-blur-md border-white/20">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-orange-500 to-red-500 flex items-center justify-center">
-                <MapPin className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Livraison à</p>
-                <p className="font-semibold text-white">Plateau, Dakar</p>
-              </div>
+        {/* Restaurant cards - horizontal scroll */}
+        <div className="mt-6">
+          <h2 className="text-lg font-bold text-gray-900 mb-3">Restaurants</h2>
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
             </div>
-            <Button variant="ghost" size="sm" className="text-orange-400">
-              Changer
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Categories */}
-        <div>
-          <h2 className="text-lg font-bold text-white mb-3">Catégories</h2>
-          <div className="grid grid-cols-3 gap-3">
-            {categories.map((category) => (
-              <motion.button
-                key={category.id}
-                whileTap={{ scale: 0.95 }}
-                className={`p-4 rounded-xl bg-gradient-to-br ${category.color} text-white text-center`}
-              >
-                <div className="text-3xl mb-2">{category.icon}</div>
-                <p className="text-xs font-semibold">{category.name}</p>
-              </motion.button>
-            ))}
-          </div>
-        </div>
-
-        {/* Trending Dishes */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Flame className="w-5 h-5 text-orange-400" />
-            <h2 className="text-lg font-bold text-white">Plats tendance</h2>
-          </div>
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {trendingDishes.map((dish) => (
-              <motion.div
-                key={dish.id}
-                whileHover={{ scale: 1.05 }}
-                className="min-w-[160px] bg-white/10 backdrop-blur-md border-white/20 rounded-xl overflow-hidden"
-              >
-                <img src={dish.image} alt={dish.name} className="w-full h-32 object-cover" />
-                <div className="p-3">
-                  <p className="font-semibold text-white text-sm mb-1">{dish.name}</p>
-                  <p className="text-xs text-gray-400 mb-2">{dish.restaurant}</p>
-                  <p className="text-orange-400 font-bold">{dish.price} FCFA</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-
-        {/* Popular Restaurants */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <TrendingUp className="w-5 h-5 text-green-400" />
-            <h2 className="text-lg font-bold text-white">Restaurants populaires</h2>
-          </div>
-          <div className="space-y-3">
-            {loadingRestaurants && <p className="text-center text-gray-400 py-4">Chargement des restaurants...</p>}
-            {!loadingRestaurants && restaurants.map((restaurant) => (
-              <Link key={restaurant.id} to={`${createPageUrl('RestaurantMenu')}?id=${restaurant.id}`}>
-                <motion.div
-                  whileHover={{ scale: 1.02 }}
-                  className="bg-white/10 backdrop-blur-md border-white/20 rounded-xl overflow-hidden"
+          ) : (
+            <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4">
+              {filteredRestaurants.map((restaurant) => (
+                <div
+                  key={restaurant.id}
+                  className="flex-shrink-0 w-[280px] bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm"
                 >
-                  <div className="relative">
+                  <div className="relative h-36">
                     <img
-                      src={restaurant.image}
+                      src={restaurant.banner_url}
                       alt={restaurant.name}
-                      className="w-full h-40 object-cover"
+                      className="w-full h-full object-cover"
                     />
-                    <Badge className={`absolute top-2 right-2 ${restaurant.badgeColor}`}>
-                      {restaurant.badge}
-                    </Badge>
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-bold text-white mb-1">{restaurant.name}</h3>
-                    <p className="text-xs text-gray-400 mb-2">{restaurant.cuisine}</p>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 text-xs">
-                        <div className="flex items-center gap-1">
-                          <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
-                          <span className="text-white font-semibold">{restaurant.rating}</span>
-                          <span className="text-gray-400">({restaurant.reviews})</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-gray-300">
-                          <Clock className="w-4 h-4" />
-                          {restaurant.deliveryTime}
-                        </div>
-                      </div>
-                      <p className="text-xs text-orange-400 font-semibold">
-                        {restaurant.deliveryFee} FCFA
-                      </p>
+                    <div className="absolute top-2 right-2 px-2 py-1 rounded-lg bg-black/70 text-white text-xs flex items-center gap-1">
+                      <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                      <span>{restaurant.rating}</span>
+                      <span>({restaurant.total_reviews})</span>
                     </div>
+                    {!restaurant.is_open && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                        <span className="px-3 py-1.5 rounded-lg bg-gray-800 text-white text-sm font-medium">
+                          Fermé
+                        </span>
+                      </div>
+                    )}
                   </div>
-                </motion.div>
-              </Link>
-            ))}
-          </div>
+                  <div className="p-3">
+                    <h3 className="font-bold text-gray-900">{restaurant.name}</h3>
+                    <p className="text-sm text-gray-500">{restaurant.cuisineLabel}</p>
+                    <div className="flex items-center gap-2 mt-2 text-sm text-gray-600">
+                      <Clock className="w-4 h-4 shrink-0" />
+                      <span>{restaurant.delivery_time_min}-{restaurant.delivery_time_min + 10} min</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <MapPin className="w-4 h-4 shrink-0" />
+                      <span className="truncate">{restaurant.address || restaurant.city}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0 text-xs text-gray-500 mt-1">
+                      <span>Livraison: {formatPrice(restaurant.delivery_fee)}</span>
+                      <span>Min: {formatPrice(restaurant.minimum_order)}</span>
+                    </div>
+                    <Link to={`${createPageUrl('RestaurantMenu')}?id=${restaurant.id}`}>
+                      <Button className="w-full mt-3 bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold text-sm">
+                        Commander
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Become a Restaurant Partner */}
-        <Card className="bg-gradient-to-br from-green-500/20 to-teal-500/20 border-green-400/30">
-          <CardContent className="p-6 text-center">
-            <ChefHat className="w-12 h-12 text-green-400 mx-auto mb-3" />
-            <h3 className="font-bold text-white mb-2">Vous êtes restaurateur ?</h3>
-            <p className="text-sm text-gray-300 mb-4">Rejoignez AfriWonder et développez votre activité</p>
-            <Button className="bg-gradient-to-r from-green-500 to-teal-500">
+        {/* Menu populaire - first restaurant */}
+        {firstRestaurant && (
+          <div className="mt-8">
+            <h2 className="text-lg font-bold text-gray-900 mb-3">
+              Menu populaire — {firstRestaurant.name}
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {popularMenuItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-200"
+                >
+                  <div className="w-14 h-14 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
+                    <UtensilsCrossed className="w-6 h-6 text-purple-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900">{item.name}</p>
+                    {item.description && (
+                      <p className="text-sm text-gray-500 truncate">{item.description}</p>
+                    )}
+                    <p className="text-orange-600 font-bold mt-0.5">
+                      {formatPrice(item.price)}
+                    </p>
+                  </div>
+                  <Link to={`${createPageUrl('RestaurantMenu')}?id=${firstRestaurant.id}`}>
+                    <Button
+                      size="icon"
+                      className="rounded-full bg-green-500 hover:bg-green-600 text-white w-10 h-10 flex-shrink-0"
+                      aria-label="Ajouter au panier"
+                    >
+                      <Plus className="w-5 h-5" />
+                    </Button>
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Prestataire - Devenir partenaire */}
+        <div className="mt-8">
+          <div className="rounded-xl bg-gradient-to-r from-orange-50 to-pink-50 border border-orange-200 p-6 text-center">
+            <ChefHat className="w-12 h-12 text-orange-500 mx-auto mb-3" />
+            <h3 className="font-bold text-gray-900 mb-2">Vous êtes restaurateur ?</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Rejoignez AfriWonder et développez votre activité. Votre établissement sera validé par un administrateur avant d’apparaître sur la plateforme.
+            </p>
+            <Button
+              onClick={() => {
+                setPrestataireError(null);
+                setPrestataireSuccess(false);
+                setShowPrestataireModal(true);
+              }}
+              className="bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold"
+            >
               Devenir partenaire
             </Button>
-          </CardContent>
-        </Card>
-
-        <CommissionNotice vertical="food" compact className="text-white/70" />
+          </div>
+        </div>
       </div>
+
+      {/* Modal Prestataire */}
+      <Modal
+        isOpen={showPrestataireModal}
+        onClose={() => {
+          setShowPrestataireModal(false);
+          setPrestataireSuccess(false);
+          setPrestataireError(null);
+        }}
+        title="Inscrire mon restaurant"
+        size="md"
+      >
+        {prestataireSuccess ? (
+          <div className="py-4 text-center">
+            <p className="text-green-600 font-medium">
+              Demande enregistrée. Vous serez notifié après validation par l’administrateur.
+            </p>
+            <Button
+              className="mt-4 bg-orange-500 hover:bg-orange-600"
+              onClick={() => setShowPrestataireModal(false)}
+            >
+              Fermer
+            </Button>
+          </div>
+        ) : (
+          <>
+            <p className="text-gray-600 text-sm mb-4">
+              Renseignez les informations de votre établissement. Un administrateur validera votre inscription avant que le restaurant n’apparaisse sur la plateforme.
+            </p>
+            {prestataireError && (
+              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                {prestataireError}
+              </div>
+            )}
+            <form onSubmit={handlePrestataireSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nom du restaurant</label>
+                <input
+                  type="text"
+                  value={prestataireForm.name}
+                  onChange={(e) => setPrestataireForm({ ...prestataireForm, name: e.target.value })}
+                  placeholder="Le Djembe"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Adresse</label>
+                <input
+                  type="text"
+                  value={prestataireForm.address}
+                  onChange={(e) => setPrestataireForm({ ...prestataireForm, address: e.target.value })}
+                  placeholder="Hamdallaye, Bamako"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ville</label>
+                <input
+                  type="text"
+                  value={prestataireForm.city}
+                  onChange={(e) => setPrestataireForm({ ...prestataireForm, city: e.target.value })}
+                  placeholder="Bamako"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Téléphone</label>
+                <input
+                  type="tel"
+                  value={prestataireForm.phone}
+                  onChange={(e) => setPrestataireForm({ ...prestataireForm, phone: e.target.value })}
+                  placeholder="+223 XX XX XX XX"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description (optionnel)</label>
+                <textarea
+                  value={prestataireForm.description}
+                  onChange={(e) => setPrestataireForm({ ...prestataireForm, description: e.target.value })}
+                  placeholder="Spécialités, ambiance..."
+                  rows={2}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Livraison (F CFA)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={prestataireForm.delivery_fee}
+                    onChange={(e) => setPrestataireForm({ ...prestataireForm, delivery_fee: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Min. commande</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={prestataireForm.minimum_order}
+                    onChange={(e) => setPrestataireForm({ ...prestataireForm, minimum_order: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Délai (min)</label>
+                  <input
+                    type="number"
+                    min={10}
+                    value={prestataireForm.delivery_time_min}
+                    onChange={(e) => setPrestataireForm({ ...prestataireForm, delivery_time_min: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type de cuisine</label>
+                <select
+                  value={prestataireForm.cuisine_type}
+                  onChange={(e) => setPrestataireForm({ ...prestataireForm, cuisine_type: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500"
+                >
+                  {CATEGORIES.filter((c) => c.id !== 'all').map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button
+                type="submit"
+                disabled={prestataireLoading}
+                className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold py-3"
+              >
+                {prestataireLoading ? 'Envoi en cours...' : 'Soumettre ma demande'}
+              </Button>
+            </form>
+          </>
+        )}
+      </Modal>
 
       <BottomNav />
     </div>

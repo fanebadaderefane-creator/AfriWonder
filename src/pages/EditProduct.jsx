@@ -10,6 +10,7 @@ import { ArrowLeft, Loader2, X, Image as ImageIcon } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from "sonner";
 import { createPageUrl } from "@/utils";
+import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 
 const conditions = [
   { value: 'new', label: 'Neuf' },
@@ -169,7 +170,7 @@ export default function EditProduct() {
             ))}
             {images.length < 10 && (
               <label className="aspect-square rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer">
-                <input type="file" multiple accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploadingImages} />
+                <input type="file" multiple accept={FILE_ACCEPT_IMAGES} onChange={handleImageUpload} className="hidden" disabled={uploadingImages} />
                 {uploadingImages ? <Loader2 className="w-6 h-6 animate-spin text-gray-400" /> : <ImageIcon className="w-6 h-6 text-gray-400" />}
                 <span className="text-xs text-gray-400 mt-1">Ajouter</span>
               </label>

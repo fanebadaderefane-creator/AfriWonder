@@ -217,6 +217,15 @@ body {
   color: #c2410c;
 }
 
+/* AfriWonder — Microcrédit: boutons principaux (orange → rose) */
+.afriwonder-btn-gradient {
+  background: linear-gradient(to right, #f97316, #ec4899);
+  color: white;
+}
+.afriwonder-btn-gradient:hover {
+  opacity: 0.95;
+}
+
 /* WCAG 2.1 AA - Accessibilité */
 /* 2.4.7 Focus visible - contour visible au focus clavier */
 :focus-visible {

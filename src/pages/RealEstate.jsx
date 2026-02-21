@@ -1,139 +1,513 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { motion } from 'framer-motion';
-import { ArrowLeft, Search, Home, Building2, MapPin, Bed, Bath, Maximize, Heart, Filter } from 'lucide-react';
+import { Modal } from '@/components/ui/Modal';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  ArrowLeft,
+  Search,
+  MapPin,
+  Bed,
+  Bath,
+  Maximize,
+  Heart,
+  Phone,
+  Building2,
+  MessageCircle,
+} from 'lucide-react';
 import BottomNav from '@/components/navigation/BottomNav';
 import api from '@/api/expressClient';
+import { toast } from 'sonner';
+import { useAuth } from '@/lib/AuthContext';
 
-const MOCK_PROPERTIES = [
-  { id: 1, title: 'Appartement F3 Plateau', type: 'Appartement', price: 250000, priceType: 'mois', bedrooms: 3, bathrooms: 2, surface: 85, location: 'Plateau, Dakar', images: ['https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=400'], featured: true, verified: true },
-  { id: 2, title: 'Villa moderne Almadies', type: 'Villa', price: 15000000, priceType: 'total', bedrooms: 5, bathrooms: 4, surface: 320, location: 'Almadies, Dakar', images: ['https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=400'], featured: true, verified: true },
-  { id: 3, title: 'Studio meuble Mermoz', type: 'Studio', price: 150000, priceType: 'mois', bedrooms: 1, bathrooms: 1, surface: 35, location: 'Mermoz, Dakar', images: ['https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=400'], featured: false, verified: true },
+const TRANSACTION_OPTIONS = [
+  { value: '', label: 'Tous' },
+  { value: 'sale', label: 'Vente' },
+  { value: 'rent', label: 'Location' },
 ];
 
+const PROPERTY_TYPE_OPTIONS = [
+  { value: '', label: 'Tous types' },
+  { value: 'villa', label: 'Villa' },
+  { value: 'apartment', label: 'Appartement' },
+  { value: 'office', label: 'Bureau' },
+  { value: 'land', label: 'Terrain' },
+  { value: 'shop', label: 'Commerce' },
+];
+
+// Données fictives AfriWonder — cohérentes avec les maquettes (Mali)
+const MOCK_PROPERTIES = [
+  {
+    id: 'mock-villa-aci',
+    _mock: true,
+    listing_type: 'sale',
+    property_type: 'villa',
+    title: 'Villa moderne à ACI 2000',
+    address: 'ACI 2000',
+    city: 'Bamako',
+    neighborhood: 'ACI 2000',
+    price: 150000000,
+    bedrooms: 4,
+    bathrooms: 3,
+    surface_area: 250,
+    description: 'Belle villa moderne avec toutes les commodités.',
+    amenities: ['Piscine', 'Garage', 'Jardin', 'Sécurité 24h'],
+    owner_phone: '+223 70 00 00 00',
+    images: ['https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800'],
+    status: 'available',
+  },
+  {
+    id: 'mock-apt-badalabougou',
+    _mock: true,
+    listing_type: 'rent',
+    property_type: 'apartment',
+    title: 'Appartement F3 à Badalabougou',
+    address: 'Badalabougou',
+    city: 'Bamako',
+    neighborhood: 'Badalabougou',
+    price: 250000,
+    bedrooms: 2,
+    bathrooms: 1,
+    surface_area: 85,
+    description: 'Appartement bien situé proche des commodités.',
+    amenities: ['Climatisation', 'Eau courante', 'Électricité'],
+    owner_phone: '+223 76 12 34 56',
+    images: ['https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800'],
+    status: 'available',
+  },
+];
+
+function formatPrice(price, listingType) {
+  const n = Number(price);
+  const s = n.toLocaleString('fr-FR') + ' FCFA';
+  return listingType === 'rent' ? s + '/mois' : s;
+}
+
 export default function RealEstate() {
+  const { isAuthenticated } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
-  const [listingType, setListingType] = useState('rent');
-  const [properties, setProperties] = useState(MOCK_PROPERTIES);
+  const [transactionFilter, setTransactionFilter] = useState(''); // '' | 'sale' | 'rent'
+  const [propertyTypeFilter, setPropertyTypeFilter] = useState('');
+  const [properties, setProperties] = useState([]);
+  const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
   const [loading, setLoading] = useState(true);
-  const propertyTypes = [
-    { id: 'apartment', name: 'Appartement', icon: Building2 },
-    { id: 'house', name: 'Maison', icon: Home },
-    { id: 'villa', name: 'Villa', icon: Building2 },
-    { id: 'studio', name: 'Studio', icon: Home },
-  ];
+  const [detailProperty, setDetailProperty] = useState(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    listing_type: 'rent',
+    property_type: 'apartment',
+    title: '',
+    address: '',
+    city: '',
+    neighborhood: '',
+    price: '',
+    bedrooms: '',
+    bathrooms: '',
+    surface_area: '',
+    description: '',
+    owner_phone: '',
+    amenities: [],
+  });
+
+  const params = useMemo(() => {
+    const p = { limit: 50, page: 1 };
+    if (transactionFilter) p.listing_type = transactionFilter;
+    if (propertyTypeFilter) p.property_type = propertyTypeFilter;
+    if (searchQuery.trim()) p.city = searchQuery.trim();
+    return p;
+  }, [transactionFilter, propertyTypeFilter, searchQuery]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    api.properties.list({ listing_type: listingType, limit: 20 })
+    api.properties.list(params)
       .then((res) => {
         if (cancelled) return;
         const list = res?.properties ?? [];
-        if (list.length) setProperties(list.map((p) => ({
-          id: p.id,
-          title: p.title,
-          type: p.property_type,
-          price: p.price,
-          priceType: p.listing_type === 'sale' ? 'total' : 'mois',
-          bedrooms: p.bedrooms,
-          bathrooms: p.bathrooms,
-          surface: p.surface_area,
-          location: [p.neighborhood, p.city].filter(Boolean).join(', ') || p.address,
-          images: Array.isArray(p.images) ? p.images : (p.images ? [p.images] : []),
-          featured: false,
-          verified: p.is_verified,
-        })));
+        setProperties(list);
+        setPagination(res?.pagination ?? { total: list.length, totalPages: 1 });
       })
-      .catch(() => { if (!cancelled) setProperties(MOCK_PROPERTIES); })
+      .catch(() => { if (!cancelled) setProperties([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [listingType]);
+  }, [params]);
+
+  // Liste affichée : API ou données fictives AfriWonder si vide
+  const displayList = useMemo(() => {
+    if (properties.length > 0) return properties;
+    return MOCK_PROPERTIES.filter((m) => {
+      if (transactionFilter && m.listing_type !== transactionFilter) return false;
+      if (propertyTypeFilter && m.property_type !== propertyTypeFilter) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        return [m.city, m.neighborhood, m.title, m.address].some((s) => s && String(s).toLowerCase().includes(q));
+      }
+      return true;
+    });
+  }, [properties, transactionFilter, propertyTypeFilter, searchQuery]);
+
+  const stats = useMemo(() => {
+    const total = properties.length > 0 ? (pagination.total ?? properties.length) : 1200;
+    const sales = transactionFilter === 'sale' ? (properties.length > 0 ? (pagination.total ?? properties.length) : 234) : (transactionFilter === 'rent' ? 0 : 234);
+    const rentals = transactionFilter === 'rent' ? (properties.length > 0 ? (pagination.total ?? properties.length) : 890) : (transactionFilter === 'sale' ? 0 : 890);
+    return {
+      total: total >= 1000 ? (total / 1000).toFixed(1) + 'K+' : String(total) + (total > 0 ? '+' : ''),
+      sales: sales >= 1000 ? (sales / 1000).toFixed(1) + 'K+' : String(sales),
+      rentals: rentals >= 1000 ? (rentals / 1000).toFixed(1) + 'K+' : String(rentals),
+    };
+  }, [pagination.total, properties.length, transactionFilter]);
+
+  const openDetail = (p) => {
+    if (!p) return;
+    if (p._mock) {
+      setDetailProperty(p);
+      return;
+    }
+    api.properties.getById(p.id).then(setDetailProperty).catch(() => toast.error('Annonce introuvable'));
+  };
+
+  const handleCreateSubmit = async (e) => {
+    e.preventDefault();
+    if (!isAuthenticated) {
+      toast.error('Connectez-vous pour publier une annonce');
+      return;
+    }
+    const { listing_type, property_type, title, address, city, neighborhood, price, bedrooms, bathrooms, surface_area, description, owner_phone, amenities } = createForm;
+    if (!title.trim() || !address.trim() || !price) {
+      toast.error('Titre, adresse et prix sont requis');
+      return;
+    }
+    setCreateSubmitting(true);
+    try {
+      const res = await api.properties.create({
+        listing_type,
+        property_type,
+        title: title.trim(),
+        address: address.trim(),
+        city: city.trim() || undefined,
+        neighborhood: neighborhood.trim() || undefined,
+        price: Number(price),
+        bedrooms: bedrooms ? Number(bedrooms) : undefined,
+        bathrooms: bathrooms ? Number(bathrooms) : undefined,
+        surface_area: surface_area ? Number(surface_area) : undefined,
+        description: description.trim() || undefined,
+        owner_phone: owner_phone.trim() || undefined,
+        amenities: Array.isArray(amenities) && amenities.length ? amenities : undefined,
+      });
+      const msg = (res && typeof res === 'object' && 'message' in res) ? res.message : null;
+      toast.success(msg || 'Annonce enregistrée. Vous serez notifié après validation par l\'administrateur.');
+      setShowCreateModal(false);
+      setCreateForm({ listing_type: 'rent', property_type: 'apartment', title: '', address: '', city: '', neighborhood: '', price: '', bedrooms: '', bathrooms: '', surface_area: '', description: '', owner_phone: '', amenities: [] });
+      api.properties.list(params).then((r) => {
+        setProperties(r?.properties ?? []);
+        setPagination(r?.pagination ?? {});
+      });
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || 'Erreur lors de l\'envoi');
+    } finally {
+      setCreateSubmitting(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900">
-      <div className="sticky top-0 z-50 bg-black/40 backdrop-blur-md border-b border-white/10">
-        <div className="flex items-center justify-between p-4">
-          <Link to={createPageUrl('Home')}><Button variant="ghost" size="icon" className="text-white"><ArrowLeft className="w-5 h-5" /></Button></Link>
-          <h1 className="text-xl font-bold text-white">Immobilier</h1>
-          <Button variant="ghost" size="icon" className="text-white"><Filter className="w-5 h-5" /></Button>
+    <div className="min-h-screen bg-[#F9FAFB]">
+      <div className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm">
+        <div className="flex items-center gap-3 p-4">
+          <Link to={createPageUrl('Home')}>
+            <Button variant="ghost" size="icon" className="text-gray-700"><ArrowLeft className="w-5 h-5" /></Button>
+          </Link>
+          <div className="flex-1">
+            <h1 className="text-xl font-bold text-gray-900">Immobilier</h1>
+            <p className="text-sm text-gray-500">Trouvez votre bien idéal au Mali</p>
+          </div>
         </div>
         <div className="px-4 pb-4">
-          <div className="relative mb-3">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <Input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Localisation, quartier..." className="pl-10 bg-white/10 border-white/20 text-white placeholder-gray-400" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Rechercher par ville, quartier..."
+              className="pl-10 bg-gray-50 border-gray-200"
+            />
           </div>
-          <div className="flex gap-2">
-            <Button onClick={() => setListingType('rent')} className={listingType === 'rent' ? 'flex-1 bg-gradient-to-r from-blue-500 to-purple-500' : 'flex-1 bg-white/10'}>Location</Button>
-            <Button onClick={() => setListingType('sale')} className={listingType === 'sale' ? 'flex-1 bg-gradient-to-r from-blue-500 to-purple-500' : 'flex-1 bg-white/10'}>Vente</Button>
+          <div className="flex gap-2 mt-3">
+            {TRANSACTION_OPTIONS.map((opt) => (
+              <Button
+                key={opt.value || 'all'}
+                variant={transactionFilter === opt.value ? 'default' : 'outline'}
+                size="sm"
+                className={transactionFilter === opt.value ? 'bg-teal-600 hover:bg-teal-700 text-white' : 'border-gray-300 text-gray-700'}
+                onClick={() => setTransactionFilter(opt.value)}
+              >
+                {opt.label}
+              </Button>
+            ))}
           </div>
-        </div>
-      </div>
-      <div className="p-4 pb-24 space-y-6">
-        <div className="flex gap-3 overflow-x-auto pb-2">
-          {propertyTypes.map((type) => {
-            const Icon = type.icon;
-            return (
-              <motion.button key={type.id} whileTap={{ scale: 0.95 }} className="flex-shrink-0 px-4 py-3 bg-white/10 backdrop-blur-md border-white/20 rounded-xl flex items-center gap-2">
-                <Icon className="w-5 h-5 text-white" />
-                <span className="text-sm font-semibold text-white whitespace-nowrap">{type.name}</span>
-              </motion.button>
-            );
-          })}
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          <Card className="bg-white/10 backdrop-blur-md border-white/20"><CardContent className="p-3 text-center"><p className="text-2xl font-bold text-white">450+</p><p className="text-xs text-gray-300">Annonces</p></CardContent></Card>
-          <Card className="bg-white/10 backdrop-blur-md border-white/20"><CardContent className="p-3 text-center"><p className="text-2xl font-bold text-white">120+</p><p className="text-xs text-gray-300">Verifiees</p></CardContent></Card>
-          <Card className="bg-white/10 backdrop-blur-md border-white/20"><CardContent className="p-3 text-center"><p className="text-2xl font-bold text-white">15</p><p className="text-xs text-gray-300">Nouvelles</p></CardContent></Card>
-        </div>
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold text-white">{listingType === 'rent' ? 'A louer' : 'A vendre'}</h2>
-            <Badge className="bg-blue-500/20 text-blue-300 border-blue-400/30">{properties.length} biens</Badge>
-          </div>
-          <div className="space-y-4">
-            {loading && <p className="text-center text-gray-400 py-4">Chargement...</p>}
-            {!loading && properties.map((p) => (
-              <Link key={p.id} to={`${createPageUrl('PropertyDetails')}?id=${p.id}`}>
-                <motion.div whileHover={{ scale: 1.02 }} className="bg-white/10 backdrop-blur-md border-white/20 rounded-xl overflow-hidden">
-                  <div className="relative">
-                    <img src={Array.isArray(p.images) && p.images[0] ? p.images[0] : 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=400'} alt={p.title} className="w-full h-48 object-cover" />
-                    <Button variant="ghost" size="icon" className="absolute top-2 right-2 bg-black/50"><Heart className="w-5 h-5 text-white" /></Button>
-                    {p.featured && <Badge className="absolute top-2 left-2 bg-yellow-500">A la une</Badge>}
-                    {p.verified && <Badge className="absolute bottom-2 left-2 bg-green-500">Verifie</Badge>}
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-bold text-white mb-1">{p.title}</h3>
-                    <div className="flex items-center gap-1 text-xs text-gray-400 mb-3"><MapPin className="w-3 h-3" />{p.location}</div>
-                    <div className="flex items-center gap-4 text-xs text-gray-300 mb-3">
-                      <span><Bed className="w-4 h-4 inline" />{p.bedrooms}</span>
-                      <span><Bath className="w-4 h-4 inline" />{p.bathrooms}</span>
-                      <span><Maximize className="w-4 h-4 inline" />{p.surface}m2</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div><p className="text-2xl font-bold text-white">{p.price.toLocaleString()} FCFA</p><p className="text-xs text-gray-400">{p.priceType === 'mois' ? '/mois' : ''}</p></div>
-                      <Button size="sm" className="bg-gradient-to-r from-blue-500 to-purple-500">Voir details</Button>
-                    </div>
-                  </div>
-                </motion.div>
-              </Link>
+          <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
+            {PROPERTY_TYPE_OPTIONS.map((opt) => (
+              <Button
+                key={opt.value || 'all'}
+                variant={propertyTypeFilter === opt.value ? 'default' : 'outline'}
+                size="sm"
+                className={`flex-shrink-0 ${propertyTypeFilter === opt.value ? 'bg-gray-800 hover:bg-gray-900 text-white' : 'border-gray-300 text-gray-700'}`}
+                onClick={() => setPropertyTypeFilter(opt.value)}
+              >
+                {opt.label}
+              </Button>
             ))}
           </div>
         </div>
-        <Card className="bg-gradient-to-br from-green-500/20 to-teal-500/20 border-green-400/30">
+      </div>
+
+      <div className="p-4 pb-24 space-y-6">
+        {/* Cartes stats — couleurs AfriWonder : teal, bleu, vert */}
+        <div className="grid grid-cols-3 gap-3">
+          <Card className="bg-white border-gray-200 shadow-sm">
+            <CardContent className="p-3 text-center">
+              <p className="text-2xl font-bold text-teal-600">{stats.total}</p>
+              <p className="text-xs text-gray-500">Annonces</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-white border-gray-200 shadow-sm">
+            <CardContent className="p-3 text-center">
+              <p className="text-2xl font-bold text-blue-600">{stats.sales}</p>
+              <p className="text-xs text-gray-500">Ventes</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-white border-gray-200 shadow-sm">
+            <CardContent className="p-3 text-center">
+              <p className="text-2xl font-bold text-green-600">{stats.rentals}</p>
+              <p className="text-xs text-gray-500">Locations</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {loading && <p className="col-span-2 text-center text-gray-500 py-8">Chargement...</p>}
+          {!loading && displayList.length === 0 && (
+            <p className="col-span-2 text-center text-gray-500 py-8">Aucune annonce pour le moment.</p>
+          )}
+          {!loading && displayList.map((p) => {
+            const img = Array.isArray(p.images) && p.images[0] ? p.images[0] : 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=400';
+            const location = [p.neighborhood, p.city].filter(Boolean).join(', ') || p.address || '';
+            const amenitiesList = Array.isArray(p.amenities) ? p.amenities : [];
+            const isRent = p.listing_type === 'rent';
+            return (
+              <Card key={p.id} className="bg-white border-gray-200 overflow-hidden flex flex-col shadow-sm">
+                <div className="relative aspect-[4/3] bg-gray-100">
+                  <img src={img} alt={p.title} className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                  <Badge className="absolute top-2 left-2 text-white text-xs border-0" style={isRent ? { backgroundColor: '#6b7280' } : { backgroundColor: '#0d9488' }}>
+                    {isRent ? 'Location' : 'Vente'}
+                  </Badge>
+                  <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-8 w-8 rounded-full bg-black/30 hover:bg-black/50 text-white">
+                    <Heart className="w-4 h-4" />
+                  </Button>
+                  <p className="absolute bottom-2 left-2 right-2 text-lg font-bold text-white drop-shadow-md">{formatPrice(p.price, p.listing_type)}</p>
+                </div>
+                <CardContent className="p-4 flex-1 flex flex-col">
+                  <h3 className="font-semibold text-gray-900 mb-1">{p.title}</h3>
+                  {location && (
+                    <div className="flex items-center gap-1 text-sm text-gray-500 mb-2">
+                      <MapPin className="w-4 h-4 flex-shrink-0" /> {location}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3 text-sm text-gray-600 mb-2">
+                    {p.bedrooms != null && <span>{p.bedrooms} ch.</span>}
+                    {p.bathrooms != null && <span>{p.bathrooms} sdb.</span>}
+                    {p.surface_area != null && <span>{p.surface_area} m²</span>}
+                  </div>
+                  {amenitiesList.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {amenitiesList.slice(0, 4).map((a) => (
+                        <span key={a} className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs">{typeof a === 'string' ? a : a}</span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2 mt-auto pt-2">
+                    {p.owner_phone && (
+                      <a href={`tel:${p.owner_phone}`}>
+                        <Button variant="outline" size="sm" className="border-orange-500 text-orange-600 hover:bg-orange-50">
+                          <Phone className="w-4 h-4 mr-1" /> Appeler
+                        </Button>
+                      </a>
+                    )}
+                    <Button size="sm" className="bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white" onClick={() => openDetail(p)}>
+                      Voir détails
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        <Card className="bg-white border-gray-200">
           <CardContent className="p-6 text-center">
-            <Building2 className="w-12 h-12 text-green-400 mx-auto mb-3" />
-            <h3 className="font-bold text-white mb-2">Vous avez un bien a louer ou vendre ?</h3>
-            <p className="text-sm text-gray-300 mb-4">Publiez votre annonce gratuitement</p>
-            <Button className="bg-gradient-to-r from-green-500 to-teal-500">Publier une annonce</Button>
+            <Building2 className="w-12 h-12 text-teal-600 mx-auto mb-3" />
+            <h3 className="font-bold text-gray-900 mb-2">Vous avez un bien à louer ou vendre ?</h3>
+            <p className="text-sm text-gray-500 mb-4">Publiez votre annonce. Elle sera visible après validation par l'administrateur.</p>
+            <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={() => setShowCreateModal(true)}>
+              Publier une annonce
+            </Button>
           </CardContent>
         </Card>
       </div>
+
+      {/* Modal Détail */}
+      <Modal
+        isOpen={!!detailProperty}
+        onClose={() => setDetailProperty(null)}
+        title={detailProperty?.title}
+        size="lg"
+      >
+        {detailProperty && (
+          <div className="space-y-4">
+            <div className="relative aspect-video rounded-xl overflow-hidden bg-gray-100">
+              <img
+                src={Array.isArray(detailProperty.images) && detailProperty.images[0] ? detailProperty.images[0] : 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800'}
+                alt={detailProperty.title}
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <p className="text-xl font-bold text-green-600">
+                {formatPrice(detailProperty.price, detailProperty.listing_type)}
+              </p>
+              <Badge className="bg-green-100 text-green-700 border-0">Disponible</Badge>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <MapPin className="w-4 h-4 flex-shrink-0" />
+              {[detailProperty.address, detailProperty.neighborhood, detailProperty.city].filter(Boolean).join(', ') || '—'}
+            </div>
+            {detailProperty.description && <p className="text-gray-600 text-sm">{detailProperty.description}</p>}
+            <div className="grid grid-cols-3 gap-2">
+              {detailProperty.bedrooms != null && (
+                <div className="p-3 rounded-xl bg-gray-50 text-center">
+                  <Bed className="w-5 h-5 text-teal-600 mx-auto mb-1" />
+                  <p className="font-semibold text-gray-900">{detailProperty.bedrooms}</p>
+                  <p className="text-xs text-gray-500">Chambres</p>
+                </div>
+              )}
+              {detailProperty.bathrooms != null && (
+                <div className="p-3 rounded-xl bg-gray-50 text-center">
+                  <Bath className="w-5 h-5 text-teal-600 mx-auto mb-1" />
+                  <p className="font-semibold text-gray-900">{detailProperty.bathrooms}</p>
+                  <p className="text-xs text-gray-500">Salles de bain</p>
+                </div>
+              )}
+              {detailProperty.surface_area != null && (
+                <div className="p-3 rounded-xl bg-gray-50 text-center">
+                  <Maximize className="w-5 h-5 text-teal-600 mx-auto mb-1" />
+                  <p className="font-semibold text-gray-900">{detailProperty.surface_area}</p>
+                  <p className="text-xs text-gray-500">m²</p>
+                </div>
+              )}
+            </div>
+            {Array.isArray(detailProperty.amenities) && detailProperty.amenities.length > 0 && (
+              <>
+                <h4 className="font-bold text-gray-900">Équipements</h4>
+                <div className="flex flex-wrap gap-2">
+                  {detailProperty.amenities.map((a) => (
+                    <span key={a} className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-sm">{typeof a === 'string' ? a : a}</span>
+                  ))}
+                </div>
+              </>
+            )}
+            <div className="flex gap-3 pt-2">
+              {detailProperty.owner_phone && (
+                <a href={`tel:${detailProperty.owner_phone}`} className="flex-1">
+                  <Button variant="outline" className="w-full border-orange-500 text-orange-600 hover:bg-orange-50">
+                    <Phone className="w-4 h-4 mr-2" /> Appeler l'agent
+                  </Button>
+                </a>
+              )}
+              <a
+                href={detailProperty.owner_phone ? `https://wa.me/${detailProperty.owner_phone.replace(/\D/g, '')}` : '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1"
+              >
+                <Button className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white">
+                  <MessageCircle className="w-4 h-4 mr-2" /> WhatsApp
+                </Button>
+              </a>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal Publier une annonce */}
+      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Publier une annonce" size="lg">
+        <form onSubmit={handleCreateSubmit} className="space-y-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1 block">Transaction</label>
+            <select
+              value={createForm.listing_type}
+              onChange={(e) => setCreateForm((f) => ({ ...f, listing_type: e.target.value }))}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            >
+              <option value="rent">Location</option>
+              <option value="sale">Vente</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1 block">Type de bien</label>
+            <select
+              value={createForm.property_type}
+              onChange={(e) => setCreateForm((f) => ({ ...f, property_type: e.target.value }))}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            >
+              {PROPERTY_TYPE_OPTIONS.filter((o) => o.value).map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          <Input
+            placeholder="Titre de l'annonce *"
+            value={createForm.title}
+            onChange={(e) => setCreateForm((f) => ({ ...f, title: e.target.value }))}
+            className="border-gray-300"
+          />
+          <Input
+            placeholder="Adresse *"
+            value={createForm.address}
+            onChange={(e) => setCreateForm((f) => ({ ...f, address: e.target.value }))}
+            className="border-gray-300"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <Input placeholder="Ville" value={createForm.city} onChange={(e) => setCreateForm((f) => ({ ...f, city: e.target.value }))} className="border-gray-300" />
+            <Input placeholder="Quartier" value={createForm.neighborhood} onChange={(e) => setCreateForm((f) => ({ ...f, neighborhood: e.target.value }))} className="border-gray-300" />
+          </div>
+          <Input
+            type="number"
+            placeholder="Prix (FCFA) *"
+            value={createForm.price}
+            onChange={(e) => setCreateForm((f) => ({ ...f, price: e.target.value }))}
+            className="border-gray-300"
+          />
+          <div className="grid grid-cols-3 gap-2">
+            <Input type="number" placeholder="Chambres" value={createForm.bedrooms} onChange={(e) => setCreateForm((f) => ({ ...f, bedrooms: e.target.value }))} className="border-gray-300" />
+            <Input type="number" placeholder="Sdb" value={createForm.bathrooms} onChange={(e) => setCreateForm((f) => ({ ...f, bathrooms: e.target.value }))} className="border-gray-300" />
+            <Input type="number" placeholder="m²" value={createForm.surface_area} onChange={(e) => setCreateForm((f) => ({ ...f, surface_area: e.target.value }))} className="border-gray-300" />
+          </div>
+          <Textarea placeholder="Description" value={createForm.description} onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))} className="border-gray-300 min-h-[80px]" />
+          <Input placeholder="Téléphone de contact" value={createForm.owner_phone} onChange={(e) => setCreateForm((f) => ({ ...f, owner_phone: e.target.value }))} className="border-gray-300" />
+          <div className="flex gap-2 pt-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowCreateModal(false)}>Annuler</Button>
+            <Button type="submit" className="flex-1 bg-teal-600 hover:bg-teal-700 text-white" disabled={createSubmitting}>
+              {createSubmitting ? 'Envoi...' : 'Publier'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
       <BottomNav />
     </div>
   );

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AlertCircle, Loader2, Upload } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 
 export default function ReturnForm({ orderId, productId, onSuccess }) {
   const [formData, setFormData] = useState({
@@ -122,7 +123,7 @@ export default function ReturnForm({ orderId, productId, onSuccess }) {
               <span className="text-sm text-gray-600">Cliquez pour uploader une image</span>
               <input
                 type="file"
-                accept="image/*"
+                accept={FILE_ACCEPT_IMAGES}
                 onChange={uploadImage}
                 className="hidden"
               />
@@ -147,10 +148,10 @@ export default function ReturnForm({ orderId, productId, onSuccess }) {
           )}
         </div>
 
-        <div className="bg-blue-50 border-l-4 border-blue-500 p-4">
+        <div className="bg-orange-50 border-l-4 border-orange-500 p-4">
           <div className="flex gap-2">
-            <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
-            <p className="text-sm text-blue-800">
+            <AlertCircle className="w-5 h-5 text-orange-600 flex-shrink-0" />
+            <p className="text-sm text-orange-800">
               Une fois approuvee, vous recevrez les informations de retour.
             </p>
           </div>

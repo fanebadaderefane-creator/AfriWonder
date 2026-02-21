@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { createPageUrl } from '@/utils';
+import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 import BottomNav from '../components/navigation/BottomNav';
 
 export default function CreatePetition() {
@@ -222,7 +223,7 @@ export default function CreatePetition() {
             <input
               type="file"
               multiple
-              accept="image/*"
+              accept={FILE_ACCEPT_IMAGES}
               onChange={handleImageUpload}
               className="hidden"
             />

@@ -207,7 +207,7 @@ export default function PrivacyPolicy() {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-600 mt-1">{doc.title}</p>
+                      <p className="text-xs text-gray-600 mt-1">{(doc.title || '').replace(/AfriConnect/gi, 'AfriWonder')}</p>
                       <p className="text-xs text-gray-500 mt-1">
                         {new Date(doc.effective_date).toLocaleDateString('fr-FR')}
                       </p>
@@ -220,18 +220,18 @@ export default function PrivacyPolicy() {
           </div>
         )}
 
-        {/* Main Content */}
+        {/* Main Content — remplacer AfriConnect par AfriWonder pour cohérence de marque */}
         <div className="bg-white rounded-xl shadow-lg border border-orange-100 p-6 space-y-6">
           <div>
             <h2 className="text-2xl font-bold mb-4 bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
-              {document.title}
+              {(document.title || '').replace(/AfriConnect/gi, 'AfriWonder')}
             </h2>
           </div>
 
           {/* Content — charte graphique : dégradé orange-rouge pour titres et texte en gras */}
           <div 
             className="prose prose-sm max-w-none text-gray-700 legal-content"
-            dangerouslySetInnerHTML={{ __html: document.content }}
+            dangerouslySetInnerHTML={{ __html: (document.content || '').replace(/AfriConnect/g, 'AfriWonder').replace(/africonnect\./g, 'afriwonder.') }}
           />
 
           {/* Contact */}

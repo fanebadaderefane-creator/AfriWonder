@@ -35,6 +35,8 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { createPageUrl } from "@/utils";
 
+import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
+
 import VideoEditor from '../components/video/VideoEditor';
 
 
@@ -2402,7 +2404,7 @@ export default function Create() {
 
                     type="file"
 
-                    accept="image/*"
+                    accept={FILE_ACCEPT_IMAGES}
 
                     onChange={async (e) => {
 

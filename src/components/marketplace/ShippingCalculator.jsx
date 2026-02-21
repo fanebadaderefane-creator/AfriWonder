@@ -53,7 +53,7 @@ export default function ShippingCalculator({
 
       {rate && (
         <div className="bg-white rounded-lg p-3 space-y-2">
-          <div className="flex items-center gap-2 text-blue-600 mb-2">
+          <div className="flex items-center gap-2 text-orange-600 mb-2">
             <Truck className="w-4 h-4" />
             <span className="text-sm font-semibold">Détails livraison</span>
           </div>

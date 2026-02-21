@@ -6,7 +6,7 @@ import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-quer
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-import { Grid3X3, Bookmark, Heart, ShoppingBag, Play, ArrowLeft, Pencil, Trash2, FileText } from 'lucide-react';
+import { Grid3X3, Bookmark, Heart, ShoppingBag, Play, ArrowLeft, Pencil, Trash2, FileText, Menu } from 'lucide-react';
 
 import { motion } from 'framer-motion';
 
@@ -30,11 +30,15 @@ import FeaturedVideoSelector from '../components/video/FeaturedVideoSelector';
 
 import SubscriptionTiers from '../components/creator/SubscriptionTiers';
 
+import { useAppMenu } from '@/contexts/AppMenuContext';
+
 
 
 export default function Profile() {
 
   const navigate = useNavigate();
+
+  const { openMenu } = useAppMenu();
 
   const [user, setUser] = useState(null);
 
@@ -632,7 +636,7 @@ export default function Profile() {
 
     <div className="min-h-screen bg-gray-50 pb-32">
 
-      {/* Back Button */}
+      {/* Back Button + Menu (Profil) */}
 
       <div className="fixed top-4 left-4 z-50">
 
@@ -657,6 +661,24 @@ export default function Profile() {
         >
 
           <ArrowLeft className="w-5 h-5" />
+
+        </button>
+
+      </div>
+
+      <div className="fixed top-4 right-4 z-50">
+
+        <button
+
+          onClick={openMenu}
+
+          className="w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-gray-800 hover:bg-white transition-all shadow-lg active:scale-95"
+
+          aria-label="Ouvrir le menu"
+
+        >
+
+          <Menu className="w-5 h-5" />
 
         </button>
 

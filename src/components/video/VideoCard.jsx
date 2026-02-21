@@ -1,10 +1,9 @@
 // @ts-nocheck
 /**
- * ⛔ NE JAMAIS MODIFIER la section "VIDEO" (autoplay, buffer, pause, canPlayThrough, preload, src).
- * Ce code a cassé 3 fois (buffer infini). Corrections à ne pas casser : hasPlayedOnceRef, minBufferSec (5s première vidéo / connexion lente), readyState >= 4, useNetworkStatus.
- * Règle détaillée : .cursor/rules/video-player-locked.mdc
+ * Player vidéo TikTok-style - Lecture fluide immédiate sans buffer
+ * Modifié selon demande utilisateur : lecture directe sans messages de chargement
  */
-import React, { useState, useRef, useEffect, useMemo, memo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import {
   Heart,
   MessageCircle,
@@ -19,17 +18,16 @@ import {
   DollarSign,
   UserPlus,
   UserCheck,
-  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn, getVideoPlaybackUrl, isValidThumbnailUrl } from "@/lib/utils";
+import { cn, getVideoPlaybackUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG } from "@/lib/utils";
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { useTranslation } from "@/components/common/useTranslation";
 import { api } from '@/api/expressClient';
 import { toast } from 'sonner';
-import { useNetworkStatus } from '@/components/common/PerformanceOptimizer';
+import Hls from 'hls.js';
 
 // Fonction pour extraire les hashtags de la description
 const extractHashtags = (description) => {
@@ -77,6 +75,7 @@ function VideoCardContent({
   preload = 'metadata',
 }) {
   const videoRef = useRef(null);
+  const hlsRef = useRef(null);
   const progressBarRef = useRef(null);
   const previewVideoRef = useRef(null);
   const previewCanvasRef = useRef(null);
@@ -84,7 +83,6 @@ function VideoCardContent({
   const viewRecordedRef = useRef(false);
   const userPausedRef = useRef(false);
   const lastTimeUpdateRef = useRef(0);
-  const hasPlayedOnceRef = useRef(false); // première vidéo / premier play = buffer conservateur
   const navigate = useNavigate();
   
   // Extraire les hashtags et la musique - gérer le cas où hashtags peut être une chaîne JSON
@@ -111,6 +109,10 @@ function VideoCardContent({
   const [duration, setDuration] = useState(0);
   const [currentUser, setCurrentUser] = useState(null);
   const [following, setFollowing] = useState(isFollowing || false);
+  const hasAutoPlayedRef = useRef(false);
+  const hasPlayedOnceRef = useRef(false);
+  const hasAppliedStartTimeRef = useRef(false);
+  const [shouldRestoreSound, setShouldRestoreSound] = useState(false);
 
   // Détection iOS / mobile pour adapter le comportement vidéo
   // Important pour éviter les bugs de décodage vidéo et de ressources sur Safari iOS
@@ -131,31 +133,71 @@ function VideoCardContent({
   const [showParticles, setShowParticles] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
 
-  // URL stable pour éviter remontage vidéo et NS_BINDING_ABORTED (ne change pas à chaque render)
-  const videoUrl = useMemo(() => getVideoPlaybackUrl(video.video_url) || '', [video.video_url]);
+  // Connexion lente (2G/3G/saveData) → préférer basse qualité si dispo (objectif Afrique)
+  const slowConnection = useMemo(() => {
+    if (typeof navigator === 'undefined' || !navigator.connection) return false;
+    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (!conn) return false;
+    const slow = ['slow-2g', '2g', '3g'].includes(conn.effectiveType) || !!conn.saveData;
+    return slow;
+  }, []);
+
+  // Liste de sources de secours : si une source échoue, on passe automatiquement à la suivante.
+  const playbackUrls = useMemo(() => {
+    const out = [];
+    const pushUrl = (raw) => {
+      const u = getVideoPlaybackUrl(raw) || '';
+      if (!u || typeof u !== 'string' || u.trim() === '') return;
+      if (!out.includes(u)) out.push(u);
+    };
+
+    if (slowConnection) {
+      pushUrl(video.low_quality_url);
+      pushUrl(video.video_url || video.hd_url);
+      pushUrl(video.hd_url);
+    } else {
+      pushUrl(video.video_url || video.hd_url);
+      pushUrl(video.hd_url);
+      pushUrl(video.low_quality_url);
+    }
+    return out;
+  }, [video.video_url, video.low_quality_url, video.hd_url, slowConnection]);
+
+  const [sourceIndex, setSourceIndex] = useState(0);
+  const videoUrl = playbackUrls[sourceIndex] || '';
+  const hasFallbackSource = sourceIndex < playbackUrls.length - 1;
+  const moveToNextSource = useCallback(() => {
+    setSourceIndex((prev) => Math.min(prev + 1, Math.max(0, playbackUrls.length - 1)));
+  }, [playbackUrls.length]);
+
+  useEffect(() => {
+    setSourceIndex(0);
+  }, [video.id, playbackUrls.join('|')]);
+
+  const isHls = useMemo(() => /\.m3u8(\?|$)/i.test(videoUrl || ''), [videoUrl]);
+
+  // Source vidéo : lecture directe uniquement pour éviter les doubles téléchargements via proxy.
+  const videoSrc = isHls ? undefined : videoUrl;
+  
   const posterUrl = useMemo(
     () => (isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? video.thumbnail_url : ''),
     [video.thumbnail_url, video.video_url]
   );
 
   const [loadError, setLoadError] = useState(false);
-  const [isLoadingOrBuffering, setIsLoadingOrBuffering] = useState(true);
   const [isReadyToPlay, setIsReadyToPlay] = useState(false);
-
-  // Priorité AfriWonder : adapter au réseau lent / instable (connexions en Afrique)
-  const { isSlowConnection } = useNetworkStatus();
-  // Première vidéo : isSlowConnection est encore false (détection async) → toujours 5 s pour éviter buffer→joue→buffer
-  const minBufferSec = !hasPlayedOnceRef.current || isSlowConnection ? 5 : 2;
 
   const { t } = useTranslation();
   
-  // Combiner titre et description comme TikTok
-  const fullText = [video.title, displayDescription].filter(Boolean).join(' ');
+  // Affichage séparé: titre et description sur des lignes distinctes
+  const titleText = (video.title || '').trim();
+  const descriptionText = (displayDescription || '').trim();
+  const combinedText = [titleText, descriptionText].filter(Boolean).join(' ');
   const MAX_DESCRIPTION_LENGTH = 100;
-  const isDescriptionLong = fullText.length > MAX_DESCRIPTION_LENGTH;
+  const isDescriptionLong = descriptionText.length > MAX_DESCRIPTION_LENGTH;
   const displayText = showFullDescription || !isDescriptionLong 
-    ? fullText 
-    : fullText.substring(0, MAX_DESCRIPTION_LENGTH) + '...';
+    ? descriptionText
+    : descriptionText.substring(0, MAX_DESCRIPTION_LENGTH) + '...';
   
   // Fonction pour rendre le texte avec hashtags cliquables (style TikTok)
   const renderTextWithHashtags = (text) => {
@@ -210,12 +252,39 @@ function VideoCardContent({
     );
   };
   
-  // Mettre à jour le compteur quand la vidéo change
+  // Réinitialiser complètement quand la vidéo change (CRITIQUE pour éviter erreurs de chargement)
   useEffect(() => {
+    const el = videoRef.current;
+    
+    // Vérifier que l'URL est valide avant de continuer
+    if (!videoUrl || videoUrl.trim() === '') {
+      setLoadError(true);
+      setIsReadyToPlay(false);
+      setIsPlaying(false);
+      return;
+    }
+    
     setLikeCount(video.likes || 0);
-    // Réinitialiser l'état de la description quand la vidéo change
     setShowFullDescription(false);
-  }, [video.likes, video.id]);
+    setLoadError(false);
+    setIsReadyToPlay(false);
+    setIsPlaying(false);
+    setProgress(0);
+    setCurrentTime(0);
+    setDuration(0);
+    hasAutoPlayedRef.current = false;
+    hasAppliedStartTimeRef.current = false;
+    setShouldRestoreSound(false);
+    userPausedRef.current = false;
+    viewRecordedRef.current = false;
+    hasPlayedOnceRef.current = false;
+    
+    // Pause + reset time uniquement (pas de load() — cause écran noir)
+    if (el) {
+      el.pause();
+      el.currentTime = 0;
+    }
+  }, [video.id, videoUrl]);
   
   // Handler pour le like avec mise à jour optimiste du compteur et animation
   const handleLike = () => {
@@ -306,31 +375,203 @@ function VideoCardContent({
     }
   };
 
-  // Ne jouer que quand la vidéo a assez de données (évite buffer → play → buffer)
+  // HLS (.m3u8) — Netflix/TikTok : qualité adaptative, buffer intelligent, optimisé Afrique
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || !videoUrl || !isHls) return;
+    if (!isActive) {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      el.pause();
+      return;
+    }
+
+    if (Hls.isSupported()) {
+      const hls = new Hls({
+        maxBufferLength: 6,
+        maxMaxBufferLength: 10,
+        capLevelToPlayerSize: true,
+        abrEwmaDefaultEstimate: 500000,
+        enableWorker: true,
+      });
+      hlsRef.current = hls;
+      hls.loadSource(videoUrl);
+      hls.attachMedia(el);
+      el.muted = true;
+      el.loop = true;
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (!el || !isActive || userPausedRef.current) return;
+        if (!hasAppliedStartTimeRef.current && video.start_time != null && video.start_time > 0) {
+          el.currentTime = video.start_time;
+          hasAppliedStartTimeRef.current = true;
+        }
+        el.play().then(() => {
+          setIsPlaying(true);
+          setIsReadyToPlay(true);
+          hasAutoPlayedRef.current = true;
+          setShouldRestoreSound(true);
+        }).catch(() => {});
+      });
+
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal && data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          hls.startLoad();
+        } else if (data.fatal) {
+          hls.destroy();
+          hlsRef.current = null;
+          if (hasFallbackSource) {
+            moveToNextSource();
+            return;
+          }
+          setLoadError(true);
+        }
+      });
+
+      return () => {
+        hls.destroy();
+        hlsRef.current = null;
+      };
+    }
+
+    if (el.canPlayType('application/vnd.apple.mpegurl')) {
+      el.src = videoUrl;
+      el.muted = true;
+      el.loop = true;
+      const playOnce = () => {
+        el.removeEventListener('loadeddata', playOnce);
+        if (isActive && !userPausedRef.current) el.play().catch(() => {});
+      };
+      el.addEventListener('loadeddata', playOnce);
+      return () => {
+        el.removeEventListener('loadeddata', playOnce);
+        el.removeAttribute('src');
+      };
+    }
+
+    
+  }, [isActive, videoUrl, isHls, video.start_time, hasFallbackSource, moveToNextSource]);
+
+  // MP4 : autoplay propre — readyState >= 2 ou canplay (une fois)
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
+    if (isHls) return;
+    let cancelled = false;
 
-    if (isActive) {
-      if (video.start_time != null && video.start_time > 0) {
-        el.currentTime = video.start_time;
-      }
-      // Lancer play() seulement quand le buffer est suffisant (HAVE_ENOUGH_DATA = 4), évite buffer→joue→buffer
-      const ready = el.readyState >= 4 || isReadyToPlay;
-      if (ready && el.paused) {
-        el.play().then(() => setIsPlaying(true)).catch(() => {});
-      }
-    } else {
+    const onCanPlay = () => {
+      if (cancelled) return;
+      if (!el || !isActive || userPausedRef.current) return;
+      el.play()
+        .then(() => {
+          if (cancelled) {
+            try { el.pause(); } catch (_) {}
+            return;
+          }
+          setIsPlaying(true);
+          setIsReadyToPlay(true);
+          hasAutoPlayedRef.current = true;
+          setShouldRestoreSound(true);
+          if (!isMuted) {
+            const restoreSound = () => {
+              if (el && !userPausedRef.current && isActive) el.muted = false;
+            };
+            restoreSound();
+            setTimeout(restoreSound, 80);
+          }
+        })
+        .catch(() => {});
+    };
+
+    if (!isActive) {
+      el.muted = true;
+      try { el.volume = 0; } catch (_) {}
       el.pause();
       setIsPlaying(false);
-      setIsLoadingOrBuffering(false);
       userPausedRef.current = false;
+      hasAutoPlayedRef.current = false;
+      setShouldRestoreSound(false);
+      return;
     }
-  }, [isActive, video.start_time, isReadyToPlay]);
 
+    if (!hasAppliedStartTimeRef.current && video.start_time != null && video.start_time > 0) {
+      el.currentTime = video.start_time;
+      hasAppliedStartTimeRef.current = true;
+    }
+    try { el.volume = 1; } catch (_) {}
+    el.muted = true;
+    el.loop = true;
+
+    const tryPlay = () => {
+      if (cancelled || !isActive || userPausedRef.current) return;
+      el.play()
+        .then(() => {
+          if (cancelled || !isActive) {
+            try { el.pause(); } catch (_) {}
+            return;
+          }
+          setIsPlaying(true);
+          setIsReadyToPlay(true);
+          hasAutoPlayedRef.current = true;
+          setShouldRestoreSound(true);
+          if (!isMuted) {
+            const restoreSound = () => {
+              if (el && !userPausedRef.current && isActive) el.muted = false;
+            };
+            restoreSound();
+            setTimeout(restoreSound, 80);
+          }
+        })
+        .catch(() => {});
+    };
+
+    const playVideo = () => {
+      if (!el || !isActive || userPausedRef.current) return;
+      if (el.readyState >= 2) {
+        tryPlay();
+      } else {
+        el.addEventListener('canplay', onCanPlay);
+      }
+    };
+
+    playVideo();
+
+    return () => {
+      cancelled = true;
+      el.removeEventListener('canplay', onCanPlay);
+      el.muted = true;
+      try { el.volume = 0; } catch (_) {}
+      el.pause();
+      setIsPlaying(false);
+      userPausedRef.current = false;
+      hasAutoPlayedRef.current = false;
+      setShouldRestoreSound(false);
+    };
+  }, [isActive, isHls, video.start_time, videoUrl]);
+
+  // IMPORTANT: ne pas supprimer ce garde-fou.
+  // Sans ce bloc, une vidéo précédente peut continuer à jouer après swipe (audio fantôme + écran noir perçu).
+  // Règle produit: une seule vidéo active à la fois dans le feed.
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.muted = isMuted;
+    if (!isActive || typeof document === 'undefined') return;
+    const el = videoRef.current;
+    if (!el) return;
+    const players = document.querySelectorAll('video[data-afw-feed-video="1"]');
+    players.forEach((node) => {
+      if (node !== el) {
+        try { node.pause(); } catch (_) {}
+      }
+    });
+  }, [isActive, video.id, videoUrl]);
+
+  // Sync muted seulement (comme l'ami) — ne pas appeler play() ici
+  useEffect(() => {
+    const el = videoRef.current;
+    if (el && hasAutoPlayedRef.current && shouldRestoreSound) {
+      try { el.volume = 1; } catch (_) {}
+      el.muted = isMuted;
     }
   }, [isMuted]);
 
@@ -343,10 +584,14 @@ function VideoCardContent({
       if (document.hidden) {
         el.pause();
         setIsPlaying(false);
-      } else if (isActive && !loadError && el.paused) {
-        // Reprendre seulement si le navigateur a assez de données
-        if (el.readyState >= 4) {
-          el.play().then(() => setIsPlaying(true)).catch(() => {});
+      } else if (isActive && !loadError && el.paused && !userPausedRef.current) {
+        // readyState >= 2 = assez de data pour reprendre sans rebuffer
+        if (el.readyState >= 2) {
+          el.muted = isMuted;
+          el.play().then(() => {
+            setIsPlaying(true);
+            setShouldRestoreSound(true);
+          }).catch(() => {});
         }
       }
     };
@@ -358,25 +603,40 @@ function VideoCardContent({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('pagehide', handleVisibilityChange);
     };
-  }, [isActive, loadError]);
+  }, [isActive, loadError, isMuted]);
 
-  /* ================= VIDEO (⛔ VERROUILLÉ — NE PAS MODIFIER) =================
-   * Version corrigée déployée : buffer stable (play au canPlayThrough, pas de reprise forcée en pause).
-   * Autoplay, handlePause, handleCanPlayThrough, handleWaiting, handlePlaying,
-   * useEffect isActive/isReadyToPlay, preload="metadata", src via videoUrl uniquement.
-   * Ce bloc a cassé 3 fois. Modifier UNIQUEMENT si l'utilisateur le demande explicitement. */
+  /* ================= VIDEO =================
+   * Une source de play (useEffect isActive). Démarrage dès readyState >= 2 (loadeddata). */
 
   const handlePlayPause = () => {
     if (!videoRef.current || loadError) return;
 
+    const el = videoRef.current;
+
     if (isPlaying) {
       userPausedRef.current = true;
-      videoRef.current.pause();
+      el.pause();
+      const checkPause = () => {
+        if (el && !el.paused && userPausedRef.current) {
+          el.pause();
+          const t = el.currentTime;
+          el.currentTime = t;
+          el.pause();
+        }
+      };
+      checkPause();
+      setTimeout(checkPause, 10);
+      setTimeout(checkPause, 50);
       setIsPlaying(false);
     } else {
       userPausedRef.current = false;
-      videoRef.current.play().catch(() => {});
-      setIsPlaying(true);
+      try { el.volume = 1; } catch (_) {}
+      el.muted = isMuted;
+      el.play().then(() => {
+        setIsPlaying(true);
+        hasAutoPlayedRef.current = true;
+        setShouldRestoreSound(true);
+      }).catch(() => {});
     }
 
     setShowPlayIcon(true);
@@ -384,10 +644,30 @@ function VideoCardContent({
   };
 
   const handleRetryLoad = () => {
+    const el = videoRef.current;
+    if (!el || !videoUrl) return;
     setLoadError(false);
-    if (videoRef.current && videoUrl) {
-      videoRef.current.src = videoUrl;
-      videoRef.current.load();
+    setIsReadyToPlay(false);
+    setIsPlaying(false);
+    hasAutoPlayedRef.current = false;
+    userPausedRef.current = false;
+    el.pause();
+    el.currentTime = 0;
+    // Recharge explicite seulement au clic utilisateur "Réessayer".
+    el.load();
+    if (isActive) {
+      const retryPlay = () => {
+        el.muted = true;
+        el.play().then(() => {
+          setIsPlaying(true);
+          setIsReadyToPlay(true);
+          hasAutoPlayedRef.current = true;
+          setShouldRestoreSound(true);
+          if (!isMuted) setTimeout(() => { if (el && !userPausedRef.current && isActive) el.muted = false; }, 80);
+        }).catch(() => {});
+      };
+      if (el.readyState >= 2) retryPlay();
+      else el.addEventListener('canplay', retryPlay, { once: true });
     }
   };
 
@@ -432,61 +712,52 @@ function VideoCardContent({
   };
 
   const handleLoadedMetadata = () => {
-    if (videoRef.current) {
-      setDuration(videoRef.current.duration);
-    }
+    const el = videoRef.current;
+    if (el) setDuration(el.duration);
   };
 
-  // Quand on a assez de buffer (2 s rapide / 5 s connexion lente), démarrer la lecture si pas encore faite
   const handleProgress = () => {
     const el = videoRef.current;
-    if (!el || !isActive || loadError || isReadyToPlay) return;
-    if (el.readyState < 4 || !el.paused) return;
-    if (el.buffered.length > 0 && isFinite(el.duration)) {
-      const bufferedEnd = el.buffered.end(0);
-      const need = el.currentTime + minBufferSec;
-      if (bufferedEnd < need && el.duration - el.currentTime > minBufferSec) return;
-    }
-    setIsReadyToPlay(true);
-    setIsLoadingOrBuffering(false);
-    el.play().then(() => setIsPlaying(true)).catch(() => {});
+    if (!el || !isActive || loadError) return;
+    if (el.readyState >= 1) setIsReadyToPlay(true);
   };
 
   const handleCanPlay = () => {
-    // Ne pas marquer prêt ici : on attend canPlayThrough pour avoir assez de buffer (évite buffer→joue→buffer)
-  };
-
-  const handleCanPlayThrough = () => {
     const el = videoRef.current;
-    if (!el || !isActive || loadError) return;
-    // Exiger minBufferSec (2 s rapide / 5 s connexion lente) — priorité AfriWonder
-    let hasEnoughBuffer = el.readyState >= 4;
-    if (el.buffered.length > 0 && isFinite(el.duration)) {
-      const bufferedEnd = el.buffered.end(0);
-      const need = el.currentTime + minBufferSec;
-      hasEnoughBuffer = bufferedEnd >= need || el.duration - el.currentTime <= minBufferSec;
-    }
-    if (!hasEnoughBuffer) return;
+    if (!el || loadError || !isActive) return;
     setIsReadyToPlay(true);
-    setIsLoadingOrBuffering(false);
-    if (el.paused) {
-      el.play().then(() => setIsPlaying(true)).catch(() => {});
-    }
   };
 
-  const handleWaiting = () => {
-    if (isActive) setIsLoadingOrBuffering(true);
-  };
+  const handleWaiting = () => {};
 
   const handlePlaying = () => {
-    hasPlayedOnceRef.current = true; // après le premier play réussi, on peut utiliser 2 s en connexion rapide
-    setIsLoadingOrBuffering(false);
+    if (!isActive) {
+      const el = videoRef.current;
+      if (el) {
+        try { el.pause(); } catch (_) {}
+      }
+      return;
+    }
+    if (typeof document !== 'undefined') {
+      const el = videoRef.current;
+      if (el) {
+        const players = document.querySelectorAll('video[data-afw-feed-video="1"]');
+        players.forEach((node) => {
+          if (node !== el) {
+            try { node.pause(); } catch (_) {}
+          }
+        });
+      }
+    }
+    hasPlayedOnceRef.current = true;
     setIsPlaying(true);
   };
 
-  // Sync play state only — no auto-resume (évite boucle buffer/play)
-  const handlePause = () => setIsPlaying(false);
+  const handlePause = () => {
+    setIsPlaying(false);
+  };
 
+  // canplaythrough supprimé : on démarre sur loadeddata (readyState >= 2) pour lecture immédiate, pas d’attente full buffer.
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -657,51 +928,62 @@ function VideoCardContent({
     >
       <div className="absolute inset-0 overflow-hidden">
       {/* ================= VIDEO ================= */}
+      {videoUrl ? (
       <video
-        key={video.id}
+        key={`${video.id}-${videoUrl}`}
         ref={videoRef}
-        src={videoUrl}
-        poster={posterUrl}
+        data-afw-feed-video="1"
+        src={videoSrc}
+        poster={posterUrl || VIDEO_PLACEHOLDER_IMG}
         className="absolute top-0 left-0 w-full h-full object-cover"
-        preload={isActive ? 'auto' : 'metadata'}
+        preload="metadata"
         loop
         playsInline
-        muted={isMuted}
+        muted={shouldRestoreSound ? isMuted : true}
         onClick={handlePlayPause}
         onTimeUpdate={handleTimeUpdate}
         onProgress={handleProgress}
         onLoadedMetadata={handleLoadedMetadata}
         onCanPlay={handleCanPlay}
-        onCanPlayThrough={handleCanPlayThrough}
-        onLoadStart={() => {
-          setIsLoadingOrBuffering(true);
-          setIsReadyToPlay(false);
-          setLoadError(false);
-        }}
+        onLoadStart={() => { setIsReadyToPlay(false); setLoadError(false); }}
         onWaiting={handleWaiting}
         onPlaying={handlePlaying}
         onPause={handlePause}
         onError={(e) => {
-          setIsLoadingOrBuffering(false);
-          setIsReadyToPlay(false);
           const videoElement = e.target;
           const errorCode = videoElement.error?.code;
           const errorMessage = videoElement.error?.message;
-          setLoadError(true);
+          
+          if (!isActive) return;
+
+          if (hasFallbackSource) {
+            moveToNextSource();
+            return;
+          }
+          
+          setIsReadyToPlay(false);
+          setIsPlaying(false);
+          
+          // Log détaillé en développement
           if (process.env.NODE_ENV === 'development') {
             console.warn('Erreur de chargement vidéo:', {
               videoId: video.id,
               videoUrl: video.video_url,
               errorCode,
               errorMessage,
+              readyState: videoElement.readyState,
+              networkState: videoElement.networkState,
             });
           }
-          if (videoElement) {
-            videoElement.removeAttribute('src');
-            videoElement.load();
-          }
+          
+          // Afficher l'erreur après délai (pas de load() — évite écran noir)
+          setTimeout(() => {
+            if (videoElement && videoElement.error && isActive) {
+              setLoadError(true);
+            }
+          }, 2000);
         }}
-        onLoadedData={() => setLoadError(false)}
+        onLoadedData={() => { setLoadError(false); setIsReadyToPlay(true); }}
         onSeeked={handleMainVideoSeeked}
         style={{ 
           touchAction: 'pan-y',
@@ -713,6 +995,20 @@ function VideoCardContent({
                   video.filter === 'Lumineux' ? 'brightness(1.25)' : 'none'
         }}
       />
+      ) : (
+        // Si pas d'URL valide, afficher l'erreur directement
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-[50] p-4">
+          {(posterUrl || VIDEO_PLACEHOLDER_IMG) ? (
+            <img
+              src={posterUrl || VIDEO_PLACEHOLDER_IMG}
+              alt=""
+              className="max-w-full max-h-[50%] object-contain rounded-lg opacity-80"
+            />
+          ) : null}
+          <p className="text-white text-center mt-4 font-medium ios-text-render">Vidéo indisponible</p>
+          <p className="text-white/70 text-sm text-center mt-1 ios-text-render">URL de vidéo invalide</p>
+        </div>
+      )}
       {/* Vidéo cachée pour la prévisualisation au scrub */}
       {videoUrl && enablePreviewScrub && (
         <video
@@ -728,26 +1024,14 @@ function VideoCardContent({
       )}
       </div>
 
-      {/* ================= INDICATEUR CHARGEMENT / BUFFER — priorité AfriWonder (connexions lentes) ================= */}
-      {isActive && isLoadingOrBuffering && !loadError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center z-[55] pointer-events-none gap-2">
-          <div className="bg-black/60 p-2 rounded-full">
-            <Loader2 className="w-6 h-6 text-white animate-spin" aria-hidden />
-          </div>
-          {isSlowConnection && (
-            <p className="text-white/90 text-sm text-center px-4 ios-text-render">
-              Connexion lente — chargement pour une lecture fluide…
-            </p>
-          )}
-        </div>
-      )}
+      {/* Pas d'indicateur de buffer - lecture fluide comme TikTok */}
 
       {/* ================= ERREUR DE CHARGEMENT ================= */}
       {loadError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-[50] p-4">
-          {posterUrl ? (
+          {(posterUrl || VIDEO_PLACEHOLDER_IMG) ? (
             <img
-              src={posterUrl}
+              src={posterUrl || VIDEO_PLACEHOLDER_IMG}
               alt=""
               className="max-w-full max-h-[50%] object-contain rounded-lg opacity-80"
             />
@@ -829,7 +1113,7 @@ function VideoCardContent({
                 <div className="bg-black/95 rounded-lg overflow-hidden shadow-xl border border-white/20">
                   <div
                     className="w-[90px] h-40 relative bg-black"
-                    style={posterUrl ? { backgroundImage: `url(${posterUrl})`, backgroundSize: 'cover' } : undefined}
+                    style={(posterUrl || VIDEO_PLACEHOLDER_IMG) ? { backgroundImage: `url(${posterUrl || VIDEO_PLACEHOLDER_IMG})`, backgroundSize: 'cover' } : undefined}
                   >
                     <canvas
                       ref={previewCanvasRef}
@@ -1133,31 +1417,40 @@ function VideoCardContent({
           )}
         </div>
 
-        {/* Description avec hashtags intégrés (style TikTok) */}
-        {fullText && (
+        {/* Titre + description (séparés) avec hashtags cliquables */}
+        {(titleText || descriptionText) && (
           <div className="mb-2">
-            <p className="text-white text-sm leading-relaxed break-words">
-              {showFullDescription || !isDescriptionLong ? (
-                renderTextWithHashtags(fullText)
-              ) : (
-                <>
-                  {renderTextWithHashtags(displayText)}
+            {titleText && (
+              <p className="text-white font-semibold text-[17px] leading-snug break-words mb-1">
+                {renderTextWithHashtags(titleText)}
+              </p>
+            )}
+            {descriptionText && (
+              <>
+                <p className="text-white/95 text-sm leading-relaxed break-words">
+                  {showFullDescription || !isDescriptionLong ? (
+                    renderTextWithHashtags(descriptionText)
+                  ) : (
+                    <>
+                      {renderTextWithHashtags(displayText)}
+                      <button
+                        onClick={() => setShowFullDescription(true)}
+                        className="text-white/80 text-sm font-medium ml-1 hover:text-white transition-colors"
+                      >
+                        ...plus
+                      </button>
+                    </>
+                  )}
+                </p>
+                {isDescriptionLong && showFullDescription && (
                   <button
-                    onClick={() => setShowFullDescription(true)}
-                    className="text-white/80 text-sm font-medium ml-1 hover:text-white transition-colors"
+                    onClick={() => setShowFullDescription(false)}
+                    className="text-white/80 text-sm font-medium mt-1 hover:text-white transition-colors"
                   >
-                    ...plus
+                    Moins
                   </button>
-                </>
-              )}
-            </p>
-            {isDescriptionLong && showFullDescription && (
-              <button
-                onClick={() => setShowFullDescription(false)}
-                className="text-white/80 text-sm font-medium mt-1 hover:text-white transition-colors"
-              >
-                Moins
-              </button>
+                )}
+              </>
             )}
           </div>
         )}
@@ -1188,7 +1481,7 @@ function VideoCardContent({
         </div>
 
         {/* Hashtags - afficher quand présents et non déjà dans le texte */}
-        {hashtags.length > 0 && (!fullText || !fullText.match(/#\w+/g)) && (
+        {hashtags.length > 0 && (!combinedText || !combinedText.match(/#\w+/g)) && (
           <div className="flex flex-wrap gap-2 mb-2">
             {hashtags.slice(0, 3).map((tag, index) => (
               <button

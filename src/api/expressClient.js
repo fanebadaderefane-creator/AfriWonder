@@ -883,6 +883,36 @@ export const api = {
       const { data } = await axiosInstance.post('/admin/commissions/config/reset');
       return data.data;
     },
+    // AI Engine
+    async getAIEngineStats() {
+      const { data } = await axiosInstance.get('/admin/ai-engine/stats');
+      return data.data || data;
+    },
+    async getAIFeatures() {
+      const { data } = await axiosInstance.get('/admin/ai-engine/features');
+      return data.data || data;
+    },
+    async getAIModels() {
+      const { data } = await axiosInstance.get('/admin/ai-engine/models');
+      return data.data || data;
+    },
+    // Business Intelligence
+    async getBIKPIs(period = 'month') {
+      const { data } = await axiosInstance.get(`/admin/business-intelligence/kpis?period=${period}`);
+      return data.data || data;
+    },
+    async getUserGrowth(months = 12) {
+      const { data } = await axiosInstance.get(`/admin/business-intelligence/user-growth?months=${months}`);
+      return data.data || data;
+    },
+    async getRevenueByService(period = 'month') {
+      const { data } = await axiosInstance.get(`/admin/business-intelligence/revenue-by-service?period=${period}`);
+      return data.data || data;
+    },
+    async getBIInsights(limit = 10) {
+      const { data } = await axiosInstance.get(`/admin/business-intelligence/insights?limit=${limit}`);
+      return data.data || data;
+    },
   },
   microcredit: {
     async list(params = {}) {
@@ -923,6 +953,7 @@ export const api = {
         description: body.description,
         goalAmount: body.goalAmount ?? body.goal_amount,
         endDate: body.endDate ?? body.end_date,
+        status: body.status ?? 'pending',
       });
       return data.data;
     },
@@ -1120,6 +1151,19 @@ export const api = {
     },
     async book(eventId, payload) {
       const { data } = await axiosInstance.post(`/events/${eventId}/book`, payload);
+      return data.data;
+    },
+    // Admin methods
+    async getPending() {
+      const { data } = await axiosInstance.get('/events/admin/pending');
+      return data.data || [];
+    },
+    async approve(eventId) {
+      const { data } = await axiosInstance.post(`/events/${eventId}/approve`);
+      return data.data;
+    },
+    async reject(eventId, reason) {
+      const { data } = await axiosInstance.post(`/events/${eventId}/reject`, { reason });
       return data.data;
     },
     async confirmPayment(paymentId, body = {}) {
@@ -1346,16 +1390,24 @@ export const api = {
     },
   },
   upload: {
-    async image(file) {
+    async image(input) {
+      const file = input?.file ?? input;
+      if (!(file instanceof File || file instanceof Blob)) {
+        throw new Error('Fichier image invalide');
+      }
       const formData = new FormData();
       formData.append('file', file);
       const { data } = await axiosInstance.post('/upload/image', formData, uploadConfig());
       const result = data?.data ?? data;
       return result?.file_url != null ? result : { file_url: result?.file_url ?? result?.url };
     },
-    async video(file, onProgress) {
+    async video(input, onProgress) {
+      const file = input?.file ?? input;
+      if (!(file instanceof File || file instanceof Blob)) {
+        throw new Error('Fichier vidéo invalide');
+      }
       const formData = new FormData();
-      const blob = file instanceof File ? file : new File([file], file.name || 'video.mp4', { type: file.type || 'video/mp4' });
+      const blob = file instanceof File ? file : new File([file], 'video.mp4', { type: file.type || 'video/mp4' });
       formData.append('file', blob);
       const { data } = await axiosInstance.post('/upload/video', formData, {
         ...uploadConfig(),
@@ -2279,6 +2331,34 @@ export const api = {
       },
     },
   },
+  marketplaceSubscription: {
+    async getPlans() {
+      const { data } = await axiosInstance.get('/marketplace-subscription/plans');
+      return data.data;
+    },
+    async getMe() {
+      const { data } = await axiosInstance.get('/marketplace-subscription/me');
+      return data.data;
+    },
+    async subscribe(planType, options = {}) {
+      const { payment_method = 'orange_money', orange_money_phone } = options;
+      const payload = { plan_type: planType };
+      if (planType !== 'free') {
+        payload.payment_method = payment_method;
+        payload.orange_money_phone = orange_money_phone;
+      }
+      const { data } = await axiosInstance.post('/marketplace-subscription/subscribe', payload);
+      return data.data;
+    },
+    async adminList(params = {}) {
+      const { data } = await axiosInstance.get('/marketplace-subscription/admin/subscriptions', { params });
+      return data.data;
+    },
+    async adminUpdateStatus(id, status) {
+      const { data } = await axiosInstance.patch(`/marketplace-subscription/admin/subscriptions/${id}/status`, { status });
+      return data.data;
+    },
+  },
   // Services Locaux - Module complet
   services: {
     async list(params = {}) {
@@ -2293,6 +2373,22 @@ export const api = {
       const { data } = await axiosInstance.post('/services', serviceData);
       return data.data;
     },
+    async contact(id) {
+      const { data } = await axiosInstance.post(`/services/${id}/contact`);
+      return data.data;
+    },
+    async getPending(params = {}) {
+      const { data } = await axiosInstance.get('/services/admin/pending', { params });
+      return data.data;
+    },
+    async approve(id) {
+      const { data } = await axiosInstance.post(`/services/${id}/approve`);
+      return data.data;
+    },
+    async reject(id) {
+      const { data } = await axiosInstance.post(`/services/${id}/reject`);
+      return data.data;
+    },
     async update(id, serviceData) {
       const { data } = await axiosInstance.put(`/services/${id}`, serviceData);
       return data.data;
@@ -2305,6 +2401,18 @@ export const api = {
   providers: {
     async list(params = {}) {
       const { data } = await axiosInstance.get('/providers', { params });
+      return data.data;
+    },
+    async getPending() {
+      const { data } = await axiosInstance.get('/providers/admin/pending');
+      return data.data ?? [];
+    },
+    async approve(id) {
+      const { data } = await axiosInstance.post(`/providers/${id}/verify`);
+      return data.data;
+    },
+    async reject(id, reason) {
+      const { data } = await axiosInstance.post(`/providers/${id}/reject`, { reason });
       return data.data;
     },
     async getById(id) {
@@ -2506,6 +2614,28 @@ export const api = {
     async getInstructorDashboard() {
       const { data } = await axiosInstance.get('/courses/instructor/dashboard');
       return data.data;
+    },
+    providers: {
+      async getMe() {
+        const { data } = await axiosInstance.get('/courses/provider/me');
+        return data.data;
+      },
+      async register(payload) {
+        const { data } = await axiosInstance.post('/courses/provider/register', payload);
+        return data.data;
+      },
+      async getPending() {
+        const { data } = await axiosInstance.get('/courses/provider/admin/pending');
+        return data.data;
+      },
+      async approve(id) {
+        const { data } = await axiosInstance.post(`/courses/provider/admin/${id}/approve`);
+        return data.data;
+      },
+      async reject(id, reason) {
+        const { data } = await axiosInstance.post(`/courses/provider/admin/${id}/reject`, { reason });
+        return data.data;
+      },
     },
     async getLessonStream(enrollmentId, lessonId, quality) {
       const params = quality ? { quality } : {};
@@ -2759,6 +2889,22 @@ export const api = {
         const { data } = await axiosInstance.get(`/restaurants/${id}`);
         return data.data;
       },
+      async getPending() {
+        const { data } = await axiosInstance.get('/restaurants/admin/pending');
+        return data.data ?? [];
+      },
+      async approve(id) {
+        const { data } = await axiosInstance.post(`/restaurants/${id}/approve`);
+        return data.data;
+      },
+      async reject(id, reason) {
+        const { data } = await axiosInstance.post(`/restaurants/${id}/reject`, { reason });
+        return data.data;
+      },
+      async create(payload) {
+        const { data } = await axiosInstance.post('/restaurants', payload);
+        return data.data;
+      },
     },
     menuItems: {
       async listByRestaurant(restaurantId, params = {}) {
@@ -2831,6 +2977,22 @@ export const api = {
         const { data } = await axiosInstance.get(`/doctors/${id}`);
         return data.data;
       },
+      async getPending() {
+        const { data } = await axiosInstance.get('/doctors/admin/pending');
+        return data.data ?? [];
+      },
+      async approve(id) {
+        const { data } = await axiosInstance.post(`/doctors/${id}/approve`);
+        return data.data;
+      },
+      async reject(id, reason) {
+        const { data } = await axiosInstance.post(`/doctors/${id}/reject`, { reason });
+        return data.data;
+      },
+      async create(payload) {
+        const { data } = await axiosInstance.post('/doctors', payload);
+        return data.data;
+      },
     },
     appointments: {
       async list(params = {}) {
@@ -2861,6 +3023,18 @@ export const api = {
     async list(params = {}) {
       const { data } = await axiosInstance.get('/properties', { params });
       return data.data ?? { properties: [], pagination: {} };
+    },
+    async getPending() {
+      const { data } = await axiosInstance.get('/properties/admin/pending');
+      return data.data ?? [];
+    },
+    async approve(id) {
+      const { data } = await axiosInstance.post(`/properties/${id}/approve`);
+      return data.data;
+    },
+    async reject(id, reason) {
+      const { data } = await axiosInstance.post(`/properties/${id}/reject`, { reason });
+      return data.data;
     },
     async getById(id) {
       const { data } = await axiosInstance.get(`/properties/${id}`);
@@ -2900,8 +3074,35 @@ export const api = {
         return data.data;
       },
     },
+    quoteRequests: {
+      async create(payload) {
+        const { data } = await axiosInstance.post('/insurance/quote-requests', payload);
+        return data.data;
+      },
+    },
+    providers: {
+      async list() {
+        const { data } = await axiosInstance.get('/insurance/providers');
+        return data.data ?? [];
+      },
+      async getPending() {
+        const { data } = await axiosInstance.get('/insurance/providers/admin/pending');
+        return data.data ?? [];
+      },
+      async register(payload) {
+        const { data } = await axiosInstance.post('/insurance/providers', payload);
+        return data.data;
+      },
+      async approve(id) {
+        const { data } = await axiosInstance.post(`/insurance/providers/${id}/approve`);
+        return data.data;
+      },
+      async reject(id, reason) {
+        const { data } = await axiosInstance.post(`/insurance/providers/${id}/reject`, { reason });
+        return data.data;
+      },
+    },
   },
 };
 
 export default api;
-

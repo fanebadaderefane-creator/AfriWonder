@@ -9,6 +9,7 @@ import { ArrowLeft, Star, Upload, CheckCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
+import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 import { toast } from 'sonner';
 
 export default function OrderReview() {
@@ -299,7 +300,7 @@ export default function OrderReview() {
             <label className="cursor-pointer">
               <input
                 type="file"
-                accept="image/*"
+                accept={FILE_ACCEPT_IMAGES}
                 multiple
                 onChange={handleImageUpload}
                 className="hidden"

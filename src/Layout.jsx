@@ -9,7 +9,6 @@ import OfflineIndicator from "@/components/common/OfflineIndicator";
 import PWAInstallBanner from "@/components/pwa/PWAInstallBanner";
 import PWAUpdateToast from "@/components/pwa/PWAUpdateToast";
 import MenuPlus from "@/components/navigation/MenuPlus";
-import GlobalMenuButton from "@/components/navigation/GlobalMenuButton";
 import PageTransition from "@/components/common/PageTransition";
 
 export default function Layout({ children, currentPageName }) {
@@ -20,15 +19,41 @@ export default function Layout({ children, currentPageName }) {
   );
 }
 
+import { useOrientationLock } from '@/hooks/useOrientationLock';
+
 function LayoutContent({ children, currentPageName }) {
-  // Verrouillage orientation portrait sur mobile (PWA Android/iOS)
+  // Verrouillage orientation portrait sur mobile (Android/iOS) - fonctionne aussi dans le navigateur et PWA standalone
+  useOrientationLock(true);
+  
+  // Vérification supplémentaire en mode PWA standalone au chargement
   useEffect(() => {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches
       || window.navigator.standalone === true
       || document.referrer.includes('android-app://');
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    if (isMobile && isStandalone && screen.orientation?.lock) {
-      screen.orientation.lock('portrait').catch(() => {});
+    
+    if (isStandalone) {
+      // Forcer le verrouillage immédiatement en PWA standalone
+      const forceLock = async () => {
+        if (screen.orientation?.lock) {
+          try {
+            await screen.orientation.lock('portrait');
+          } catch (err) {
+            // Réessayer après un court délai
+            setTimeout(async () => {
+              try {
+                await screen.orientation.lock('portrait');
+              } catch (e) {
+                // Ignorer si ça échoue encore
+              }
+            }, 500);
+          }
+        }
+      };
+      
+      // Essayer immédiatement et après un court délai
+      forceLock();
+      setTimeout(forceLock, 100);
+      setTimeout(forceLock, 500);
     }
   }, []);
 
@@ -235,6 +260,22 @@ function LayoutContent({ children, currentPageName }) {
             scroll-behavior: auto;
           }
         }
+
+        /* Force portrait orientation on mobile - prevent rotation */
+        @media screen and (max-width: 768px) {
+          /* Empêcher le zoom et la rotation sur mobile */
+          html {
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+          }
+          
+          /* S'assurer que le body reste en portrait */
+          body {
+            min-height: 100dvh;
+            max-width: 100vw;
+            overflow-x: hidden;
+          }
+        }
       `}</style>
 
       <TranslationProvider>
@@ -261,16 +302,13 @@ function LayoutContent({ children, currentPageName }) {
         }}
       />
 
-      {/* Menu global accessible depuis toutes les pages */}
-      {user && (
-        <>
-          <GlobalMenuButton />
-          <MenuPlus
-            isOpen={isMenuOpen}
-            onClose={closeMenu}
-            user={user}
-          />
-        </>
+      {/* Menu latéral (MenuPlus) — accessible via d'autres entrées si besoin */}
+      {user && currentPageName !== 'CreateEvent' && (
+        <MenuPlus
+          isOpen={isMenuOpen}
+          onClose={closeMenu}
+          user={user}
+        />
       )}
     </div>
   );

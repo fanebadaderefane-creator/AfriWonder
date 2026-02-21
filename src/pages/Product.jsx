@@ -257,7 +257,7 @@ export default function Product() {
                   {(product.stock ?? 0) > 0 ? `${product.stock} en stock` : 'Rupture de stock'}
                 </Badge>
                 {(product.seller?.seller_profile?.is_verified || product.is_verified) && (
-                  <Badge className="bg-blue-100 text-blue-700">
+                  <Badge className="bg-orange-100 text-orange-700">
                     <BadgeCheck className="w-3 h-3 mr-1" />
                     Vérifié
                   </Badge>
@@ -415,7 +415,7 @@ export default function Product() {
         {/* Q/R publiques (CDC) */}
         <Card className="p-4">
           <h3 className="font-semibold mb-3 flex items-center gap-2">
-            <HelpCircle className="w-4 h-4 text-blue-500" />
+            <HelpCircle className="w-4 h-4 text-orange-500" />
             Questions & Réponses ({questions.length})
           </h3>
           <div className="space-y-3">

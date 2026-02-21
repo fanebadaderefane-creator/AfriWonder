@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Home, Compass, PlusSquare, MessageSquare, User, Radio, ShoppingCart } from 'lucide-react';
+import { Home, Compass, PlusSquare, MessageSquare, User, Radio } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { createPageUrl } from '@/utils';
@@ -21,24 +21,15 @@ export default function BottomNav() {
   });
   const unreadCount = unreadData?.count ?? 0;
 
-  const { data: cartData } = useQuery({
-    queryKey: ['cart-badge'],
-    queryFn: () => api.cart.get(),
-    enabled: typeof window !== 'undefined' && !!getItem('access_token'),
-  });
-  const cartCount = (cartData?.items || []).reduce((sum, i) => sum + (i.quantity || 1), 0);
-
   const navItems = [
 
     { id: 'home', icon: Home, label: t('home'), page: 'Home' },
 
     { id: 'discover', icon: Compass, label: t('discover'), page: 'Discover' },
 
-    { id: 'cart', icon: ShoppingCart, label: t('cart') || 'Panier', page: 'Cart', badge: cartCount },
-
     { id: 'create', icon: PlusSquare, label: '', page: 'Create', isCreate: true },
 
-    { id: 'live', icon: Radio, label: 'Live', page: 'Lives' },
+    { id: 'live', icon: Radio, label: 'Live', page: 'Live' },
 
     { id: 'inbox', icon: MessageSquare, label: t('inbox'), page: 'Inbox' },
 
@@ -140,12 +131,6 @@ export default function BottomNav() {
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </span>
                 )}
-                {item.id === 'cart' && item.badge > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-orange-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
-                    {item.badge > 99 ? '99+' : item.badge}
-                  </span>
-                )}
-
               </motion.div>
 
               <span className={cn(

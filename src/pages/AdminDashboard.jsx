@@ -14,6 +14,9 @@ import AdsCampaignsPanel from '@/components/admin/AdsCampaignsPanel';
 import VerificationsPanel from '@/components/admin/VerificationsPanel';
 import EarlyAccessPanel from '@/components/admin/EarlyAccessPanel';
 import MonetizationRequestsPanel from '@/components/admin/MonetizationRequestsPanel';
+import MaliConnectPanel from '@/components/admin/MaliConnectPanel';
+import AIEnginePanel from '@/components/admin/AIEnginePanel';
+import BusinessIntelligencePanel from '@/components/admin/BusinessIntelligencePanel';
 
 const SUPER_ADMIN_EMAIL = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com').toLowerCase();
 const ADMIN_ROLES = ['super_admin', 'admin', 'finance_admin', 'moderation_admin', 'support_admin', 'data_admin'];
@@ -53,6 +56,12 @@ function ActivePanel({ activeTab, user, onTabChange }) {
       return <AuditPanel />;
     case 'earlyaccess':
       return <EarlyAccessPanel />;
+    case 'maliconnect':
+      return <MaliConnectPanel />;
+    case 'ai-engine':
+      return <AIEnginePanel />;
+    case 'business-intelligence':
+      return <BusinessIntelligencePanel />;
     case 'settings':
       return <SettingsPanel userRole={user?.role} />;
     default:

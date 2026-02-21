@@ -1,632 +1,824 @@
-import React, { useState, useEffect } from 'react';
-import { api } from '@/api/expressClient';
-import { useQuery } from '@tanstack/react-query';
-import { Input } from "@/components/ui/input";
+import React, { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
+import { 
+  Search, ShoppingCart, Heart, Star, Filter, Grid3X3, 
+  List, MapPin, Shield, Truck, Package, FileDigit,
+  Plus, Minus, Trash2, CreditCard, Lock, Eye, EyeOff
+} from "lucide-react";
+import { mockStores, mockProducts, mockLiveStreams, mockGifts, mockCoinPackages, mockVIPLevels } from "@/lib/mock-data";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Search, SlidersHorizontal, Grid3X3, List, Package,
-  Shirt, Sparkles, Laptop, Home, UtensilsCrossed, Palette, Wrench, ArrowLeft, Mic, MapPin, ArrowUpDown
-} from 'lucide-react';
-import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { createPageUrl } from "@/utils";
-import ProductCard from '../components/marketplace/ProductCard';
-import AdvancedFilters from '../components/marketplace/AdvancedFilters';
-import CurrencySelector from '../components/marketplace/CurrencySelector';
-import BottomNav from '../components/navigation/BottomNav';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Slider } from "@/components/ui/slider";
-import { useTranslation } from '@/components/common/useTranslation';
+import { Card } from "@/components/ui/card";
+import { Modal } from "@/components/ui/Modal";
+import { Input } from "@/components/ui/input";
+import ServicesPage from "./Services";
 
-const marketplaceI18n = {
-  fr: {
-    categories: { all: 'Tout', mode: 'Mode', beaute: 'Beaute', electronique: 'Tech', maison: 'Maison', alimentation: 'Food', artisanat: 'Artisanat', services: 'Services' },
-    searchPlaceholder: 'Rechercher des produits...',
-    voiceNotSupported: 'Recherche vocale non supportee par votre navigateur',
-    voiceError: 'Echec de la recherche vocale. Verifiez le micro et les permissions.',
-    voiceFr: 'Recherche vocale en francais',
-    voiceBm: 'Recherche vocale en bambara',
-    voiceModeFr: 'Francais',
-    voiceModeBm: 'Bambara',
-    map: 'Carte',
-    sort: 'Trier',
-    filters: 'Filtres',
-    filterTitle: 'Filtres et tri',
-    priceFcfa: 'Prix (FCFA)',
-    sortBy: 'Trier par',
-    sortRecent: 'Plus recent',
-    sortPopular: 'Populaire',
-    sortPriceAsc: 'Prix croissant',
-    sortPriceDesc: 'Prix decroissant',
-    applyFilters: 'Appliquer les filtres',
-    productsCount: 'produit',
-    productsCountPlural: 'produits',
-    recommended: 'Recommandes pour vous',
-    trending: 'Produits tendance',
-    newest: 'Nouveautes',
-    emptyTitle: 'Aucun produit trouve',
-    emptySubtitle: 'Essayez de modifier vos filtres',
-    categoriesLabel: 'Catégories',
-    advancedFilters: 'Filtres avancés',
-    mySales: 'Mes ventes',
-    sellerPlans: 'Formules vendeurs',
-    sell: 'Vendre',
-    marketplaceFallback: 'Marketplace',
-  },
-  bm: {
-    categories: { all: 'Bee', mode: 'Mode', beaute: 'Nogoya', electronique: 'Tekinoloji', maison: 'So', alimentation: 'Dumuni', artisanat: 'Bolobara', services: 'Baraw' },
-    searchPlaceholder: 'Fenw ce...',
-    voiceNotSupported: 'Kan ni celi te se i navigateur la',
-    voiceError: 'Kan ni celi ma soro. Aw ka mikro ni permissions laje.',
-    voiceFr: 'Kan ni celi Faransikan na',
-    voiceBm: 'Kan ni celi Bamanankan na',
-    voiceModeFr: 'Faransikan',
-    voiceModeBm: 'Bamanankan',
-    map: 'Karta',
-    sort: 'Sege',
-    filters: 'Filtrew',
-    filterTitle: 'Filtrew ani sege',
-    priceFcfa: 'Songo (FCFA)',
-    sortBy: 'Sege sege ka ke',
-    sortRecent: 'Kura donnin',
-    sortPopular: 'Mogo caman b a fe',
-    sortPriceAsc: 'Songo ka jigin',
-    sortPriceDesc: 'Songo ka bon',
-    applyFilters: 'Filtrew damine',
-    productsCount: 'fen',
-    productsCountPlural: 'fenw',
-    recommended: 'A yira i ye',
-    trending: 'Fenw be taa ka bon',
-    newest: 'Kura fenw',
-    emptyTitle: 'Fen si ma soro',
-    emptySubtitle: 'I ka filtrew bo ka sege sege',
-    categoriesLabel: 'Sɛgɛsɛgɛw',
-    advancedFilters: 'Filtrew caman',
-    mySales: 'Ne feereliw',
-    sellerPlans: 'Feerelaw planw',
-    sell: 'Feere',
-    marketplaceFallback: 'Soro',
-  },
-};
+const CATEGORIES = [
+  { id: "all", name: "Tout", icon: Grid3X3 },
+  { id: "smartphones", name: "Smartphones", icon: Package },
+  { id: "laptops", name: "Laptops", icon: Package },
+  { id: "accessories", name: "Accessoires", icon: Package },
+  { id: "tissus", name: "Tissus", icon: Package },
+  { id: "bijoux", name: "Bijoux", icon: Package },
+  { id: "vetements", name: "Vetements", icon: Package },
+  { id: "ebooks", name: "Ebooks", icon: FileDigit },
+  { id: "formations", name: "Formations", icon: FileDigit },
+];
 
-export default function Marketplace() {
-  const { language } = useTranslation();
-  const labels = marketplaceI18n[language] || marketplaceI18n.fr;
-  const categories = [
-    { id: 'all', label: labels.categories.all, icon: Grid3X3 },
-    { id: 'mode', label: labels.categories.mode, icon: Shirt },
-    { id: 'beaute', label: labels.categories.beaute, icon: Sparkles },
-    { id: 'electronique', label: labels.categories.electronique, icon: Laptop },
-    { id: 'maison', label: labels.categories.maison, icon: Home },
-    { id: 'alimentation', label: labels.categories.alimentation, icon: UtensilsCrossed },
-    { id: 'artisanat', label: labels.categories.artisanat, icon: Palette },
-    { id: 'services', label: labels.categories.services, icon: Wrench },
-  ];
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [viewMode, setViewMode] = useState('grid');
-  const [priceRange, setPriceRange] = useState([0, 500000]);
-  const [showFilters, setShowFilters] = useState(false);
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [searchSuggestions, setSearchSuggestions] = useState([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [sortBy, setSortBy] = useState('relevance');
-  const [advancedFilters, setAdvancedFilters] = useState({});
-  const [isListening, setIsListening] = useState(false);
-  const [voiceLocale, setVoiceLocale] = useState(language === 'bm' ? 'bm-ML' : 'fr-FR');
+const PAYMENT_METHODS = [
+  { id: "orange_money", name: "Orange Money", color: "bg-orange-500", icon: "🟠" },
+  { id: "mtn_money", name: "MTN Mobile", color: "bg-yellow-500", icon: "🟡" },
+  { id: "wave", name: "Wave", color: "bg-blue-500", icon: "🔵" },
+  { id: "moov_money", name: "Moov Money", color: "bg-green-500", icon: "🟢" },
+];
 
+export default function MarketplacePage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState(
+    tabParam === "marketplace" ? "marketplace" : "services"
+  );
+
+  // `tab=live` est retiré: on nettoie l'URL et on revient sur le marketplace standard.
   useEffect(() => {
-    setVoiceLocale(language === 'bm' ? 'bm-ML' : 'fr-FR');
-  }, [language]);
-
-  const startVoiceSearch = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert(labels.voiceNotSupported);
-      return;
+    if (tabParam === "live") {
+      setSearchParams({}, { replace: true });
+      setActiveTab("services");
+    } else if (tabParam === "marketplace") {
+      setActiveTab("marketplace");
+    } else {
+      setActiveTab("services");
     }
-    const tryRecognition = (lang, fallbackLang = null) => {
-      const recognition = new SpeechRecognition();
-      recognition.lang = lang;
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.onstart = () => setIsListening(true);
-      recognition.onend = () => setIsListening(false);
-      recognition.onresult = (e) => {
-        const transcript = e.results[0][0].transcript;
-        setSearchQuery(transcript);
-      };
-      recognition.onerror = (e) => {
-        setIsListening(false);
-        if (fallbackLang && e?.error === 'language-not-supported') {
-          tryRecognition(fallbackLang, null);
-          return;
-        }
-        if (e?.error !== 'aborted') {
-          alert(labels.voiceError);
-        }
-      };
-      recognition.start();
-    };
+  }, [tabParam, setSearchParams]);
+  const [activeSection, setActiveSection] = useState("products");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState("grid");
+  const [cart, setCart] = useState([]);
+  const [showCart, setShowCart] = useState(false);
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [quantity, setQuantity] = useState(1);
+  const [selectedPayment, setSelectedPayment] = useState("orange_money");
+  const [shippingAddress, setShippingAddress] = useState("");
+  const [orderPlaced, setOrderPlaced] = useState(false);
+  const [showCoins, setShowCoins] = useState(false);
+  const [userCoins, setUserCoins] = useState(2500);
+  const [userVIPLevel, setUserVIPLevel] = useState(2);
+  const [showGiftModal, setShowGiftModal] = useState(false);
+  const [selectedLive, setSelectedLive] = useState(null);
 
-    if (voiceLocale === 'bm-ML') {
-      tryRecognition('bm-ML', 'fr-FR');
-      return;
+  // Filter products
+  const filteredProducts = mockProducts.filter(product => {
+    const matchesCategory = selectedCategory === "all" || 
+      product.category.toLowerCase().includes(selectedCategory.toLowerCase()) ||
+      product.subcategory.toLowerCase().includes(selectedCategory.toLowerCase());
+    const matchesSearch = product.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      product.description.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch && product.status === "active";
+  });
+
+  // Get store for product
+  const getStore = (storeId) => mockStores.find(s => s.id === storeId);
+
+  // Add to cart
+  const addToCart = (product) => {
+    const existing = cart.find(item => item.productId === product.id);
+    if (existing) {
+      setCart(cart.map(item => 
+        item.productId === product.id 
+          ? { ...item, quantity: item.quantity + quantity }
+          : item
+      ));
+    } else {
+      setCart([...cart, {
+        id: `cart_${Date.now()}`,
+        productId: product.id,
+        product,
+        quantity
+      }]);
     }
-    tryRecognition('fr-FR', null);
+    setSelectedProduct(null);
+    setQuantity(1);
   };
 
-  const { data: remoteSuggestions = [] } = useQuery({
-    queryKey: ['marketplace-suggestions', searchQuery],
-    queryFn: () => api.products.getSuggestions(searchQuery, 8),
-    enabled: searchQuery.trim().length > 1,
-  });
-
-  useEffect(() => {
-    if (searchQuery.trim().length > 1) {
-      setSearchSuggestions(remoteSuggestions || []);
-      setShowSuggestions(true);
-      return;
-    }
-    setSearchSuggestions([]);
-    setShowSuggestions(false);
-  }, [searchQuery, remoteSuggestions]);
-
-  const { data: highlights } = useQuery({
-    queryKey: ['marketplace-highlights'],
-    queryFn: () => api.products.getHighlights({ trendingLimit: 8, newLimit: 8 }),
-  });
-  const { data: recommendedProducts = [] } = useQuery({
-    queryKey: ['marketplace-recommendations'],
-    queryFn: () => api.products.getRecommendations(8),
-  });
-  const trendingProducts = highlights?.trending || [];
-  const newestProducts = highlights?.newest || [];
-
-  const sortToParams = () => {
-    if (sortBy === 'price_low' || sortBy === 'price_asc') return { sort: 'price', order: 'asc' };
-    if (sortBy === 'price_high' || sortBy === 'price_desc') return { sort: 'price', order: 'desc' };
-    if (sortBy === 'recent' || sortBy === 'newest') return { sort: 'created_at', order: 'desc' };
-    if (sortBy === 'popular') return { sort: 'sales', order: 'desc' };
-    if (sortBy === 'rating') return { sort: 'popularity', order: 'desc' };
-    return { sort: 'created_at', order: 'desc' };
+  // Remove from cart
+  const removeFromCart = (productId) => {
+    setCart(cart.filter(item => item.productId !== productId));
   };
 
-  const { data: productsData, isLoading } = useQuery({
-    queryKey: ['marketplace-products', selectedCategory, sortBy, searchQuery],
-    queryFn: async () => {
-      try {
-        const { sort, order } = sortToParams();
-        const params = {
-          page: 1,
-          limit: 50,
-          sort,
-          order,
-          ...(selectedCategory !== 'all' && { category: selectedCategory }),
-          ...(searchQuery?.trim() && { search: searchQuery.trim() }),
-        };
-        const result = await api.products.list(params);
-        return result;
-      } catch (e) {
-        console.error('Error loading products:', e);
-        return { products: [], pagination: {} };
+  // Update quantity
+  const updateQuantity = (productId, delta) => {
+    setCart(cart.map(item => {
+      if (item.productId === productId) {
+        const newQty = Math.max(1, item.quantity + delta);
+        return { ...item, quantity: newQty };
       }
+      return item;
+    }));
+  };
+
+  // Cart totals
+  const cartTotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+  const platformFee = Math.round(cartTotal * 0.05); // 5% escrow fee
+  const escrowAmount = cartTotal;
+
+  // Place order
+  const placeOrder = () => {
+    setOrderPlaced(true);
+    setShowCheckout(false);
+    setCart([]);
+    setTimeout(() => {
+      setOrderPlaced(false);
+      setShowCart(false);
+    }, 3000);
+  };
+
+  // Send gift
+  const sendGift = (gift) => {
+    if (userCoins >= gift.valueCoins) {
+      setUserCoins(userCoins - gift.valueCoins);
+      // Update VIP level based on coins spent
+      const newLevel = mockVIPLevels.findIndex(vip => vip.minCoins > userCoins - gift.valueCoins);
+      if (newLevel > 0) setUserVIPLevel(newLevel - 1);
     }
-  });
-  const products = productsData?.products ?? (Array.isArray(productsData) ? productsData : []);
+  };
 
-  // Enhanced filtering with advanced filters
-  let filteredProducts = (products || []).filter(product => {
-    if (!product || !product.id) return false;
-    const matchesSearch = !searchQuery ||
-      product.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.category?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.brand?.toLowerCase().includes(searchQuery.toLowerCase());
+  // Get VIP badge color
+  const getVIPColor = (level) => mockVIPLevels[level]?.badgeColor || "#9CA3AF";
 
-    const matchesPrice = product.price >= priceRange[0] && product.price <= priceRange[1];
-
-    const matchesCategories = !advancedFilters.categories?.length ||
-      advancedFilters.categories.includes(product.category);
-
-    const matchesRating = !advancedFilters.minRating ||
-      (product.average_rating || 0) >= advancedFilters.minRating;
-
-    const matchesCondition = !advancedFilters.conditions?.length ||
-      advancedFilters.conditions.includes(product.condition);
-
-    const matchesDelivery = !advancedFilters.deliveryOptions?.length ||
-      product.delivery_options?.some(opt => advancedFilters.deliveryOptions.includes(opt));
-
-    const matchesBrand = !advancedFilters.brands?.length ||
-      advancedFilters.brands.includes(product.brand);
-
-    const matchesVerified = !advancedFilters.verifiedOnly || product.is_verified;
-
-    const productRegion = product.seller?.seller_profile?.city || product.location || product.region || '';
-    const matchesRegion = !advancedFilters.regions?.length ||
-      advancedFilters.regions.some(r => productRegion?.toLowerCase().includes(r.toLowerCase()));
-
-    return matchesSearch && matchesPrice && matchesCategories && matchesRating &&
-      matchesCondition && matchesDelivery && matchesBrand && matchesVerified && matchesRegion;
-  });
-
-  // Sort products (recent, price_low, price_high = boutons Filtres)
-  filteredProducts = [...filteredProducts].sort((a, b) => {
-    if (sortBy === 'price_low' || sortBy === 'price_asc') return (a.price || 0) - (b.price || 0);
-    if (sortBy === 'price_high' || sortBy === 'price_desc') return (b.price || 0) - (a.price || 0);
-    if (sortBy === 'recent' || sortBy === 'newest') return new Date(b.created_at || b.created_date || 0) - new Date(a.created_at || a.created_date || 0);
-    if (sortBy === 'popular') return (b.sold_count || 0) - (a.sold_count || 0);
-    if (sortBy === 'rating') return (b.average_rating || 0) - (a.average_rating || 0);
-    return 0;
-  });
+  if (activeTab === "services") {
+    return <ServicesPage />;
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 overflow-x-hidden">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="sticky top-0 bg-white border-b border-gray-100 z-40">
-        <div className="px-4 py-3 space-y-3">
-          {/* Ligne 1 : Navigation */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => window.history.back()}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
-            >
-              <ArrowLeft className="w-5 h-5 text-gray-700" />
-            </button>
-            <CurrencySelector />
-          </div>
-
-          {/* Ligne 2 : Recherche + options vocales groupées */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 z-10" />
-            <Input
-              placeholder={labels.searchPlaceholder}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => searchQuery.length > 1 && setShowSuggestions(true)}
-              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-              className="pl-10 pr-24 py-5 rounded-xl border-gray-200 bg-gray-50"
-            />
-            <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
-              <button
-                type="button"
-                onClick={() => setVoiceLocale('fr-FR')}
-                className={`text-[10px] px-2 py-1.5 rounded-md ${voiceLocale === 'fr-FR' ? 'bg-orange-500 text-white' : 'text-gray-600'}`}
-                title={labels.voiceFr}
-              >
-                FR
-              </button>
-              <button
-                type="button"
-                onClick={() => setVoiceLocale('bm-ML')}
-                className={`text-[10px] px-2 py-1.5 rounded-md ${voiceLocale === 'bm-ML' ? 'bg-orange-500 text-white' : 'text-gray-600'}`}
-                title={labels.voiceBm}
-              >
-                BM
-              </button>
-              <div className="w-px h-4 bg-gray-300 mx-0.5" />
-              <button
-                type="button"
-                onClick={startVoiceSearch}
-                disabled={isListening}
-                className={`p-1.5 rounded-md ${isListening ? 'bg-orange-200 animate-pulse' : 'hover:bg-gray-200'} transition-colors`}
-                title={`Recherche vocale (${voiceLocale === 'bm-ML' ? labels.voiceModeBm : labels.voiceModeFr})`}
-              >
-                <Mic className={`w-4 h-4 ${isListening ? 'text-orange-600' : 'text-gray-500'}`} />
-              </button>
+      <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <h1 className="text-xl font-bold">🛒 Marketplace</h1>
+              <div className="flex gap-1 bg-white/10 rounded-lg p-1">
+                <button
+                  onClick={() => setActiveTab("services")}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                    activeTab === "services" ? "bg-white text-orange-600" : "text-white/80 hover:text-white"
+                  }`}
+                >
+                  Services
+                </button>
+                <button
+                  onClick={() => setActiveTab("marketplace")}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                    activeTab === "marketplace" ? "bg-white text-orange-600" : "text-white/80 hover:text-white"
+                  }`}
+                >
+                  Boutique
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex-1 max-w-md">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Rechercher produits, boutiques..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 rounded-lg bg-white/20 border border-white/20 text-white placeholder-white/60 text-sm focus:outline-none focus:bg-white/30"
+                />
+              </div>
             </div>
 
-            {/* Search Suggestions */}
-            {showSuggestions && searchSuggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-lg border border-gray-100 z-50 max-h-64 overflow-y-auto">
-                {searchSuggestions.map((suggestion, index) => (
-                  <button
-                    key={index}
-                    onClick={() => {
-                      if (suggestion?.id) {
-                        window.location.href = `${createPageUrl('Product')}?id=${suggestion.id}`;
-                      }
-                    }}
-                    className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Search className="w-4 h-4 text-gray-400" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-800">{suggestion.text}</p>
-                        <p className="text-xs text-gray-500">{suggestion.category}</p>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Ligne 3 : Actions (Carte, Trier, Filtres) - bien ordonnées */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => window.location.href = createPageUrl('MarketplaceMap')}
-              className="rounded-xl h-10 px-4 flex-1"
-            >
-              <MapPin className="w-4 h-4 mr-2 flex-shrink-0" />
-              <span className="text-sm">{labels.map}</span>
-            </Button>
-            <Sheet open={showFilters} onOpenChange={setShowFilters}>
-              <SheetTrigger asChild>
-                <Button variant="outline" className="rounded-xl h-10 px-4 flex-1">
-                  <ArrowUpDown className="w-4 h-4 mr-2 flex-shrink-0" />
-                  <span className="text-sm">{labels.sort}</span>
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="bottom" className="h-[55vh] rounded-t-3xl">
-                <SheetHeader>
-                  <SheetTitle>{labels.filterTitle}</SheetTitle>
-                </SheetHeader>
-                <div className="space-y-6 py-6">
-                  {/* Price Range */}
-                  <div>
-                    <h3 className="font-semibold mb-3">{labels.priceFcfa}</h3>
-                    <Slider
-                      value={priceRange}
-                      onValueChange={setPriceRange}
-                      min={0}
-                      max={500000}
-                      step={1000}
-                      className="mb-2"
-                    />
-                    <div className="flex justify-between text-sm text-gray-500">
-                      <span>{priceRange[0].toLocaleString()}</span>
-                      <span>{priceRange[1].toLocaleString()}</span>
-                    </div>
-                  </div>
-
-                  {/* Sort */}
-                  <div>
-                    <h3 className="font-semibold mb-3">{labels.sortBy}</h3>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        { id: 'recent', label: labels.sortRecent },
-                        { id: 'popular', label: labels.sortPopular },
-                        { id: 'price_low', label: labels.sortPriceAsc },
-                        { id: 'price_high', label: labels.sortPriceDesc },
-                      ].map((sort) => (
-                        <button
-                          key={sort.id}
-                          onClick={() => setSortBy(sort.id)}
-                          className={`p-3 rounded-xl text-sm font-medium transition-all ${
-                            sortBy === sort.id
-                              ? 'bg-orange-500 text-white'
-                              : 'bg-gray-100 text-gray-700'
-                          }`}
-                        >
-                          {sort.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setShowFilters(false);
-                      setTimeout(() => setShowAdvancedFilters(true), 300);
-                    }}
-                    className="w-full py-3 rounded-xl"
-                  >
-                    <SlidersHorizontal className="w-4 h-4 mr-2" />
-                    {labels.advancedFilters}
-                  </Button>
-
-                  <Button
-                    onClick={() => setShowFilters(false)}
-                    className="w-full py-6 rounded-xl bg-gradient-to-r from-orange-500 to-red-500"
-                  >
-                    {labels.applyFilters}
-                  </Button>
-                </div>
-              </SheetContent>
-            </Sheet>
-            <Button
-              variant="outline"
-              onClick={() => setShowAdvancedFilters(true)}
-              className="rounded-xl h-10 px-4 flex-1"
-            >
-              <SlidersHorizontal className="w-4 h-4 mr-2 flex-shrink-0" />
-              <span className="text-sm">{labels.filters}</span>
-            </Button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowCoins(true)}
+                className="flex items-center gap-1.5 bg-yellow-500/20 hover:bg-yellow-500/30 px-3 py-1.5 rounded-lg"
+              >
+                <span className="text-yellow-300">🪙</span>
+                <span className="text-sm font-medium">{userCoins.toLocaleString('fr-FR')}</span>
+              </button>
+              <button
+                onClick={() => setShowCart(true)}
+                className="relative p-2 hover:bg-white/10 rounded-lg"
+              >
+                <ShoppingCart className="w-5 h-5" />
+                {cart.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs flex items-center justify-center">
+                    {cart.length}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
+      </div>
 
-        {/* Catégories - une seule rangée cohérente */}
-        <div className="border-t border-gray-100 pt-3">
-          <p className="px-4 text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">{labels.categoriesLabel}</p>
-          <div className="overflow-x-auto px-4 pb-3 scrollbar-hide">
-            <div className="flex gap-2 min-w-max">
-            {categories.map((cat) => {
+      {activeTab === "marketplace" ? (
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          {/* Categories */}
+          <div className="flex gap-2 overflow-x-auto pb-4 mb-6">
+            {CATEGORIES.map(cat => {
               const Icon = cat.icon;
-              const isActive = selectedCategory === cat.id;
               return (
                 <button
                   key={cat.id}
                   onClick={() => setSelectedCategory(cat.id)}
-                  className={`flex items-center gap-2 px-5 py-2.5 rounded-full whitespace-nowrap text-sm font-medium transition-all flex-shrink-0 ${
-                    isActive
-                      ? 'bg-orange-500 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full whitespace-nowrap transition ${
+                    selectedCategory === cat.id
+                      ? "bg-orange-500 text-white"
+                      : "bg-white text-gray-600 hover:bg-orange-50"
                   }`}
                 >
-                  <Icon className="w-4 h-4 flex-shrink-0" />
-                  <span className="min-w-max">{cat.label}</span>
+                  <Icon className="w-4 h-4" />
+                  {cat.name}
                 </button>
               );
             })}
+          </div>
+
+          {/* Section Tabs */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex gap-4">
+              <button
+                onClick={() => setActiveSection("products")}
+                className={`text-sm font-medium pb-2 border-b-2 transition ${
+                  activeSection === "products"
+                    ? "border-orange-600 text-orange-600"
+                    : "border-transparent text-gray-500"
+                }`}
+              >
+                Produits ({filteredProducts.length})
+              </button>
+              <button
+                onClick={() => setActiveSection("stores")}
+                className={`text-sm font-medium pb-2 border-b-2 transition ${
+                  activeSection === "stores"
+                    ? "border-orange-600 text-orange-600"
+                    : "border-transparent text-gray-500"
+                }`}
+              >
+                Boutiques ({mockStores.length})
+              </button>
+            </div>
+            <div className="flex gap-1 bg-white rounded-lg p-1">
+              <button
+                onClick={() => setViewMode("grid")}
+                className={`p-2 rounded ${viewMode === "grid" ? "bg-orange-100 text-orange-600" : "text-gray-400"}`}
+              >
+                <Grid3X3 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setViewMode("list")}
+                className={`p-2 rounded ${viewMode === "list" ? "bg-orange-100 text-orange-600" : "text-gray-400"}`}
+              >
+                <List className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Products Grid */}
+          {activeSection === "products" && (
+            <div className={viewMode === "grid" 
+              ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
+              : "flex flex-col gap-4"
+            }>
+              {filteredProducts.map(product => {
+                const store = getStore(product.storeId);
+                const discount = product.originalPrice 
+                  ? Math.round((1 - product.price / product.originalPrice) * 100)
+                  : 0;
+
+                return (
+                  <div
+                    key={product.id}
+                    onClick={() => setSelectedProduct(product)}
+                    className={`bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer ${
+                      viewMode === "list" ? "flex" : ""
+                    }`}
+                  >
+                    <div className={`relative ${viewMode === "grid" ? "aspect-square" : "w-48 h-48 shrink-0"}`}>
+                      <img
+                        src={product.images[0]}
+                        alt={product.title}
+                        className="w-full h-full object-cover"
+                      />
+                      {discount > 0 && (
+                        <span className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">
+                          -{discount}%
+                        </span>
+                      )}
+                      {product.type === "digital" && (
+                        <span className="absolute top-2 right-2 bg-orange-500 text-white text-xs font-bold px-2 py-1 rounded">
+                          📱 Digital
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-3 flex-1">
+                      <h3 className="font-medium text-gray-900 line-clamp-2 mb-1">{product.title}</h3>
+                      <p className="text-xs text-gray-500 mb-2">{store?.name}</p>
+                      <div className="flex items-center gap-1 mb-2">
+                        <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                        <span className="text-xs text-gray-600">{product.rating}</span>
+                        <span className="text-xs text-gray-400">({product.reviewCount})</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-orange-600">{product.price.toLocaleString('fr-FR')} XOF</span>
+                          {product.originalPrice && (
+                            <span className="text-xs text-gray-400 line-through ml-2">
+                              {product.originalPrice.toLocaleString('fr-FR')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Stores Grid */}
+          {activeSection === "stores" && (
+            <div className="grid md:grid-cols-2 gap-4">
+              {mockStores.map(store => (
+                <div key={store.id} className="bg-white rounded-xl overflow-hidden shadow-sm">
+                  <div className="h-32 bg-gradient-to-r from-orange-500 to-orange-600 relative">
+                    <img
+                      src={store.coverImage}
+                      alt={store.name}
+                      className="w-full h-full object-cover opacity-30"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <img
+                        src={store.logo}
+                        alt={store.name}
+                        className="w-16 h-16 rounded-xl border-4 border-white shadow-lg"
+                      />
+                    </div>
+                    {store.verified && (
+                      <span className="absolute top-3 right-3 bg-orange-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1">
+                        <Shield className="w-3 h-3" />
+                        Verifié
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <h3 className="font-bold text-lg">{store.name}</h3>
+                      <div className="flex items-center gap-1">
+                        <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                        <span className="text-sm font-medium">{store.rating}</span>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-3 line-clamp-2">{store.description}</p>
+                    <div className="flex items-center gap-4 text-xs text-gray-500 mb-4">
+                      <span className="flex items-center gap-1">
+                        <Package className="w-3 h-3" />
+                        {store.productsCount} produits
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        {store.location}
+                      </span>
+                    </div>
+                    <Button variant="outline" className="w-full">
+                      Voir la boutique
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* LIVE STREAM SECTION */
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold">Live Shopping</h2>
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+              <span className="text-sm text-gray-600">{mockLiveStreams.filter(l => l.status === "live").length} lives en cours</span>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {mockLiveStreams.map(live => (
+              <div
+                key={live.id}
+                onClick={() => { setSelectedLive(live); setShowGiftModal(true); }}
+                className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer"
+              >
+                <div className="relative aspect-video">
+                  <img
+                    src={live.thumbnail}
+                    alt={live.title}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                  <div className="absolute top-3 left-3 flex items-center gap-2">
+                    <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded flex items-center gap-1">
+                      <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                      LIVE
+                    </span>
+                    {live.isBattle && (
+                      <span className="bg-orange-500 text-white text-xs font-bold px-2 py-1 rounded">
+                        ⚔️ BATTLE
+                      </span>
+                    )}
+                  </div>
+                  <div className="absolute bottom-3 left-3 right-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <img
+                        src={live.creatorAvatar}
+                        alt={live.creatorName}
+                        className="w-8 h-8 rounded-full border-2 border-white"
+                      />
+                      <span className="text-white font-medium text-sm">{live.creatorName}</span>
+                    </div>
+                    <p className="text-white text-sm line-clamp-1">{live.title}</p>
+                  </div>
+                  <div className="absolute top-3 right-3 flex items-center gap-2">
+                    <span className="bg-black/50 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                      👁️ {live.viewersCount.toLocaleString('fr-FR')}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-3">
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span className="flex items-center gap-1">
+                      ❤️ {live.likesCount.toLocaleString('fr-FR')}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      🎁 {live.giftsValue.toLocaleString('fr-FR')} XOF
+                    </span>
+                    <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded">
+                      {live.category}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Product Detail Modal */}
+      <Modal
+        isOpen={!!selectedProduct}
+        onClose={() => { setSelectedProduct(null); setQuantity(1); }}
+        title={selectedProduct?.title}
+        size="lg"
+      >
+        {selectedProduct && (
+          <div className="space-y-4">
+            <div className="flex gap-4">
+              <div className="w-1/2">
+                <img
+                  src={selectedProduct.images[0]}
+                  alt={selectedProduct.title}
+                  className="w-full aspect-square object-cover rounded-lg"
+                />
+              </div>
+              <div className="w-1/2 space-y-3">
+                <div className="flex items-center gap-2">
+                  <img
+                    src={getStore(selectedProduct.storeId)?.logo}
+                    alt=""
+                    className="w-8 h-8 rounded"
+                  />
+                  <span className="text-sm text-gray-600">{getStore(selectedProduct.storeId)?.name}</span>
+                  {getStore(selectedProduct.storeId)?.verified && (
+                    <Shield className="w-4 h-4 text-orange-500" />
+                  )}
+                </div>
+                
+                <div className="flex items-center gap-1">
+                  <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                  <span className="text-sm">{selectedProduct.rating}</span>
+                  <span className="text-xs text-gray-500">({selectedProduct.reviewCount} avis)</span>
+                </div>
+
+                <div className="text-2xl font-bold text-orange-600">
+                  {selectedProduct.price.toLocaleString('fr-FR')} XOF
+                  {selectedProduct.originalPrice && (
+                    <span className="text-sm text-gray-400 line-through ml-2">
+                      {selectedProduct.originalPrice.toLocaleString('fr-FR')}
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-sm text-gray-600">{selectedProduct.description}</p>
+
+                <div className="flex items-center gap-2 text-xs">
+                  <span className={`px-2 py-1 rounded ${selectedProduct.stock > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                    {selectedProduct.stock > 0 ? `En stock (${selectedProduct.stock})` : "Rupture de stock"}
+                  </span>
+                  <span className="px-2 py-1 rounded bg-orange-100 text-orange-700">
+                    {selectedProduct.type === "digital" ? "📱 Téléchargement" : "🚚 Livraison"}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <div className="flex items-center border rounded-lg">
+                    <button
+                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                      className="p-2 hover:bg-gray-100"
+                    >
+                      <Minus className="w-4 h-4" />
+                    </button>
+                    <span className="w-10 text-center font-medium">{quantity}</span>
+                    <button
+                      onClick={() => setQuantity(Math.min(selectedProduct.stock, quantity + 1))}
+                      className="p-2 hover:bg-gray-100"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <Button onClick={() => addToCart(selectedProduct)} className="flex-1">
+                    Ajouter au panier
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Cart Modal */}
+      <Modal
+        isOpen={showCart}
+        onClose={() => setShowCart(false)}
+        title="Panier"
+        size="lg"
+      >
+        <div className="space-y-4">
+          {cart.length === 0 ? (
+            <div className="text-center py-8">
+              <ShoppingCart className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500">Votre panier est vide</p>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-3 max-h-64 overflow-y-auto">
+                {cart.map(item => (
+                  <div key={item.id} className="flex gap-3 p-3 bg-gray-50 rounded-lg">
+                    <img
+                      src={item.product.images[0]}
+                      alt={item.product.title}
+                      className="w-16 h-16 object-cover rounded"
+                    />
+                    <div className="flex-1">
+                      <h4 className="font-medium text-sm line-clamp-1">{item.product.title}</h4>
+                      <p className="text-orange-600 font-bold">{item.product.price.toLocaleString('fr-FR')} XOF</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <button
+                          onClick={() => updateQuantity(item.productId, -1)}
+                          className="p-1 bg-white rounded hover:bg-gray-100"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="text-sm">{item.quantity}</span>
+                        <button
+                          onClick={() => updateQuantity(item.productId, 1)}
+                          className="p-1 bg-white rounded hover:bg-gray-100"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => removeFromCart(item.productId)}
+                          className="ml-auto text-red-500"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="border-t pt-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Sous-total</span>
+                  <span>{cartTotal.toLocaleString('fr-FR')} XOF</span>
+                </div>
+                <div className="flex justify-between text-sm text-gray-500">
+                  <span>Frais de plateforme (5%)</span>
+                  <span>{platformFee.toLocaleString('fr-FR')} XOF</span>
+                </div>
+                <div className="flex justify-between font-bold text-lg">
+                  <span>Total (Escrow)</span>
+                  <span className="text-orange-600">{escrowAmount.toLocaleString('fr-FR')} XOF</span>
+                </div>
+                <p className="text-xs text-gray-500 flex items-center gap-1">
+                  <Lock className="w-3 h-3" />
+                  Paiement securise par escrow
+                </p>
+              </div>
+
+              <Button onClick={() => { setShowCart(false); setShowCheckout(true); }} className="w-full">
+                Passer la commande
+              </Button>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      {/* Checkout Modal */}
+      <Modal
+        isOpen={showCheckout}
+        onClose={() => setShowCheckout(false)}
+        title="Paiement"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="bg-orange-50 p-4 rounded-lg">
+            <div className="flex justify-between font-bold mb-2">
+              <span>Total a payer</span>
+              <span className="text-orange-600">{escrowAmount.toLocaleString('fr-FR')} XOF</span>
+            </div>
+            <p className="text-xs text-gray-600">
+              <Lock className="w-3 h-3 inline mr-1" />
+              L'argent sera bloque en escrow jusqu'a confirmation de reception
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Mode de paiement</label>
+            <div className="grid grid-cols-2 gap-2">
+              {PAYMENT_METHODS.map(pm => (
+                <button
+                  key={pm.id}
+                  onClick={() => setSelectedPayment(pm.id)}
+                  className={`p-3 rounded-lg border-2 flex items-center gap-2 transition ${
+                    selectedPayment === pm.id
+                      ? "border-orange-500 bg-orange-50"
+                      : "border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  <span className="text-xl">{pm.icon}</span>
+                  <span className="text-sm font-medium">{pm.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Adresse de livraison</label>
+            <textarea
+              value={shippingAddress}
+              onChange={(e) => setShippingAddress(e.target.value)}
+              placeholder="Ville, quartier, rue..."
+              className="w-full p-3 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+              rows={3}
+            />
+          </div>
+
+          <div className="bg-yellow-50 p-3 rounded-lg text-xs text-yellow-800">
+            <strong>💡 Comment ca marche:</strong>
+            <ol className="list-decimal list-inside mt-1 space-y-1">
+              <li>Vous payez via Mobile Money</li>
+              <li>L'argent est bloque en escrow</li>
+              <li>Le vendeur expédie votre commande</li>
+              <li>Vous confirmez reception</li>
+              <li>Le vendeur recoit son paiement</li>
+            </ol>
+          </div>
+
+          <Button onClick={placeOrder} className="w-full">
+            Confirmer la commande
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Order Success */}
+      {orderPlaced && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 text-center max-w-sm mx-4">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">✅</span>
+            </div>
+            <h3 className="text-xl font-bold mb-2">Commande passee!</h3>
+            <p className="text-gray-600 text-sm mb-4">
+              Votre paiement est en attente de confirmation. Vous recevrez une notification quand le vendeur expediera.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Coins Modal */}
+      <Modal
+        isOpen={showCoins}
+        onClose={() => setShowCoins(false)}
+        title="Mes Coins"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="bg-gradient-to-r from-yellow-400 to-orange-500 rounded-xl p-6 text-white text-center">
+            <p className="text-sm opacity-80">Solde disponible</p>
+            <p className="text-4xl font-bold my-2">{userCoins.toLocaleString('fr-FR')}</p>
+            <p className="text-sm">🪙 Coins</p>
+          </div>
+
+          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+            <div>
+              <p className="font-medium">Niveau VIP</p>
+              <p className="text-xs text-gray-500">Reduction: {mockVIPLevels[userVIPLevel].commissionPercent}%</p>
+            </div>
+            <div 
+              className="px-3 py-1 rounded-full text-white font-bold"
+              style={{ backgroundColor: getVIPColor(userVIPLevel) }}
+            >
+              {mockVIPLevels[userVIPLevel].name}
+            </div>
+          </div>
+
+          <div>
+            <h4 className="font-medium mb-3">Acheter des coins</h4>
+            <div className="space-y-2">
+              {mockCoinPackages.map(pkg => (
+                <button
+                  key={pkg.id}
+                  className={`w-full p-3 rounded-lg border-2 flex items-center justify-between transition ${
+                    pkg.popular 
+                      ? "border-orange-500 bg-orange-50" 
+                      : "border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">🪙</span>
+                    <div className="text-left">
+                      <p className="font-medium">{pkg.amountCoins.toLocaleString('fr-FR')} coins</p>
+                      {pkg.bonusCoins > 0 && (
+                        <p className="text-xs text-green-600">+{pkg.bonusCoins} bonus!</p>
+                      )}
+                    </div>
+                  </div>
+                  <span className="font-bold text-orange-600">{pkg.priceCfa.toLocaleString('fr-FR')} XOF</span>
+                </button>
+              ))}
             </div>
           </div>
         </div>
-      </div>
+      </Modal>
 
-      {/* Results count et vue Grille/Liste */}
-      <div className="px-4 pr-16 sm:pr-4 py-3 flex items-center justify-between">
-        <p className="text-sm text-gray-500">
-          {filteredProducts.length} {filteredProducts.length > 1 ? labels.productsCountPlural : labels.productsCount}
-        </p>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setViewMode('grid')}
-            className={`p-2 rounded-lg ${viewMode === 'grid' ? 'bg-gray-200' : ''}`}
-          >
-            <Grid3X3 className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => setViewMode('list')}
-            className={`p-2 rounded-lg ${viewMode === 'list' ? 'bg-gray-200' : ''}`}
-          >
-            <List className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      {!searchQuery && (
-        <div className="px-4 pr-16 sm:pr-4 space-y-5 mb-4">
-          {recommendedProducts.length > 0 && (
-            <section>
-              <h3 className="text-sm font-semibold text-gray-800 mb-2">{labels.recommended}</h3>
-              <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-1">
-                {recommendedProducts.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => { window.location.href = `${createPageUrl('Product')}?id=${p.id}`; }}
-                    className="min-w-[180px] bg-white border border-gray-100 rounded-xl p-2 text-left"
-                  >
-                    <img
-                      src={(p.images && p.images[0]) || 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=400'}
-                      alt={p.name}
-                      className="w-full h-24 rounded-lg object-cover mb-2"
-                    />
-                    <p className="text-sm font-medium line-clamp-1">{p.name}</p>
-                    <p className="text-xs text-gray-500 line-clamp-1">{p.category || labels.marketplaceFallback}</p>
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
-          {trendingProducts.length > 0 && (
-            <section>
-              <h3 className="text-sm font-semibold text-gray-800 mb-2">{labels.trending}</h3>
-              <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-1">
-                {trendingProducts.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => { window.location.href = `${createPageUrl('Product')}?id=${p.id}`; }}
-                    className="min-w-[180px] bg-white border border-gray-100 rounded-xl p-2 text-left"
-                  >
-                    <img
-                      src={(p.images && p.images[0]) || 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=400'}
-                      alt={p.name}
-                      className="w-full h-24 rounded-lg object-cover mb-2"
-                    />
-                    <p className="text-sm font-medium line-clamp-1">{p.name}</p>
-                    <p className="text-xs text-gray-500 line-clamp-1">{p.category || labels.marketplaceFallback}</p>
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
-          {newestProducts.length > 0 && (
-            <section>
-              <h3 className="text-sm font-semibold text-gray-800 mb-2">{labels.newest}</h3>
-              <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-1">
-                {newestProducts.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => { window.location.href = `${createPageUrl('Product')}?id=${p.id}`; }}
-                    className="min-w-[180px] bg-white border border-gray-100 rounded-xl p-2 text-left"
-                  >
-                    <img
-                      src={(p.images && p.images[0]) || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400'}
-                      alt={p.name}
-                      className="w-full h-24 rounded-lg object-cover mb-2"
-                    />
-                    <p className="text-sm font-medium line-clamp-1">{p.name}</p>
-                    <p className="text-xs text-gray-500 line-clamp-1">{p.category || labels.marketplaceFallback}</p>
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
-      )}
-
-      {/* Products Grid - marge droite pour le FAB Vendre */}
-      <div className={`px-4 pr-16 sm:pr-4 ${viewMode === 'grid' ? 'grid grid-cols-2 gap-3' : 'space-y-3'}`}>
-        {filteredProducts.map((product, index) => (
-          <motion.div
-            key={product.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.03 }}
-          >
-            <ProductCard
-              product={product}
-              onPress={(p) => {
-                if (p?.id) {
-                  window.location.href = `${createPageUrl('Product')}?id=${p.id}`;
-                }
-              }}
+      {/* Gift Modal */}
+      <Modal
+        isOpen={showGiftModal}
+        onClose={() => { setShowGiftModal(false); setSelectedLive(null); }}
+        title={selectedLive ? `Envoyer un cadeau - ${selectedLive.creatorName}` : "Envoyer un cadeau"}
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+            <img
+              src={selectedLive?.creatorAvatar}
+              alt=""
+              className="w-12 h-12 rounded-full"
             />
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Empty State */}
-      {filteredProducts.length === 0 && !isLoading && (
-        <div className="text-center py-16 px-4">
-          <div className="w-20 h-20 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-4">
-            <Search className="w-10 h-10 text-gray-300" />
+            <div>
+              <p className="font-medium">{selectedLive?.creatorName}</p>
+              <p className="text-xs text-gray-500">{selectedLive?.title}</p>
+            </div>
           </div>
-          <h3 className="text-lg font-semibold text-gray-800 mb-2">{labels.emptyTitle}</h3>
-          <p className="text-gray-500">{labels.emptySubtitle}</p>
+
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <span>Votre solde:</span>
+            <span className="font-bold text-yellow-600">{userCoins.toLocaleString('fr-FR')} 🪙</span>
+          </div>
+
+          <div>
+            <h4 className="font-medium mb-3">Choisir un cadeau</h4>
+            <div className="grid grid-cols-4 gap-2">
+              {mockGifts.map(gift => (
+                <button
+                  key={gift.id}
+                  onClick={() => sendGift(gift)}
+                  disabled={userCoins < gift.valueCoins}
+                  className={`p-3 rounded-lg border-2 flex flex-col items-center transition ${
+                    userCoins >= gift.valueCoins
+                      ? gift.rarity === "legendary" 
+                        ? "border-yellow-400 bg-yellow-50 hover:bg-yellow-100"
+                        : gift.rarity === "epic"
+                          ? "border-orange-400 bg-orange-50 hover:bg-orange-100"
+                          : gift.rarity === "rare"
+                            ? "border-orange-300 bg-orange-50 hover:bg-orange-100"
+                            : "border-gray-200 hover:border-gray-300"
+                      : "border-gray-200 opacity-50 cursor-not-allowed"
+                  }`}
+                >
+                  <span className="text-2xl">{gift.icon}</span>
+                  <span className="text-xs mt-1">{gift.name}</span>
+                  <span className="text-xs text-yellow-600">{gift.valueCoins}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-      )}
-
-      {/* FAB Vendre - compact, ne masque pas les produits */}
-      <div className="fixed bottom-24 right-4 z-30 flex flex-col items-end gap-2">
-        <Link to={createPageUrl('SellerOrders')}>
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full h-10 px-4 bg-white/95 backdrop-blur shadow-md text-gray-800 text-sm font-medium"
-          >
-            <Package className="w-4 h-4 mr-2" />
-            {labels.mySales}
-          </Button>
-        </Link>
-        <Link to={createPageUrl('SellerSubscription')}>
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full h-10 px-4 bg-white/95 backdrop-blur shadow-md text-gray-800 text-sm font-medium"
-          >
-            {labels.sellerPlans}
-          </Button>
-        </Link>
-        <Link to={createPageUrl('AddProduct')}>
-          <Button size="lg" className="rounded-full h-12 px-5 bg-gradient-to-r from-orange-500 to-red-500 shadow-lg shadow-orange-500/30 text-white font-semibold">
-            <span className="text-lg leading-none mr-1.5">+</span> {labels.sell}
-          </Button>
-        </Link>
-      </div>
-
-      <AdvancedFilters
-        isOpen={showAdvancedFilters}
-        onClose={() => setShowAdvancedFilters(false)}
-        filters={advancedFilters}
-        onApply={(filters) => setAdvancedFilters(filters)}
-      />
-
-      <BottomNav />
+      </Modal>
     </div>
   );
 }

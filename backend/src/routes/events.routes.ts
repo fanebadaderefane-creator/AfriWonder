@@ -423,4 +423,49 @@ router.post('/tickets/:id/confirm', async (req, res, next) => {
   }
 });
 
+// GET /api/events/admin/pending - Liste des événements en attente d'approbation (Admin seulement)
+router.get('/admin/pending', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const user = req.user!;
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+      return res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
+    }
+    const events = await eventService.getPendingEvents();
+    res.json({ success: true, data: events });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/events/:id/approve - Approuver un événement (Admin seulement)
+router.post('/:id/approve', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const user = req.user!;
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+      return res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
+    }
+    const eventId = param(req, 'id');
+    const event = await eventService.approveEvent(eventId, user.id);
+    res.json({ success: true, data: event, message: 'Événement approuvé' });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/events/:id/reject - Rejeter un événement (Admin seulement)
+router.post('/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const user = req.user!;
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+      return res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
+    }
+    const eventId = param(req, 'id');
+    const { reason } = req.body || {};
+    const event = await eventService.rejectEvent(eventId, user.id, reason);
+    res.json({ success: true, data: event, message: 'Événement rejeté' });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 export default router;

@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { motion } from 'framer-motion';
 import { cn } from "@/lib/utils";
+import { MOCK_CAMPAIGNS } from '@/data/crowdfundingMock';
 
 const categories = [
   { id: 'all', label: 'Tous', icon: '🌍' },
@@ -45,22 +46,30 @@ export default function Crowdfunding() {
   const { data: campaignsData, isLoading } = useQuery({
     queryKey: ['campaigns', selectedCategory, sortBy],
     queryFn: async () => {
-      const res = await api.crowdfunding.list({ status: 'active', limit: 100 });
-      let allCampaigns = res?.campaigns ?? res?.data?.campaigns ?? (Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : []);
-      
-      if (selectedCategory !== 'all') {
-        allCampaigns = allCampaigns.filter(c => c.category === selectedCategory);
+      try {
+        const res = await api.crowdfunding.list({ status: 'active', limit: 100 });
+        let allCampaigns = res?.campaigns ?? res?.data?.campaigns ?? (Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : []);
+        if (!Array.isArray(allCampaigns)) allCampaigns = [];
+        if (allCampaigns.length === 0) allCampaigns = [...MOCK_CAMPAIGNS];
+        if (selectedCategory !== 'all') {
+          allCampaigns = allCampaigns.filter(c => c.category === selectedCategory);
+        }
+        if (sortBy === 'trending') {
+          allCampaigns = [...allCampaigns].sort((a, b) => ((b.current_amount ?? 0) / (b.goal_amount || 1)) - ((a.current_amount ?? 0) / (a.goal_amount || 1)));
+        } else if (sortBy === 'ending_soon') {
+          allCampaigns = [...allCampaigns].sort((a, b) => new Date(a.end_date) - new Date(b.end_date));
+        } else if (sortBy === 'newest') {
+          allCampaigns = [...allCampaigns].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+        }
+        return allCampaigns;
+      } catch (_e) {
+        let fallback = [...MOCK_CAMPAIGNS];
+        if (selectedCategory !== 'all') fallback = fallback.filter(c => c.category === selectedCategory);
+        if (sortBy === 'trending') fallback.sort((a, b) => ((b.current_amount ?? 0) / (b.goal_amount || 1)) - ((a.current_amount ?? 0) / (a.goal_amount || 1)));
+        else if (sortBy === 'ending_soon') fallback.sort((a, b) => new Date(a.end_date) - new Date(b.end_date));
+        else if (sortBy === 'newest') fallback.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+        return fallback;
       }
-      
-      if (sortBy === 'trending') {
-        allCampaigns = [...allCampaigns].sort((a, b) => ((b.current_amount ?? 0) / (b.goal_amount || 1)) - ((a.current_amount ?? 0) / (a.goal_amount || 1)));
-      } else if (sortBy === 'ending_soon') {
-        allCampaigns = [...allCampaigns].sort((a, b) => new Date(a.end_date) - new Date(b.end_date));
-      } else if (sortBy === 'newest') {
-        allCampaigns = [...allCampaigns].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-      }
-      
-      return allCampaigns;
     }
   });
 

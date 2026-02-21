@@ -8,6 +8,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createPageUrl } from '@/utils';
+import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 import {
   ArrowLeft,
   Megaphone,
@@ -698,7 +699,7 @@ export default function CreateAdCampaign() {
                   <div className="mt-2 border-2 border-dashed border-white/30 rounded-xl p-8 text-center">
                     <input
                       type="file"
-                      accept="image/*"
+                      accept={FILE_ACCEPT_IMAGES}
                       onChange={handleMediaSelect}
                       className="hidden"
                       id="ad-media"

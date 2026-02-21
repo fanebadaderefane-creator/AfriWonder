@@ -101,7 +101,24 @@ const translations = {
     wonder: "Wonder",
     my_wonder: "Mon Wonder",
     wonderers: "Wonderers",
-    in_his_wonder: "Dans son Wonder"
+    in_his_wonder: "Dans son Wonder",
+    // News
+    news_title: "Actualités",
+    news_subtitle: "L'info locale et nationale",
+    news_search_placeholder: "Rechercher une actualité...",
+    news_all: "Tous",
+    news_for_you: "Pour vous",
+    news_trends: "Tendances",
+    news_preferences: "Préférences du fil",
+    news_save: "Enregistrer",
+    news_saving: "Enregistrement...",
+    news_all_languages: "Toutes langues",
+    news_example_message: "Exemples d'actualités — les vrais articles apparaîtront ici.",
+    news_no_articles: "Aucune actualité",
+    news_load_more: "Charger plus",
+    news_views: "vues",
+    news_bookmark_toast: "Article enregistré dans vos favoris",
+    news_urgent: "URGENT"
   },
   en: {
     // Navigation
@@ -193,7 +210,24 @@ const translations = {
     wonder: "Wonder",
     my_wonder: "My Wonder",
     wonderers: "Wonderers",
-    in_his_wonder: "In their Wonder"
+    in_his_wonder: "In their Wonder",
+    // News
+    news_title: "News",
+    news_subtitle: "Local and national info",
+    news_search_placeholder: "Search for news...",
+    news_all: "All",
+    news_for_you: "For you",
+    news_trends: "Trending",
+    news_preferences: "Feed preferences",
+    news_save: "Save",
+    news_saving: "Saving...",
+    news_all_languages: "All languages",
+    news_example_message: "Sample articles — real ones will appear here.",
+    news_no_articles: "No articles",
+    news_load_more: "Load more",
+    news_views: "views",
+    news_bookmark_toast: "Article saved to favorites",
+    news_urgent: "URGENT"
   },
   ar: {
     // Navigation
@@ -284,7 +318,50 @@ const translations = {
     wonderers: "Wonderers",
     in_his_wonder: "في عجائبه",
     follow: "متابعة",
-    unfollow: "إلغاء المتابعة"
+    unfollow: "إلغاء المتابعة",
+    // News
+    news_title: "الأخبار",
+    news_subtitle: "المعلومات المحلية والوطنية",
+    news_search_placeholder: "البحث عن خبر...",
+    news_all: "الكل",
+    news_for_you: "لك",
+    news_trends: "الترند",
+    news_preferences: "تفضيلات الخلاصة",
+    news_save: "حفظ",
+    news_saving: "جاري الحفظ...",
+    news_all_languages: "جميع اللغات",
+    news_example_message: "أمثلة — الأخبار الحقيقية ستظهر هنا.",
+    news_no_articles: "لا توجد أخبار",
+    news_load_more: "تحميل المزيد",
+    news_bookmark_toast: "تم حفظ المقال في المفضلة",
+    news_urgent: "عاجل"
+  },
+  pt: {
+    home: "Início",
+    create: "Criar",
+    search: "Pesquisar",
+    profile: "Perfil",
+    settings: "Definições",
+    language: "Idioma",
+    loading: "A carregar...",
+    save: "Guardar",
+    cancel: "Cancelar",
+    // News
+    news_title: "Notícias",
+    news_subtitle: "Informação local e nacional",
+    news_search_placeholder: "Pesquisar uma notícia...",
+    news_all: "Todos",
+    news_for_you: "Para si",
+    news_trends: "Tendências",
+    news_preferences: "Preferências do feed",
+    news_save: "Guardar",
+    news_saving: "A guardar...",
+    news_all_languages: "Todos os idiomas",
+    news_example_message: "Exemplos — as notícias reais aparecerão aqui.",
+    news_no_articles: "Nenhuma notícia",
+    news_load_more: "Carregar mais",
+    news_bookmark_toast: "Artigo guardado nos favoritos",
+    news_urgent: "URGENTE"
   },
   bm: {
     home: "So",

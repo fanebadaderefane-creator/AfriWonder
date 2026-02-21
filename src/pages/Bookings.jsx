@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Calendar, Clock, MapPin, User, CheckCircle, XCircle, AlertCircle, DollarSign } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, CheckCircle, XCircle, DollarSign } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
@@ -14,11 +14,10 @@ import BottomNav from '../components/navigation/BottomNav';
 
 const statusConfig = {
   pending: { label: 'En attente', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
-  confirmed: { label: 'Confirmée', color: 'bg-blue-100 text-blue-800', icon: CheckCircle },
+  accepted: { label: 'Acceptée', color: 'bg-blue-100 text-blue-800', icon: CheckCircle },
   in_progress: { label: 'En cours', color: 'bg-purple-100 text-purple-800', icon: Clock },
   completed: { label: 'Terminée', color: 'bg-green-100 text-green-800', icon: CheckCircle },
   cancelled: { label: 'Annulée', color: 'bg-red-100 text-red-800', icon: XCircle },
-  no_show: { label: 'Absence', color: 'bg-gray-100 text-gray-800', icon: AlertCircle },
 };
 
 export default function Bookings() {
@@ -74,7 +73,7 @@ export default function Bookings() {
   const confirmBookingMutation = useMutation({
     mutationFn: (id) => api.bookings.confirm(id),
     onSuccess: () => {
-      toast.success('Réservation confirmée');
+      toast.success('Commande acceptée');
       queryClient.invalidateQueries(['bookings']);
     },
     onError: (error) => {
@@ -124,7 +123,7 @@ export default function Bookings() {
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="all">Toutes</TabsTrigger>
               <TabsTrigger value="pending">En attente</TabsTrigger>
-              <TabsTrigger value="confirmed">Confirmées</TabsTrigger>
+              <TabsTrigger value="accepted">Acceptées</TabsTrigger>
               <TabsTrigger value="completed">Terminées</TabsTrigger>
             </TabsList>
           </Tabs>
@@ -233,6 +232,15 @@ export default function Bookings() {
                           </Badge>
                         )}
                       </div>
+                      {viewAs === 'provider' && (booking.customer_name || booking.customer_phone || booking.customer_email || booking.customer) && (
+                        <div className="col-span-2 pt-2 border-t space-y-1">
+                          <p className="text-xs font-semibold text-gray-500 uppercase">Contact client</p>
+                          <p className="text-sm font-medium">{booking.customer_name || booking.customer?.full_name || '—'}</p>
+                          {booking.customer_phone && <p className="text-sm"><a href={`tel:${booking.customer_phone}`} className="text-orange-600">{booking.customer_phone}</a></p>}
+                          {booking.customer_email && <p className="text-sm"><a href={`mailto:${booking.customer_email}`} className="text-orange-600">{booking.customer_email}</a></p>}
+                          {!booking.customer_phone && !booking.customer_email && booking.customer?.email && <p className="text-sm text-gray-600">{booking.customer.email}</p>}
+                        </div>
+                      )}
                     </div>
 
                     {/* Actions */}
@@ -249,7 +257,7 @@ export default function Bookings() {
                               disabled={confirmBookingMutation.isPending}
                               className="flex-1 bg-green-500 hover:bg-green-600"
                             >
-                              Confirmer
+                              Accepter
                             </Button>
                             <Button
                               size="sm"
@@ -268,7 +276,7 @@ export default function Bookings() {
                             </Button>
                           </>
                         )}
-                        {(booking.status === 'confirmed' || booking.status === 'in_progress') && (
+                        {(booking.status === 'accepted' || booking.status === 'in_progress') && (
                           <Button
                             size="sm"
                             onClick={(e) => {

@@ -6,11 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, CreditCard, Clock, CheckCircle2, Loader2 } from 'lucide-react';
+import { TrendingUp, CreditCard, Clock, CheckCircle2, Loader2, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 
 export default function WalletPage() {
+  const navigate = useNavigate();
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [withdrawData, setWithdrawData] = useState({
     amount: '',
@@ -172,9 +175,17 @@ export default function WalletPage() {
         </motion.div>
       </div>
 
-      {/* Withdraw Button */}
-      {wallet?.available_balance > 0 && (
-        <div className="mb-8">
+      {/* Action Buttons */}
+      <div className="mb-8 flex gap-4">
+        <Button
+          onClick={() => navigate(createPageUrl('RechargeWallet'))}
+          className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
+          size="lg"
+        >
+          <Plus className="w-5 h-5 mr-2" />
+          Recharger
+        </Button>
+        {wallet?.available_balance > 0 && (
           <Button
             onClick={() => setShowWithdrawModal(true)}
             className="bg-orange-500 hover:bg-orange-600 text-white"
@@ -182,8 +193,8 @@ export default function WalletPage() {
           >
             Demander un retrait
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Withdraw Modal */}
       {showWithdrawModal && (

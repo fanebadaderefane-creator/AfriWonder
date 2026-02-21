@@ -3,6 +3,7 @@ import { api } from '@/api/expressClient';
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
+import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 import { ArrowLeft, Plus, Trash2, Upload } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,10 +63,13 @@ export default function CreateCampaign() {
         description: data.description || data.story || '',
         goalAmount,
         endDate: new Date(endDate).toISOString(),
+        status: 'pending',
       });
     },
     onSuccess: (campaign) => {
-      toast.success('Campagne créée avec succès ! 🎉');
+      toast.success(
+        "Campagne créée ! Elle ne sera visible qu'après validation par un administrateur. Vous serez notifié une fois approuvée."
+      );
       navigate(`${createPageUrl('CampaignDetails')}?id=${campaign.id}`);
     },
     onError: (e) => {
@@ -192,7 +196,7 @@ export default function CreateCampaign() {
               <input
                 type="file"
                 multiple
-                accept="image/*"
+                accept={FILE_ACCEPT_IMAGES}
                 onChange={handleImageUpload}
                 className="hidden"
                 disabled={uploading}

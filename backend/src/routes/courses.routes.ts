@@ -2,10 +2,94 @@ import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import courseService from '../services/course.service.js';
+import courseProviderService from '../services/courseProvider.service.js';
 
 const router = Router();
 
-// GET /api/courses - Liste des cours (sort: popular | rating | newest | price_low | price_high, price: all | free | paid)
+// ========== Prestataire Formations (Devenir formateur + admin AfriWonder) ==========
+// GET /api/courses/provider/me
+router.get('/provider/me', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const provider = await courseProviderService.getByUserId(req.user!.id);
+    res.json({ success: true, data: provider });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/courses/provider/register
+router.post('/provider/register', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const b = req.body;
+    if (!b.full_name?.trim() || !b.email?.trim() || !b.phone?.trim()) {
+      return res.status(400).json({ success: false, message: 'full_name, email et phone requis' });
+    }
+    const provider = await courseProviderService.register(userId, {
+      full_name: b.full_name.trim(),
+      email: b.email.trim(),
+      phone: b.phone.trim(),
+      bio: b.bio?.trim(),
+      domains: b.domains?.trim(),
+      experience: b.experience?.trim(),
+    });
+    res.status(201).json({
+      success: true,
+      data: provider,
+      message: 'Demande enregistrée. Un administrateur AfriWonder la validera avant que vos formations n\'apparaissent.',
+    });
+  } catch (e: any) {
+    if (e.message?.includes('déjà')) return res.status(400).json({ success: false, message: e.message });
+    next(e);
+  }
+});
+
+// GET /api/courses/provider/admin/pending
+router.get('/provider/admin/pending', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const user = req.user!;
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+      return res.status(403).json({ success: false, message: 'Accès refusé' });
+    }
+    const list = await courseProviderService.getPending();
+    res.json({ success: true, data: list });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/courses/provider/admin/:id/approve
+router.post('/provider/admin/:id/approve', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const user = req.user!;
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+      return res.status(403).json({ success: false, message: 'Accès refusé' });
+    }
+    const provider = await courseProviderService.approve(param(req, 'id'));
+    res.json({ success: true, data: provider, message: 'Formateur approuvé' });
+  } catch (e: any) {
+    if (e.message) return res.status(400).json({ success: false, message: e.message });
+    next(e);
+  }
+});
+
+// POST /api/courses/provider/admin/:id/reject
+router.post('/provider/admin/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const user = req.user!;
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+      return res.status(403).json({ success: false, message: 'Accès refusé' });
+    }
+    const reason = req.body?.reason as string | undefined;
+    const provider = await courseProviderService.reject(param(req, 'id'), reason);
+    res.json({ success: true, data: provider, message: 'Demande rejetée' });
+  } catch (e: any) {
+    if (e.message) return res.status(400).json({ success: false, message: e.message });
+    next(e);
+  }
+});
+
+// GET /api/courses - Liste des cours (uniquement formateurs approuvés) (sort: popular | rating | newest | price_low | price_high, price: all | free | paid)
 router.get('/', async (req, res, next) => {
   try {
     const page = parseInt(req.query.page as string) || 1;

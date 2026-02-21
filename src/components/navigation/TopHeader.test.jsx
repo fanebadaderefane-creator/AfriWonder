@@ -77,7 +77,7 @@ describe('TopHeader', () => {
   it('ouvre le centre de notifications et appelle onMenuOpen', async () => {
     const onMenuOpen = vi.fn();
     const user = userEvent.setup();
-    renderTopHeader({ onMenuOpen });
+    renderTopHeader({ showMenuButton: true, onMenuOpen });
 
     await waitFor(() => {
       expect(authMeMock).toHaveBeenCalled();

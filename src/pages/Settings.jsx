@@ -19,6 +19,7 @@ import { useTranslation } from "@/components/common/TranslationProvider";
 import DataModeToggle from '../components/common/DataModeToggle';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
+import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -297,7 +298,7 @@ export default function Settings() {
               <input
                 type="file"
                 id="avatar-upload"
-                accept="image/*"
+                accept={FILE_ACCEPT_IMAGES}
                 className="hidden"
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
@@ -457,19 +458,19 @@ export default function Settings() {
           />
 
           <div className="mt-6 bg-white rounded-2xl p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Smartphone className="w-5 h-5 text-gray-500" />
-                <span className="font-medium">Télécharger en WiFi uniquement</span>
+<div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Smartphone className="w-5 h-5 text-gray-500" />
+                  <span className="font-medium">Télécharger en WiFi uniquement</span>
+                </div>
+                <Switch className="data-[state=checked]:bg-orange-500" />
               </div>
-              <Switch />
-            </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <WifiOff className="w-5 h-5 text-gray-500" />
                 <span className="font-medium">Mode hors-ligne</span>
               </div>
-              <Switch />
+              <Switch className="data-[state=checked]:bg-orange-500" />
             </div>
           </div>
         </div>

@@ -2,8 +2,94 @@ import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import prisma from '../config/database.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
+
+// GET /api/properties/admin/pending - Annonces en attente (Admin seulement)
+router.get('/admin/pending', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const user = req.user!;
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+      return res.status(403).json({ success: false, message: 'Accès refusé' });
+    }
+    const list = await prisma.property.findMany({
+      where: { is_verified: false },
+      include: { owner: { select: { id: true, full_name: true, email: true } } },
+      orderBy: { created_at: 'desc' },
+    });
+    res.json({ success: true, data: list });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/properties/:id/approve - Approuver une annonce (Admin seulement)
+router.post('/:id/approve', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const user = req.user!;
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+      return res.status(403).json({ success: false, message: 'Accès refusé' });
+    }
+    const id = param(req, 'id');
+    const property = await prisma.property.findUnique({ where: { id } });
+    if (!property) return res.status(404).json({ success: false, message: 'Annonce non trouvée' });
+    const updated = await prisma.property.update({
+      where: { id },
+      data: { is_verified: true },
+    });
+    try {
+      await prisma.notification.create({
+        data: {
+          user_id: property.owner_id,
+          type: 'property_approved',
+          title: 'Annonce approuvée',
+          message: `Votre annonce "${property.title}" est maintenant visible sur la plateforme.`,
+          reference_type: 'property',
+          reference_id: id,
+        },
+      });
+    } catch (notifErr) {
+      logger.warn('Notification property approuvée', { err: (notifErr as Error).message });
+    }
+    res.json({ success: true, data: updated, message: 'Annonce approuvée' });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/properties/:id/reject - Rejeter une annonce (Admin seulement)
+router.post('/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const user = req.user!;
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+      return res.status(403).json({ success: false, message: 'Accès refusé' });
+    }
+    const id = param(req, 'id');
+    const { reason } = req.body || {};
+    const property = await prisma.property.findUnique({ where: { id } });
+    if (!property) return res.status(404).json({ success: false, message: 'Annonce non trouvée' });
+    try {
+      await prisma.notification.create({
+        data: {
+          user_id: property.owner_id,
+          type: 'property_rejected',
+          title: 'Annonce rejetée',
+          message: reason
+            ? `Votre annonce "${property.title}" a été rejetée. Raison: ${reason}`
+            : `Votre annonce "${property.title}" a été rejetée.`,
+          reference_type: 'property',
+          reference_id: id,
+        },
+      });
+    } catch (notifErr) {
+      logger.warn('Notification property rejetée', { err: (notifErr as Error).message });
+    }
+    res.json({ success: true, data: property, message: 'Annonce rejetée' });
+  } catch (e) {
+    next(e);
+  }
+});
 
 router.get('/', async (req, res, next) => {
   try {
@@ -13,7 +99,7 @@ router.get('/', async (req, res, next) => {
     const status = req.query.status as string | undefined;
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { is_verified: true };
     if (listing_type) where.listing_type = listing_type;
     if (property_type) where.property_type = property_type;
     if (city) where.city = { contains: city, mode: 'insensitive' };
@@ -53,6 +139,7 @@ router.get('/:id', async (req, res, next) => {
     const id = param(req, 'id');
     const property = await prisma.property.findUnique({ where: { id } });
     if (!property) return res.status(404).json({ success: false, message: 'Bien non trouvé' });
+    if (!property.is_verified) return res.status(404).json({ success: false, message: 'Bien non trouvé' });
     res.json({ success: true, data: property });
   } catch (e) {
     next(e);
@@ -107,9 +194,33 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
         bathrooms: b.bathrooms ?? undefined,
         surface_area: b.surface_area != null ? Number(b.surface_area) : undefined,
         is_furnished: b.is_furnished === true,
+        is_verified: false,
+        amenities: Array.isArray(b.amenities) ? b.amenities : undefined,
+        owner_phone: b.owner_phone ?? undefined,
       },
     });
-    res.status(201).json({ success: true, data: property });
+    try {
+      const admins = await prisma.user.findMany({
+        where: { role: { in: ['super_admin', 'admin', 'moderation_admin'] } },
+        select: { id: true },
+      });
+      const ownerName = user?.full_name || 'Un prestataire';
+      for (const admin of admins) {
+        await prisma.notification.create({
+          data: {
+            user_id: admin.id,
+            type: 'property_pending_approval',
+            title: 'Nouvelle annonce immobilier en attente',
+            message: `${ownerName} a déposé une annonce "${property.title}". Veuillez l'examiner et l'approuver.`,
+            reference_type: 'property',
+            reference_id: property.id,
+          },
+        });
+      }
+    } catch (notifErr) {
+      logger.warn('Notification admin property', { err: (notifErr as Error).message });
+    }
+    res.status(201).json({ success: true, data: property, message: 'Annonce enregistrée. Vous serez notifié après validation par l\'administrateur.' });
   } catch (e) {
     next(e);
   }

@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 
 
-import { Search, Bell, MessageCircle, WifiOff, Menu, RefreshCw } from 'lucide-react';
+import { Search, Bell, MessageCircle, WifiOff, RefreshCw, Menu } from 'lucide-react';
 
 import { motion } from 'framer-motion';
 
@@ -41,11 +41,13 @@ export default function TopHeader({
 
   unreadNotifications = 0,
 
-  onMenuOpen,
-
   followingCount = 0,
 
-  onRefresh
+  onRefresh,
+
+  showMenuButton = false,
+
+  onMenuOpen,
 
 }) {
 
@@ -265,21 +267,17 @@ export default function TopHeader({
               )}
             </Button>
 
-            <Button 
-
-              variant="ghost" 
-
-              size="icon" 
-
-              className="text-white hover:bg-white/10 h-9 w-9"
-
-              onClick={onMenuOpen}
-
-            >
-
-              <Menu className="w-5 h-5" />
-
-            </Button>
+            {showMenuButton && onMenuOpen && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-white hover:bg-white/10 h-9 w-9"
+                onClick={onMenuOpen}
+                aria-label="Ouvrir le menu"
+              >
+                <Menu className="w-5 h-5" />
+              </Button>
+            )}
 
           </div>
 

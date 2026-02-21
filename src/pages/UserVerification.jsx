@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, CheckCircle, Clock, AlertCircle, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 
 const VERIFICATION_TYPES = {
   email: { label: 'Email', icon: '✉️' },
@@ -177,7 +178,7 @@ export default function UserVerification() {
                 <input
                   type="file"
                   onChange={(e) => setFile(e.target.files?.[0])}
-                  accept="image/*,.pdf"
+                  accept={`${FILE_ACCEPT_IMAGES},.pdf,application/pdf`}
                   className="hidden"
                   id="doc-upload"
                 />

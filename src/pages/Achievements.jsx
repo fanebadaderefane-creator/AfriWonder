@@ -9,6 +9,7 @@ import { useTranslation } from "@/components/common/useTranslation";
 import { createPageUrl } from "@/utils";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { MOCK_BADGES, MOCK_USER_STATS, MOCK_USER_BADGES } from "@/data/gamificationMock";
 
 const BADGE_DEFINITIONS = {
   first_upload: {
@@ -58,7 +59,7 @@ const BADGE_DEFINITIONS = {
 const rarityColors = {
   common: "bg-gray-100 text-gray-800 border-gray-300",
   uncommon: "bg-green-100 text-green-800 border-green-300",
-  rare: "bg-blue-100 text-blue-800 border-blue-300",
+  rare: "bg-[#f97316]/20 text-[#f97316] border-[#f97316]/50",
   epic: "bg-purple-100 text-purple-800 border-purple-300",
   legendary: "bg-yellow-100 text-yellow-800 border-yellow-300"
 };
@@ -81,42 +82,65 @@ export default function Achievements() {
     fetchUser();
   }, []);
 
-  // Fetch user badges
-  const { data: badges } = useQuery({
+  // Fetch user badges — production ready : utilise API réelle, mockées seulement en cas d'erreur
+  const { data: badges, isLoading: badgesLoading } = useQuery({
     queryKey: ["userBadges", user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
-      const userBadges = await api.entities.UserBadge.filter({
-        user_id: user.id
-      });
-      return userBadges || [];
+      try {
+        const userBadges = await api.entities.UserBadge.filter({
+          user_id: user.id
+        });
+        // Retourner les vraies données même si vide (pas de fallback mock)
+        return userBadges || [];
+      } catch (_e) {
+        // Seulement en cas d'erreur API, utiliser les mockées pour la démo
+        console.warn('API error, using demo data:', _e);
+        return MOCK_USER_BADGES;
+      }
     },
-    enabled: !!user?.id
+    enabled: !!user?.id,
+    staleTime: 30000, // Cache 30s
   });
 
-  // Fetch user stats
-  const { data: stats } = useQuery({
+  // Fetch user stats — production ready : utilise API réelle, mockées seulement en cas d'erreur
+  const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ["userStats", user?.id],
     queryFn: async () => {
-      if (!user?.id) return {};
-      const userPoints = await api.entities.UserPoints.filter({
-        user_id: user.id
-      });
-      return userPoints?.[0] || {};
+      if (!user?.id) return null;
+      try {
+        const userPoints = await api.entities.UserPoints.filter({
+          user_id: user.id
+        });
+        // Retourner les vraies données même si null (pas de fallback mock)
+        return userPoints?.[0] || null;
+      } catch (_e) {
+        // Seulement en cas d'erreur API, utiliser les mockées pour la démo
+        console.warn('API error, using demo data:', _e);
+        return MOCK_USER_STATS;
+      }
     },
-    enabled: !!user?.id
+    enabled: !!user?.id,
+    staleTime: 30000, // Cache 30s
   });
 
   const earnedBadgeIds = new Set(badges?.map(b => b.badge_id) || []);
-  const allBadges = Object.entries(BADGE_DEFINITIONS).map(([id, def]) => ({
-    id,
-    ...def,
-    earned: earnedBadgeIds.has(id)
+  const isUsingMockData = badges === MOCK_USER_BADGES || stats === MOCK_USER_STATS;
+  
+  // Utiliser les badges mockés avec les définitions existantes
+  const allBadges = MOCK_BADGES.map(badge => ({
+    id: badge.badge_id,
+    name: badge.name,
+    description: badge.description,
+    icon: badge.icon,
+    category: badge.category,
+    rarity: badge.rarity,
+    earned: earnedBadgeIds.has(badge.badge_id) || (isUsingMockData && badge.earned)
   }));
 
-  const _filteredBadges = filter === "all" 
+  const filteredBadges = filter === "all" 
     ? allBadges 
-    : allBadges.filter(b => b[filter]);
+    : allBadges.filter(b => b.category === filter);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
@@ -138,26 +162,50 @@ export default function Achievements() {
         {/* Stats */}
         <Card className="mb-8 bg-gradient-to-br from-orange-50 to-red-50 border-orange-200">
           <CardContent className="p-6">
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div>
-                <div className="text-3xl font-bold text-orange-600">
-                  {stats?.total_points || 0}
+            {(badgesLoading || statsLoading) ? (
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="animate-pulse">
+                  <div className="h-8 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-4 bg-gray-200 rounded w-20 mx-auto"></div>
                 </div>
-                <p className="text-sm text-gray-600 mt-1">Points totaux</p>
-              </div>
-              <div>
-                <div className="text-3xl font-bold text-orange-600">
-                  {stats?.level || 1}
+                <div className="animate-pulse">
+                  <div className="h-8 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-4 bg-gray-200 rounded w-16 mx-auto"></div>
                 </div>
-                <p className="text-sm text-gray-600 mt-1">Niveau</p>
-              </div>
-              <div>
-                <div className="text-3xl font-bold text-orange-600">
-                  {badges?.length || 0}
+                <div className="animate-pulse">
+                  <div className="h-8 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-4 bg-gray-200 rounded w-16 mx-auto"></div>
                 </div>
-                <p className="text-sm text-gray-600 mt-1">Badges</p>
               </div>
-            </div>
+            ) : (
+              <>
+                {isUsingMockData && (
+                  <div className="mb-4 p-2 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800 text-center">
+                    📊 Mode démo — Données fictives pour illustration
+                  </div>
+                )}
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <div className="text-3xl font-bold text-[#f97316]">
+                      {stats?.total_points ?? 0}
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">Points totaux</p>
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold text-[#f97316]">
+                      {stats?.level ?? 1}
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">Niveau</p>
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold text-[#f97316]">
+                      {badges?.length ?? 0}
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">Badges</p>
+                  </div>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -195,7 +243,7 @@ export default function Achievements() {
 
         {/* Badges Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {allBadges.map((badge, index) => (
+          {filteredBadges.map((badge, index) => (
             <motion.div
               key={badge.id}
               initial={{ opacity: 0, y: 20 }}
@@ -204,7 +252,7 @@ export default function Achievements() {
             >
               <Card
                 className={`transition-all ${
-                  badge.earned ? "border-orange-300" : "opacity-60"
+                  badge.earned ? "border-[#f97316] shadow-md" : "opacity-60 border-gray-200"
                 }`}
               >
                 <CardContent className="p-6 text-center">
@@ -222,7 +270,7 @@ export default function Achievements() {
                     {badge.rarity}
                   </Badge>
                   {badge.earned && (
-                    <p className="text-xs text-green-600 mt-3 font-semibold">
+                    <p className="text-xs text-[#f97316] mt-3 font-semibold">
                       ✓ Déverrouillé
                     </p>
                   )}

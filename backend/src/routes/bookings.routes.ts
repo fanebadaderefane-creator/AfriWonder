@@ -6,14 +6,15 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import bookingService from '../services/booking.service.js';
 import providerService from '../services/provider.service.js';
+import { requireMarketplaceFeature } from '../middleware/marketplaceSubscription.middleware.js';
 
 const router = Router();
 
 // POST /api/bookings - Créer une réservation
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, requireMarketplaceFeature('contact_provider'), async (req: AuthRequest, res, next) => {
   try {
     const customerId = req.user!.id;
-    const { service_id, booking_date, booking_time, location_type, customer_address_id, notes, payment_method, deposit_only } = req.body;
+    const { service_id, booking_date, booking_time, location_type, customer_address_id, notes, payment_method, deposit_only, phone, customer_name, customer_phone, customer_email } = req.body;
 
     if (!service_id || !booking_date || !booking_time || !location_type || !payment_method) {
       return res.status(400).json({
@@ -30,6 +31,10 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
       notes,
       payment_method,
       deposit_only,
+      phone,
+      customer_name: customer_name?.trim() || undefined,
+      customer_phone: customer_phone?.trim() || undefined,
+      customer_email: customer_email?.trim() || undefined,
     });
 
     res.status(201).json({ success: true, data: booking });

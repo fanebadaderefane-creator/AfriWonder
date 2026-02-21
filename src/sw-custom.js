@@ -4,6 +4,7 @@
 
 const MEDIA_CACHE = 'afriwonder-media-v1';
 const API_CACHE = 'afriwonder-api-v1';
+const VIDEO_CACHE = 'afriwonder-video-cache-v1';
 const PRECACHE = self.__WB_MANIFEST || [];
 const SW_VERSION = 'v2'; // Bypass CDN pour éviter erreur SW sur vidéos
 
@@ -25,7 +26,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((names) => {
       const toDelete = names.filter(
-        (n) => n !== MEDIA_CACHE && n !== API_CACHE && n !== `afriwonder-precache-${SW_VERSION}`
+        (n) => n !== MEDIA_CACHE && n !== API_CACHE && n !== VIDEO_CACHE && n !== `afriwonder-precache-${SW_VERSION}`
       );
       return Promise.all(toDelete.map((n) => caches.delete(n)));
     }).then(() => self.clients.claim())
@@ -62,8 +63,28 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
 
-  // Ne pas intercepter les vidéos CDN — évite "Un service worker a intercepté la requête et a rencontré une erreur"
-  // Les vidéos volumineuses posent problème avec le SW (cache, streaming, Range requests)
+  // Vidéos same-origin + HLS (.m3u8, .ts) : CacheFirst pour relecture offline
+  // Ne jamais intercepter /api/proxy/media : Chrome/mobile envoient des Range, ont besoin de 206 (streaming)
+  const isSameOrigin = url.origin === self.location.origin;
+  const isProxyMedia = url.pathname.includes('proxy/media');
+  const isHlsSegment = /\.ts(\?|$)/i.test(url.pathname + url.search);
+  const isVideoUrl = request.destination === 'video' || url.pathname.includes('proxy/media') || /\.mp4(\?|$)/i.test(url.pathname + url.search) || /\.m3u8(\?|$)/i.test(url.pathname + url.search);
+  const hasRange = request.headers.has('Range');
+  if (isSameOrigin && !isProxyMedia && !hasRange && (isVideoUrl || isHlsSegment)) {
+    event.respondWith(
+      caches.open(VIDEO_CACHE).then((cache) =>
+        cache.match(request).then((cached) =>
+          cached || fetch(request).then((netRes) => {
+            if (netRes.ok) cache.put(request, netRes.clone());
+            return netRes;
+          })
+        )
+      )
+    );
+    return;
+  }
+
+  // Ne pas intercepter les vidéos CDN (streaming, Range requests)
   const cdnHosts = ['cdn.afriwonder.com', 'cdn.africonnect.com'];
   const isCdnMedia = cdnHosts.includes(url.hostname) || url.hostname.endsWith('.r2.dev');
   const isVideoRequest = request.destination === 'video';

@@ -6,6 +6,7 @@ import paymentService from './payment.service.js';
 import platformRevenueService from './platformRevenue.service.js';
 import withdrawalService from './withdrawal.service.js';
 import GamificationEngine from './gamification.service.js';
+import courseProviderService from './courseProvider.service.js';
 
 type SortOption = 'popular' | 'rating' | 'newest' | 'price_low' | 'price_high';
 type PriceFilter = 'all' | 'free' | 'paid';
@@ -21,8 +22,14 @@ class CourseService {
   }) {
     const skip = (page - 1) * limit;
     const take = Math.min(50, Math.max(1, limit));
+    const approvedCreatorIds = await courseProviderService.getApprovedUserIds();
     const where: Record<string, unknown> = {};
 
+    if (approvedCreatorIds.length > 0) {
+      where.creator_id = { in: approvedCreatorIds };
+    } else {
+      where.creator_id = { in: [] };
+    }
     if (filters?.category) where.category = filters.category;
     if (filters?.level) where.level = filters.level;
     where.is_published = filters?.isPublished ?? true;

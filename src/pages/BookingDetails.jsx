@@ -16,11 +16,10 @@ import BottomNav from '../components/navigation/BottomNav';
 
 const statusConfig = {
   pending: { label: 'En attente', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
-  confirmed: { label: 'Confirmée', color: 'bg-blue-100 text-blue-800', icon: CheckCircle },
+  accepted: { label: 'Acceptée', color: 'bg-blue-100 text-blue-800', icon: CheckCircle },
   in_progress: { label: 'En cours', color: 'bg-purple-100 text-purple-800', icon: Clock },
   completed: { label: 'Terminée', color: 'bg-green-100 text-green-800', icon: CheckCircle },
   cancelled: { label: 'Annulée', color: 'bg-red-100 text-red-800', icon: XCircle },
-  no_show: { label: 'Absence', color: 'bg-gray-100 text-gray-800', icon: AlertCircle },
 };
 
 export default function BookingDetails() {
@@ -70,7 +69,7 @@ export default function BookingDetails() {
   const confirmBookingMutation = useMutation({
     mutationFn: (id) => api.bookings.confirm(id),
     onSuccess: () => {
-      toast.success('Réservation confirmée');
+      toast.success('Commande acceptée');
       queryClient.invalidateQueries(['booking', bookingId]);
     },
     onError: (error) => {
@@ -333,7 +332,7 @@ export default function BookingDetails() {
               disabled={confirmBookingMutation.isPending}
               className="flex-1 bg-green-500 hover:bg-green-600"
             >
-              Confirmer la réservation
+              Accepter la commande
             </Button>
             <Button
               variant="outline"
@@ -345,7 +344,7 @@ export default function BookingDetails() {
           </div>
         )}
 
-        {isProvider && (booking.status === 'confirmed' || booking.status === 'in_progress') && (
+        {isProvider && (booking.status === 'accepted' || booking.status === 'in_progress') && (
           <Button
             onClick={() => completeBookingMutation.mutate(booking.id)}
             disabled={completeBookingMutation.isPending}

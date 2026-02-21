@@ -56,6 +56,7 @@ import BecomeSeller from './pages/BecomeSeller';
 import AddService from './pages/AddService';
 import Addresses from './pages/Addresses';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminPage from './pages/AdminPage';
 import Analytics from './pages/Analytics';
 import ArticleDetails from './pages/ArticleDetails';
 import BadgesProfile from './pages/BadgesProfile';
@@ -101,6 +102,7 @@ import Jobs from './pages/Jobs';
 import JobsEmployerDashboard from './pages/JobsEmployerDashboard';
 import Language from './pages/Language';
 import Leaderboard from './pages/Leaderboard';
+import Live from './pages/Live';
 import LiveStream from './pages/LiveStream';
 import LiveView from './pages/LiveView';
 import Lives from './pages/Lives';
@@ -146,6 +148,7 @@ import BookingDetails from './pages/BookingDetails';
 import Providers from './pages/Providers';
 import ProviderProfile from './pages/ProviderProfile';
 import BecomeProvider from './pages/BecomeProvider';
+import BecomeTrainer from './pages/BecomeTrainer';
 import ProviderDashboard from './pages/ProviderDashboard';
 import Settings from './pages/Settings';
 import ShareOffline from './pages/ShareOffline';
@@ -171,6 +174,7 @@ import Insurance from './pages/Insurance';
 import Ticketing from './pages/Ticketing';
 import RideHistory from './pages/RideHistory';
 import BecomeDriver from './pages/BecomeDriver';
+import DriverDashboard from './pages/DriverDashboard';
 import RestaurantMenu from './pages/RestaurantMenu.jsx';
 import TicketDetails from './pages/TicketDetails';
 import PropertyDetails from './pages/PropertyDetails';
@@ -179,6 +183,12 @@ import ProjectPresentation from './pages/ProjectPresentation';
 import DeveloperPortal from './pages/DeveloperPortal';
 import DeveloperGuide from './pages/DeveloperGuide';
 import ComingSoon from './pages/ComingSoon';
+import MiniAppsStore from './pages/MiniAppsStore';
+import MiniAppDetails from './pages/MiniAppDetails';
+import DeveloperConsole from './pages/DeveloperConsole';
+import DeveloperRevenue from './pages/DeveloperRevenue';
+import DeveloperSubscription from './pages/DeveloperSubscription';
+import AppBoost from './pages/AppBoost';
 import __Layout from './Layout.jsx';
 
 
@@ -192,6 +202,7 @@ export const PAGES = {
     "AddService": AddService,
     "Addresses": Addresses,
     "AdminDashboard": AdminDashboard,
+    "AdminPage": AdminPage,
     "Analytics": Analytics,
     "ArticleDetails": ArticleDetails,
     "BadgesProfile": BadgesProfile,
@@ -237,6 +248,7 @@ export const PAGES = {
     "JobsEmployerDashboard": JobsEmployerDashboard,
     "Language": Language,
     "Leaderboard": Leaderboard,
+    "Live": Live,
     "LiveStream": LiveStream,
     "LiveView": LiveView,
     "Lives": Lives,
@@ -282,6 +294,7 @@ export const PAGES = {
     "Providers": Providers,
     "ProviderProfile": ProviderProfile,
     "BecomeProvider": BecomeProvider,
+    "BecomeTrainer": BecomeTrainer,
     "ProviderDashboard": ProviderDashboard,
     "Settings": Settings,
     "ShareOffline": ShareOffline,
@@ -307,6 +320,7 @@ export const PAGES = {
     "Ticketing": Ticketing,
     "RideHistory": RideHistory,
     "BecomeDriver": BecomeDriver,
+    "DriverDashboard": DriverDashboard,
     "RestaurantMenu": RestaurantMenu,
     "TicketDetails": TicketDetails,
     "PropertyDetails": PropertyDetails,
@@ -315,6 +329,12 @@ export const PAGES = {
     "DeveloperPortal": DeveloperPortal,
     "DeveloperGuide": DeveloperGuide,
     "ComingSoon": ComingSoon,
+    "MiniAppsStore": MiniAppsStore,
+    "MiniAppDetails": MiniAppDetails,
+    "DeveloperConsole": DeveloperConsole,
+    "DeveloperRevenue": DeveloperRevenue,
+    "DeveloperSubscription": DeveloperSubscription,
+    "AppBoost": AppBoost,
 }
 
 export const pagesConfig = {

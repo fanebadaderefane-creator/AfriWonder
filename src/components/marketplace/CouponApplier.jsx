@@ -93,7 +93,7 @@ export default function CouponApplier({
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-green-50 border-2 border-green-500 rounded-lg p-4 mb-4"
+        className="bg-orange-50 border-2 border-orange-500 rounded-lg p-4 mb-4"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

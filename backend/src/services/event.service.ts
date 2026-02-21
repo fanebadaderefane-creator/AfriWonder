@@ -172,7 +172,7 @@ class EventService {
         currency: data.currency || 'XOF',
         is_free: data.is_free ?? (data.price == null || data.price === 0),
         is_featured: data.is_featured ?? false,
-        status: 'draft',
+        status: 'pending', // Événement en attente d'approbation admin
         virtual_url: data.virtual_url,
         refund_policy: data.refund_policy,
         speakers: data.speakers ? (data.speakers as any) : undefined,
@@ -201,8 +201,132 @@ class EventService {
       }
     }
 
-    logger.info('Event created', { organizerId, eventId: event.id });
+    // Notifier les admins pour approbation
+    try {
+      const admins = await prisma.user.findMany({
+        where: { 
+          role: { in: ['super_admin', 'admin', 'moderation_admin'] } 
+        },
+        select: { id: true },
+      });
+      
+      const organizerName = organizer?.full_name || organizer?.username || 'Un organisateur';
+      
+      for (const admin of admins) {
+        await prisma.notification.create({
+          data: {
+            user_id: admin.id,
+            type: 'event_pending_approval',
+            title: 'Nouvel événement en attente d\'approbation',
+            message: `${organizerName} a créé un nouvel événement "${data.title}". Veuillez l'examiner et l'approuver.`,
+            reference_type: 'event',
+            reference_id: event.id,
+          },
+        });
+      }
+    } catch (notifErr) {
+      logger.warn('Notification admin événement', { err: (notifErr as Error).message });
+    }
+
+    logger.info('Event created (pending approval)', { organizerId, eventId: event.id });
     return event;
+  }
+
+  /**
+   * Approuver un événement (Admin seulement)
+   */
+  async approveEvent(eventId: string, adminId: string) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { organizer: { select: { id: true, username: true, full_name: true } } },
+    });
+    if (!event) throw new Error('Événement non trouvé');
+    if (event.status !== 'pending') {
+      throw new Error(`L'événement est déjà ${event.status}`);
+    }
+
+    const updated = await prisma.event.update({
+      where: { id: eventId },
+      data: { status: 'published' },
+    });
+
+    // Notifier l'organisateur
+    try {
+      await prisma.notification.create({
+        data: {
+          user_id: event.organizer_id,
+          type: 'event_approved',
+          title: 'Événement approuvé',
+          message: `Votre événement "${event.title}" a été approuvé et est maintenant visible par tous.`,
+          reference_type: 'event',
+          reference_id: eventId,
+        },
+      });
+    } catch (notifErr) {
+      logger.warn('Notification organisateur événement approuvé', { err: (notifErr as Error).message });
+    }
+
+    logger.info('Event approved', { eventId, adminId });
+    return updated;
+  }
+
+  /**
+   * Rejeter un événement (Admin seulement)
+   */
+  async rejectEvent(eventId: string, adminId: string, reason?: string) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+    });
+    if (!event) throw new Error('Événement non trouvé');
+    if (event.status !== 'pending') {
+      throw new Error(`L'événement est déjà ${event.status}`);
+    }
+
+    const updated = await prisma.event.update({
+      where: { id: eventId },
+      data: { status: 'draft' }, // Retour en brouillon
+    });
+
+    // Notifier l'organisateur
+    try {
+      await prisma.notification.create({
+        data: {
+          user_id: event.organizer_id,
+          type: 'event_rejected',
+          title: 'Événement rejeté',
+          message: reason 
+            ? `Votre événement "${event.title}" a été rejeté. Raison: ${reason}`
+            : `Votre événement "${event.title}" a été rejeté. Veuillez vérifier les informations et réessayer.`,
+          reference_type: 'event',
+          reference_id: eventId,
+        },
+      });
+    } catch (notifErr) {
+      logger.warn('Notification organisateur événement rejeté', { err: (notifErr as Error).message });
+    }
+
+    logger.info('Event rejected', { eventId, adminId, reason });
+    return updated;
+  }
+
+  /**
+   * Obtenir les événements en attente d'approbation (Admin seulement)
+   */
+  async getPendingEvents() {
+    return await prisma.event.findMany({
+      where: { status: 'pending' },
+      include: {
+        organizer: {
+          select: {
+            id: true,
+            username: true,
+            full_name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
   }
 
   async update(eventId: string, organizerId: string, data: Record<string, any>) {

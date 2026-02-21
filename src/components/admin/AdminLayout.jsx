@@ -26,16 +26,19 @@ const TABS = [
   { id: 'analytics', label: 'Analytics', icon: TrendingUp },
   { id: 'audit', label: 'Journal audit', icon: FileText },
   { id: 'earlyaccess', label: 'Early Access', icon: Zap },
+  { id: 'maliconnect', label: 'AfriWonder', icon: Shield },
+  { id: 'ai-engine', label: 'AI Engine', icon: Zap },
+  { id: 'business-intelligence', label: 'Business Intelligence', icon: TrendingUp },
   { id: 'settings', label: 'Paramètres', icon: Settings },
 ];
 
 const ROLE_ACCESS = {
   super_admin: new Set(TABS.map((t) => t.id)),
-  admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'verifications', 'campagnes', 'reports', 'disputes', 'returns', 'finance', 'monetization', 'logistics', 'analytics', 'audit', 'earlyaccess', 'settings']),
-  finance_admin: new Set(['overview', 'finance', 'monetization', 'orders', 'audit', 'logistics', 'campagnes', 'verifications', 'earlyaccess']),
-  moderation_admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'campagnes', 'reports', 'disputes', 'returns', 'logistics', 'verifications']),
-  support_admin: new Set(['overview', 'users', 'disputes', 'returns', 'reports', 'logistics']),
-  data_admin: new Set(['overview', 'analytics', 'audit', 'orders', 'users', 'logistics']),
+  admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'verifications', 'campagnes', 'reports', 'disputes', 'returns', 'finance', 'monetization', 'logistics', 'analytics', 'audit', 'earlyaccess', 'maliconnect', 'ai-engine', 'business-intelligence', 'settings']),
+  finance_admin: new Set(['overview', 'finance', 'monetization', 'orders', 'audit', 'logistics', 'campagnes', 'verifications', 'earlyaccess', 'maliconnect', 'business-intelligence']),
+  moderation_admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'campagnes', 'reports', 'disputes', 'returns', 'logistics', 'verifications', 'maliconnect', 'ai-engine']),
+  support_admin: new Set(['overview', 'users', 'disputes', 'returns', 'reports', 'logistics', 'maliconnect']),
+  data_admin: new Set(['overview', 'analytics', 'audit', 'orders', 'users', 'logistics', 'maliconnect', 'ai-engine', 'business-intelligence']),
 };
 
 function canAccess(role, tabId) {

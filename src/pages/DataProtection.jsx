@@ -227,7 +227,7 @@ export default function DataProtection() {
               {legalInfo ? (
                 <>
                   <p className="text-gray-700 mb-2">
-                    <strong>{legalInfo.company_name}</strong>
+                    <strong>{(legalInfo.company_name || '').replace(/AfriConnect/gi, 'AfriWonder')}</strong>
                   </p>
                   {legalInfo.dpo_name && (
                     <p className="text-gray-600 text-sm mb-1">

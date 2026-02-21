@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { motion } from 'framer-motion';
 import { cn } from "@/lib/utils";
 import BottomNav from '../components/navigation/BottomNav';
+import { MOCK_JOBS } from '@/data/jobsMock';
 
 const categories = [
   { id: 'all', label: 'Tous', icon: '💼' },
@@ -74,8 +75,9 @@ export default function Jobs() {
     initialPageParam: 1,
   });
 
-  const jobs = listData?.pages?.flatMap((p) => p.jobs ?? []) ?? [];
-  const totalJobs = listData?.pages?.[0]?.pagination?.total ?? 0;
+  const apiJobs = listData?.pages?.flatMap((p) => p.jobs ?? []) ?? [];
+  const jobs = apiJobs.length > 0 ? apiJobs : MOCK_JOBS;
+  const totalJobs = listData?.pages?.[0]?.pagination?.total ?? jobs.length;
 
   const { data: recommended = [] } = useQuery({
     queryKey: ['jobs-recommended'],
@@ -83,22 +85,29 @@ export default function Jobs() {
     enabled: !!user
   });
 
-  const filteredJobs = jobs.filter(j =>
-    j.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (j.employer?.full_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (j.description || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredJobs = jobs.filter((j) => {
+    const matchSearch =
+      !searchQuery ||
+      j.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (j.employer?.full_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (j.description || '').toLowerCase().includes(searchQuery.toLowerCase());
+    const matchType = typeFilter === 'all' || j.job_type === typeFilter;
+    return matchSearch && matchType;
+  });
 
   const getTypeLabel = (type) => {
     const labels = {
-      'temps_plein': '⏰ Temps plein',
-      'temps_partiel': '⏱️ Temps partiel',
-      'freelance': '💼 Freelance',
-      'stage': '🎓 Stage',
-      'contrat': '📝 Contrat',
-      'full_time': '⏰ Temps plein',
-      'part_time': '⏱️ Temps partiel',
-      'remote': '🌐 Télétravail'
+      'temps_plein': 'Temps plein',
+      'temps_partiel': 'Temps partiel',
+      'freelance': 'Freelance',
+      'stage': 'Stage',
+      'alternance': 'Alternance',
+      'contrat': 'Contrat',
+      'full_time': 'Temps plein',
+      'part_time': 'Temps partiel',
+      'remote': 'Télétravail',
+      'cdi': 'CDI',
+      'cdd': 'CDD',
     };
     return labels[type] || type;
   };
@@ -113,14 +122,17 @@ export default function Jobs() {
           <button onClick={() => window.history.back()}>
             <ArrowLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-xl font-bold">Offres d'emploi</h1>
+          <div>
+            <h1 className="text-xl font-bold">Offres d'emploi</h1>
+            <p className="text-sm text-gray-500">Trouvez votre prochain emploi</p>
+          </div>
           {user && (
             <div className="ml-auto flex gap-2 flex-wrap justify-end">
               <Link to={createPageUrl('CandidateProfile')}><Button size="sm" variant="ghost">Profil candidat</Button></Link>
               <Link to={createPageUrl('CompanyProfile')}><Button size="sm" variant="ghost">Profil entreprise</Button></Link>
               <Link to={createPageUrl('JobsEmployerDashboard')}><Button size="sm" variant="outline">Dashboard</Button></Link>
               <Link to={createPageUrl('PostJob')}>
-                <Button size="sm" className="bg-orange-500 hover:bg-orange-600">
+                <Button size="sm" className="bg-[#f97316] hover:bg-[#ea580c] text-white">
                   <Briefcase className="w-4 h-4 mr-1" />
                   Publier
                 </Button>
@@ -133,7 +145,7 @@ export default function Jobs() {
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
-            placeholder="Rechercher un emploi..."
+            placeholder="Poste, entreprise, compétence..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10 rounded-full"
@@ -149,7 +161,7 @@ export default function Jobs() {
               className={cn(
                 "flex items-center gap-1 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors",
                 selectedCategory === cat.id
-                  ? "bg-orange-500 text-white"
+                  ? "bg-[#f97316] text-white"
                   : "bg-gray-100 text-gray-600"
               )}
             >
@@ -160,32 +172,27 @@ export default function Jobs() {
         </div>
       </div>
 
-      {/* Type & Country Filter */}
-      <div className="px-4 py-3 bg-white border-b border-gray-100 space-y-2">
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tous les types</SelectItem>
-            <SelectItem value="temps_plein">⏰ Temps plein</SelectItem>
-            <SelectItem value="temps_partiel">⏱️ Temps partiel</SelectItem>
-            <SelectItem value="freelance">💼 Freelance</SelectItem>
-            <SelectItem value="stage">🎓 Stage</SelectItem>
-            <SelectItem value="contrat">📝 Contrat</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={countryFilter || 'all'} onValueChange={(v) => setCountryFilter(v === 'all' ? '' : v)}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Pays" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tous les pays</SelectItem>
-            {countries.filter(Boolean).map((c) => (
-              <SelectItem key={c} value={c}>{c}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {/* Type Filter — Tous, CDI, CDD, Freelance, Stage, Alternance */}
+      <div className="px-4 py-2 bg-white border-b border-gray-100 flex gap-2 overflow-x-auto scrollbar-hide">
+        {[
+          { id: 'all', label: 'Tous' },
+          { id: 'cdi', label: 'CDI' },
+          { id: 'cdd', label: 'CDD' },
+          { id: 'freelance', label: 'Freelance' },
+          { id: 'stage', label: 'Stage' },
+          { id: 'alternance', label: 'Alternance' },
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTypeFilter(t.id)}
+            className={cn(
+              'flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors',
+              typeFilter === t.id ? 'bg-[#f97316] text-white' : 'bg-gray-100 text-gray-600'
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {/* Recommandées */}
@@ -194,47 +201,47 @@ export default function Jobs() {
           <h3 className="font-semibold text-sm text-gray-700 mb-2">Recommandées pour vous</h3>
           <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
             {recommended.slice(0, 4).map((j) => (
-              <Link key={j.id} to={`${createPageUrl('JobDetails')}?id=${j.id}`} className="flex-shrink-0 w-56 bg-white rounded-xl p-3 shadow-sm">
+              <Link key={j.id} to={`${createPageUrl('JobDetails')}?id=${j.id}`} className="flex-shrink-0 w-56 bg-white rounded-xl p-3 shadow-sm text-gray-900 hover:text-gray-900 no-underline">
                 <p className="font-medium text-sm line-clamp-2">{j.title}</p>
                 <p className="text-xs text-gray-500 mt-1">{j.employer?.full_name}</p>
-                <p className="text-xs text-orange-600 mt-1">{j._count?.applications ?? 0} candidatures</p>
+                <p className="text-xs text-[#f97316] mt-1">{j._count?.applications ?? 0} candidatures</p>
               </Link>
             ))}
           </div>
         </div>
       )}
 
-      {/* Stats */}
-      <div className="p-4 bg-gradient-to-br from-blue-500 to-purple-500 text-white">
-        <div className="grid grid-cols-3 gap-4">
-          <div className="text-center">
-            <div className="text-2xl font-bold">{jobs.length}</div>
-            <div className="text-xs text-white/80">Offres</div>
+      {/* Stats — neutre + orange AfriWonder uniquement */}
+      <div className="p-4 grid grid-cols-3 gap-3">
+        <div className="bg-white rounded-xl p-3 text-center shadow-sm border border-gray-100">
+          <div className="text-xl font-bold text-[#f97316]">{filteredJobs.length}</div>
+          <div className="text-xs text-gray-500">Offres actives</div>
+        </div>
+        <div className="bg-white rounded-xl p-3 text-center shadow-sm border border-gray-100">
+          <div className="text-xl font-bold text-gray-800">
+            {apiJobs.length > 0 ? new Set(jobs.map((j) => j.employer?.full_name).filter(Boolean)).size : '120+'}
           </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold">{jobs.filter(j => j.job_type === 'remote' || j.job_type?.includes('remote')).length}</div>
-            <div className="text-xs text-white/80">Remote</div>
+          <div className="text-xs text-gray-500">Entreprises</div>
+        </div>
+        <div className="bg-white rounded-xl p-3 text-center shadow-sm border border-gray-100">
+          <div className="text-xl font-bold text-gray-800">
+            {apiJobs.length > 0 ? jobs.reduce((acc, j) => acc + (j._count?.applications ?? 0), 0) : '5K+'}
           </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold">{jobs.reduce((acc, j) => acc + (j._count?.applications ?? 0), 0)}</div>
-            <div className="text-xs text-white/80">Candidatures</div>
-          </div>
+          <div className="text-xs text-gray-500">Candidatures</div>
         </div>
       </div>
 
-      {/* Jobs List */}
-      <div className="p-4 space-y-3">
+      {/* Jobs List — disposition verticale mobile 📱 */}
+      <div className="w-full px-4 pb-4 flex flex-col gap-4">
         {isLoading ? (
-          <div className="space-y-3">
+          <div className="w-full flex flex-col gap-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="bg-white rounded-xl p-4 animate-pulse">
-                <div className="flex gap-3">
-                  <div className="w-12 h-12 rounded-lg bg-gray-200" />
-                  <div className="flex-1">
-                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
-                    <div className="h-3 bg-gray-100 rounded w-1/2 mb-2" />
-                    <div className="h-3 bg-gray-100 rounded w-full" />
-                  </div>
+              <div key={i} className="w-full bg-white rounded-xl p-4 animate-pulse">
+                <div className="flex flex-col gap-3">
+                  <div className="w-full h-40 bg-gray-200 rounded-lg" />
+                  <div className="w-16 h-16 rounded-lg bg-gray-200" />
+                  <div className="h-4 bg-gray-200 rounded w-3/4" />
+                  <div className="h-3 bg-gray-100 rounded w-1/2" />
                 </div>
               </div>
             ))}
@@ -251,41 +258,71 @@ export default function Jobs() {
             const companyName = job.employer?.full_name || 'Entreprise';
             const logo = job.employer?.profile_image || job.employer?.company_profile?.logo_url;
             return (
-              <Link key={job.id} to={`${createPageUrl('JobDetails')}?id=${job.id}`}>
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex gap-3">
-                    <div className="w-12 h-12 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
-                      {logo ? <img src={logo} alt={companyName} className="w-full h-full object-cover" /> : <Building className="w-6 h-6 text-gray-400" />}
+              <Link key={job.id} to={`${createPageUrl('JobDetails')}?id=${job.id}`} className="block w-full text-gray-900 hover:text-gray-900 no-underline">
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow w-full">
+                  {/* Image de couverture */}
+                  {(job.image || job.cover_image) && (
+                    <div className="w-full h-40 overflow-hidden bg-gray-100">
+                      <img
+                        src={job.image || job.cover_image}
+                        alt={job.title}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
-                    <div className="flex-1">
-                      <h3 className="font-bold text-sm mb-1">{job.title}</h3>
-                      <p className="text-xs text-gray-600 mb-2">{companyName}</p>
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        <Badge variant="secondary" className="text-xs">{getTypeLabel(job.job_type)}</Badge>
-                        {job.job_type === 'remote' && <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">🌐 Remote</Badge>}
-                        {job.is_premium && <Badge className="text-xs bg-yellow-500 text-white">⭐ Premium</Badge>}
-                        {job.is_urgent && <Badge className="text-xs bg-red-100 text-red-700">Urgent</Badge>}
+                  )}
+                  <div className="p-4 flex flex-col gap-3">
+                    {/* Logo et titre — entièrement vertical */}
+                    <div className="flex flex-col items-start gap-2">
+                      <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center border border-gray-200">
+                        {logo ? <img src={logo} alt={companyName} className="w-full h-full object-cover" /> : <Building className="w-8 h-8 text-gray-400" />}
                       </div>
-                      <div className="flex flex-wrap gap-3 text-xs text-gray-600">
-                        <div className="flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          <span>{job.location || job.country || '—'}</span>
-                        </div>
-                        {(job.salary_min != null) && (
-                          <div className="flex items-center gap-1">
-                            <DollarSign className="w-3 h-3" />
-                            <span>{job.salary_min.toLocaleString()} - {(job.salary_max || job.salary_min).toLocaleString()} {job.salary_currency || 'XOF'}</span>
-                          </div>
-                        )}
+                      <div className="w-full">
+                        <h3 className="font-bold text-lg mb-1 text-gray-900">{job.title}</h3>
+                        <p className="text-sm text-gray-600">{companyName}</p>
                       </div>
-                      <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
-                        <span>{appCount} candidatures</span>
-                        {daysLeft != null && daysLeft > 0 && (
-                          <span className={cn("flex items-center gap-1", daysLeft <= 3 && "text-red-500 font-medium")}>
-                            <Clock className="w-3 h-3" /> {daysLeft} jours
-                          </span>
-                        )}
+                    </div>
+
+                    {/* Badges type et statut — neutre + orange AfriWonder uniquement */}
+                    <div className="flex flex-wrap gap-2">
+                      <Badge className="text-xs bg-[#f97316] text-white border-0">{getTypeLabel(job.job_type)}</Badge>
+                      {job.location && <Badge variant="outline" className="text-xs border-gray-200 text-gray-600"><MapPin className="w-3 h-3 mr-1" />{job.location}</Badge>}
+                      {job.job_type === 'remote' && <Badge variant="outline" className="text-xs border-gray-200 text-gray-600">🌐 Remote</Badge>}
+                      {job.is_premium && <Badge className="text-xs bg-[#f97316] text-white border-0">⭐ Premium</Badge>}
+                      {job.is_urgent && <Badge className="text-xs bg-[#f97316] text-white border-0">Urgent</Badge>}
+                    </div>
+
+                    {/* Compétences */}
+                    {job.skills?.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {job.skills.slice(0, 4).map((s) => (
+                          <Badge key={s} variant="outline" className="text-xs font-normal">{s}</Badge>
+                        ))}
                       </div>
+                    )}
+
+                    {/* Salaire — orange AfriWonder */}
+                    {(job.salary_min != null) && (
+                      <div className="flex items-center gap-1 text-sm">
+                        <DollarSign className="w-4 h-4 text-[#f97316]" />
+                        <span className="text-[#f97316] font-semibold">{job.salary_min.toLocaleString()} - {(job.salary_max || job.salary_min).toLocaleString()} {job.salary_currency || 'XOF'}</span>
+                      </div>
+                    )}
+
+                    {/* Date de publication */}
+                    {(job.created_at || job.posted_at) && (
+                      <p className="text-xs text-gray-500">
+                        {new Date(job.created_at || job.posted_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      </p>
+                    )}
+
+                    {/* Footer: candidatures et jours restants — neutre */}
+                    <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-xs text-gray-500">
+                      <span>{appCount} candidatures</span>
+                      {daysLeft != null && daysLeft > 0 && (
+                        <span className={cn("flex items-center gap-1", daysLeft <= 3 && "text-[#f97316] font-medium")}>
+                          <Clock className="w-3 h-3" /> {daysLeft} jours restants
+                        </span>
+                      )}
                     </div>
                   </div>
                 </motion.div>

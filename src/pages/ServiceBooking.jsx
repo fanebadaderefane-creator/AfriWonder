@@ -26,6 +26,9 @@ export default function ServiceBooking() {
     notes: '',
     payment_method: 'wallet',
     deposit_only: false,
+    customer_name: '',
+    customer_phone: '',
+    customer_email: '',
   });
 
   useEffect(() => {
@@ -66,7 +69,6 @@ export default function ServiceBooking() {
   const createBookingMutation = useMutation({
     mutationFn: (data) => api.bookings.create(data),
     onSuccess: (data) => {
-      toast.success('Réservation créée avec succès!');
       queryClient.invalidateQueries(['bookings']);
       setStep(3); // Confirmation step
     },
@@ -105,6 +107,9 @@ export default function ServiceBooking() {
       notes: bookingData.notes,
       payment_method: bookingData.payment_method,
       deposit_only: bookingData.deposit_only,
+      customer_name: bookingData.customer_name?.trim() || undefined,
+      customer_phone: bookingData.customer_phone?.trim() || undefined,
+      customer_email: bookingData.customer_email?.trim() || undefined,
     });
   };
 
@@ -256,6 +261,28 @@ export default function ServiceBooking() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="pb-3 border-b">
+                  <p className="text-sm font-semibold text-gray-700 mb-2">Vos coordonnées (pour que le prestataire puisse vous recontacter)</p>
+                  <div className="space-y-3">
+                    <Input
+                      placeholder="Nom complet"
+                      value={bookingData.customer_name}
+                      onChange={(e) => setBookingData({ ...bookingData, customer_name: e.target.value })}
+                    />
+                    <Input
+                      type="tel"
+                      placeholder="+223 XX XX XX XX"
+                      value={bookingData.customer_phone}
+                      onChange={(e) => setBookingData({ ...bookingData, customer_phone: e.target.value })}
+                    />
+                    <Input
+                      type="email"
+                      placeholder="Email"
+                      value={bookingData.customer_email}
+                      onChange={(e) => setBookingData({ ...bookingData, customer_email: e.target.value })}
+                    />
+                  </div>
+                </div>
                 <div>
                   <label className="text-sm font-semibold block mb-2">Type de location</label>
                   <Select
@@ -398,24 +425,26 @@ export default function ServiceBooking() {
           >
             <Card>
               <CardContent className="pt-6 text-center">
-                <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+                <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="w-10 h-10 text-green-600" />
+                </div>
                 <h2 className="text-2xl font-bold mb-2">Réservation confirmée!</h2>
                 <p className="text-gray-600 mb-6">
-                  Votre réservation a été créée avec succès. Vous recevrez une confirmation par email.
+                  {createBookingMutation.data?.provider?.user?.full_name || provider?.user?.full_name || 'Le prestataire'} vous contactera pour confirmer.
                 </p>
                 <div className="space-y-3">
                   <Button
-                    onClick={() => navigate(createPageUrl('BookingDetails') + `?id=${createBookingMutation.data.booking.id}`)}
-                    className="w-full bg-orange-500 hover:bg-orange-600"
+                    onClick={() => navigate(createPageUrl('Services'))}
+                    className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white"
                   >
-                    Voir les détails
+                    Fermer
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => navigate(createPageUrl('Bookings'))}
+                    onClick={() => navigate(createPageUrl('BookingDetails') + `?id=${createBookingMutation.data?.id}`)}
                     className="w-full"
                   >
-                    Mes réservations
+                    Voir les détails
                   </Button>
                 </div>
               </CardContent>

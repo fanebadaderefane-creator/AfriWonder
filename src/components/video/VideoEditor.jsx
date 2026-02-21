@@ -20,15 +20,25 @@ const STICKERS = ['😂', '🔥', '❤️', '👍', '🎉', '🎵', '✨', '🌟
 
 const FILTERS = VIDEO_EFFECTS;
 
-export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, initialData = {} }) {
+/** @type {Record<string, unknown>} */
+const emptyInitialData = {};
+
+/**
+ * @param {Object} props
+ * @param {React.RefObject<HTMLVideoElement|null>} [props.videoRef]
+ * @param {string} [props.previewUrl]
+ * @param {(data: object) => void} [props.onVideoDataChange]
+ * @param {Record<string, unknown>} [props.initialData]
+ */
+export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, initialData = emptyInitialData }) {
 
   const [activeTab, setActiveTab] = useState(null);
 
-  const [filter, setFilter] = useState(initialData.filter || 'Normal');
+  const [filter, setFilter] = useState(/** @type {string|undefined} */ (initialData.filter) || 'Normal');
 
-  const [startTime, setStartTime] = useState(initialData.start_time || 0);
+  const [startTime, setStartTime] = useState(Number(initialData.start_time) || 0);
 
-  const [endTime, setEndTime] = useState(initialData.end_time || 0);
+  const [endTime, setEndTime] = useState(Number(initialData.end_time) || 0);
 
   const [duration, setDuration] = useState(0);
 
@@ -40,11 +50,11 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
 
   const [textOverlay, setTextOverlay] = useState({ 
 
-    text: initialData.text_overlay || '', 
+    text: (typeof initialData.text_overlay === 'string' ? initialData.text_overlay : '') || '', 
 
-    x: initialData.text_x || 50, 
+    x: Number(initialData.text_x) || 50, 
 
-    y: initialData.text_y || 50,
+    y: Number(initialData.text_y) || 50,
 
     color: '#ffffff',
 
@@ -58,7 +68,7 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
 
   });
 
-  const [stickers, setStickers] = useState(initialData.stickers || []);
+  const [stickers, setStickers] = useState(Array.isArray(initialData.stickers) ? initialData.stickers : []);
 
   const [loading, setLoading] = useState(false);
 
@@ -68,7 +78,7 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
 
   const [previewCut, setPreviewCut] = useState(null);
 
-  const [selectedTransition, setSelectedTransition] = useState(initialData.transition || 'none');
+  const [selectedTransition, setSelectedTransition] = useState((typeof initialData.transition === 'string' ? initialData.transition : null) || 'none');
 
   const [isPlaying, setIsPlaying] = useState(true);
 
@@ -401,7 +411,7 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
 
               onLoadedMetadata={(e) => {
 
-                const v = e.target;
+                const v = /** @type {HTMLVideoElement} */ (e.target);
 
                 if (v && typeof v.duration === 'number' && !Number.isNaN(v.duration)) {
 

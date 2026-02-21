@@ -3,6 +3,7 @@ import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -345,7 +346,7 @@ export default function Chat() {
         <div ref={messageEndRef} />
       </div>
 
-      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
+      <input ref={fileInputRef} type="file" accept={FILE_ACCEPT_IMAGES} className="hidden" onChange={handleImageSelect} />
       <div className="p-4 border-t border-gray-100 flex gap-3">
         <Button type="button" variant="ghost" size="icon" className="text-orange-500" onClick={() => fileInputRef.current?.click()} disabled={sendMessageMutation.isPending}>
           <ImageIcon className="w-5 h-5" />

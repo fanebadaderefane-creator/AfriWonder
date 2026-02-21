@@ -18,6 +18,16 @@ export default function GlobalMenuButton({ hideOnHome = true, hideOnAdmin = true
   // Écrans immersifs (vidéo / live / création) ou contextes où le bouton flottant gêne l'expérience
   const fullscreenPaths = [
     '/Create',
+    '/CreateEvent',
+    '/Events',
+    '/Transport',
+    '/Live',
+    '/LiveShopping',
+    '/Marketplace',
+    '/FoodDelivery',
+    '/Utilities',
+    '/Telemedicine',
+    '/RealEstate',
     '/LiveStream',
     '/Lives',
     '/EditVideo',

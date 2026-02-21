@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { motion } from 'framer-motion';
 import { toast } from "sonner";
 import BottomNav from '../components/navigation/BottomNav';
+import { MOCK_LOANS } from '@/data/microcreditMock';
 
 export default function LoanDetails() {
   const [searchParams] = useSearchParams();
@@ -27,7 +28,18 @@ export default function LoanDetails() {
 
   const { data: loan, isLoading } = useQuery({
     queryKey: ['loan', loanId],
-    queryFn: () => api.microcredit.getById(loanId),
+    queryFn: async () => {
+      try {
+        const data = await api.microcredit.getById(loanId);
+        if (data) return data;
+      } catch (_e) {}
+      const mock = MOCK_LOANS.find((l) => l.id === loanId);
+      if (mock) {
+        const totalToRepay = (mock.amount_requested ?? 0) * (1 + (mock.interest_rate ?? 0) / 100);
+        return { ...mock, status: 'active', contributions: [], total_to_repay: Math.round(totalToRepay) };
+      }
+      return null;
+    },
     enabled: !!loanId
   });
 

@@ -3,8 +3,9 @@ import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   ArrowLeft, Share2, Users, Clock, Target,
-  MapPin, CheckCircle, TrendingUp
+  MapPin, CheckCircle, TrendingUp, Clock3
 } from 'lucide-react';
+import { MOCK_CAMPAIGNS } from '@/data/crowdfundingMock';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -45,7 +46,15 @@ export default function CampaignDetails() {
 
   const { data: campaign, isLoading } = useQuery({
     queryKey: ['campaign', campaignId],
-    queryFn: () => api.crowdfunding.getById(campaignId),
+    queryFn: async () => {
+      try {
+        const data = await api.crowdfunding.getById(campaignId);
+        if (data) return data;
+      } catch (_e) {}
+      const mock = MOCK_CAMPAIGNS.find((c) => c.id === campaignId);
+      if (mock) return { ...mock, contributions: mock.contributions ?? [] };
+      return null;
+    },
     enabled: !!campaignId
   });
 
@@ -143,6 +152,21 @@ export default function CampaignDetails() {
           </Badge>
         )}
       </div>
+
+      {/* Bandeau : campagne en attente d'approbation admin */}
+      {(campaign.status === 'pending' || campaign.status === 'pending_approval') && (
+        <div className="mx-4 mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 flex gap-3">
+          <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+            <Clock3 className="w-5 h-5 text-gray-600" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-bold text-gray-900">En attente de validation</h3>
+            <p className="text-sm text-gray-600 mt-1">
+              Cette campagne n'est pas encore visible par le public. Un administrateur doit l'approuver avant que les contributeurs puissent participer. Vous serez notifié une fois la validation effectuée.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="p-4">
