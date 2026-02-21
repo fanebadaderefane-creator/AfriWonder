@@ -160,10 +160,14 @@ router.get('/apps', authenticate, async (req: AuthRequest, res, next) => {
     const apps = await prisma.miniApp.findMany({
       where: { developer_id: userId },
       include: {
-        subscription: {
-          select: {
-            plan_type: true,
-            commission_rate: true,
+        developer: {
+          include: {
+            developer_subscription: {
+              select: {
+                plan_type: true,
+                commission_rate: true,
+              },
+            },
           },
         },
         _count: {

@@ -50,23 +50,22 @@ router.get('/', async (req, res, next) => {
  */
 router.get('/:id', async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const id = typeof req.params.id === 'string' ? req.params.id : req.params.id?.[0];
+    if (!id) {
+      return res.status(400).json({ success: false, error: 'ID invalide' });
+    }
 
     const app = await prisma.miniApp.findUnique({
       where: { id },
       include: {
         developer: {
-          select: {
-            id: true,
-            full_name: true,
-            profile_image: true,
-            is_verified: true,
-          },
-        },
-        subscription: {
-          select: {
-            plan_type: true,
-            commission_rate: true,
+          include: {
+            developer_subscription: {
+              select: {
+                plan_type: true,
+                commission_rate: true,
+              },
+            },
           },
         },
         _count: {
@@ -146,7 +145,10 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 router.post('/:id/install', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
-    const { id } = req.params;
+    const id = typeof req.params.id === 'string' ? req.params.id : req.params.id?.[0];
+    if (!id) {
+      return res.status(400).json({ success: false, error: 'ID invalide' });
+    }
 
     const result = await miniAppService.installMiniApp(id, userId);
 
@@ -167,7 +169,10 @@ router.post('/:id/install', authenticate, async (req: AuthRequest, res, next) =>
 router.post('/:id/transaction', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
-    const { id } = req.params;
+    const id = typeof req.params.id === 'string' ? req.params.id : req.params.id?.[0];
+    if (!id) {
+      return res.status(400).json({ success: false, error: 'ID invalide' });
+    }
     const {
       amount,
       payment_method = 'orange_money',
@@ -212,7 +217,10 @@ router.post('/:id/transaction', authenticate, async (req: AuthRequest, res, next
 router.post('/:id/boost', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
-    const { id } = req.params;
+    const id = typeof req.params.id === 'string' ? req.params.id : req.params.id?.[0];
+    if (!id) {
+      return res.status(400).json({ success: false, error: 'ID invalide' });
+    }
     const {
       boost_type,
       price,

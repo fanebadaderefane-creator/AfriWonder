@@ -48,7 +48,7 @@ router.post('/provider/register', authenticate, async (req: AuthRequest, res, ne
 router.get('/provider/admin/pending', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
-    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
       return res.status(403).json({ success: false, message: 'Accès refusé' });
     }
     const list = await courseProviderService.getPending();
@@ -62,7 +62,7 @@ router.get('/provider/admin/pending', authenticate, async (req: AuthRequest, res
 router.post('/provider/admin/:id/approve', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
-    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
       return res.status(403).json({ success: false, message: 'Accès refusé' });
     }
     const provider = await courseProviderService.approve(param(req, 'id'));
@@ -77,7 +77,7 @@ router.post('/provider/admin/:id/approve', authenticate, async (req: AuthRequest
 router.post('/provider/admin/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
-    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
       return res.status(403).json({ success: false, message: 'Accès refusé' });
     }
     const reason = req.body?.reason as string | undefined;

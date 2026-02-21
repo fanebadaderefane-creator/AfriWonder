@@ -427,7 +427,7 @@ router.post('/tickets/:id/confirm', async (req, res, next) => {
 router.get('/admin/pending', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
-    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
       return res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
     }
     const events = await eventService.getPendingEvents();
@@ -441,7 +441,7 @@ router.get('/admin/pending', authenticate, async (req: AuthRequest, res, next) =
 router.post('/:id/approve', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
-    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
       return res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
     }
     const eventId = param(req, 'id');
@@ -456,7 +456,7 @@ router.post('/:id/approve', authenticate, async (req: AuthRequest, res, next) =>
 router.post('/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
-    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
       return res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
     }
     const eventId = param(req, 'id');

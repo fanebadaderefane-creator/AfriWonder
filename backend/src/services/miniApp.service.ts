@@ -172,10 +172,10 @@ export class MiniAppService {
     description?: string
   ) {
     try {
-      // Récupérer la mini-app et son abonnement
+      // Récupérer la mini-app et l'abonnement développeur (via developer.developer_subscription)
       const miniApp = await prisma.miniApp.findUnique({
         where: { id: miniAppId },
-        include: { subscription: true },
+        include: { developer: { include: { developer_subscription: true } } },
       });
 
       if (!miniApp) {
@@ -584,16 +584,10 @@ export class MiniAppService {
           where,
           include: {
             developer: {
-              select: {
-                id: true,
-                full_name: true,
-                profile_image: true,
-                is_verified: true,
-              },
-            },
-            subscription: {
-              select: {
-                plan_type: true,
+              include: {
+                developer_subscription: {
+                  select: { plan_type: true },
+                },
               },
             },
             _count: {

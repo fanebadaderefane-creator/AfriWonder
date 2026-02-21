@@ -72,7 +72,7 @@ router.post('/providers', authenticate, async (req: AuthRequest, res, next) => {
 router.get('/providers/admin/pending', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
-    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
       return res.status(403).json({ success: false, message: 'Accès refusé' });
     }
     const list = await prisma.insuranceProvider.findMany({
@@ -90,7 +90,7 @@ router.get('/providers/admin/pending', authenticate, async (req: AuthRequest, re
 router.post('/providers/:id/approve', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
-    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
       return res.status(403).json({ success: false, message: 'Accès refusé' });
     }
     const id = param(req, 'id');
@@ -127,7 +127,7 @@ router.post('/providers/:id/approve', authenticate, async (req: AuthRequest, res
 router.post('/providers/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
-    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
       return res.status(403).json({ success: false, message: 'Accès refusé' });
     }
     const id = param(req, 'id');

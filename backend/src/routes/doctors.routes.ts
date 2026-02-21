@@ -10,7 +10,7 @@ const router = Router();
 router.get('/admin/pending', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
-    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
       return res.status(403).json({ success: false, message: 'Accès refusé' });
     }
     const list = await prisma.doctor.findMany({
@@ -28,7 +28,7 @@ router.get('/admin/pending', authenticate, async (req: AuthRequest, res, next) =
 router.post('/:id/approve', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
-    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
       return res.status(403).json({ success: false, message: 'Accès refusé' });
     }
     const id = param(req, 'id');
@@ -62,7 +62,7 @@ router.post('/:id/approve', authenticate, async (req: AuthRequest, res, next) =>
 router.post('/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
-    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
       return res.status(403).json({ success: false, message: 'Accès refusé' });
     }
     const id = param(req, 'id');

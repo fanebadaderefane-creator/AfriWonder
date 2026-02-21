@@ -38,7 +38,7 @@ router.get('/', async (req, res, next) => {
 router.get('/admin/pending', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
-    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
       return res.status(403).json({ success: false, message: 'Accès refusé' });
     }
     const list = await providerService.getPendingProviders();
@@ -118,7 +118,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res, next) => {
 router.post('/:id/verify', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
-    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
       return res.status(403).json({ success: false, message: 'Accès refusé' });
     }
     const provider = await providerService.verifyProvider(param(req, 'id'));
@@ -132,7 +132,7 @@ router.post('/:id/verify', authenticate, async (req: AuthRequest, res, next) => 
 router.post('/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
-    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role)) {
+    if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
       return res.status(403).json({ success: false, message: 'Accès refusé' });
     }
     const id = param(req, 'id');
