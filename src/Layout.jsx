@@ -6,6 +6,7 @@ import { MarketplaceCurrencyProvider } from "@/contexts/MarketplaceCurrencyConte
 import { AppMenuProvider, useAppMenu } from "@/contexts/AppMenuContext";
 import { useAuth } from "@/lib/AuthContext";
 import OfflineIndicator from "@/components/common/OfflineIndicator";
+import AppUpdateBanner from "@/components/common/AppUpdateBanner";
 import PWAInstallBanner from "@/components/pwa/PWAInstallBanner";
 import PWAUpdateToast from "@/components/pwa/PWAUpdateToast";
 import MenuPlus from "@/components/navigation/MenuPlus";
@@ -88,6 +89,7 @@ function LayoutContent({ children, currentPageName }) {
         Aller au contenu principal
       </a>
       <OfflineIndicator />
+      <AppUpdateBanner />
       <PWAInstallBanner isFullScreen={isFullScreen} currentPageName={currentPageName} />
       <PWAUpdateToast />
       <style>{`
