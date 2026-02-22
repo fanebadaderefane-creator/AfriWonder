@@ -135,7 +135,7 @@ function CountryMultiSelect({ countriesByLetter = [], selected = [], onChange })
         >
         <div className="p-2 border-b border-white/10 shrink-0 bg-slate-900">
           <div className="relative mb-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-orange-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500" />
             <input
               ref={searchInputRef}
               type="search"
@@ -145,7 +145,7 @@ function CountryMultiSelect({ countriesByLetter = [], selected = [], onChange })
               placeholder="Tapez un pays (ex: Sénégal, Maroc...)"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-white/15 border-2 border-orange-500/50 text-sm text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-white/15 border-2 border-blue-600/50 text-sm text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600"
             />
           </div>
           {q && (
@@ -155,7 +155,7 @@ function CountryMultiSelect({ countriesByLetter = [], selected = [], onChange })
             <button
               type="button"
               onClick={toggleAll}
-              className="text-xs text-orange-400 hover:text-orange-300"
+              className="text-xs text-blue-500 hover:text-blue-400"
             >
               {selected.length === allCountries.length ? 'Tout désélectionner' : 'Tout sélectionner'}
             </button>
@@ -174,7 +174,7 @@ function CountryMultiSelect({ countriesByLetter = [], selected = [], onChange })
           <div className="p-2 pb-4">
             {filtered.map((group) => (
               <div key={group.letter} className="mb-3">
-                <div className="px-2 py-1.5 text-xs font-bold text-orange-400 bg-white/5 rounded mb-1 sticky top-0">
+                <div className="px-2 py-1.5 text-xs font-bold text-blue-500 bg-white/5 rounded mb-1 sticky top-0">
                   — {group.letter} —
                 </div>
                 <div className="space-y-0.5">
@@ -431,8 +431,8 @@ export default function CreateAdCampaign() {
     0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-orange-900/20 to-slate-900 pb-24">
-      <div className="sticky top-0 bg-gradient-to-r from-orange-600 to-amber-600 border-b border-white/20 shadow-xl z-40">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900/20 to-slate-900 pb-24">
+      <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-indigo-600 border-b border-white/20 shadow-xl z-40">
         <div className="px-4 py-4 flex items-center justify-between">
           <button
             onClick={() =>
@@ -455,7 +455,7 @@ export default function CreateAdCampaign() {
           {[1, 2, 3].map((s) => (
             <div
               key={s}
-              className={`h-1 flex-1 rounded-full ${step >= s ? 'bg-orange-500' : 'bg-white/20'}`}
+              className={`h-1 flex-1 rounded-full ${step >= s ? 'bg-blue-600' : 'bg-white/20'}`}
             />
           ))}
         </div>
@@ -580,13 +580,13 @@ export default function CreateAdCampaign() {
             </div>
             <p className="text-white/60 text-sm">
               Total :{' '}
-              <span className="font-bold text-orange-400">
+              <span className="font-bold text-blue-500">
                 {price.toLocaleString()} FCFA
               </span>
             </p>
             <Button
               type="submit"
-              className="w-full bg-orange-500 hover:bg-orange-600"
+              className="w-full bg-blue-600 hover:bg-blue-700"
               disabled={createCampaignMutation.isPending}
             >
               {createCampaignMutation.isPending ? (
@@ -616,7 +616,7 @@ export default function CreateAdCampaign() {
                   onClick={() => handleBoostVideoSelect(v)}
                   className={`relative aspect-[9/16] rounded-xl overflow-hidden border-2 transition-colors ${
                     selectedBoostVideo?.id === v.id
-                      ? 'border-orange-500 ring-2 ring-orange-400'
+                      ? 'border-blue-600 ring-2 ring-blue-400'
                       : 'border-white/20 hover:border-white/40'
                   }`}
                 >
@@ -629,7 +629,7 @@ export default function CreateAdCampaign() {
                     <p className="text-white text-xs line-clamp-2">{v.title || v.description || 'Vidéo'}</p>
                   </div>
                   {selectedBoostVideo?.id === v.id && (
-                    <div className="absolute top-1 right-1 w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center">
+                    <div className="absolute top-1 right-1 w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center">
                       <Check className="w-4 h-4 text-white" />
                     </div>
                   )}
@@ -638,7 +638,7 @@ export default function CreateAdCampaign() {
             </div>
             <Button
               onClick={handleBoostPostSubmit}
-              className="w-full bg-orange-500 hover:bg-orange-600"
+              className="w-full bg-blue-600 hover:bg-blue-700"
               disabled={!selectedBoostVideo || addCreativeMutation.isPending}
             >
               {addCreativeMutation.isPending ? (
@@ -682,7 +682,7 @@ export default function CreateAdCampaign() {
                   <Button
                     type="button"
                     variant="outline"
-                    className="w-full border-orange-500 text-orange-400 hover:bg-orange-500/20"
+                    className="w-full border-blue-600 text-blue-500 hover:bg-blue-600/20"
                     onClick={goToCreateForVideo}
                   >
                     <Video className="w-5 h-5 mr-2" />
@@ -764,7 +764,7 @@ export default function CreateAdCampaign() {
                 </div>
                 <Button
                   type="submit"
-                  className="w-full bg-orange-500 hover:bg-orange-600"
+                  className="w-full bg-blue-600 hover:bg-blue-700"
                   disabled={!mediaFile || addCreativeMutation.isPending}
                 >
                   {addCreativeMutation.isPending ? (
@@ -791,7 +791,7 @@ export default function CreateAdCampaign() {
             <div className="bg-white/5 rounded-xl p-4 space-y-3 border border-white/10">
               <div className="flex justify-between items-center">
                 <span className="text-white/70">Montant à payer</span>
-                <span className="text-xl font-bold text-orange-400">{price.toLocaleString()} FCFA</span>
+                <span className="text-xl font-bold text-blue-500">{price.toLocaleString()} FCFA</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-white/70 flex items-center gap-2">
@@ -811,7 +811,7 @@ export default function CreateAdCampaign() {
                   onClick={() => setPaymentMethod('wallet')}
                   className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 transition-colors ${
                     paymentMethod === 'wallet'
-                      ? 'border-orange-500 bg-orange-500/20 text-white'
+                      ? 'border-blue-600 bg-blue-600/20 text-white'
                       : 'border-white/20 bg-white/5 text-white/70 hover:border-white/40'
                   }`}
                 >
@@ -823,7 +823,7 @@ export default function CreateAdCampaign() {
                   onClick={() => setPaymentMethod('orange_money')}
                   className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 transition-colors ${
                     paymentMethod === 'orange_money'
-                      ? 'border-orange-500 bg-orange-500/20 text-white'
+                      ? 'border-blue-600 bg-blue-600/20 text-white'
                       : 'border-white/20 bg-white/5 text-white/70 hover:border-white/40'
                   }`}
                 >
@@ -847,7 +847,7 @@ export default function CreateAdCampaign() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="mt-2 border-orange-400 text-orange-300 hover:bg-orange-500/20"
+                      className="mt-2 border-orange-400 text-orange-300 hover:bg-blue-600/20"
                       onClick={() => {
                         const returnUrl = `${window.location.origin}${createPageUrl('CreateAdCampaign')}?campaignId=${campaignId}&step=3`;
                         sessionStorage.setItem('adCampaignRechargeReturnUrl', returnUrl);
@@ -860,7 +860,7 @@ export default function CreateAdCampaign() {
                 )}
                 <Button
                   onClick={handleStep3Submit}
-                  className="w-full bg-orange-500 hover:bg-orange-600"
+                  className="w-full bg-blue-600 hover:bg-blue-700"
                   disabled={submitMutation.isPending || (wallet?.available_balance ?? wallet?.balance ?? 0) < price}
                 >
                   {submitMutation.isPending ? (
@@ -879,7 +879,7 @@ export default function CreateAdCampaign() {
                   sessionStorage.setItem('adCampaignRechargeReturnUrl', returnUrl);
                   navigate(createPageUrl('RechargeWallet') + `?amount=${price}&returnUrl=${encodeURIComponent(returnUrl)}`);
                 }}
-                className="w-full bg-orange-500 hover:bg-orange-600"
+                className="w-full bg-blue-600 hover:bg-blue-700"
               >
                 Payer {price.toLocaleString()} FCFA avec Orange Money
               </Button>

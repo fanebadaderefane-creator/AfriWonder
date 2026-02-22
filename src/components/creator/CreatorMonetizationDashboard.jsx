@@ -30,7 +30,7 @@ export default function CreatorMonetizationDashboard() {
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500" />
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
       </div>
     );
   }
@@ -54,7 +54,7 @@ export default function CreatorMonetizationDashboard() {
   return (
     <div className="space-y-6">
       {badge && (
-        <Card className="border-amber-200 bg-amber-50/50">
+        <Card className="border-blue-200 bg-blue-50/50">
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
               <span className="text-3xl">{badge.icon}</span>
@@ -75,7 +75,7 @@ export default function CreatorMonetizationDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-green-600">
+            <p className="text-2xl font-bold text-blue-600">
               {(revenues.donations_fcfa ?? 0).toLocaleString()} FCFA
             </p>
           </CardContent>
@@ -155,17 +155,17 @@ export default function CreatorMonetizationDashboard() {
       </div>
 
         {dashboard?.viral_bonuses?.length > 0 && (
-          <Card className="border-amber-200">
+          <Card className="border-blue-200">
             <CardHeader>
               <CardTitle>Bonus viraux (100K, 500K, 1M vues)</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 {dashboard.viral_bonuses.map((b) => (
-                  <div key={b.id} className="flex justify-between items-center p-2 bg-amber-50 rounded">
+                  <div key={b.id} className="flex justify-between items-center p-2 bg-blue-50 rounded">
                     <span>{b.milestone} vues</span>
                     <span className="font-bold">{b.amount_fcfa?.toLocaleString()} FCFA</span>
-                    <Badge className={b.status === 'paid' ? 'bg-green-100' : 'bg-amber-100'}>
+                    <Badge className={b.status === 'paid' ? 'bg-blue-100' : 'bg-blue-100'}>
                       {b.status === 'paid' ? 'Payé' : 'En attente'}
                     </Badge>
                   </div>
@@ -187,7 +187,7 @@ export default function CreatorMonetizationDashboard() {
             <div key={c.key} className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {c.met ? (
-                  <CheckCircle className="w-5 h-5 text-green-500" />
+                  <CheckCircle className="w-5 h-5 text-blue-600" />
                 ) : (
                   <XCircle className="w-5 h-5 text-gray-300" />
                 )}
@@ -196,27 +196,27 @@ export default function CreatorMonetizationDashboard() {
               <div className="flex items-center gap-2">
                 <span className="font-medium">{c.current}</span>
                 <span className="text-gray-400">/ {c.required}</span>
-                {c.met && <Badge className="bg-green-100 text-green-800">OK</Badge>}
+                {c.met && <Badge className="bg-blue-100 text-blue-800">OK</Badge>}
               </div>
             </div>
           ))}
           <div className="pt-4 border-t">
             {m?.enabled ? (
-              <Badge className="bg-green-100 text-green-800 text-base px-4 py-2">Monétisation activée</Badge>
+              <Badge className="bg-blue-100 text-blue-800 text-base px-4 py-2">Monétisation activée</Badge>
             ) : m?.pending_request ? (
-              <Badge className="bg-amber-100 text-amber-800 text-base px-4 py-2">
+              <Badge className="bg-blue-100 text-blue-800 text-base px-4 py-2">
                 Demande envoyée — En attente de validation AfriWonder
               </Badge>
             ) : status?.eligible ? (
               <Button
                 onClick={() => requestMutation.mutate()}
                 disabled={requestMutation.isPending}
-                className="bg-orange-500 hover:bg-orange-600"
+                className="bg-blue-600 hover:bg-blue-700"
               >
                 {requestMutation.isPending ? 'Envoi...' : 'Demander la monétisation'}
               </Button>
             ) : (
-              <p className="text-sm text-amber-600">{status?.reason || 'Conditions non remplies'}</p>
+              <p className="text-sm text-blue-600">{status?.reason || 'Conditions non remplies'}</p>
             )}
           </div>
         </CardContent>

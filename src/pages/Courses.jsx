@@ -211,7 +211,7 @@ export default function Courses() {
                 className={cn(
                   'px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all',
                   selectedCategory === cat.id
-                    ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-md'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 )}
               >
@@ -232,8 +232,8 @@ export default function Courses() {
         {/* Stats cards — AfriWonder */}
         <div className="grid grid-cols-3 gap-4 mb-8">
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-            <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center mb-2">
-              <BookOpen className="w-5 h-5 text-orange-600" />
+            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center mb-2">
+              <BookOpen className="w-5 h-5 text-blue-600" />
             </div>
             <p className="text-2xl font-bold text-slate-900">{stats.courses}+</p>
             <p className="text-xs text-slate-500">Cours</p>
@@ -246,8 +246,8 @@ export default function Courses() {
             <p className="text-xs text-slate-500">Apprenants</p>
           </div>
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-            <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center mb-2">
-              <Award className="w-5 h-5 text-amber-600" />
+            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center mb-2">
+              <Award className="w-5 h-5 text-blue-600" />
             </div>
             <p className="text-2xl font-bold text-slate-900">{stats.certificates >= 1000 ? (stats.certificates / 1000).toFixed(0) + 'K+' : stats.certificates + '+'}</p>
             <p className="text-xs text-slate-500">Certificats</p>
@@ -256,7 +256,7 @@ export default function Courses() {
 
         {isLoading ? (
           <div className="flex justify-center py-12">
-            <div className="w-10 h-10 border-2 border-slate-200 border-t-orange-500 rounded-full animate-spin" />
+            <div className="w-10 h-10 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
           </div>
         ) : filteredCourses.length === 0 ? (
           <div className="text-center py-12">
@@ -280,18 +280,18 @@ export default function Courses() {
                     className="w-full h-full object-cover"
                   />
                   <div className="absolute top-2 left-2">
-                    <span className="px-2 py-1 rounded-lg text-xs font-bold bg-gradient-to-r from-orange-500 to-red-500 text-white">
+                    <span className="px-2 py-1 rounded-lg text-xs font-bold bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
                       {course.price > 0 ? `${(course.price || 0).toLocaleString()} FCFA` : 'Gratuit'}
                     </span>
                   </div>
                   {course.certificate_enabled !== false && (
-                    <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-100 text-amber-800 text-xs font-medium">
+                    <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-100 text-blue-800 text-xs font-medium">
                       <Award className="w-3.5 h-3.5" /> Certificat
                     </div>
                   )}
                   <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 hover:opacity-100 transition-opacity">
                     <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center">
-                      <Play className="w-7 h-7 text-orange-500 ml-1" fill="currentColor" />
+                      <Play className="w-7 h-7 text-blue-600 ml-1" fill="currentColor" />
                     </div>
                   </div>
                 </div>
@@ -303,7 +303,7 @@ export default function Courses() {
                   <p className="text-sm text-slate-500 mb-3">Par {course.creator?.full_name || course.creator?.username || 'Formateur'}</p>
                   <div className="flex items-center gap-3 text-xs text-slate-600 mb-3">
                     <span className="flex items-center gap-1">
-                      <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                      <Star className="w-4 h-4 text-blue-600 fill-amber-500" />
                       {course.rating ?? 0}
                     </span>
                     <span className="flex items-center gap-1">
@@ -315,7 +315,7 @@ export default function Courses() {
                       {course.duration_hours ?? 0} h
                     </span>
                   </div>
-                  <p className="text-sm font-semibold text-orange-600 mb-1">
+                  <p className="text-sm font-semibold text-blue-600 mb-1">
                     {course.price > 0 ? `${(course.price || 0).toLocaleString()} FCFA` : 'Gratuit'}
                   </p>
                   <p className="text-xs text-slate-500 mb-3">
@@ -324,14 +324,14 @@ export default function Courses() {
                   <div className="flex gap-2">
                     <Button
                       size="sm"
-                      className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white border-0 rounded-xl"
+                      className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-orange-600 hover:to-red-600 text-white border-0 rounded-xl"
                       onClick={() => (course._mock ? handleEnrollClick(course) : navigate(`${createPageUrl('CourseDetails')}?id=${course.id}`))}
                     >
                       Voir
                     </Button>
                     <Button
                       size="sm"
-                      className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white border-0 rounded-xl"
+                      className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-orange-600 hover:to-red-600 text-white border-0 rounded-xl"
                       onClick={() => handleEnrollClick(course)}
                     >
                       S&apos;inscrire
@@ -346,15 +346,15 @@ export default function Courses() {
         {/* Devenir prestataire + Espace formateur — AfriWonder */}
         <div className="mt-10 space-y-4">
           <div
-            className="flex items-center justify-between p-4 rounded-xl bg-white border border-slate-200 shadow-sm cursor-pointer hover:border-orange-200 transition-colors"
+            className="flex items-center justify-between p-4 rounded-xl bg-white border border-slate-200 shadow-sm cursor-pointer hover:border-blue-200 transition-colors"
             onClick={() => navigate(createPageUrl('BecomeTrainer'))}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => e.key === 'Enter' && navigate(createPageUrl('BecomeTrainer'))}
           >
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-orange-100 to-red-100 flex items-center justify-center">
-                <GraduationCap className="w-6 h-6 text-orange-600" />
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-100 to-indigo-100 flex items-center justify-center">
+                <GraduationCap className="w-6 h-6 text-blue-600" />
               </div>
               <div>
                 <p className="font-semibold text-slate-900">Devenir formateur</p>
@@ -366,7 +366,7 @@ export default function Courses() {
           {user && isApprovedFormateur && (
             <Link
               to={createPageUrl('InstructorDashboard')}
-              className="flex items-center justify-between p-4 rounded-xl bg-white border border-slate-200 shadow-sm hover:border-orange-200 transition-colors"
+              className="flex items-center justify-between p-4 rounded-xl bg-white border border-slate-200 shadow-sm hover:border-blue-200 transition-colors"
             >
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center">
@@ -394,28 +394,28 @@ export default function Courses() {
           {enrollModalCourse && (
             <>
               <p className="text-sm text-slate-500">Par {enrollModalCourse.creator?.full_name}</p>
-              <p className="text-lg font-bold text-orange-600">
+              <p className="text-lg font-bold text-blue-600">
                 {(enrollModalCourse.price || 0).toLocaleString()} FCFA
               </p>
               <ul className="space-y-2 text-sm text-slate-600">
                 <li className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center text-green-600 text-xs">✓</span>
+                  <span className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs">✓</span>
                   {(enrollModalCourse.modules_count ?? 0) || 0} modules de cours
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center text-green-600 text-xs">✓</span>
+                  <span className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs">✓</span>
                   {enrollModalCourse.duration_hours ?? 0} heures de contenu
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center text-green-600 text-xs">✓</span>
+                  <span className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs">✓</span>
                   Certificat inclus
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center text-green-600 text-xs">✓</span>
+                  <span className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs">✓</span>
                   Accès à vie
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center text-green-600 text-xs">✓</span>
+                  <span className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs">✓</span>
                   Support instructeur
                 </li>
               </ul>
@@ -425,7 +425,7 @@ export default function Courses() {
                   <button
                     key={pm.id}
                     type="button"
-                    className="flex items-center gap-2 p-3 rounded-xl border border-slate-200 hover:border-orange-300 transition-colors"
+                    className="flex items-center gap-2 p-3 rounded-xl border border-slate-200 hover:border-blue-300 transition-colors"
                   >
                     <span className={cn('w-8 h-8 rounded-lg', pm.color)} />
                     <span className="text-sm font-medium">{pm.label}</span>
@@ -433,7 +433,7 @@ export default function Courses() {
                 ))}
               </div>
               <Button
-                className="w-full mt-4 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white border-0 rounded-xl py-6 text-base font-medium"
+                className="w-full mt-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-orange-600 hover:to-red-600 text-white border-0 rounded-xl py-6 text-base font-medium"
                 onClick={handlePay}
               >
                 Payer {(enrollModalCourse.price || 0).toLocaleString()} F CFA
@@ -446,13 +446,13 @@ export default function Courses() {
       {/* Modal Inscription réussie */}
       <Dialog open={successModalOpen} onOpenChange={setSuccessModalOpen}>
         <DialogContent className="max-w-sm rounded-2xl text-center">
-          <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-            <GraduationCap className="w-8 h-8 text-green-600" />
+          <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-4">
+            <GraduationCap className="w-8 h-8 text-blue-600" />
           </div>
           <h3 className="text-xl font-bold text-slate-900">Inscription réussie !</h3>
           <p className="text-slate-600 mt-1">Vous pouvez commencer votre formation.</p>
           <Button
-            className="w-full mt-6 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white border-0 rounded-xl py-6"
+            className="w-full mt-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-orange-600 hover:to-red-600 text-white border-0 rounded-xl py-6"
             onClick={handleStartCourse}
           >
             Commencer le cours

@@ -2,11 +2,12 @@ import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Trophy, Star, Crown } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Trophy, Star, Crown, ArrowLeft } from "lucide-react";
 import { motion } from "framer-motion";
 import { useTranslation } from "@/components/common/useTranslation";
 import { createPageUrl } from "@/utils";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "@/api/expressClient";
 import { MOCK_LEADERBOARD } from "@/data/gamificationMock";
 
@@ -37,6 +38,7 @@ const CATEGORY_OPTIONS = [
 ];
 
 export default function Leaderboard() {
+  const navigate = useNavigate();
   const { _t } = useTranslation();
   const [timeRange, setTimeRange] = useState("all");
   const [country, setCountry] = useState("");
@@ -70,31 +72,36 @@ export default function Leaderboard() {
   const isUsingMockData = leaderboardData?.isMock === true;
 
   const getMedalColor = (rank) => {
-    if (rank === 1) return "text-yellow-500";
+    if (rank === 1) return "text-blue-500";
     if (rank === 2) return "text-gray-400";
-    if (rank === 3) return "text-[#f97316]";
+    if (rank === 3) return "text-indigo-500";
     return "text-gray-600";
   };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       {/* Header */}
-      <div className="bg-gradient-to-br from-[#f97316] to-[#ea580c] text-white p-6">
-        <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl font-bold flex items-center gap-3">
-            <Trophy className="w-8 h-8" />
-            Classement
-          </h1>
-          <p className="text-orange-100 mt-2">
-            Les meilleurs créateurs et contributeurs
-          </p>
+      <div className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white p-6">
+        <div className="max-w-4xl mx-auto flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl text-white hover:bg-white/20" aria-label="Retour">
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold flex items-center gap-3">
+              <Trophy className="w-8 h-8" />
+              Classement
+            </h1>
+            <p className="text-blue-100 mt-2">
+              Les meilleurs créateurs et contributeurs
+            </p>
+          </div>
         </div>
       </div>
 
       <div className="max-w-4xl mx-auto p-6 space-y-6">
         {/* Banner démo si données mockées */}
         {isUsingMockData && (
-          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800 text-center">
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 text-center">
             📊 Mode démo — Données fictives pour illustration
           </div>
         )}
@@ -112,7 +119,7 @@ export default function Leaderboard() {
               onClick={() => setTimeRange(value)}
               className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                 timeRange === value
-                  ? 'bg-white text-[#f97316] shadow'
+                  ? 'bg-white text-blue-600 shadow'
                   : 'bg-white/20 text-white hover:bg-white/30'
               }`}
             >
@@ -169,7 +176,7 @@ export default function Leaderboard() {
                     transition={{ delay: index * 0.05 }}
                   >
                     <Link to={createPageUrl(`Profile?_userId=${entry.user_id}`)}>
-                      <Card className={`hover:shadow-lg transition-shadow cursor-pointer ${index < 3 ? 'ring-2 ring-[#f97316]/30 bg-[#f97316]/5' : ''}`}>
+                      <Card className={`hover:shadow-lg transition-shadow cursor-pointer ${index < 3 ? 'ring-2 ring-blue-500/30 bg-blue-500/5' : ''}`}>
                         <CardContent className="p-4 flex items-center gap-4">
                           {/* Rank */}
                           <div className="flex-shrink-0">
@@ -186,7 +193,7 @@ export default function Leaderboard() {
 
                           {/* User Info - Top 3 avec avatar glow */}
                           <div className="flex items-center gap-3 flex-1">
-                            <div className={`relative ${index < 3 ? 'ring-2 ring-[#f97316] ring-offset-2 rounded-full' : ''}`}>
+                            <div className={`relative ${index < 3 ? 'ring-2 ring-blue-500 ring-offset-2 rounded-full' : ''}`}>
                               <img
                                 src={entry.user_avatar || "https://via.placeholder.com/48"}
                                 alt={entry.user_name}
@@ -205,7 +212,7 @@ export default function Leaderboard() {
 
                           {/* Points */}
                           <div className="text-right">
-                            <div className="text-2xl font-bold text-[#f97316]">
+                            <div className="text-2xl font-bold text-blue-600">
                               {entry.total_points?.toLocaleString() || entry.total_points}
                             </div>
                             <p className="text-xs text-gray-500">points</p>
@@ -243,7 +250,7 @@ export default function Leaderboard() {
                     transition={{ delay: index * 0.05 }}
                   >
                     <Link to={createPageUrl(`Profile?_userId=${entry.user_id}`)}>
-                      <Card className={`hover:shadow-lg transition-shadow cursor-pointer ${index < 3 ? 'ring-2 ring-[#f97316]/30 bg-[#f97316]/5' : ''}`}>
+                      <Card className={`hover:shadow-lg transition-shadow cursor-pointer ${index < 3 ? 'ring-2 ring-blue-500/30 bg-blue-500/5' : ''}`}>
                         <CardContent className="p-4 flex items-center gap-4">
                           <div className="flex-shrink-0">
                             {index < 3 ? (
@@ -266,7 +273,7 @@ export default function Leaderboard() {
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-2xl font-bold text-[#f97316]">Niveau {entry.level}</div>
+                            <div className="text-2xl font-bold text-blue-600">Niveau {entry.level}</div>
                           </div>
                         </CardContent>
                       </Card>
@@ -301,7 +308,7 @@ export default function Leaderboard() {
                     transition={{ delay: index * 0.05 }}
                   >
                     <Link to={createPageUrl(`Profile?_userId=${entry.user_id}`)}>
-                      <Card className={`hover:shadow-lg transition-shadow cursor-pointer ${index < 3 ? 'ring-2 ring-[#f97316]/30 bg-[#f97316]/5' : ''}`}>
+                      <Card className={`hover:shadow-lg transition-shadow cursor-pointer ${index < 3 ? 'ring-2 ring-blue-500/30 bg-blue-500/5' : ''}`}>
                         <CardContent className="p-4 flex items-center gap-4">
                           <div className="flex-shrink-0">
                             {index < 3 ? (
@@ -324,7 +331,7 @@ export default function Leaderboard() {
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-2xl font-bold text-[#f97316]">{entry.badges_count}</div>
+                            <div className="text-2xl font-bold text-blue-600">{entry.badges_count}</div>
                             <p className="text-xs text-gray-500">badges</p>
                           </div>
                         </CardContent>
@@ -344,10 +351,10 @@ export default function Leaderboard() {
         </Tabs>
 
         {/* Info Card */}
-        <Card className="bg-[#f97316]/10 border-[#f97316]/30">
+        <Card className="bg-blue-500/10 border-blue-500/30">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Star className="w-5 h-5 text-[#f97316]" />
+              <Star className="w-5 h-5 text-blue-600" />
               Comment gagner des points?
             </CardTitle>
           </CardHeader>

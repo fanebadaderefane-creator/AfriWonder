@@ -410,7 +410,7 @@ export default function News() {
               {user && (
                 <Link
                   to={createPageUrl('PublishNews')}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
                 >
                   <PenSquare className="w-4 h-4" />
                   <span className="hidden sm:inline">Publier</span>
@@ -440,7 +440,7 @@ export default function News() {
                         className={cn(
                           'px-3 py-1.5 rounded-full text-sm font-medium',
                           prefCategories.includes(cat.id)
-                            ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
+                            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white'
                             : 'bg-slate-100 text-slate-700'
                         )}
                       >
@@ -471,7 +471,7 @@ export default function News() {
                     </select>
                   </div>
                   <Button
-                    className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white border-0"
+                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-0"
                     onClick={() => {
                       savePrefsMutation.mutate();
                       setPrefsOpen(false);
@@ -497,14 +497,14 @@ export default function News() {
             />
           </div>
 
-          {/* Tabs: Tous | Pour vous — couleurs AfriWonder (orange) */}
+          {/* Tabs: Tous | Pour vous — couleurs AfriWonder (bleu) */}
           <div className="flex gap-2 mb-2">
             <button
               onClick={() => setUseFeed(false)}
               className={cn(
                 'px-4 py-1.5 rounded-full text-sm font-medium transition-colors',
                 !useFeed
-                  ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               )}
             >
@@ -515,7 +515,7 @@ export default function News() {
               className={cn(
                 'px-4 py-1.5 rounded-full text-sm font-medium flex items-center gap-1.5 transition-colors',
                 useFeed
-                  ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               )}
             >
@@ -532,8 +532,8 @@ export default function News() {
                 className={cn(
                   'px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all',
                   selectedCategory === cat.id
-                    ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-md'
-                    : 'bg-white border border-slate-200 text-slate-700 hover:border-orange-200 hover:text-orange-700'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:border-blue-200 hover:text-blue-700'
                 )}
               >
                 {cat.label}
@@ -560,7 +560,7 @@ export default function News() {
                   }}
                   className={cn(
                     'px-3 py-1 rounded-full text-xs whitespace-nowrap transition-colors',
-                    isSelected ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   )}
                 >
                   {label}
@@ -573,15 +573,15 @@ export default function News() {
 
       {/* Breaking News — AfriWonder accent */}
       {breaking.length > 0 && (
-        <div className="px-4 py-3 bg-orange-50 border-b border-orange-100">
+        <div className="px-4 py-3 bg-blue-50 border-b border-blue-100">
           <div className="flex items-center gap-2 mb-2">
-            <AlertCircle className="w-5 h-5 text-orange-600" />
-            <span className="font-bold text-orange-700">{t('news_urgent')}</span>
+            <AlertCircle className="w-5 h-5 text-blue-600" />
+            <span className="font-bold text-blue-700">{t('news_urgent')}</span>
           </div>
           <div className="space-y-2">
             {breaking.map((article) => (
               <Link key={article.id} to={articleUrl(article)}>
-                <div className="bg-white rounded-xl p-3 shadow-sm border border-orange-100">
+                <div className="bg-white rounded-xl p-3 shadow-sm border border-blue-100">
                   <h3 className="font-bold text-sm text-slate-900">{article.title}</h3>
                   <p className="text-xs text-slate-500 mt-1">
                     {formatDate(article.published_at)}
@@ -596,7 +596,7 @@ export default function News() {
       <div className="max-w-4xl mx-auto px-4 py-6">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-16">
-            <div className="w-10 h-10 border-2 border-slate-200 border-t-orange-500 rounded-full animate-spin" />
+            <div className="w-10 h-10 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin" />
             <p className="text-slate-500 mt-3">{t('loading')}</p>
           </div>
         ) : (
@@ -629,7 +629,7 @@ export default function News() {
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
                     <div className="absolute top-3 left-3">
-                      <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-gradient-to-r from-orange-500 to-red-500 text-white shadow">
+                      <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow">
                         {getCategoryLabel(featuredArticle.category)}
                       </span>
                     </div>
@@ -655,7 +655,7 @@ export default function News() {
             {trendingToShow.length > 0 && !searchQuery && (
               <div className="mb-8">
                 <div className="flex items-center gap-2 mb-4">
-                  <TrendingUp className="w-5 h-5 text-orange-500" />
+                  <TrendingUp className="w-5 h-5 text-blue-500" />
                   <h3 className="text-lg font-bold text-slate-900">{t('news_trends')}</h3>
                 </div>
                 <div className="space-y-4">
@@ -669,7 +669,7 @@ export default function News() {
                       role="button"
                       tabIndex={0}
                       onKeyDown={(e) => e.key === 'Enter' && handleArticleClick(article)}
-                      className="flex gap-4 p-4 rounded-xl bg-white border border-slate-200 shadow-sm hover:shadow-md hover:border-orange-100 transition-all cursor-pointer"
+                      className="flex gap-4 p-4 rounded-xl bg-white border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-100 transition-all cursor-pointer"
                     >
                       <div className="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-slate-200">
                         {(article.featured_image || article.cover_image) ? (
@@ -684,7 +684,7 @@ export default function News() {
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <span className="inline-block px-2 py-0.5 rounded-md text-xs font-medium bg-orange-100 text-orange-800 mb-1">
+                        <span className="inline-block px-2 py-0.5 rounded-md text-xs font-medium bg-blue-100 text-blue-800 mb-1">
                           {getCategoryLabel(article.category)}
                         </span>
                         <h4 className="font-bold text-slate-900 line-clamp-2">{article.title}</h4>
@@ -738,7 +738,7 @@ export default function News() {
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => e.key === 'Enter' && handleArticleClick(article)}
-                    className="flex gap-4 p-4 rounded-xl bg-white border border-slate-200 shadow-sm hover:shadow-md hover:border-orange-100 transition-all cursor-pointer"
+                    className="flex gap-4 p-4 rounded-xl bg-white border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-100 transition-all cursor-pointer"
                   >
                     <div className="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-slate-200">
                       {(article.featured_image || article.cover_image) ? (
@@ -811,13 +811,13 @@ export default function News() {
             {!useMock && hasNextPage && (
               <div ref={loadMoreObserver} className="py-8 flex justify-center">
                 {isFetchingNextPage ? (
-                  <div className="w-8 h-8 border-2 border-slate-200 border-t-orange-500 rounded-full animate-spin" />
+                  <div className="w-8 h-8 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin" />
                 ) : (
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => fetchNextPage()}
-                    className="border-orange-200 text-orange-600 hover:bg-orange-50"
+                    className="border-blue-200 text-blue-600 hover:bg-blue-50"
                   >
                     {t('news_load_more')}
                   </Button>

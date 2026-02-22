@@ -151,7 +151,7 @@ export default function JobDetails() {
               <div className="flex items-center gap-2 mb-2 flex-wrap">
                 {ratingCount > 0 && (
                   <span className="flex items-center gap-1 text-xs text-gray-600">
-                    <Star className="w-3.5 h-3.5 fill-current text-[#f97316]" />
+                    <Star className="w-3.5 h-3.5 fill-current text-[#2563EB]" />
                     {Number(ratingAvg).toFixed(1)} ({ratingCount} avis)
                   </span>
                 )}
@@ -161,9 +161,9 @@ export default function JobDetails() {
               </div>
             )}
             <div className="flex gap-2 flex-wrap">
-              <Badge className="bg-[#f97316] text-white border-0">{job.job_type}</Badge>
-              {job.is_premium && <Badge className="bg-[#f97316] text-white border-0">⭐ Premium</Badge>}
-              {job.is_urgent && <Badge className="bg-[#f97316] text-white border-0">Urgent</Badge>}
+              <Badge className="bg-[#2563EB] text-white border-0">{job.job_type}</Badge>
+              {job.is_premium && <Badge className="bg-[#2563EB] text-white border-0">⭐ Premium</Badge>}
+              {job.is_urgent && <Badge className="bg-[#2563EB] text-white border-0">Urgent</Badge>}
             </div>
           </div>
         </div>
@@ -174,8 +174,8 @@ export default function JobDetails() {
           </div>
           {(job.salary_min != null) && (
             <div className="flex items-center gap-1">
-              <DollarSign className="w-4 h-4 text-[#f97316]" />
-              <span className="text-[#f97316] font-semibold">{job.salary_min.toLocaleString()} - {(job.salary_max || job.salary_min).toLocaleString()} {job.salary_currency || 'XOF'}</span>
+              <DollarSign className="w-4 h-4 text-[#2563EB]" />
+              <span className="text-[#2563EB] font-semibold">{job.salary_min.toLocaleString()} - {(job.salary_max || job.salary_min).toLocaleString()} {job.salary_currency || 'XOF'}</span>
             </div>
           )}
           <div className="flex items-center gap-1">
@@ -186,9 +186,9 @@ export default function JobDetails() {
       </div>
 
       {applicationStatus && (
-        <div className="bg-gray-50 border-l-4 border-[#f97316] p-4 mx-4 mt-4 rounded">
+        <div className="bg-gray-50 border-l-4 border-[#2563EB] p-4 mx-4 mt-4 rounded">
           <div className="flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-[#f97316]" />
+            <CheckCircle className="w-5 h-5 text-[#2563EB]" />
             <div>
               <p className="font-medium text-sm text-gray-900">Candidature envoyée</p>
               <p className="text-xs text-gray-600 capitalize">{applicationStatus}</p>
@@ -214,7 +214,7 @@ export default function JobDetails() {
                 onClick={() => setCompanyRating(s)}
                 className="p-1 focus:outline-none"
               >
-                <Star className={cn('w-8 h-8', s <= companyRating ? 'text-[#f97316] fill-[#f97316]' : 'text-gray-300')} />
+                <Star className={cn('w-8 h-8', s <= companyRating ? 'text-[#2563EB] fill-[#2563EB]' : 'text-gray-300')} />
               </button>
             ))}
           </div>
@@ -237,7 +237,7 @@ export default function JobDetails() {
 
       {!userApplication && user && (
         <div className="sticky bottom-0 bg-white border-t border-gray-100 p-4">
-          <Button onClick={() => setShowApplication(true)} className="w-full bg-[#f97316] hover:bg-[#ea580c] h-12 rounded-xl">
+          <Button onClick={() => setShowApplication(true)} className="w-full bg-[#2563EB] hover:bg-[#1E3A8A] h-12 rounded-xl">
             <Send className="w-4 h-4 mr-2" /> Postuler
           </Button>
         </div>
@@ -299,7 +299,7 @@ export default function JobDetails() {
             <Button
               onClick={() => applyMutation.mutate()}
               disabled={applyMutation.isPending}
-              className="w-full bg-[#f97316] hover:bg-[#ea580c] text-white rounded-xl h-11"
+              className="w-full bg-[#2563EB] hover:bg-[#1E3A8A] text-white rounded-xl h-11"
             >
               {applyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Envoyer ma candidature
@@ -312,14 +312,14 @@ export default function JobDetails() {
       <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
         <DialogContent className="sm:max-w-sm rounded-2xl text-center">
           <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 rounded-full bg-[#f97316] flex items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-[#2563EB] flex items-center justify-center">
               <CheckCircle className="w-8 h-8 text-white" />
             </div>
           </div>
           <h3 className="text-lg font-bold text-gray-900">Candidature envoyée !</h3>
           <p className="text-sm text-gray-600 mt-1">{lastAppliedCompany} examinera votre candidature.</p>
           <Button
-            className="w-full mt-4 bg-[#f97316] hover:bg-[#ea580c] text-white rounded-xl"
+            className="w-full mt-4 bg-[#2563EB] hover:bg-[#1E3A8A] text-white rounded-xl"
             onClick={() => setShowSuccessModal(false)}
           >
             Fermer
@@ -329,7 +329,7 @@ export default function JobDetails() {
 
       {!user && (
         <div className="p-4">
-          <Link to={createPageUrl('Home')}><Button className="w-full bg-[#f97316] hover:bg-[#ea580c]">Se connecter pour postuler</Button></Link>
+          <Link to={createPageUrl('Home')}><Button className="w-full bg-[#2563EB] hover:bg-[#1E3A8A]">Se connecter pour postuler</Button></Link>
         </div>
       )}
 

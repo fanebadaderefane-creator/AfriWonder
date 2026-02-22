@@ -100,7 +100,7 @@ export default function AnalyticsPage() {
   if (!user || videosLoading) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
     );
   }
@@ -114,6 +114,8 @@ export default function AnalyticsPage() {
             variant="ghost"
             size="icon"
             onClick={() => navigate(createPageUrl('Profile'))}
+            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl"
+            aria-label="Retour"
           >
             <ArrowLeft className="w-6 h-6" />
           </Button>
@@ -127,13 +129,13 @@ export default function AnalyticsPage() {
       <div className="p-4 space-y-6">
         {/* KPIs */}
         <div className="grid grid-cols-2 gap-3">
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-xl p-4 border-l-4 border-orange-500">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-xl p-4 border-l-4 border-blue-600">
             <div className="text-2xl font-bold text-gray-900">{videosStats?.totalViews.toLocaleString()}</div>
             <p className="text-xs text-gray-600 flex items-center gap-1">
               <Eye className="w-3 h-3" /> Vues totales
             </p>
           </motion.div>
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-white rounded-xl p-4 border-l-4 border-red-500">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-white rounded-xl p-4 border-l-4 border-blue-500">
             <div className="text-2xl font-bold text-gray-900">{followersStats?.totalFollowers.toLocaleString()}</div>
             <p className="text-xs text-gray-600">Followers</p>
           </motion.div>
@@ -231,7 +233,7 @@ export default function AnalyticsPage() {
           <TabsContent value="growth" className="p-4 space-y-4">
             <div className="space-y-3 bg-gray-50 p-4 rounded-lg">
               <p className="text-sm font-semibold text-gray-900">Nouveaux followers ce mois</p>
-              <p className="text-3xl font-bold text-orange-600">{followersStats?.newFollowersThisMonth || 0}</p>
+              <p className="text-3xl font-bold text-blue-600">{followersStats?.newFollowersThisMonth || 0}</p>
               <p className="text-xs text-gray-600">Ratio: {followersStats?.totalFollowers > 0 ? Math.round((followersStats?.newFollowersThisMonth / followersStats?.totalFollowers) * 100) : 0}% du total</p>
             </div>
 

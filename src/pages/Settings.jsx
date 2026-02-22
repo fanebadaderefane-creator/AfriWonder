@@ -113,13 +113,13 @@ export default function Settings() {
       id: 'notifications',
       icon: Bell,
       label: t('notifications'),
-      color: 'bg-orange-100 text-orange-600'
+      color: 'bg-blue-100 text-blue-600'
     },
     {
       id: 'privacy',
       icon: Shield,
       label: t('privacy'),
-      color: 'bg-green-100 text-green-600'
+      color: 'bg-blue-100 text-blue-600'
     },
     {
       id: 'data',
@@ -131,7 +131,7 @@ export default function Settings() {
       id: 'addresses',
       icon: MapPin,
       label: 'Adresses de livraison',
-      color: 'bg-orange-100 text-orange-600'
+      color: 'bg-blue-100 text-blue-600'
     },
     {
       id: 'language',
@@ -164,10 +164,12 @@ export default function Settings() {
               variant="ghost"
               size="icon"
               onClick={() => navigate(-1)}
+              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+              aria-label="Retour"
             >
               <ArrowLeft className="w-6 h-6" />
             </Button>
-            <h1 className="text-lg font-bold">{t('settings')}</h1>
+            <h1 className="text-lg font-bold text-blue-900">{t('settings')}</h1>
           </div>
         </div>
 
@@ -180,7 +182,7 @@ export default function Settings() {
           >
             <Avatar className="w-16 h-16">
               <AvatarImage src={user?.profile_image} />
-              <AvatarFallback className="bg-gradient-to-br from-orange-400 to-red-500 text-white text-xl">
+              <AvatarFallback className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white text-xl">
                 {user?.full_name?.[0]?.toUpperCase() || 'U'}
               </AvatarFallback>
             </Avatar>
@@ -232,25 +234,25 @@ export default function Settings() {
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               onClick={() => navigate(createPageUrl('AdminDashboard'))}
-              className="w-full flex items-center gap-4 p-4 bg-gradient-to-r from-orange-50 to-red-50 rounded-2xl border-2 border-orange-200"
+              className="w-full flex items-center gap-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border-2 border-blue-200"
             >
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center">
                 <ShieldCheck className="w-5 h-5 text-white" />
               </div>
               <div className="flex-1 text-left">
                 <span className="font-bold text-gray-800 block">Centre de contrôle</span>
                 <span className="text-xs text-gray-500">Contrôle total AfriWonder</span>
               </div>
-              <ChevronRight className="w-5 h-5 text-orange-500" />
+              <ChevronRight className="w-5 h-5 text-blue-600" />
             </motion.button>
           )}
 
           {/* Logout */}
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-4 p-4 bg-white rounded-2xl text-red-500"
+            className="w-full flex items-center gap-4 p-4 bg-white rounded-2xl text-blue-600"
           >
-            <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
               <LogOut className="w-5 h-5" />
             </div>
             <span className="font-medium">{t('logout')}</span>
@@ -278,7 +280,7 @@ export default function Settings() {
             <Button 
               onClick={handleSaveProfile}
               disabled={isLoading}
-              className="bg-orange-500 hover:bg-orange-600 rounded-full px-4"
+              className="bg-blue-600 hover:bg-blue-700 rounded-full px-4"
             >
               {isLoading ? 'Sauvegarde...' : 'Sauvegarder'}
             </Button>
@@ -291,7 +293,7 @@ export default function Settings() {
             <div className="relative">
               <Avatar className="w-24 h-24">
                 <AvatarImage src={profileData.profile_image || user?.profile_image} />
-                <AvatarFallback className="bg-gradient-to-br from-orange-400 to-red-500 text-white text-2xl">
+                <AvatarFallback className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white text-2xl">
                   {user?.full_name?.[0]?.toUpperCase() || 'U'}
                 </AvatarFallback>
               </Avatar>
@@ -330,11 +332,11 @@ export default function Settings() {
                   }
                 }}
               />
-              <label htmlFor="avatar-upload" className="absolute bottom-0 right-0 w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center cursor-pointer">
+              <label htmlFor="avatar-upload" className="absolute bottom-0 right-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center cursor-pointer">
                 <Camera className="w-4 h-4 text-white" />
               </label>
             </div>
-            <label htmlFor="avatar-upload" className="mt-2 text-orange-500 font-medium text-sm cursor-pointer">
+            <label htmlFor="avatar-upload" className="mt-2 text-blue-600 font-medium text-sm cursor-pointer">
               Changer la photo
             </label>
           </div>
@@ -463,14 +465,14 @@ export default function Settings() {
                   <Smartphone className="w-5 h-5 text-gray-500" />
                   <span className="font-medium">Télécharger en WiFi uniquement</span>
                 </div>
-                <Switch className="data-[state=checked]:bg-orange-500" />
+                <Switch className="data-[state=checked]:bg-blue-600" />
               </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <WifiOff className="w-5 h-5 text-gray-500" />
                 <span className="font-medium">Mode hors-ligne</span>
               </div>
-              <Switch className="data-[state=checked]:bg-orange-500" />
+              <Switch className="data-[state=checked]:bg-blue-600" />
             </div>
           </div>
         </div>

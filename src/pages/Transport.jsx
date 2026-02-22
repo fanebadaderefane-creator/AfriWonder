@@ -179,12 +179,12 @@ export default function Transport() {
       <div className="p-4">
         <div className="flex items-start justify-between mb-2">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl" aria-label="Retour">
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl text-blue-600 hover:text-blue-700 hover:bg-blue-50" aria-label="Retour">
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div>
-              <h1 className="text-3xl font-black text-gray-900">Transport</h1>
-              <p className="text-gray-500">Réservez une course rapidement</p>
+              <h1 className="text-3xl font-black text-blue-900">Transport</h1>
+              <p className="text-blue-700">Réservez une course rapidement</p>
             </div>
           </div>
           <Button
@@ -192,7 +192,7 @@ export default function Transport() {
               setBecomeDriverError(null);
               setShowBecomeDriverModal(true);
             }}
-            className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-semibold shrink-0"
+            className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-indigo-600 text-white font-semibold shrink-0"
           >
             <Car className="w-4 h-4 mr-2" />
             Devenir chauffeur
@@ -200,18 +200,18 @@ export default function Transport() {
         </div>
 
         {/* Carte interactive */}
-        <div className="rounded-xl bg-gradient-to-r from-green-50 to-blue-50 border border-gray-200 p-8 mb-6 flex flex-col items-center justify-center min-h-[200px]">
-          <MapPinned className="w-12 h-12 text-green-600 mb-2" />
-          <p className="font-semibold text-gray-800">Carte interactive</p>
-          <p className="text-sm text-gray-500">Bamako, Mali</p>
+        <div className="rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 p-8 mb-6 flex flex-col items-center justify-center min-h-[200px]">
+          <MapPinned className="w-12 h-12 text-blue-600 mb-2" />
+          <p className="font-semibold text-blue-900">Carte interactive</p>
+          <p className="text-sm text-blue-600">Bamako, Mali</p>
         </div>
 
         {/* Où allez-vous ? */}
         <div className="mb-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-3">Où allez-vous ?</h2>
+          <h2 className="text-lg font-bold text-blue-900 mb-3">Où allez-vous ?</h2>
           <div className="space-y-3">
             <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-200">
-              <div className="w-3 h-3 rounded-full bg-green-500 shrink-0" />
+              <div className="w-3 h-3 rounded-full bg-blue-500 shrink-0" />
               <input
                 type="text"
                 placeholder="Point de départ"
@@ -221,7 +221,7 @@ export default function Transport() {
               />
             </div>
             <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-200">
-              <div className="w-3 h-3 rounded-full bg-red-500 shrink-0" />
+              <div className="w-3 h-3 rounded-full bg-blue-500 shrink-0" />
               <input
                 type="text"
                 placeholder="Destination"
@@ -232,7 +232,7 @@ export default function Transport() {
             </div>
           </div>
 
-          <p className="text-sm font-medium text-gray-700 mt-3 mb-2">Destinations populaires</p>
+          <p className="text-sm font-medium text-blue-800 mt-3 mb-2">Destinations populaires</p>
           <div className="flex flex-wrap gap-2">
             {POPULAR_DESTINATIONS.map((tag) => (
               <button
@@ -243,8 +243,8 @@ export default function Transport() {
                 }}
                 className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                   selectedDestinationTag === tag
-                    ? 'bg-gray-700 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-blue-50 hover:text-blue-800'
                 }`}
               >
                 {tag}
@@ -256,16 +256,16 @@ export default function Transport() {
             <div className="mt-4 p-4 bg-white rounded-xl border border-gray-200 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs text-gray-500">Estimation</p>
-                <p className="text-lg font-bold text-green-600">{estimateFare} F CFA</p>
+                <p className="text-lg font-bold text-blue-600">{estimateFare} F CFA</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Durée estimée</p>
-                <p className="text-lg font-bold text-green-600">{estimateDuration}</p>
+                <p className="text-lg font-bold text-blue-600">{estimateDuration}</p>
               </div>
-              <p className="w-full text-sm font-bold text-green-600">Chauffeur trouvé !</p>
+              <p className="w-full text-sm font-bold text-blue-600">Chauffeur trouvé !</p>
               <Button
                 onClick={() => setShowDriverFoundModal(true)}
-                className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white"
+                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
               >
                 Course en cours...
               </Button>
@@ -275,7 +275,7 @@ export default function Transport() {
           {!rideRequested && (
             <Button
               onClick={handleRequestRide}
-              className="w-full mt-4 bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold py-3"
+              className="w-full mt-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3"
             >
               Demander une course
             </Button>
@@ -308,7 +308,7 @@ export default function Transport() {
                       <span className="text-xs text-gray-500">{driver.courses} courses</span>
                     </div>
                   </div>
-                  <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                  <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
                     En ligne
                   </span>
                   <Button
@@ -317,7 +317,7 @@ export default function Transport() {
                       setSelectedDriver(driver);
                       setShowDriverFoundModal(true);
                     }}
-                    className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
+                    className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-indigo-600 text-white"
                   >
                     Choisir
                   </Button>
@@ -360,12 +360,12 @@ export default function Transport() {
                 <Clock className="w-4 h-4" />
                 Arrivée dans 5 min
               </span>
-              <span className="font-bold text-green-600 text-lg">{estimateFare} FCFA</span>
+              <span className="font-bold text-blue-600 text-lg">{estimateFare} FCFA</span>
             </div>
             <div className="flex gap-2">
               <Button
                 variant="outline"
-                className="flex-1 border-orange-500 text-orange-600 hover:bg-orange-50"
+                className="flex-1 border-blue-600 text-blue-600 hover:bg-blue-50"
               >
                 <Phone className="w-4 h-4 mr-2" />
                 Appeler
@@ -376,7 +376,7 @@ export default function Transport() {
               </Button>
             </div>
             <Button
-              className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold py-3"
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3"
               onClick={() => setShowDriverFoundModal(false)}
             >
               Confirmer la course
@@ -413,7 +413,7 @@ export default function Transport() {
                   setBecomeDriverForm({ ...becomeDriverForm, fullName: e.target.value })
                 }
                 placeholder="Votre nom complet"
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 required
               />
             </div>
@@ -429,7 +429,7 @@ export default function Transport() {
                   setBecomeDriverForm({ ...becomeDriverForm, phone: e.target.value })
                 }
                 placeholder="+223 XX XX XX XX"
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 required
               />
             </div>
@@ -448,7 +448,7 @@ export default function Transport() {
                   setBecomeDriverForm({ ...becomeDriverForm, vehicleMakeModel: e.target.value })
                 }
                 placeholder="Toyota Corolla"
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500"
+                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -460,13 +460,13 @@ export default function Transport() {
                   setBecomeDriverForm({ ...becomeDriverForm, vehicleColor: e.target.value })
                 }
                 placeholder="Blanc"
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500"
+                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Plaque d'immatriculation <span className="text-red-500">*</span>
+              Plaque d'immatriculation <span className="text-blue-600">*</span>
             </label>
             <div className="relative">
               <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -477,7 +477,7 @@ export default function Transport() {
                   setBecomeDriverForm({ ...becomeDriverForm, licensePlate: e.target.value })
                 }
                 placeholder="BA-1234-ML"
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
           </div>
@@ -498,14 +498,14 @@ export default function Transport() {
                   setBecomeDriverForm({ ...becomeDriverForm, licenseNumber: e.target.value })
                 }
                 placeholder="ML-123456789"
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
           </div>
           <Button
             type="submit"
             disabled={becomeDriverLoading}
-            className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold py-3"
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3"
           >
             S'inscrire comme chauffeur
           </Button>

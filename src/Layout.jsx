@@ -97,7 +97,7 @@ function LayoutContent({ children, currentPageName }) {
 
   return (
     <div
-      className="min-h-screen bg-gray-50"
+      className="min-h-screen bg-background"
       style={{
         paddingTop: 'env(safe-area-inset-top)',
         paddingLeft: 'env(safe-area-inset-left)',
@@ -148,7 +148,7 @@ function LayoutContent({ children, currentPageName }) {
         
         /* Gradient text */
         .gradient-text {
-          background: linear-gradient(135deg, #f97316, #ef4444, #ec4899);
+          background: linear-gradient(135deg, #1E3A8A, #2563EB, #60A5FA);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -215,13 +215,12 @@ function LayoutContent({ children, currentPageName }) {
           -webkit-user-select: none;
         }
         
-        /* Orange theme colors */
+        /* AfriWonder design system (see docs/DESIGN_SYSTEM.md) */
         :root {
-          --primary-orange: #f97316;
-          --primary-red: #ef4444;
-          --primary-pink: #ec4899;
-          --gradient-start: #f97316;
-          --gradient-end: #ef4444;
+          --aw-hex-primary: #1E3A8A;
+          --aw-hex-secondary: #2563EB;
+          --aw-hex-accent: #60A5FA;
+          --aw-hex-success: #16A34A;
         }
 
         /* Image optimization â€” content-visibility pour scroll fluide */

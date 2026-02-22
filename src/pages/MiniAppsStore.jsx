@@ -86,21 +86,21 @@ export default function MiniAppsStore() {
       </div>
 
       <div className="px-4 py-4 space-y-6">
-        {/* Catégories */}
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+        {/* Catégories — une carte par catégorie, scroll horizontal, pas de texte mélangé sur mobile */}
+        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4">
           {MOCK_CATEGORIES.map(cat => (
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
               className={cn(
-                "flex items-center gap-1 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors",
+                "flex flex-col items-center justify-center flex-shrink-0 min-w-[76px] w-[76px] py-3 rounded-2xl text-xs font-medium transition-colors",
                 selectedCategory === cat.id
-                  ? "bg-[#f97316] text-white"
-                  : "bg-white text-gray-600 border border-gray-200"
+                  ? "bg-[#2563EB] text-white"
+                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
               )}
             >
-              <span>{cat.icon}</span>
-              <span>{cat.label}</span>
+              <span className="text-2xl mb-1" aria-hidden>{cat.icon}</span>
+              <span className="text-center leading-tight line-clamp-2 w-full px-0.5">{cat.label}</span>
             </button>
           ))}
         </div>
@@ -109,7 +109,7 @@ export default function MiniAppsStore() {
         {selectedCategory === 'all' && featuredApps.length > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <Star className="w-5 h-5 text-[#f97316]" />
+              <Star className="w-5 h-5 text-[#2563EB]" />
               <h2 className="font-bold text-lg">En vedette</h2>
             </div>
             <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
@@ -120,7 +120,7 @@ export default function MiniAppsStore() {
                   className="flex-shrink-0 w-48"
                 >
                   <Card className="overflow-hidden hover:shadow-lg transition-shadow">
-                    <div className="h-32 bg-gradient-to-br from-[#f97316] to-[#ea580c] flex items-center justify-center overflow-hidden">
+                    <div className="h-32 bg-gradient-to-br from-[#2563EB] to-[#1E3A8A] flex items-center justify-center overflow-hidden">
                       {app.icon.startsWith('http') ? (
                         <img src={app.icon} alt={app.name} className="w-full h-full object-cover" />
                       ) : (
@@ -130,7 +130,7 @@ export default function MiniAppsStore() {
                     <CardContent className="p-3">
                       <h3 className="font-bold text-sm mb-1 line-clamp-1">{app.name}</h3>
                       <div className="flex items-center gap-1 mb-2">
-                        <Star className="w-3 h-3 fill-[#f97316] text-[#f97316]" />
+                        <Star className="w-3 h-3 fill-[#2563EB] text-[#2563EB]" />
                         <span className="text-xs text-gray-600">{app.rating}</span>
                         <span className="text-xs text-gray-400">({app.reviews_count})</span>
                       </div>
@@ -147,7 +147,7 @@ export default function MiniAppsStore() {
         {selectedCategory === 'all' && (
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <TrendingUp className="w-5 h-5 text-[#f97316]" />
+              <TrendingUp className="w-5 h-5 text-[#2563EB]" />
               <h2 className="font-bold text-lg">Tendances</h2>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -168,7 +168,7 @@ export default function MiniAppsStore() {
                       <h3 className="font-bold text-sm mb-1 line-clamp-1">{app.name}</h3>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1">
-                          <Star className="w-3 h-3 fill-[#f97316] text-[#f97316]" />
+                          <Star className="w-3 h-3 fill-[#2563EB] text-[#2563EB]" />
                           <span className="text-xs text-gray-600">{app.rating}</span>
                         </div>
                         <span className="text-xs text-gray-400">{app.installs.toLocaleString()}+</span>
@@ -201,7 +201,7 @@ export default function MiniAppsStore() {
                       <CardContent className="p-4">
                         <div className="flex gap-4">
                           {/* Icon */}
-                          <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[#f97316] to-[#ea580c] flex items-center justify-center flex-shrink-0 overflow-hidden">
+                          <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[#2563EB] to-[#1E3A8A] flex items-center justify-center flex-shrink-0 overflow-hidden">
                             {app.icon.startsWith('http') ? (
                               <img src={app.icon} alt={app.name} className="w-full h-full object-cover" />
                             ) : (
@@ -216,10 +216,10 @@ export default function MiniAppsStore() {
                                 <h3 className="font-bold text-base mb-1">{app.name}</h3>
                                 <div className="flex items-center gap-2 flex-wrap">
                                   {app.developer.verified && (
-                                    <Badge className="text-xs bg-[#f97316] text-white border-0">✓ Vérifié</Badge>
+                                    <Badge className="text-xs bg-[#2563EB] text-white border-0">✓ Vérifié</Badge>
                                   )}
                                   <div className="flex items-center gap-1">
-                                    <Star className="w-3 h-3 fill-[#f97316] text-[#f97316]" />
+                                    <Star className="w-3 h-3 fill-[#2563EB] text-[#2563EB]" />
                                     <span className="text-xs text-gray-600">{app.rating}</span>
                                     <span className="text-xs text-gray-400">({app.reviews_count})</span>
                                   </div>
@@ -234,7 +234,7 @@ export default function MiniAppsStore() {
                                 <span className="text-xs text-gray-500">{app.developer.name}</span>
                               </div>
                               {isInstalled && (
-                                <Badge variant="outline" className="text-xs text-[#f97316] border-[#f97316]">
+                                <Badge variant="outline" className="text-xs text-[#2563EB] border-[#2563EB]">
                                   Installé
                                 </Badge>
                               )}

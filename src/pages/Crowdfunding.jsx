@@ -95,13 +95,13 @@ export default function Crowdfunding() {
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 px-4 py-3">
         <div className="flex items-center gap-3 mb-3">
-          <button onClick={() => navigate(-1)}>
+          <button onClick={() => navigate(-1)} className="text-blue-600 hover:text-blue-700" aria-label="Retour">
             <ArrowLeft className="w-6 h-6" />
           </button>
           <h1 className="text-xl font-bold">Crowdfunding</h1>
           {user && (
             <Link to={createPageUrl('CreateCampaign')} className="ml-auto">
-              <Button size="sm" className="bg-orange-500 hover:bg-orange-600">
+              <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
                 <Plus className="w-4 h-4 mr-1" />
                 Créer
               </Button>
@@ -129,7 +129,7 @@ export default function Crowdfunding() {
               className={cn(
                 "flex items-center gap-1 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors",
                 selectedCategory === cat.id
-                  ? "bg-orange-500 text-white"
+                  ? "bg-blue-600 text-white"
                   : "bg-gray-100 text-gray-600"
               )}
             >
@@ -155,7 +155,7 @@ export default function Crowdfunding() {
       </div>
 
       {/* Stats */}
-      <div className="p-4 bg-gradient-to-br from-orange-500 to-red-500 text-white">
+      <div className="p-4 bg-gradient-to-br from-blue-600 to-blue-700 text-white">
         <div className="grid grid-cols-3 gap-4">
           <div className="text-center">
             <div className="text-2xl font-bold">{campaigns.length}</div>
@@ -180,7 +180,7 @@ export default function Crowdfunding() {
       <div className="p-4 space-y-4">
         {isLoading ? (
           <div className="text-center py-12">
-            <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto" />
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
           </div>
         ) : filteredCampaigns.length === 0 ? (
           <div className="text-center py-12">
@@ -210,7 +210,7 @@ export default function Crowdfunding() {
                       className="w-full h-full object-cover"
                     />
                     {campaign.is_featured && (
-                      <Badge className="absolute top-3 left-3 bg-yellow-500 text-white border-0">
+                      <Badge className="absolute top-3 left-3 bg-blue-600 text-white border-0">
                         ⭐ En vedette
                       </Badge>
                     )}
@@ -235,7 +235,7 @@ export default function Crowdfunding() {
                     {/* Progress */}
                     <div className="mb-3">
                       <div className="flex justify-between text-sm mb-1">
-                        <span className="font-bold text-orange-500">
+                        <span className="font-bold text-blue-600">
                           {(campaign.current_amount ?? 0).toLocaleString()} FCFA
                         </span>
                         <span className="text-gray-500">
@@ -244,7 +244,7 @@ export default function Crowdfunding() {
                       </div>
                       <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-gradient-to-r from-orange-500 to-red-500 transition-all duration-500"
+                          className="h-full bg-gradient-to-r from-blue-600 to-blue-700 transition-all duration-500"
                           style={{ width: `${progress}%` }}
                         />
                       </div>
@@ -260,7 +260,7 @@ export default function Crowdfunding() {
                         <Clock className="w-4 h-4" />
                         <span className={cn(
                           "font-medium",
-                          daysLeft <= 3 && "text-red-500"
+                          daysLeft <= 3 && "text-blue-600"
                         )}>
                           {daysLeft} jours restants
                         </span>

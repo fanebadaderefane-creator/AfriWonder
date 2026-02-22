@@ -13,14 +13,14 @@ const ICON_MAP = {
 };
 
 const GRADIENT_COLORS = [
-  "from-amber-400 to-orange-500",
+  "from-blue-500 to-blue-600",
   "from-green-500 to-emerald-600",
   "from-blue-400 to-indigo-500",
-  "from-pink-400 to-rose-500",
+  "from-indigo-400 to-blue-500",
   "from-purple-400 to-violet-500",
   "from-teal-400 to-cyan-500",
-  "from-red-400 to-orange-500",
-  "from-yellow-400 to-amber-500",
+  "from-sky-400 to-blue-500",
+  "from-blue-400 to-indigo-500",
 ];
 
 export default function CategoryGrid({ categories }) {
@@ -47,7 +47,7 @@ export default function CategoryGrid({ categories }) {
               >
                 <Link
                   to={createPageUrl("Search") + `?category=${cat.id}`}
-                  className="group flex flex-col items-center gap-4 p-6 rounded-2xl bg-white border border-border/50 hover:shadow-xl hover:shadow-amber-100/30 hover:-translate-y-1 transition-all duration-300"
+                  className="group flex flex-col items-center gap-4 p-6 rounded-2xl bg-white border border-border/50 hover:shadow-xl hover:shadow-blue-100/30 hover:-translate-y-1 transition-all duration-300"
                 >
                   <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${gradient} flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300`}>
                     <IconComp className="w-7 h-7 text-white" />

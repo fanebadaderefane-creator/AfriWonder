@@ -172,7 +172,7 @@ export default function Telemedicine() {
     <div className="min-h-screen bg-gray-50 pb-24">
       <div className="p-4">
         <div className="flex items-center gap-3 mb-2">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl" aria-label="Retour">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl text-blue-600 hover:text-blue-700 hover:bg-blue-50" aria-label="Retour">
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
@@ -182,9 +182,9 @@ export default function Telemedicine() {
         </div>
 
         {/* Urgence médicale */}
-        <div className="mt-4 p-4 rounded-xl bg-red-50 border border-red-200 flex flex-wrap items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-            <Phone className="w-5 h-5 text-red-600" />
+        <div className="mt-4 p-4 rounded-xl bg-blue-50 border border-blue-200 flex flex-wrap items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+            <Phone className="w-5 h-5 text-blue-600" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-gray-900">Urgence médicale ?</p>
@@ -194,7 +194,7 @@ export default function Telemedicine() {
           </div>
           <a
             href={`tel:${SAMU_PHONE}`}
-            className="px-4 py-2 rounded-lg bg-red-500 text-white font-semibold text-sm hover:bg-red-600 whitespace-nowrap"
+            className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 whitespace-nowrap"
           >
             Appeler
           </a>
@@ -203,7 +203,7 @@ export default function Telemedicine() {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3 mt-6">
           <div className="p-4 rounded-xl bg-white border border-gray-200 shadow-sm text-center">
-            <Heart className="w-6 h-6 text-red-500 mx-auto mb-1" />
+            <Heart className="w-6 h-6 text-blue-600 mx-auto mb-1" />
             <p className="text-2xl font-bold text-gray-900">120+</p>
             <p className="text-xs text-gray-500">Médecins</p>
           </div>
@@ -213,7 +213,7 @@ export default function Telemedicine() {
             <p className="text-xs text-gray-500">Consultations</p>
           </div>
           <div className="p-4 rounded-xl bg-white border border-gray-200 shadow-sm text-center">
-            <Clock className="w-6 h-6 text-green-500 mx-auto mb-1" />
+            <Clock className="w-6 h-6 text-blue-500 mx-auto mb-1" />
             <p className="text-2xl font-bold text-gray-900">24/7</p>
             <p className="text-xs text-gray-500">Disponibles</p>
           </div>
@@ -228,7 +228,7 @@ export default function Telemedicine() {
               onClick={() => setSelectedSpecialty(s.id)}
               className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                 selectedSpecialty === s.id
-                  ? 'bg-red-500 text-white'
+                  ? 'bg-blue-600 text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
             >
@@ -241,7 +241,7 @@ export default function Telemedicine() {
         <div className="mt-6 space-y-4">
           {loading && (
             <div className="flex justify-center py-8">
-              <div className="w-8 h-8 border-4 border-red-500 border-t-transparent rounded-full animate-spin" />
+              <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
             </div>
           )}
           {!loading && filteredDoctors.map((doctor) => (
@@ -258,22 +258,22 @@ export default function Telemedicine() {
                 <h3 className="font-bold text-gray-900">{doctor.name}</h3>
                 <p className="text-sm text-gray-600">{doctor.specialty}</p>
                 <div className="flex items-center gap-1 mt-1 text-sm text-gray-700">
-                  <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                  <Star className="w-4 h-4 text-blue-500 fill-blue-500" />
                   <span>{doctor.rating}</span>
                   <span className="text-gray-500">({doctor.consultations} consultations)</span>
                 </div>
-                <div className="flex items-center gap-1 mt-1 text-sm text-green-600">
+                <div className="flex items-center gap-1 mt-1 text-sm text-blue-600">
                   <Clock className="w-4 h-4" />
                   <span>{doctor.nextSlot}</span>
                 </div>
                 <div className="flex items-center justify-between mt-3">
                   <p className="font-bold text-gray-900">
-                    <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1.5 align-middle" />
+                    <span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1.5 align-middle" />
                     {Number(doctor.fee).toLocaleString('fr-FR')} FCFA
                   </p>
                   <Button
                     size="sm"
-                    className="bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold"
+                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold"
                     onClick={() => openBooking(doctor)}
                   >
                     Consulter
@@ -286,8 +286,8 @@ export default function Telemedicine() {
 
         {/* Prestataire - Devenir partenaire médecin */}
         <div className="mt-8">
-          <div className="rounded-xl bg-red-50 border border-red-200 p-6 text-center">
-            <Stethoscope className="w-12 h-12 text-red-500 mx-auto mb-3" />
+          <div className="rounded-xl bg-blue-50 border border-blue-200 p-6 text-center">
+            <Stethoscope className="w-12 h-12 text-blue-600 mx-auto mb-3" />
             <h3 className="font-bold text-gray-900 mb-2">Vous êtes médecin ?</h3>
             <p className="text-sm text-gray-600 mb-4">
               Rejoignez la plateforme télémédecine. Votre profil sera validé par un administrateur avant d’être visible.
@@ -298,7 +298,7 @@ export default function Telemedicine() {
                 setPrestataireSuccess(false);
                 setPrestataireModalOpen(true);
               }}
-              className="bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white font-semibold"
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold"
             >
               Devenir partenaire
             </Button>
@@ -319,10 +319,10 @@ export default function Telemedicine() {
       >
         {prestataireSuccess ? (
           <div className="py-4 text-center">
-            <p className="text-green-600 font-medium">
+            <p className="text-blue-600 font-medium">
               Demande enregistrée. Vous serez notifié après validation par l’administrateur.
             </p>
-            <Button className="mt-4 bg-red-500 hover:bg-red-600" onClick={() => setPrestataireModalOpen(false)}>
+            <Button className="mt-4 bg-blue-600 hover:bg-blue-700" onClick={() => setPrestataireModalOpen(false)}>
               Fermer
             </Button>
           </div>
@@ -332,7 +332,7 @@ export default function Telemedicine() {
               Renseignez vos informations. Un administrateur validera votre profil avant qu’il n’apparaisse sur la plateforme.
             </p>
             {prestataireError && (
-              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+              <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-sm">
                 {prestataireError}
               </div>
             )}
@@ -384,7 +384,7 @@ export default function Telemedicine() {
                   value={prestataireForm.full_name}
                   onChange={(e) => setPrestataireForm({ ...prestataireForm, full_name: e.target.value })}
                   placeholder="Dr. Nom Prénom"
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
                   required
                 />
               </div>
@@ -393,7 +393,7 @@ export default function Telemedicine() {
                 <select
                   value={prestataireForm.specialty}
                   onChange={(e) => setPrestataireForm({ ...prestataireForm, specialty: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   {DOCTOR_SPECIALTIES_FOR_REGISTER.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -409,7 +409,7 @@ export default function Telemedicine() {
                   value={prestataireForm.phone}
                   onChange={(e) => setPrestataireForm({ ...prestataireForm, phone: e.target.value })}
                   placeholder="+223 XX XX XX XX"
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
                   required
                 />
               </div>
@@ -420,7 +420,7 @@ export default function Telemedicine() {
                   value={prestataireForm.email}
                   onChange={(e) => setPrestataireForm({ ...prestataireForm, email: e.target.value })}
                   placeholder="email@exemple.com"
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -430,7 +430,7 @@ export default function Telemedicine() {
                   value={prestataireForm.clinic_name}
                   onChange={(e) => setPrestataireForm({ ...prestataireForm, clinic_name: e.target.value })}
                   placeholder="Nom du cabinet"
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -440,7 +440,7 @@ export default function Telemedicine() {
                   value={prestataireForm.clinic_address}
                   onChange={(e) => setPrestataireForm({ ...prestataireForm, clinic_address: e.target.value })}
                   placeholder="Adresse"
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -451,7 +451,7 @@ export default function Telemedicine() {
                     value={prestataireForm.city}
                     onChange={(e) => setPrestataireForm({ ...prestataireForm, city: e.target.value })}
                     placeholder="Bamako"
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
@@ -463,14 +463,14 @@ export default function Telemedicine() {
                     onChange={(e) =>
                       setPrestataireForm({ ...prestataireForm, consultation_fee: e.target.value })
                     }
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
               <Button
                 type="submit"
                 disabled={prestataireLoading}
-                className="w-full bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white font-semibold py-3"
+                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3"
               >
                 {prestataireLoading ? 'Envoi en cours...' : 'Soumettre ma demande'}
               </Button>
@@ -497,7 +497,7 @@ export default function Telemedicine() {
               <div>
                 <p className="font-bold text-gray-900">{selectedDoctor.name}</p>
                 <p className="text-sm text-gray-600">{selectedDoctor.specialty}</p>
-                <p className="text-green-600 font-semibold">
+                <p className="text-blue-600 font-semibold">
                   {Number(selectedDoctor.fee).toLocaleString('fr-FR')} FCFA
                 </p>
               </div>
@@ -515,7 +515,7 @@ export default function Telemedicine() {
                       onClick={() => setConsultationType(t.id)}
                       className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border-2 text-sm font-medium transition-colors ${
                         consultationType === t.id
-                          ? 'border-red-500 text-red-600 bg-red-50'
+                          ? 'border-blue-600 text-blue-600 bg-blue-50'
                           : 'border-gray-200 text-gray-700 hover:bg-gray-50'
                       }`}
                     >
@@ -537,7 +537,7 @@ export default function Telemedicine() {
                     onClick={() => setSelectedSlot(selectedSlot === slot ? null : slot)}
                     className={`py-2 rounded-lg text-sm font-medium border-2 transition-colors ${
                       selectedSlot === slot
-                        ? 'border-red-500 bg-red-50 text-red-700'
+                        ? 'border-blue-600 bg-blue-50 text-blue-700'
                         : 'border-gray-200 text-gray-700 hover:bg-gray-50'
                     }`}
                   >
@@ -548,7 +548,7 @@ export default function Telemedicine() {
             </div>
 
             <Button
-              className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold py-3"
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3"
               onClick={handleConfirmBooking}
               disabled={confirmLoading || !selectedSlot}
             >

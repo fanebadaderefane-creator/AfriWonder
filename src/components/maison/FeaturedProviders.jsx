@@ -8,7 +8,7 @@ import { motion } from "framer-motion";
 import { DEFAULT_CARD_IMAGE } from "@/components/common/ProviderCard";
 
 const PLAN_BADGES = {
-  premium: { label: "Premium", className: "bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0" },
+  premium: { label: "Premium", className: "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-0" },
   pro: { label: "Pro", className: "bg-green-100 text-green-800 border-green-200" },
 };
 
@@ -23,7 +23,7 @@ export default function FeaturedProviders({ providers, categories }) {
   if (!Array.isArray(providers) || providers.length === 0) return null;
 
   return (
-    <section className="py-20 px-4 sm:px-6 bg-gradient-to-b from-transparent to-amber-50/50">
+    <section className="py-20 px-4 sm:px-6 bg-gradient-to-b from-transparent to-blue-50/50">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-end justify-between mb-12">
           <div>
@@ -31,7 +31,7 @@ export default function FeaturedProviders({ providers, categories }) {
             <p className="mt-3 text-muted-foreground">Les professionnels les mieux notés</p>
           </div>
           <Link to={createPageUrl("Providers")}>
-            <Button variant="ghost" className="text-amber-700 hover:text-amber-800 hidden sm:flex">
+            <Button variant="ghost" className="text-blue-700 hover:text-blue-800 hidden sm:flex">
               Voir tout <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </Link>
@@ -79,10 +79,10 @@ function FeaturedProviderCard({ provider, getCategoryName, badge, index }) {
     >
       <Link
         to={createPageUrl("ProviderProfile") + `?id=${p.id}`}
-        className="group block bg-white rounded-2xl border border-border/50 overflow-hidden hover:shadow-xl hover:shadow-amber-100/30 transition-all duration-300"
+        className="group block bg-white rounded-2xl border border-border/50 overflow-hidden hover:shadow-xl hover:shadow-blue-100/30 transition-all duration-300"
       >
         {/* Image — toujours une image (fallback sur mobile) */}
-        <div className="relative h-48 min-h-[192px] bg-gradient-to-br from-amber-100 to-green-100 overflow-hidden">
+        <div className="relative h-48 min-h-[192px] bg-gradient-to-br from-blue-50 to-indigo-50 overflow-hidden">
           <img
             src={imageUrl}
             alt=""
@@ -110,21 +110,21 @@ function FeaturedProviderCard({ provider, getCategoryName, badge, index }) {
                   onError={() => setAvatarFailed(true)}
                 />
               ) : (
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-400 to-green-600 flex items-center justify-center text-white font-medium text-sm ring-2 ring-white shadow">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-medium text-sm ring-2 ring-white shadow">
                   {initial}
                 </div>
               )}
               <div>
                 <div className="flex items-center gap-1.5">
                   <h3 className="font-semibold text-foreground">{displayName}</h3>
-                  {p.is_verified && <BadgeCheck className="w-4 h-4 text-amber-500" />}
+                  {p.is_verified && <BadgeCheck className="w-4 h-4 text-blue-600" />}
                 </div>
                 <p className="text-xs text-muted-foreground">{getCategoryName(p.category_id) || p.category_name || ""}</p>
               </div>
             </div>
             {Number(p.average_rating) > 0 && (
               <div className="flex items-center gap-1 text-sm">
-                <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                <Star className="w-4 h-4 fill-blue-500 text-blue-500" />
                 <span className="font-semibold">{Number(p.average_rating).toFixed(1)}</span>
                 <span className="text-muted-foreground">({p.total_reviews ?? 0})</span>
               </div>

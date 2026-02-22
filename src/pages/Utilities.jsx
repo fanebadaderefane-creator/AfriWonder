@@ -197,8 +197,8 @@ export default function Utilities() {
             onClick={() => setModalAirtime(true)}
             className="flex flex-col items-center justify-center p-4 rounded-xl bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow text-left"
           >
-            <div className="w-12 h-12 rounded-full border-2 border-orange-500 flex items-center justify-center mb-2">
-              <Smartphone className="w-6 h-6 text-orange-500" />
+            <div className="w-12 h-12 rounded-full border-2 border-blue-600 flex items-center justify-center mb-2">
+              <Smartphone className="w-6 h-6 text-blue-600" />
             </div>
             <span className="text-sm font-semibold text-gray-900">Recharge Airtime</span>
           </button>
@@ -207,8 +207,8 @@ export default function Utilities() {
             onClick={() => setModalElectricity(true)}
             className="flex flex-col items-center justify-center p-4 rounded-xl bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
           >
-            <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-2">
-              <Zap className="w-6 h-6 text-amber-600" />
+            <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mb-2">
+              <Zap className="w-6 h-6 text-blue-600" />
             </div>
             <span className="text-sm font-semibold text-gray-900">Électricité (EDM)</span>
           </button>
@@ -245,8 +245,8 @@ export default function Utilities() {
                 onClick={() => setQuickAmount(amount)}
                 className={`relative px-4 py-2.5 rounded-xl text-sm font-medium transition-colors pb-3 ${
                   quickAmount === amount
-                    ? 'bg-orange-500 text-white'
-                    : 'bg-white border border-gray-200 text-orange-600 hover:bg-orange-50'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white border border-gray-200 text-blue-600 hover:bg-blue-50'
                 }`}
               >
                 {amount.toLocaleString('fr-FR')} FCFA
@@ -321,7 +321,7 @@ export default function Utilities() {
               value={airtimePhone}
               onChange={(e) => setAirtimePhone(e.target.value)}
               placeholder="+223 XX XX XX XX"
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
           <div>
@@ -331,7 +331,7 @@ export default function Utilities() {
               value={airtimeAmount}
               onChange={(e) => setAirtimeAmount(e.target.value)}
               placeholder="Ex: 5000"
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
             <div className="flex flex-wrap gap-2 mt-2">
               {QUICK_AMOUNTS.map((amount) => (
@@ -347,7 +347,7 @@ export default function Utilities() {
             </div>
           </div>
           <Button
-            className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold py-3"
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3"
             onClick={handlePayAirtime}
             disabled={payLoading || !airtimePhone?.trim()}
           >
@@ -372,7 +372,7 @@ export default function Utilities() {
               value={electricityAccount}
               onChange={(e) => setElectricityAccount(e.target.value)}
               placeholder="Ex: EDM-123456"
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
           <div>
@@ -382,11 +382,11 @@ export default function Utilities() {
               value={electricityAmount}
               onChange={(e) => setElectricityAmount(e.target.value)}
               placeholder="Ex: 5000"
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
           <Button
-            className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold py-3"
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3"
             onClick={handlePayElectricity}
             disabled={payLoading || !electricityAccount?.trim()}
           >
@@ -411,7 +411,7 @@ export default function Utilities() {
               value={waterAccount}
               onChange={(e) => setWaterAccount(e.target.value)}
               placeholder="Ex: 123456"
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
           <div>
@@ -434,7 +434,7 @@ export default function Utilities() {
             </div>
           </div>
           <Button
-            className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold py-3"
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3"
             onClick={handlePayWater}
             disabled={payLoading || !waterAccount?.trim()}
           >
@@ -471,7 +471,7 @@ export default function Utilities() {
             Référence : <span className="font-mono font-semibold text-gray-700">{successData.reference}</span>
           </p>
           <Button
-            className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold"
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold"
             onClick={() => setModalSuccess(false)}
           >
             Fermer

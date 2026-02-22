@@ -14,10 +14,10 @@ import ProductCard from '../components/marketplace/ProductCard';
 import RecommendationEngine from '../components/common/RecommendationEngine';
 
 const categories = [
-  { id: 'trending', label: 'Tendances', icon: Flame, color: 'from-orange-500 to-red-500' },
+  { id: 'trending', label: 'Tendances', icon: Flame, color: 'from-blue-500 to-indigo-500' },
   { id: 'musique', label: 'Musique', icon: Music2, color: 'from-purple-500 to-pink-500' },
   { id: 'danse', label: 'Danse', icon: Music2, color: 'from-pink-500 to-rose-500' },
-  { id: 'cuisine', label: 'Cuisine', icon: Utensils, color: 'from-amber-500 to-orange-500' },
+  { id: 'cuisine', label: 'Cuisine', icon: Utensils, color: 'from-blue-400 to-indigo-500' },
   { id: 'mode', label: 'Mode', icon: Shirt, color: 'from-indigo-500 to-purple-500' },
   { id: 'business', label: 'Business', icon: Briefcase, color: 'from-emerald-500 to-teal-500' },
   { id: 'humour', label: 'Humour', icon: Laugh, color: 'from-yellow-500 to-amber-500' },
@@ -183,27 +183,27 @@ export default function Discover() {
           <TabsList className="w-full bg-transparent h-12 p-0 gap-4 justify-start">
             <TabsTrigger 
               value="explore" 
-              className="px-0 data-[state=active]:bg-transparent data-[state=active]:text-orange-500 data-[state=active]:shadow-none font-semibold"
+              className="px-0 data-[state=active]:bg-transparent data-[state=active]:text-blue-600 data-[state=active]:shadow-none font-semibold"
             >
               Explorer
             </TabsTrigger>
             {user && (
               <TabsTrigger 
                 value="recommended" 
-                className="px-0 data-[state=active]:bg-transparent data-[state=active]:text-orange-500 data-[state=active]:shadow-none font-semibold"
+                className="px-0 data-[state=active]:bg-transparent data-[state=active]:text-blue-600 data-[state=active]:shadow-none font-semibold"
               >
                 Pour vous
               </TabsTrigger>
             )}
             <TabsTrigger 
               value="shop" 
-              className="px-0 data-[state=active]:bg-transparent data-[state=active]:text-orange-500 data-[state=active]:shadow-none font-semibold"
+              className="px-0 data-[state=active]:bg-transparent data-[state=active]:text-blue-600 data-[state=active]:shadow-none font-semibold"
             >
               Boutique
             </TabsTrigger>
             <TabsTrigger 
               value="creators" 
-              className="px-0 data-[state=active]:bg-transparent data-[state=active]:text-orange-500 data-[state=active]:shadow-none font-semibold"
+              className="px-0 data-[state=active]:bg-transparent data-[state=active]:text-blue-600 data-[state=active]:shadow-none font-semibold"
             >
               Créateurs
             </TabsTrigger>
@@ -247,7 +247,7 @@ export default function Discover() {
             {/* Viral Videos */}
             <div>
               <h2 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-                <Flame className="w-5 h-5 text-orange-500" />
+                <Flame className="w-5 h-5 text-blue-600" />
                 Vidéos virales
               </h2>
               <div className="grid grid-cols-3 gap-1">
@@ -269,7 +269,7 @@ export default function Discover() {
                       ) : (
                         <img src={VIDEO_PLACEHOLDER_IMG} alt={video.title} className="w-full h-full object-cover" />
                       )}
-                      <div className="absolute top-1 right-1 bg-gradient-to-r from-orange-500 to-red-500 text-white px-1.5 py-0.5 rounded text-[10px] font-bold">
+                      <div className="absolute top-1 right-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-1.5 py-0.5 rounded text-[10px] font-bold">
                         VIRAL
                       </div>
                       <div className="absolute bottom-1 left-1 bg-black/60 px-1.5 py-0.5 rounded text-[10px] text-white font-medium">
@@ -309,7 +309,7 @@ export default function Discover() {
             {/* Trending Hashtags */}
             <div>
               <div className="flex items-center gap-2 mb-3">
-                <TrendingUp className="w-5 h-5 text-orange-500" />
+                <TrendingUp className="w-5 h-5 text-blue-600" />
                 <h2 className="font-bold text-gray-800">Tendances</h2>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -319,13 +319,13 @@ export default function Discover() {
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: index * 0.05 }}
-                    className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-gray-100 hover:border-orange-200 hover:bg-orange-50 transition-all"
+                    className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-all"
                   >
-                    <Hash className="w-4 h-4 text-orange-500" />
+                    <Hash className="w-4 h-4 text-blue-600" />
                     <span className="font-medium text-gray-700">{hashtag.tag}</span>
                     <span className="text-xs text-gray-400">{hashtag.count}</span>
                     {hashtag.trending && (
-                      <Flame className="w-3 h-3 text-orange-500" />
+                      <Flame className="w-3 h-3 text-blue-600" />
                     )}
                   </motion.button>
                 ))}
@@ -343,7 +343,7 @@ export default function Discover() {
                 {selectedCategory && (
                   <button 
                     onClick={() => setSelectedCategory(null)}
-                    className="text-orange-500 text-sm font-medium"
+                    className="text-blue-600 text-sm font-medium"
                   >
                     Tout voir
                   </button>
@@ -390,13 +390,13 @@ export default function Discover() {
                   >
                     <Link
                       to={`${createPageUrl('Profile')}?userId=${creator.id}`}
-                      className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 hover:border-orange-200 transition-colors"
+                      className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 hover:border-blue-200 transition-colors"
                     >
                       <div className="relative">
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white text-lg font-bold">
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white text-lg font-bold">
                           {creator.name?.[0]?.toUpperCase() || 'U'}
                         </div>
-                        <div className="absolute -top-1 -right-1 bg-orange-500 rounded-full px-1.5 py-0.5 text-[10px] text-white font-bold">
+                        <div className="absolute -top-1 -right-1 bg-blue-600 rounded-full px-1.5 py-0.5 text-[10px] text-white font-bold">
                           #{index + 1}
                         </div>
                       </div>
@@ -412,7 +412,7 @@ export default function Discover() {
                           e.preventDefault();
                           e.stopPropagation();
                         }}
-                        className="px-3 py-1.5 bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs font-semibold rounded-full hover:opacity-90"
+                        className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-semibold rounded-full hover:opacity-90"
                       >
                         Suivre
                       </button>
@@ -428,13 +428,13 @@ export default function Discover() {
         {activeTab === 'recommended' && (
           <div className="space-y-4">
             <h2 className="font-bold text-gray-800 flex items-center gap-2 mb-4">
-              <Sparkles className="w-5 h-5 text-orange-500" />
+              <Sparkles className="w-5 h-5 text-blue-600" />
               Recommandations personnalisées
             </h2>
             
             {loadingRecommended ? (
               <div className="flex justify-center py-20">
-                <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
               </div>
             ) : recommendedVideos.length > 0 ? (
               <div className="grid grid-cols-3 gap-1">
@@ -499,7 +499,7 @@ export default function Discover() {
             {courseRecommendations.length > 0 && (
               <div className="mt-8">
                 <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-                  <Book className="w-4 h-4 text-orange-500" />
+                  <Book className="w-4 h-4 text-blue-600" />
                   Cours recommandés
                 </h3>
                 <div className="space-y-2">
@@ -523,7 +523,7 @@ export default function Discover() {
             {eventRecommendations.length > 0 && (
               <div className="mt-8">
                 <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-orange-500" />
+                  <Calendar className="w-4 h-4 text-blue-600" />
                   Événements intéressants
                 </h3>
                 <div className="space-y-2">
@@ -550,7 +550,7 @@ export default function Discover() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-gray-800">Marketplace</h2>
-              <Link to={createPageUrl('Marketplace')} className="text-orange-500 text-sm font-medium">
+              <Link to={createPageUrl('Marketplace')} className="text-blue-600 text-sm font-medium">
                 Voir tout
               </Link>
             </div>
@@ -585,7 +585,7 @@ export default function Discover() {
                   to={`${createPageUrl('Profile')}?userId=${creator.id}`}
                   className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100"
                 >
-                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white text-xl font-bold">
+                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white text-xl font-bold">
                     {creator.full_name?.[0]?.toUpperCase() || 'U'}
                   </div>
                   <div className="flex-1">
@@ -597,7 +597,7 @@ export default function Discover() {
                       e.preventDefault();
                       e.stopPropagation();
                     }}
-                    className="px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white text-sm font-semibold rounded-full hover:opacity-90"
+                    className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold rounded-full hover:opacity-90"
                   >
                     Suivre
                   </button>

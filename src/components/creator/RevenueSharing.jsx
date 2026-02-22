@@ -114,7 +114,7 @@ export default function RevenueSharing({ videoId, onSetup }) {
                   <p className="text-xs text-gray-500">{collab.email}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Badge className="bg-orange-100 text-orange-800">
+                  <Badge className="bg-blue-100 text-blue-800">
                     {collab.percentage}%
                   </Badge>
                   <button
@@ -134,14 +134,14 @@ export default function RevenueSharing({ videoId, onSetup }) {
           <div>
             <div className="flex justify-between text-sm mb-2">
               <span className="text-gray-700">Répartition totale</span>
-              <span className={totalPercentage === 100 ? "text-green-600" : "text-gray-600"}>
+              <span className={totalPercentage === 100 ? "text-blue-600" : "text-gray-600"}>
                 {totalPercentage}%
               </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
               <div
                 className={`h-2 rounded-full transition-all ${
-                  totalPercentage === 100 ? "bg-green-500" : "bg-orange-500"
+                  totalPercentage === 100 ? "bg-blue-600" : "bg-blue-600"
                 }`}
                 style={{ width: `${Math.min(totalPercentage, 100)}%` }}
               />

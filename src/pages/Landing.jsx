@@ -232,13 +232,13 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <AfriWonderLogo size="sm" />
-            <span className="text-xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
+            <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
               AfriWonder
             </span>
           </div>
           <a
             href="#auth"
-            className="absolute right-4 sm:right-6 lg:right-8 px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 font-medium text-sm flex items-center gap-2"
+            className="absolute right-4 sm:right-6 lg:right-8 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 font-medium text-sm flex items-center gap-2"
           >
             <ExternalLink className="w-4 h-4" />
             Accéder à l'app
@@ -249,7 +249,7 @@ export default function Landing() {
       {/* Hero Section - Early Access */}
       <section className="min-h-screen flex items-center justify-center pt-24 px-4 relative overflow-hidden">
         <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-20 right-10 w-72 h-72 bg-orange-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+          <div className="absolute top-20 right-10 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
           <div className="absolute -bottom-8 left-20 w-72 h-72 bg-red-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
         </div>
 
@@ -262,27 +262,27 @@ export default function Landing() {
           <div className="mb-6 flex justify-center">
             <AfriWonderLogo size="3xl" />
           </div>
-          <h1 className="text-5xl sm:text-6xl font-black mb-4 bg-gradient-to-r from-orange-400 via-red-400 to-pink-400 bg-clip-text text-transparent">
+          <h1 className="text-5xl sm:text-6xl font-black mb-4 bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-500 bg-clip-text text-transparent">
             AfriWonder
           </h1>
 
           {/* Message Early Access */}
-          <div className="mb-6 px-4 py-3 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-100 text-sm sm:text-base max-w-2xl mx-auto">
+          <div className="mb-6 px-4 py-3 rounded-xl bg-blue-500/20 border border-blue-500/40 text-blue-100 text-sm sm:text-base max-w-2xl mx-auto">
             {EARLY_ACCESS_MESSAGE}
           </div>
 
           <p className="text-gray-400 mb-6 italic">Where Africa Wows the World</p>
-          <p className="text-sm text-amber-200/90 mb-6 px-4">
+          <p className="text-sm text-blue-200/90 mb-6 px-4">
             Seuls les prestataires vérifiés par AfriWonder — AfriWonder Abonnement pour nos prestataires.
           </p>
 
           {/* Compteur utilisateurs */}
           <div className="flex items-center justify-center gap-2 mb-8">
-            <Users className="w-5 h-5 text-orange-400" />
+            <Users className="w-5 h-5 text-blue-400" />
             <span className="text-lg font-semibold">
               {loadingConfig ? '...' : (
                 <>
-                  <span className="text-orange-400">{formatStat(totalUsers)}</span>
+                  <span className="text-blue-400">{formatStat(totalUsers)}</span>
                   <span className="text-gray-400"> / </span>
                   <span>{formatStat(maxUsers)}</span>
                   <span className="text-gray-500 ml-1">utilisateurs</span>
@@ -298,7 +298,7 @@ export default function Landing() {
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
               onClick={handleInstallPWA}
-              className="px-8 py-4 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl font-bold text-lg hover:shadow-2xl transition-all flex items-center justify-center gap-2"
+              className="px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl font-bold text-lg hover:shadow-2xl transition-all flex items-center justify-center gap-2"
             >
               <Download className="w-5 h-5" />
               Télécharger PWA
@@ -324,9 +324,9 @@ export default function Landing() {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="max-w-md mx-auto bg-gray-800/60 backdrop-blur-md border border-amber-500/40 rounded-2xl p-6"
+              className="max-w-md mx-auto bg-gray-800/60 backdrop-blur-md border border-blue-500/40 rounded-2xl p-6"
             >
-              <h3 className="text-xl font-bold text-amber-400 mb-2">Early Access complet pour le moment</h3>
+              <h3 className="text-xl font-bold text-blue-400 mb-2">Early Access complet pour le moment</h3>
               <p className="text-gray-400 text-sm mb-4">Rejoignez la liste d'attente pour la prochaine vague.</p>
               <form onSubmit={handleJoinWaitlist} className="space-y-3">
                 <input
@@ -334,7 +334,7 @@ export default function Landing() {
                   placeholder="Votre email"
                   value={waitlistEmail}
                   onChange={(e) => setWaitlistEmail(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                   required
                 />
                 <input
@@ -342,12 +342,12 @@ export default function Landing() {
                   placeholder="Nom (optionnel)"
                   value={waitlistName}
                   onChange={(e) => setWaitlistName(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                 />
                 <button
                   type="submit"
                   disabled={waitlistLoading}
-                  className="w-full px-6 py-3 bg-orange-500 hover:bg-orange-600 rounded-lg font-bold disabled:opacity-50"
+                  className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-bold disabled:opacity-50"
                 >
                   {waitlistLoading ? 'Envoi...' : 'Rejoindre la liste d\'attente'}
                 </button>
@@ -372,7 +372,7 @@ export default function Landing() {
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
-            className="text-3xl font-black text-center mb-6 bg-gradient-to-r from-orange-400 to-red-400 bg-clip-text text-transparent"
+            className="text-3xl font-black text-center mb-6 bg-gradient-to-r from-blue-500 to-blue-600 bg-clip-text text-transparent"
           >
             {authMode === 'login' ? 'Se connecter' : 'Créer un compte'}
           </motion.h2>
@@ -413,7 +413,7 @@ export default function Landing() {
                   placeholder="votre@email.com"
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                   required
                 />
               </div>
@@ -424,20 +424,20 @@ export default function Landing() {
                   placeholder="••••••••"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                   required
                 />
               </div>
               <button
                 type="submit"
                 disabled={authLoading}
-                className="w-full px-6 py-3 bg-orange-500 hover:bg-orange-600 rounded-lg font-bold disabled:opacity-50"
+                className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-bold disabled:opacity-50"
               >
                 {authLoading ? 'Connexion...' : 'Se connecter'}
               </button>
               <p className="text-center text-sm text-gray-400">
                 Pas encore de compte ?{' '}
-                <button type="button" onClick={() => setAuthMode('register')} className="text-orange-400 hover:underline font-medium">
+                <button type="button" onClick={() => setAuthMode('register')} className="text-blue-400 hover:underline font-medium">
                   S'inscrire
                 </button>
               </p>
@@ -481,7 +481,7 @@ export default function Landing() {
                   placeholder="Jean Dupont"
                   value={regFullName}
                   onChange={(e) => setRegFullName(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                   required
                 />
               </div>
@@ -492,7 +492,7 @@ export default function Landing() {
                   placeholder="jeandupont"
                   value={regUsername}
                   onChange={(e) => setRegUsername(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                   required
                 />
               </div>
@@ -503,7 +503,7 @@ export default function Landing() {
                   placeholder="votre@email.com"
                   value={regEmail}
                   onChange={(e) => setRegEmail(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                   required
                 />
               </div>
@@ -514,7 +514,7 @@ export default function Landing() {
                   placeholder="••••••••"
                   value={regPassword}
                   onChange={(e) => setRegPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                   required
                 />
               </div>
@@ -527,21 +527,21 @@ export default function Landing() {
                 />
                 <span className="text-sm text-gray-300">
                   J'accepte les{' '}
-                  <Link to="/TermsOfService" className="text-orange-400 hover:underline">conditions d'utilisation</Link>
+                  <Link to="/TermsOfService" className="text-blue-400 hover:underline">conditions d'utilisation</Link>
                   {' '}et la{' '}
-                  <Link to="/PrivacyPolicy" className="text-orange-400 hover:underline">politique de confidentialité</Link>
+                  <Link to="/PrivacyPolicy" className="text-blue-400 hover:underline">politique de confidentialité</Link>
                 </span>
               </label>
               <button
                 type="submit"
                 disabled={authLoading || !regAcceptTerms}
-                className="w-full px-6 py-3 bg-orange-500 hover:bg-orange-600 rounded-lg font-bold disabled:opacity-50"
+                className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-bold disabled:opacity-50"
               >
                 {authLoading ? 'Inscription...' : "S'inscrire"}
               </button>
               <p className="text-center text-sm text-gray-400">
                 Déjà un compte ?{' '}
-                <button type="button" onClick={() => setAuthMode('login')} className="text-orange-400 hover:underline font-medium">
+                <button type="button" onClick={() => setAuthMode('login')} className="text-blue-400 hover:underline font-medium">
                   Se connecter
                 </button>
               </p>
@@ -557,7 +557,7 @@ export default function Landing() {
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
-            className="text-4xl font-black text-center mb-4 bg-gradient-to-r from-orange-400 to-red-400 bg-clip-text text-transparent"
+            className="text-4xl font-black text-center mb-4 bg-gradient-to-r from-blue-500 to-blue-600 bg-clip-text text-transparent"
           >
             Soutenez AfriWonder
           </motion.h2>
@@ -567,9 +567,9 @@ export default function Landing() {
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
-            className="mb-8 p-6 rounded-2xl bg-gradient-to-br from-orange-500/20 to-red-500/20 border border-orange-500/40"
+            className="mb-8 p-6 rounded-2xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 border border-blue-500/40"
           >
-            <h3 className="text-xl font-bold text-orange-100 mb-4 text-center">
+            <h3 className="text-xl font-bold text-blue-100 mb-4 text-center">
               Soutenez AfriWonder – Construisons l'avenir numérique de l'Afrique ensemble !
             </h3>
             <p className="text-gray-300 text-sm mb-4">
@@ -589,10 +589,10 @@ export default function Landing() {
               <li>Construire une communauté solide et indépendante.</li>
               <li>Permettre à AfriWonder de rester 100% au service de l'Afrique, et non des intérêts extérieurs.</li>
             </ul>
-            <p className="text-amber-200/90 text-sm mb-2">
+            <p className="text-blue-200/90 text-sm mb-2">
               💡 Chaque franc investi revient directement à renforcer nos équipes, améliorer la plateforme et soutenir nos créateurs. Ensemble, nous faisons plus qu'une plateforme : nous bâtissons l'avenir numérique de notre continent.
             </p>
-            <p className="text-orange-200 font-semibold text-sm text-center">
+            <p className="text-blue-200 font-semibold text-sm text-center">
               🎯 Faites partie des premiers à soutenir et transformer l'Afrique numérique dès aujourd'hui.
             </p>
           </motion.div>
@@ -602,7 +602,7 @@ export default function Landing() {
             viewport={{ once: true }}
             className="bg-gray-800/50 border border-gray-700 rounded-2xl p-8"
           >
-            <p className="text-amber-200/90 text-sm text-center mb-6 px-2">
+            <p className="text-blue-200/90 text-sm text-center mb-6 px-2">
               Chaque paiement sera libellé « Soutien AfriWonder » pour faciliter la traçabilité.
             </p>
             <div className="flex flex-wrap gap-3 justify-center mb-6">
@@ -611,7 +611,7 @@ export default function Landing() {
                   key={amt}
                   type="button"
                   onClick={() => { setDonationAmount(amt); setDonationCustom(''); }}
-                  className={`px-6 py-3 rounded-xl font-bold transition-all ${donationAmount === amt ? 'bg-orange-500 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}
+                  className={`px-6 py-3 rounded-xl font-bold transition-all ${donationAmount === amt ? 'bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}
                 >
                   {amt.toLocaleString()} FCFA
                 </button>
@@ -626,17 +626,17 @@ export default function Landing() {
                   placeholder="Ex: 2500"
                   value={donationCustom}
                   onChange={(e) => { setDonationCustom(e.target.value); setDonationAmount(null); }}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Numéro Orange Money / Mobile Money <span className="text-orange-400">*</span></label>
+                <label className="block text-sm text-gray-400 mb-1">Numéro Orange Money / Mobile Money <span className="text-blue-400">*</span></label>
                 <input
                   type="tel"
                   placeholder="Ex: +223 70 12 34 56"
                   value={donationPhone}
                   onChange={(e) => setDonationPhone(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                   required
                 />
                 <p className="text-xs text-gray-500 mt-1">Obligatoire pour recevoir la demande de paiement.</p>
@@ -652,7 +652,7 @@ export default function Landing() {
                     className="rounded mt-1"
                   />
                   <span className="text-sm text-gray-300">
-                    <span className="font-medium text-orange-200">Souhaitez-vous apparaître dans la liste des contributeurs ?</span>
+                    <span className="font-medium text-blue-200">Souhaitez-vous apparaître dans la liste des contributeurs ?</span>
                     <br />
                     <span className="text-gray-500">Rejoignez les noms de ceux qui bâtissent l'Afrique numérique. Votre soutien sera honoré publiquement. (optionnel)</span>
                   </span>
@@ -671,21 +671,21 @@ export default function Landing() {
                   <span className="text-sm text-gray-300">Laisser vos coordonnées pour être remercié(e) personnellement ? (optionnel)</span>
                 </label>
                 {donationWantsThanks && (
-                  <div className="space-y-3 pl-6 border-l-2 border-orange-500/30">
+                  <div className="space-y-3 pl-6 border-l-2 border-blue-500/30">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <input
                         type="text"
                         placeholder="Nom (optionnel)"
                         value={donationName}
                         onChange={(e) => setDonationName(e.target.value)}
-                        className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                        className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                       />
                       <input
                         type="text"
                         placeholder="Prénom (optionnel)"
                         value={donationFirstName}
                         onChange={(e) => setDonationFirstName(e.target.value)}
-                        className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                        className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                       />
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -696,14 +696,14 @@ export default function Landing() {
                         placeholder="Age (optionnel)"
                         value={donationAge}
                         onChange={(e) => setDonationAge(e.target.value)}
-                        className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                        className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                       />
                       <input
                         type="text"
                         placeholder="Pays (optionnel)"
                         value={donationCountry}
                         onChange={(e) => setDonationCountry(e.target.value)}
-                        className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                        className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                       />
                     </div>
                     <input
@@ -711,27 +711,27 @@ export default function Landing() {
                       placeholder="Ville (optionnel)"
                       value={donationCity}
                       onChange={(e) => setDonationCity(e.target.value)}
-                      className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                      className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                     />
                     <input
                       type="email"
                       placeholder="Email (optionnel)"
                       value={donationEmail}
                       onChange={(e) => setDonationEmail(e.target.value)}
-                      className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                      className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                     />
                     <textarea
                       placeholder="Un message pour nous ? (optionnel)"
                       value={donationMessage}
                       onChange={(e) => setDonationMessage(e.target.value)}
                       rows={2}
-                      className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+                      className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                     />
                   </div>
                 )}
               </div>
 
-              <button type="submit" disabled={donationLoading} className="w-full px-6 py-3 bg-orange-500 hover:bg-orange-600 rounded-lg font-bold disabled:opacity-50 flex items-center justify-center gap-2">
+              <button type="submit" disabled={donationLoading} className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-bold disabled:opacity-50 flex items-center justify-center gap-2">
                 <Heart className="w-5 h-5" />
                 {donationLoading ? 'Envoi...' : 'Contribuer'}
               </button>
@@ -747,7 +747,7 @@ export default function Landing() {
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
-            className="text-4xl font-black text-center mb-4 bg-gradient-to-r from-orange-400 to-red-400 bg-clip-text text-transparent"
+            className="text-4xl font-black text-center mb-4 bg-gradient-to-r from-blue-500 to-blue-600 bg-clip-text text-transparent"
           >
             Votre avis compte
           </motion.h2>
@@ -768,14 +768,14 @@ export default function Landing() {
           >
             <div>
               <label className="block text-sm text-gray-400 mb-1">Type</label>
-              <select value={feedbackType} onChange={(e) => setFeedbackType(e.target.value)} className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-orange-500">
+              <select value={feedbackType} onChange={(e) => setFeedbackType(e.target.value)} className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500">
                 <option value="bug">Bug</option>
                 <option value="suggestion">Suggestion</option>
                 <option value="comment">Commentaire</option>
               </select>
             </div>
-            <textarea placeholder="Votre message..." value={feedbackContent} onChange={(e) => setFeedbackContent(e.target.value)} rows={4} className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500" required />
-            <input type="email" placeholder="Email (optionnel)" value={feedbackEmail} onChange={(e) => setFeedbackEmail(e.target.value)} className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500" />
+            <textarea placeholder="Votre message..." value={feedbackContent} onChange={(e) => setFeedbackContent(e.target.value)} rows={4} className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" required />
+            <input type="email" placeholder="Email (optionnel)" value={feedbackEmail} onChange={(e) => setFeedbackEmail(e.target.value)} className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" />
             <div className="flex flex-wrap gap-4">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={feedbackJoinWhatsapp} onChange={(e) => setFeedbackJoinWhatsapp(e.target.checked)} className="rounded" />
@@ -786,7 +786,7 @@ export default function Landing() {
                 <span className="text-sm">Rejoindre la mailing list</span>
               </label>
             </div>
-            <button type="submit" disabled={feedbackLoading} className="w-full px-6 py-3 bg-orange-500 hover:bg-orange-600 rounded-lg font-bold disabled:opacity-50 flex items-center justify-center gap-2">
+            <button type="submit" disabled={feedbackLoading} className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-bold disabled:opacity-50 flex items-center justify-center gap-2">
               <MessageCircle className="w-5 h-5" />
               {feedbackLoading ? 'Envoi...' : 'Envoyer'}
             </button>

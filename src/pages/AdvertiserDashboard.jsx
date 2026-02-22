@@ -62,8 +62,8 @@ const DURATION_OPTIONS = [
 
 const STATUS_LABELS = {
   draft: { label: 'Brouillon', color: 'bg-gray-500' },
-  pending_review: { label: 'En attente', color: 'bg-amber-500' },
-  active: { label: 'Active', color: 'bg-green-500' },
+  pending_review: { label: 'En attente', color: 'bg-blue-500' },
+  active: { label: 'Active', color: 'bg-blue-500' },
   expired: { label: 'Expirée', color: 'bg-slate-500' },
 };
 
@@ -141,9 +141,9 @@ export default function AdvertiserDashboard() {
 
   if (isError) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-orange-900/20 to-slate-900 p-4">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900/20 to-slate-900 p-4">
         <div className="max-w-4xl mx-auto">
-          <p className="text-red-400">{error?.apiMessage || 'Erreur de chargement'}</p>
+          <p className="text-blue-400">{error?.apiMessage || 'Erreur de chargement'}</p>
           <Button variant="outline" onClick={() => refetch()} className="mt-4">
             Réessayer
           </Button>
@@ -153,8 +153,8 @@ export default function AdvertiserDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-orange-900/20 to-slate-900 pb-24">
-      <div className="sticky top-0 bg-gradient-to-r from-orange-600 to-amber-600 border-b border-white/20 shadow-xl z-40">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900/20 to-slate-900 pb-24">
+      <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-indigo-600 border-b border-white/20 shadow-xl z-40">
         <div className="px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
@@ -191,19 +191,19 @@ export default function AdvertiserDashboard() {
               </div>
               <div className="bg-white/5 rounded-xl p-4">
                 <p className="text-white/60 text-sm">Actives</p>
-                <p className="text-2xl font-bold text-green-400">
+                <p className="text-2xl font-bold text-blue-400">
                   {campaigns.filter((c) => c.status === 'active').length}
                 </p>
               </div>
               <div className="bg-white/5 rounded-xl p-4">
                 <p className="text-white/60 text-sm">Vues totales</p>
-                <p className="text-2xl font-bold text-orange-400">
+                <p className="text-2xl font-bold text-blue-400">
                   {campaigns.reduce((s, c) => s + (c.total_views || 0), 0).toLocaleString()}
                 </p>
               </div>
               <div className="bg-white/5 rounded-xl p-4">
                 <p className="text-white/60 text-sm">Clics total</p>
-                <p className="text-2xl font-bold text-amber-400">
+                <p className="text-2xl font-bold text-blue-400">
                   {campaigns.reduce((s, c) => s + (c.total_clicks || 0), 0).toLocaleString()}
                 </p>
               </div>
@@ -216,7 +216,7 @@ export default function AdvertiserDashboard() {
           <h2 className="text-lg font-semibold text-white">Campagnes</h2>
           <Button
             size="sm"
-            className="bg-orange-500 hover:bg-orange-600"
+            className="bg-blue-600 hover:bg-blue-700"
             onClick={() => navigate(createPageUrl('CreateAdCampaign'))}
           >
             <Plus className="w-4 h-4 mr-1" />
@@ -226,7 +226,7 @@ export default function AdvertiserDashboard() {
 
         {isLoading ? (
           <div className="flex justify-center py-12">
-            <Loader2 className="w-8 h-8 text-orange-400 animate-spin" />
+            <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
           </div>
         ) : campaigns.length === 0 ? (
           <Card className="bg-white/5 border-white/10 p-8 text-center">
@@ -275,7 +275,7 @@ export default function AdvertiserDashboard() {
                         <h3 className="font-semibold text-white truncate">{campaign.name}</h3>
                         <Badge className={`${status.color} shrink-0`}>{status.label}</Badge>
                         {campaign.status === 'active' && daysLeft > 0 && (
-                          <span className="text-amber-400 text-sm shrink-0">{daysLeft}j restants</span>
+                          <span className="text-blue-400 text-sm shrink-0">{daysLeft}j restants</span>
                         )}
                       </div>
                       {campaign.status === 'draft' && (
@@ -291,7 +291,7 @@ export default function AdvertiserDashboard() {
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="h-8 w-8 text-red-400/80 hover:text-red-400 hover:bg-red-500/20"
+                            className="h-8 w-8 text-blue-400/80 hover:text-blue-400 hover:bg-red-500/20"
                             onClick={() => setDeleteCampaign(campaign)}
                           >
                             <Trash2 className="w-4 h-4" />
@@ -311,7 +311,7 @@ export default function AdvertiserDashboard() {
                     <div className="space-y-2 mb-3">
                       {countries.length > 0 && (
                         <div className="flex items-start gap-2 text-sm">
-                          <MapPin className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
+                          <MapPin className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
                           <span className="text-white/70">
                             {countries.length === 1
                               ? (() => {
@@ -327,7 +327,7 @@ export default function AdvertiserDashboard() {
                       )}
                       {cities.length > 0 && (
                         <div className="flex items-start gap-2 text-sm">
-                          <MapPin className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
+                          <MapPin className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
                           <span className="text-white/70">
                             {cities.length === 1 ? cities[0] : `${cities.length} villes : ${cities.slice(0, 3).join(', ')}${cities.length > 3 ? '…' : ''}`}
                           </span>
@@ -335,7 +335,7 @@ export default function AdvertiserDashboard() {
                       )}
                       {(ageMin != null || ageMax != null || (gender && gender !== 'all')) && (
                         <div className="flex items-center gap-2 text-sm text-white/70">
-                          <Users className="w-4 h-4 text-orange-400 shrink-0" />
+                          <Users className="w-4 h-4 text-blue-400 shrink-0" />
                           {ageMin != null && ageMax != null && (
                             <span>{ageMin}–{ageMax} ans</span>
                           )}
@@ -377,7 +377,7 @@ export default function AdvertiserDashboard() {
                         <MousePointer className="w-4 h-4" />
                         <span>{campaign.total_clicks || 0} clics</span>
                       </div>
-                      <div className="flex items-center gap-2 text-amber-400">
+                      <div className="flex items-center gap-2 text-blue-400">
                         <TrendingUp className="w-4 h-4" />
                         <span>{convRate}% CTR</span>
                       </div>
@@ -473,7 +473,7 @@ export default function AdvertiserDashboard() {
             <AlertDialogCancel className="border-white/20 text-white/80">Annuler</AlertDialogCancel>
             <Button
               variant="destructive"
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-blue-600 hover:bg-blue-700"
               disabled={deleteMutation.isPending}
               onClick={(e) => {
                 e.preventDefault();

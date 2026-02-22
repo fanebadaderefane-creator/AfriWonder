@@ -132,7 +132,7 @@ export default function Jobs() {
               <Link to={createPageUrl('CompanyProfile')}><Button size="sm" variant="ghost">Profil entreprise</Button></Link>
               <Link to={createPageUrl('JobsEmployerDashboard')}><Button size="sm" variant="outline">Dashboard</Button></Link>
               <Link to={createPageUrl('PostJob')}>
-                <Button size="sm" className="bg-[#f97316] hover:bg-[#ea580c] text-white">
+                <Button size="sm" className="bg-[#2563EB] hover:bg-[#1E3A8A] text-white">
                   <Briefcase className="w-4 h-4 mr-1" />
                   Publier
                 </Button>
@@ -161,7 +161,7 @@ export default function Jobs() {
               className={cn(
                 "flex items-center gap-1 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors",
                 selectedCategory === cat.id
-                  ? "bg-[#f97316] text-white"
+                  ? "bg-[#2563EB] text-white"
                   : "bg-gray-100 text-gray-600"
               )}
             >
@@ -187,7 +187,7 @@ export default function Jobs() {
             onClick={() => setTypeFilter(t.id)}
             className={cn(
               'flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors',
-              typeFilter === t.id ? 'bg-[#f97316] text-white' : 'bg-gray-100 text-gray-600'
+              typeFilter === t.id ? 'bg-[#2563EB] text-white' : 'bg-gray-100 text-gray-600'
             )}
           >
             {t.label}
@@ -204,7 +204,7 @@ export default function Jobs() {
               <Link key={j.id} to={`${createPageUrl('JobDetails')}?id=${j.id}`} className="flex-shrink-0 w-56 bg-white rounded-xl p-3 shadow-sm text-gray-900 hover:text-gray-900 no-underline">
                 <p className="font-medium text-sm line-clamp-2">{j.title}</p>
                 <p className="text-xs text-gray-500 mt-1">{j.employer?.full_name}</p>
-                <p className="text-xs text-[#f97316] mt-1">{j._count?.applications ?? 0} candidatures</p>
+                <p className="text-xs text-[#2563EB] mt-1">{j._count?.applications ?? 0} candidatures</p>
               </Link>
             ))}
           </div>
@@ -214,7 +214,7 @@ export default function Jobs() {
       {/* Stats — neutre + orange AfriWonder uniquement */}
       <div className="p-4 grid grid-cols-3 gap-3">
         <div className="bg-white rounded-xl p-3 text-center shadow-sm border border-gray-100">
-          <div className="text-xl font-bold text-[#f97316]">{filteredJobs.length}</div>
+          <div className="text-xl font-bold text-[#2563EB]">{filteredJobs.length}</div>
           <div className="text-xs text-gray-500">Offres actives</div>
         </div>
         <div className="bg-white rounded-xl p-3 text-center shadow-sm border border-gray-100">
@@ -284,11 +284,11 @@ export default function Jobs() {
 
                     {/* Badges type et statut — neutre + orange AfriWonder uniquement */}
                     <div className="flex flex-wrap gap-2">
-                      <Badge className="text-xs bg-[#f97316] text-white border-0">{getTypeLabel(job.job_type)}</Badge>
+                      <Badge className="text-xs bg-[#2563EB] text-white border-0">{getTypeLabel(job.job_type)}</Badge>
                       {job.location && <Badge variant="outline" className="text-xs border-gray-200 text-gray-600"><MapPin className="w-3 h-3 mr-1" />{job.location}</Badge>}
                       {job.job_type === 'remote' && <Badge variant="outline" className="text-xs border-gray-200 text-gray-600">🌐 Remote</Badge>}
-                      {job.is_premium && <Badge className="text-xs bg-[#f97316] text-white border-0">⭐ Premium</Badge>}
-                      {job.is_urgent && <Badge className="text-xs bg-[#f97316] text-white border-0">Urgent</Badge>}
+                      {job.is_premium && <Badge className="text-xs bg-[#2563EB] text-white border-0">⭐ Premium</Badge>}
+                      {job.is_urgent && <Badge className="text-xs bg-[#2563EB] text-white border-0">Urgent</Badge>}
                     </div>
 
                     {/* Compétences */}
@@ -303,8 +303,8 @@ export default function Jobs() {
                     {/* Salaire — orange AfriWonder */}
                     {(job.salary_min != null) && (
                       <div className="flex items-center gap-1 text-sm">
-                        <DollarSign className="w-4 h-4 text-[#f97316]" />
-                        <span className="text-[#f97316] font-semibold">{job.salary_min.toLocaleString()} - {(job.salary_max || job.salary_min).toLocaleString()} {job.salary_currency || 'XOF'}</span>
+                        <DollarSign className="w-4 h-4 text-[#2563EB]" />
+                        <span className="text-[#2563EB] font-semibold">{job.salary_min.toLocaleString()} - {(job.salary_max || job.salary_min).toLocaleString()} {job.salary_currency || 'XOF'}</span>
                       </div>
                     )}
 
@@ -319,7 +319,7 @@ export default function Jobs() {
                     <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-xs text-gray-500">
                       <span>{appCount} candidatures</span>
                       {daysLeft != null && daysLeft > 0 && (
-                        <span className={cn("flex items-center gap-1", daysLeft <= 3 && "text-[#f97316] font-medium")}>
+                        <span className={cn("flex items-center gap-1", daysLeft <= 3 && "text-[#2563EB] font-medium")}>
                           <Clock className="w-3 h-3" /> {daysLeft} jours restants
                         </span>
                       )}

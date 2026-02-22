@@ -117,6 +117,8 @@ import viralBonusRoutes from './routes/viralBonus.routes.js';
 // Mini-Apps
 import miniAppsRoutes from './routes/miniApps.routes.js';
 import developerRoutes from './routes/developer.routes.js';
+import matchingRoutes from './routes/matching.routes.js';
+import publicApiRoutes from './routes/publicApi.routes.js';
 // AI Engine & Business Intelligence
 import aiEngineRoutes from './routes/aiEngine.routes.js';
 import businessIntelligenceRoutes from './routes/businessIntelligence.routes.js';
@@ -309,6 +311,8 @@ app.use('/api/courses', coursesRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/mini-apps', miniAppsRoutes);
 app.use('/api/developer', developerRoutes);
+app.use('/api/matching', matchingRoutes);
+app.use('/api/public', publicApiRoutes);
 app.use('/api/admin/ai-engine', aiEngineRoutes);
 app.use('/api/admin/business-intelligence', businessIntelligenceRoutes);
 app.use('/api/challenges', challengesRoutes);
@@ -380,4 +384,3 @@ if (process.env.SENTRY_DSN && process.env.NODE_ENV !== 'test') {
 app.use(errorHandler);
 
 export default app;
-

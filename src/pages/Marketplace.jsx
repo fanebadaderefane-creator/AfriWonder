@@ -97,7 +97,7 @@ export default function MarketplacePage() {
             </div>
             <Link
               to={createPageUrl("Providers")}
-              className="inline-flex items-center text-amber-700 hover:text-amber-800 font-medium"
+              className="inline-flex items-center text-blue-700 hover:text-blue-800 font-medium"
             >
               Voir tout <ChevronRight className="w-4 h-4 ml-0.5 inline" />
             </Link>
@@ -121,20 +121,20 @@ export default function MarketplacePage() {
         </section>
 
         <section className="relative rounded-3xl bg-[#1f2937] to-gray-900 p-8 md:p-12 overflow-hidden">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl" />
+          <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl" />
           <div className="absolute bottom-0 left-0 w-60 h-60 bg-green-500/10 rounded-full blur-3xl" />
           <div className="relative grid md:grid-cols-2 gap-8 md:gap-10 items-center">
             <div>
               <h2 className="text-2xl md:text-3xl font-bold text-white leading-tight">
                 Vous etes un professionnel ?<br />
-                <span className="text-orange-500">Rejoignez AfriWonder !</span>
+                <span className="text-primary">Rejoignez AfriWonder !</span>
               </h2>
               <p className="mt-4 text-white/80 text-base md:text-lg">
                 Augmentez votre visibilite et trouvez de nouveaux clients.
               </p>
               <Button
                 onClick={() => navigate(createPageUrl("BecomeProvider"))}
-                className="mt-6 h-12 px-6 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-medium"
+                className="mt-6 h-12 px-6 rounded-xl bg-primary hover:bg-primary/90 text-white font-medium"
               >
                 <Building2 className="w-5 h-5 mr-2" />
                 Devenir Prestataire
@@ -144,7 +144,7 @@ export default function MarketplacePage() {
             <div className="grid grid-cols-2 gap-3">
               {marketplaceStats.map((s, i) => (
                 <div key={i} className="bg-gray-800 rounded-2xl p-4 text-center border border-gray-700/50">
-                  <div className="text-2xl font-bold text-orange-500">{s.v}</div>
+                  <div className="text-2xl font-bold text-primary">{s.v}</div>
                   <div className="text-white text-sm mt-1">{s.l}</div>
                 </div>
               ))}

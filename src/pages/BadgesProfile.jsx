@@ -123,7 +123,7 @@ export default function BadgesProfile() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-orange-50 to-red-50 pb-20">
+    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-indigo-50 pb-20">
       {/* Header */}
       <div className="sticky top-0 bg-white/80 backdrop-blur border-b z-10">
         <div className="flex items-center gap-3 p-4">
@@ -131,6 +131,8 @@ export default function BadgesProfile() {
             variant="ghost"
             size="icon"
             onClick={() => navigate(createPageUrl('Profile') + `?userId=${currentUserId}`)}
+            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+            aria-label="Retour"
           >
             <ArrowLeft className="w-6 h-6" />
           </Button>
@@ -144,7 +146,7 @@ export default function BadgesProfile() {
       <div className="p-4 space-y-6">
         {/* Banner démo si données mockées */}
         {isUsingMockData && (
-          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800 text-center">
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 text-center">
             📊 Mode démo — Données fictives pour illustration
           </div>
         )}
@@ -152,11 +154,11 @@ export default function BadgesProfile() {
         {/* Points & Stats */}
         <div className="space-y-3">
           {(pointsLoading || statsLoading || badgesLoading) ? (
-            <div className="bg-gradient-to-r from-[#f97316] to-[#ea580c] rounded-2xl p-6 text-white animate-pulse">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-6 text-white animate-pulse">
               <div className="h-16 bg-white/20 rounded"></div>
             </div>
           ) : (
-            <div className="bg-gradient-to-r from-[#f97316] to-[#ea580c] rounded-2xl p-6 text-white">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-6 text-white">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm opacity-90">Points totaux</p>

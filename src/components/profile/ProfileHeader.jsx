@@ -69,7 +69,7 @@ export default function ProfileHeader({
   return (
     <div className="bg-white">
       {/* Cover gradient — pas de bouton Settings ici : évite doublon avec le menu global (hamburger) en haut à droite */}
-      <div className="h-24 bg-gradient-to-br from-orange-400 via-red-500 to-pink-500 relative" />
+      <div className="h-24 bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-600 relative" />
 
       <div className="px-4 pb-4">
         {/* Avatar */}
@@ -77,7 +77,7 @@ export default function ProfileHeader({
           <button onClick={handleAvatarClick} className={isOwnProfile ? 'cursor-pointer' : ''}>
             <Avatar className="w-24 h-24 border-4 border-white shadow-lg">
               <AvatarImage src={user?.avatar || user?.profile_image} />
-              <AvatarFallback className="bg-gradient-to-br from-orange-400 to-red-500 text-white text-2xl">
+              <AvatarFallback className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white text-2xl">
                 {user?.full_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase()}
               </AvatarFallback>
             </Avatar>
@@ -137,7 +137,7 @@ export default function ProfileHeader({
               href={user.website}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 text-orange-500 hover:underline"
+              className="flex items-center gap-1 text-blue-600 hover:underline"
             >
               <LinkIcon className="w-4 h-4" />
               {user.website.replace(/^https?:\/\//, '')}
@@ -169,7 +169,7 @@ export default function ProfileHeader({
         {user?.badges?.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-4">
             {user.badges.map((badge, i) => (
-              <Badge key={i} variant="secondary" className="bg-orange-50 text-orange-600 border-orange-200">
+              <Badge key={i} variant="secondary" className="bg-blue-50 text-blue-600 border-blue-200">
                 {badge}
               </Badge>
             ))}
@@ -191,13 +191,13 @@ export default function ProfileHeader({
               <Button
                 onClick={onSubscriptionTiers}
                 variant="outline"
-                className="rounded-xl border-orange-200 text-orange-600"
+                className="rounded-xl border-blue-200 text-blue-600"
               >
                 <Crown className="w-4 h-4" />
               </Button>
               <Button
                 onClick={onWallet}
-                className="rounded-xl bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                className="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
               >
                 <Wallet className="w-4 h-4" />
               </Button>
@@ -209,8 +209,8 @@ export default function ProfileHeader({
                 className={cn(
                   "flex-1 rounded-xl transition-all",
                   isFollowing 
-                    ? "bg-gray-100 text-gray-700 hover:bg-gray-200 border border-orange-200" 
-                    : "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white shadow-lg hover:shadow-orange-500/30"
+                    ? "bg-gray-100 text-gray-700 hover:bg-gray-200 border border-blue-200" 
+                    : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-blue-500/30"
                 )}
               >
                 {isFollowing ? 'Dans son Wonder' : 'Wonder'}

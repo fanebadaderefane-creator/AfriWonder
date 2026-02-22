@@ -176,7 +176,7 @@ export default function NotificationSettings() {
               className="bg-white rounded-2xl overflow-hidden shadow-sm"
             >
               <div className="px-4 py-4 border-b border-gray-100 flex items-center gap-3">
-                <Icon className="w-5 h-5 text-orange-500" />
+                <Icon className="w-5 h-5 text-blue-600" />
                 <h2 className="font-semibold text-gray-800">{category.title}</h2>
               </div>
 
@@ -218,7 +218,7 @@ export default function NotificationSettings() {
           <Button
             onClick={handleSave}
             disabled={loading}
-            className="flex-1 bg-gradient-to-r from-orange-500 to-red-500"
+            className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600"
           >
             {loading ? 'Sauvegarde...' : 'Enregistrer'}
           </Button>

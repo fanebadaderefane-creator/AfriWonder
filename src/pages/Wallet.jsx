@@ -107,57 +107,57 @@ export default function WalletPage() {
       className="max-w-4xl mx-auto p-4 safe-area-pb"
     >
       <div className="flex items-center gap-3 mb-8">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl" aria-label="Retour">
+        <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl text-blue-600 hover:text-blue-700 hover:bg-blue-50" aria-label="Retour">
           <ArrowLeft className="w-5 h-5" />
         </Button>
-        <h1 className="text-3xl font-bold">Mon Portefeuille</h1>
+        <h1 className="text-3xl font-bold text-blue-900">Mon Portefeuille</h1>
       </div>
 
       {/* Balance Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         <motion.div whileHover={{ y: -5 }} className="cursor-pointer">
-          <Card className="border-l-4 border-orange-500">
+          <Card className="border-l-4 border-blue-500">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Solde disponible</p>
-                  <p className="text-3xl font-bold text-orange-600">
+                  <p className="text-3xl font-bold text-blue-600">
                     {wallet?.available_balance?.toLocaleString() || 0} XOF
                   </p>
                 </div>
-                <CreditCard className="w-12 h-12 text-orange-200" />
+                <CreditCard className="w-12 h-12 text-blue-200" />
               </div>
             </CardContent>
           </Card>
         </motion.div>
 
         <motion.div whileHover={{ y: -5 }} className="cursor-pointer">
-          <Card className="border-l-4 border-yellow-500">
+          <Card className="border-l-4 border-blue-400">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600 mb-1">En attente (7 jours)</p>
-                  <p className="text-3xl font-bold text-yellow-600">
+                  <p className="text-3xl font-bold text-blue-600">
                     {wallet?.pending_balance?.toLocaleString() || 0} XOF
                   </p>
                 </div>
-                <Clock className="w-12 h-12 text-yellow-200" />
+                <Clock className="w-12 h-12 text-blue-200" />
               </div>
             </CardContent>
           </Card>
         </motion.div>
 
         <motion.div whileHover={{ y: -5 }} className="cursor-pointer">
-          <Card className="border-l-4 border-green-500">
+          <Card className="border-l-4 border-blue-500">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Gains totaux</p>
-                  <p className="text-3xl font-bold text-green-600">
+                  <p className="text-3xl font-bold text-blue-600">
                     {wallet?.total_earnings?.toLocaleString() || 0} XOF
                   </p>
                 </div>
-                <TrendingUp className="w-12 h-12 text-green-200" />
+                <TrendingUp className="w-12 h-12 text-blue-200" />
               </div>
             </CardContent>
           </Card>
@@ -184,7 +184,7 @@ export default function WalletPage() {
       <div className="mb-8 flex gap-4">
         <Button
           onClick={() => navigate(createPageUrl('RechargeWallet'))}
-          className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
+          className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
           size="lg"
         >
           <Plus className="w-5 h-5 mr-2" />
@@ -193,7 +193,7 @@ export default function WalletPage() {
         {wallet?.available_balance > 0 && (
           <Button
             onClick={() => setShowWithdrawModal(true)}
-            className="bg-orange-500 hover:bg-orange-600 text-white"
+            className="bg-blue-600 hover:bg-blue-700 text-white"
             size="lg"
           >
             Demander un retrait
@@ -203,7 +203,7 @@ export default function WalletPage() {
 
       {/* Withdraw Modal */}
       {showWithdrawModal && (
-        <Card className="mb-8 border-orange-200 bg-orange-50">
+        <Card className="mb-8 border-blue-200 bg-blue-50">
           <CardHeader>
             <CardTitle>Retrait de fonds</CardTitle>
           </CardHeader>
@@ -306,7 +306,7 @@ export default function WalletPage() {
               <Button
                 onClick={() => withdrawMutation.mutate(withdrawData)}
                 disabled={withdrawMutation.isPending || !withdrawData.amount || (['orange_money', 'mtn_money', 'wave'].includes(withdrawData.method) && !withdrawData.orange_money_phone?.trim()) || (withdrawData.method === 'paypal' && !withdrawData.paypal_email?.trim()) || (needsPin && !withdrawData.pin) || (parseFloat(withdrawData.amount) < 5000)}
-                className="flex-1 bg-orange-500 hover:bg-orange-600"
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
               >
                 {withdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirmer'}
               </Button>
@@ -338,7 +338,7 @@ export default function WalletPage() {
                 </div>
                 <div className="text-right">
                   <p className="font-bold">{(payout.amount || 0).toLocaleString()} XOF</p>
-                  <Badge className={payout.status === 'completed' || payout.status === 'approved' ? 'bg-green-100 text-green-800' : payout.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}>
+                  <Badge className={payout.status === 'completed' || payout.status === 'approved' ? 'bg-blue-100 text-blue-800' : payout.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}>
                     {payout.status === 'pending' ? 'En attente' : payout.status === 'approved' ? 'Effectué' : payout.status}
                   </Badge>
                 </div>
@@ -362,10 +362,10 @@ export default function WalletPage() {
                   <p className="text-sm text-gray-600">{new Date(tx.created_at || tx.created_date).toLocaleDateString('fr-FR')}</p>
                 </div>
                 <div className="text-right">
-                  <p className={`font-bold ${tx.type.includes('sent') || tx.type === 'payment' ? 'text-red-600' : 'text-green-600'}`}>
+                  <p className={`font-bold ${tx.type.includes('sent') || tx.type === 'payment' ? 'text-red-600' : 'text-blue-600'}`}>
                     {tx.type.includes('sent') || tx.type === 'payment' ? '-' : '+'}{tx.amount.toLocaleString()} XOF
                   </p>
-                  <Badge className={tx.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
+                  <Badge className={tx.status === 'completed' ? 'bg-blue-100 text-blue-800' : 'bg-blue-100 text-blue-800'}>
                     {tx.status}
                   </Badge>
                 </div>

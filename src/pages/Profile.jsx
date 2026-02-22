@@ -621,7 +621,7 @@ export default function Profile() {
 
         <div className="text-center">
 
-          <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
 
           <p className="text-gray-500">Chargement...</p>
 
@@ -661,7 +661,7 @@ export default function Profile() {
 
           }}
 
-          className="w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-gray-800 hover:bg-white transition-all shadow-lg active:scale-95"
+          className="w-10 h-10 bg-blue-600/90 backdrop-blur rounded-full flex items-center justify-center text-white hover:bg-blue-600 transition-all shadow-lg active:scale-95"
 
         >
 
@@ -677,7 +677,7 @@ export default function Profile() {
 
           onClick={openMenu}
 
-          className="w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-gray-800 hover:bg-white transition-all shadow-lg active:scale-95"
+          className="w-10 h-10 bg-blue-600/90 backdrop-blur rounded-full flex items-center justify-center text-white hover:bg-blue-600 transition-all shadow-lg active:scale-95"
 
           aria-label="Ouvrir le menu"
 
@@ -757,7 +757,7 @@ export default function Profile() {
           <div className="flex items-center justify-between flex-wrap gap-2">
             <span className="text-sm font-medium text-gray-700">Mes achats</span>
             {orderStats.is_loyal_client && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">Client fidele</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-medium">Client fidele</span>
             )}
           </div>
           <div className="flex gap-4 mt-2 text-sm text-gray-600">
@@ -785,7 +785,7 @@ export default function Profile() {
 
               value="videos"
 
-              className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-orange-500"
+              className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
 
             >
 
@@ -800,7 +800,7 @@ export default function Profile() {
 
                   value="brouillons"
 
-                  className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-orange-500"
+                  className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
 
                 >
 
@@ -812,7 +812,7 @@ export default function Profile() {
 
                   value="saved"
 
-                  className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-orange-500"
+                  className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
 
                 >
 
@@ -828,7 +828,7 @@ export default function Profile() {
 
               value="liked"
 
-              className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-orange-500"
+              className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
 
             >
 
@@ -843,7 +843,7 @@ export default function Profile() {
 
                   value="shop"
 
-                  className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-orange-500"
+                  className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
 
                 >
 
@@ -868,7 +868,7 @@ export default function Profile() {
 
         <div className="p-4 pb-8">
 
-          <div className="bg-gradient-to-br from-orange-500 via-red-500 to-pink-500 rounded-2xl p-6 text-center text-white shadow-lg">
+          <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-6 text-center text-white shadow-lg">
 
             <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
 
@@ -886,7 +886,7 @@ export default function Profile() {
 
             <Link to={createPageUrl('Create')}>
 
-              <button className="bg-white text-orange-500 px-8 py-3.5 rounded-full font-bold hover:bg-gray-50 transition-all transform hover:scale-105 shadow-md">
+              <button className="bg-white text-primary px-8 py-3.5 rounded-full font-bold hover:bg-gray-50 transition-all transform hover:scale-105 shadow-md">
 
                 Commencer maintenant
 
@@ -918,7 +918,7 @@ export default function Profile() {
 
                 onClick={() => setShowFeaturedSelector(true)}
 
-                className="text-orange-500 text-xs font-medium"
+                className="text-primary text-xs font-medium"
 
               >
 
@@ -1028,7 +1028,7 @@ export default function Profile() {
 
           ) : isOwnProfile ? (
 
-            <div className="bg-gradient-to-br from-orange-500 via-red-500 to-pink-500 rounded-2xl p-6 text-center text-white shadow-lg">
+            <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-6 text-center text-white shadow-lg">
 
               <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
 
@@ -1048,7 +1048,7 @@ export default function Profile() {
 
                 onClick={() => setShowFeaturedSelector(true)}
 
-                className="bg-white text-orange-500 px-8 py-3.5 rounded-full font-bold hover:bg-gray-50 transition-all transform hover:scale-105 shadow-md"
+                className="bg-white text-primary px-8 py-3.5 rounded-full font-bold hover:bg-gray-50 transition-all transform hover:scale-105 shadow-md"
 
               >
 
@@ -1076,7 +1076,7 @@ export default function Profile() {
 
             <div className="text-center py-16">
 
-              <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+              <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
 
               <p className="text-gray-500">Chargement des videos...</p>
 
@@ -1094,7 +1094,7 @@ export default function Profile() {
                     type="button"
                     onClick={() => fetchNextPage()}
                     disabled={isFetchingNextPage}
-                    className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-medium rounded-full transition-colors"
+                    className="px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white font-medium rounded-full transition-colors"
                   >
                     {isFetchingNextPage ? 'Chargement...' : 'Voir plus'}
                   </button>
@@ -1205,7 +1205,7 @@ export default function Profile() {
 
                   <p className="font-medium text-sm truncate">{product.name}</p>
 
-                  <p className="text-orange-500 font-bold">{product.price?.toLocaleString()} FCFA</p>
+                  <p className="text-primary font-bold">{product.price?.toLocaleString()} FCFA</p>
 
                 </div>
 

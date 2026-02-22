@@ -14,9 +14,9 @@ const tierIcons = {
 };
 
 const tierColors = {
-  bronze: 'from-orange-400 to-amber-600',
+  bronze: 'from-blue-400 to-indigo-600',
   silver: 'from-gray-300 to-gray-500',
-  gold: 'from-yellow-400 to-yellow-600'
+  gold: 'from-blue-400 to-indigo-500'
 };
 
 export default function SubscriptionTiers({ isOpen, onClose, creatorId }) {
@@ -75,7 +75,7 @@ export default function SubscriptionTiers({ isOpen, onClose, creatorId }) {
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Crown className="w-5 h-5 text-orange-500" />
+            <Crown className="w-5 h-5 text-blue-600" />
             Gérer les abonnements
           </DialogTitle>
         </DialogHeader>
@@ -158,7 +158,7 @@ export default function SubscriptionTiers({ isOpen, onClose, creatorId }) {
 
               <Button
                 onClick={handleSubmit}
-                className="w-full bg-gradient-to-r from-orange-500 to-red-500"
+                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600"
               >
                 Créer le palier
               </Button>

@@ -57,7 +57,7 @@ export default function ReferralsPage() {
   if (isError) {
     return (
       <div className="max-w-6xl mx-auto p-4 flex flex-col justify-center items-center min-h-[200px] gap-4">
-        <p className="text-red-500">Impossible de charger les statistiques de parrainage.</p>
+        <p className="text-blue-600">Impossible de charger les statistiques de parrainage.</p>
         <Button onClick={() => refetch()} variant="outline">Réessayer</Button>
       </div>
     );
@@ -66,7 +66,7 @@ export default function ReferralsPage() {
   if (isLoading) {
     return (
       <div className="max-w-6xl mx-auto p-4 flex justify-center items-center min-h-[200px]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500" />
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
       </div>
     );
   }
@@ -105,7 +105,7 @@ export default function ReferralsPage() {
                   <p className="text-xs text-gray-600">Complétés</p>
                   <p className="text-2xl font-bold">{stats?.completedReferrals || 0}</p>
                 </div>
-                <TrendingUp className="w-8 h-8 text-green-500" />
+                <TrendingUp className="w-8 h-8 text-blue-600" />
               </div>
             </CardContent>
           </Card>
@@ -119,7 +119,7 @@ export default function ReferralsPage() {
                   <p className="text-xs text-gray-600">Récompenses</p>
                   <p className="text-2xl font-bold">{stats?.rewards?.length || 0}</p>
                 </div>
-                <Award className="w-8 h-8 text-amber-500" />
+                <Award className="w-8 h-8 text-blue-600" />
               </div>
             </CardContent>
           </Card>
@@ -131,16 +131,16 @@ export default function ReferralsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-gray-600">Mon code</p>
-                  <p className="text-lg font-bold text-orange-600 truncate max-w-[120px]">{displayCode || '-'}</p>
+                  <p className="text-lg font-bold text-blue-600 truncate max-w-[120px]">{displayCode || '-'}</p>
                 </div>
-                <Gift className="w-8 h-8 text-orange-500" />
+                <Gift className="w-8 h-8 text-blue-600" />
               </div>
             </CardContent>
           </Card>
         </motion.div>
       </div>
 
-      <Card className="mb-8 border-orange-200">
+      <Card className="mb-8 border-blue-200">
         <CardHeader>
           <CardTitle>Mon code de parrainage</CardTitle>
         </CardHeader>
@@ -155,7 +155,7 @@ export default function ReferralsPage() {
               placeholder={displayCode ? '' : 'Chargement...'}
               className="text-center font-bold text-lg"
             />
-            <Button onClick={copyCode} className="bg-orange-500 hover:bg-orange-600">
+            <Button onClick={copyCode} className="bg-blue-600 hover:bg-blue-700">
               <Copy className="w-4 h-4 mr-2" />
               Copier
             </Button>
@@ -185,7 +185,7 @@ export default function ReferralsPage() {
           <CardContent>
             <div className="space-y-2">
               {stats.rewards.map((r) => (
-                <div key={r.id} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg">
+                <div key={r.id} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
                   <span className="font-medium">{REWARD_LABELS[r.reward_type] || r.reward_type}</span>
                   <Badge>À partir de {r.invites_count} invités</Badge>
                 </div>
@@ -216,7 +216,7 @@ export default function ReferralsPage() {
                       {new Date(referral.created_at).toLocaleDateString('fr-FR')}
                     </p>
                   </div>
-                  <Badge className={referral.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
+                  <Badge className={referral.status === 'completed' ? 'bg-blue-100 text-blue-800' : 'bg-blue-100 text-blue-800'}>
                     {referral.status}
                   </Badge>
                 </motion.div>

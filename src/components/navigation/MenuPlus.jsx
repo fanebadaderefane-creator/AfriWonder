@@ -3,10 +3,10 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import {
   Ticket, Car, UtensilsCrossed, Zap, Heart, Building2,
   Shield, Wrench, Newspaper, GraduationCap, CreditCard, Target,
-  Briefcase, PlaySquare, Wallet, User, Settings, ChevronRight,
+  Briefcase, Wallet, User, Settings, ChevronRight,
   Crown, ShoppingCart, Radio, Trophy, Grid3x3, X, FileText, Lock,
   BarChart3, Video, Sparkles, Share2, HelpCircle, MessageCircle, Info,
-  Megaphone, Globe, Bell
+  Megaphone, Globe, Bell, Compass, PlusSquare
 } from "lucide-react";
 import { Link, useLocation } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
@@ -26,30 +26,32 @@ const MENU_SECTIONS = [
   {
     title: "COMMERCE & SERVICES",
     items: [
-      { icon: ShoppingCart, label: "Marketplace", color: "text-orange-600", badge: "Nouveau", page: 'Marketplace' },
+      { icon: ShoppingCart, label: "Marketplace", color: "text-blue-600", badge: "Nouveau", page: 'Marketplace' },
       { icon: Ticket, label: "Événements", color: "text-purple-600", page: 'Events' },
       { icon: Car, label: "Transport", color: "text-blue-600", page: 'Transport' },
-      { icon: UtensilsCrossed, label: "Restauration", color: "text-orange-600", page: 'FoodDelivery' },
+      { icon: UtensilsCrossed, label: "Restauration", color: "text-blue-600", page: 'FoodDelivery' },
       { icon: Zap, label: "Services", color: "text-yellow-600", page: 'Utilities' },
       { icon: Heart, label: "Santé", color: "text-red-600", page: 'Telemedicine' },
       { icon: Building2, label: "Immobilier", color: "text-teal-600", page: 'RealEstate' },
       { icon: Shield, label: "Assurances", color: "text-indigo-600", page: 'Insurance' },
-      { icon: Wrench, label: "Prestataires", color: "text-orange-600", page: 'Marketplace' },
+      { icon: Wrench, label: "Prestataires", color: "text-blue-600", page: 'Marketplace' },
       { icon: Newspaper, label: "Actualités", color: "text-gray-600", page: 'News' },
       { icon: CreditCard, label: "Microcrédit", color: "text-emerald-600", page: 'Microcredit' },
       { icon: Target, label: "Crowdfunding", color: "text-pink-600", page: 'Crowdfunding' },
       { icon: Briefcase, label: "Emplois", color: "text-amber-600", page: 'Jobs' },
-      { icon: Grid3x3, label: "Mini-Apps", color: "text-[#f97316]", badge: "Nouveau", page: 'MiniAppsStore' },
+      { icon: Grid3x3, label: "Mini-Apps", color: "text-blue-600", badge: "Nouveau", page: 'MiniAppsStore' },
     ],
   },
   {
     title: "CRÉATEURS & LIVE",
     items: [
+      { icon: Compass, label: "Découvrir", color: "text-primary", page: 'Discover' },
+      { icon: PlusSquare, label: "Créer", color: "text-primary", page: 'Create' },
       { icon: Radio, label: "Regarder les lives", color: "text-pink-600", badge: "Live", page: 'Live' },
       { icon: Video, label: "Démarrer un live", color: "text-pink-600", page: 'LiveStream' },
       { icon: Sparkles, label: "Outils créateurs", color: "text-yellow-600", page: 'CreatorTools' },
-      { icon: Share2, label: "Parrainage", color: "text-orange-600", page: 'Referrals' },
-      { icon: Megaphone, label: "Mes campagnes pub", color: "text-orange-600", badge: "Pub", page: 'AdvertiserDashboard' },
+      { icon: Share2, label: "Parrainage", color: "text-blue-600", page: 'Referrals' },
+      { icon: Megaphone, label: "Mes campagnes pub", color: "text-blue-600", badge: "Pub", page: 'AdvertiserDashboard' },
     ],
   },
   {
@@ -58,7 +60,13 @@ const MENU_SECTIONS = [
       { icon: GraduationCap, label: "Formations", color: "text-green-600", page: 'Courses' },
       { icon: Trophy, label: "Mes Badges", color: "text-yellow-600", page: 'BadgesProfile' },
       { icon: BarChart3, label: "Classement", color: "text-purple-600", page: 'Leaderboard' },
-      { icon: Trophy, label: "Gamification", color: "text-[#f97316]", page: 'GamificationHub' },
+      { icon: Trophy, label: "Gamification", color: "text-blue-600", page: 'GamificationHub' },
+    ],
+  },
+  {
+    title: "PARCOURS INTELLIGENT",
+    items: [
+      { icon: Sparkles, label: "Parcours Intelligent", color: "text-amber-600", badge: "IA", page: 'MatchingCenter' },
     ],
   },
   {
@@ -73,7 +81,7 @@ const MENU_SECTIONS = [
       { icon: User, label: "Profil", color: "text-gray-600", page: 'Profile' },
       { icon: Settings, label: "Paramètres", color: "text-gray-600", page: 'Settings' },
       { icon: BarChart3, label: "Statistiques", color: "text-purple-600", page: 'Analytics' },
-      { icon: Bell, label: "Notifications", color: "text-orange-600", page: 'Notifications' },
+      { icon: Bell, label: "Notifications", color: "text-blue-600", page: 'Notifications' },
       { icon: Globe, label: "Langue", color: "text-blue-600", page: 'Language' },
       { icon: HelpCircle, label: "Aide & Support", color: "text-gray-600", page: 'Help' },
       { icon: MessageCircle, label: "Mes tickets support", color: "text-gray-600", page: 'Support' },
@@ -162,13 +170,13 @@ export default function MenuPlus({ isOpen, onClose, onNavigateFromMenu, user }) 
         <div className="flex flex-col flex-shrink-0 bg-white">
           {/* Section Profil Utilisateur avec fond dégradé */}
           {user && (
-            <div className="relative bg-gradient-to-b from-orange-400 via-orange-500 to-red-500 px-4 pt-12 pb-6">
+            <div className="relative bg-gradient-to-b from-blue-500 via-blue-600 to-blue-700 px-4 pt-12 pb-6">
               {/* Bouton fermer en haut à droite — reste en place au scroll */}
               <button
                 onClick={onClose}
                 className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center bg-white/90 hover:bg-white rounded-lg shadow-sm transition-colors"
               >
-                <X className="w-5 h-5 text-orange-600" />
+                <X className="w-5 h-5 text-blue-600" />
               </button>
               
               {/* Contenu profil */}
@@ -182,7 +190,7 @@ export default function MenuPlus({ isOpen, onClose, onNavigateFromMenu, user }) 
                       e.target.style.display = 'none';
                     }}
                   />
-                  <AvatarFallback className="bg-white text-orange-600 font-bold text-lg">
+                  <AvatarFallback className="bg-white text-blue-600 font-bold text-lg">
                     {(user.full_name || user.username || 'U')[0].toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
@@ -243,16 +251,16 @@ export default function MenuPlus({ isOpen, onClose, onNavigateFromMenu, user }) 
                           className={cn(
                             "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150",
                             isActive
-                              ? "bg-gradient-to-r from-orange-50 to-pink-50 text-orange-700"
+                              ? "bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700"
                               : item.admin
                                 ? "text-yellow-700 hover:bg-yellow-50"
                                 : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                           )}
                         >
-                          <item.icon className={cn("w-5 h-5 flex-shrink-0", isActive ? "text-orange-600" : item.color)} />
+                          <item.icon className={cn("w-5 h-5 flex-shrink-0", isActive ? "text-blue-600" : item.color)} />
                           <span className="flex-1">{item.label}</span>
                           {item.badge && (
-                            <span className="px-1.5 py-0.5 text-xs font-bold bg-gradient-to-r from-orange-100 to-pink-100 text-orange-700 rounded-full">
+                            <span className="px-1.5 py-0.5 text-xs font-bold bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-700 rounded-full">
                               {item.badge}
                             </span>
                           )}

@@ -73,20 +73,20 @@ export default function Help() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-orange-50/30 pb-20">
-      <div className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b-2 border-orange-500/20 shadow-sm">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-blue-50/30 pb-20">
+      <div className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b-2 border-blue-500/20 shadow-sm">
         <div className="flex items-center gap-4 px-4 py-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="hover:bg-orange-100"><ArrowLeft className="w-6 h-6 text-gray-700" /></Button>
-          <h1 className="text-lg font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">Aide & Support</h1>
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="text-blue-600 hover:text-blue-700 hover:bg-blue-50" aria-label="Retour"><ArrowLeft className="w-6 h-6" /></Button>
+          <h1 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Aide & Support</h1>
         </div>
         <div className="px-4 pb-3">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-orange-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-500" />
             <Input 
               placeholder="Rechercher une question..." 
               value={searchQuery} 
               onChange={(e) => setSearchQuery(e.target.value)} 
-              className="pl-10 rounded-xl bg-orange-50/50 border-orange-200 focus:border-orange-500 focus:ring-orange-500/20" 
+              className="pl-10 rounded-xl bg-blue-50/50 border-blue-200 focus:border-blue-500 focus:ring-blue-500/20" 
             />
           </div>
         </div>
@@ -102,18 +102,18 @@ export default function Help() {
               transition={{ delay: index * 0.05 }}
             >
               <Card 
-                className="p-4 text-center cursor-pointer hover:shadow-md hover:border-orange-200 border-orange-100 transition-all active:scale-95"
+                className="p-4 text-center cursor-pointer hover:shadow-md hover:border-blue-200 border-blue-100 transition-all active:scale-95"
                 onClick={() => handleCategoryClick(cat.id)}
               >
-                <cat.icon className="w-8 h-8 mx-auto text-orange-500 mb-2" />
+                <cat.icon className="w-8 h-8 mx-auto text-blue-600 mb-2" />
                 <p className="text-sm font-medium text-gray-800">{cat.label}</p>
               </Card>
             </motion.div>
           ))}
         </div>
 
-        <Card className="p-4 border-orange-100 shadow-sm" data-faq-section>
-          <h3 className="font-semibold mb-3 text-orange-600">Questions fréquentes</h3>
+        <Card className="p-4 border-blue-100 shadow-sm" data-faq-section>
+          <h3 className="font-semibold mb-3 text-blue-600">Questions fréquentes</h3>
           {filteredFaqs.length === 0 ? (
             <p className="text-sm text-gray-500 text-center py-4">Aucune question trouvée pour "{searchQuery}"</p>
           ) : (
@@ -124,9 +124,9 @@ export default function Help() {
                   open={openFaqs[index]}
                   onOpenChange={() => toggleFaq(index)}
                 >
-                  <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-orange-50/50 rounded-lg hover:bg-orange-100/80 transition-colors cursor-pointer border border-transparent hover:border-orange-200">
+                  <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-blue-50/50 rounded-lg hover:bg-blue-100/80 transition-colors cursor-pointer border border-transparent hover:border-blue-200">
                     <span className="text-sm font-medium text-left text-gray-800">{faq.q}</span>
-                    <ChevronDown className={`w-4 h-4 text-orange-500 transition-transform ${openFaqs[index] ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`w-4 h-4 text-blue-600 transition-transform ${openFaqs[index] ? 'rotate-180' : ''}`} />
                   </CollapsibleTrigger>
                   <CollapsibleContent className="px-3 py-2 text-sm text-gray-600">
                     {faq.a}
@@ -137,39 +137,39 @@ export default function Help() {
           )}
         </Card>
 
-        <Card className="p-4 border-orange-100 shadow-sm">
-          <h3 className="font-semibold mb-3 text-orange-600">Nous contacter</h3>
+        <Card className="p-4 border-blue-100 shadow-sm">
+          <h3 className="font-semibold mb-3 text-blue-600">Nous contacter</h3>
           <div className="space-y-3">
             <Button 
               variant="outline" 
-              className="w-full justify-start border-orange-200 hover:bg-orange-50 hover:border-orange-300 text-gray-800"
+              className="w-full justify-start border-blue-200 hover:bg-blue-50 hover:border-blue-300 text-gray-800"
               onClick={() => navigate(createPageUrl('Support'))}
             >
-              <MessageCircle className="w-5 h-5 mr-3 text-orange-500" />
+              <MessageCircle className="w-5 h-5 mr-3 text-blue-600" />
               Mes tickets support
             </Button>
             <Button 
               variant="outline" 
-              className="w-full justify-start border-orange-200 hover:bg-orange-50 hover:border-orange-300 text-gray-800"
+              className="w-full justify-start border-blue-200 hover:bg-blue-50 hover:border-blue-300 text-gray-800"
               onClick={handleChatClick}
             >
-              <MessageCircle className="w-5 h-5 mr-3 text-orange-500" />
+              <MessageCircle className="w-5 h-5 mr-3 text-blue-600" />
               Chat en direct
             </Button>
             <Button 
               variant="outline" 
-              className="w-full justify-start border-orange-200 hover:bg-orange-50 hover:border-orange-300 text-gray-800"
+              className="w-full justify-start border-blue-200 hover:bg-blue-50 hover:border-blue-300 text-gray-800"
               onClick={handleEmailClick}
             >
-              <Mail className="w-5 h-5 mr-3 text-orange-500" />
+              <Mail className="w-5 h-5 mr-3 text-blue-600" />
               support@afriwonder.app
             </Button>
             <Button 
               variant="outline" 
-              className="w-full justify-start border-orange-200 hover:bg-orange-50 hover:border-orange-300 text-gray-800"
+              className="w-full justify-start border-blue-200 hover:bg-blue-50 hover:border-blue-300 text-gray-800"
               onClick={handlePhoneClick}
             >
-              <Phone className="w-5 h-5 mr-3 text-orange-500" />
+              <Phone className="w-5 h-5 mr-3 text-blue-600" />
               +221 77 123 45 67
             </Button>
           </div>

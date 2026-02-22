@@ -64,7 +64,7 @@ export default function BottomNav() {
 
                   whileTap={{ scale: 0.9 }}
 
-                  className="w-12 h-12 bg-gradient-to-br from-orange-500 via-red-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg"
+                  className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center shadow-lg"
 
                 >
 
@@ -103,14 +103,14 @@ export default function BottomNav() {
                 <Icon 
                   className={cn(
                     "w-6 h-6 transition-colors duration-200 ease-out",
-                    active ? "text-orange-500" : "text-white/70"
+                    active ? "text-blue-400" : "text-white/70"
                   )} 
                 />
               </motion.div>
 
               <span className={cn(
                 "text-[10px] transition-colors duration-200 ease-out",
-                active ? "text-orange-500 font-semibold" : "text-white/60"
+                active ? "text-blue-400 font-semibold" : "text-white/60"
               )}>
 
                 {item.label}
@@ -123,7 +123,7 @@ export default function BottomNav() {
 
                   layoutId="activeTab"
 
-                  className="absolute bottom-0 w-1 h-1 bg-orange-500 rounded-full"
+                  className="absolute bottom-0 w-1 h-1 bg-blue-400 rounded-full"
 
                   data-testid="active-tab-indicator"
 

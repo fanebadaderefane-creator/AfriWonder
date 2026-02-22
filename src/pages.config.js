@@ -113,6 +113,7 @@ import LiveView from './pages/LiveView';
 import Lives from './pages/Lives';
 import LoanDetails from './pages/LoanDetails';
 import Marketplace from './pages/Marketplace';
+import MatchingCenter from './pages/MatchingCenter';
 import MarketplaceMap from './pages/MarketplaceMap';
 import Microcredit from './pages/Microcredit';
 import MobileMoneyPayment from './pages/MobileMoneyPayment';
@@ -264,6 +265,7 @@ export const PAGES = {
     "Lives": Lives,
     "LoanDetails": LoanDetails,
     "Marketplace": Marketplace,
+    "MatchingCenter": MatchingCenter,
     "MarketplaceMap": MarketplaceMap,
     "Microcredit": Microcredit,
     "MobileMoneyPayment": MobileMoneyPayment,

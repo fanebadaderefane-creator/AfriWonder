@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import BottomNav from '../components/navigation/BottomNav';
 
 const statusLabels = { open: 'Ouvert', in_progress: 'En cours', closed: 'Fermé' };
-const statusColors = { open: 'bg-blue-100 text-blue-800', in_progress: 'bg-amber-100 text-amber-800', closed: 'bg-gray-100 text-gray-800' };
+const statusColors = { open: 'bg-blue-100 text-blue-800', in_progress: 'bg-blue-100 text-blue-800', closed: 'bg-gray-100 text-gray-800' };
 
 export default function Support() {
   const navigate = useNavigate();
@@ -75,7 +75,7 @@ export default function Support() {
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -121,7 +121,7 @@ export default function Support() {
               Annuler
             </Button>
             <Button
-              className="flex-1 bg-orange-500 hover:bg-orange-600"
+              className="flex-1 bg-blue-600 hover:bg-blue-700"
               disabled={!newSubject.trim() || createTicketMutation.isPending}
               onClick={() => createTicketMutation.mutate()}
             >
@@ -143,7 +143,7 @@ export default function Support() {
                   key={t.id}
                   onClick={() => navigate(`${createPageUrl('Support')}?id=${t.id}`)}
                   className={`w-full text-left p-4 border-b hover:bg-gray-50 flex items-start gap-3 ${
-                    selectedTicketId === t.id ? 'bg-orange-50 border-l-4 border-l-orange-500' : ''
+                    selectedTicketId === t.id ? 'bg-orange-50 border-l-4 border-l-blue-600' : ''
                   }`}
                 >
                   <MessageCircle className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
@@ -184,11 +184,11 @@ export default function Support() {
                         className={`max-w-[85%] rounded-2xl px-4 py-2 ${
                           msg.is_staff
                             ? 'bg-white border text-gray-800'
-                            : 'bg-orange-500 text-white'
+                            : 'bg-blue-600 text-white'
                         }`}
                       >
                         <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
-                        <p className={`text-xs mt-1 ${msg.is_staff ? 'text-gray-500' : 'text-orange-100'}`}>
+                        <p className={`text-xs mt-1 ${msg.is_staff ? 'text-gray-500' : 'text-blue-100'}`}>
                           {msg.created_at ? new Date(msg.created_at).toLocaleString('fr-FR') : ''}
                           {msg.is_staff && ' • Support'}
                         </p>
@@ -207,7 +207,7 @@ export default function Support() {
                     />
                     <Button
                       size="icon"
-                      className="bg-orange-500 hover:bg-orange-600 shrink-0 h-auto py-3"
+                      className="bg-blue-600 hover:bg-blue-700 shrink-0 h-auto py-3"
                       disabled={!replyText.trim() || sendMessageMutation.isPending}
                       onClick={() => sendMessageMutation.mutate()}
                     >

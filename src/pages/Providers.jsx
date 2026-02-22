@@ -151,7 +151,7 @@ export default function Providers() {
                 className="pl-10 pr-4 h-11 rounded-xl border-gray-200"
               />
             </div>
-            <Button variant="outline" size="icon" className="h-11 w-11 rounded-xl flex-shrink-0 border-amber-300" aria-label="Filtres">
+            <Button variant="outline" size="icon" className="h-11 w-11 rounded-xl flex-shrink-0 border-blue-300" aria-label="Filtres">
               <SlidersHorizontal className="w-5 h-5" />
             </Button>
           </div>
@@ -208,7 +208,7 @@ export default function Providers() {
       <div className="max-w-6xl mx-auto px-4 py-6">
         {isLoading ? (
           <div className="flex justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

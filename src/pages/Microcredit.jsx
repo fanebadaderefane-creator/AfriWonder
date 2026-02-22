@@ -226,7 +226,7 @@ export default function Microcredit() {
                 className={cn(
                   'flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-colors min-w-[70px] justify-center',
                   selectedPurpose === cat.id
-                    ? 'bg-[#f97316] text-white shadow-sm'
+                    ? 'bg-[#2563EB] text-white shadow-sm'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 )}
               >
@@ -241,7 +241,7 @@ export default function Microcredit() {
       {/* Sort */}
       <div className="px-4 py-2 bg-white border-b border-gray-100 flex items-center gap-2">
         <span className="text-sm text-gray-600 flex items-center gap-1">
-          <Zap className="w-4 h-4 text-[#f97316]" />
+          <Zap className="w-4 h-4 text-[#2563EB]" />
           Plus récents
         </span>
         <Select value={sortBy} onValueChange={setSortBy}>
@@ -259,8 +259,8 @@ export default function Microcredit() {
       {/* AI Scoring Banner — neutre, accent orange */}
       <div className="mx-4 mt-4 rounded-2xl bg-gray-800 text-white p-4 shadow-sm">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-full bg-[#f97316]/20 flex items-center justify-center flex-shrink-0">
-            <Brain className="w-5 h-5 text-[#f97316]" />
+          <div className="w-10 h-10 rounded-full bg-[#2563EB]/20 flex items-center justify-center flex-shrink-0">
+            <Brain className="w-5 h-5 text-[#2563EB]" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
@@ -297,7 +297,7 @@ export default function Microcredit() {
         <div className="rounded-2xl bg-gray-800 text-white p-5 shadow-lg overflow-hidden">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-gray-300">Prêt actif</span>
-            <Badge className="bg-[#f97316] text-white border-0">Actif</Badge>
+            <Badge className="bg-[#2563EB] text-white border-0">Actif</Badge>
           </div>
           <div className="text-2xl font-bold mb-1">
             {activeLoan.totalAmount.toLocaleString('fr-FR')} F CFA
@@ -309,7 +309,7 @@ export default function Microcredit() {
             </div>
             <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
               <div
-                className="h-full bg-[#f97316] rounded-full transition-all"
+                className="h-full bg-[#2563EB] rounded-full transition-all"
                 style={{ width: `${repaidPct}%` }}
               />
             </div>
@@ -327,7 +327,7 @@ export default function Microcredit() {
             </div>
           </div>
           <Button
-            className="w-full bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold rounded-xl"
+            className="w-full bg-[#2563EB] hover:bg-[#1E3A8A] text-white font-semibold rounded-xl"
             onClick={() => {}}
           >
             Rembourser maintenant
@@ -359,7 +359,7 @@ export default function Microcredit() {
                   </p>
                 </div>
                 <Button
-                  className="rounded-xl bg-[#f97316] hover:bg-[#ea580c] text-white border-0 font-medium shrink-0"
+                  className="rounded-xl bg-[#2563EB] hover:bg-[#1E3A8A] text-white border-0 font-medium shrink-0"
                   onClick={() => openRequestModal(prod)}
                 >
                   Demander
@@ -382,7 +382,7 @@ export default function Microcredit() {
               <p className="text-sm text-gray-600 mt-1">
                 Pour accéder aux prêts, vous devez compléter votre KYC (pièce d'identité + selfie). Après soumission, un administrateur vérifiera votre dossier.
               </p>
-              <Button className="mt-3 bg-[#f97316] hover:bg-[#ea580c] text-white rounded-xl" asChild>
+              <Button className="mt-3 bg-[#2563EB] hover:bg-[#1E3A8A] text-white rounded-xl" asChild>
                 <Link to={createPageUrl('UserVerification')}>Compléter mon profil</Link>
               </Button>
             </div>
@@ -425,7 +425,7 @@ export default function Microcredit() {
         <h2 className="text-lg font-bold text-gray-900 mb-3">Projets à financer</h2>
         {isLoading ? (
           <div className="text-center py-12">
-            <div className="w-8 h-8 border-4 border-[#f97316] border-t-transparent rounded-full animate-spin mx-auto" />
+            <div className="w-8 h-8 border-4 border-[#2563EB] border-t-transparent rounded-full animate-spin mx-auto" />
           </div>
         ) : sortedLoans.length === 0 ? (
           <div className="text-center py-12">
@@ -467,14 +467,14 @@ export default function Microcredit() {
                     <p className="text-sm text-gray-700 mb-3 line-clamp-2">{loan.business_plan}</p>
                     <div className="mb-3">
                       <div className="flex justify-between text-sm mb-1">
-                        <span className="font-bold text-[#f97316]">
+                        <span className="font-bold text-[#2563EB]">
                           {(loan.current_amount ?? 0).toLocaleString('fr-FR')} FCFA
                         </span>
                         <span className="text-gray-500">sur {(loan.amount_requested ?? 0).toLocaleString('fr-FR')}</span>
                       </div>
                       <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-[#f97316] transition-all"
+                          className="h-full bg-[#2563EB] transition-all"
                           style={{ width: `${progress}%` }}
                         />
                       </div>
@@ -536,7 +536,7 @@ export default function Microcredit() {
                     className="rounded-lg border-gray-200"
                   />
                   {amountNum > 0 && (
-                    <p className="mt-1 text-sm text-[#ea580c] font-medium">
+                    <p className="mt-1 text-sm text-[#1E3A8A] font-medium">
                       Mensualité estimée: {estimatedMonthly.toLocaleString('fr-FR')} FCFA
                     </p>
                   )}
@@ -561,7 +561,7 @@ export default function Microcredit() {
                   </Select>
                 </div>
                 <Button
-                  className="w-full rounded-xl bg-[#f97316] hover:bg-[#ea580c] text-white border-0"
+                  className="w-full rounded-xl bg-[#2563EB] hover:bg-[#1E3A8A] text-white border-0"
                   onClick={() => setRequestStep(2)}
                   disabled={!requestForm.amount || Number(requestForm.amount) < 1000}
                 >
@@ -603,13 +603,13 @@ export default function Microcredit() {
                 <div className="flex gap-3">
                   <Button
                     variant="outline"
-                    className="flex-1 rounded-xl border-[#f97316] text-[#f97316] hover:bg-orange-50"
+                    className="flex-1 rounded-xl border-[#2563EB] text-[#2563EB] hover:bg-blue-50"
                     onClick={() => setRequestStep(1)}
                   >
                     Retour
                   </Button>
                   <Button
-                    className="flex-1 rounded-xl bg-[#f97316] hover:bg-[#ea580c] text-white border-0"
+                    className="flex-1 rounded-xl bg-[#2563EB] hover:bg-[#1E3A8A] text-white border-0"
                     onClick={() => submitRequestMutation.mutate()}
                     disabled={submitRequestMutation.isPending || !requestForm.fullName?.trim()}
                   >
@@ -626,7 +626,7 @@ export default function Microcredit() {
       <Dialog open={successModalOpen} onOpenChange={setSuccessModalOpen}>
         <DialogContent className="sm:max-w-sm rounded-2xl text-center">
           <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 rounded-full bg-[#f97316] flex items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-[#2563EB] flex items-center justify-center">
               <Check className="w-8 h-8 text-white" />
             </div>
           </div>
@@ -634,7 +634,7 @@ export default function Microcredit() {
           <p className="text-sm text-gray-600 mt-1">Votre demande est en cours d'analyse.</p>
           <p className="text-sm text-gray-600">Réponse sous <strong>24-48h</strong>.</p>
           <Button
-            className="w-full mt-4 rounded-xl bg-[#f97316] hover:bg-[#ea580c] text-white border-0"
+            className="w-full mt-4 rounded-xl bg-[#2563EB] hover:bg-[#1E3A8A] text-white border-0"
             onClick={() => setSuccessModalOpen(false)}
           >
             Fermer

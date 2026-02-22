@@ -6,7 +6,7 @@ import { Star, MapPin, BadgeCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 const PLAN_BADGES = {
-  premium: { label: "Premium", className: "bg-orange-500 text-white border-0 rounded-full" },
+  premium: { label: "Premium", className: "bg-primary text-white border-0 rounded-full" },
   pro: { label: "Pro", className: "bg-green-100 text-green-800 border-0 rounded-full" },
 };
 
@@ -100,11 +100,11 @@ export default function ProviderCard({ provider, categoryName, priority = false 
   return (
     <Link
       to={createPageUrl("ProviderProfile") + `?id=${p.id}`}
-      className="group block bg-white rounded-2xl border border-border/50 overflow-hidden shadow-sm hover:shadow-xl hover:shadow-amber-100/30 transition-all duration-300"
+      className="group block bg-white rounded-2xl border border-border/50 overflow-hidden shadow-sm hover:shadow-xl hover:shadow-blue-100/30 transition-all duration-300"
     >
-      <div className="relative h-48 min-h-[192px] bg-gradient-to-br from-amber-100 to-green-100 overflow-hidden">
+      <div className="relative h-48 min-h-[192px] bg-gradient-to-br from-blue-50 to-indigo-50 overflow-hidden">
         {!imageLoaded && (
-          <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-amber-100 via-amber-50 to-green-100" />
+          <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-blue-100 via-blue-50 to-indigo-100" />
         )}
         <img
           src={imageUrl}
@@ -152,7 +152,7 @@ export default function ProviderCard({ provider, categoryName, priority = false 
                   {displayName}
                 </h3>
                 {p.is_verified && (
-                  <BadgeCheck className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                  <BadgeCheck className="w-4 h-4 text-blue-600 flex-shrink-0" />
                 )}
               </div>
               <p className="text-xs text-muted-foreground truncate">
@@ -162,7 +162,7 @@ export default function ProviderCard({ provider, categoryName, priority = false 
           </div>
           {Number(p.average_rating) > 0 && (
             <div className="flex items-center gap-1 text-sm flex-shrink-0">
-              <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+              <Star className="w-4 h-4 fill-blue-500 text-blue-500" />
               <span className="font-semibold">{Number(p.average_rating).toFixed(1)}</span>
             </div>
           )}

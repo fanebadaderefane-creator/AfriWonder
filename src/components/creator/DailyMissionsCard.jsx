@@ -16,12 +16,12 @@ export default function DailyMissionsCard() {
   const completed = missions.filter((m) => m.completed).length;
 
   return (
-    <Card className="border-amber-200 bg-amber-50/30">
+    <Card className="border-blue-200 bg-blue-50/30">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <span>Missions du jour</span>
           {completed > 0 && (
-            <span className="text-amber-600 font-normal">
+            <span className="text-blue-600 font-normal">
               {completed}/{missions.length}
             </span>
           )}
@@ -34,12 +34,12 @@ export default function DailyMissionsCard() {
             className={`flex items-center gap-2 text-sm ${m.completed ? 'text-gray-500' : ''}`}
           >
             {m.completed ? (
-              <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
             ) : (
-              <Circle className="w-4 h-4 text-amber-200 shrink-0" />
+              <Circle className="w-4 h-4 text-blue-200 shrink-0" />
             )}
             <span className={m.completed ? 'line-through' : ''}>{m.icon} {m.label}</span>
-            {!m.completed && <span className="text-amber-600 text-xs">+{m.xp} XP</span>}
+            {!m.completed && <span className="text-blue-600 text-xs">+{m.xp} XP</span>}
           </div>
         ))}
       </CardContent>

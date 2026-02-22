@@ -117,12 +117,12 @@ export default function Insurance() {
   };
 
   const insuranceTypes = [
-    { id: 'health', name: 'Santé', icon: Heart, color: 'from-orange-500 to-red-500', price: '5,000 FCFA/mois', premium: 5000 },
-    { id: 'vehicle', name: 'Auto/Moto', icon: Car, color: 'from-orange-500 to-amber-500', price: '15,000 FCFA/mois', premium: 15000 },
-    { id: 'property', name: 'Habitation', icon: Home, color: 'from-amber-500 to-orange-600', price: '8,000 FCFA/mois', premium: 8000 },
-    { id: 'travel', name: 'Voyage', icon: Plane, color: 'from-orange-600 to-red-600', price: '3,000 FCFA/trajet', premium: 3000 },
-    { id: 'life', name: 'Vie', icon: Users, color: 'from-red-500 to-orange-500', price: '10,000 FCFA/mois', premium: 10000 },
-    { id: 'micro', name: 'Micro-assurance', icon: Shield, color: 'from-yellow-500 to-orange-500', price: '1,500 FCFA/mois', premium: 1500 },
+    { id: 'health', name: 'Santé', icon: Heart, color: 'from-blue-600 to-indigo-600', price: '5,000 FCFA/mois', premium: 5000 },
+    { id: 'vehicle', name: 'Auto/Moto', icon: Car, color: 'from-blue-500 to-indigo-500', price: '15,000 FCFA/mois', premium: 15000 },
+    { id: 'property', name: 'Habitation', icon: Home, color: 'from-indigo-500 to-blue-600', price: '8,000 FCFA/mois', premium: 8000 },
+    { id: 'travel', name: 'Voyage', icon: Plane, color: 'from-blue-600 to-indigo-600', price: '3,000 FCFA/trajet', premium: 3000 },
+    { id: 'life', name: 'Vie', icon: Users, color: 'from-indigo-500 to-blue-500', price: '10,000 FCFA/mois', premium: 10000 },
+    { id: 'micro', name: 'Micro-assurance', icon: Shield, color: 'from-cyan-500 to-blue-500', price: '1,500 FCFA/mois', premium: 1500 },
   ];
 
   const devisOffersByType = {
@@ -328,39 +328,39 @@ export default function Insurance() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-orange-900/40 to-slate-900">
-      <div className="sticky top-0 z-50 bg-slate-900/90 backdrop-blur-md border-b border-orange-500/20">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900/40 to-slate-900">
+      <div className="sticky top-0 z-50 bg-slate-900/90 backdrop-blur-md border-b border-blue-500/20">
         <div className="flex items-center justify-between p-4">
           <Link to={createPageUrl('Home')}>
-            <Button variant="ghost" size="icon" className="text-white hover:bg-orange-500/20"><ArrowLeft className="w-5 h-5" /></Button>
+            <Button variant="ghost" size="icon" className="text-white hover:bg-blue-500/20"><ArrowLeft className="w-5 h-5" /></Button>
           </Link>
           <h1 className="text-xl font-bold text-white">Assurances</h1>
-          <Button variant="ghost" size="icon" className="text-white hover:bg-orange-500/20" onClick={() => setDocsOpen(true)}><FileText className="w-5 h-5" /></Button>
+          <Button variant="ghost" size="icon" className="text-white hover:bg-blue-500/20" onClick={() => setDocsOpen(true)}><FileText className="w-5 h-5" /></Button>
         </div>
       </div>
       <div className="p-4 pb-24 space-y-6">
         {(loadingPolicies || myPolicies.length > 0) && (
           <div>
             <h2 className="text-lg font-bold text-white mb-3">Mes assurances</h2>
-            {loadingPolicies && <p className="text-orange-200/80 py-2">Chargement...</p>}
+            {loadingPolicies && <p className="text-blue-200/80 py-2">Chargement...</p>}
             {!loadingPolicies && (
               <div className="space-y-3">
                 {myPolicies.map((policy) => (
                   <motion.div key={policy.id} whileTap={{ scale: 0.98 }}>
                     <Card
-                      className="bg-white/10 backdrop-blur-md border-orange-500/20 cursor-pointer hover:bg-white/15 transition-colors"
+                      className="bg-white/10 backdrop-blur-md border-blue-500/20 cursor-pointer hover:bg-white/15 transition-colors"
                       onClick={() => setPolicyDetail(policy)}
                     >
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-3">
                           <div>
                             <h3 className="font-bold text-white">{policy.type}</h3>
-                            <p className="text-xs text-orange-200/70">{policy.provider}</p>
+                            <p className="text-xs text-blue-200/70">{policy.provider}</p>
                           </div>
-                          <Badge className="bg-orange-500/30 text-orange-200 border-orange-400/40"><CheckCircle className="w-3 h-3 mr-1" />Actif</Badge>
+                          <Badge className="bg-blue-500/30 text-blue-200 border-blue-400/40"><CheckCircle className="w-3 h-3 mr-1" />Actif</Badge>
                         </div>
                         <div className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-2 text-orange-200/80">
+                          <div className="flex items-center gap-2 text-blue-200/80">
                             <Clock className="w-4 h-4" />
                             <span className="text-xs">Prochain paiement: {policy.nextPayment}</span>
                           </div>
@@ -385,7 +385,7 @@ export default function Insurance() {
                   key={type.id}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => handleTypeSelect(type.id)}
-                  className={`p-4 rounded-xl text-white text-center transition-all border ${selectedType === type.id ? `bg-gradient-to-br ${type.color} shadow-lg border-orange-400/50` : 'bg-white/10 hover:bg-orange-500/20 border-orange-500/20'}`}
+                  className={`p-4 rounded-xl text-white text-center transition-all border ${selectedType === type.id ? `bg-gradient-to-br ${type.color} shadow-lg border-blue-400/50` : 'bg-white/10 hover:bg-blue-500/20 border-blue-500/20'}`}
                 >
                   <Icon className="w-8 h-8 mx-auto mb-2" />
                   <p className="text-sm font-semibold mb-1">{type.name}</p>
@@ -396,7 +396,7 @@ export default function Insurance() {
           </div>
         </div>
 
-        <Card ref={detailCardRef} className="bg-white/10 backdrop-blur-md border-orange-500/20">
+        <Card ref={detailCardRef} className="bg-white/10 backdrop-blur-md border-blue-500/20">
           <CardHeader>
             <CardTitle className="text-white">Assurance {currentTypeInfo?.name ?? 'Santé'}</CardTitle>
           </CardHeader>
@@ -405,13 +405,13 @@ export default function Insurance() {
               <h3 className="font-semibold text-white mb-2">Couverture incluse:</h3>
               <ul className="space-y-2">
                 {currentCoverage.map((item, idx) => (
-                  <li key={idx} className="flex items-center gap-2 text-sm text-orange-200/90"><CheckCircle className="w-4 h-4 text-orange-400 flex-shrink-0" />{item}</li>
+                  <li key={idx} className="flex items-center gap-2 text-sm text-blue-200/90"><CheckCircle className="w-4 h-4 text-blue-400 flex-shrink-0" />{item}</li>
                 ))}
               </ul>
             </div>
             <div className="flex flex-col gap-2">
-              <Button className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white" onClick={openSubscribe}>Souscrire maintenant</Button>
-              <Button variant="outline" className="w-full border-orange-400/50 text-orange-200 hover:bg-orange-500/20" onClick={openDevis}>Demander un devis</Button>
+              <Button className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white" onClick={openSubscribe}>Souscrire maintenant</Button>
+              <Button variant="outline" className="w-full border-blue-400/50 text-blue-200 hover:bg-blue-500/20" onClick={openDevis}>Demander un devis</Button>
             </div>
           </CardContent>
         </Card>
@@ -423,18 +423,18 @@ export default function Insurance() {
               <motion.div
                 key={provider.id}
                 whileHover={{ scale: 1.02 }}
-                className="p-4 bg-white/10 backdrop-blur-md border border-orange-500/20 rounded-xl flex items-center justify-between"
+                className="p-4 bg-white/10 backdrop-blur-md border border-blue-500/20 rounded-xl flex items-center justify-between"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center text-2xl">{provider.logo}</div>
+                  <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center text-2xl">{provider.logo}</div>
                   <div>
                     <p className="font-semibold text-white">{provider.name}</p>
-                    <p className="text-xs text-orange-200/70">{provider.policies.toLocaleString()} polices actives</p>
+                    <p className="text-xs text-blue-200/70">{provider.policies.toLocaleString()} polices actives</p>
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="flex items-center gap-1 mb-1"><span className="text-yellow-400">⭐</span><span className="text-white font-semibold text-sm">{provider.rating}</span></div>
-                  <Button size="sm" variant="outline" className="text-xs border-orange-400/50 text-orange-200 hover:bg-orange-500/20" onClick={() => handleTypeSelect('health')}>Voir offres</Button>
+                  <Button size="sm" variant="outline" className="text-xs border-blue-400/50 text-blue-200 hover:bg-blue-500/20" onClick={() => handleTypeSelect('health')}>Voir offres</Button>
                 </div>
               </motion.div>
             ))}
@@ -442,10 +442,10 @@ export default function Insurance() {
         </div>
 
         {/* Devenir prestataire assurance */}
-        <div className="rounded-xl bg-gradient-to-r from-orange-500/20 to-pink-500/20 border border-orange-500/30 p-6 text-center">
-          <Building2 className="w-12 h-12 text-orange-400 mx-auto mb-3" />
+        <div className="rounded-xl bg-gradient-to-r from-blue-500/20 to-indigo-500/20 border border-blue-500/30 p-6 text-center">
+          <Building2 className="w-12 h-12 text-blue-400 mx-auto mb-3" />
           <h3 className="font-bold text-white mb-2">Vous êtes assureur ?</h3>
-          <p className="text-sm text-orange-200/90 mb-4">
+          <p className="text-sm text-blue-200/90 mb-4">
             Rejoignez AfriWonder et proposez vos offres. Votre compagnie sera validée par un administrateur (AfriWonder) avant d’apparaître sur la plateforme.
           </p>
           <Button
@@ -455,18 +455,18 @@ export default function Insurance() {
               setPrestataireForm({ company_name: '', contact_name: '', email: '', phone: '', address: '', city: '', description: '', types_offered: [], license_ref: '' });
               setPrestataireOpen(true);
             }}
-            className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
           >
             Devenir prestataire
           </Button>
         </div>
 
-        <Card className="bg-gradient-to-br from-orange-500/20 to-red-500/20 border-orange-400/40">
+        <Card className="bg-gradient-to-br from-blue-500/20 to-indigo-500/20 border-blue-400/40">
           <CardContent className="p-6 text-center">
-            <FileText className="w-12 h-12 text-orange-400 mx-auto mb-3" />
+            <FileText className="w-12 h-12 text-blue-400 mx-auto mb-3" />
             <h3 className="font-bold text-white mb-2">Déclarer un sinistre</h3>
-            <p className="text-sm text-orange-200/90 mb-4">Besoin d'assistance ? Déclarez votre sinistre en ligne</p>
-            <Button className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white" onClick={openClaim}>Déclarer un sinistre</Button>
+            <p className="text-sm text-blue-200/90 mb-4">Besoin d'assistance ? Déclarez votre sinistre en ligne</p>
+            <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white" onClick={openClaim}>Déclarer un sinistre</Button>
           </CardContent>
         </Card>
 
@@ -476,36 +476,36 @@ export default function Insurance() {
 
       {/* Détail d'une police */}
       <Dialog open={!!policyDetail} onOpenChange={(open) => !open && setPolicyDetail(null)}>
-        <DialogContent className="bg-slate-900 border-orange-500/30 text-white max-w-sm">
+        <DialogContent className="bg-slate-900 border-blue-500/30 text-white max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-white">{policyDetail?.type} — {policyDetail?.provider}</DialogTitle>
-            <DialogDescription className="text-orange-200/80">
+            <DialogDescription className="text-blue-200/80">
               Détails de votre contrat. Prochain paiement : {policyDetail?.nextPayment}.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">
-            <p className="text-sm"><span className="text-orange-300">Prime :</span> {policyDetail && Number(policyDetail.premium).toLocaleString()} FCFA</p>
-            <p className="text-sm"><span className="text-orange-300">Statut :</span> Actif</p>
+            <p className="text-sm"><span className="text-blue-300">Prime :</span> {policyDetail && Number(policyDetail.premium).toLocaleString()} FCFA</p>
+            <p className="text-sm"><span className="text-blue-300">Statut :</span> Actif</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" className="border-orange-400/50 text-orange-200" onClick={() => setPolicyDetail(null)}>Fermer</Button>
-            <Button className="bg-orange-500 hover:bg-orange-600" onClick={() => { setPolicyDetail(null); openClaim(); }}>Déclarer un sinistre</Button>
+            <Button variant="outline" className="border-blue-400/50 text-blue-200" onClick={() => setPolicyDetail(null)}>Fermer</Button>
+            <Button className="bg-blue-500 hover:bg-blue-600" onClick={() => { setPolicyDetail(null); openClaim(); }}>Déclarer un sinistre</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Souscription */}
       <Dialog open={subscribeOpen} onOpenChange={setSubscribeOpen}>
-        <DialogContent className="bg-slate-900 border-orange-500/30 text-white max-w-sm">
+        <DialogContent className="bg-slate-900 border-blue-500/30 text-white max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-white">Souscrire — {currentTypeInfo?.name}</DialogTitle>
-            <DialogDescription className="text-orange-200/80">Remplissez les champs pour envoyer votre demande à l'assureur.</DialogDescription>
+            <DialogDescription className="text-blue-200/80">Remplissez les champs pour envoyer votre demande à l'assureur.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div>
-              <Label className="text-orange-200/90">Assureur</Label>
+              <Label className="text-blue-200/90">Assureur</Label>
               <select
-                className="mt-1 w-full rounded-md bg-white/10 border border-orange-500/30 text-white px-3 py-2"
+                className="mt-1 w-full rounded-md bg-white/10 border border-blue-500/30 text-white px-3 py-2"
                 value={subscribeForm.provider}
                 onChange={(e) => setSubscribeForm((p) => ({ ...p, provider: e.target.value }))}
               >
@@ -515,19 +515,19 @@ export default function Insurance() {
               </select>
             </div>
             <div>
-              <Label className="text-orange-200/90">Prime (FCFA)</Label>
+              <Label className="text-blue-200/90">Prime (FCFA)</Label>
               <Input
                 type="number"
-                className="mt-1 bg-white/10 border-orange-500/30 text-white"
+                className="mt-1 bg-white/10 border-blue-500/30 text-white"
                 placeholder="ex. 5000"
                 value={subscribeForm.premium_amount}
                 onChange={(e) => setSubscribeForm((p) => ({ ...p, premium_amount: e.target.value }))}
               />
             </div>
             <div>
-              <Label className="text-orange-200/90">Fréquence de paiement</Label>
+              <Label className="text-blue-200/90">Fréquence de paiement</Label>
               <select
-                className="mt-1 w-full rounded-md bg-white/10 border border-orange-500/30 text-white px-3 py-2"
+                className="mt-1 w-full rounded-md bg-white/10 border border-blue-500/30 text-white px-3 py-2"
                 value={subscribeForm.payment_frequency}
                 onChange={(e) => setSubscribeForm((p) => ({ ...p, payment_frequency: e.target.value }))}
               >
@@ -538,37 +538,37 @@ export default function Insurance() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" className="border-orange-400/50 text-orange-200" onClick={() => setSubscribeOpen(false)}>Annuler</Button>
-            <Button className="bg-orange-500 hover:bg-orange-600" onClick={handleSubscribe} disabled={subscribeSubmitting}>{subscribeSubmitting ? 'Envoi...' : 'Envoyer la demande'}</Button>
+            <Button variant="outline" className="border-blue-400/50 text-blue-200" onClick={() => setSubscribeOpen(false)}>Annuler</Button>
+            <Button className="bg-blue-500 hover:bg-blue-600" onClick={handleSubscribe} disabled={subscribeSubmitting}>{subscribeSubmitting ? 'Envoi...' : 'Envoyer la demande'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Devis — Demander un devis */}
       <Dialog open={devisOpen} onOpenChange={setDevisOpen}>
-        <DialogContent className="bg-slate-900 border-orange-500/30 text-white max-w-sm">
+        <DialogContent className="bg-slate-900 border-blue-500/30 text-white max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-white">Devis — {devisOffer?.name}</DialogTitle>
-            <DialogDescription className="text-orange-200/80">
+            <DialogDescription className="text-blue-200/80">
               Renseignez vos coordonnées pour recevoir un devis personnalisé.
             </DialogDescription>
           </DialogHeader>
           {devisOffer && (
-            <div className="rounded-xl bg-orange-500/20 border border-orange-400/40 p-4">
+            <div className="rounded-xl bg-blue-500/20 border border-blue-400/40 p-4">
               <p className="font-semibold text-white">{devisOffer.name}</p>
               <p className="mt-1">
                 <span className="text-2xl font-bold text-white">{devisOffer.priceDisplay?.split('/')[0]?.trim() ?? devisOffer.priceDisplay}</span>
                 {devisOffer.priceDisplay?.includes('/') && (
-                  <span className="text-base font-normal text-orange-200/90">/{devisOffer.priceDisplay.split('/').slice(1).join('/').trim()}</span>
+                  <span className="text-base font-normal text-blue-200/90">/{devisOffer.priceDisplay.split('/').slice(1).join('/').trim()}</span>
                 )}
               </p>
             </div>
           )}
           <form onSubmit={handleDevisSubmit} className="space-y-4 py-2">
             <div>
-              <Label className="text-orange-200/90">Nom complet</Label>
+              <Label className="text-blue-200/90">Nom complet</Label>
               <Input
-                className="mt-1 bg-white/10 border-orange-500/30 text-white"
+                className="mt-1 bg-white/10 border-blue-500/30 text-white"
                 placeholder="Votre nom"
                 value={devisForm.fullName}
                 onChange={(e) => setDevisForm((p) => ({ ...p, fullName: e.target.value }))}
@@ -576,10 +576,10 @@ export default function Insurance() {
               />
             </div>
             <div>
-              <Label className="text-orange-200/90">Téléphone</Label>
+              <Label className="text-blue-200/90">Téléphone</Label>
               <Input
                 type="tel"
-                className="mt-1 bg-white/10 border-orange-500/30 text-white"
+                className="mt-1 bg-white/10 border-blue-500/30 text-white"
                 placeholder="+223 XX XX XX XX"
                 value={devisForm.phone}
                 onChange={(e) => setDevisForm((p) => ({ ...p, phone: e.target.value }))}
@@ -587,9 +587,9 @@ export default function Insurance() {
               />
             </div>
             <div>
-              <Label className="text-orange-200/90">Informations complémentaires</Label>
+              <Label className="text-blue-200/90">Informations complémentaires</Label>
               <textarea
-                className="mt-1 w-full rounded-md bg-white/10 border border-orange-500/30 text-white px-3 py-2 min-h-[80px]"
+                className="mt-1 w-full rounded-md bg-white/10 border border-blue-500/30 text-white px-3 py-2 min-h-[80px]"
                 placeholder="Décrivez votre besoin..."
                 value={devisForm.additionalInfo}
                 onChange={(e) => setDevisForm((p) => ({ ...p, additionalInfo: e.target.value }))}
@@ -597,7 +597,7 @@ export default function Insurance() {
             </div>
             <Button
               type="submit"
-              className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
               disabled={devisSubmitting}
             >
               {devisSubmitting ? 'Envoi...' : 'Demander un devis'}
@@ -608,16 +608,16 @@ export default function Insurance() {
 
       {/* Déclaration sinistre */}
       <Dialog open={claimOpen} onOpenChange={setClaimOpen}>
-        <DialogContent className="bg-slate-900 border-orange-500/30 text-white max-w-sm">
+        <DialogContent className="bg-slate-900 border-blue-500/30 text-white max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-white">Déclarer un sinistre</DialogTitle>
-            <DialogDescription className="text-orange-200/80">Choisissez la police concernée et décrivez le sinistre.</DialogDescription>
+            <DialogDescription className="text-blue-200/80">Choisissez la police concernée et décrivez le sinistre.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div>
-              <Label className="text-orange-200/90">Police concernée</Label>
+              <Label className="text-blue-200/90">Police concernée</Label>
               <select
-                className="mt-1 w-full rounded-md bg-white/10 border border-orange-500/30 text-white px-3 py-2"
+                className="mt-1 w-full rounded-md bg-white/10 border border-blue-500/30 text-white px-3 py-2"
                 value={claimForm.policy_id}
                 onChange={(e) => setClaimForm((p) => ({ ...p, policy_id: e.target.value }))}
               >
@@ -628,28 +628,28 @@ export default function Insurance() {
               </select>
             </div>
             <div>
-              <Label className="text-orange-200/90">Date du sinistre</Label>
+              <Label className="text-blue-200/90">Date du sinistre</Label>
               <Input
                 type="date"
-                className="mt-1 bg-white/10 border-orange-500/30 text-white"
+                className="mt-1 bg-white/10 border-blue-500/30 text-white"
                 value={claimForm.incident_date}
                 onChange={(e) => setClaimForm((p) => ({ ...p, incident_date: e.target.value }))}
               />
             </div>
             <div>
-              <Label className="text-orange-200/90">Description</Label>
+              <Label className="text-blue-200/90">Description</Label>
               <textarea
-                className="mt-1 w-full rounded-md bg-white/10 border border-orange-500/30 text-white px-3 py-2 min-h-[80px]"
+                className="mt-1 w-full rounded-md bg-white/10 border border-blue-500/30 text-white px-3 py-2 min-h-[80px]"
                 placeholder="Décrivez les faits..."
                 value={claimForm.description}
                 onChange={(e) => setClaimForm((p) => ({ ...p, description: e.target.value }))}
               />
             </div>
             <div>
-              <Label className="text-orange-200/90">Montant réclamé (FCFA)</Label>
+              <Label className="text-blue-200/90">Montant réclamé (FCFA)</Label>
               <Input
                 type="number"
-                className="mt-1 bg-white/10 border-orange-500/30 text-white"
+                className="mt-1 bg-white/10 border-blue-500/30 text-white"
                 placeholder="ex. 50000"
                 value={claimForm.claim_amount}
                 onChange={(e) => setClaimForm((p) => ({ ...p, claim_amount: e.target.value }))}
@@ -657,42 +657,42 @@ export default function Insurance() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" className="border-orange-400/50 text-orange-200" onClick={() => setClaimOpen(false)}>Annuler</Button>
-            <Button className="bg-orange-500 hover:bg-orange-600" onClick={handleClaim} disabled={claimSubmitting || myPolicies.length === 0}>{claimSubmitting ? 'Envoi...' : 'Déclarer'}</Button>
+            <Button variant="outline" className="border-blue-400/50 text-blue-200" onClick={() => setClaimOpen(false)}>Annuler</Button>
+            <Button className="bg-blue-500 hover:bg-blue-600" onClick={handleClaim} disabled={claimSubmitting || myPolicies.length === 0}>{claimSubmitting ? 'Envoi...' : 'Déclarer'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Documents / Aide */}
       <Dialog open={docsOpen} onOpenChange={setDocsOpen}>
-        <DialogContent className="bg-slate-900 border-orange-500/30 text-white max-w-sm">
+        <DialogContent className="bg-slate-900 border-blue-500/30 text-white max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-white">Documents & Aide</DialogTitle>
-            <DialogDescription className="text-orange-200/80">
+            <DialogDescription className="text-blue-200/80">
               Vos contrats et attestations sont disponibles auprès de chaque assureur. Consultez le détail d’une police en cliquant dessus, ou souscrivez à une nouvelle assurance via « Types d’assurance ».
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button className="bg-orange-500 hover:bg-orange-600" onClick={() => setDocsOpen(false)}>Compris</Button>
+            <Button className="bg-blue-500 hover:bg-blue-600" onClick={() => setDocsOpen(false)}>Compris</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Devenir prestataire assurance */}
       <Dialog open={prestataireOpen} onOpenChange={(open) => { setPrestataireOpen(open); if (!open) setPrestataireError(null); }}>
-        <DialogContent className="bg-slate-900 border-orange-500/30 text-white max-w-sm max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-slate-900 border-blue-500/30 text-white max-w-sm max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-white">Devenir prestataire Assurance</DialogTitle>
-            <DialogDescription className="text-orange-200/80">
+            <DialogDescription className="text-blue-200/80">
               Renseignez les informations de votre compagnie. Un administrateur AfriWonder validera votre inscription avant que vous n&apos;apparaissiez sur la plateforme.
             </DialogDescription>
           </DialogHeader>
           {prestataireSuccess ? (
             <div className="py-4 text-center space-y-4">
-              <p className="text-orange-200 font-medium">
+              <p className="text-blue-200 font-medium">
                 Demande enregistrée. Vous serez notifié après validation par l&apos;administrateur AfriWonder.
               </p>
-              <Button className="bg-orange-500 hover:bg-orange-600" onClick={() => { setPrestataireOpen(false); setPrestataireSuccess(false); }}>Fermer</Button>
+              <Button className="bg-blue-500 hover:bg-blue-600" onClick={() => { setPrestataireOpen(false); setPrestataireSuccess(false); }}>Fermer</Button>
             </div>
           ) : (
             <form onSubmit={handlePrestataireSubmit} className="space-y-4 py-2">
@@ -700,51 +700,51 @@ export default function Insurance() {
                 <div className="p-3 rounded-lg bg-red-500/20 border border-red-400/40 text-red-200 text-sm">{prestataireError}</div>
               )}
               <div>
-                <Label className="text-orange-200/90">Nom de la compagnie *</Label>
-                <Input className="mt-1 bg-white/10 border-orange-500/30 text-white" value={prestataireForm.company_name} onChange={(e) => setPrestataireForm((p) => ({ ...p, company_name: e.target.value }))} placeholder="ex. Ma Compagnie Assurances" required />
+                <Label className="text-blue-200/90">Nom de la compagnie *</Label>
+                <Input className="mt-1 bg-white/10 border-blue-500/30 text-white" value={prestataireForm.company_name} onChange={(e) => setPrestataireForm((p) => ({ ...p, company_name: e.target.value }))} placeholder="ex. Ma Compagnie Assurances" required />
               </div>
               <div>
-                <Label className="text-orange-200/90">Nom du contact *</Label>
-                <Input className="mt-1 bg-white/10 border-orange-500/30 text-white" value={prestataireForm.contact_name} onChange={(e) => setPrestataireForm((p) => ({ ...p, contact_name: e.target.value }))} placeholder="Jean Dupont" required />
+                <Label className="text-blue-200/90">Nom du contact *</Label>
+                <Input className="mt-1 bg-white/10 border-blue-500/30 text-white" value={prestataireForm.contact_name} onChange={(e) => setPrestataireForm((p) => ({ ...p, contact_name: e.target.value }))} placeholder="Jean Dupont" required />
               </div>
               <div>
-                <Label className="text-orange-200/90">Email *</Label>
-                <Input type="email" className="mt-1 bg-white/10 border-orange-500/30 text-white" value={prestataireForm.email} onChange={(e) => setPrestataireForm((p) => ({ ...p, email: e.target.value }))} placeholder="contact@compagnie.com" required />
+                <Label className="text-blue-200/90">Email *</Label>
+                <Input type="email" className="mt-1 bg-white/10 border-blue-500/30 text-white" value={prestataireForm.email} onChange={(e) => setPrestataireForm((p) => ({ ...p, email: e.target.value }))} placeholder="contact@compagnie.com" required />
               </div>
               <div>
-                <Label className="text-orange-200/90">Téléphone *</Label>
-                <Input type="tel" className="mt-1 bg-white/10 border-orange-500/30 text-white" value={prestataireForm.phone} onChange={(e) => setPrestataireForm((p) => ({ ...p, phone: e.target.value }))} placeholder="+223 XX XX XX XX" required />
+                <Label className="text-blue-200/90">Téléphone *</Label>
+                <Input type="tel" className="mt-1 bg-white/10 border-blue-500/30 text-white" value={prestataireForm.phone} onChange={(e) => setPrestataireForm((p) => ({ ...p, phone: e.target.value }))} placeholder="+223 XX XX XX XX" required />
               </div>
               <div>
-                <Label className="text-orange-200/90">Adresse</Label>
-                <Input className="mt-1 bg-white/10 border-orange-500/30 text-white" value={prestataireForm.address} onChange={(e) => setPrestataireForm((p) => ({ ...p, address: e.target.value }))} placeholder="Adresse du siège" />
+                <Label className="text-blue-200/90">Adresse</Label>
+                <Input className="mt-1 bg-white/10 border-blue-500/30 text-white" value={prestataireForm.address} onChange={(e) => setPrestataireForm((p) => ({ ...p, address: e.target.value }))} placeholder="Adresse du siège" />
               </div>
               <div>
-                <Label className="text-orange-200/90">Ville</Label>
-                <Input className="mt-1 bg-white/10 border-orange-500/30 text-white" value={prestataireForm.city} onChange={(e) => setPrestataireForm((p) => ({ ...p, city: e.target.value }))} placeholder="Bamako" />
+                <Label className="text-blue-200/90">Ville</Label>
+                <Input className="mt-1 bg-white/10 border-blue-500/30 text-white" value={prestataireForm.city} onChange={(e) => setPrestataireForm((p) => ({ ...p, city: e.target.value }))} placeholder="Bamako" />
               </div>
               <div>
-                <Label className="text-orange-200/90">Description (optionnel)</Label>
-                <textarea className="mt-1 w-full rounded-md bg-white/10 border border-orange-500/30 text-white px-3 py-2 min-h-[60px]" value={prestataireForm.description} onChange={(e) => setPrestataireForm((p) => ({ ...p, description: e.target.value }))} placeholder="Présentation de votre compagnie" />
+                <Label className="text-blue-200/90">Description (optionnel)</Label>
+                <textarea className="mt-1 w-full rounded-md bg-white/10 border border-blue-500/30 text-white px-3 py-2 min-h-[60px]" value={prestataireForm.description} onChange={(e) => setPrestataireForm((p) => ({ ...p, description: e.target.value }))} placeholder="Présentation de votre compagnie" />
               </div>
               <div>
-                <Label className="text-orange-200/90 mb-2 block">Types d&apos;assurance proposés</Label>
+                <Label className="text-blue-200/90 mb-2 block">Types d&apos;assurance proposés</Label>
                 <div className="flex flex-wrap gap-2">
                   {insuranceTypes.map((t) => (
                     <label key={t.id} className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={(prestataireForm.types_offered || []).includes(t.id)} onChange={() => togglePrestataireType(t.id)} className="rounded border-orange-500/50" />
-                      <span className="text-sm text-orange-200/90">{t.name}</span>
+                      <input type="checkbox" checked={(prestataireForm.types_offered || []).includes(t.id)} onChange={() => togglePrestataireType(t.id)} className="rounded border-blue-500/50" />
+                      <span className="text-sm text-blue-200/90">{t.name}</span>
                     </label>
                   ))}
                 </div>
               </div>
               <div>
-                <Label className="text-orange-200/90">Référence agrément / licence (optionnel)</Label>
-                <Input className="mt-1 bg-white/10 border-orange-500/30 text-white" value={prestataireForm.license_ref} onChange={(e) => setPrestataireForm((p) => ({ ...p, license_ref: e.target.value }))} placeholder="N° agrément" />
+                <Label className="text-blue-200/90">Référence agrément / licence (optionnel)</Label>
+                <Input className="mt-1 bg-white/10 border-blue-500/30 text-white" value={prestataireForm.license_ref} onChange={(e) => setPrestataireForm((p) => ({ ...p, license_ref: e.target.value }))} placeholder="N° agrément" />
               </div>
               <DialogFooter>
-                <Button type="button" variant="outline" className="border-orange-400/50 text-orange-200" onClick={() => setPrestataireOpen(false)}>Annuler</Button>
-                <Button type="submit" className="bg-orange-500 hover:bg-orange-600" disabled={prestataireLoading}>{prestataireLoading ? 'Envoi...' : 'Soumettre ma demande'}</Button>
+                <Button type="button" variant="outline" className="border-blue-400/50 text-blue-200" onClick={() => setPrestataireOpen(false)}>Annuler</Button>
+                <Button type="submit" className="bg-blue-500 hover:bg-blue-600" disabled={prestataireLoading}>{prestataireLoading ? 'Envoi...' : 'Soumettre ma demande'}</Button>
               </DialogFooter>
             </form>
           )}

@@ -77,25 +77,25 @@ export default function DataProtection() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-orange-50/30 pb-20">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-blue-50/30 pb-20">
       {/* Header */}
-      <div className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b-2 border-orange-500/20 shadow-sm">
+      <div className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b-2 border-blue-500/20 shadow-sm">
         <div className="flex items-center gap-4 p-4 max-w-2xl mx-auto">
           <button
             onClick={() => navigate(-1)}
-            className="p-2 hover:bg-orange-100 rounded-lg transition-colors"
+            className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
           >
-            <ArrowLeft className="w-5 h-5 text-gray-700" />
+            <ArrowLeft className="w-5 h-5" />
           </button>
-          <h1 className="text-xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">Protection des Données</h1>
+          <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Protection des Données</h1>
         </div>
       </div>
 
       {/* Content */}
       <div className="max-w-2xl mx-auto p-4 py-8">
-        <div className="bg-white rounded-xl shadow-lg border border-orange-100 p-6 space-y-8">
+        <div className="bg-white rounded-xl shadow-lg border border-blue-100 p-6 space-y-8">
           <div>
-            <h2 className="text-2xl font-bold mb-4 bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">Votre Protection est Notre Priorité</h2>
+            <h2 className="text-2xl font-bold mb-4 bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Votre Protection est Notre Priorité</h2>
             <p className="text-gray-600">
               AfriWonder s'engage à protéger vos données personnelles conformément aux standards internationaux de protection des données.
             </p>
@@ -106,8 +106,8 @@ export default function DataProtection() {
             {features.map((feature, idx) => {
               const Icon = feature.icon;
               return (
-                <div key={idx} className="border-2 border-orange-100 rounded-xl p-4 hover:shadow-md hover:border-orange-200 transition-all">
-                  <Icon className="w-6 h-6 text-orange-500 mb-2" />
+                <div key={idx} className="border-2 border-blue-100 rounded-xl p-4 hover:shadow-md hover:border-blue-200 transition-all">
+                  <Icon className="w-6 h-6 text-blue-600 mb-2" />
                   <h3 className="font-semibold text-gray-900 mb-1">{feature.title}</h3>
                   <p className="text-sm text-gray-600">{feature.description}</p>
                 </div>
@@ -117,25 +117,25 @@ export default function DataProtection() {
 
           {/* Detailed Sections */}
           <section className="space-y-4">
-            <h3 className="text-lg font-semibold text-orange-600">Vos Droits RGPD</h3>
+            <h3 className="text-lg font-semibold text-blue-600">Vos Droits RGPD</h3>
             <div className="space-y-3">
-              <div className="border-l-4 border-orange-500 pl-4">
+              <div className="border-l-4 border-blue-600 pl-4">
                 <h4 className="font-semibold text-gray-900">Droit d'accès</h4>
                 <p className="text-gray-600 text-sm">Accédez à toutes vos données stockées sur AfriWonder à tout moment</p>
               </div>
-              <div className="border-l-4 border-orange-500 pl-4">
+              <div className="border-l-4 border-blue-600 pl-4">
                 <h4 className="font-semibold text-gray-900">Droit de rectification</h4>
                 <p className="text-gray-600 text-sm">Corrigez vos informations personnelles inexactes ou incomplètes</p>
               </div>
-              <div className="border-l-4 border-orange-500 pl-4">
+              <div className="border-l-4 border-blue-600 pl-4">
                 <h4 className="font-semibold text-gray-900">Droit à l'oubli</h4>
                 <p className="text-gray-600 text-sm">Demandez la suppression de vos données (sous réserve de obligations légales)</p>
               </div>
-              <div className="border-l-4 border-orange-500 pl-4">
+              <div className="border-l-4 border-blue-600 pl-4">
                 <h4 className="font-semibold text-gray-900">Droit à la portabilité</h4>
                 <p className="text-gray-600 text-sm">Exportez vos données dans un format structuré et lisible</p>
               </div>
-              <div className="border-l-4 border-orange-500 pl-4">
+              <div className="border-l-4 border-blue-600 pl-4">
                 <h4 className="font-semibold text-gray-900">Droit d'opposition</h4>
                 <p className="text-gray-600 text-sm">Refusez certains traitements de vos données</p>
               </div>
@@ -143,37 +143,37 @@ export default function DataProtection() {
           </section>
 
           <section className="space-y-4">
-            <h3 className="text-lg font-semibold text-orange-600">Mesures de Sécurité Technique</h3>
+            <h3 className="text-lg font-semibold text-blue-600">Mesures de Sécurité Technique</h3>
             <ul className="space-y-2 text-gray-700">
               <li className="flex gap-2">
-                <span className="text-orange-500 font-bold">•</span>
+                <span className="text-blue-600 font-bold">•</span>
                 <span>Chiffrement AES-256 pour le stockage des données</span>
               </li>
               <li className="flex gap-2">
-                <span className="text-orange-500 font-bold">•</span>
+                <span className="text-blue-600 font-bold">•</span>
                 <span>HTTPS/TLS 1.2+ pour tous les transferts de données</span>
               </li>
               <li className="flex gap-2">
-                <span className="text-orange-500 font-bold">•</span>
+                <span className="text-blue-600 font-bold">•</span>
                 <span>Authentification multi-facteurs (2FA/MFA)</span>
               </li>
               <li className="flex gap-2">
-                <span className="text-orange-500 font-bold">•</span>
+                <span className="text-blue-600 font-bold">•</span>
                 <span>Tests de sécurité réguliers et audits externes</span>
               </li>
               <li className="flex gap-2">
-                <span className="text-orange-500 font-bold">•</span>
+                <span className="text-blue-600 font-bold">•</span>
                 <span>Accès aux données limité et contrôlé</span>
               </li>
               <li className="flex gap-2">
-                <span className="text-orange-500 font-bold">•</span>
+                <span className="text-blue-600 font-bold">•</span>
                 <span>Sauvegarde régulière des données</span>
               </li>
             </ul>
           </section>
 
           <section className="space-y-4">
-            <h3 className="text-lg font-semibold text-orange-600">Gestion des Cookies</h3>
+            <h3 className="text-lg font-semibold text-blue-600">Gestion des Cookies</h3>
             <p className="text-gray-700">
               Nous utilisons des cookies uniquement avec votre consentement pour :
             </p>
@@ -189,7 +189,7 @@ export default function DataProtection() {
           </section>
 
           <section className="space-y-4">
-            <h3 className="text-lg font-semibold text-orange-600">Violations de Données</h3>
+            <h3 className="text-lg font-semibold text-blue-600">Violations de Données</h3>
             <p className="text-gray-700">
               En cas de violation de sécurité concernant vos données, nous vous notifierons sans délai et prendrons les mesures appropriées conformément à la loi.
             </p>
@@ -197,12 +197,12 @@ export default function DataProtection() {
 
           {/* Actions RGPD */}
           <section className="space-y-4">
-            <h3 className="text-lg font-semibold text-orange-600">Actions Disponibles</h3>
+            <h3 className="text-lg font-semibold text-blue-600">Actions Disponibles</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Button
                 onClick={handleExportData}
                 disabled={exportLoading}
-                className="h-auto py-4 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white flex flex-col items-center gap-2"
+                className="h-auto py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white flex flex-col items-center gap-2"
               >
                 <Download className="w-6 h-6" />
                 <span className="font-semibold">{exportLoading ? 'Traitement...' : 'Exporter mes données'}</span>
@@ -212,7 +212,7 @@ export default function DataProtection() {
               <Button
                 onClick={() => navigate('/settings/privacy')}
                 variant="outline"
-                className="h-auto py-4 border-2 border-orange-300 text-orange-600 hover:bg-orange-50 flex flex-col items-center gap-2"
+                className="h-auto py-4 border-2 border-blue-300 text-blue-600 hover:bg-blue-50 flex flex-col items-center gap-2"
               >
                 <SettingsIcon className="w-6 h-6" />
                 <span className="font-semibold">Gérer mes paramètres</span>
@@ -222,8 +222,8 @@ export default function DataProtection() {
           </section>
 
           <section className="space-y-4">
-            <h3 className="text-lg font-semibold text-orange-600">Responsable de la Protection des Données</h3>
-            <div className="bg-orange-50/50 border border-orange-100 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-blue-600">Responsable de la Protection des Données</h3>
+            <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-4">
               {legalInfo ? (
                 <>
                   <p className="text-gray-700 mb-2">
@@ -261,7 +261,7 @@ export default function DataProtection() {
           </section>
 
           <section className="space-y-4">
-            <h3 className="text-lg font-semibold text-orange-600">Conformité Internationale</h3>
+            <h3 className="text-lg font-semibold text-blue-600">Conformité Internationale</h3>
             <p className="text-gray-700">
               AfriWonder respecte les normes de protection des données suivantes :
             </p>
@@ -273,7 +273,7 @@ export default function DataProtection() {
             </ul>
           </section>
 
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <p className="text-sm text-gray-700">
               <strong>Dernière mise à jour :</strong> {new Date().toLocaleDateString('fr-FR')}
             </p>

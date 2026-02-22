@@ -15,9 +15,9 @@ export default function HeroSection({ onSearch }) {
   };
 
   return (
-    <section className="relative overflow-hidden bg-gradient-to-br from-amber-50 via-white to-green-50">
+    <section className="relative overflow-hidden bg-gradient-to-br from-blue-50/80 via-white to-indigo-50/80">
       {/* Decorative elements */}
-      <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-amber-200/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
+      <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-blue-200/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
       <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-green-200/20 rounded-full blur-3xl translate-y-1/2 -translate-x-1/3" />
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-20 md:py-32">
@@ -27,14 +27,14 @@ export default function HeroSection({ onSearch }) {
           transition={{ duration: 0.7 }}
           className="max-w-3xl"
         >
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-amber-100/80 text-amber-800 rounded-full text-sm font-medium mb-6">
-            <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-blue-100/80 text-blue-800 rounded-full text-sm font-medium mb-6">
+            <Star className="w-3.5 h-3.5 fill-blue-500 text-blue-500" />
             La marketplace #1 au Mali
           </div>
 
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-foreground leading-tight tracking-tight">
             Trouvez le prestataire
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-green-700"> idéal </span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-700"> idéal </span>
             pour vos besoins
           </h1>
 
@@ -50,12 +50,12 @@ export default function HeroSection({ onSearch }) {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Quel service recherchez-vous ?"
-                className="pl-12 h-14 rounded-2xl text-base bg-white shadow-lg shadow-amber-100/50 border-0 focus-visible:ring-2 focus-visible:ring-amber-400"
+                className="pl-12 h-14 rounded-2xl text-base bg-white shadow-lg shadow-blue-100/50 border-0 focus-visible:ring-2 focus-visible:ring-blue-500"
               />
             </div>
             <Button
               type="submit"
-              className="h-14 px-8 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-lg shadow-amber-200/50"
+              className="h-14 px-8 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-indigo-600 text-white shadow-lg shadow-blue-200/50"
             >
               <Search className="w-5 h-5 mr-2" />
               <span className="hidden sm:inline">Rechercher</span>
@@ -65,8 +65,8 @@ export default function HeroSection({ onSearch }) {
           {/* Stats */}
           <div className="mt-12 flex flex-wrap gap-8">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
-                <Users className="w-5 h-5 text-amber-700" />
+              <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                <Users className="w-5 h-5 text-blue-700" />
               </div>
               <div>
                 <div className="text-xl font-bold text-foreground">500+</div>

@@ -34,10 +34,10 @@ const CATEGORIES = [
 ];
 
 const PAYMENT_METHODS = [
-  { id: 'orange_money', label: 'Orange Money', icon: '🟠', color: 'bg-orange-500' },
+  { id: 'orange_money', label: 'Orange Money', icon: '🟠', color: 'bg-blue-600' },
   { id: 'mtn_mobile', label: 'MTN Mobile', icon: '🟡', color: 'bg-yellow-500' },
   { id: 'wave', label: 'Wave', icon: '🔵', color: 'bg-blue-500' },
-  { id: 'wallet', label: 'Mon Wallet', icon: '💚', color: 'bg-green-500' },
+  { id: 'wallet', label: 'Mon Wallet', icon: '💚', color: 'bg-blue-500' },
 ];
 
 // Événements fictifs pour démonstration
@@ -246,7 +246,7 @@ export default function EventsPage() {
         {/* Page Header */}
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl" aria-label="Retour">
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl text-blue-600 hover:text-blue-700 hover:bg-blue-50" aria-label="Retour">
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div>
@@ -256,7 +256,7 @@ export default function EventsPage() {
           </div>
           <Button
             onClick={() => navigate(createPageUrl('CreateEvent'))}
-            className="bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold"
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold"
           >
             <Plus className="w-4 h-4 mr-2" />
             Créer
@@ -266,13 +266,13 @@ export default function EventsPage() {
         {/* Event Search */}
         <div className="mb-6">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500" />
             <input
               type="text"
               placeholder="Rechercher un événement..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+              className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
@@ -285,8 +285,8 @@ export default function EventsPage() {
               onClick={() => setSelectedCategory(cat.id)}
               className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                 selectedCategory === cat.id
-                  ? 'bg-green-500 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-700'
               }`}
             >
               {cat.label}
@@ -299,8 +299,8 @@ export default function EventsPage() {
           <Card className="bg-white">
             <CardContent className="p-4">
               <div className="flex flex-col items-center text-center">
-                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mb-2">
-                  <Calendar className="w-5 h-5 text-purple-600" />
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mb-2">
+                  <Calendar className="w-5 h-5 text-blue-600" />
                 </div>
                 <p className="text-2xl font-black text-gray-900">{totalEvents}</p>
                 <p className="text-xs text-gray-500">Événements</p>
@@ -323,8 +323,8 @@ export default function EventsPage() {
           <Card className="bg-white">
             <CardContent className="p-4">
               <div className="flex flex-col items-center text-center">
-                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mb-2">
-                  <Ticket className="w-5 h-5 text-green-600" />
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mb-2">
+                  <Ticket className="w-5 h-5 text-blue-600" />
                 </div>
                 <p className="text-2xl font-black text-gray-900">
                   {totalTicketsSold >= 1000 ? `${(totalTicketsSold / 1000).toFixed(1)}K` : totalTicketsSold}
@@ -338,7 +338,7 @@ export default function EventsPage() {
         {/* Events Grid */}
         {isLoading ? (
           <div className="flex justify-center py-12">
-            <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : events.length === 0 ? (
           <Card>
@@ -367,8 +367,8 @@ export default function EventsPage() {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-orange-100 to-pink-100 flex items-center justify-center">
-                          <Calendar className="w-12 h-12 text-orange-400" />
+                        <div className="w-full h-full bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center">
+                          <Calendar className="w-12 h-12 text-blue-500" />
                         </div>
                       )}
                       {/* Price Badge */}
@@ -376,8 +376,8 @@ export default function EventsPage() {
                         <Badge
                           className={`${
                             event.is_free
-                              ? 'bg-green-500 text-white'
-                              : 'bg-black/70 text-white'
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-blue-800/90 text-white'
                           }`}
                         >
                           {event.is_free ? 'Gratuit' : `${formatCurrency(price)} F CFA`}
@@ -426,7 +426,7 @@ export default function EventsPage() {
                       {/* Action Button */}
                       <Button
                         onClick={() => handleBuyTickets(event)}
-                        className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold"
+                        className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold"
                       >
                         {event.is_free ? 'S\'inscrire' : 'Acheter'}
                       </Button>
@@ -458,8 +458,8 @@ export default function EventsPage() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-orange-100 to-pink-100 flex items-center justify-center">
-                    <Calendar className="w-8 h-8 text-orange-400" />
+                  <div className="w-full h-full bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center">
+                    <Calendar className="w-8 h-8 text-blue-500" />
                   </div>
                 )}
               </div>
@@ -512,7 +512,7 @@ export default function EventsPage() {
                     onClick={() => setSelectedPaymentMethod(method.id)}
                     className={`p-3 rounded-xl border-2 transition-all text-left ${
                       selectedPaymentMethod === method.id
-                        ? 'border-green-500 bg-green-50'
+                        ? 'border-blue-600 bg-blue-50'
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
@@ -546,7 +546,7 @@ export default function EventsPage() {
               <div className="border-t border-gray-200 pt-2 mt-2">
                 <div className="flex justify-between">
                   <span className="font-bold text-gray-900">Total</span>
-                  <span className="font-bold text-green-600 text-lg">
+                  <span className="font-bold text-blue-600 text-lg">
                     {formatCurrency(
                       (selectedEvent.is_free ? 0 : (selectedEvent.price || 0)) * ticketQuantity + 500
                     )}{' '}
@@ -560,7 +560,7 @@ export default function EventsPage() {
             <div className="pt-4 mt-6 border-t border-gray-200">
               <Button
                 onClick={handlePayment}
-                className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold py-3 shadow-lg"
+                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3 shadow-lg"
               >
                 Payer{' '}
                 {formatCurrency(
@@ -594,8 +594,8 @@ export default function EventsPage() {
 
           {/* Success Icon */}
           <div className="flex flex-col items-center">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4 border-2 border-white">
-              <QrCode className="w-8 h-8 text-green-600" />
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4 border-2 border-white">
+              <QrCode className="w-8 h-8 text-blue-600" />
             </div>
             <h3 className="text-2xl font-bold text-gray-900 mb-2">Paiement réussi !</h3>
             <p className="text-gray-600 text-center">
@@ -630,7 +630,7 @@ export default function EventsPage() {
                 setShowConfirmModal(false);
                 setPurchaseSuccess(false);
               }}
-              className="flex-1 border-orange-500 text-orange-500 hover:bg-orange-50"
+              className="flex-1 border-blue-600 text-blue-600 hover:bg-blue-50"
             >
               Fermer
             </Button>
@@ -640,7 +640,7 @@ export default function EventsPage() {
                 setShowConfirmModal(false);
                 setPurchaseSuccess(false);
               }}
-              className="flex-1 bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold"
+              className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold"
             >
               Mes billets
             </Button>

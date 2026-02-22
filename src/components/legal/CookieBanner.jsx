@@ -139,9 +139,9 @@ export default function CookieBanner() {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border-2 border-orange-200">
+      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border-2 border-blue-200">
         {/* Header */}
-        <div className="sticky top-0 bg-gradient-to-r from-orange-500 to-red-500 p-4 flex items-center justify-between">
+        <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-indigo-600 p-4 flex items-center justify-between">
           <div className="flex items-center gap-2 text-white">
             <Cookie className="w-6 h-6" />
             <h2 className="text-lg font-bold">Gestion des Cookies</h2>
@@ -159,7 +159,7 @@ export default function CookieBanner() {
           {!showSettings ? (
             <>
               <div className="flex items-start gap-3">
-                <Shield className="w-8 h-8 text-orange-500 flex-shrink-0 mt-1" />
+                <Shield className="w-8 h-8 text-blue-600 flex-shrink-0 mt-1" />
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-2">Nous respectons votre vie privée</h3>
                   <p className="text-gray-600 text-sm">
@@ -169,7 +169,7 @@ export default function CookieBanner() {
                 </div>
               </div>
 
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <h4 className="font-semibold text-sm text-gray-900 mb-2">Types de cookies :</h4>
                 <ul className="space-y-1 text-sm text-gray-700">
                   <li>• <strong>Essentiels</strong> : Nécessaires au fonctionnement du site</li>
@@ -182,14 +182,14 @@ export default function CookieBanner() {
               <div className="flex flex-col sm:flex-row gap-3 pt-4">
                 <Button 
                   onClick={handleAcceptAll}
-                  className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-semibold"
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold"
                 >
                   Accepter tout
                 </Button>
                 <Button 
                   onClick={handleRejectNonEssential}
                   variant="outline"
-                  className="flex-1 border-2 border-orange-300 text-orange-600 hover:bg-orange-50 font-semibold"
+                  className="flex-1 border-2 border-blue-300 text-blue-600 hover:bg-blue-50 font-semibold"
                 >
                   Refuser non essentiels
                 </Button>
@@ -205,7 +205,7 @@ export default function CookieBanner() {
 
               <p className="text-xs text-gray-500 text-center pt-2">
                 En cliquant sur "Accepter tout", vous acceptez notre{' '}
-                <Link to="/PrivacyPolicy" className="text-orange-600 hover:underline font-medium" onClick={() => setVisible(false)}>Politique de confidentialité</Link>
+                <Link to="/PrivacyPolicy" className="text-blue-600 hover:underline font-medium" onClick={() => setVisible(false)}>Politique de confidentialité</Link>
               </p>
             </>
           ) : (
@@ -222,7 +222,7 @@ export default function CookieBanner() {
                     </p>
                   </div>
                   <div className="ml-4">
-                    <div className="w-12 h-6 bg-orange-500 rounded-full flex items-center justify-end px-1">
+                    <div className="w-12 h-6 bg-blue-600 rounded-full flex items-center justify-end px-1">
                       <div className="w-4 h-4 bg-white rounded-full"></div>
                     </div>
                   </div>
@@ -271,7 +271,7 @@ export default function CookieBanner() {
                 </Button>
                 <Button 
                   onClick={handleSaveCustom}
-                  className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-semibold"
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold"
                 >
                   Enregistrer mes choix
                 </Button>
@@ -286,7 +286,7 @@ export default function CookieBanner() {
 
 function CookieToggle({ title, description, enabled, onChange }) {
   return (
-    <div className="flex items-start justify-between p-3 bg-white rounded-lg border border-gray-200 hover:border-orange-300 transition-colors">
+    <div className="flex items-start justify-between p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
       <div className="flex-1">
         <h4 className="font-semibold text-sm text-gray-900">{title}</h4>
         <p className="text-xs text-gray-600 mt-1">{description}</p>
@@ -296,7 +296,7 @@ function CookieToggle({ title, description, enabled, onChange }) {
         className="ml-4"
       >
         <div className={`w-12 h-6 rounded-full flex items-center transition-colors ${
-          enabled ? 'bg-orange-500 justify-end' : 'bg-gray-300 justify-start'
+          enabled ? 'bg-blue-600 justify-end' : 'bg-gray-300 justify-start'
         } px-1`}>
           <div className="w-4 h-4 bg-white rounded-full shadow-sm"></div>
         </div>

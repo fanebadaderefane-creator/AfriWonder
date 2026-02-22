@@ -109,8 +109,8 @@ export default function BulkUploadManager({ onUpload }) {
       </CardHeader>
       <CardContent className="space-y-6">
         {/* CSV Import */}
-        <div className="border-2 border-dashed border-orange-300 rounded-lg p-8 text-center">
-          <Upload className="w-12 h-12 text-orange-500 mx-auto mb-3" />
+        <div className="border-2 border-dashed border-blue-300 rounded-lg p-8 text-center">
+          <Upload className="w-12 h-12 text-blue-600 mx-auto mb-3" />
           <p className="text-gray-700 font-semibold mb-2">
             Importez un fichier CSV
           </p>
@@ -151,7 +151,7 @@ export default function BulkUploadManager({ onUpload }) {
                   <h4 className="font-semibold text-gray-900">Vidéo {idx + 1}</h4>
                   <div className="flex items-center gap-2">
                     {video.status === "success" && (
-                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      <CheckCircle className="w-5 h-5 text-blue-600" />
                     )}
                     {video.status === "error" && (
                       <AlertCircle className="w-5 h-5 text-red-600" />
@@ -207,7 +207,7 @@ export default function BulkUploadManager({ onUpload }) {
           <>
             <div className="w-full bg-gray-200 rounded-full h-2">
               <motion.div
-                className="bg-orange-500 h-2 rounded-full"
+                className="bg-blue-600 h-2 rounded-full"
                 animate={{ width: `${progress}%` }}
                 transition={{ duration: 0.3 }}
               />

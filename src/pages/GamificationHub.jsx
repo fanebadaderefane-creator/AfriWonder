@@ -25,7 +25,7 @@ export default function GamificationHub() {
       title: "Classement", 
       desc: "Consultez le classement des meilleurs créateurs et contributeurs", 
       Icon: Medal,
-      color: "from-yellow-400 to-orange-500",
+      color: "from-blue-400 to-indigo-500",
       count: "Top 10 visible"
     },
     { 
@@ -38,11 +38,11 @@ export default function GamificationHub() {
     },
   ];
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-orange-50 pb-20">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-blue-50 pb-20">
       <div className="sticky top-0 bg-white/80 backdrop-blur border-b z-40 px-4 py-3">
         <div className="flex items-center gap-3">
           <Link to={createPageUrl("Home")}>
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl" aria-label="Retour">
               <ArrowLeft className="w-5 h-5" />
             </Button>
           </Link>
@@ -61,7 +61,7 @@ export default function GamificationHub() {
             transition={{ delay: index * 0.1 }}
           >
             <Card 
-              className="cursor-pointer hover:shadow-lg transition-all border-2 hover:border-[#f97316]/50" 
+              className="cursor-pointer hover:shadow-lg transition-all border-2 hover:border-blue-500/50" 
               onClick={() => navigate(createPageUrl(route))}
             >
               <CardHeader className="pb-3">

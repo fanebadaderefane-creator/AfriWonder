@@ -68,7 +68,7 @@ export default function MiniAppDetails() {
       </div>
 
       {/* Hero */}
-      <div className="bg-gradient-to-br from-[#f97316] to-[#ea580c] p-6 text-white">
+      <div className="bg-gradient-to-br from-[#2563EB] to-[#1E3A8A] p-6 text-white">
         <div className="flex items-center gap-4 mb-4">
           <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center overflow-hidden">
             {app.icon.startsWith('http') ? (
@@ -79,7 +79,7 @@ export default function MiniAppDetails() {
           </div>
           <div className="flex-1">
             <h2 className="text-2xl font-bold mb-1">{app.name}</h2>
-            <p className="text-orange-100 text-sm">{app.developer.name}</p>
+            <p className="text-blue-100 text-sm">{app.developer.name}</p>
             {app.developer.verified && (
               <div className="flex items-center gap-1 mt-1">
                 <ShieldCheck className="w-4 h-4" />
@@ -92,9 +92,9 @@ export default function MiniAppDetails() {
           <div className="flex items-center gap-1">
             <Star className="w-5 h-5 fill-white" />
             <span className="font-bold">{app.rating}</span>
-            <span className="text-orange-100">({app.reviews_count} avis)</span>
+            <span className="text-blue-100">({app.reviews_count} avis)</span>
           </div>
-          <span className="text-orange-100">•</span>
+          <span className="text-blue-100">•</span>
           <span>{app.installs.toLocaleString()} installations</span>
         </div>
       </div>
@@ -113,7 +113,7 @@ export default function MiniAppDetails() {
           ) : (
             <Button
               onClick={handleInstall}
-              className="w-full bg-[#f97316] hover:bg-[#ea580c] text-white"
+              className="w-full bg-[#2563EB] hover:bg-[#1E3A8A] text-white"
             >
               <Download className="w-4 h-4 mr-2" />
               Installer
@@ -133,7 +133,7 @@ export default function MiniAppDetails() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-3">
-              <Shield className="w-5 h-5 text-[#f97316]" />
+              <Shield className="w-5 h-5 text-[#2563EB]" />
               <h3 className="font-bold">Permissions requises</h3>
             </div>
             <div className="space-y-2">
@@ -141,7 +141,7 @@ export default function MiniAppDetails() {
                 const Icon = PERMISSION_ICONS[perm];
                 return (
                   <div key={perm} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
-                    {Icon && <Icon className="w-5 h-5 text-[#f97316]" />}
+                    {Icon && <Icon className="w-5 h-5 text-[#2563EB]" />}
                     <span className="text-sm text-gray-700">{PERMISSION_LABELS[perm] || perm}</span>
                     <Check className="w-4 h-4 text-green-500 ml-auto" />
                   </div>
@@ -190,7 +190,7 @@ export default function MiniAppDetails() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Catégorie</span>
-                <Badge className="bg-[#f97316] text-white border-0">{app.category}</Badge>
+                <Badge className="bg-[#2563EB] text-white border-0">{app.category}</Badge>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Prix</span>
@@ -211,7 +211,7 @@ export default function MiniAppDetails() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold">Avis ({app.reviews_count})</h3>
-              <Button variant="ghost" size="sm" className="text-[#f97316]">
+              <Button variant="ghost" size="sm" className="text-[#2563EB]">
                 Voir tous
               </Button>
             </div>
@@ -231,7 +231,7 @@ export default function MiniAppDetails() {
                           key={i}
                           className={cn(
                             "w-3 h-3",
-                            i < review.rating ? "fill-[#f97316] text-[#f97316]" : "text-gray-300"
+                            i < review.rating ? "fill-[#2563EB] text-[#2563EB]" : "text-gray-300"
                           )}
                         />
                       ))}

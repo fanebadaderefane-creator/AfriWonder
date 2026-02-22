@@ -1,7 +1,6 @@
-﻿// @ts-nocheck
+// @ts-nocheck
 /**
- * Player vidÃ©o TikTok-style - Lecture fluide immÃ©diate sans buffer
- * ModifiÃ© selon demande utilisateur : lecture directe sans messages de chargement
+ * VideoCard — full-screen feed player. Single active item, poster until first frame, HLS/MP4.
  */
 import React, { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import {
@@ -22,7 +21,6 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, getVideoPlaybackUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG } from "@/lib/utils";
-import VideoFrameThumbnail from './VideoFrameThumbnail';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { useTranslation } from "@/components/common/useTranslation";
@@ -30,30 +28,23 @@ import { api } from '@/api/expressClient';
 import { toast } from 'sonner';
 import Hls from 'hls.js';
 
-// Fonction pour extraire les hashtags de la description
 const extractHashtags = (description) => {
   if (!description) return [];
-  // Extraire les hashtags du format #tag1 #tag2
-  const hashtagMatches = description.match(/#[\w]+/g);
-  if (!hashtagMatches) return [];
-  // Retourner les tags sans le #
-  return hashtagMatches.map(tag => tag.substring(1));
+  const matches = description.match(/#[\w]+/g);
+  return matches ? matches.map((t) => t.slice(1)) : [];
 };
 
-// Fonction pour extraire la musique de la description
 const extractMusicTitle = (description) => {
   if (!description) return null;
-  // Chercher le pattern "ðŸŽµ Musique: ..."
-  const musicMatch = description.match(/ðŸŽµ Musique:\s*(.+?)(?:\n|$)/);
-  return musicMatch ? musicMatch[1].trim() : null;
+  const m = description.match(/ðŸŽµ Musique:\s*(.+?)(?:\n|$)/);
+  return m ? m[1].trim() : null;
 };
 
-// Fonction pour nettoyer la description (sans hashtags et musique)
 const cleanDescription = (description) => {
   if (!description) return '';
   return description
-    .replace(/\n\n#[\w\s#]+/g, '') // Retirer les hashtags
-    .replace(/\n\nðŸŽµ Musique:.*/g, '') // Retirer le texte de musique
+    .replace(/\n\n#[\w\s#]+/g, '')
+    .replace(/\n\nðŸŽµ Musique:.*/g, '')
     .trim();
 };
 
@@ -86,7 +77,6 @@ function VideoCardContent({
   const lastTimeUpdateRef = useRef(0);
   const navigate = useNavigate();
   
-  // Extraire les hashtags et la musique - gÃ©rer le cas oÃ¹ hashtags peut Ãªtre une chaÃ®ne JSON
   let hashtags = video.hashtags;
   if (typeof hashtags === 'string') {
     try {
@@ -115,8 +105,6 @@ function VideoCardContent({
   const hasAppliedStartTimeRef = useRef(false);
   const [shouldRestoreSound, setShouldRestoreSound] = useState(false);
 
-  // DÃ©tection iOS / mobile pour adapter le comportement vidÃ©o
-  // Important pour Ã©viter les bugs de dÃ©codage vidÃ©o et de ressources sur Safari iOS
   const isIOS =
     typeof navigator !== 'undefined' &&
     /iP(ad|hone|od)/i.test(navigator.userAgent || '');
@@ -247,7 +235,7 @@ function VideoCardContent({
                   e.stopPropagation();
                   navigate(createPageUrl('Search') + `?q=${encodeURIComponent(part.content)}`);
                 }}
-                className="text-white font-bold hover:text-orange-400 transition-colors"
+                className="text-white font-bold hover:text-blue-400 transition-colors"
               >
                 {part.full}
               </button>
@@ -513,6 +501,8 @@ function VideoCardContent({
 
     const tryPlay = () => {
       if (cancelled || !isActive || userPausedRef.current) return;
+      if (hasAutoPlayedRef.current) return;
+      el.muted = true;
       el.play()
         .then(() => {
           if (cancelled || !isActive) {
@@ -540,14 +530,29 @@ function VideoCardContent({
         tryPlay();
       } else {
         el.addEventListener('canplay', onCanPlay);
+        el.addEventListener('loadeddata', onCanPlay);
       }
     };
 
     playVideo();
 
+    // Plusieurs retries (type TikTok) pour tous mobiles : autoplay fiable
+    const timers = [400, 900, 1800].map((delay) =>
+      window.setTimeout(() => {
+        if (cancelled || !el || !isActive || userPausedRef.current) return;
+        if (hasAutoPlayedRef.current) return;
+        if (el.paused && el.readyState >= 2) {
+          el.muted = true;
+          tryPlay();
+        }
+      }, delay)
+    );
+
     return () => {
       cancelled = true;
+      timers.forEach((t) => window.clearTimeout(t));
       el.removeEventListener('canplay', onCanPlay);
+      el.removeEventListener('loadeddata', onCanPlay);
       el.muted = true;
       try { el.volume = 0; } catch (_) {}
       el.pause();
@@ -735,6 +740,18 @@ function VideoCardContent({
     if (!el || loadError || !isActive) return;
     setIsReadyToPlay(true);
     if ((el.currentTime || 0) > ((video.start_time || 0) + 0.05)) setShowFrameCover(false);
+    // Démarrage immédiat type TikTok dès que le navigateur peut jouer (muted = autoplay autorisé)
+    if (!userPausedRef.current && el.paused && !hasAutoPlayedRef.current) {
+      el.muted = true;
+      el.play().then(() => {
+        if (videoRef.current && isActive && !userPausedRef.current) {
+          setIsPlaying(true);
+          setIsReadyToPlay(true);
+          hasAutoPlayedRef.current = true;
+          setShouldRestoreSound(true);
+        }
+      }).catch(() => {});
+    }
   };
 
   const handleWaiting = () => {};
@@ -761,7 +778,13 @@ function VideoCardContent({
     hasPlayedOnceRef.current = true;
     setIsPlaying(true);
     const current = videoRef.current?.currentTime || 0;
-    if (current > ((video.start_time || 0) + 0.05)) setShowFrameCover(false);
+    const startTime = video.start_time || 0;
+    if (current > startTime + 0.05) {
+      // Retirer la couverture seulement après que la première frame soit peinte (évite flash noir)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setShowFrameCover(false));
+      });
+    }
   };
 
   const handlePause = () => {
@@ -947,7 +970,7 @@ function VideoCardContent({
         src={videoSrc}
         poster={posterUrl || VIDEO_PLACEHOLDER_IMG}
         className="absolute top-0 left-0 w-full h-full object-cover"
-        preload="metadata"
+        preload={isActive ? 'auto' : 'metadata'}
         loop
         playsInline
         muted={shouldRestoreSound ? isMuted : true}
@@ -1021,13 +1044,13 @@ function VideoCardContent({
           <p className="text-white/70 text-sm text-center mt-1 ios-text-render">URL de vidÃ©o invalide</p>
         </div>
       )}
-      {/* VidÃ©o cachÃ©e pour la prÃ©visualisation au scrub */}
+      {/* Couverture type TikTok : poster visible jusqu'à ce que la vidéo joue vraiment (jamais d'écran noir) */}
       {videoUrl && !loadError && showFrameCover && (
-        <div className="absolute inset-0 z-[5] pointer-events-none">
-          <VideoFrameThumbnail
-            videoUrl={video.video_url || videoUrl}
-            alt={video.title || ''}
-            className="w-full h-full"
+        <div className="absolute inset-0 z-[5] pointer-events-none bg-black">
+          <img
+            src={posterUrl || VIDEO_PLACEHOLDER_IMG}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
           />
         </div>
       )}
@@ -1092,11 +1115,12 @@ function VideoCardContent({
             exit={{ opacity: 0, scale: 0.6 }}
             className="absolute inset-0 flex items-center justify-center pointer-events-none z-[60]"
           >
-            <div className="bg-black/40 p-6 rounded-full">
+            {/* Taille réduite sur mobile/Android pour une meilleure UX */}
+            <div className="bg-black/40 p-3 rounded-full sm:p-6">
               {isPlaying ? (
-                <Pause className="w-12 h-12 text-white fill-white" />
+                <Pause className="w-8 h-8 sm:w-12 sm:h-12 text-white fill-white" />
               ) : (
-                <Play className="w-12 h-12 text-white fill-white" />
+                <Play className="w-8 h-8 sm:w-12 sm:h-12 text-white fill-white" />
               )}
             </div>
           </motion.div>
@@ -1201,7 +1225,7 @@ function VideoCardContent({
                   e.target.style.display = 'none';
                 }}
               />
-              <AvatarFallback className="bg-gradient-to-br from-orange-400 to-red-500 text-white font-bold">
+              <AvatarFallback className="bg-gradient-to-br from-blue-500 to-blue-600 text-white font-bold">
                 {video.creator_name?.[0]?.toUpperCase() || 'U'}
               </AvatarFallback>
             </Avatar>
@@ -1510,7 +1534,7 @@ function VideoCardContent({
                 onClick={() =>
                   navigate(createPageUrl('Search') + `?q=${encodeURIComponent(tag)}`)
                 }
-                className="text-white font-bold hover:text-orange-400 transition-colors"
+                className="text-white font-bold hover:text-blue-400 transition-colors"
               >
                 #{tag}
               </button>
@@ -1529,7 +1553,7 @@ function VideoCardContent({
                 onClick={() =>
                   navigate(createPageUrl('Create') + `?music=${encodeURIComponent(musicTitle)}`)
                 }
-                className="text-orange-300 hover:text-orange-200 text-xs font-medium"
+                className="text-blue-300 hover:text-blue-200 text-xs font-medium"
               >
                 Utiliser
               </button>

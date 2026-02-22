@@ -1218,7 +1218,7 @@ export default function Create() {
 
                   onClick={() => fileInputRef.current?.click()}
 
-                  className="w-full p-8 rounded-3xl bg-gradient-to-br from-orange-500 to-red-500 text-white flex flex-col items-center gap-4 shadow-lg shadow-orange-500/30"
+                  className="w-full p-8 rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex flex-col items-center gap-4 shadow-lg shadow-blue-500/30"
 
                 >
 
@@ -1282,9 +1282,9 @@ export default function Create() {
 
                 >
 
-                  <div className="w-14 h-14 rounded-full bg-red-500/20 flex items-center justify-center">
+                  <div className="w-14 h-14 rounded-full bg-blue-500/20 flex items-center justify-center">
 
-                    <Radio className="w-7 h-7 text-red-500" />
+                    <Radio className="w-7 h-7 text-blue-500" />
 
                   </div>
 
@@ -1403,7 +1403,7 @@ export default function Create() {
 
               {isRecording && (
 
-                <div className="flex items-center gap-2 bg-red-500 px-4 py-2 rounded-full">
+                <div className="flex items-center gap-2 bg-blue-600 px-4 py-2 rounded-full">
 
                   <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
 
@@ -1475,11 +1475,11 @@ export default function Create() {
 
                 {isRecording ? (
 
-                  <Square className="w-8 h-8 text-red-500 fill-red-500" />
+                  <Square className="w-8 h-8 text-blue-500 fill-blue-600" />
 
                 ) : (
 
-                  <Circle className="w-16 h-16 text-red-500 fill-red-500" />
+                  <Circle className="w-16 h-16 text-blue-500 fill-blue-600" />
 
                 )}
 
@@ -1543,7 +1543,7 @@ export default function Create() {
 
                           cameraFilter === filter
 
-                            ? 'bg-orange-500 text-white'
+                            ? 'bg-blue-600 text-white'
 
                             : 'bg-white/20 text-white hover:bg-white/30'
 
@@ -1593,7 +1593,7 @@ export default function Create() {
 
                     onClick={() => musicInputRef.current?.click()}
 
-                    className="w-full px-4 py-3 mb-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-all flex items-center justify-center gap-2 font-medium"
+                    className="w-full px-4 py-3 mb-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all flex items-center justify-center gap-2 font-medium"
 
                   >
 
@@ -1770,7 +1770,7 @@ export default function Create() {
 
                 <div className="flex items-center gap-3">
 
-                  <div className="flex items-center gap-2 bg-red-500 px-3 py-1 rounded-full">
+                  <div className="flex items-center gap-2 bg-blue-600 px-3 py-1 rounded-full">
 
                     <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
 
@@ -1848,7 +1848,7 @@ export default function Create() {
 
                   >
 
-                    <span className="text-orange-400 font-medium text-sm">{comment.user}</span>
+                    <span className="text-blue-500 font-medium text-sm">{comment.user}</span>
 
                     <span className="text-white text-sm">{comment.text}</span>
 
@@ -1908,7 +1908,7 @@ export default function Create() {
 
                   onClick={endLive}
 
-                  className="bg-red-500 hover:bg-red-600 text-white rounded-full px-8"
+                  className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-8"
 
                 >
 
@@ -1922,7 +1922,7 @@ export default function Create() {
 
                   <div className="flex items-center gap-1 bg-black/30 px-3 py-2 rounded-full">
 
-                    <Gift className="w-4 h-4 text-yellow-400" />
+                    <Gift className="w-4 h-4 text-blue-400" />
 
                     <span className="text-white text-sm">{liveGifts}</span>
 
@@ -2080,7 +2080,7 @@ export default function Create() {
 
                   onClick={handlePublish}
 
-                  className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 rounded-full px-6"
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-full px-6"
 
                 >
 
@@ -2208,7 +2208,7 @@ export default function Create() {
 
                     {videoData.hashtags.map((tag) => (
 
-                      <span key={tag} className="inline-flex items-center gap-1 px-3 py-1 bg-orange-50 text-orange-600 rounded-full text-sm">
+                      <span key={tag} className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-sm">
 
                         #{tag}
 
@@ -2330,11 +2330,11 @@ export default function Create() {
 
                   {videoData.music_title && videoData.music_title !== 'custom' && (
 
-                    <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 rounded-lg">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg">
 
-                      <Music2 className="w-4 h-4 text-orange-600" />
+                      <Music2 className="w-4 h-4 text-blue-600" />
 
-                      <span className="text-sm text-orange-600">{videoData.music_title}</span>
+                      <span className="text-sm text-blue-600">{videoData.music_title}</span>
 
                       <button 
 
@@ -2344,7 +2344,7 @@ export default function Create() {
 
                       >
 
-                        <X className="w-4 h-4 text-orange-600" />
+                        <X className="w-4 h-4 text-blue-600" />
 
                       </button>
 
@@ -2482,13 +2482,13 @@ export default function Create() {
 
                         className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
 
-                          videoData.visibility === opt.value ? 'border-orange-500 bg-orange-50' : 'border-gray-100'
+                          videoData.visibility === opt.value ? 'border-blue-600 bg-blue-50' : 'border-gray-100'
 
                         }`}
 
                       >
 
-                        <Icon className={`w-5 h-5 ${videoData.visibility === opt.value ? 'text-orange-500' : 'text-gray-400'}`} />
+                        <Icon className={`w-5 h-5 ${videoData.visibility === opt.value ? 'text-blue-600' : 'text-gray-400'}`} />
 
                         <div className="text-left">
 
@@ -2498,7 +2498,7 @@ export default function Create() {
 
                         </div>
 
-                        {videoData.visibility === opt.value && <Check className="w-5 h-5 text-orange-500 ml-auto" />}
+                        {videoData.visibility === opt.value && <Check className="w-5 h-5 text-blue-600 ml-auto" />}
 
                       </button>
 
@@ -2532,7 +2532,7 @@ export default function Create() {
             className="flex flex-col items-center justify-center bg-black text-white p-8 h-full"
           >
 
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center mb-6">
+            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center mb-6">
 
               <Loader2 className="w-12 h-12 animate-spin" />
 
@@ -2544,7 +2544,7 @@ export default function Create() {
 
             <div className="w-full max-w-xs bg-white/10 rounded-full h-2">
 
-              <div className="h-full bg-gradient-to-r from-orange-500 to-red-500 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+              <div className="h-full bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
 
             </div>
 

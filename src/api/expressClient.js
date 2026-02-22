@@ -3142,6 +3142,72 @@ export const api = {
       },
     },
   },
+  matching: {
+    async getOnboarding() {
+      const { data } = await axiosInstance.get('/matching/onboarding');
+      return data.data;
+    },
+    async saveOnboarding(payload) {
+      const { data } = await axiosInstance.post('/matching/onboarding', payload || {});
+      return data.data;
+    },
+    async previewJourney(payload) {
+      const { data } = await axiosInstance.post('/matching/journey/preview', payload || {});
+      return data.data;
+    },
+    async getOpportunities(limit = 20) {
+      const { data } = await axiosInstance.get('/matching/opportunities-for-you', { params: { limit } });
+      return data.data;
+    },
+    async getOpportunitiesWithProfile(payload, limit = 20) {
+      const { data } = await axiosInstance.post('/matching/opportunities-for-you', payload || {}, { params: { limit } });
+      return data.data;
+    },
+    async getInterconnections() {
+      const { data } = await axiosInstance.get('/matching/interconnections');
+      return data.data || [];
+    },
+    async getDashboard() {
+      const { data } = await axiosInstance.get('/matching/dashboard');
+      return data.data;
+    },
+    async getKpiSummary(windowDays = 30) {
+      const { data } = await axiosInstance.get('/matching/kpi-summary', { params: { windowDays } });
+      return data.data;
+    },
+    async getCoach() {
+      const { data } = await axiosInstance.get('/matching/coach');
+      return data.data;
+    },
+    async getCoachHistory(limit = 20) {
+      const { data } = await axiosInstance.get('/matching/coach/history', { params: { limit } });
+      return data.data || [];
+    },
+    async chatWithCoach(message) {
+      const { data } = await axiosInstance.post('/matching/coach/chat', { message });
+      return data.data;
+    },
+    async getTrustStatus() {
+      const { data } = await axiosInstance.get('/matching/trust-status');
+      return data.data;
+    },
+    async getLocalization() {
+      const { data } = await axiosInstance.get('/matching/localization');
+      return data.data;
+    },
+    async getProgression() {
+      const { data } = await axiosInstance.get('/matching/progression');
+      return data.data;
+    },
+    async getSmartNotifications() {
+      const { data } = await axiosInstance.get('/matching/smart-notifications');
+      return data.data || [];
+    },
+    async trackOpportunityAction(payload) {
+      const { data } = await axiosInstance.post('/matching/opportunity-action', payload || {});
+      return data.data;
+    },
+  },
 };
 
 export default api;

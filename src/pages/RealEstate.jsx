@@ -219,7 +219,7 @@ export default function RealEstate() {
       <div className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm">
         <div className="flex items-center gap-3 p-4">
           <Link to={createPageUrl('Home')}>
-            <Button variant="ghost" size="icon" className="text-gray-700"><ArrowLeft className="w-5 h-5" /></Button>
+            <Button variant="ghost" size="icon" className="text-blue-600 hover:text-blue-700 hover:bg-blue-50" aria-label="Retour"><ArrowLeft className="w-5 h-5" /></Button>
           </Link>
           <div className="flex-1">
             <h1 className="text-xl font-bold text-gray-900">Immobilier</h1>
@@ -228,7 +228,7 @@ export default function RealEstate() {
         </div>
         <div className="px-4 pb-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-500" />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -242,7 +242,7 @@ export default function RealEstate() {
                 key={opt.value || 'all'}
                 variant={transactionFilter === opt.value ? 'default' : 'outline'}
                 size="sm"
-                className={transactionFilter === opt.value ? 'bg-teal-600 hover:bg-teal-700 text-white' : 'border-gray-300 text-gray-700'}
+                className={transactionFilter === opt.value ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'border-gray-300 text-gray-700'}
                 onClick={() => setTransactionFilter(opt.value)}
               >
                 {opt.label}
@@ -255,7 +255,7 @@ export default function RealEstate() {
                 key={opt.value || 'all'}
                 variant={propertyTypeFilter === opt.value ? 'default' : 'outline'}
                 size="sm"
-                className={`flex-shrink-0 ${propertyTypeFilter === opt.value ? 'bg-gray-800 hover:bg-gray-900 text-white' : 'border-gray-300 text-gray-700'}`}
+                className={`flex-shrink-0 ${propertyTypeFilter === opt.value ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'border-gray-300 text-gray-700'}`}
                 onClick={() => setPropertyTypeFilter(opt.value)}
               >
                 {opt.label}
@@ -266,11 +266,11 @@ export default function RealEstate() {
       </div>
 
       <div className="p-4 pb-24 space-y-6">
-        {/* Cartes stats — couleurs AfriWonder : teal, bleu, vert */}
+        {/* Cartes stats — couleurs AfriWonder : bleu */}
         <div className="grid grid-cols-3 gap-3">
           <Card className="bg-white border-gray-200 shadow-sm">
             <CardContent className="p-3 text-center">
-              <p className="text-2xl font-bold text-teal-600">{stats.total}</p>
+              <p className="text-2xl font-bold text-blue-600">{stats.total}</p>
               <p className="text-xs text-gray-500">Annonces</p>
             </CardContent>
           </Card>
@@ -282,7 +282,7 @@ export default function RealEstate() {
           </Card>
           <Card className="bg-white border-gray-200 shadow-sm">
             <CardContent className="p-3 text-center">
-              <p className="text-2xl font-bold text-green-600">{stats.rentals}</p>
+              <p className="text-2xl font-bold text-blue-600">{stats.rentals}</p>
               <p className="text-xs text-gray-500">Locations</p>
             </CardContent>
           </Card>
@@ -303,7 +303,7 @@ export default function RealEstate() {
                 <div className="relative aspect-[4/3] bg-gray-100">
                   <img src={img} alt={p.title} className="w-full h-full object-cover" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                  <Badge className="absolute top-2 left-2 text-white text-xs border-0" style={isRent ? { backgroundColor: '#6b7280' } : { backgroundColor: '#0d9488' }}>
+                  <Badge className="absolute top-2 left-2 text-white text-xs border-0" style={isRent ? { backgroundColor: '#6b7280' } : { backgroundColor: '#2563eb' }}>
                     {isRent ? 'Location' : 'Vente'}
                   </Badge>
                   <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-8 w-8 rounded-full bg-black/30 hover:bg-black/50 text-white">
@@ -333,12 +333,12 @@ export default function RealEstate() {
                   <div className="flex gap-2 mt-auto pt-2">
                     {p.owner_phone && (
                       <a href={`tel:${p.owner_phone}`}>
-                        <Button variant="outline" size="sm" className="border-orange-500 text-orange-600 hover:bg-orange-50">
+                        <Button variant="outline" size="sm" className="border-blue-600 text-blue-600 hover:bg-blue-50">
                           <Phone className="w-4 h-4 mr-1" /> Appeler
                         </Button>
                       </a>
                     )}
-                    <Button size="sm" className="bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white" onClick={() => openDetail(p)}>
+                    <Button size="sm" className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white" onClick={() => openDetail(p)}>
                       Voir détails
                     </Button>
                   </div>
@@ -350,10 +350,10 @@ export default function RealEstate() {
 
         <Card className="bg-white border-gray-200">
           <CardContent className="p-6 text-center">
-            <Building2 className="w-12 h-12 text-teal-600 mx-auto mb-3" />
+            <Building2 className="w-12 h-12 text-blue-600 mx-auto mb-3" />
             <h3 className="font-bold text-gray-900 mb-2">Vous avez un bien à louer ou vendre ?</h3>
             <p className="text-sm text-gray-500 mb-4">Publiez votre annonce. Elle sera visible après validation par l'administrateur.</p>
-            <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={() => setShowCreateModal(true)}>
+            <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setShowCreateModal(true)}>
               Publier une annonce
             </Button>
           </CardContent>
@@ -377,10 +377,10 @@ export default function RealEstate() {
               />
             </div>
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <p className="text-xl font-bold text-green-600">
+              <p className="text-xl font-bold text-blue-600">
                 {formatPrice(detailProperty.price, detailProperty.listing_type)}
               </p>
-              <Badge className="bg-green-100 text-green-700 border-0">Disponible</Badge>
+              <Badge className="bg-blue-100 text-blue-700 border-0">Disponible</Badge>
             </div>
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <MapPin className="w-4 h-4 flex-shrink-0" />
@@ -390,21 +390,21 @@ export default function RealEstate() {
             <div className="grid grid-cols-3 gap-2">
               {detailProperty.bedrooms != null && (
                 <div className="p-3 rounded-xl bg-gray-50 text-center">
-                  <Bed className="w-5 h-5 text-teal-600 mx-auto mb-1" />
+                  <Bed className="w-5 h-5 text-blue-600 mx-auto mb-1" />
                   <p className="font-semibold text-gray-900">{detailProperty.bedrooms}</p>
                   <p className="text-xs text-gray-500">Chambres</p>
                 </div>
               )}
               {detailProperty.bathrooms != null && (
                 <div className="p-3 rounded-xl bg-gray-50 text-center">
-                  <Bath className="w-5 h-5 text-teal-600 mx-auto mb-1" />
+                  <Bath className="w-5 h-5 text-blue-600 mx-auto mb-1" />
                   <p className="font-semibold text-gray-900">{detailProperty.bathrooms}</p>
                   <p className="text-xs text-gray-500">Salles de bain</p>
                 </div>
               )}
               {detailProperty.surface_area != null && (
                 <div className="p-3 rounded-xl bg-gray-50 text-center">
-                  <Maximize className="w-5 h-5 text-teal-600 mx-auto mb-1" />
+                  <Maximize className="w-5 h-5 text-blue-600 mx-auto mb-1" />
                   <p className="font-semibold text-gray-900">{detailProperty.surface_area}</p>
                   <p className="text-xs text-gray-500">m²</p>
                 </div>
@@ -423,7 +423,7 @@ export default function RealEstate() {
             <div className="flex gap-3 pt-2">
               {detailProperty.owner_phone && (
                 <a href={`tel:${detailProperty.owner_phone}`} className="flex-1">
-                  <Button variant="outline" className="w-full border-orange-500 text-orange-600 hover:bg-orange-50">
+                  <Button variant="outline" className="w-full border-blue-600 text-blue-600 hover:bg-blue-50">
                     <Phone className="w-4 h-4 mr-2" /> Appeler l'agent
                   </Button>
                 </a>
@@ -434,7 +434,7 @@ export default function RealEstate() {
                 rel="noopener noreferrer"
                 className="flex-1"
               >
-                <Button className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white">
+                <Button className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white">
                   <MessageCircle className="w-4 h-4 mr-2" /> WhatsApp
                 </Button>
               </a>
@@ -501,7 +501,7 @@ export default function RealEstate() {
           <Input placeholder="Téléphone de contact" value={createForm.owner_phone} onChange={(e) => setCreateForm((f) => ({ ...f, owner_phone: e.target.value }))} className="border-gray-300" />
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setShowCreateModal(false)}>Annuler</Button>
-            <Button type="submit" className="flex-1 bg-teal-600 hover:bg-teal-700 text-white" disabled={createSubmitting}>
+            <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white" disabled={createSubmitting}>
               {createSubmitting ? 'Envoi...' : 'Publier'}
             </Button>
           </div>

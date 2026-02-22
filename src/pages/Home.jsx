@@ -35,7 +35,6 @@ export default function Home() {
   const { isOpen: isMenuOpen, openMenu } = useAppMenu();
   const { isMuted, setMuted } = usePreferences();
   
-  // Empecher l'ecran de s'eteindre automatiquement (style TikTok)
   useWakeLock(true);
   
   const [selectedVideo, setSelectedVideo] = useState(null);
@@ -43,6 +42,7 @@ export default function Home() {
   const [likedVideos, setLikedVideos] = useState(new Set());
   const [savedVideos, setSavedVideos] = useState(new Set());
   const [followingCount, setFollowingCount] = useState(0);
+
   const [followingVideos, setFollowingVideos] = useState([]);
   const [firstVideoPreloaded, setFirstVideoPreloaded] = useState(false);
 
@@ -53,23 +53,15 @@ export default function Home() {
   const touchStartYRef = useRef(0);
   const pullDistanceRef = useRef(0);
 
-  // Get current user
   useEffect(() => {
-    const getUser = async () => {
-      try {
-        const u = await api.auth.me();
-        setUser(u);
-      } catch (_e) {
-        // User not logged in
-      }
-    };
-    getUser();
+    let cancelled = false;
+    api.auth.me().then((u) => { if (!cancelled) setUser(u); }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const { isSlowConnection } = useNetworkStatus();
   const cacheStrategy = getCacheStrategy(isSlowConnection);
 
-  // Config Early Access pour afficher un message discret
   const { data: earlyAccessConfig } = useQuery({
     queryKey: ['early-access-config'],
     queryFn: () => api.earlyAccess.getConfig(),
@@ -77,7 +69,6 @@ export default function Home() {
     gcTime: 30 * 60 * 1000,
   });
 
-  // Feed combine (videos + pubs) pour l'onglet Pour toi
   const { data: feedData, isLoading: feedLoading, refetch: refetchFeed } = useQuery({
     queryKey: ['feed', user?.id],
     ...cacheStrategy,
@@ -88,7 +79,6 @@ export default function Home() {
     enabled: activeTab === 'pourtoi',
   });
 
-  // Videos brutes pour l'onglet Abonnements (filtrees par following)
   const { data: videos = [], isLoading: videosLoading, refetch: refetchVideos } = useQuery({
     queryKey: ['videos', user?.id],
     ...cacheStrategy,
@@ -99,7 +89,6 @@ export default function Home() {
     enabled: activeTab === 'abonnements',
   });
 
-  // Masquer pubs (CDC section 4) - stockage securise
   const [hiddenAdIds, setHiddenAdIds] = useState(() => {
     const cached = getJSON('afw_hidden_ads', []);
     return Array.isArray(cached) ? cached : [];
@@ -135,7 +124,6 @@ export default function Home() {
   const isLoading = activeTab === 'pourtoi' ? feedLoading : videosLoading;
   const refetch = activeTab === 'pourtoi' ? refetchFeed : refetchVideos;
 
-  // Precharger la premiere video AVANT d'afficher le feed (first impression = niveau TikTok)
   useEffect(() => {
     if (activeTab !== 'pourtoi') {
       setFirstVideoPreloaded(true);
@@ -295,13 +283,11 @@ export default function Home() {
      }
    }, [user?.id]);
 
-  // Memoize following creator IDs (backend retourne directement les utilisateurs suivis)
   const followingIds = useMemo(
     () => userFollows.map((f) => f.id),
     [userFollows]
   );
 
-  // Create stable string from video IDs to detect actual changes (abonnements)
   const videoIdsString = useMemo(() => 
     videos.map(v => `${v.id}:${v.creator_id}`).sort().join(','), 
     [videos]
@@ -309,13 +295,11 @@ export default function Home() {
 
   useEffect(() => {
     setFollowingCount(userFollows.length);
-    // Ne garder que les videos dont le createur est dans la liste des suivis
     const filtered = videos.filter((v) => followingIds.includes(v.creator_id));
     setFollowingVideos(filtered);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userFollows.length, followingIds.length, videoIdsString]);
 
-  // Like mutation with notification
   const likeMutation = useMutation({
     mutationFn: async (video) => {
       if (!user) {
@@ -326,13 +310,8 @@ export default function Home() {
       const isLiked = likedVideos.has(video.id);
       
       try {
-        // Utiliser l'API des likes directement (l'API gere l'utilisateur via l'auth)
         const result = await api.videos.like(video.id);
-        
-        // Le backend retourne { liked: true/false }
         const newLikedState = result?.liked ?? !isLiked;
-        
-        // Si le like a ete ajoute, envoyer une notification
         if (!isLiked && newLikedState) {
           NotificationService.notifyVideoLike(user.id, video.id, video.creator_id);
         }
@@ -348,8 +327,7 @@ export default function Home() {
       }
     },
     onSuccess: (data) => {
-      // data est le retour de mutationFn: { isLiked, video }
-      if (data && data.video) {
+      if (data?.video) {
         setLikedVideos(prev => {
           const next = new Set(prev);
           if (data.isLiked) {
@@ -570,8 +548,13 @@ export default function Home() {
   const showHomeLoading = isLoading || waitingFirstVideo;
   if (showHomeLoading) {
     return (
-      <div className="w-full bg-black flex justify-center text-white" style={{ height: 'calc(var(--app-vh, 1vh) * 100)' }}>
-        <div className="w-full sm:max-w-[400px] h-full relative flex flex-col">
+      <div
+        className="w-full bg-black flex justify-center text-white"
+        style={{ height: 'calc(var(--app-vh, 1vh) * 100)' }}
+        aria-busy="true"
+        aria-label="Chargement du fil"
+      >
+        <div className="w-full sm:max-w-[400px] h-full relative flex flex-col" role="status">
           <div className="flex items-center justify-between px-4 pt-4 pb-3">
             <div className="h-6 w-24 rounded-full bg-white/10 animate-pulse" />
             <div className="flex items-center gap-2">
@@ -587,7 +570,7 @@ export default function Home() {
               <div className="h-3 w-full rounded-full bg-white/10 animate-pulse" />
               <div className="h-3 w-4/5 rounded-full bg-white/10 animate-pulse" />
             </div>
-            <Loader2 className="w-8 h-8 text-orange-500 animate-spin" aria-hidden />
+            <Loader2 className="w-8 h-8 text-primary animate-spin" aria-hidden />
           </div>
           <div className="h-[80px] border-t border-white/10 bg-black/80" />
         </div>
@@ -606,9 +589,7 @@ export default function Home() {
         paddingBottom: 'env(safe-area-inset-bottom)'
       }}
     >
-      {/* Container vertical fixe - style TikTok desktop (400px max sur desktop, full width sur mobile) */}
       <div className="w-full sm:max-w-[400px] h-full relative flex flex-col bg-black">
-        {/* AfriWonder Logo - positionne relativement au container */}
         <button
           onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
           className={cn(
@@ -619,7 +600,6 @@ export default function Home() {
           <AfriWonderLogo size="sm" className="shadow-lg group-hover:shadow-xl transition-shadow" />
         </button>
 
-        {/* TopHeader - limite au container vertical avec padding pour eviter chevauchement logo */}
         <div className="relative z-40 pl-28 sm:pl-32">
           <TopHeader 
             activeTab={activeTab}
@@ -633,7 +613,6 @@ export default function Home() {
           />
         </div>
 
-        {/* Bannieres en position fixe - limitees au container vertical */}
         {activeTab === 'pourtoi' && topBannerItems.length > 0 && currentIndex === 0 && (
           <div className="absolute top-16 left-0 right-0 z-40 px-3 pt-2 pb-1 gap-2 flex overflow-x-auto overflow-y-hidden no-scrollbar snap-x snap-mandatory pointer-events-auto">
             {topBannerItems.map((item, i) => (
@@ -650,7 +629,6 @@ export default function Home() {
         )}
 
 
-        {/* FEED - Video Feed avec pull-to-refresh (Android, iOS, iPad) */}
         <div 
           ref={containerRef}
           onScroll={handleScroll}
@@ -681,7 +659,6 @@ export default function Home() {
             WebkitScrollSnapType: 'y mandatory',
           }}
         >
-        {/* Zone pull-to-refresh : hauteur variable + indicateur (ne participe pas au snap) */}
         <div
           className="flex items-center justify-center shrink-0 overflow-hidden transition-[height] duration-150 ease-out bg-black"
           style={{
@@ -715,7 +692,7 @@ export default function Home() {
             {!user && (
               <button
                 onClick={() => _navigate('/Landing')}
-                className="px-6 py-3 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg font-bold hover:shadow-lg transition-all"
+                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg font-bold hover:shadow-lg transition-all"
               >
                 S'inscrire pour commencer
               </button>
@@ -728,14 +705,14 @@ export default function Home() {
             {!user ? (
               <button
                 onClick={() => _navigate('/Landing')}
-                className="px-6 py-3 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg font-bold hover:shadow-lg transition-all"
+                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg font-bold hover:shadow-lg transition-all"
               >
                 S'inscrire pour commencer
               </button>
             ) : (
               <button
                 onClick={() => _navigate('/Create')}
-                className="px-6 py-3 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg font-bold hover:shadow-lg transition-all"
+                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg font-bold hover:shadow-lg transition-all"
               >
                 Creer votre premiere video
               </button>
@@ -801,8 +778,6 @@ export default function Home() {
                       const wasInWonder = userFollows.some((f) => f.id === video.creator_id);
                       const result = await api.users.toggleWonder(video.creator_id);
                       const inWonder = result?.data?.inWonder ?? result?.inWonder ?? !wasInWonder;
-
-                      // Invalider les queries pour mettre a jour l'etat
                       queryClient.invalidateQueries({ queryKey: ['user-follows', user.id] });
                       queryClient.invalidateQueries({ queryKey: ['follow-stats', video.creator_id] });
                       
@@ -864,10 +839,7 @@ export default function Home() {
         onShareSuccess={async () => {
           if (selectedVideo) {
             try {
-              // Appeler l'API backend pour incrementer le compteur en base de donnees
               await api.videos.share(selectedVideo.id);
-              
-              // Mettre a jour le cache local de maniere optimiste
               queryClient.setQueryData(['videos', activeTab, user?.id], (oldData) => {
                 if (!oldData) return oldData;
                 return oldData.map(v => {
@@ -880,8 +852,6 @@ export default function Home() {
                   return v;
                 });
               });
-              
-              // Mettre a jour aussi followingVideos si necessaire
               setFollowingVideos(prev => prev.map(v => {
                 if (v.id === selectedVideo.id) {
                   return {
@@ -891,14 +861,9 @@ export default function Home() {
                 }
                 return v;
               }));
-              
-              // Invalider les queries pour recharger depuis le backend
               queryClient.invalidateQueries({ queryKey: ['videos'] });
               queryClient.invalidateQueries({ queryKey: ['feed'] });
-            } catch (error) {
-              console.error('Error tracking share:', error);
-              // Ne pas bloquer l'utilisateur si l'API echoue
-            }
+            } catch (_err) {}
           }
         }}
       />

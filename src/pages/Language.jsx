@@ -44,12 +44,12 @@ export default function Language() {
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
           <Link to={createPageUrl("Settings")}>
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl" aria-label="Retour">
               <ArrowLeft className="w-5 h-5" />
             </Button>
           </Link>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Globe className="w-6 h-6 text-orange-600" />
+            <Globe className="w-6 h-6 text-blue-600" />
             {t("language")}
           </h1>
         </div>
@@ -71,7 +71,7 @@ export default function Language() {
               <Card
                 className={`cursor-pointer transition-all ${
                   isSelected
-                    ? "border-orange-500 border-2 bg-orange-50"
+                    ? "border-blue-600 border-2 bg-blue-50"
                     : "hover:shadow-md"
                 }`}
                 onClick={() => changeLanguage(lang)}
@@ -89,7 +89,7 @@ export default function Language() {
                     </div>
                   </div>
                   {isSelected && (
-                    <Badge className="bg-orange-600">
+                    <Badge className="bg-blue-600">
                       {t("selected") || "Sélectionné"}
                     </Badge>
                   )}
