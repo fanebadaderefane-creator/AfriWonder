@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { getAbsoluteImageUrl } from "@/lib/utils";
 import { Star, MapPin, BadgeCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -22,8 +23,11 @@ function getCardImageUrl(provider) {
     provider.banner_url,
     provider.portfolio_image,
   ].filter(Boolean);
-  const url = typeof urls[0] === "string" ? urls[0].trim() : "";
-  return url || DEFAULT_CARD_IMAGE;
+  const raw = typeof urls[0] === "string" ? urls[0].trim() : "";
+  if (!raw) return DEFAULT_CARD_IMAGE;
+  // PWA mobile : URL absolue obligatoire pour que les images s'affichent (cadres vides sinon)
+  const absolute = getAbsoluteImageUrl(raw);
+  return absolute || DEFAULT_CARD_IMAGE;
 }
 
 export default function ProviderCard({ provider, categoryName }) {
@@ -41,7 +45,8 @@ export default function ProviderCard({ provider, categoryName }) {
   const imageUrl = imageFailed ? DEFAULT_CARD_IMAGE : getCardImageUrl(p);
   const displayName = p.display_name || p.business_name || p.user?.full_name || "Prestataire";
   const initial = (displayName || "P")[0].toUpperCase();
-  const avatarUrl = !avatarFailed && (p.photo_url || p.user?.profile_image) ? (p.photo_url || p.user?.profile_image) : null;
+  const rawAvatar = p.photo_url || p.user?.profile_image;
+  const avatarUrl = !avatarFailed && rawAvatar ? getAbsoluteImageUrl(String(rawAvatar).trim()) || rawAvatar : null;
   const locationText = [p.city, p.neighborhood].filter(Boolean).join(", ") || "—";
   const priceMin = p.price_range_min ?? p.starting_price ?? 0;
 
