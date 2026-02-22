@@ -12,7 +12,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from "sonner";
-import { createPageUrl } from '@/utils';
+import { useNavigate } from "react-router-dom";
 
 const notificationIcons = {
   order: Package,
@@ -39,6 +39,7 @@ const notificationColors = {
 };
 
 export default function NotificationCenter({ isOpen, onClose, userId }) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const { data: notificationsData } = useQuery({
@@ -77,19 +78,24 @@ export default function NotificationCenter({ isOpen, onClose, userId }) {
     if (!notification.is_read) {
       markAsReadMutation.mutate(notification.id);
     }
-    const base = window.location.origin + (window.location.pathname.includes('/Profile') ? '' : '/');
     if (notification.action_url) {
-      window.location.href = notification.action_url.startsWith('http') ? notification.action_url : base + notification.action_url;
+      const actionUrl = String(notification.action_url);
+      const isExternal = /^(https?:\/\/|mailto:|tel:)/i.test(actionUrl);
+      if (isExternal) {
+        window.location.assign(actionUrl);
+      } else {
+        navigate(actionUrl.startsWith("/") ? actionUrl : `/${actionUrl}`);
+      }
     } else if (notification.reference_type === 'order') {
-      window.location.href = `${base}OrderTracking?id=${notification.reference_id}`;
+      navigate(`/OrderTracking?id=${notification.reference_id}`);
     } else if (notification.reference_type === 'video') {
-      window.location.href = `${base}VideoView?_videoId=${notification.reference_id}`;
+      navigate(`/VideoView?_videoId=${notification.reference_id}`);
     } else if (notification.reference_type === 'product') {
-      window.location.href = `${base}Product?id=${notification.reference_id}`;
+      navigate(`/Product?id=${notification.reference_id}`);
     } else if (notification.reference_type === '_user' || notification.reference_type === 'user') {
-      window.location.href = `${base}Profile?_userId=${notification.reference_id}`;
+      navigate(`/Profile?_userId=${notification.reference_id}`);
     } else if (notification.from_user_id) {
-      window.location.href = `${base}Profile?_userId=${notification.from_user_id}`;
+      navigate(`/Profile?_userId=${notification.from_user_id}`);
     }
     onClose();
   };
@@ -186,5 +192,3 @@ export default function NotificationCenter({ isOpen, onClose, userId }) {
     </Sheet>
   );
 }
-
-

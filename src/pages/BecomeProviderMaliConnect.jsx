@@ -65,8 +65,8 @@ export default function BecomeProviderMaliConnect() {
         setUser(u);
         setForm((f) => ({ ...f, display_name: u.full_name || u.display_name || u.username || "" }));
       })
-      .catch(() => { window.location.href = "/Landing"; });
-  }, []);
+      .catch(() => { navigate("/Landing", { replace: true }); });
+  }, [navigate]);
 
   const { data: categories = [] } = useQuery({
     queryKey: ["provider-categories"],

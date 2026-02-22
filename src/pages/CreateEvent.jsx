@@ -9,9 +9,11 @@ import { motion } from 'framer-motion';
 import { toast } from "sonner";
 import { createPageUrl } from '@/utils';
 import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
+import { useNavigate } from "react-router-dom";
 import BottomNav from '../components/navigation/BottomNav';
 
 export default function CreateEvent() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [eventData, setEventData] = useState({
@@ -38,11 +40,11 @@ export default function CreateEvent() {
         const u = await api.auth.me();
         setUser(u);
       } catch (_e) {
-        window.location.href = '/';
+        navigate('/', { replace: true });
       }
     };
     getUser();
-  }, []);
+  }, [navigate]);
 
   const createEventMutation = useMutation({
     mutationFn: async () => {
@@ -72,10 +74,10 @@ export default function CreateEvent() {
       toast.success('Événement créé. Il est en attente d\'approbation par un administrateur et sera visible une fois approuvé.');
       if (event?.id) {
         setTimeout(() => {
-          window.location.href = `${createPageUrl('EventDetails')}?id=${event.id}`;
+          navigate(`${createPageUrl('EventDetails')}?id=${event.id}`);
         }, 1000);
       } else {
-        setTimeout(() => { window.location.href = createPageUrl('Events'); }, 1500);
+        setTimeout(() => { navigate(createPageUrl('Events')); }, 1500);
       }
     },
     onError: (e) => {
@@ -107,7 +109,7 @@ export default function CreateEvent() {
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 px-4 py-3 flex items-center gap-3">
         <button
-          onClick={() => window.history.back()}
+          onClick={() => navigate(-1)}
           className="p-1 -m-1 rounded-lg hover:bg-orange-50 text-gray-700 hover:text-orange-600 transition-colors"
         >
           <ArrowLeft className="w-6 h-6" />
@@ -416,4 +418,3 @@ export default function CreateEvent() {
     </div>
   );
 }
-

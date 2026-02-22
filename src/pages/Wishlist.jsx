@@ -178,7 +178,7 @@ export default function Wishlist() {
           <div className="text-center py-16">
             <Heart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-500 mb-4">Votre liste d'envies est vide</p>
-            <Button onClick={() => window.location.href = createPageUrl('Marketplace')}>
+            <Button onClick={() => navigate(createPageUrl('Marketplace'))}>
               Découvrir des produits
             </Button>
           </div>

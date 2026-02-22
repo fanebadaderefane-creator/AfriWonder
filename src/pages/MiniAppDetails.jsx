@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { ArrowLeft, Star, Download, Shield, Check, X, ShieldCheck, MapPin, Bell, Wallet, Camera, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import BottomNav from '@/components/navigation/BottomNav';
 import { MOCK_MINI_APPS } from '@/data/miniAppsMock';
-import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 const PERMISSION_ICONS = {
@@ -28,6 +26,7 @@ const PERMISSION_LABELS = {
 };
 
 export default function MiniAppDetails() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const appId = searchParams.get('id');
   const [isInstalled, setIsInstalled] = useState(false);
@@ -62,7 +61,7 @@ export default function MiniAppDetails() {
     <div className="min-h-screen bg-gray-50 pb-24">
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 px-4 py-3 flex items-center gap-3">
-        <button onClick={() => window.history.back()}>
+        <button onClick={() => navigate(-1)}>
           <ArrowLeft className="w-6 h-6" />
         </button>
         <h1 className="text-lg font-bold flex-1 truncate">{app.name}</h1>

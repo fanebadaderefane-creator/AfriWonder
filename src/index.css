@@ -96,6 +96,8 @@
 
 html {
   scroll-behavior: smooth;
+  --app-vh: 1vh;
+  --keyboard-offset: 0px;
 }
 
 html,
@@ -106,14 +108,14 @@ body {
 
 #root,
 #app {
-  height: 100dvh;
+  height: calc(var(--app-vh) * 100);
   width: 100%;
   position: relative;
 }
 
 /* Single scrollable area per screen */
 .screen {
-  height: 100dvh;
+  height: calc(var(--app-vh) * 100);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   /* Masquer la scrollbar mais garder le scroll fonctionnel */
@@ -154,7 +156,7 @@ body {
   touch-action: pan-y;
 }
 
-/* Optimisation scroll : contenu hors viewport moins coûteux (listes longues) */
+/* Optimisation scroll : contenu hors viewport moins coÃ»teux (listes longues) */
 @supports (content-visibility: auto) {
   .scroll-optimize > * {
     content-visibility: auto;
@@ -162,21 +164,21 @@ body {
   }
 }
 
-/* Écran prévisualisation vidéo (Create) : scroll fluide mobile, une seule zone de scroll */
+/* Ã‰cran prÃ©visualisation vidÃ©o (Create) : scroll fluide mobile, une seule zone de scroll */
 .create-preview-step {
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
   overflow-x: hidden;
 }
 
-/* Fix iOS text rendering issues (texte invisible) sur certains écrans Marketplace / Mes ventes */
+/* Fix iOS text rendering issues (texte invisible) sur certains Ã©crans Marketplace / Mes ventes */
 .ios-text-visible {
   color: #000000 !important;
   opacity: 1 !important;
   font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
 }
 
-/* Rendu texte iOS sans forcer la couleur (pour textes clairs sur fond sombre, ex. erreur vidéo) */
+/* Rendu texte iOS sans forcer la couleur (pour textes clairs sur fond sombre, ex. erreur vidÃ©o) */
 .ios-text-render {
   opacity: 1 !important;
   font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
@@ -194,7 +196,7 @@ body {
   outline: none !important;
 }
 
-/* Charte graphique : Politique de confidentialité — dégradé orange-rouge, titres et gras */
+/* Charte graphique : Politique de confidentialitÃ© â€” dÃ©gradÃ© orange-rouge, titres et gras */
 .legal-content h2 {
   font-weight: 700;
   background: linear-gradient(to right, #ea580c, #dc2626);
@@ -217,7 +219,7 @@ body {
   color: #c2410c;
 }
 
-/* AfriWonder — Microcrédit: boutons principaux (orange → rose) */
+/* AfriWonder â€” MicrocrÃ©dit: boutons principaux (orange â†’ rose) */
 .afriwonder-btn-gradient {
   background: linear-gradient(to right, #f97316, #ec4899);
   color: white;
@@ -226,14 +228,14 @@ body {
   opacity: 0.95;
 }
 
-/* WCAG 2.1 AA - Accessibilité */
+/* WCAG 2.1 AA - AccessibilitÃ© */
 /* 2.4.7 Focus visible - contour visible au focus clavier */
 :focus-visible {
   outline: 2px solid hsl(var(--primary) / 0.8);
   outline-offset: 2px;
 }
 
-/* Éviter outline sur clic souris (Tap highlight) */
+/* Ã‰viter outline sur clic souris (Tap highlight) */
 :focus:not(:focus-visible) {
   outline: none;
 }
@@ -244,7 +246,7 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
-/* Transitions fluides — interactions courantes */
+/* Transitions fluides â€” interactions courantes */
 button, a, [role="button"], input, select {
   transition: color 0.15s, background-color 0.15s, opacity 0.15s, border-color 0.15s;
 }
@@ -259,6 +261,21 @@ button, a, [role="button"], input, select {
   html {
     scroll-behavior: auto;
   }
+}
+
+/* Touch feedback lÃ©ger pour renforcer le ressenti "native app" */
+@media (hover: none) and (pointer: coarse) {
+  button:active,
+  a:active,
+  [role="button"]:active,
+  [data-haptic]:active {
+    transform: scale(0.985);
+  }
+}
+
+/* En mode PWA standalone, Ã©viter le bounce visuel iOS */
+.pwa-standalone body {
+  overscroll-behavior-y: contain;
 }
 
 /* Skip to main content - 2.4.1 Bypass blocks */

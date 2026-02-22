@@ -35,7 +35,7 @@ export default function Home() {
   const { isOpen: isMenuOpen, openMenu } = useAppMenu();
   const { isMuted, setMuted } = usePreferences();
   
-  // Empêcher l'écran de s'éteindre automatiquement (style TikTok)
+  // Empecher l'ecran de s'eteindre automatiquement (style TikTok)
   useWakeLock(true);
   
   const [selectedVideo, setSelectedVideo] = useState(null);
@@ -44,7 +44,6 @@ export default function Home() {
   const [savedVideos, setSavedVideos] = useState(new Set());
   const [followingCount, setFollowingCount] = useState(0);
   const [followingVideos, setFollowingVideos] = useState([]);
-  const [initialDelayDone, setInitialDelayDone] = useState(false);
   const [firstVideoPreloaded, setFirstVideoPreloaded] = useState(false);
 
   const containerRef = useRef(null);
@@ -70,14 +69,6 @@ export default function Home() {
   const { isSlowConnection } = useNetworkStatus();
   const cacheStrategy = getCacheStrategy(isSlowConnection);
 
-  // Micro-délai humain sur le tout premier affichage pour éviter l'effet "IA instantanée"
-  useEffect(() => {
-    const base = 200;
-    const jitter = Math.floor(Math.random() * 400); // 200–600ms
-    const timeout = setTimeout(() => setInitialDelayDone(true), base + jitter);
-    return () => clearTimeout(timeout);
-  }, []);
-
   // Config Early Access pour afficher un message discret
   const { data: earlyAccessConfig } = useQuery({
     queryKey: ['early-access-config'],
@@ -86,7 +77,7 @@ export default function Home() {
     gcTime: 30 * 60 * 1000,
   });
 
-  // Feed combiné (vidéos + pubs) pour l'onglet Pour toi
+  // Feed combine (videos + pubs) pour l'onglet Pour toi
   const { data: feedData, isLoading: feedLoading, refetch: refetchFeed } = useQuery({
     queryKey: ['feed', user?.id],
     ...cacheStrategy,
@@ -97,7 +88,7 @@ export default function Home() {
     enabled: activeTab === 'pourtoi',
   });
 
-  // Vidéos brutes pour l'onglet Abonnements (filtrées par following)
+  // Videos brutes pour l'onglet Abonnements (filtrees par following)
   const { data: videos = [], isLoading: videosLoading, refetch: refetchVideos } = useQuery({
     queryKey: ['videos', user?.id],
     ...cacheStrategy,
@@ -108,7 +99,7 @@ export default function Home() {
     enabled: activeTab === 'abonnements',
   });
 
-  // Masquer pubs (CDC §4) - stockage sécurisé
+  // Masquer pubs (CDC section 4) - stockage securise
   const [hiddenAdIds, setHiddenAdIds] = useState(() => {
     const cached = getJSON('afw_hidden_ads', []);
     return Array.isArray(cached) ? cached : [];
@@ -144,7 +135,7 @@ export default function Home() {
   const isLoading = activeTab === 'pourtoi' ? feedLoading : videosLoading;
   const refetch = activeTab === 'pourtoi' ? refetchFeed : refetchVideos;
 
-  // Précharger la première vidéo AVANT d'afficher le feed (first impression = niveau TikTok)
+  // Precharger la premiere video AVANT d'afficher le feed (first impression = niveau TikTok)
   useEffect(() => {
     if (activeTab !== 'pourtoi') {
       setFirstVideoPreloaded(true);
@@ -241,7 +232,7 @@ export default function Home() {
     touchStartYRef.current = 0;
   }, [refetchFeed, refetchVideos]);
 
-  // Invalider le cache quand l'utilisateur change (après mise à jour du profil)
+  // Invalider le cache quand l'utilisateur change (apres mise a jour du profil)
   useEffect(() => {
     if (user?.id) {
       queryClient.invalidateQueries({ queryKey: ['videos'] });
@@ -318,7 +309,7 @@ export default function Home() {
 
   useEffect(() => {
     setFollowingCount(userFollows.length);
-    // Ne garder que les vidéos dont le créateur est dans la liste des suivis
+    // Ne garder que les videos dont le createur est dans la liste des suivis
     const filtered = videos.filter((v) => followingIds.includes(v.creator_id));
     setFollowingVideos(filtered);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -335,13 +326,13 @@ export default function Home() {
       const isLiked = likedVideos.has(video.id);
       
       try {
-        // Utiliser l'API des likes directement (l'API gère l'utilisateur via l'auth)
+        // Utiliser l'API des likes directement (l'API gere l'utilisateur via l'auth)
         const result = await api.videos.like(video.id);
         
         // Le backend retourne { liked: true/false }
         const newLikedState = result?.liked ?? !isLiked;
         
-        // Si le like a été ajouté, envoyer une notification
+        // Si le like a ete ajoute, envoyer une notification
         if (!isLiked && newLikedState) {
           NotificationService.notifyVideoLike(user.id, video.id, video.creator_id);
         }
@@ -369,7 +360,7 @@ export default function Home() {
           return next;
         });
         
-        // Mettre à jour le compteur de likes (feed ou videos selon l'onglet)
+        // Mettre a jour le compteur de likes (feed ou videos selon l'onglet)
         if (activeTab === 'pourtoi') {
           queryClient.setQueryData(['feed', user?.id], (oldItems) => {
             if (!Array.isArray(oldItems)) return oldItems;
@@ -392,7 +383,7 @@ export default function Home() {
           });
         }
         
-        // Mettre à jour aussi followingVideos si nécessaire
+        // Mettre a jour aussi followingVideos si necessaire
         setFollowingVideos(prev => prev.map(v => {
           if (v.id === data.video.id) {
             return {
@@ -419,7 +410,7 @@ export default function Home() {
       const isSaved = savedVideos.has(video.id);
       await api.saves.toggle(video.id);
       if (!isSaved) {
-        toast.success('Vidéo sauvegardée');
+        toast.success('Video sauvegardee');
       }
       return !isSaved;
     },
@@ -458,7 +449,7 @@ export default function Home() {
     },
     onSuccess: () => {
       if (selectedVideo) {
-        // Mettre à jour le compteur de commentaires de manière optimiste
+        // Mettre a jour le compteur de commentaires de maniere optimiste
         queryClient.setQueryData(['videos', activeTab, user?.id], (oldData) => {
           if (!oldData) return oldData;
           return oldData.map(v => {
@@ -472,7 +463,7 @@ export default function Home() {
           });
         });
         
-        // Mettre à jour aussi followingVideos si nécessaire
+        // Mettre a jour aussi followingVideos si necessaire
         setFollowingVideos(prev => prev.map(v => {
           if (v.id === selectedVideo.id) {
             return {
@@ -484,11 +475,11 @@ export default function Home() {
         }));
       }
       
-      // Invalider les queries pour recharger depuis le backend et persister les données
+      // Invalider les queries pour recharger depuis le backend et persister les donnees
       queryClient.invalidateQueries({ queryKey: ['comments', selectedVideo?.id] });
       queryClient.invalidateQueries({ queryKey: ['videos'] });
       queryClient.invalidateQueries({ queryKey: ['feed'] });
-      toast.success('Commentaire ajouté');
+      toast.success('Commentaire ajoute');
     }
   });
 
@@ -497,7 +488,7 @@ export default function Home() {
 
 
 
-  // Préchargement des +1 et +2 (niveau TikTok) — scroll = lecture instantanée
+  // Prechargement des +1 et +2 (niveau TikTok) - scroll = lecture instantanee
   const preloadLinksRef = useRef([]);
   const preloadVideos = useCallback((items, index) => {
     if (!items || !Array.isArray(items)) return;
@@ -525,7 +516,7 @@ export default function Home() {
     preloadVideos(items, currentIndex);
   }, [currentIndex, activeTab, mainFeedItems, followingVideos, preloadVideos]);
 
-  // Handle scroll - Calcul simple de l'index actif + précharge les 2 suivantes
+  // Handle scroll - Calcul simple de l'index actif + precharge les 2 suivantes
   const handleScroll = useCallback(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -547,7 +538,7 @@ export default function Home() {
     try {
       if (method === 'wallet') {
         await api.videos.tipWithWallet(selectedVideo.id, { amount, message: extra.message });
-        toast.success(`Tip de ${amount} FCFA envoyé !`);
+        toast.success(`Tip de ${amount} FCFA envoye !`);
       } else if (method === 'orange_money' && extra.phone) {
         const result = await api.videos.tip(selectedVideo.id, {
           amount,
@@ -557,12 +548,12 @@ export default function Home() {
         if (result?.paymentUrl) {
           window.location.href = result.paymentUrl;
         } else {
-          toast.success('Tip initié. Validez sur Orange Money.');
+          toast.success('Tip initie. Validez sur Orange Money.');
         }
       } else if (['wave', 'mtn_money'].includes(method)) {
-        toast.info('Cette méthode de paiement sera disponible prochainement.');
+        toast.info('Cette methode de paiement sera disponible prochainement.');
       } else {
-        toast.error('Sélectionnez Mon Wallet ou Orange Money avec un numéro.');
+        toast.error('Selectionnez Mon Wallet ou Orange Money avec un numero.');
       }
     } catch (err) {
       toast.error(err?.apiMessage || 'Erreur lors de l\'envoi du tip');
@@ -570,10 +561,16 @@ export default function Home() {
     }
   };
 
-  // Écran de chargement initial : léger micro-delay + squelette, puis fallback spinner si réseau vraiment lent
-  if (!initialDelayDone) {
+  // Premiere video en prechargement (first impression = lecture instantanee)
+  const waitingFirstVideo =
+    activeTab === 'pourtoi' &&
+    mainFeedItems.length > 0 &&
+    mainFeedItems.some((i) => i.type === 'video') &&
+    !firstVideoPreloaded;
+  const showHomeLoading = isLoading || waitingFirstVideo;
+  if (showHomeLoading) {
     return (
-      <div className="h-[100dvh] w-full bg-black flex justify-center text-white">
+      <div className="w-full bg-black flex justify-center text-white" style={{ height: 'calc(var(--app-vh, 1vh) * 100)' }}>
         <div className="w-full sm:max-w-[400px] h-full relative flex flex-col">
           <div className="flex items-center justify-between px-4 pt-4 pb-3">
             <div className="h-6 w-24 rounded-full bg-white/10 animate-pulse" />
@@ -590,11 +587,7 @@ export default function Home() {
               <div className="h-3 w-full rounded-full bg-white/10 animate-pulse" />
               <div className="h-3 w-4/5 rounded-full bg-white/10 animate-pulse" />
             </div>
-            <div className="flex items-center gap-4">
-              <div className="h-9 w-9 rounded-full bg-white/10 animate-pulse" />
-              <div className="h-9 w-9 rounded-full bg-white/10 animate-pulse" />
-              <div className="h-9 w-9 rounded-full bg-white/10 animate-pulse" />
-            </div>
+            <Loader2 className="w-8 h-8 text-orange-500 animate-spin" aria-hidden />
           </div>
           <div className="h-[80px] border-t border-white/10 bg-black/80" />
         </div>
@@ -602,32 +595,11 @@ export default function Home() {
     );
   }
 
-  if (isLoading) {
-    return (
-      <div className="h-[100dvh] w-full flex items-center justify-center bg-black">
-        <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
-      </div>
-    );
-  }
-
-  // Première vidéo en préchargement (first impression = lecture instantanée)
-  const waitingFirstVideo =
-    activeTab === 'pourtoi' &&
-    mainFeedItems.length > 0 &&
-    mainFeedItems.some((i) => i.type === 'video') &&
-    !firstVideoPreloaded;
-  if (waitingFirstVideo) {
-    return (
-      <div className="h-[100dvh] w-full flex items-center justify-center bg-black">
-        <Loader2 className="w-10 h-10 text-orange-500 animate-spin" aria-hidden />
-      </div>
-    );
-  }
-
   return (
     <div 
-      className="h-[100dvh] w-full bg-black overflow-hidden flex justify-center"
+      className="w-full bg-black overflow-hidden flex justify-center"
       style={{
+        height: 'calc(var(--app-vh, 1vh) * 100)',
         paddingLeft: 'env(safe-area-inset-left)',
         paddingRight: 'env(safe-area-inset-right)',
         paddingTop: 'env(safe-area-inset-top)',
@@ -636,7 +608,7 @@ export default function Home() {
     >
       {/* Container vertical fixe - style TikTok desktop (400px max sur desktop, full width sur mobile) */}
       <div className="w-full sm:max-w-[400px] h-full relative flex flex-col bg-black">
-        {/* AfriWonder Logo - positionné relativement au container */}
+        {/* AfriWonder Logo - positionne relativement au container */}
         <button
           onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
           className={cn(
@@ -647,7 +619,7 @@ export default function Home() {
           <AfriWonderLogo size="sm" className="shadow-lg group-hover:shadow-xl transition-shadow" />
         </button>
 
-        {/* TopHeader - limité au container vertical avec padding pour éviter chevauchement logo */}
+        {/* TopHeader - limite au container vertical avec padding pour eviter chevauchement logo */}
         <div className="relative z-40 pl-28 sm:pl-32">
           <TopHeader 
             activeTab={activeTab}
@@ -661,7 +633,7 @@ export default function Home() {
           />
         </div>
 
-        {/* Bannières en position fixe - limitées au container vertical */}
+        {/* Bannieres en position fixe - limitees au container vertical */}
         {activeTab === 'pourtoi' && topBannerItems.length > 0 && currentIndex === 0 && (
           <div className="absolute top-16 left-0 right-0 z-40 px-3 pt-2 pb-1 gap-2 flex overflow-x-auto overflow-y-hidden no-scrollbar snap-x snap-mandatory pointer-events-auto">
             {topBannerItems.map((item, i) => (
@@ -731,18 +703,18 @@ export default function Home() {
                 />
               )}
               <span className="text-white/80 text-xs">
-                {isRefreshing ? 'Actualisation…' : pullDistance >= PULL_THRESHOLD ? 'Relâchez' : 'Tirez pour actualiser'}
+                {isRefreshing ? 'Actualisation...' : pullDistance >= PULL_THRESHOLD ? 'Relachez' : 'Tirez pour actualiser'}
               </span>
             </div>
           )}
         </div>
         {activeTab === 'abonnements' && followingVideos.length === 0 ? (
           <div className="h-full w-full flex flex-col items-center justify-center text-white px-8 text-center">
-            <p className="text-xl font-semibold mb-2">Aucune vidéo de vos abonnements</p>
-            <p className="text-gray-400 mb-4">Suivez des créateurs pour voir leurs vidéos ici</p>
+            <p className="text-xl font-semibold mb-2">Aucune video de vos abonnements</p>
+            <p className="text-gray-400 mb-4">Suivez des createurs pour voir leurs videos ici</p>
             {!user && (
               <button
-                onClick={() => window.location.href = '/Landing'}
+                onClick={() => _navigate('/Landing')}
                 className="px-6 py-3 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg font-bold hover:shadow-lg transition-all"
               >
                 S'inscrire pour commencer
@@ -751,21 +723,21 @@ export default function Home() {
           </div>
         ) : activeTab === 'pourtoi' && feedItems.length === 0 ? (
           <div className="h-full w-full flex flex-col items-center justify-center text-white px-8 text-center">
-            <p className="text-xl font-semibold mb-2">Aucune vidéo pour l'instant</p>
-            <p className="text-gray-400 mb-4">Soyez le premier à partager !</p>
+            <p className="text-xl font-semibold mb-2">Aucune video pour l'instant</p>
+            <p className="text-gray-400 mb-4">Soyez le premier a partager !</p>
             {!user ? (
               <button
-                onClick={() => window.location.href = '/Landing'}
+                onClick={() => _navigate('/Landing')}
                 className="px-6 py-3 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg font-bold hover:shadow-lg transition-all"
               >
                 S'inscrire pour commencer
               </button>
             ) : (
               <button
-                onClick={() => window.location.href = '/Create'}
+                onClick={() => _navigate('/Create')}
                 className="px-6 py-3 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg font-bold hover:shadow-lg transition-all"
               >
-                Créer votre première vidéo
+                Creer votre premiere video
               </button>
             )}
           </div>
@@ -779,7 +751,7 @@ export default function Home() {
                   <div
                     key={`ad-${item.ad?.id || index}`}
                     className="relative w-full snap-start overflow-hidden"
-                    style={{ height: '100dvh', touchAction: 'pan-y' }}
+                    style={{ height: 'calc(var(--app-vh, 1vh) * 100)', touchAction: 'pan-y' }}
                   >
                     <AdCard
                       ad={item.ad}
@@ -798,7 +770,7 @@ export default function Home() {
                 <div 
                   key={video.id}
                   className="relative w-full snap-start overflow-hidden"
-                  style={{ height: '100dvh', touchAction: 'pan-y' }}
+                  style={{ height: 'calc(var(--app-vh, 1vh) * 100)', touchAction: 'pan-y' }}
                 >
                   <VideoCard
                     video={video}
@@ -830,20 +802,20 @@ export default function Home() {
                       const result = await api.users.toggleWonder(video.creator_id);
                       const inWonder = result?.data?.inWonder ?? result?.inWonder ?? !wasInWonder;
 
-                      // Invalider les queries pour mettre à jour l'état
+                      // Invalider les queries pour mettre a jour l'etat
                       queryClient.invalidateQueries({ queryKey: ['user-follows', user.id] });
                       queryClient.invalidateQueries({ queryKey: ['follow-stats', video.creator_id] });
                       
                       if (inWonder) {
                         NotificationService.notifyNewFollower(user.id, video.creator_id);
-                        toast.success('Vous êtes maintenant dans son Wonder ✨');
+                        toast.success('Vous etes maintenant dans son Wonder');
                       } else {
-                        toast.success(`Vous avez quitté le Wonder de ${video.creator_name}`);
+                        toast.success(`Vous avez quitte le Wonder de ${video.creator_name}`);
                       }
                     }}
                     isFollowing={userFollows.some((f) => f.id === video.creator_id)}
                     onProfileClick={(creatorId) => {
-                      window.location.href = `/Profile?_userId=${creatorId}`;
+                      _navigate(`/Profile?_userId=${creatorId}`);
                     }}
                     hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
                     preload={isNeighbor ? 'auto' : 'metadata'}
@@ -892,10 +864,10 @@ export default function Home() {
         onShareSuccess={async () => {
           if (selectedVideo) {
             try {
-              // Appeler l'API backend pour incrémenter le compteur en base de données
+              // Appeler l'API backend pour incrementer le compteur en base de donnees
               await api.videos.share(selectedVideo.id);
               
-              // Mettre à jour le cache local de manière optimiste
+              // Mettre a jour le cache local de maniere optimiste
               queryClient.setQueryData(['videos', activeTab, user?.id], (oldData) => {
                 if (!oldData) return oldData;
                 return oldData.map(v => {
@@ -909,7 +881,7 @@ export default function Home() {
                 });
               });
               
-              // Mettre à jour aussi followingVideos si nécessaire
+              // Mettre a jour aussi followingVideos si necessaire
               setFollowingVideos(prev => prev.map(v => {
                 if (v.id === selectedVideo.id) {
                   return {
@@ -925,7 +897,7 @@ export default function Home() {
               queryClient.invalidateQueries({ queryKey: ['feed'] });
             } catch (error) {
               console.error('Error tracking share:', error);
-              // Ne pas bloquer l'utilisateur si l'API échoue
+              // Ne pas bloquer l'utilisateur si l'API echoue
             }
           }
         }}

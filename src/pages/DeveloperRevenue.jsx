@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { ArrowLeft, DollarSign, TrendingUp, BarChart3, Download, Calendar, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { MOCK_REVENUE_DATA, MOCK_TRANSACTIONS, COMMISSION_RATES } from '@/data/m
 import { motion } from 'framer-motion';
 
 export default function DeveloperRevenue() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [timeRange, setTimeRange] = useState('month'); // day, week, month, year
   const [selectedApp, setSelectedApp] = useState('all');
@@ -22,11 +23,11 @@ export default function DeveloperRevenue() {
         const u = await api.auth.me();
         setUser(u);
       } catch (_e) {
-        window.location.href = createPageUrl('Home');
+        navigate(createPageUrl('Home'), { replace: true });
       }
     };
     getUser();
-  }, []);
+  }, [navigate]);
 
   // Calculer les stats depuis les transactions mockées
   const totalEarnings = MOCK_TRANSACTIONS.reduce((sum, txn) => sum + txn.developer_amount, 0);
@@ -51,7 +52,7 @@ export default function DeveloperRevenue() {
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 px-4 py-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => window.history.back()}>
+          <button onClick={() => navigate(-1)}>
             <ArrowLeft className="w-6 h-6" />
           </button>
           <div className="flex-1">

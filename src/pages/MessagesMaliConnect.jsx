@@ -5,10 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Send, ArrowLeft, MessageCircle, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 
 const NEW_PREFIX = "new-";
 
 export default function MessagesMaliConnect() {
+  const navigate = useNavigate();
   const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
   const providerIdFromUrl = params.get("provider");
   const [user, setUser] = useState(null);
@@ -19,8 +21,8 @@ export default function MessagesMaliConnect() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    api.auth.me().then(setUser).catch(() => { window.location.href = "/Landing"; });
-  }, []);
+    api.auth.me().then(setUser).catch(() => { navigate("/Landing", { replace: true }); });
+  }, [navigate]);
 
   const { data: providerFromUrl } = useQuery({
     queryKey: ["provider", providerIdFromUrl],

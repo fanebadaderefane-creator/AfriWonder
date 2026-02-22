@@ -6,8 +6,10 @@ import { Search, X, TrendingUp, Package, Store } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPageUrl } from "@/utils";
 import { getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
+import { useNavigate } from "react-router-dom";
 
 export default function GlobalSearchBar({ onSearch }) {
+  const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [showResults, setShowResults] = useState(false);
   const [recentSearches, setRecentSearches] = useState([]);
@@ -59,7 +61,7 @@ export default function GlobalSearchBar({ onSearch }) {
     if (onSearch) {
       onSearch(searchQuery);
     } else {
-      window.location.href = `${createPageUrl('Marketplace')}?search=${encodeURIComponent(searchQuery)}`;
+      navigate(`${createPageUrl('Marketplace')}?search=${encodeURIComponent(searchQuery)}`);
     }
   };
 
@@ -126,10 +128,11 @@ export default function GlobalSearchBar({ onSearch }) {
               <div className="p-3 border-b">
                 <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Produits</p>
                 {results.products.map((product) => (
-                  <a
+                  <button
                     key={product.id}
-                    href={`${createPageUrl('Product')}?id=${product.id}`}
-                    className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg"
+                    type="button"
+                    onClick={() => navigate(`${createPageUrl('Product')}?id=${product.id}`)}
+                    className="w-full text-left flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg"
                   >
                     <img
                       src={getAbsoluteImageUrl(product.images?.[0]) || MARKETPLACE_PLACEHOLDER_IMG}
@@ -145,20 +148,21 @@ export default function GlobalSearchBar({ onSearch }) {
                       </p>
                     </div>
                     <Package className="w-4 h-4 text-gray-400" />
-                  </a>
+                  </button>
                 ))}
               </div>
             )}
 
             {/* Sellers */}
-            {results.sellers?.length > 0 && (
+                {results.sellers?.length > 0 && (
               <div className="p-3">
                 <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Vendeurs</p>
                 {results.sellers.map((seller) => (
-                  <a
+                  <button
                     key={seller.id}
-                    href={`${createPageUrl('SellerProfile')}?id=${seller.seller_id}`}
-                    className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg"
+                    type="button"
+                    onClick={() => navigate(`${createPageUrl('SellerProfile')}?id=${seller.seller_id}`)}
+                    className="w-full text-left flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg"
                   >
                     <img
                       src={seller.shop_logo || 'https://ui-avatars.com/api/?name=' + seller.shop_name}
@@ -170,7 +174,7 @@ export default function GlobalSearchBar({ onSearch }) {
                       <p className="text-xs text-gray-500">{seller.location}</p>
                     </div>
                     <Store className="w-4 h-4 text-gray-400" />
-                  </a>
+                  </button>
                 ))}
               </div>
             )}
@@ -187,5 +191,3 @@ export default function GlobalSearchBar({ onSearch }) {
     </div>
   );
 }
-
-

@@ -8,8 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { AlertCircle, CheckCircle2, XCircle, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 
 export default function ModerationDashboard() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [_selectedReport, setSelectedReport] = useState(null);
   const queryClient = useQueryClient();
@@ -21,16 +23,16 @@ export default function ModerationDashboard() {
         setUser(currentUser);
 
         if (currentUser.role !== "moderator" && currentUser.role !== "admin") {
-          window.location.href = "/";
+          navigate("/", { replace: true });
           return;
         }
       } catch (_error) {
-        window.location.href = "/";
+        navigate("/", { replace: true });
       }
     };
 
     fetchUser();
-  }, []);
+  }, [navigate]);
 
   // Fetch moderation stats
   const { data: stats } = useQuery({

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { ArrowLeft, Plus, Code, BarChart3, DollarSign, Settings, FileCode, Upload, CheckCircle, Clock, XCircle, TrendingUp, Zap, Rocket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { motion } from 'framer-motion';
 import { DEVELOPER_PLANS, MOCK_REVENUE_DATA } from '@/data/monetizationMock';
 
 export default function DeveloperConsole() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
 
@@ -22,11 +23,11 @@ export default function DeveloperConsole() {
         setUser(u);
       } catch (_e) {
         // Redirect to home if not authenticated
-        window.location.href = createPageUrl('Home');
+        navigate(createPageUrl('Home'), { replace: true });
       }
     };
     getUser();
-  }, []);
+  }, [navigate]);
 
   // Mock data
   const mockApps = [
@@ -97,7 +98,7 @@ export default function DeveloperConsole() {
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 px-4 py-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => window.history.back()}>
+          <button onClick={() => navigate(-1)}>
             <ArrowLeft className="w-6 h-6" />
           </button>
           <div className="flex-1">

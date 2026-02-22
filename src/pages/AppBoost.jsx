@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation, Link } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { ArrowLeft, Zap, TrendingUp, Bell, Search, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,8 @@ import { cn } from '@/lib/utils';
 
 export default function AppBoost() {
   const location = useLocation();
-  const appId = location.state?.appId || 'app-1';
+  const navigate = useNavigate();
+  const _appId = location.state?.appId || 'app-1';
   const [user, setUser] = useState(null);
   const [selectedBoost, setSelectedBoost] = useState(null);
 
@@ -23,11 +24,11 @@ export default function AppBoost() {
         const u = await api.auth.me();
         setUser(u);
       } catch (_e) {
-        window.location.href = createPageUrl('Home');
+        navigate(createPageUrl('Home'), { replace: true });
       }
     };
     getUser();
-  }, []);
+  }, [navigate]);
 
   const handlePurchaseBoost = (boostId) => {
     // Ici on pourrait appeler l'API pour acheter le boost
@@ -54,7 +55,7 @@ export default function AppBoost() {
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 px-4 py-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => window.history.back()}>
+          <button onClick={() => navigate(-1)}>
             <ArrowLeft className="w-6 h-6" />
           </button>
           <div className="flex-1">

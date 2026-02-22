@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import ModuleHero from "@/components/common/ModuleHero";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 const CONTRACT_LABELS = { cdi: "CDI", cdd: "CDD", freelance: "Freelance", internship: "Stage", parttime: "Temps partiel" };
 const CONTRACT_COLORS = { cdi: "bg-green-100 text-green-800", cdd: "bg-blue-100 text-blue-800", freelance: "bg-purple-100 text-purple-800", internship: "bg-orange-100 text-orange-800", parttime: "bg-gray-100 text-gray-800" };
@@ -23,6 +24,7 @@ async function fetchJobs() {
 }
 
 export default function JobsMaliConnect() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [city, setCity] = useState("all");
   const [contract, setContract] = useState("all");
@@ -129,7 +131,7 @@ export default function JobsMaliConnect() {
                 )}
 
                 <Button
-                  onClick={() => { if (!user) { window.location.href = "/Landing"; return; } setApplyJob(j); }}
+                  onClick={() => { if (!user) { navigate("/Landing"); return; } setApplyJob(j); }}
                   className="w-full mt-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white"
                   size="sm"
                 >

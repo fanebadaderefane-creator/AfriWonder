@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { useNavigate } from "react-router-dom";
 import BottomNav from '../components/navigation/BottomNav';
 
 function parseJson(str) {
@@ -17,6 +18,7 @@ function parseJson(str) {
 }
 
 export default function CandidateProfile() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [form, setForm] = useState({ cvUrl: '', portfolioUrl: '', phone: '', availability: '', skills: '', experience: '', education: '' });
   const queryClient = useQueryClient();
@@ -78,7 +80,7 @@ export default function CandidateProfile() {
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       <div className="sticky top-0 bg-white border-b z-40 px-4 py-3 flex items-center gap-3">
-        <button onClick={() => window.history.back()}><ArrowLeft className="w-6 h-6" /></button>
+        <button onClick={() => navigate(-1)}><ArrowLeft className="w-6 h-6" /></button>
         <h1 className="text-xl font-bold">Mon profil candidat</h1>
       </div>
 

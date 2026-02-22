@@ -11,6 +11,7 @@ import ModuleHero from "@/components/common/ModuleHero";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
+import { useNavigate } from "react-router-dom";
 
 const CAT_LABELS = { agriculture: "Agriculture", technology: "Technologie", health: "Santé", education: "Éducation", art: "Art", social: "Social", other: "Autre" };
 const CAT_COLORS = { agriculture: "bg-green-100 text-green-800", technology: "bg-blue-100 text-blue-800", health: "bg-teal-100 text-teal-800", education: "bg-purple-100 text-purple-800", art: "bg-pink-100 text-pink-800", social: "bg-orange-100 text-orange-800", other: "bg-gray-100 text-gray-800" };
@@ -22,6 +23,7 @@ async function fetchProjects() {
 }
 
 export default function CrowdfundingMaliConnect() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [supportProject, setSupportProject] = useState(null);
@@ -121,7 +123,7 @@ export default function CrowdfundingMaliConnect() {
                       </div>
                     </div>
                     <Button
-                      onClick={() => { if (!user) { window.location.href = "/Landing"; return; } setSupportProject(p); }}
+                      onClick={() => { if (!user) { navigate("/Landing"); return; } setSupportProject(p); }}
                       className="w-full rounded-xl bg-rose-500 hover:bg-rose-600 text-white"
                       size="sm"
                     >

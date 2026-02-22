@@ -4,8 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ChevronRight, ChevronLeft } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { useNavigate } from "react-router-dom";
 
 export default function StoriesPage() {
+  const navigate = useNavigate();
   const [selectedStoryIdx, setSelectedStoryIdx] = useState(0);
   const [currentStoryIdx, setCurrentStoryIdx] = useState(0);
   const [autoProgress, _setAutoProgress] = useState(true);
@@ -126,7 +128,7 @@ export default function StoriesPage() {
                 </div>
               </div>
               <button
-                onClick={() => window.history.back()}
+                onClick={() => navigate(-1)}
                 className="text-white p-2 hover:bg-white/20 rounded-full"
               >
                 <X className="w-6 h-6" />

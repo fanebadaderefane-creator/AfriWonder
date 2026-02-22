@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { ArrowLeft, Search, Star, Download, Grid3x3, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Search, Star, Grid3x3, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,7 @@ import { MOCK_MINI_APPS, MOCK_CATEGORIES, MOCK_INSTALLED_APPS } from '@/data/min
 import { cn } from '@/lib/utils';
 
 export default function MiniAppsStore() {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [user, setUser] = useState(null);
@@ -56,7 +57,7 @@ export default function MiniAppsStore() {
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 px-4 py-3">
         <div className="flex items-center gap-3 mb-3">
-          <button onClick={() => window.history.back()}>
+          <button onClick={() => navigate(-1)}>
             <ArrowLeft className="w-6 h-6" />
           </button>
           <div className="flex-1">

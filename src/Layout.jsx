@@ -12,6 +12,7 @@ import PWAInstallBanner from "@/components/pwa/PWAInstallBanner";
 import PWAUpdateToast from "@/components/pwa/PWAUpdateToast";
 import MenuPlus from "@/components/navigation/MenuPlus";
 import PageTransition from "@/components/common/PageTransition";
+import { useNativeAppEnhancements } from '@/hooks/useNativeAppEnhancements';
 
 export default function Layout({ children, currentPageName }) {
   return (
@@ -24,42 +25,44 @@ export default function Layout({ children, currentPageName }) {
 import { useOrientationLock } from '@/hooks/useOrientationLock';
 
 function LayoutContent({ children, currentPageName }) {
+  useNativeAppEnhancements();
+
   // Verrouillage orientation portrait sur mobile (Android/iOS) - fonctionne aussi dans le navigateur et PWA standalone
   useOrientationLock(true);
   
-  // Vérification supplémentaire en mode PWA standalone au chargement
+  // VÃ©rification supplÃ©mentaire en mode PWA standalone au chargement
   useEffect(() => {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches
       || window.navigator.standalone === true
       || document.referrer.includes('android-app://');
     
     if (isStandalone) {
-      // Forcer le verrouillage immédiatement en PWA standalone
+      // Forcer le verrouillage immÃ©diatement en PWA standalone
       const forceLock = async () => {
         if (screen.orientation?.lock) {
           try {
             await screen.orientation.lock('portrait');
           } catch (err) {
-            // Réessayer après un court délai
+            // RÃ©essayer aprÃ¨s un court dÃ©lai
             setTimeout(async () => {
               try {
                 await screen.orientation.lock('portrait');
               } catch (e) {
-                // Ignorer si ça échoue encore
+                // Ignorer si Ã§a Ã©choue encore
               }
             }, 500);
           }
         }
       };
       
-      // Essayer immédiatement et après un court délai
+      // Essayer immÃ©diatement et aprÃ¨s un court dÃ©lai
       forceLock();
       setTimeout(forceLock, 100);
       setTimeout(forceLock, 500);
     }
   }, []);
 
-  // Barre de défilement visible (Chrome/Safari) : injectée uniquement en WebKit pour éviter "Jeu de règles ignoré" sous Firefox
+  // Barre de dÃ©filement visible (Chrome/Safari) : injectÃ©e uniquement en WebKit pour Ã©viter "Jeu de rÃ¨gles ignorÃ©" sous Firefox
   useEffect(() => {
     const isWebKit = typeof document.documentElement.style.webkitAppearance !== 'undefined';
     if (!isWebKit) return;
@@ -84,7 +87,7 @@ function LayoutContent({ children, currentPageName }) {
   const { isOpen: isMenuOpen, closeMenu, openMenu, reopenMenuOnPath, clearReopenMenuOnPath, scheduleReopenWhenReturn } = useAppMenu();
   const location = useLocation();
 
-  // À son retour sur la page d'où il avait ouvert le menu, rouvrir le menu
+  // Ã€ son retour sur la page d'oÃ¹ il avait ouvert le menu, rouvrir le menu
   useEffect(() => {
     if (reopenMenuOnPath && location.pathname === reopenMenuOnPath) {
       openMenu();
@@ -99,10 +102,10 @@ function LayoutContent({ children, currentPageName }) {
         paddingTop: 'env(safe-area-inset-top)',
         paddingLeft: 'env(safe-area-inset-left)',
         paddingRight: 'env(safe-area-inset-right)',
-        minHeight: '100dvh',
+        minHeight: 'calc(var(--app-vh, 1vh) * 100)',
       }}
     >
-      {/* WCAG 2.1 AA 2.4.1 - Lien d'évitement */}
+      {/* WCAG 2.1 AA 2.4.1 - Lien d'Ã©vitement */}
       <a href="#main-content" className="skip-link">
         Aller au contenu principal
       </a>
@@ -126,7 +129,7 @@ function LayoutContent({ children, currentPageName }) {
           padding-top: max(16px, env(safe-area-inset-top));
         }
         
-        /* Barre de défilement WebKit : injectée en JS pour éviter "mauvais sélecteur" sous Firefox */
+        /* Barre de dÃ©filement WebKit : injectÃ©e en JS pour Ã©viter "mauvais sÃ©lecteur" sous Firefox */
         
         /* Smooth transitions */
         * {
@@ -221,12 +224,12 @@ function LayoutContent({ children, currentPageName }) {
           --gradient-end: #ef4444;
         }
 
-        /* Image optimization — content-visibility pour scroll fluide */
+        /* Image optimization â€” content-visibility pour scroll fluide */
         img {
           content-visibility: auto;
         }
 
-        /* Video — éviter will-change (trop de layers = saccades) */
+        /* Video â€” Ã©viter will-change (trop de layers = saccades) */
         video {
           content-visibility: auto;
         }
@@ -283,7 +286,7 @@ function LayoutContent({ children, currentPageName }) {
 
         /* Force portrait orientation on mobile - prevent rotation */
         @media screen and (max-width: 768px) {
-          /* Empêcher le zoom et la rotation sur mobile */
+          /* EmpÃªcher le zoom et la rotation sur mobile */
           html {
             -webkit-text-size-adjust: 100%;
             -ms-text-size-adjust: 100%;
@@ -322,7 +325,7 @@ function LayoutContent({ children, currentPageName }) {
         }}
       />
 
-      {/* Menu latéral (MenuPlus) — accessible via d'autres entrées si besoin */}
+      {/* Menu latÃ©ral (MenuPlus) â€” accessible via d'autres entrÃ©es si besoin */}
       {user && currentPageName !== 'CreateEvent' && (
         <MenuPlus
           isOpen={isMenuOpen}

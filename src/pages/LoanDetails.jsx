@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, Heart } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import BottomNav from '../components/navigation/BottomNav';
 import { MOCK_LOANS } from '@/data/microcreditMock';
 
 export default function LoanDetails() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const loanId = searchParams.get('id');
   const [user, setUser] = useState(null);
@@ -96,7 +97,7 @@ export default function LoanDetails() {
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 px-4 py-3 flex items-center gap-3">
-        <button onClick={() => window.history.back()}>
+        <button onClick={() => navigate(-1)}>
           <ArrowLeft className="w-6 h-6" />
         </button>
         <h1 className="text-lg font-bold flex-1 truncate">Détails du prêt</h1>
@@ -203,4 +204,3 @@ export default function LoanDetails() {
     </div>
   );
 }
-

@@ -1,7 +1,7 @@
-// @ts-nocheck
+﻿// @ts-nocheck
 /**
- * Player vidéo TikTok-style - Lecture fluide immédiate sans buffer
- * Modifié selon demande utilisateur : lecture directe sans messages de chargement
+ * Player vidÃ©o TikTok-style - Lecture fluide immÃ©diate sans buffer
+ * ModifiÃ© selon demande utilisateur : lecture directe sans messages de chargement
  */
 import React, { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import {
@@ -22,6 +22,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, getVideoPlaybackUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG } from "@/lib/utils";
+import VideoFrameThumbnail from './VideoFrameThumbnail';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { useTranslation } from "@/components/common/useTranslation";
@@ -42,8 +43,8 @@ const extractHashtags = (description) => {
 // Fonction pour extraire la musique de la description
 const extractMusicTitle = (description) => {
   if (!description) return null;
-  // Chercher le pattern "🎵 Musique: ..."
-  const musicMatch = description.match(/🎵 Musique:\s*(.+?)(?:\n|$)/);
+  // Chercher le pattern "ðŸŽµ Musique: ..."
+  const musicMatch = description.match(/ðŸŽµ Musique:\s*(.+?)(?:\n|$)/);
   return musicMatch ? musicMatch[1].trim() : null;
 };
 
@@ -52,7 +53,7 @@ const cleanDescription = (description) => {
   if (!description) return '';
   return description
     .replace(/\n\n#[\w\s#]+/g, '') // Retirer les hashtags
-    .replace(/\n\n🎵 Musique:.*/g, '') // Retirer le texte de musique
+    .replace(/\n\nðŸŽµ Musique:.*/g, '') // Retirer le texte de musique
     .trim();
 };
 
@@ -85,7 +86,7 @@ function VideoCardContent({
   const lastTimeUpdateRef = useRef(0);
   const navigate = useNavigate();
   
-  // Extraire les hashtags et la musique - gérer le cas où hashtags peut être une chaîne JSON
+  // Extraire les hashtags et la musique - gÃ©rer le cas oÃ¹ hashtags peut Ãªtre une chaÃ®ne JSON
   let hashtags = video.hashtags;
   if (typeof hashtags === 'string') {
     try {
@@ -114,8 +115,8 @@ function VideoCardContent({
   const hasAppliedStartTimeRef = useRef(false);
   const [shouldRestoreSound, setShouldRestoreSound] = useState(false);
 
-  // Détection iOS / mobile pour adapter le comportement vidéo
-  // Important pour éviter les bugs de décodage vidéo et de ressources sur Safari iOS
+  // DÃ©tection iOS / mobile pour adapter le comportement vidÃ©o
+  // Important pour Ã©viter les bugs de dÃ©codage vidÃ©o et de ressources sur Safari iOS
   const isIOS =
     typeof navigator !== 'undefined' &&
     /iP(ad|hone|od)/i.test(navigator.userAgent || '');
@@ -133,7 +134,7 @@ function VideoCardContent({
   const [showParticles, setShowParticles] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
 
-  // Connexion lente (2G/3G/saveData) → préférer basse qualité si dispo (objectif Afrique)
+  // Connexion lente (2G/3G/saveData) â†’ prÃ©fÃ©rer basse qualitÃ© si dispo (objectif Afrique)
   const slowConnection = useMemo(() => {
     if (typeof navigator === 'undefined' || !navigator.connection) return false;
     const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
@@ -142,7 +143,7 @@ function VideoCardContent({
     return slow;
   }, []);
 
-  // Liste de sources de secours : si une source échoue, on passe automatiquement à la suivante.
+  // Liste de sources de secours : si une source Ã©choue, on passe automatiquement Ã  la suivante.
   const playbackUrls = useMemo(() => {
     const out = [];
     const pushUrl = (raw) => {
@@ -174,9 +175,14 @@ function VideoCardContent({
     setSourceIndex(0);
   }, [video.id, playbackUrls.join('|')]);
 
+  useEffect(() => {
+    // Always restore a visual cover at source/video switch to avoid black first paint.
+    setShowFrameCover(true);
+  }, [video.id, videoUrl]);
+
   const isHls = useMemo(() => /\.m3u8(\?|$)/i.test(videoUrl || ''), [videoUrl]);
 
-  // Source vidéo : lecture directe uniquement pour éviter les doubles téléchargements via proxy.
+  // Source vidÃ©o : lecture directe uniquement pour Ã©viter les doubles tÃ©lÃ©chargements via proxy.
   const videoSrc = isHls ? undefined : videoUrl;
   
   const posterUrl = useMemo(
@@ -186,10 +192,11 @@ function VideoCardContent({
 
   const [loadError, setLoadError] = useState(false);
   const [isReadyToPlay, setIsReadyToPlay] = useState(false);
+  const [showFrameCover, setShowFrameCover] = useState(true);
 
   const { t } = useTranslation();
   
-  // Affichage séparé: titre et description sur des lignes distinctes
+  // Affichage sÃ©parÃ©: titre et description sur des lignes distinctes
   const titleText = (video.title || '').trim();
   const descriptionText = (displayDescription || '').trim();
   const combinedText = [titleText, descriptionText].filter(Boolean).join(' ');
@@ -203,7 +210,7 @@ function VideoCardContent({
   const renderTextWithHashtags = (text) => {
     if (!text) return null;
     
-    // Séparer le texte en parties : texte normal et hashtags
+    // SÃ©parer le texte en parties : texte normal et hashtags
     const parts = [];
     let lastIndex = 0;
     const hashtagRegex = /#(\w+)/g;
@@ -252,11 +259,11 @@ function VideoCardContent({
     );
   };
   
-  // Réinitialiser complètement quand la vidéo change (CRITIQUE pour éviter erreurs de chargement)
+  // RÃ©initialiser complÃ¨tement quand la vidÃ©o change (CRITIQUE pour Ã©viter erreurs de chargement)
   useEffect(() => {
     const el = videoRef.current;
     
-    // Vérifier que l'URL est valide avant de continuer
+    // VÃ©rifier que l'URL est valide avant de continuer
     if (!videoUrl || videoUrl.trim() === '') {
       setLoadError(true);
       setIsReadyToPlay(false);
@@ -279,14 +286,14 @@ function VideoCardContent({
     viewRecordedRef.current = false;
     hasPlayedOnceRef.current = false;
     
-    // Pause + reset time uniquement (pas de load() — cause écran noir)
+    // Pause + reset time uniquement (pas de load() â€” cause Ã©cran noir)
     if (el) {
       el.pause();
       el.currentTime = 0;
     }
   }, [video.id, videoUrl]);
   
-  // Handler pour le like avec mise à jour optimiste du compteur et animation
+  // Handler pour le like avec mise Ã  jour optimiste du compteur et animation
   const handleLike = () => {
     const wasLiked = isLiked;
     
@@ -311,7 +318,7 @@ function VideoCardContent({
       setTimeout(() => setShowParticles(false), 800);
     }
     
-    // Mise à jour optimiste du compteur
+    // Mise Ã  jour optimiste du compteur
     if (wasLiked) {
       setLikeCount(prev => Math.max(0, prev - 1));
     } else {
@@ -375,7 +382,7 @@ function VideoCardContent({
     }
   };
 
-  // HLS (.m3u8) — Netflix/TikTok : qualité adaptative, buffer intelligent, optimisé Afrique
+  // HLS (.m3u8) â€” Netflix/TikTok : qualitÃ© adaptative, buffer intelligent, optimisÃ© Afrique
   useEffect(() => {
     const el = videoRef.current;
     if (!el || !videoUrl || !isHls) return;
@@ -454,7 +461,7 @@ function VideoCardContent({
     
   }, [isActive, videoUrl, isHls, video.start_time, hasFallbackSource, moveToNextSource]);
 
-  // MP4 : autoplay propre — readyState >= 2 ou canplay (une fois)
+  // MP4 : autoplay propre â€” readyState >= 2 ou canplay (une fois)
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
@@ -552,8 +559,8 @@ function VideoCardContent({
   }, [isActive, isHls, video.start_time, videoUrl]);
 
   // IMPORTANT: ne pas supprimer ce garde-fou.
-  // Sans ce bloc, une vidéo précédente peut continuer à jouer après swipe (audio fantôme + écran noir perçu).
-  // Règle produit: une seule vidéo active à la fois dans le feed.
+  // Sans ce bloc, une vidÃ©o prÃ©cÃ©dente peut continuer Ã  jouer aprÃ¨s swipe (audio fantÃ´me + Ã©cran noir perÃ§u).
+  // RÃ¨gle produit: une seule vidÃ©o active Ã  la fois dans le feed.
   useEffect(() => {
     if (!isActive || typeof document === 'undefined') return;
     const el = videoRef.current;
@@ -566,7 +573,7 @@ function VideoCardContent({
     });
   }, [isActive, video.id, videoUrl]);
 
-  // Sync muted seulement (comme l'ami) — ne pas appeler play() ici
+  // Sync muted seulement (comme l'ami) â€” ne pas appeler play() ici
   useEffect(() => {
     const el = videoRef.current;
     if (el && hasAutoPlayedRef.current && shouldRestoreSound) {
@@ -575,7 +582,7 @@ function VideoCardContent({
     }
   }, [isMuted]);
 
-  // Onglet masqué → pause ; au retour reprendre seulement si assez de buffer (évite buffer→joue→buffer)
+  // Onglet masquÃ© â†’ pause ; au retour reprendre seulement si assez de buffer (Ã©vite bufferâ†’joueâ†’buffer)
   useEffect(() => {
     const handleVisibilityChange = () => {
       const el = videoRef.current;
@@ -606,7 +613,7 @@ function VideoCardContent({
   }, [isActive, loadError, isMuted]);
 
   /* ================= VIDEO =================
-   * Une source de play (useEffect isActive). Démarrage dès readyState >= 2 (loadeddata). */
+   * Une source de play (useEffect isActive). DÃ©marrage dÃ¨s readyState >= 2 (loadeddata). */
 
   const handlePlayPause = () => {
     if (!videoRef.current || loadError) return;
@@ -653,7 +660,7 @@ function VideoCardContent({
     userPausedRef.current = false;
     el.pause();
     el.currentTime = 0;
-    // Recharge explicite seulement au clic utilisateur "Réessayer".
+    // Recharge explicite seulement au clic utilisateur "RÃ©essayer".
     el.load();
     if (isActive) {
       const retryPlay = () => {
@@ -684,6 +691,7 @@ function VideoCardContent({
     const safeRange = Math.max(0.001, endTime - startTime);
     const clampedTime = Math.max(startTime, Math.min(endTime, videoRef.current.currentTime));
     const pct = ((clampedTime - startTime) / safeRange) * 100;
+    if (clampedTime > startTime + 0.05) setShowFrameCover(false);
 
     // Throttle setState pour limiter les re-renders (surtout mobile)
     const now = Date.now();
@@ -726,6 +734,7 @@ function VideoCardContent({
     const el = videoRef.current;
     if (!el || loadError || !isActive) return;
     setIsReadyToPlay(true);
+    if ((el.currentTime || 0) > ((video.start_time || 0) + 0.05)) setShowFrameCover(false);
   };
 
   const handleWaiting = () => {};
@@ -751,23 +760,25 @@ function VideoCardContent({
     }
     hasPlayedOnceRef.current = true;
     setIsPlaying(true);
+    const current = videoRef.current?.currentTime || 0;
+    if (current > ((video.start_time || 0) + 0.05)) setShowFrameCover(false);
   };
 
   const handlePause = () => {
     setIsPlaying(false);
   };
 
-  // canplaythrough supprimé : on démarre sur loadeddata (readyState >= 2) pour lecture immédiate, pas d’attente full buffer.
+  // canplaythrough supprimÃ© : on dÃ©marre sur loadeddata (readyState >= 2) pour lecture immÃ©diate, pas dâ€™attente full buffer.
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Prévisualisation au survol/drag de la barre
+  // PrÃ©visualisation au survol/drag de la barre
   useEffect(() => {
-    // Sur iOS / mobile, on désactive la vidéo cachée de prévisualisation
-    // pour éviter les bugs "vidéo indisponible" après la première lecture.
+    // Sur iOS / mobile, on dÃ©sactive la vidÃ©o cachÃ©e de prÃ©visualisation
+    // pour Ã©viter les bugs "vidÃ©o indisponible" aprÃ¨s la premiÃ¨re lecture.
     if (!enablePreviewScrub) return;
     if (!isDragging || !previewVideoRef.current || !previewCanvasRef.current || !videoUrl) return;
     const prev = previewVideoRef.current;
@@ -777,7 +788,7 @@ function VideoCardContent({
     prev.currentTime = targetTime;
   }, [isDragging, currentTime, videoUrl]);
 
-  /** Dessine une frame vidéo dans le canvas de prévisualisation (desktop: vidéo cachée, mobile: vidéo principale) */
+  /** Dessine une frame vidÃ©o dans le canvas de prÃ©visualisation (desktop: vidÃ©o cachÃ©e, mobile: vidÃ©o principale) */
   const drawVideoFrameToCanvas = (videoEl, canvasEl) => {
     if (!videoEl || !canvasEl || videoEl.readyState < 2) return;
     const ctx = canvasEl.getContext('2d');
@@ -806,7 +817,7 @@ function VideoCardContent({
     try {
       ctx.drawImage(videoEl, sx, sy, sw, sh, 0, 0, cw, ch);
     } catch (_e) {
-      // CORS ou vidéo cross-origin peut bloquer drawImage
+      // CORS ou vidÃ©o cross-origin peut bloquer drawImage
     }
   };
 
@@ -816,7 +827,7 @@ function VideoCardContent({
     if (prev && canvas) drawVideoFrameToCanvas(prev, canvas);
   };
 
-  /** Sur mobile: quand la vidéo principale a seeked pendant le drag, on dessine la frame dans la carte */
+  /** Sur mobile: quand la vidÃ©o principale a seeked pendant le drag, on dessine la frame dans la carte */
   const handleMainVideoSeeked = () => {
     if (!enablePreviewScrub && isDragging && videoRef.current && previewCanvasRef.current) {
       drawVideoFrameToCanvas(videoRef.current, previewCanvasRef.current);
@@ -945,7 +956,7 @@ function VideoCardContent({
         onProgress={handleProgress}
         onLoadedMetadata={handleLoadedMetadata}
         onCanPlay={handleCanPlay}
-        onLoadStart={() => { setIsReadyToPlay(false); setLoadError(false); }}
+        onLoadStart={() => { setIsReadyToPlay(false); setLoadError(false); setShowFrameCover(true); }}
         onWaiting={handleWaiting}
         onPlaying={handlePlaying}
         onPause={handlePause}
@@ -963,10 +974,11 @@ function VideoCardContent({
           
           setIsReadyToPlay(false);
           setIsPlaying(false);
+          setShowFrameCover(true);
           
-          // Log détaillé en développement
+          // Log dÃ©taillÃ© en dÃ©veloppement
           if (process.env.NODE_ENV === 'development') {
-            console.warn('Erreur de chargement vidéo:', {
+            console.warn('Erreur de chargement vidÃ©o:', {
               videoId: video.id,
               videoUrl: video.video_url,
               errorCode,
@@ -976,7 +988,7 @@ function VideoCardContent({
             });
           }
           
-          // Afficher l'erreur après délai (pas de load() — évite écran noir)
+          // Afficher l'erreur aprÃ¨s dÃ©lai (pas de load() â€” Ã©vite Ã©cran noir)
           setTimeout(() => {
             if (videoElement && videoElement.error && isActive) {
               setLoadError(true);
@@ -989,9 +1001,9 @@ function VideoCardContent({
           touchAction: 'pan-y',
           filter: video.filter === 'Normal' || !video.filter ? 'none' :
                   video.filter === 'Noir & Blanc' ? 'grayscale(100%)' :
-                  video.filter === 'Sépia' ? 'sepia(100%)' :
+                  video.filter === 'SÃ©pia' ? 'sepia(100%)' :
                   video.filter === 'Vibrant' ? 'saturate(200%)' :
-                  video.filter === 'Foncé' ? 'brightness(0.75)' :
+                  video.filter === 'FoncÃ©' ? 'brightness(0.75)' :
                   video.filter === 'Lumineux' ? 'brightness(1.25)' : 'none'
         }}
       />
@@ -1005,11 +1017,20 @@ function VideoCardContent({
               className="max-w-full max-h-[50%] object-contain rounded-lg opacity-80"
             />
           ) : null}
-          <p className="text-white text-center mt-4 font-medium ios-text-render">Vidéo indisponible</p>
-          <p className="text-white/70 text-sm text-center mt-1 ios-text-render">URL de vidéo invalide</p>
+          <p className="text-white text-center mt-4 font-medium ios-text-render">VidÃ©o indisponible</p>
+          <p className="text-white/70 text-sm text-center mt-1 ios-text-render">URL de vidÃ©o invalide</p>
         </div>
       )}
-      {/* Vidéo cachée pour la prévisualisation au scrub */}
+      {/* VidÃ©o cachÃ©e pour la prÃ©visualisation au scrub */}
+      {videoUrl && !loadError && showFrameCover && (
+        <div className="absolute inset-0 z-[5] pointer-events-none">
+          <VideoFrameThumbnail
+            videoUrl={video.video_url || videoUrl}
+            alt={video.title || ''}
+            className="w-full h-full"
+          />
+        </div>
+      )}
       {videoUrl && enablePreviewScrub && (
         <video
           ref={previewVideoRef}
@@ -1036,14 +1057,14 @@ function VideoCardContent({
               className="max-w-full max-h-[50%] object-contain rounded-lg opacity-80"
             />
           ) : null}
-          <p className="text-white text-center mt-4 font-medium ios-text-render">Vidéo indisponible</p>
-          <p className="text-white/70 text-sm text-center mt-1 ios-text-render">Impossible de charger la vidéo</p>
+          <p className="text-white text-center mt-4 font-medium ios-text-render">VidÃ©o indisponible</p>
+          <p className="text-white/70 text-sm text-center mt-1 ios-text-render">Impossible de charger la vidÃ©o</p>
           <button
             type="button"
             onClick={handleRetryLoad}
             className="mt-4 px-6 py-2.5 bg-white text-black rounded-full font-semibold hover:bg-gray-200 active:scale-95 transition-transform ios-text-render"
           >
-            Réessayer
+            RÃ©essayer
           </button>
         </div>
       )}
@@ -1101,7 +1122,7 @@ function VideoCardContent({
             onTouchStart={handleProgressTouchStart}
             onClick={handleProgressClick}
           >
-            {/* Prévisualisation au survol/drag (style YouTube) — desktop: vidéo cachée remplit le canvas ; mobile: vidéo principale onSeeked remplit le canvas */}
+            {/* PrÃ©visualisation au survol/drag (style YouTube) â€” desktop: vidÃ©o cachÃ©e remplit le canvas ; mobile: vidÃ©o principale onSeeked remplit le canvas */}
             {isDragging && (
               <div
                 className="absolute bottom-full left-0 mb-2 pointer-events-none"
@@ -1208,7 +1229,7 @@ function VideoCardContent({
             </motion.div>
           </button>
           
-          {/* Particules animées */}
+          {/* Particules animÃ©es */}
           <AnimatePresence>
             {showParticles && (
               <>
@@ -1417,7 +1438,7 @@ function VideoCardContent({
           )}
         </div>
 
-        {/* Titre + description (séparés) avec hashtags cliquables */}
+        {/* Titre + description (sÃ©parÃ©s) avec hashtags cliquables */}
         {(titleText || descriptionText) && (
           <div className="mb-2">
             {titleText && (
@@ -1455,7 +1476,7 @@ function VideoCardContent({
           </div>
         )}
 
-        {/* Signal social compact : on montre toujours les compteurs, même faibles */}
+        {/* Signal social compact : on montre toujours les compteurs, mÃªme faibles */}
         <div className="flex flex-wrap items-center gap-3 mb-2 text-white/70 text-[11px]">
           <span>
             {(() => {
@@ -1480,7 +1501,7 @@ function VideoCardContent({
           </span>
         </div>
 
-        {/* Hashtags - afficher quand présents et non déjà dans le texte */}
+        {/* Hashtags - afficher quand prÃ©sents et non dÃ©jÃ  dans le texte */}
         {hashtags.length > 0 && (!combinedText || !combinedText.match(/#\w+/g)) && (
           <div className="flex flex-wrap gap-2 mb-2">
             {hashtags.slice(0, 3).map((tag, index) => (
@@ -1521,3 +1542,4 @@ function VideoCardContent({
 }
 
 export default memo(VideoCardContent);
+

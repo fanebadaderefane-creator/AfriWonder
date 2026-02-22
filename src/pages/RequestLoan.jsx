@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 import BottomNav from '../components/navigation/BottomNav';
 
 export default function RequestLoan() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [loanData, setLoanData] = useState({
     amount_requested: 0,
@@ -26,11 +28,11 @@ export default function RequestLoan() {
         const u = await api.auth.me();
         setUser(u);
       } catch (_e) {
-        window.location.href = '/';
+        navigate('/', { replace: true });
       }
     };
     getUser();
-  }, []);
+  }, [navigate]);
 
   const requestLoanMutation = useMutation({
     mutationFn: async () => {
@@ -49,7 +51,7 @@ export default function RequestLoan() {
     onSuccess: () => {
       toast.success('Demande envoyée! Elle sera visible par les prêteurs.');
       setTimeout(() => {
-        window.location.href = '/Microcredit';
+        navigate('/Microcredit');
       }, 1500);
     },
     onError: (e) => {
@@ -64,7 +66,7 @@ export default function RequestLoan() {
     <div className="min-h-screen bg-gray-50 pb-24">
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 px-4 py-3 flex items-center gap-3">
-        <button onClick={() => window.history.back()}>
+        <button onClick={() => navigate(-1)}>
           <ArrowLeft className="w-6 h-6" />
         </button>
         <h1 className="text-lg font-bold">Demander un prêt</h1>

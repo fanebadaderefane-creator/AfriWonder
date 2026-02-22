@@ -5,6 +5,7 @@ import { Heart, MapPin, Star, BadgeCheck, Play, Shield } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn, getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
 import { useMarketplaceCurrency } from '@/contexts/MarketplaceCurrencyContext';
+import { useNavigate } from 'react-router-dom';
 
 const paymentIcons = {
   orange_money: '🟠',
@@ -21,6 +22,7 @@ export default function ProductCard({
   onLike,
   isLiked = false 
 }) {
+  const navigate = useNavigate();
   const { formatPrice: formatPriceFromContext } = useMarketplaceCurrency();
   const [imgError, setImgError] = useState(false);
   const formatPrice = (price) => {
@@ -113,7 +115,7 @@ export default function ProductCard({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                window.location.href = `/SellerProfile?id=${product.seller_id}`;
+                navigate(`/SellerProfile?id=${product.seller_id}`);
               }}
               className="flex items-center gap-2 hover:opacity-70 transition-opacity"
             >
@@ -155,7 +157,7 @@ export default function ProductCard({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              window.location.href = `/Product?id=${product.id}`;
+              navigate(`/Product?id=${product.id}`);
             }}
             className="mt-3 w-full py-2.5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg font-semibold text-sm hover:shadow-lg transition-all active:scale-95"
           >

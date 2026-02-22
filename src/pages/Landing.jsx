@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/expressClient';
 import { motion } from 'framer-motion';
@@ -34,6 +34,7 @@ function isIOS() {
 const EARLY_ACCESS_MESSAGE = "AfriWonder est en version Beta / Early Access. Nous construisons ensemble. Vos retours sont précieux et certains bugs peuvent exister. Merci de votre soutien !";
 
 export default function Landing() {
+  const navigate = useNavigate();
   const { login, register, authError } = useAuth();
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
   const [loginEmail, setLoginEmail] = useState('');
@@ -396,7 +397,7 @@ export default function Landing() {
                 try {
                   await login(loginEmail.trim(), loginPassword);
                   toast.success('Connexion réussie !');
-                  window.location.href = '/';
+                  navigate('/', { replace: true });
                 } catch {
                   // authError already set by AuthContext
                 } finally {
@@ -464,7 +465,7 @@ export default function Landing() {
                     password: regPassword,
                   });
                   toast.success('Compte créé ! Bienvenue sur AfriWonder.');
-                  window.location.href = '/';
+                  navigate('/', { replace: true });
                 } catch {
                   // authError already set
                 } finally {
@@ -692,7 +693,7 @@ export default function Landing() {
                         type="number"
                         min={1}
                         max={120}
-                        placeholder="Âge (optionnel)"
+                        placeholder="Age (optionnel)"
                         value={donationAge}
                         onChange={(e) => setDonationAge(e.target.value)}
                         className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"

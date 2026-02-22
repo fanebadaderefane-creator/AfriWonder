@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Bell, MessageSquare, Gift, Zap } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import { useNavigate } from "react-router-dom";
 
 export default function NotificationPreferences() {
+  const navigate = useNavigate();
   const [preferences, setPreferences] = useState({
     push_enabled: true,
     email_enabled: true,
@@ -149,7 +151,7 @@ export default function NotificationPreferences() {
 
       <div className="mt-8 flex gap-2 justify-end">
         <Button
-          onClick={() => window.history.back()}
+          onClick={() => navigate(-1)}
           variant="outline"
         >
           Retour

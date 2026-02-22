@@ -39,8 +39,8 @@ export default function ProviderDashboardMaliConnect() {
   const [savingProfile, setSavingProfile] = useState(false);
 
   useEffect(() => {
-    api.auth.me().then(setUser).catch(() => { window.location.href = "/Landing"; });
-  }, []);
+    api.auth.me().then(setUser).catch(() => { navigate("/Landing", { replace: true }); });
+  }, [navigate]);
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ["my-provider-profile", user?.id],

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { api } from "@/api/expressClient";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -80,17 +81,18 @@ async function fetchFlaggedReviews() {
 
 export default function AdminDashboard() {
   const { user, isAuthenticated, isLoadingAuth } = useAuth();
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const queryClient = useQueryClient();
 
   useEffect(() => {
     if (isLoadingAuth) return;
     if (!isAuthenticated) {
-      window.location.href = "/Landing";
+      navigate("/Landing", { replace: true });
       return;
     }
-    if (user?.role !== "admin") window.location.href = "/";
-  }, [user, isAuthenticated, isLoadingAuth]);
+    if (user?.role !== "admin") navigate("/", { replace: true });
+  }, [user, isAuthenticated, isLoadingAuth, navigate]);
 
   const { data: allProviders = [] } = useQuery({ queryKey: ["admin-providers"], queryFn: fetchAllProviders, enabled: !!user });
   const { data: allUsers = [] } = useQuery({ queryKey: ["admin-users"], queryFn: fetchAllUsers, enabled: !!user });

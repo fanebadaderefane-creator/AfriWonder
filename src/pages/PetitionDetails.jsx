@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { ArrowLeft, CheckCircle, Loader2, Heart, Flag, MessageCircle, ThumbsUp, Gift } from 'lucide-react';
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import BottomNav from '../components/navigation/BottomNav';
 
 export default function PetitionDetails() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const petitionId = searchParams.get('id');
   const [user, setUser] = useState(null);
@@ -170,7 +171,7 @@ export default function PetitionDetails() {
   return (
     <div className="min-h-screen bg-white pb-20">
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 px-4 py-3 flex items-center gap-3">
-        <button onClick={() => window.history.back()}>
+        <button onClick={() => navigate(-1)}>
           <ArrowLeft className="w-6 h-6" />
         </button>
         <h1 className="text-lg font-bold flex-1 truncate">Pétition</h1>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { ArrowLeft, Check, Zap, Crown, Rocket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 export default function DeveloperSubscription() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [selectedPlan, setSelectedPlan] = useState('pro');
 
@@ -21,11 +22,11 @@ export default function DeveloperSubscription() {
         const u = await api.auth.me();
         setUser(u);
       } catch (_e) {
-        window.location.href = createPageUrl('Home');
+        navigate(createPageUrl('Home'), { replace: true });
       }
     };
     getUser();
-  }, []);
+  }, [navigate]);
 
   const handleSubscribe = (planId) => {
     // Ici on pourrait appeler l'API pour souscrire
@@ -51,7 +52,7 @@ export default function DeveloperSubscription() {
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 px-4 py-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => window.history.back()}>
+          <button onClick={() => navigate(-1)}>
             <ArrowLeft className="w-6 h-6" />
           </button>
           <div className="flex-1">

@@ -31,6 +31,7 @@ import FeaturedVideoSelector from '../components/video/FeaturedVideoSelector';
 import SubscriptionTiers from '../components/creator/SubscriptionTiers';
 
 import { useAppMenu } from '@/contexts/AppMenuContext';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 
 
@@ -59,12 +60,13 @@ export default function Profile() {
   const [showFeaturedSelector, setShowFeaturedSelector] = useState(false);
 
   const [showSubscriptionTiers, setShowSubscriptionTiers] = useState(false);
+  const [pendingDeleteVideo, setPendingDeleteVideo] = useState(null);
 
 
 
   const [searchParams] = useSearchParams();
 
-  // Déterminer profileUserId depuis l'URL (userId ou _userId) puis charger l'utilisateur courant
+  // Determiner profileUserId depuis l'URL (userId ou _userId) puis charger l'utilisateur courant
   useEffect(() => {
     const urlUserId = searchParams.get('userId') || searchParams.get('_userId');
 
@@ -72,7 +74,7 @@ export default function Profile() {
       try {
         const u = await api.auth.me();
         setUser(u);
-        // Ne jamais écraser : si l'URL a un userId, c'est le profil à afficher
+        // Ne jamais ecraser : si l'URL a un userId, c'est le profil a afficher
         if (!urlUserId || urlUserId === u.id) {
           setIsOwnProfile(true);
           setProfileUserId(u.id);
@@ -152,29 +154,23 @@ export default function Profile() {
   const videos = videosData?.pages?.flatMap((p) => p.videos ?? []) ?? [];
 
   const handleDeleteVideo = async (video) => {
+    setPendingDeleteVideo(video);
+  };
 
-    if (!window.confirm('Supprimer cette vidéo ? Cette action est irréversible.')) return;
-
+  const confirmDeleteVideo = async () => {
+    if (!pendingDeleteVideo) return;
     try {
-
-      await api.videos.delete(video.id);
-
+      await api.videos.delete(pendingDeleteVideo.id);
       queryClient.invalidateQueries({ queryKey: ['videos'] });
-
       queryClient.invalidateQueries({ queryKey: ['profile-videos', profileUserId] });
-
       await refetchVideos();
-
-      toast.success('Vidéo supprimée');
-
+      toast.success('Video supprimee');
     } catch (err) {
-
       console.error(err);
-
       toast.error('Erreur lors de la suppression');
-
+    } finally {
+      setPendingDeleteVideo(null);
     }
-
   };
 
 
@@ -189,7 +185,7 @@ export default function Profile() {
 
       if (!profileUserId) return [];
 
-      // Récupérer toutes les vidéos sauvegardées sans limite
+      // Recuperer toutes les videos sauvegardees sans limite
 
       const result = await api.saves.list({ user_id: profileUserId, page: 1, limit: 30 });
 
@@ -215,7 +211,7 @@ export default function Profile() {
 
       try {
 
-        // Utiliser la méthode dédiée pour les vidéos likées (sans limite)
+        // Utiliser la methode dediee pour les videos likees (sans limite)
 
         const videos = await api.users.getLikedVideos(profileUserId, { limit: 30 });
 
@@ -225,19 +221,19 @@ export default function Profile() {
 
         }
 
-        // Fallback: utiliser l'entité Like si nécessaire
+        // Fallback: utiliser l'entite Like si necessaire
 
         const likes = await api.entities.Like.filter({ user_id: profileUserId }, '', 0);
 
         if (!likes || likes.length === 0) return [];
 
-        // Extraire les IDs des vidéos likées
+        // Extraire les IDs des videos likees
 
         const videoIds = likes.map(l => l.video_id || l.id).filter(Boolean);
 
         if (videoIds.length === 0) return [];
 
-        // Récupérer chaque vidéo (sans limite)
+        // Recuperer chaque video (sans limite)
 
         const fallbackVideos = await Promise.all(
 
@@ -277,7 +273,7 @@ export default function Profile() {
 
       if (!profileUserId) return [];
 
-      // Récupérer tous les produits sans limite
+      // Recuperer tous les produits sans limite
 
       const result = await api.products.list({ seller_id: profileUserId, page: 1, limit: 50 });
 
@@ -291,7 +287,7 @@ export default function Profile() {
 
 
 
-  // Fetch order stats (analytics acheteur) — propre profil uniquement
+  // Fetch order stats (analytics acheteur) - propre profil uniquement
   const { data: orderStats } = useQuery({
     queryKey: ['order-stats', profileUserId],
     queryFn: () => api.orders.getStats(),
@@ -364,7 +360,7 @@ export default function Profile() {
 
 
 
-  // Sync isFollowing depuis profileUser ou getFollowing (Wonder = Follow synchronisé)
+  // Sync isFollowing depuis profileUser ou getFollowing (Wonder = Follow synchronise)
   useEffect(() => {
     if (isOwnProfile || !profileUserId) return;
     if (profileUser?.isFollowing !== undefined) {
@@ -422,7 +418,7 @@ export default function Profile() {
 
   
 
-  // Publier = visibles (public + abonnes), Brouillons = privé
+  // Publier = visibles (public + abonnes), Brouillons = prive
   const publishedVideos = videos.filter((v) => v.visibility !== 'prive');
   const draftVideos = videos.filter((v) => v.visibility === 'prive');
   const totalVideosCount = publishedVideos.length;
@@ -451,7 +447,7 @@ export default function Profile() {
 
       if (inWonder) {
 
-        toast.success('Vous êtes maintenant dans son Wonder ✨');
+        toast.success('Vous etes maintenant dans son Wonder');
 
       }
 
@@ -502,7 +498,7 @@ export default function Profile() {
               className="relative w-full h-full overflow-hidden bg-gray-200"
 
             >
-              {/* Avec miniature valide : afficher vidéo + poster ; sinon utiliser une frame de la vidéo ou placeholder */}
+              {/* Avec miniature valide : afficher video + poster ; sinon utiliser une frame de la video ou placeholder */}
               {video.video_url && isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
                 <>
                   <video
@@ -521,13 +517,13 @@ export default function Profile() {
                       }
                     }}
                   />
-                  {/* Si le poster échoue : afficher une frame de la vidéo au lieu de noir */}
+                  {/* Si le poster echoue : afficher une frame de la video au lieu de noir */}
                   <div className="video-fallback-img hidden absolute inset-0 w-full h-full">
                     <VideoFrameThumbnail videoUrl={video.video_url} alt={video.title} className="w-full h-full" />
                   </div>
                 </>
               ) : null}
-              {/* Sans miniature ajoutée à la création : couverture = frame extraite de la vidéo */}
+              {/* Sans miniature ajoutee a la creation : couverture = frame extraite de la video */}
               {!isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
                 video.video_url ? (
                   <div className="absolute inset-0 w-full h-full">
@@ -573,7 +569,7 @@ export default function Profile() {
 
                 <div className="flex items-center gap-1">
 
-                  <span>❤️</span>
+                  <span>â¤</span>
 
                   <span>{video.likes >= 1000 ? `${(video.likes/1000).toFixed(0)}K` : video.likes || 0}</span>
 
@@ -719,13 +715,13 @@ export default function Profile() {
 
         onFollow={handleWonder}
 
-        onMessage={() => window.location.href = `${createPageUrl('Chat')}?userId=${profileUserId}`}
+        onMessage={() => navigate(`${createPageUrl('Chat')}?userId=${profileUserId}`)}
 
-        onEdit={() => window.location.href = createPageUrl('Settings')}
+        onEdit={() => navigate(createPageUrl('Settings'))}
 
-        onSettings={() => window.location.href = createPageUrl('Settings')}
+        onSettings={() => navigate(createPageUrl('Settings'))}
 
-        onWallet={() => window.location.href = createPageUrl('Wallet')}
+        onWallet={() => navigate(createPageUrl('Wallet'))}
 
         _onShare={() => {
 
@@ -761,16 +757,16 @@ export default function Profile() {
           <div className="flex items-center justify-between flex-wrap gap-2">
             <span className="text-sm font-medium text-gray-700">Mes achats</span>
             {orderStats.is_loyal_client && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">Client fidèle</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">Client fidele</span>
             )}
           </div>
           <div className="flex gap-4 mt-2 text-sm text-gray-600">
             <span>{orderStats.order_count} commande{orderStats.order_count !== 1 ? 's' : ''}</span>
-            <span>{Number(orderStats.total_spent || 0).toLocaleString('fr-FR')} {orderStats.currency || 'FCFA'} dépensés</span>
-            {orderStats.favorite_category && <span>Catégorie préférée : {orderStats.favorite_category}</span>}
+            <span>{Number(orderStats.total_spent || 0).toLocaleString('fr-FR')} {orderStats.currency || 'FCFA'} depenses</span>
+            {orderStats.favorite_category && <span>Categorie preferee : {orderStats.favorite_category}</span>}
           </div>
           {orderStats.yearly_history && Object.keys(orderStats.yearly_history).length > 0 && (
-            <p className="text-xs text-gray-500 mt-1">Historique : {Object.entries(orderStats.yearly_history).map(([y, total]) => `${y}: ${Number(total).toLocaleString('fr-FR')} FCFA`).join(' • ')}</p>
+            <p className="text-xs text-gray-500 mt-1">Historique : {Object.entries(orderStats.yearly_history).map(([y, total]) => `${y}: ${Number(total).toLocaleString('fr-FR')} FCFA`).join(' - ')}</p>
           )}
         </div>
       )}
@@ -880,11 +876,11 @@ export default function Profile() {
 
             </div>
 
-            <h3 className="text-xl font-bold mb-2">Publiez votre première vidéo !</h3>
+            <h3 className="text-xl font-bold mb-2">Publiez votre premiere video !</h3>
 
             <p className="text-white/90 text-sm mb-6">
 
-              Partagez vos talents et connectez-vous avec la communauté AfriVibe
+              Partagez vos talents et connectez-vous avec la communaute AfriWonder
 
             </p>
 
@@ -914,7 +910,7 @@ export default function Profile() {
 
           <div className="flex items-center justify-between mb-2">
 
-            <h3 className="text-sm font-semibold text-gray-600">Vidéo mise en avant</h3>
+            <h3 className="text-sm font-semibold text-gray-600">Video mise en avant</h3>
 
             {isOwnProfile && (
 
@@ -1020,7 +1016,7 @@ export default function Profile() {
 
                     <p className="text-white font-semibold mb-1">{featuredVideo.title}</p>
 
-                    <p className="text-white/80 text-sm">{(featuredVideo.views || 0)} vues • {featuredVideo.likes || 0} likes</p>
+                    <p className="text-white/80 text-sm">{(featuredVideo.views || 0)} vues - {featuredVideo.likes || 0} likes</p>
 
                   </div>
 
@@ -1040,11 +1036,11 @@ export default function Profile() {
 
               </div>
 
-              <h3 className="text-xl font-bold mb-2">Choisir une vidéo mise en avant</h3>
+              <h3 className="text-xl font-bold mb-2">Choisir une Video mise en avant</h3>
 
               <p className="text-white/90 text-sm mb-6">
 
-                Elle sera affichée en grand sur votre profil
+                Elle sera affichee en grand sur votre profil
 
               </p>
 
@@ -1082,7 +1078,7 @@ export default function Profile() {
 
               <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
 
-              <p className="text-gray-500">Chargement des vidéos...</p>
+              <p className="text-gray-500">Chargement des videos...</p>
 
             </div>
 
@@ -1126,7 +1122,7 @@ export default function Profile() {
 
               <p className="text-gray-500">Aucun brouillon</p>
 
-              <p className="text-gray-400 text-sm mt-1">Les vidéos en privé apparaissent ici</p>
+              <p className="text-gray-400 text-sm mt-1">Les videos en prive apparaissent ici</p>
 
             </div>
 
@@ -1148,7 +1144,7 @@ export default function Profile() {
 
               <Bookmark className="w-12 h-12 text-gray-300 mx-auto mb-3" />
 
-              <p className="text-gray-500">Aucune vidéo sauvegardée</p>
+              <p className="text-gray-500">Aucune video sauvegardee</p>
 
             </div>
 
@@ -1274,6 +1270,23 @@ export default function Profile() {
 
       />
 
+      <AlertDialog open={!!pendingDeleteVideo} onOpenChange={(open) => !open && setPendingDeleteVideo(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer cette video ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irreversible. La video sera retiree definitivement.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700 text-white" onClick={confirmDeleteVideo}>
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
 
 
       <SubscriptionTiers
@@ -1291,3 +1304,4 @@ export default function Profile() {
   );
 
 }
+

@@ -17,8 +17,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { cn } from "@/lib/utils";
+import { useNavigate } from "react-router-dom";
 
 export default function CampaignDetails() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [user, setUser] = useState(null);
   const [campaignId, setCampaignId] = useState(null);
@@ -121,7 +123,7 @@ export default function CampaignDetails() {
       {/* Header */}
       <div className="sticky top-0 bg-white/95 backdrop-blur border-b border-gray-100 z-40 px-4 py-3">
         <div className="flex items-center justify-between">
-          <button onClick={() => window.history.back()}>
+          <button onClick={() => navigate(-1)}>
             <ArrowLeft className="w-6 h-6" />
           </button>
           <div className="flex gap-2">
@@ -486,4 +488,3 @@ export default function CampaignDetails() {
     </div>
   );
 }
-

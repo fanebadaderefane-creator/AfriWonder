@@ -1,21 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/Modal';
 import {
   Car,
-  MapPin,
   Star,
   Phone,
   MessageCircle,
-  X,
   FileText,
   User,
-  DollarSign,
   Clock,
   MapPinned,
-  LogOut,
   ArrowLeft,
 } from 'lucide-react';
 import BottomNav from '@/components/navigation/BottomNav';
@@ -71,8 +67,8 @@ export default function Transport() {
   const [selectedDriver, setSelectedDriver] = useState(null);
   const [showBecomeDriverModal, setShowBecomeDriverModal] = useState(false);
   const [rideRequested, setRideRequested] = useState(false);
-  const [estimateFare, setEstimateFare] = useState(3671);
-  const [estimateDuration, setEstimateDuration] = useState('~5 min');
+  const [estimateFare, _setEstimateFare] = useState(3671);
+  const [estimateDuration, _setEstimateDuration] = useState('~5 min');
   const [becomeDriverForm, setBecomeDriverForm] = useState({
     fullName: '',
     phone: '',
@@ -162,7 +158,7 @@ export default function Transport() {
         licensePlate: '',
         licenseNumber: '',
       });
-      window.location.href = createPageUrl('DriverDashboard');
+      navigate(createPageUrl('DriverDashboard'));
     } catch (err) {
       console.error(err);
       const status = err?.response?.status;

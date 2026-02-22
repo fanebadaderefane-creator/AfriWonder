@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import {
   ArrowLeft,
@@ -64,6 +64,7 @@ const CATEGORIES = [
 const PRODUCT_ICONS = { zap: Zap, store: Store, sprout: Sprout };
 
 export default function Microcredit() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPurpose, setSelectedPurpose] = useState('all');
@@ -194,7 +195,7 @@ export default function Microcredit() {
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 px-4 py-3">
         <div className="flex items-center gap-3 mb-2">
-          <Button variant="ghost" size="icon" onClick={() => window.history.back()} className="hover:bg-gray-100">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="hover:bg-gray-100">
             <ArrowLeft className="w-6 h-6" />
           </Button>
           <div>

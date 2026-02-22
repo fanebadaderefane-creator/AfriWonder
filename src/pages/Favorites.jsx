@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { api } from "@/api/expressClient";
 import { useQuery } from "@tanstack/react-query";
 import { Heart, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import ProviderCard from "@/components/common/ProviderCard";
 
 async function fetchFavorites(userEmail) {
@@ -18,11 +19,12 @@ async function fetchAllProviders() {
 }
 
 export default function Favorites() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    api.auth.me().then(setUser).catch(() => { window.location.href = "/Landing"; });
-  }, []);
+    api.auth.me().then(setUser).catch(() => { navigate("/Landing", { replace: true }); });
+  }, [navigate]);
 
   const { data: favorites = [] } = useQuery({
     queryKey: ["favorites", user?.email],

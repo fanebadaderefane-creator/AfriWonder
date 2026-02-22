@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { 
   ArrowLeft, Search, Users, 
@@ -28,6 +28,7 @@ const categories = [
 ];
 
 export default function Crowdfunding() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -94,7 +95,7 @@ export default function Crowdfunding() {
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 px-4 py-3">
         <div className="flex items-center gap-3 mb-3">
-          <button onClick={() => window.history.back()}>
+          <button onClick={() => navigate(-1)}>
             <ArrowLeft className="w-6 h-6" />
           </button>
           <h1 className="text-xl font-bold">Crowdfunding</h1>
@@ -275,4 +276,3 @@ export default function Crowdfunding() {
     </div>
   );
 }
-

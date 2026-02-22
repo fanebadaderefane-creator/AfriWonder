@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 import BottomNav from '../components/navigation/BottomNav';
 
 export default function PostJob() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [jobData, setJobData] = useState({
     title: '',
@@ -33,11 +35,11 @@ export default function PostJob() {
         const u = await api.auth.me();
         setUser(u);
       } catch (_e) {
-        window.location.href = '/';
+        navigate('/', { replace: true });
       }
     };
     getUser();
-  }, []);
+  }, [navigate]);
 
   const postJobMutation = useMutation({
     mutationFn: async () => {
@@ -67,7 +69,7 @@ export default function PostJob() {
     },
     onSuccess: () => {
       toast.success('Offre publiée !');
-      setTimeout(() => { window.location.href = '/Jobs'; }, 1500);
+      setTimeout(() => { navigate('/Jobs'); }, 1500);
     },
     onError: (err) => toast.error(err?.apiMessage || 'Erreur')
   });
@@ -96,7 +98,7 @@ export default function PostJob() {
     <div className="min-h-screen bg-gray-50 pb-24">
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 px-4 py-3 flex items-center gap-3">
-        <button onClick={() => window.history.back()}>
+        <button onClick={() => navigate(-1)}>
           <ArrowLeft className="w-6 h-6" />
         </button>
         <h1 className="text-lg font-bold">Publier une offre</h1>

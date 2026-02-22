@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { ArrowLeft, MapPin, Target, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import BottomNav from '../components/navigation/BottomNav';
 
 export default function CivicCreatorDashboard() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   useEffect(() => { api.auth.me().then(setUser).catch(() => {}); }, []);
 
@@ -26,7 +27,7 @@ export default function CivicCreatorDashboard() {
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       <div className="sticky top-0 bg-white border-b z-40 px-4 py-3 flex items-center gap-3">
-        <button onClick={() => window.history.back()}><ArrowLeft className="w-6 h-6" /></button>
+        <button onClick={() => navigate(-1)}><ArrowLeft className="w-6 h-6" /></button>
         <h1 className="text-xl font-bold">Dashboard créateur</h1>
         <Link to={createPageUrl('CreatePetition')} className="ml-auto"><Button size="sm" className="bg-orange-500">Nouvelle pétition</Button></Link>
       </div>

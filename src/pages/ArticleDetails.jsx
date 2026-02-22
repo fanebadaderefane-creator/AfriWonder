@@ -201,7 +201,7 @@ export default function ArticleDetails() {
     <div className="min-h-screen bg-slate-50 pb-20">
       {/* Header — AfriWonder */}
       <div className="sticky top-0 bg-white border-b border-slate-200 z-40 px-4 py-3 flex items-center gap-3 shadow-sm">
-        <button onClick={() => window.history.back()} aria-label="Retour" className="text-slate-700 hover:text-orange-600">
+        <button onClick={() => navigate(-1)} aria-label="Retour" className="text-slate-700 hover:text-orange-600">
           <ArrowLeft className="w-6 h-6" />
         </button>
         <h1 className="text-lg font-bold flex-1 truncate text-slate-900">Article</h1>

@@ -508,7 +508,7 @@ export default function CreateAdCampaign() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-white/80">Âge min (optionnel)</Label>
+                <Label className="text-white/80">Age min (optionnel)</Label>
                 <Input
                   type="number"
                   min={13}
@@ -525,7 +525,7 @@ export default function CreateAdCampaign() {
                 />
               </div>
               <div>
-                <Label className="text-white/80">Âge max (optionnel)</Label>
+                <Label className="text-white/80">Age max (optionnel)</Label>
                 <Input
                   type="number"
                   min={13}

@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ModuleHero from "@/components/common/ModuleHero";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 const STATUS_CONFIG = {
   pending: { label: "En attente", className: "bg-yellow-100 text-yellow-800", icon: Clock },
@@ -24,6 +25,7 @@ const STATUS_CONFIG = {
 const CITIES = ["Bamako", "Sikasso", "Mopti", "Ségou", "Kayes", "Koulikoro", "Gao", "Tombouctou"];
 
 export default function MicrocreditMaliConnect() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ amount: "", purpose: "", duration_months: "", monthly_income: "", city: "", phone: "" });
@@ -88,7 +90,7 @@ export default function MicrocreditMaliConnect() {
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold">Mes Demandes</h2>
           <Button
-            onClick={() => { if (!user) { window.location.href = "/Landing"; return; } setShowForm(!showForm); }}
+            onClick={() => { if (!user) { navigate("/Landing"); return; } setShowForm(!showForm); }}
             className="bg-violet-600 hover:bg-violet-700 text-white rounded-xl"
           >
             <Plus className="w-4 h-4 mr-2" /> Nouvelle demande

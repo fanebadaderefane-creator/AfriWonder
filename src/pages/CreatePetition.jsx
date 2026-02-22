@@ -8,9 +8,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { createPageUrl } from '@/utils';
 import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
+import { useNavigate } from "react-router-dom";
 import BottomNav from '../components/navigation/BottomNav';
 
 export default function CreatePetition() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [petitionData, setPetitionData] = useState({
     title: '',
@@ -34,11 +36,11 @@ export default function CreatePetition() {
         const u = await api.auth.me();
         setUser(u);
       } catch (_e) {
-        window.location.href = '/';
+        navigate('/', { replace: true });
       }
     };
     getUser();
-  }, []);
+  }, [navigate]);
 
   const createPetitionMutation = useMutation({
     mutationFn: async () => {
@@ -61,7 +63,7 @@ export default function CreatePetition() {
     },
     onSuccess: () => {
       toast.success('Pétition créée !');
-      setTimeout(() => { window.location.href = createPageUrl('Civic'); }, 1500);
+      setTimeout(() => { navigate(createPageUrl('Civic')); }, 1500);
     },
     onError: (err) => toast.error(err?.apiMessage || 'Erreur')
   });
@@ -88,7 +90,7 @@ export default function CreatePetition() {
     <div className="min-h-screen bg-gray-50 pb-24">
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 px-4 py-3 flex items-center gap-3">
-        <button onClick={() => window.history.back()}>
+        <button onClick={() => navigate(-1)}>
           <ArrowLeft className="w-6 h-6" />
         </button>
         <h1 className="text-lg font-bold">Créer une pétition</h1>
