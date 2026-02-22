@@ -1,16 +1,17 @@
 /* eslint-disable no-restricted-globals */
-// Ce fichier est utilisé par vite-plugin-pwa en mode injectManifest.
-// Les noms de precache sont injectés à la place de self.__WB_MANIFEST.
+// Ce fichier est utilise par vite-plugin-pwa en mode injectManifest.
+// Les noms de precache sont injectes a la place de self.__WB_MANIFEST.
 
 const MEDIA_CACHE = 'afriwonder-media-v1';
 const API_CACHE = 'afriwonder-api-v1';
 const VIDEO_CACHE = 'afriwonder-video-cache-v1';
+const IMAGE_CACHE = 'afriwonder-image-cache-v1';
 const PRECACHE = self.__WB_MANIFEST || [];
-const SW_VERSION = 'v2'; // Bypass CDN pour éviter erreur SW sur vidéos
+const SW_VERSION = 'v3'; // Invalide l'ancien SW pour corriger le chargement des images en PWA mobile
 
 // Ne pas appeler skipWaiting() ici : on laisse le nouveau worker en "waiting"
-// pour que l'app affiche "Mettre à jour" (PWAUpdateToast). skipWaiting() est
-// appelé uniquement quand l'utilisateur clique sur "Mettre à jour" (message SKIP_WAITING).
+// pour que l'app affiche "Mettre a jour" (PWAUpdateToast). skipWaiting() est
+// appele uniquement quand l'utilisateur clique sur "Mettre a jour" (message SKIP_WAITING).
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(`afriwonder-precache-${SW_VERSION}`).then((cache) => {
@@ -26,7 +27,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((names) => {
       const toDelete = names.filter(
-        (n) => n !== MEDIA_CACHE && n !== API_CACHE && n !== VIDEO_CACHE && n !== `afriwonder-precache-${SW_VERSION}`
+        (n) => n !== MEDIA_CACHE && n !== API_CACHE && n !== VIDEO_CACHE && n !== IMAGE_CACHE && n !== `afriwonder-precache-${SW_VERSION}`
       );
       return Promise.all(toDelete.map((n) => caches.delete(n)));
     }).then(() => self.clients.claim())
@@ -36,16 +37,16 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
-    // Notifier tous les clients que le nouveau worker est activé
-    self.clients.matchAll().then(clients => {
-      clients.forEach(client => {
+    // Notifier tous les clients que le nouveau worker est active
+    self.clients.matchAll().then((clients) => {
+      clients.forEach((client) => {
         client.postMessage({ type: 'SW_ACTIVATED' });
       });
     });
   }
 });
 
-// Gérer les erreurs du service worker
+// Gerer les erreurs du service worker
 self.addEventListener('error', (event) => {
   console.error('Service Worker Error:', event.error);
 });
@@ -55,7 +56,7 @@ self.addEventListener('unhandledrejection', (event) => {
   event.preventDefault();
 });
 
-// 1) Média téléchargé : CacheFirst (lecture offline)
+// 1) Media telecharge : CacheFirst (lecture offline)
 // 2) API : NetworkFirst (fallback cache)
 // 3) Reste : Network first, puis precache
 self.addEventListener('fetch', (event) => {
@@ -63,7 +64,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
 
-  // Vidéos same-origin + HLS (.m3u8, .ts) : CacheFirst pour relecture offline
+  // Videos same-origin + HLS (.m3u8, .ts) : CacheFirst pour relecture offline
   // Ne jamais intercepter /api/proxy/media : Chrome/mobile envoient des Range, ont besoin de 206 (streaming)
   const isSameOrigin = url.origin === self.location.origin;
   const isProxyMedia = url.pathname.includes('proxy/media');
@@ -84,14 +85,44 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Ne pas intercepter les vidéos CDN (streaming, Range requests)
+  // Ne pas intercepter les videos CDN (streaming, Range requests)
   const cdnHosts = ['cdn.afriwonder.com', 'cdn.afriwonder.com'];
   const isCdnMedia = cdnHosts.includes(url.hostname) || url.hostname.endsWith('.r2.dev');
   const isVideoRequest = request.destination === 'video';
   if (isCdnMedia || isVideoRequest) return;
 
   event.respondWith((async () => {
-    // 1) Média : d’abord le cache (vidéos téléchargées)
+    // Images (incl. cross-origin/no-cors): CacheFirst + revalidation en arriere-plan.
+    // Les reponses "opaque" sont normales pour les images externes et ne doivent pas etre rejetees.
+    if (request.destination === 'image') {
+      const imageCache = await caches.open(IMAGE_CACHE);
+      const cachedImage = await imageCache.match(request);
+      const networkImagePromise = fetch(request)
+        .then((res) => {
+          if (res && (res.ok || res.type === 'opaque')) {
+            imageCache.put(request, res.clone());
+          }
+          return res;
+        })
+        .catch(() => null);
+
+      if (cachedImage) {
+        // Stale-while-revalidate: renvoie immediatement puis met a jour le cache
+        networkImagePromise.catch(() => {});
+        return cachedImage;
+      }
+
+      const networkImage = await networkImagePromise;
+      if (networkImage) return networkImage;
+
+      // Fallback neutre local si aucune image n'est disponible
+      return new Response(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fef3c7"/><stop offset="100%" stop-color="#bbf7d0"/></linearGradient></defs><rect width="600" height="400" fill="url(#g)"/></svg>',
+        { headers: { 'Content-Type': 'image/svg+xml' } }
+      );
+    }
+
+    // 1) Media : d'abord le cache (videos telechargees)
     const mediaMatch = await caches.match(request, { cacheName: MEDIA_CACHE });
     if (mediaMatch) return mediaMatch;
 
@@ -116,8 +147,8 @@ self.addEventListener('fetch', (event) => {
     // 3) Assets / pages : Network first, fallback precache
     try {
       const networkResponse = await fetch(request);
-      // Vérifier que la réponse est valide
-      if (networkResponse && networkResponse.ok) {
+      // Accepter aussi les reponses opaque (cross-origin/no-cors)
+      if (networkResponse && (networkResponse.ok || networkResponse.type === 'opaque')) {
         return networkResponse;
       }
       throw new Error('Network response not ok');
@@ -125,34 +156,34 @@ self.addEventListener('fetch', (event) => {
       // Essayer le cache precache
       const precache = await caches.match(request);
       if (precache) return precache;
-      
-      // Si c'est une requête HTML, retourner index.html depuis le cache
+
+      // Si c'est une requete HTML, retourner index.html depuis le cache
       if (request.headers.get('accept')?.includes('text/html')) {
         const indexHtml = await caches.match('/index.html');
         if (indexHtml) return indexHtml;
       }
-      
-      // Dernier recours : retourner une réponse basique pour éviter l'écran blanc
+
+      // Dernier recours : reponse basique pour eviter l'ecran blanc
       if (request.headers.get('accept')?.includes('text/html')) {
-        return new Response(`
-          <!DOCTYPE html>
+        return new Response(
+          `<!DOCTYPE html>
           <html>
             <head>
               <meta charset="UTF-8">
               <meta name="viewport" content="width=device-width, initial-scale=1">
               <title>AfriWonder - Chargement...</title>
               <style>
-                body { 
-                  margin: 0; 
-                  padding: 20px; 
-                  font-family: system-ui; 
-                  display: flex; 
-                  flex-direction: column; 
-                  align-items: center; 
-                  justify-content: center; 
-                  min-height: 100vh; 
-                  background: #000; 
-                  color: #fff; 
+                body {
+                  margin: 0;
+                  padding: 20px;
+                  font-family: system-ui;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  min-height: 100vh;
+                  background: #000;
+                  color: #fff;
                 }
                 .spinner {
                   width: 40px;
@@ -172,12 +203,13 @@ self.addEventListener('fetch', (event) => {
               <p style="margin-top: 20px;">Chargement de l'application...</p>
               <script>setTimeout(() => window.location.reload(), 2000);</script>
             </body>
-          </html>
-        `, {
-          headers: { 'Content-Type': 'text/html' }
-        });
+          </html>`,
+          {
+            headers: { 'Content-Type': 'text/html' },
+          }
+        );
       }
-      
+
       throw error;
     }
   })());

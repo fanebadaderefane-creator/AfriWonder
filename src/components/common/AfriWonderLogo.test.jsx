@@ -12,7 +12,7 @@ describe('AfriWonderLogo', () => {
     render(<AfriWonderLogo />);
     const img = screen.getByRole('img', { name: 'AfriWonder Logo' });
     expect(img).toBeInTheDocument();
-    expect(img).toHaveAttribute('src', '/AfriWonder%20logo.png?v=1');
+    expect(img).toHaveAttribute('src', '/icon-192.png');
   });
 
   it('renders fallback emoji when image fails to load', () => {

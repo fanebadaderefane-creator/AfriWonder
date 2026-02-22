@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { getAbsoluteImageUrl } from "@/lib/utils";
@@ -10,12 +10,43 @@ const PLAN_BADGES = {
   pro: { label: "Pro", className: "bg-green-100 text-green-800 border-0 rounded-full" },
 };
 
-// Image par défaut — cartes jamais vides (mobile Android/iOS et vrais utilisateurs sans photo)
-export const DEFAULT_CARD_IMAGE =
-  "https://images.unsplash.com/photo-1557804506-669a67965ba0?w=600&h=400&fit=crop";
+function buildProviderFallbackImage(provider) {
+  const displayName =
+    provider?.display_name ||
+    provider?.business_name ||
+    provider?.user?.full_name ||
+    "Prestataire";
+  const category =
+    provider?.category_name ||
+    provider?.service_category ||
+    "Service local";
+  const initial = (displayName || "P").charAt(0).toUpperCase();
 
-function getCardImageUrl(provider) {
+  return (
+    "data:image/svg+xml," +
+    encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400">
+        <defs>
+          <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#fef3c7"/>
+            <stop offset="100%" stop-color="#bbf7d0"/>
+          </linearGradient>
+        </defs>
+        <rect width="600" height="400" fill="url(#bg)"/>
+        <circle cx="300" cy="190" r="88" fill="#374151" opacity="0.86"/>
+        <text x="300" y="210" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial" font-size="96" font-weight="700" fill="#ffffff">${initial}</text>
+        <rect x="160" y="300" width="280" height="40" rx="20" fill="#ffffff" opacity="0.9"/>
+        <text x="300" y="326" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial" font-size="18" font-weight="600" fill="#374151">${String(category).slice(0, 24)}</text>
+      </svg>`
+    )
+  );
+}
+
+export const DEFAULT_CARD_IMAGE = buildProviderFallbackImage(null);
+
+export function getProviderCardImageUrl(provider) {
   if (!provider) return DEFAULT_CARD_IMAGE;
+
   const urls = [
     provider.portfolio_urls?.[0],
     provider.cover_image,
@@ -23,31 +54,47 @@ function getCardImageUrl(provider) {
     provider.banner_url,
     provider.portfolio_image,
   ].filter(Boolean);
+
   const raw = typeof urls[0] === "string" ? urls[0].trim() : "";
-  if (!raw) return DEFAULT_CARD_IMAGE;
-  // PWA mobile : URL absolue obligatoire pour que les images s'affichent (cadres vides sinon)
+  if (!raw) return buildProviderFallbackImage(provider);
+
   const absolute = getAbsoluteImageUrl(raw);
-  return absolute || DEFAULT_CARD_IMAGE;
+  return absolute || buildProviderFallbackImage(provider);
 }
 
-export default function ProviderCard({ provider, categoryName }) {
+export default function ProviderCard({ provider, categoryName, priority = false }) {
   const [imageFailed, setImageFailed] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
-
-  if (!provider) return null;
+  const imageErrorFiredRef = useRef(false);
 
   const p = provider;
+  const imageUrl = imageFailed ? buildProviderFallbackImage(p) : getProviderCardImageUrl(p);
+
+  useEffect(() => {
+    setImageLoaded(false);
+  }, [imageUrl]);
+
+  const handleImageError = () => {
+    if (!imageErrorFiredRef.current) {
+      imageErrorFiredRef.current = true;
+      setImageFailed(true);
+      setImageLoaded(true);
+    }
+  };
+
+  if (!p) return null;
+
   const tierBadge = PLAN_BADGES[p.subscription_plan];
   const isAvailable = p.availability === "available" || p.is_available !== false;
   const tags = Array.isArray(p.services_offered) ? p.services_offered : (p.service_tags || []);
   const displayTags = tags.slice(0, 3);
   const extraCount = tags.length > 3 ? tags.length - 3 : 0;
-  const imageUrl = imageFailed ? DEFAULT_CARD_IMAGE : getCardImageUrl(p);
   const displayName = p.display_name || p.business_name || p.user?.full_name || "Prestataire";
   const initial = (displayName || "P")[0].toUpperCase();
   const rawAvatar = p.photo_url || p.user?.profile_image;
   const avatarUrl = !avatarFailed && rawAvatar ? getAbsoluteImageUrl(String(rawAvatar).trim()) || rawAvatar : null;
-  const locationText = [p.city, p.neighborhood].filter(Boolean).join(", ") || "—";
+  const locationText = [p.city, p.neighborhood].filter(Boolean).join(", ") || "-";
   const priceMin = p.price_range_min ?? p.starting_price ?? 0;
 
   return (
@@ -55,24 +102,28 @@ export default function ProviderCard({ provider, categoryName }) {
       to={createPageUrl("ProviderProfile") + `?id=${p.id}`}
       className="group block bg-white rounded-2xl border border-border/50 overflow-hidden shadow-sm hover:shadow-xl hover:shadow-amber-100/30 transition-all duration-300"
     >
-      {/* Image header — toujours une image (fallback sur mobile si chargement échoue) */}
       <div className="relative h-48 min-h-[192px] bg-gradient-to-br from-amber-100 to-green-100 overflow-hidden">
+        {!imageLoaded && (
+          <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-amber-100 via-amber-50 to-green-100" />
+        )}
         <img
           src={imageUrl}
           alt=""
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          loading="lazy"
+          className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-500 ${imageLoaded ? "opacity-100" : "opacity-0"}`}
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
           decoding="async"
-          onError={() => setImageFailed(true)}
+          onLoad={() => setImageLoaded(true)}
+          onError={handleImageError}
         />
-        {/* Disponible — top-left, green oval with dot */}
+
         {isAvailable && (
           <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-green-500 text-white px-2.5 py-1 rounded-full text-xs font-medium shadow-sm">
             <span className="w-2 h-2 rounded-full bg-white" />
             Disponible
           </div>
         )}
-        {/* Pro / Premium — top-right */}
+
         {tierBadge && (
           <Badge className={`absolute top-3 right-3 ${tierBadge.className}`}>
             {tierBadge.label}
@@ -80,7 +131,6 @@ export default function ProviderCard({ provider, categoryName }) {
         )}
       </div>
 
-      {/* Content — champs avec fallbacks pour ne jamais être vides sur mobile */}
       <div className="p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
@@ -125,7 +175,7 @@ export default function ProviderCard({ provider, categoryName }) {
 
         <p className="mt-2 text-sm font-medium text-foreground">
           {priceMin > 0
-            ? `À partir de ${Number(priceMin).toLocaleString("fr-FR")} FCFA`
+            ? `A partir de ${Number(priceMin).toLocaleString("fr-FR")} FCFA`
             : "Prix sur demande"}
         </p>
 

@@ -13,8 +13,8 @@ export default function AfriWonderLogo({ size = 'md', className = '' }) {
     '3xl': 'w-64 h-64',
   };
 
-  // Logo AfriWonder : utiliser "AfriWonder logo.png" (même fichier que les icônes PWA)
-  const logoUrl = '/AfriWonder%20logo.png?v=1';
+  // Logo AfriWonder : utiliser l'icône PWA (icon-192) pour garantir l'affichage partout, y compris en PWA installée
+  const logoUrl = '/icon-192.png';
 
   return (
     <div 
@@ -56,7 +56,7 @@ export default function AfriWonderLogo({ size = 'md', className = '' }) {
           onError={() => setImageError(true)}
       />
       ) : (
-        <span className="text-white font-bold text-xl">🌍</span>
+        <span className="text-white font-bold text-sm uppercase tracking-tight">AfriWonder</span>
       )}
     </div>
   );

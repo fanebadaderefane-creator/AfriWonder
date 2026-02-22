@@ -1,11 +1,11 @@
-import React from "react";
+import React, { useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { api } from "@/api/expressClient";
 import { useQuery } from "@tanstack/react-query";
 import { Building2, ArrowRight, ChevronRight, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import ProviderCard from "@/components/common/ProviderCard";
+import ProviderCard, { getProviderCardImageUrl } from "@/components/common/ProviderCard";
 import { FICTITIOUS_FEATURED_PROVIDERS } from "@/data/marketplaceFictitiousProviders";
 
 export default function MarketplacePage() {
@@ -34,10 +34,31 @@ export default function MarketplacePage() {
   const fromApi = providersData ?? [];
   const featuredProviders =
     fromApi.length > 0 ? fromApi : FICTITIOUS_FEATURED_PROVIDERS;
+  const heroProviders = useMemo(() => featuredProviders.slice(0, 6), [featuredProviders]);
   const categoryMap = {};
   categories.forEach((c) => {
     categoryMap[c.id] = c.name;
   });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const run = () => {
+      heroProviders.forEach((provider) => {
+        const src = getProviderCardImageUrl(provider);
+        if (!src) return;
+        const img = new Image();
+        img.decoding = "async";
+        img.loading = "eager";
+        img.src = src;
+      });
+    };
+    if ("requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(run, { timeout: 1000 });
+      return () => window.cancelIdleCallback?.(id);
+    }
+    const timeoutId = window.setTimeout(run, 120);
+    return () => window.clearTimeout(timeoutId);
+  }, [heroProviders]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -69,10 +90,11 @@ export default function MarketplacePage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {featuredProviders.map((p) => (
+            {featuredProviders.map((p, index) => (
               <ProviderCard
                 key={p.id}
                 provider={p}
+                priority={index < 2}
                 categoryName={
                   categoryMap[p.category_id] ||
                   p.category_name ||
