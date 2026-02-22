@@ -913,6 +913,45 @@ export const api = {
       const { data } = await axiosInstance.get(`/admin/business-intelligence/insights?limit=${limit}`);
       return data.data || data;
     },
+    // Admin notifications (AdminNotification)
+    async getNotifications(params = {}) {
+      const { data } = await axiosInstance.get('/admin/notifications', {
+        params: { sort: params.sort ?? '-created_date', limit: params.limit ?? 50 },
+      });
+      return data.data ?? (Array.isArray(data) ? data : []);
+    },
+    async updateNotification(id, body) {
+      const { data } = await axiosInstance.patch(`/admin/notifications/${id}`, body);
+      return data.data ?? data;
+    },
+    async deleteNotification(id) {
+      await axiosInstance.delete(`/admin/notifications/${id}`);
+    },
+    // Admin payments (PaymentRecord)
+    async getPayments(params = {}) {
+      const { data } = await axiosInstance.get('/admin/payments', { params });
+      return data.data ?? (Array.isArray(data) ? data : []);
+    },
+    async updatePayment(id, body) {
+      const { data } = await axiosInstance.patch(`/admin/payments/${id}`, body);
+      return data.data ?? data;
+    },
+    // Admin subscription plans (SubscriptionPlan)
+    async getSubscriptionPlans() {
+      const { data } = await axiosInstance.get('/admin/subscription-plans');
+      return data.data ?? (Array.isArray(data) ? data : []);
+    },
+    async createSubscriptionPlan(body) {
+      const { data } = await axiosInstance.post('/admin/subscription-plans', body);
+      return data.data ?? data;
+    },
+    async updateSubscriptionPlan(id, body) {
+      const { data } = await axiosInstance.patch(`/admin/subscription-plans/${id}`, body);
+      return data.data ?? data;
+    },
+    async deleteSubscriptionPlan(id) {
+      await axiosInstance.delete(`/admin/subscription-plans/${id}`);
+    },
   },
   microcredit: {
     async list(params = {}) {

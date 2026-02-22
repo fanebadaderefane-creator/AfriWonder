@@ -27,7 +27,6 @@ const MENU_SECTIONS = [
     title: "COMMERCE & SERVICES",
     items: [
       { icon: ShoppingCart, label: "Marketplace", color: "text-orange-600", badge: "Nouveau", page: 'Marketplace' },
-      { icon: Briefcase, label: "Mes commandes", color: "text-gray-600", page: 'Orders' },
       { icon: Ticket, label: "Événements", color: "text-purple-600", page: 'Events' },
       { icon: Car, label: "Transport", color: "text-blue-600", page: 'Transport' },
       { icon: UtensilsCrossed, label: "Restauration", color: "text-orange-600", page: 'FoodDelivery' },
@@ -35,7 +34,7 @@ const MENU_SECTIONS = [
       { icon: Heart, label: "Santé", color: "text-red-600", page: 'Telemedicine' },
       { icon: Building2, label: "Immobilier", color: "text-teal-600", page: 'RealEstate' },
       { icon: Shield, label: "Assurances", color: "text-indigo-600", page: 'Insurance' },
-      { icon: Wrench, label: "Prestataires", color: "text-orange-600", page: 'Services' },
+      { icon: Wrench, label: "Prestataires", color: "text-orange-600", page: 'Marketplace' },
       { icon: Newspaper, label: "Actualités", color: "text-gray-600", page: 'News' },
       { icon: CreditCard, label: "Microcrédit", color: "text-emerald-600", page: 'Microcredit' },
       { icon: Target, label: "Crowdfunding", color: "text-pink-600", page: 'Crowdfunding' },
@@ -96,7 +95,7 @@ const SUPER_ADMIN_EMAIL = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'fanebadade
 
 const isSuperAdmin = (user) => user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
 
-export default function MenuPlus({ isOpen, onClose, user }) {
+export default function MenuPlus({ isOpen, onClose, onNavigateFromMenu, user }) {
   const location = useLocation();
   const pathname = location.pathname;
 
@@ -235,9 +234,12 @@ export default function MenuPlus({ isOpen, onClose, user }) {
                       const url = createPageUrl(item.page);
                       return (
                         <Link
-                          key={`${section.title}-${item.page}`}
+                          key={`${section.title}-${item.label}`}
                           to={url}
-                          onClick={onClose}
+                          onClick={() => {
+                            onNavigateFromMenu?.(pathname);
+                            onClose();
+                          }}
                           className={cn(
                             "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150",
                             isActive
@@ -267,7 +269,7 @@ export default function MenuPlus({ isOpen, onClose, user }) {
               </div>
             ))}
 
-            {/* Version - CODE EXACT DE MALIConnect */}
+            {/* Version - AfriWonder */}
             <div className="px-6 py-3 mt-auto">
               <p className="text-xs text-gray-400">AfriWonder v1.0.0</p>
               <p className="text-xs text-gray-400">🇲🇱 Made in Mali</p>

@@ -1,0 +1,40 @@
+{
+  "name": "Conversation",
+  "type": "object",
+  "properties": {
+    "client_email": {
+      "type": "string"
+    },
+    "provider_email": {
+      "type": "string"
+    },
+    "provider_profile_id": {
+      "type": "string"
+    },
+    "last_message": {
+      "type": "string"
+    },
+    "last_message_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "client_name": {
+      "type": "string"
+    },
+    "provider_name": {
+      "type": "string"
+    },
+    "unread_client": {
+      "type": "number",
+      "default": 0
+    },
+    "unread_provider": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "client_email",
+    "provider_email"
+  ]
+}

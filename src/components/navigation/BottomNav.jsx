@@ -1,40 +1,21 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { Home, Compass, PlusSquare, MessageSquare, User, Radio } from 'lucide-react';
+import { Home, Compass, PlusSquare, User, Radio } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { createPageUrl } from '@/utils';
 import { useTranslation } from '@/components/common/useTranslation';
-import { api } from '@/api/expressClient';
-import { getItem } from '@/utils/safeStorage';
 
 export default function BottomNav() {
   const location = useLocation();
   const { t } = useTranslation();
 
-  const { data: unreadData } = useQuery({
-    queryKey: ['messages-unread-count'],
-    queryFn: () => api.messages.getUnreadCount(),
-    enabled: typeof window !== 'undefined' && !!getItem('access_token'),
-    refetchInterval: 30000,
-  });
-  const unreadCount = unreadData?.count ?? 0;
-
   const navItems = [
-
     { id: 'home', icon: Home, label: t('home'), page: 'Home' },
-
     { id: 'discover', icon: Compass, label: t('discover'), page: 'Discover' },
-
     { id: 'create', icon: PlusSquare, label: '', page: 'Create', isCreate: true },
-
     { id: 'live', icon: Radio, label: 'Live', page: 'Live' },
-
-    { id: 'inbox', icon: MessageSquare, label: t('inbox'), page: 'Inbox' },
-
     { id: 'profile', icon: User, label: t('profile'), page: 'Profile' },
-
   ];
 
   
@@ -125,12 +106,6 @@ export default function BottomNav() {
                     active ? "text-orange-500" : "text-white/70"
                   )} 
                 />
-
-                {item.id === 'inbox' && unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
-                )}
               </motion.div>
 
               <span className={cn(

@@ -1,0 +1,86 @@
+{
+  "name": "Transport",
+  "type": "object",
+  "properties": {
+    "driver_email": {
+      "type": "string"
+    },
+    "driver_name": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "vehicle_type": {
+      "type": "string",
+      "enum": [
+        "moto",
+        "car",
+        "minibus",
+        "truck",
+        "other"
+      ]
+    },
+    "vehicle_brand": {
+      "type": "string"
+    },
+    "city": {
+      "type": "string"
+    },
+    "zones_covered": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "price_per_km": {
+      "type": "number"
+    },
+    "availability": {
+      "type": "string",
+      "enum": [
+        "available",
+        "busy",
+        "offline"
+      ],
+      "default": "available"
+    },
+    "photo_url": {
+      "type": "string"
+    },
+    "bio": {
+      "type": "string"
+    },
+    "is_verified": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "average_rating": {
+      "type": "number",
+      "default": 0
+    },
+    "total_reviews": {
+      "type": "number",
+      "default": 0
+    },
+    "subscription_plan": {
+      "type": "string",
+      "enum": [
+        "basic",
+        "pro",
+        "premium"
+      ],
+      "default": "basic"
+    }
+  },
+  "required": [
+    "driver_email",
+    "driver_name",
+    "city",
+    "vehicle_type"
+  ]
+}

@@ -101,6 +101,7 @@ const AuthenticatedApp = () => {
           <MainPage />
         </LayoutWrapper>
       } />
+      <Route path="/Services" element={<Navigate to="/Marketplace" replace />} />
       {Object.entries(Pages).map(([path, Page]) => (
         <Route
           key={path}

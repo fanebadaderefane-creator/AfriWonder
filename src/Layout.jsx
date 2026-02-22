@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { Toaster } from "@/components/ui/sonner";
 import TranslationProvider from "@/components/common/TranslationProvider";
@@ -80,10 +81,27 @@ function LayoutContent({ children, currentPageName }) {
   const fullScreenPages = ['Home', 'Create'];
   const isFullScreen = fullScreenPages.includes(currentPageName);
   const { user } = useAuth();
-  const { isOpen: isMenuOpen, closeMenu } = useAppMenu();
+  const { isOpen: isMenuOpen, closeMenu, openMenu, reopenMenuOnPath, clearReopenMenuOnPath, scheduleReopenWhenReturn } = useAppMenu();
+  const location = useLocation();
+
+  // À son retour sur la page d'où il avait ouvert le menu, rouvrir le menu
+  useEffect(() => {
+    if (reopenMenuOnPath && location.pathname === reopenMenuOnPath) {
+      openMenu();
+      clearReopenMenuOnPath();
+    }
+  }, [location.pathname, reopenMenuOnPath, openMenu, clearReopenMenuOnPath]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div
+      className="min-h-screen bg-gray-50"
+      style={{
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingLeft: 'env(safe-area-inset-left)',
+        paddingRight: 'env(safe-area-inset-right)',
+        minHeight: '100dvh',
+      }}
+    >
       {/* WCAG 2.1 AA 2.4.1 - Lien d'évitement */}
       <a href="#main-content" className="skip-link">
         Aller au contenu principal
@@ -309,6 +327,7 @@ function LayoutContent({ children, currentPageName }) {
         <MenuPlus
           isOpen={isMenuOpen}
           onClose={closeMenu}
+          onNavigateFromMenu={scheduleReopenWhenReturn}
           user={user}
         />
       )}

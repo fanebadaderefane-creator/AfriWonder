@@ -8,7 +8,8 @@ class UserService {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (search && search.trim().length >= 2) {
-      const term = search.trim();
+      const term = search.trim().replace(/^@+/, '');
+      if (term.length < 2) return { users: [], pagination: { page, limit, total: 0, totalPages: 0 } };
       where.OR = [
         { username: { contains: term, mode: 'insensitive' } },
         { full_name: { contains: term, mode: 'insensitive' } },

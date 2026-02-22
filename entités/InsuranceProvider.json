@@ -1,0 +1,72 @@
+{
+  "name": "InsuranceProvider",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string"
+    },
+    "company_name": {
+      "type": "string"
+    },
+    "contact_name": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "bio": {
+      "type": "string"
+    },
+    "logo_url": {
+      "type": "string"
+    },
+    "city": {
+      "type": "string"
+    },
+    "products": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "price_from": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "insurance_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "is_verified": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "subscription_plan": {
+      "type": "string",
+      "enum": [
+        "basic",
+        "pro",
+        "premium"
+      ],
+      "default": "basic"
+    }
+  },
+  "required": [
+    "user_email",
+    "company_name",
+    "city"
+  ]
+}

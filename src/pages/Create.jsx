@@ -1180,7 +1180,7 @@ export default function Create() {
             className="flex flex-col h-full"
           >
 
-            <div className="flex items-center justify-between p-4">
+            <div className="flex items-center justify-between p-4 safe-area-pt" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
 
               <Button
 
@@ -1966,7 +1966,7 @@ export default function Create() {
             className="create-preview-step flex flex-col overflow-x-hidden"
           >
 
-            <div className="flex-shrink-0 flex items-center justify-between p-4">
+            <div className="flex-shrink-0 flex items-center justify-between p-4 safe-area-pt" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
 
               <Button
 
@@ -2054,7 +2054,7 @@ export default function Create() {
 
           >
 
-            <div className="sticky top-0 bg-white border-b z-10">
+            <div className="sticky top-0 bg-white border-b z-10 safe-area-pt" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
 
               <div className="flex items-center justify-between p-4">
 

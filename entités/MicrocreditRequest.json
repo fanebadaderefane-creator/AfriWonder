@@ -1,0 +1,54 @@
+{
+  "name": "MicrocreditRequest",
+  "type": "object",
+  "properties": {
+    "applicant_email": {
+      "type": "string"
+    },
+    "applicant_name": {
+      "type": "string"
+    },
+    "amount": {
+      "type": "number"
+    },
+    "purpose": {
+      "type": "string"
+    },
+    "duration_months": {
+      "type": "number"
+    },
+    "monthly_income": {
+      "type": "number"
+    },
+    "city": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "reviewing",
+        "approved",
+        "rejected",
+        "active",
+        "completed"
+      ],
+      "default": "pending"
+    },
+    "provider_email": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "applicant_email",
+    "amount",
+    "purpose",
+    "city"
+  ]
+}

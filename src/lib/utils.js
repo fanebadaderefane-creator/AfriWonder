@@ -22,8 +22,6 @@ export function cn(...inputs) {
   return twMerge(clsx(inputs))
 }
 
-export const isIframe = window.self !== window.top;
-
 /** Placeholder neutre (gris + play) pour vidéos sans miniature — évite toute ressemblance avec logos tiers */
 export const VIDEO_PLACEHOLDER_IMG = 'data:image/svg+xml,' + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400" fill="%23374151">' +
@@ -57,7 +55,7 @@ export function getVideoPlaybackUrl(videoUrl) {
     const u = new URL(videoUrl);
     const apiUrl = new URL(API_URL.startsWith('/') ? window.location.origin + API_URL : API_URL);
     const host = (u.hostname || '').toLowerCase();
-    const directHosts = ['cdn.afriwonder.com', 'cdn.africonnect.com'];
+    const directHosts = ['cdn.afriwonder.com', 'cdn.afriwonder.com'];
     if (directHosts.some((h) => host === h || host.endsWith('.' + h))) return videoUrl;
     if (u.origin === apiUrl.origin) return videoUrl;
   } catch {

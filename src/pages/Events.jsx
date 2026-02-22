@@ -14,7 +14,8 @@ import {
   Search,
   Clock,
   QrCode,
-  CheckCircle2
+  CheckCircle2,
+  ArrowLeft
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -244,9 +245,14 @@ export default function EventsPage() {
       <div className="p-4">
         {/* Page Header */}
         <div className="flex items-start justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-black text-gray-900 mb-1">Événements</h1>
-            <p className="text-gray-500">Découvrez les événements au Mali</p>
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl" aria-label="Retour">
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div>
+              <h1 className="text-3xl font-black text-gray-900 mb-1">Événements</h1>
+              <p className="text-gray-500">Découvrez les événements au Mali</p>
+            </div>
           </div>
           <Button
             onClick={() => navigate(createPageUrl('CreateEvent'))}

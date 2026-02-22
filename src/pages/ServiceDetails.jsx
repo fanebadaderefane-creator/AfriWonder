@@ -126,7 +126,7 @@ export default function ServiceDetails() {
             <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <h2 className="text-xl font-bold mb-2">Service non trouvé</h2>
             <p className="text-gray-600 mb-4">Le service demandé n'existe pas ou a été supprimé.</p>
-            <Button onClick={() => navigate(createPageUrl('Services'))}>
+            <Button onClick={() => navigate(createPageUrl('Marketplace'))}>
               Retour aux services
             </Button>
           </CardContent>

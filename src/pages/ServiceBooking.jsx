@@ -131,7 +131,7 @@ export default function ServiceBooking() {
           <CardContent className="pt-6 text-center">
             <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <h2 className="text-xl font-bold mb-2">Service non trouvé</h2>
-            <Button onClick={() => navigate(createPageUrl('Services'))}>
+            <Button onClick={() => navigate(createPageUrl('Marketplace'))}>
               Retour aux services
             </Button>
           </CardContent>
@@ -434,7 +434,7 @@ export default function ServiceBooking() {
                 </p>
                 <div className="space-y-3">
                   <Button
-                    onClick={() => navigate(createPageUrl('Services'))}
+                    onClick={() => navigate(createPageUrl('Marketplace'))}
                     className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white"
                   >
                     Fermer

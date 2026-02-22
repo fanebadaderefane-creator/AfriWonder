@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/Modal';
@@ -11,6 +11,7 @@ import {
   Plus,
   ChefHat,
   UtensilsCrossed,
+  ArrowLeft,
 } from 'lucide-react';
 import BottomNav from '@/components/navigation/BottomNav';
 import { api } from '@/api/expressClient';
@@ -86,6 +87,7 @@ function formatPrice(n) {
 }
 
 export default function FoodDelivery() {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [restaurants, setRestaurants] = useState([]);
@@ -222,8 +224,15 @@ export default function FoodDelivery() {
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       <div className="p-4">
-        <h1 className="text-3xl font-black text-gray-900">Restauration</h1>
-        <p className="text-gray-500 mt-0.5">Commandez vos plats préférés</p>
+        <div className="flex items-center gap-3 mb-2">
+          <Button variant="ghost" size="icon" onClick={() => navigate(createPageUrl('Home'))} className="flex-shrink-0 rounded-xl" aria-label="Retour">
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-black text-gray-900">Restauration</h1>
+            <p className="text-gray-500 mt-0.5">Commandez vos plats préférés</p>
+          </div>
+        </div>
 
         {/* Search */}
         <div className="relative mt-4">

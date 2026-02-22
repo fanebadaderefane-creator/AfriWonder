@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/Modal';
@@ -16,6 +16,7 @@ import {
   Clock,
   MapPinned,
   LogOut,
+  ArrowLeft,
 } from 'lucide-react';
 import BottomNav from '@/components/navigation/BottomNav';
 import { api } from '@/api/expressClient';
@@ -60,6 +61,7 @@ const POPULAR_DESTINATIONS = [
 ];
 
 export default function Transport() {
+  const navigate = useNavigate();
   const [departure, setDeparture] = useState('');
   const [destination, setDestination] = useState('');
   const [selectedDestinationTag, setSelectedDestinationTag] = useState(null);
@@ -180,9 +182,14 @@ export default function Transport() {
       {/* Header */}
       <div className="p-4">
         <div className="flex items-start justify-between mb-2">
-          <div>
-            <h1 className="text-3xl font-black text-gray-900">Transport</h1>
-            <p className="text-gray-500">Réservez une course rapidement</p>
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl" aria-label="Retour">
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div>
+              <h1 className="text-3xl font-black text-gray-900">Transport</h1>
+              <p className="text-gray-500">Réservez une course rapidement</p>
+            </div>
           </div>
           <Button
             onClick={() => {

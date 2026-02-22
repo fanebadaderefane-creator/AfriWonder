@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, CreditCard, Clock, CheckCircle2, Loader2, Plus } from 'lucide-react';
+import { TrendingUp, CreditCard, Clock, CheckCircle2, Loader2, Plus, ArrowLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -106,7 +106,12 @@ export default function WalletPage() {
       animate={{ opacity: 1 }}
       className="max-w-4xl mx-auto p-4 safe-area-pb"
     >
-      <h1 className="text-3xl font-bold mb-8">Mon Portefeuille</h1>
+      <div className="flex items-center gap-3 mb-8">
+        <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl" aria-label="Retour">
+          <ArrowLeft className="w-5 h-5" />
+        </Button>
+        <h1 className="text-3xl font-bold">Mon Portefeuille</h1>
+      </div>
 
       {/* Balance Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">

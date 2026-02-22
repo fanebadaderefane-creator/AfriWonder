@@ -361,7 +361,7 @@ export default function BecomeProvider() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => navigate(createPageUrl('Services'))}
+                    onClick={() => navigate(createPageUrl('Marketplace'))}
                     className="w-full"
                   >
                     Ajouter un service

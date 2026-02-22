@@ -46,9 +46,14 @@
   }
 }
 
-/* Mobile viewport fix */
+/* Mobile viewport fix — hauteur pleine sur iOS/Android (PWA type vraie app) */
+html {
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+}
 @supports (-webkit-touch-callout: none) {
   body {
+    min-height: 100dvh;
     min-height: -webkit-fill-available;
   }
 }

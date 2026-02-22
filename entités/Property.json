@@ -1,0 +1,89 @@
+{
+  "name": "Property",
+  "type": "object",
+  "properties": {
+    "owner_email": {
+      "type": "string"
+    },
+    "owner_name": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "apartment",
+        "house",
+        "land",
+        "office",
+        "store",
+        "other"
+      ]
+    },
+    "listing_type": {
+      "type": "string",
+      "enum": [
+        "sale",
+        "rent"
+      ],
+      "default": "rent"
+    },
+    "price": {
+      "type": "number"
+    },
+    "city": {
+      "type": "string"
+    },
+    "neighborhood": {
+      "type": "string"
+    },
+    "surface": {
+      "type": "number"
+    },
+    "bedrooms": {
+      "type": "number"
+    },
+    "bathrooms": {
+      "type": "number"
+    },
+    "photos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "phone": {
+      "type": "string"
+    },
+    "is_verified": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "total_views": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "owner_email",
+    "title",
+    "type",
+    "city",
+    "price"
+  ]
+}

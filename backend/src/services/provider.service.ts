@@ -179,7 +179,7 @@ class ProviderService {
     const limit = params?.limit ?? 20;
     const skip = (page - 1) * limit;
 
-    const where: any = { status: 'active' };
+    const where: any = { status: 'active', is_verified: true };
     if (params?.category) {
       where.service_categories = { has: params.category };
     }

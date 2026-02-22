@@ -3,7 +3,7 @@ import {
   Shield, Calendar, Car, UtensilsCrossed, Stethoscope, Home, 
   Briefcase, GraduationCap, Heart, Users, Video, FileText,
   Check, X, Eye, EyeOff, Ban, AlertTriangle, DollarSign,
-  Search, CheckCircle, Clock, BarChart3, UserCheck, MapPin, Wrench
+  Search, CheckCircle, Clock, BarChart3, UserCheck, MapPin, Wrench, ShoppingCart
 } from "lucide-react";
 import { Card } from "@/components/ui/CardWrapper";
 import { Badge } from "@/components/ui/BadgeWrapper";
@@ -15,6 +15,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 const FEATURES = [
+  { type: "marketplace", name: "Marketplace", icon: ShoppingCart, color: "bg-amber-100 text-amber-600" },
   { type: "event", name: "Événements", icon: Calendar, color: "bg-purple-100 text-purple-600" },
   { type: "transport_driver", name: "Chauffeurs", icon: Car, color: "bg-blue-100 text-blue-600" },
   { type: "food_restaurant", name: "Restaurants", icon: UtensilsCrossed, color: "bg-orange-100 text-orange-600" },
@@ -477,7 +478,11 @@ export default function MaliConnectPanel() {
     }
 
     if (selectedType !== "all") {
-      entities = entities.filter(e => e.type === selectedType);
+      if (selectedType === "marketplace") {
+        entities = entities.filter(e => e.type === "service_provider" || e.type === "marketplace_service");
+      } else {
+        entities = entities.filter(e => e.type === selectedType);
+      }
     }
 
     if (searchQuery) {
@@ -651,8 +656,13 @@ export default function MaliConnectPanel() {
         </h3>
         <div className="grid grid-cols-3 md:grid-cols-6 lg:grid-cols-12 gap-3">
           {FEATURES.map(feature => {
-            const pending = allPendingEntities.filter(e => e.type === feature.type).length;
-            const approved = approvedEntities.filter(e => e.type === feature.type).length;
+            const isMarketplace = feature.type === 'marketplace';
+            const pending = isMarketplace
+              ? allPendingEntities.filter(e => e.type === 'service_provider' || e.type === 'marketplace_service').length
+              : allPendingEntities.filter(e => e.type === feature.type).length;
+            const approved = isMarketplace
+              ? approvedEntities.filter(e => e.type === 'service_provider' || e.type === 'marketplace_service').length
+              : approvedEntities.filter(e => e.type === feature.type).length;
             return (
               <button
                 key={feature.type}

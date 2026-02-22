@@ -87,6 +87,11 @@ import DirectCall from './pages/DirectCall';
 import DirectMessage from './pages/DirectMessage';
 import Discover from './pages/Discover';
 import DisputeCenter from './pages/DisputeCenter';
+import FAQ from './pages/FAQ';
+import Favorites from './pages/Favorites';
+import Formations from './pages/Formations';
+import Health from './pages/Health';
+import Messages from './pages/MessagesMaliConnect';
 import Downloads from './pages/Downloads';
 import EditVideo from './pages/EditVideo';
 import EditProduct from './pages/EditProduct';
@@ -125,6 +130,7 @@ import OrderDispute from './pages/OrderDispute';
 import OrderReview from './pages/OrderReview';
 import PetitionDetails from './pages/PetitionDetails';
 import Playlists from './pages/Playlists';
+import PublishNews from './pages/PublishNews';
 import PostJob from './pages/PostJob';
 import Product from './pages/Product';
 import Profile from './pages/Profile';
@@ -140,7 +146,6 @@ import SellerSubscription from './pages/SellerSubscription';
 import SellerPromotions from './pages/SellerPromotions';
 import SellerStorefront from './pages/SellerStorefront';
 import SellerWallet from './pages/SellerWallet';
-import Services from './pages/Services';
 import ServiceDetails from './pages/ServiceDetails';
 import ServiceBooking from './pages/ServiceBooking';
 import Bookings from './pages/Bookings';
@@ -233,6 +238,11 @@ export const PAGES = {
     "DirectMessage": DirectMessage,
     "Discover": Discover,
     "DisputeCenter": DisputeCenter,
+    "FAQ": FAQ,
+    "Favorites": Favorites,
+    "Formations": Formations,
+    "Health": Health,
+    "Messages": Messages,
     "Downloads": Downloads,
     "EditVideo": EditVideo,
     "EditProduct": EditProduct,
@@ -271,6 +281,7 @@ export const PAGES = {
     "OrderReview": OrderReview,
     "PetitionDetails": PetitionDetails,
     "Playlists": Playlists,
+    "PublishNews": PublishNews,
     "PostJob": PostJob,
     "Product": Product,
     "Profile": Profile,
@@ -286,7 +297,6 @@ export const PAGES = {
     "SellerPromotions": SellerPromotions,
     "SellerStorefront": SellerStorefront,
     "SellerWallet": SellerWallet,
-    "Services": Services,
     "ServiceDetails": ServiceDetails,
     "ServiceBooking": ServiceBooking,
     "Bookings": Bookings,

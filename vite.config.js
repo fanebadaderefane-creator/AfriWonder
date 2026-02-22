@@ -62,6 +62,7 @@ export default defineConfig({
         description: 'Plateforme de partage vidéo, marketplace et services pour l\'Afrique',
         start_url: '/',
         display: 'standalone',
+        display_override: ['standalone', 'minimal-ui'],
         background_color: '#000000',
         theme_color: '#f97316',
         orientation: 'portrait',
@@ -118,7 +119,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3002',
         changeOrigin: true,
       },
     },

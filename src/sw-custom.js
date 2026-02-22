@@ -85,7 +85,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Ne pas intercepter les vidéos CDN (streaming, Range requests)
-  const cdnHosts = ['cdn.afriwonder.com', 'cdn.africonnect.com'];
+  const cdnHosts = ['cdn.afriwonder.com', 'cdn.afriwonder.com'];
   const isCdnMedia = cdnHosts.includes(url.hostname) || url.hostname.endsWith('.r2.dev');
   const isVideoRequest = request.destination === 'video';
   if (isCdnMedia || isVideoRequest) return;

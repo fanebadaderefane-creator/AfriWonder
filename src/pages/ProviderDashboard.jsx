@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   TrendingUp, Calendar, DollarSign, Star, Clock, 
-  CheckCircle, AlertCircle, Plus, Settings 
+  CheckCircle, AlertCircle, Plus, Settings, ArrowLeft 
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
@@ -78,8 +78,11 @@ export default function ProviderDashboard() {
       {/* Header */}
       <div className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Tableau de bord</h1>
-          <div className="flex gap-2">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0" aria-label="Retour">
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <h1 className="text-2xl font-bold flex-1 text-center">Tableau de bord</h1>
+          <div className="flex gap-2 flex-shrink-0">
             <Button
               variant="outline"
               size="sm"

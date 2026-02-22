@@ -147,7 +147,7 @@ export default function Bookings() {
                   : 'Vous n\'avez pas encore de réservations de clients'}
               </p>
               {viewAs === 'customer' && (
-                <Button onClick={() => navigate(createPageUrl('Services'))}>
+                <Button onClick={() => navigate(createPageUrl('Marketplace'))}>
                   Explorer les services
                 </Button>
               )}

@@ -1,0 +1,46 @@
+{
+  "name": "SubscriptionPlan",
+  "type": "object",
+  "properties": {
+    "module": {
+      "type": "string"
+    },
+    "tier": {
+      "type": "string",
+      "enum": [
+        "basic",
+        "pro",
+        "premium"
+      ]
+    },
+    "name": {
+      "type": "string"
+    },
+    "price_monthly": {
+      "type": "number"
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "max_listings": {
+      "type": "number"
+    },
+    "commission_rate": {
+      "type": "number",
+      "description": "Commission % on transactions"
+    }
+  },
+  "required": [
+    "module",
+    "tier",
+    "name",
+    "price_monthly"
+  ]
+}

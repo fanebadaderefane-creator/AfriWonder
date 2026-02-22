@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import {
   Search, TrendingUp, Eye, Heart, MessageCircle, Bookmark, Share2,
-  AlertCircle, Globe, BookOpen, Settings
+  AlertCircle, Globe, BookOpen, Settings, ArrowLeft, PenSquare
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -95,6 +95,136 @@ const MOCK_TRENDING = [
     featured_image: 'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?w=400&h=300&fit=crop',
     published_at: '2025-02-12T11:00:00Z',
     views: 4320,
+    _mock: true,
+  },
+  {
+    id: 'mock-sport-basket',
+    slug: 'mock-sport-basket',
+    title: 'Championnat national de basket : la finale à Bamako',
+    excerpt: 'Les équipes de Bamako et Ségou s\'affrontent ce week-end pour le titre.',
+    category: 'sport',
+    featured_image: 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=400&h=300&fit=crop',
+    published_at: '2025-02-11T08:00:00Z',
+    views: 3100,
+    _mock: true,
+  },
+  {
+    id: 'mock-politique-gouvernement',
+    slug: 'mock-politique-gouvernement',
+    title: 'Conseil des ministres : focus sur l\'éducation et la jeunesse',
+    excerpt: 'Plusieurs décrets adoptés pour renforcer l\'accès à l\'école et à la formation.',
+    category: 'politique',
+    featured_image: 'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=400&h=300&fit=crop',
+    published_at: '2025-02-10T14:00:00Z',
+    views: 5200,
+    _mock: true,
+  },
+];
+
+// Articles supplémentaires pour remplir la liste (mode mock)
+const MOCK_LIST_ARTICLES = [
+  {
+    id: 'mock-intl-ue',
+    slug: 'mock-intl-ue',
+    title: 'Mali-UE : reprise du dialogue sur la coopération',
+    excerpt: 'Une délégation européenne est attendue à Bamako dans les prochaines semaines.',
+    category: 'international',
+    featured_image: 'https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=400&h=300&fit=crop',
+    published_at: '2025-02-09T10:00:00Z',
+    views: 4100,
+    author_name: 'Ibrahim Keita',
+    author: { full_name: 'Ibrahim Keita', profile_image: null },
+    _mock: true,
+  },
+  {
+    id: 'mock-tech-mobile',
+    slug: 'mock-tech-mobile',
+    title: 'Orange Mali renforce le réseau 4G dans les zones rurales',
+    excerpt: 'Plus de 200 localités seront couvertes d\'ici la fin du trimestre.',
+    category: 'technologie',
+    featured_image: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=400&h=300&fit=crop',
+    published_at: '2025-02-08T09:00:00Z',
+    views: 6800,
+    author_name: 'Aïcha Traoré',
+    author: { full_name: 'Aïcha Traoré', profile_image: null },
+    _mock: true,
+  },
+  {
+    id: 'mock-sante-paludisme',
+    slug: 'mock-sante-paludisme',
+    title: 'Campagne de distribution de moustiquaires à Kayes',
+    excerpt: 'Objectif : protéger 100 000 ménages avant la saison des pluies.',
+    category: 'sante',
+    featured_image: 'https://images.unsplash.com/photo-1584515933487-779824d29309?w=400&h=300&fit=crop',
+    published_at: '2025-02-07T16:00:00Z',
+    views: 2900,
+    author_name: 'Dr. Oumar Coulibaly',
+    author: { full_name: 'Dr. Oumar Coulibaly', profile_image: null },
+    _mock: true,
+  },
+  {
+    id: 'mock-culture-musique',
+    slug: 'mock-culture-musique',
+    title: 'Salif Keïta en concert caritatif pour les déplacés',
+    excerpt: 'La star malienne donnera un récital le 1er mars au Stade du 26-Mars.',
+    category: 'culture',
+    featured_image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&h=300&fit=crop',
+    published_at: '2025-02-06T12:00:00Z',
+    views: 9500,
+    author_name: 'Kadiatou Sangaré',
+    author: { full_name: 'Kadiatou Sangaré', profile_image: null },
+    _mock: true,
+  },
+  {
+    id: 'mock-economie-coton',
+    slug: 'mock-economie-coton',
+    title: 'Récolte cotonnière 2024-2025 : des résultats encourageants',
+    excerpt: 'La filière dépasse les 700 000 tonnes malgré les aléas climatiques.',
+    category: 'economie',
+    featured_image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop',
+    published_at: '2025-02-05T07:00:00Z',
+    views: 3600,
+    author_name: 'Mamadou Diarra',
+    author: { full_name: 'Mamadou Diarra', profile_image: null },
+    _mock: true,
+  },
+  {
+    id: 'mock-sport-foot',
+    slug: 'mock-sport-foot',
+    title: 'Éliminatoires CAN 2026 : le Mali reçoit le Ghana',
+    excerpt: 'Match décisif au Stade du 26-Mars samedi à 18h.',
+    category: 'sport',
+    featured_image: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=400&h=300&fit=crop',
+    published_at: '2025-02-04T11:00:00Z',
+    views: 12200,
+    author_name: 'Seydou B. Koné',
+    author: { full_name: 'Seydou B. Koné', profile_image: null },
+    _mock: true,
+  },
+  {
+    id: 'mock-politique-decentralisation',
+    slug: 'mock-politique-decentralisation',
+    title: 'Transfert de compétences aux collectivités : où en est-on ?',
+    excerpt: 'Bilan de la décentralisation après deux ans d\'application de la nouvelle loi.',
+    category: 'politique',
+    featured_image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=300&fit=crop',
+    published_at: '2025-02-03T15:00:00Z',
+    views: 4400,
+    author_name: 'Fatou Diallo',
+    author: { full_name: 'Fatou Diallo', profile_image: null },
+    _mock: true,
+  },
+  {
+    id: 'mock-intl-diaspora',
+    slug: 'mock-intl-diaspora',
+    title: 'Diaspora malienne : les transferts en hausse de 12 %',
+    excerpt: 'Les envois d\'argent des Maliens de l\'étranger ont atteint un record en 2024.',
+    category: 'international',
+    featured_image: 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=400&h=300&fit=crop',
+    published_at: '2025-02-02T09:00:00Z',
+    views: 5700,
+    author_name: 'Assitan Haidara',
+    author: { full_name: 'Assitan Haidara', profile_image: null },
     _mock: true,
   },
 ];
@@ -205,7 +335,7 @@ export default function News() {
   const featuredArticle = useMock ? MOCK_FEATURED : apiArticles[0];
   const trendingFromApi = useMock ? [] : (listQuery.data?.pages?.[0]?.articles ?? []).slice(1, 4);
   const trendingList = useMock ? MOCK_TRENDING : trendingFromApi;
-  const listAfterFeatured = useMock ? [] : apiArticles.length > 1 ? apiArticles.slice(1) : [];
+  const listAfterFeatured = useMock ? MOCK_LIST_ARTICLES : apiArticles.length > 1 ? apiArticles.slice(1) : [];
 
   const { data: breaking = [] } = useQuery({
     queryKey: ['news-breaking'],
@@ -267,19 +397,34 @@ export default function News() {
       <div className="sticky top-0 bg-white border-b border-slate-200 z-40 shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-2">
           <div className="flex items-center justify-between gap-2 mb-2">
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">{t('news_title')}</h1>
-              <p className="text-xs text-slate-500 mt-0.5">{t('news_subtitle')}</p>
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl" aria-label="Retour">
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+              <div>
+                <h1 className="text-xl font-bold text-slate-900">{t('news_title')}</h1>
+                <p className="text-xs text-slate-500 mt-0.5">{t('news_subtitle')}</p>
+              </div>
             </div>
-            <Dialog open={prefsOpen} onOpenChange={setPrefsOpen}>
-              <DialogTrigger asChild>
-                <button
-                  className="p-2 rounded-full hover:bg-slate-100 text-slate-600"
-                  aria-label="Préférences"
+            <div className="flex items-center gap-1">
+              {user && (
+                <Link
+                  to={createPageUrl('PublishNews')}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium"
                 >
-                  <Settings className="w-5 h-5" />
-                </button>
-              </DialogTrigger>
+                  <PenSquare className="w-4 h-4" />
+                  <span className="hidden sm:inline">Publier</span>
+                </Link>
+              )}
+              <Dialog open={prefsOpen} onOpenChange={setPrefsOpen}>
+                <DialogTrigger asChild>
+                  <button
+                    className="p-2 rounded-full hover:bg-slate-100 text-slate-600"
+                    aria-label="Préférences"
+                  >
+                    <Settings className="w-5 h-5" />
+                  </button>
+                </DialogTrigger>
               <DialogContent className="max-w-sm">
 <DialogHeader>
                 <DialogTitle>{t('news_preferences')}</DialogTitle>
@@ -320,8 +465,8 @@ export default function News() {
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     >
                       <option value="">Toutes</option>
-                      {languages.filter((l) => l.id).map((l) => (
-                        <option key={l.id} value={l.id}>{l.label}</option>
+                      {LANG_OPTIONS.filter((l) => l.id != null && l.id !== '').map((l) => (
+                        <option key={l.id} value={l.id}>{l.label ?? (l.labelKey ? t(l.labelKey) : l.id)}</option>
                       ))}
                     </select>
                   </div>
@@ -338,6 +483,7 @@ export default function News() {
                 </div>
               </DialogContent>
             </Dialog>
+            </div>
           </div>
 
           {/* Search */}
@@ -351,14 +497,14 @@ export default function News() {
             />
           </div>
 
-          {/* Tabs: Tous | Pour vous */}
+          {/* Tabs: Tous | Pour vous — couleurs AfriWonder (orange) */}
           <div className="flex gap-2 mb-2">
             <button
               onClick={() => setUseFeed(false)}
               className={cn(
                 'px-4 py-1.5 rounded-full text-sm font-medium transition-colors',
                 !useFeed
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-orange-500 hover:bg-orange-600 text-white'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               )}
             >
@@ -369,7 +515,7 @@ export default function News() {
               className={cn(
                 'px-4 py-1.5 rounded-full text-sm font-medium flex items-center gap-1.5 transition-colors',
                 useFeed
-                  ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
+                  ? 'bg-orange-500 hover:bg-orange-600 text-white'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               )}
             >
@@ -413,8 +559,8 @@ export default function News() {
                     }
                   }}
                   className={cn(
-                    'px-3 py-1 rounded-full text-xs whitespace-nowrap',
-                    isSelected ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'
+                    'px-3 py-1 rounded-full text-xs whitespace-nowrap transition-colors',
+                    isSelected ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   )}
                 >
                   {label}

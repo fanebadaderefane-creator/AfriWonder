@@ -12,6 +12,7 @@ import {
   Heart, GraduationCap, ShoppingCart
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 import { toast } from "sonner";
 
@@ -148,7 +149,7 @@ export default function AddService() {
     onSuccess: () => {
       toast.success('Service soumis à validation admin');
       queryClient.invalidateQueries({ queryKey: ['services-list'] });
-      navigate('/Services');
+      navigate(createPageUrl('Marketplace'));
     },
     onError: (error) => {
       const message =

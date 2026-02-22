@@ -1,0 +1,16 @@
+{
+  "name": "Favorite",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string"
+    },
+    "provider_profile_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "user_email",
+    "provider_profile_id"
+  ]
+}

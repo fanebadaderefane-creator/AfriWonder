@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/Modal';
@@ -13,6 +13,7 @@ import {
   X,
   ChevronUp,
   ChevronDown,
+  ArrowLeft,
 } from 'lucide-react';
 import BottomNav from '@/components/navigation/BottomNav';
 import { api } from '@/api/expressClient';
@@ -40,6 +41,7 @@ function formatDate(d) {
 }
 
 export default function Utilities() {
+  const navigate = useNavigate();
   const [quickAmount, setQuickAmount] = useState(2000);
   const [recentTransactions, setRecentTransactions] = useState(MOCK_TRANSACTIONS);
   const [loadingTx, setLoadingTx] = useState(true);
@@ -178,8 +180,15 @@ export default function Utilities() {
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       <div className="p-4">
-        <h1 className="text-2xl font-bold text-gray-900">Services & Factures</h1>
-        <p className="text-gray-500 text-sm mt-0.5">Rechargez et payez vos factures</p>
+        <div className="flex items-center gap-3 mb-2">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl" aria-label="Retour">
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Services & Factures</h1>
+            <p className="text-gray-500 text-sm mt-0.5">Rechargez et payez vos factures</p>
+          </div>
+        </div>
 
         {/* 4 cartes services */}
         <div className="grid grid-cols-2 gap-3 mt-6">

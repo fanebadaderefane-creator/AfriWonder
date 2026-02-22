@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/Modal';
 import {
@@ -10,6 +11,7 @@ import {
   Camera,
   User,
   Stethoscope,
+  ArrowLeft,
 } from 'lucide-react';
 import BottomNav from '@/components/navigation/BottomNav';
 import { api } from '@/api/expressClient';
@@ -73,6 +75,7 @@ const DOCTOR_SPECIALTIES_FOR_REGISTER = [
 ];
 
 export default function Telemedicine() {
+  const navigate = useNavigate();
   const [selectedSpecialty, setSelectedSpecialty] = useState('all');
   const [doctors, setDoctors] = useState(MOCK_DOCTORS);
   const [loading, setLoading] = useState(true);
@@ -168,8 +171,15 @@ export default function Telemedicine() {
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       <div className="p-4">
-        <h1 className="text-2xl font-bold text-gray-900">Santé & Télémédecine</h1>
-        <p className="text-gray-600 text-sm mt-0.5">Consultez un médecin en ligne</p>
+        <div className="flex items-center gap-3 mb-2">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl" aria-label="Retour">
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Santé & Télémédecine</h1>
+            <p className="text-gray-600 text-sm mt-0.5">Consultez un médecin en ligne</p>
+          </div>
+        </div>
 
         {/* Urgence médicale */}
         <div className="mt-4 p-4 rounded-xl bg-red-50 border border-red-200 flex flex-wrap items-center gap-3">

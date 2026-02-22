@@ -1,0 +1,64 @@
+{
+  "name": "CrowdfundingProject",
+  "type": "object",
+  "properties": {
+    "creator_email": {
+      "type": "string"
+    },
+    "creator_name": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "agriculture",
+        "technology",
+        "health",
+        "education",
+        "art",
+        "social",
+        "other"
+      ]
+    },
+    "goal_amount": {
+      "type": "number"
+    },
+    "raised_amount": {
+      "type": "number",
+      "default": 0
+    },
+    "deadline": {
+      "type": "string",
+      "format": "date"
+    },
+    "cover_url": {
+      "type": "string"
+    },
+    "city": {
+      "type": "string"
+    },
+    "backers_count": {
+      "type": "number",
+      "default": 0
+    },
+    "is_verified": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "creator_email",
+    "title",
+    "goal_amount"
+  ]
+}

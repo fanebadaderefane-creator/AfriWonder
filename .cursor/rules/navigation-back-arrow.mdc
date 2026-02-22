@@ -1,0 +1,34 @@
+---
+description: Flèche de retour — à ne pas oublier sur les écrans pour faciliter la navigation
+alwaysApply: true
+---
+
+# Flèche de retour sur les écrans (AfriWonder)
+
+L'utilisateur a demandé que **la flèche de retour soit systématiquement ajoutée** pour faciliter la navigation. À garder en mémoire.
+
+## Règle
+
+- **Sur chaque nouvel écran ou page** (hors Home, Landing, Create), ajouter un **bouton Retour** (icône `ArrowLeft`) en haut à gauche du contenu principal.
+- Comportement : `onClick={() => navigate(-1)}` pour revenir à l’écran précédent.
+- Accessibilité : `aria-label="Retour"` sur le bouton.
+
+## Exemple d’implémentation
+
+```jsx
+import { ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+
+// Dans le header de la page :
+<Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl" aria-label="Retour">
+  <ArrowLeft className="w-5 h-5" />
+</Button>
+```
+
+## Pages concernées (liste non exhaustive)
+
+Recherche, Messages/Inbox, Mon Wallet, Événements, Transport, Restauration, Services, Santé, Immobilier, Assurance, Actualités, Marketplace, Prestataires, Dashboard prestataire, Profil prestataire, etc. — toute page secondaire doit avoir la flèche de retour sauf si l’utilisateur indique le contraire.
+
+## Ne pas oublier
+
+Lors de l’ajout ou la modification d’une page, **vérifier la présence de la flèche de retour** et l’ajouter si elle manque.

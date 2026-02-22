@@ -1,0 +1,76 @@
+{
+  "name": "Event",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "organizer_email": {
+      "type": "string"
+    },
+    "organizer_name": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "concert",
+        "conference",
+        "sport",
+        "festival",
+        "wedding",
+        "other"
+      ]
+    },
+    "date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "location": {
+      "type": "string"
+    },
+    "city": {
+      "type": "string"
+    },
+    "image_url": {
+      "type": "string"
+    },
+    "ticket_price": {
+      "type": "number",
+      "default": 0
+    },
+    "total_tickets": {
+      "type": "number",
+      "default": 0
+    },
+    "sold_tickets": {
+      "type": "number",
+      "default": 0
+    },
+    "is_free": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_published": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_verified": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "title",
+    "organizer_email",
+    "date",
+    "city"
+  ]
+}

@@ -100,11 +100,14 @@ export default function VideoFrameThumbnail({ videoUrl, alt = '', className = ''
   }, [videoUrl, isVisible, error]);
 
   return (
-    <div ref={containerRef} className={`relative w-full h-full overflow-hidden ${className}`}>
+    <div ref={containerRef} className={`relative w-full h-full overflow-hidden bg-gray-200 ${className}`}>
       <img
         src={frameDataUrl || VIDEO_PLACEHOLDER_IMG}
         alt={alt}
         className="w-full h-full object-cover"
+        onError={(e) => {
+          e.currentTarget.src = VIDEO_PLACEHOLDER_IMG;
+        }}
       />
       {/* Vidéo cachée pour extraction de frame */}
       <video

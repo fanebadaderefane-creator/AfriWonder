@@ -130,10 +130,10 @@ export default function RestaurantMenu() {
 
   if (!restaurantId) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-orange-900 to-slate-900 flex items-center justify-center">
-        <div className="text-center text-gray-400">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center text-gray-600">
           <p>Restaurant non sélectionné.</p>
-          <Link to={createPageUrl('FoodDelivery')}><Button className="mt-4 bg-orange-500">Voir les restaurants</Button></Link>
+          <Link to={createPageUrl('FoodDelivery')}><Button className="mt-4 bg-orange-500 hover:bg-orange-600 text-white">Voir les restaurants</Button></Link>
         </div>
       </div>
     );
@@ -141,18 +141,18 @@ export default function RestaurantMenu() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-orange-900 to-slate-900 flex items-center justify-center">
-        <Loader2 className="w-10 h-10 animate-spin text-white" />
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 className="w-10 h-10 animate-spin text-orange-500" />
       </div>
     );
   }
 
   if (!restaurant) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-orange-900 to-slate-900 flex items-center justify-center">
-        <div className="text-center text-gray-400">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center text-gray-600">
           <p>Restaurant introuvable.</p>
-          <Link to={createPageUrl('FoodDelivery')}><Button className="mt-4 bg-orange-500">Retour</Button></Link>
+          <Link to={createPageUrl('FoodDelivery')}><Button className="mt-4 bg-orange-500 hover:bg-orange-600 text-white">Retour</Button></Link>
         </div>
       </div>
     );
@@ -161,55 +161,58 @@ export default function RestaurantMenu() {
   const cuisine = Array.isArray(restaurant.cuisine_type) ? restaurant.cuisine_type.join(' • ') : (restaurant.cuisine_type || 'Restaurant');
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-orange-900 to-slate-900 pb-28">
-      <div className="p-4 text-white border-b border-white/10">
-        <div className="flex items-center gap-3 mb-2">
-          <Link to={createPageUrl('FoodDelivery')} className="text-white/90 hover:text-white p-1 -m-1 rounded">
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
+    <div className="min-h-screen bg-gray-50 pb-28">
+      {/* En-tête AfriWonder : fond clair + accent orange */}
+      <div className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <Link to={createPageUrl('FoodDelivery')} className="text-gray-700 hover:text-orange-600 p-1 -m-1 rounded-lg transition-colors">
+              <ArrowLeft className="w-5 h-5" />
+            </Link>
+          </div>
+          <h2 className="text-xl font-bold text-gray-900">{restaurant.name}</h2>
+          <p className="text-sm text-gray-500">{cuisine}</p>
+          <div className="flex items-center gap-3 mt-2 text-sm flex-wrap text-gray-600">
+            <span className="flex items-center gap-1"><Star className="w-4 h-4 text-orange-500" /> {restaurant.rating ?? '—'}</span>
+            <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> {restaurant.delivery_time_min ?? 30} min</span>
+            {restaurant.address && <span className="flex items-center gap-1"><MapPin className="w-4 h-4" /> {restaurant.address}</span>}
+          </div>
+          <Badge className={`mt-2 ${restaurant.is_open ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+            {restaurant.is_open ? 'Ouvert' : 'Fermé'}
+          </Badge>
         </div>
-        <h2 className="text-xl font-bold">{restaurant.name}</h2>
-        <p className="text-sm text-white/80">{cuisine}</p>
-        <div className="flex items-center gap-3 mt-2 text-sm flex-wrap">
-          <span className="flex items-center gap-1"><Star className="w-4 h-4 text-yellow-400" /> {restaurant.rating ?? '—'}</span>
-          <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> {restaurant.delivery_time_min ?? 30} min</span>
-          {restaurant.address && <span className="flex items-center gap-1"><MapPin className="w-4 h-4" /> {restaurant.address}</span>}
-        </div>
-        <Badge className={`mt-2 ${restaurant.is_open ? 'bg-green-500' : 'bg-red-500'}`}>
-          {restaurant.is_open ? 'Ouvert' : 'Fermé'}
-        </Badge>
       </div>
 
       <div className="p-4 space-y-4">
-        <h3 className="text-lg font-semibold text-white">Menu</h3>
+        <h3 className="text-lg font-semibold text-gray-900">Menu</h3>
         {menuItems.length === 0 ? (
-          <Card className="bg-white/10 border-white/20">
-            <CardContent className="p-6 text-center text-gray-400">
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-6 text-center text-gray-500">
               Aucun plat pour le moment.
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-3">
             {menuItems.map((item) => (
-              <Card key={item.id} className="bg-white/10 backdrop-blur-md border-white/20 overflow-hidden">
+              <Card key={item.id} className="bg-white border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                 <CardContent className="p-4 flex gap-4">
-                  <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-white/10">
+                  <div className="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100">
                     {item.image_url ? (
                       <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
-                        <UtensilsCrossed className="w-8 h-8 text-white/50" />
+                        <UtensilsCrossed className="w-8 h-8 text-gray-400" />
                       </div>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-white">{item.name}</h4>
-                    {item.description && <p className="text-sm text-gray-400 line-clamp-2">{item.description}</p>}
-                    <p className="text-orange-400 font-bold mt-1">{Number(item.price || 0).toLocaleString()} FCFA</p>
+                    <h4 className="font-semibold text-gray-900">{item.name}</h4>
+                    {item.description && <p className="text-sm text-gray-500 line-clamp-2">{item.description}</p>}
+                    <p className="text-orange-600 font-bold mt-1">{Number(item.price || 0).toLocaleString()} FCFA</p>
                   </div>
                   <Button
                     size="sm"
-                    className="bg-orange-500 hover:bg-orange-600 flex-shrink-0"
+                    className="bg-orange-500 hover:bg-orange-600 text-white flex-shrink-0"
                     onClick={() => addToCart(item)}
                   >
                     <Plus className="w-4 h-4 mr-1" /> Ajouter
@@ -220,18 +223,18 @@ export default function RestaurantMenu() {
           </div>
         )}
 
-        <CommissionNotice vertical="food" compact className="text-white/70" />
+        <CommissionNotice vertical="food" compact className="text-gray-500" />
       </div>
 
       {cart.length > 0 && (
-        <div className="fixed bottom-20 left-0 right-0 p-4 bg-black/80 backdrop-blur-md border-t border-white/10 z-40">
+        <div className="fixed bottom-20 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-lg z-40">
           <div className="flex items-center justify-between max-w-2xl mx-auto">
             <div>
-              <p className="text-white font-semibold">{cart.length} article(s)</p>
-              <p className="text-orange-400 text-lg font-bold">{totalCart.toLocaleString()} FCFA + {deliveryFee.toLocaleString()} livraison</p>
+              <p className="text-gray-900 font-semibold">{cart.length} article(s)</p>
+              <p className="text-orange-600 text-lg font-bold">{totalCart.toLocaleString()} FCFA + {deliveryFee.toLocaleString()} livraison</p>
             </div>
             <Button
-              className="bg-orange-500 hover:bg-orange-600"
+              className="bg-orange-500 hover:bg-orange-600 text-white"
               onClick={() => setShowOrderModal(true)}
             >
               <ShoppingCart className="w-5 h-5 mr-2" /> Commander
@@ -284,7 +287,7 @@ export default function RestaurantMenu() {
                 Annuler
               </Button>
               <Button
-                className="flex-1 bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-semibold"
+                className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-semibold"
                 onClick={handlePlaceOrder}
               >
                 Valider la commande

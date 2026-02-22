@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Edit, MessageCircle } from 'lucide-react';
+import { Search, Edit, MessageCircle, ArrowLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -55,7 +55,12 @@ export default function Inbox() {
     <div className="min-h-screen bg-gray-50 pb-24">
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 shadow-sm">
         <div className="flex items-center justify-between px-4 py-3">
-          <h1 className="text-xl font-bold text-gray-900">Messages</h1>
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl" aria-label="Retour">
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <h1 className="text-xl font-bold text-gray-900">Messages</h1>
+          </div>
           {/* Nouveau message — ouvre la recherche en mode "messages" comme Instagram */}
           <Link to={createPageUrl('Search') + '?from=inbox&mode=messages'}>
             <Button variant="ghost" size="icon">

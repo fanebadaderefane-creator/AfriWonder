@@ -1,0 +1,61 @@
+{
+  "name": "PaymentRecord",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string"
+    },
+    "amount": {
+      "type": "number"
+    },
+    "currency": {
+      "type": "string",
+      "default": "FCFA"
+    },
+    "payment_method": {
+      "type": "string",
+      "enum": [
+        "orange_money",
+        "moov_money",
+        "bank_card",
+        "cash"
+      ]
+    },
+    "payment_type": {
+      "type": "string",
+      "enum": [
+        "subscription",
+        "commission",
+        "ticket",
+        "crowdfunding"
+      ]
+    },
+    "module": {
+      "type": "string"
+    },
+    "plan": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "completed",
+        "failed",
+        "refunded"
+      ],
+      "default": "pending"
+    },
+    "reference": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "user_email",
+    "amount",
+    "payment_type"
+  ]
+}

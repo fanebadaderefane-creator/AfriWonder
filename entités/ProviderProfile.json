@@ -1,0 +1,111 @@
+{
+  "name": "ProviderProfile",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "Email du prestataire"
+    },
+    "display_name": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "bio": {
+      "type": "string"
+    },
+    "photo_url": {
+      "type": "string"
+    },
+    "category_id": {
+      "type": "string"
+    },
+    "services_offered": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "certifications": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "portfolio_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "city": {
+      "type": "string"
+    },
+    "neighborhood": {
+      "type": "string"
+    },
+    "price_range_min": {
+      "type": "number"
+    },
+    "price_range_max": {
+      "type": "number"
+    },
+    "availability": {
+      "type": "string",
+      "enum": [
+        "available",
+        "busy",
+        "unavailable"
+      ],
+      "default": "available"
+    },
+    "subscription_plan": {
+      "type": "string",
+      "enum": [
+        "basic",
+        "pro",
+        "premium"
+      ],
+      "default": "basic"
+    },
+    "subscription_expires": {
+      "type": "string",
+      "format": "date"
+    },
+    "is_verified": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "is_featured": {
+      "type": "boolean",
+      "default": false
+    },
+    "average_rating": {
+      "type": "number",
+      "default": 0
+    },
+    "total_reviews": {
+      "type": "number",
+      "default": 0
+    },
+    "total_views": {
+      "type": "number",
+      "default": 0
+    },
+    "total_requests": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "user_email",
+    "display_name",
+    "category_id",
+    "city"
+  ]
+}

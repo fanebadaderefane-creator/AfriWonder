@@ -499,40 +499,49 @@ export default function Profile() {
 
               transition={{ delay: index * 0.03 }}
 
-              className="relative w-full h-full"
+              className="relative w-full h-full overflow-hidden bg-gray-200"
 
             >
-
+              {/* Avec miniature valide : afficher vidéo + poster ; sinon utiliser une frame de la vidéo ou placeholder */}
               {video.video_url && isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
-                <video
-                  src={getVideoPlaybackUrl(video.video_url)}
-                  poster={video.thumbnail_url}
-                  className="w-full h-full object-cover"
-                  preload="metadata"
-                  muted
-                  playsInline
-                  onError={(e) => {
-                    const videoEl = e.currentTarget;
-                    if (videoEl?.style) {
-                      videoEl.style.display = 'none';
-                      const fallbackImg = videoEl.parentElement?.querySelector('.video-fallback-img');
-                      if (fallbackImg instanceof HTMLElement) fallbackImg.style.display = 'block';
-                    }
-                  }}
-                />
+                <>
+                  <video
+                    src={getVideoPlaybackUrl(video.video_url)}
+                    poster={video.thumbnail_url}
+                    className="w-full h-full object-cover absolute inset-0"
+                    preload="metadata"
+                    muted
+                    playsInline
+                    onError={(e) => {
+                      const videoEl = e.currentTarget;
+                      if (videoEl?.style) {
+                        videoEl.style.display = 'none';
+                        const fallback = videoEl.parentElement?.querySelector('.video-fallback-img');
+                        if (fallback instanceof HTMLElement) fallback.style.display = 'block';
+                      }
+                    }}
+                  />
+                  {/* Si le poster échoue : afficher une frame de la vidéo au lieu de noir */}
+                  <div className="video-fallback-img hidden absolute inset-0 w-full h-full">
+                    <VideoFrameThumbnail videoUrl={video.video_url} alt={video.title} className="w-full h-full" />
+                  </div>
+                </>
               ) : null}
-              {/* Sans miniature valide : extraire une frame de la vidéo, sinon image de secours */}
+              {/* Sans miniature ajoutée à la création : couverture = frame extraite de la vidéo */}
               {!isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
                 video.video_url ? (
-                  <VideoFrameThumbnail
-                    videoUrl={video.video_url}
-                    alt={video.title}
-                  />
+                  <div className="absolute inset-0 w-full h-full">
+                    <VideoFrameThumbnail
+                      videoUrl={video.video_url}
+                      alt={video.title}
+                      className="w-full h-full"
+                    />
+                  </div>
                 ) : (
                   <img
                     src={VIDEO_PLACEHOLDER_IMG}
                     alt={video.title}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover absolute inset-0"
                   />
                 )
               ) : null}
@@ -540,7 +549,7 @@ export default function Profile() {
                 <img
                   src={video.thumbnail_url}
                   alt={video.title}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover absolute inset-0"
                 />
               )}
 
