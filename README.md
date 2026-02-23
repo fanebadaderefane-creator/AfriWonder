@@ -204,6 +204,11 @@ VITE_BASE44_APP_BASE_URL=https://your-app.base44.app
 
 # Optionnel
 VITE_STRIPE_PUBLISHABLE_KEY=pk_test_xxx
+
+# WebRTC Calls (recommande en production mobile)
+VITE_TURN_URL=turns://turn.afriwonder.com:5349?transport=tcp
+VITE_TURN_USERNAME=afriwonder
+VITE_TURN_CREDENTIAL=motdepassefort
 ```
 
 #### B. Backend (`backend/`)
@@ -481,6 +486,7 @@ Si Redis n’est pas installé, le backend peut fonctionner sans (rate limit en 
 | [API.md](./docs/API.md) | Endpoints API |
 | [SECURITY.md](./docs/SECURITY.md) | Sécurité |
 | [AGORA_SETUP.md](./docs/AGORA_SETUP.md) | Configuration live streaming |
+| [WEBRTC_TURN_SETUP.md](./docs/WEBRTC_TURN_SETUP.md) | Configuration appels vocaux/video (TURN) |
 
 ---
 

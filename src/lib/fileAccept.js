@@ -11,3 +11,11 @@ export const FILE_ACCEPT_IMAGES =
 /** Pour sélectionner des vidéos uniquement. */
 export const FILE_ACCEPT_VIDEOS =
   'video/*,video/mp4,video/quicktime,video/x-m4v';
+
+/** Pour sélectionner images + vidéos depuis la galerie (Create). */
+export const FILE_ACCEPT_MEDIA =
+  `${FILE_ACCEPT_IMAGES},${FILE_ACCEPT_VIDEOS}`;
+
+/** Pour selectionner des audios (messages vocaux). */
+export const FILE_ACCEPT_AUDIO =
+  'audio/*,audio/webm,audio/ogg,audio/mp3,audio/mpeg,audio/wav,audio/mp4';

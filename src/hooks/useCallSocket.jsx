@@ -1,0 +1,59 @@
+import { useEffect, useRef } from 'react';
+import { io } from 'socket.io-client';
+
+const getSocketBaseUrl = () => {
+  const api = import.meta.env.VITE_API_URL || '';
+  if (api) return api.replace(/\/api\/?$/, '') || window.location.origin;
+  return window.location.origin;
+};
+
+export function useCallSocket({ userId, onInvite, onAccept, onDecline, onEnd, onSignal } = {}) {
+  const socketRef = useRef(null);
+  const inviteRef = useRef(onInvite);
+  const acceptRef = useRef(onAccept);
+  const declineRef = useRef(onDecline);
+  const endRef = useRef(onEnd);
+  const signalRef = useRef(onSignal);
+
+  inviteRef.current = onInvite;
+  acceptRef.current = onAccept;
+  declineRef.current = onDecline;
+  endRef.current = onEnd;
+  signalRef.current = onSignal;
+
+  useEffect(() => {
+    if (!userId) return;
+    const base = getSocketBaseUrl();
+    const socket = io(base, {
+      path: '/socket.io',
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
+    });
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      socket.emit('user:join', userId);
+    });
+    socket.on('call:invite', (payload) => inviteRef.current?.(payload));
+    socket.on('call:accept', (payload) => acceptRef.current?.(payload));
+    socket.on('call:decline', (payload) => declineRef.current?.(payload));
+    socket.on('call:end', (payload) => endRef.current?.(payload));
+    socket.on('call:signal', (payload) => signalRef.current?.(payload));
+
+    return () => {
+      socket.emit('user:leave', userId);
+      socket.removeAllListeners();
+      socket.disconnect();
+    };
+  }, [userId]);
+
+  const emit = (eventName, payload) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit(eventName, payload);
+    }
+  };
+
+  return { emit, socket: socketRef.current };
+}
+
+export default useCallSocket;

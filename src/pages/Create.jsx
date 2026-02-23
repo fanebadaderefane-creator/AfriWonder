@@ -35,7 +35,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { createPageUrl } from "@/utils";
 
-import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
+import { FILE_ACCEPT_IMAGES, FILE_ACCEPT_MEDIA } from '@/lib/fileAccept';
 
 import VideoEditor from '../components/video/VideoEditor';
 
@@ -377,34 +377,110 @@ export default function Create() {
 
 
   // Handle file selection from gallery
+  const convertImageToVideoFile = (imageFile) => new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(imageFile);
+    image.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const width = 720;
+        const height = 1280;
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error('Canvas non disponible'));
+          return;
+        }
+
+        const drawFrame = () => {
+          ctx.fillStyle = 'black';
+          ctx.fillRect(0, 0, width, height);
+          const scale = Math.min(width / image.width, height / image.height);
+          const drawW = image.width * scale;
+          const drawH = image.height * scale;
+          const x = (width - drawW) / 2;
+          const y = (height - drawH) / 2;
+          ctx.drawImage(image, x, y, drawW, drawH);
+        };
+
+        drawFrame();
+
+        const stream = canvas.captureStream(24);
+        const mimeCandidates = [
+          'video/webm;codecs=vp9',
+          'video/webm;codecs=vp8',
+          'video/webm',
+        ];
+        const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || 'video/webm';
+        const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2200000 });
+        const chunks = [];
+        const redraw = setInterval(drawFrame, 1000 / 24);
+
+        recorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) chunks.push(event.data);
+        };
+        recorder.onstop = () => {
+          clearInterval(redraw);
+          stream.getTracks().forEach((t) => t.stop());
+          URL.revokeObjectURL(objectUrl);
+          const blob = new Blob(chunks, { type: mimeType });
+          if (!blob.size) {
+            reject(new Error('Conversion image en vidéo échouée'));
+            return;
+          }
+          const file = new File([blob], `photo_${Date.now()}.webm`, { type: blob.type || 'video/webm' });
+          resolve(file);
+        };
+        recorder.start();
+        setTimeout(() => {
+          if (recorder.state !== 'inactive') recorder.stop();
+        }, 3200);
+      } catch (err) {
+        URL.revokeObjectURL(objectUrl);
+        reject(err);
+      }
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Impossible de lire l’image'));
+    };
+    image.src = objectUrl;
+  });
 
   const handleFileSelect = async (e) => {
 
     const file = e.target.files?.[0];
 
     if (file) {
-
-      if (!file.type.startsWith('video/')) {
-
-        toast.error('Veuillez sélectionner une vidéo');
-
+      let normalizedFile = file;
+      if (file.type.startsWith('image/')) {
+        try {
+          toast.info('Conversion de l’image en vidéo...');
+          normalizedFile = await convertImageToVideoFile(file);
+        } catch (error) {
+          toast.error(error?.message || "Impossible d'utiliser cette image");
+          return;
+        }
+      } else if (!file.type.startsWith('video/')) {
+        toast.error('Veuillez sélectionner une image ou une vidéo');
         return;
-
       }
 
       
 
       // Create preview URL
 
-      const preview = URL.createObjectURL(file);
+      const preview = URL.createObjectURL(normalizedFile);
 
-      setSelectedFile(file);
+      setSelectedFile(normalizedFile);
 
       setPreviewUrl(preview);
 
       setStep('edit');
 
-      toast.success('Vidéo chargée avec succès');
+      toast.success('Média chargé avec succès');
 
     }
 
@@ -1230,9 +1306,9 @@ export default function Create() {
 
                   <div>
 
-                    <p className="text-xl font-bold">Importer une vidéo</p>
+                    <p className="text-xl font-bold">Importer un média</p>
 
-                    <p className="text-white/70 text-sm">Depuis votre galerie</p>
+                    <p className="text-white/70 text-sm">Image ou vidéo depuis votre galerie</p>
 
                   </div>
 
@@ -1310,7 +1386,7 @@ export default function Create() {
 
               type="file"
 
-              accept="video/*,video/mp4,video/quicktime,video/x-m4v"
+              accept={FILE_ACCEPT_MEDIA}
 
               onChange={handleFileSelect}
 

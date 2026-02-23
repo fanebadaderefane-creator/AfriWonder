@@ -2484,6 +2484,9 @@ model Message {
   thumbnail_url       String?
   is_edited           Boolean         @default(false)
   is_deleted          Boolean         @default(false)
+  is_pinned           Boolean         @default(false)
+  is_important        Boolean         @default(false)
+  reactions           Json? // { "user_id": "emoji" }
   status              String          @default("sent") // sent, delivered, read
   read_by             Json? // [user_id]
   reply_to_message_id String?
@@ -2499,6 +2502,8 @@ model Message {
   @@index([sender_id])
   @@index([created_at])
   @@index([status])
+  @@index([is_pinned])
+  @@index([is_important])
 }
 
 model UserPresence {
@@ -4773,5 +4778,4 @@ model CreatorReferralReward {
 
   @@index([user_id])
 }
-
 

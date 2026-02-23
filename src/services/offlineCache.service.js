@@ -28,13 +28,29 @@ export async function downloadMedia(video) {
   if (!url) return { success: false, error: 'URL manquante' };
 
   try {
-    const response = await fetch(url, { mode: 'cors' });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    let response;
+    let requestUrl = url;
+
+    try {
+      response = await fetch(url, { mode: 'cors' });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (directError) {
+      const proxyUrl = `/api/proxy/media?url=${encodeURIComponent(url)}`;
+      response = await fetch(proxyUrl, { credentials: 'include' });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      requestUrl = proxyUrl;
+      console.warn('offlineCache.downloadMedia: fallback proxy used', directError);
+    }
+
     const blob = await response.blob();
     const sizeBytes = blob.size;
 
     const cache = await caches.open(MEDIA_CACHE_NAME);
-    await cache.put(url, new Response(blob, {
+    await cache.put(requestUrl, new Response(blob, {
       status: response.status,
       statusText: response.statusText,
       headers: { 'Content-Type': response.headers.get('Content-Type') || 'video/mp4' },
@@ -42,7 +58,7 @@ export async function downloadMedia(video) {
 
     await offlineStorage.addDownloadMeta({
       id,
-      mediaUrl: url,
+      mediaUrl: requestUrl,
       title: video.title || 'Sans titre',
       creator: video.creator_name || video.creator || '',
       sizeBytes,
@@ -52,7 +68,10 @@ export async function downloadMedia(video) {
     return { success: true, sizeBytes };
   } catch (e) {
     console.error('offlineCache.downloadMedia', e);
-    return { success: false, error: e.message };
+    return {
+      success: false,
+      error: 'Impossible de telecharger cette video. Source bloquee ou indisponible.',
+    };
   }
 }
 

@@ -43,6 +43,9 @@ export function useConversationSocket(options) {
     socket.on('message:new', (payload) => {
       if (onNewMessageRef.current) onNewMessageRef.current(payload);
     });
+    socket.on('message:updated', (payload) => {
+      if (onNewMessageRef.current) onNewMessageRef.current(payload);
+    });
     socket.on('message:read', (payload) => {
       if (onMessageReadRef.current) onMessageReadRef.current(payload);
     });

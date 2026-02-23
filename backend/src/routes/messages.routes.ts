@@ -74,6 +74,41 @@ router.post('/send', authenticate, sendLimiter, async (req: AuthRequest, res, ne
   }
 });
 
+// PATCH /api/messages/message/:messageId/meta
+router.patch('/message/:messageId/meta', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { is_pinned, is_important } = req.body || {};
+    const result = await messageService.updateMessageMeta(param(req, 'messageId'), req.user!.id, {
+      is_pinned,
+      is_important,
+    });
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// POST /api/messages/message/:messageId/reaction
+router.post('/message/:messageId/reaction', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { emoji } = req.body || {};
+    const result = await messageService.setMessageReaction(param(req, 'messageId'), req.user!.id, emoji);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// DELETE /api/messages/message/:messageId/reaction
+router.delete('/message/:messageId/reaction', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageService.setMessageReaction(param(req, 'messageId'), req.user!.id, null);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
 // GET /api/messages/:conversationId — cursor-based pagination (user must be participant)
 router.get('/:conversationId', authenticate, async (req: AuthRequest, res, next) => {
   try {

@@ -104,6 +104,7 @@ function VideoCardContent({
   const hasPlayedOnceRef = useRef(false);
   const hasAppliedStartTimeRef = useRef(false);
   const [shouldRestoreSound, setShouldRestoreSound] = useState(false);
+  const [forceMutedAutoplay, setForceMutedAutoplay] = useState(true);
 
   const isIOS =
     typeof navigator !== 'undefined' &&
@@ -121,6 +122,17 @@ function VideoCardContent({
   const [isAnimating, setIsAnimating] = useState(false);
   const [showParticles, setShowParticles] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
+
+  const prepareForAutoplay = useCallback((el) => {
+    if (!el) return;
+    el.defaultMuted = true;
+    el.muted = true;
+    el.setAttribute('muted', '');
+    el.setAttribute('playsinline', '');
+    el.setAttribute('webkit-playsinline', 'true');
+    el.setAttribute('autoplay', '');
+    try { el.volume = 0; } catch (_) {}
+  }, []);
 
   // Connexion lente (2G/3G/saveData) â†’ prÃ©fÃ©rer basse qualitÃ© si dispo (objectif Afrique)
   const slowConnection = useMemo(() => {
@@ -164,8 +176,8 @@ function VideoCardContent({
   }, [video.id, playbackUrls.join('|')]);
 
   useEffect(() => {
-    // Always restore a visual cover at source/video switch to avoid black first paint.
-    setShowFrameCover(true);
+    // A chaque nouvelle video, forcer autoplay en muet (compatibilite maximale PWA/mobile).
+    setForceMutedAutoplay(true);
   }, [video.id, videoUrl]);
 
   const isHls = useMemo(() => /\.m3u8(\?|$)/i.test(videoUrl || ''), [videoUrl]);
@@ -180,7 +192,6 @@ function VideoCardContent({
 
   const [loadError, setLoadError] = useState(false);
   const [isReadyToPlay, setIsReadyToPlay] = useState(false);
-  const [showFrameCover, setShowFrameCover] = useState(true);
 
   const { t } = useTranslation();
   
@@ -394,7 +405,7 @@ function VideoCardContent({
       hlsRef.current = hls;
       hls.loadSource(videoUrl);
       hls.attachMedia(el);
-      el.muted = true;
+      prepareForAutoplay(el);
       el.loop = true;
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -433,7 +444,7 @@ function VideoCardContent({
 
     if (el.canPlayType('application/vnd.apple.mpegurl')) {
       el.src = videoUrl;
-      el.muted = true;
+      prepareForAutoplay(el);
       el.loop = true;
       const playOnce = () => {
         el.removeEventListener('loadeddata', playOnce);
@@ -469,19 +480,12 @@ function VideoCardContent({
           setIsReadyToPlay(true);
           hasAutoPlayedRef.current = true;
           setShouldRestoreSound(true);
-          if (!isMuted) {
-            const restoreSound = () => {
-              if (el && !userPausedRef.current && isActive) el.muted = false;
-            };
-            restoreSound();
-            setTimeout(restoreSound, 80);
-          }
         })
         .catch(() => {});
     };
 
     if (!isActive) {
-      el.muted = true;
+      prepareForAutoplay(el);
       try { el.volume = 0; } catch (_) {}
       el.pause();
       setIsPlaying(false);
@@ -496,13 +500,13 @@ function VideoCardContent({
       hasAppliedStartTimeRef.current = true;
     }
     try { el.volume = 1; } catch (_) {}
-    el.muted = true;
+    prepareForAutoplay(el);
     el.loop = true;
 
     const tryPlay = () => {
       if (cancelled || !isActive || userPausedRef.current) return;
       if (hasAutoPlayedRef.current) return;
-      el.muted = true;
+      prepareForAutoplay(el);
       el.play()
         .then(() => {
           if (cancelled || !isActive) {
@@ -513,13 +517,6 @@ function VideoCardContent({
           setIsReadyToPlay(true);
           hasAutoPlayedRef.current = true;
           setShouldRestoreSound(true);
-          if (!isMuted) {
-            const restoreSound = () => {
-              if (el && !userPausedRef.current && isActive) el.muted = false;
-            };
-            restoreSound();
-            setTimeout(restoreSound, 80);
-          }
         })
         .catch(() => {});
     };
@@ -542,7 +539,7 @@ function VideoCardContent({
         if (cancelled || !el || !isActive || userPausedRef.current) return;
         if (hasAutoPlayedRef.current) return;
         if (el.paused && el.readyState >= 2) {
-          el.muted = true;
+          prepareForAutoplay(el);
           tryPlay();
         }
       }, delay)
@@ -553,7 +550,7 @@ function VideoCardContent({
       timers.forEach((t) => window.clearTimeout(t));
       el.removeEventListener('canplay', onCanPlay);
       el.removeEventListener('loadeddata', onCanPlay);
-      el.muted = true;
+      prepareForAutoplay(el);
       try { el.volume = 0; } catch (_) {}
       el.pause();
       setIsPlaying(false);
@@ -587,35 +584,74 @@ function VideoCardContent({
     }
   }, [isMuted]);
 
-  // Onglet masquÃ© â†’ pause ; au retour reprendre seulement si assez de buffer (Ã©vite bufferâ†’joueâ†’buffer)
+  // Onglet masque -> pause ; au retour reprendre automatiquement (PWA/mobile)
   useEffect(() => {
-    const handleVisibilityChange = () => {
+    const resumeIfPossible = () => {
       const el = videoRef.current;
       if (!el) return;
 
       if (document.hidden) {
         el.pause();
         setIsPlaying(false);
-      } else if (isActive && !loadError && el.paused && !userPausedRef.current) {
-        // readyState >= 2 = assez de data pour reprendre sans rebuffer
-        if (el.readyState >= 2) {
-          el.muted = isMuted;
-          el.play().then(() => {
-            setIsPlaying(true);
-            setShouldRestoreSound(true);
-          }).catch(() => {});
-        }
+        return;
+      }
+
+      if (isActive && !loadError && el.paused && !userPausedRef.current) {
+        // Toujours demarrer en muet pour garantir autoplay sur tous telephones
+        prepareForAutoplay(el);
+        el.play().then(() => {
+          setIsPlaying(true);
+          hasAutoPlayedRef.current = true;
+          setShouldRestoreSound(true);
+        }).catch(() => {});
       }
     };
 
+    const handleVisibilityChange = () => resumeIfPossible();
+    const handlePageShow = () => resumeIfPossible();
+    const handleFocus = () => resumeIfPossible();
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('pagehide', handleVisibilityChange);
+    window.addEventListener('pageshow', handlePageShow);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('pagehide', handleVisibilityChange);
+      window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('focus', handleFocus);
     };
   }, [isActive, loadError, isMuted]);
+
+  // Watchdog autoplay: relances simples pour telephones/PWA stricts.
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || !isActive || loadError || userPausedRef.current) return;
+
+    const attemptPlayMuted = () => {
+      if (!el || !isActive || loadError || userPausedRef.current) return;
+      if (!el.paused) return;
+      prepareForAutoplay(el);
+      el.play().then(() => {
+        setIsPlaying(true);
+        hasAutoPlayedRef.current = true;
+        setShouldRestoreSound(true);
+      }).catch(() => {});
+    };
+
+    const timers = [0, 220, 520, 900, 1500, 2400].map((delay) =>
+      window.setTimeout(attemptPlayMuted, delay)
+    );
+
+    el.addEventListener('canplay', attemptPlayMuted);
+    el.addEventListener('loadeddata', attemptPlayMuted);
+
+    return () => {
+      timers.forEach((t) => window.clearTimeout(t));
+      el.removeEventListener('canplay', attemptPlayMuted);
+      el.removeEventListener('loadeddata', attemptPlayMuted);
+    };
+  }, [isActive, loadError, video.id, videoUrl]);
+
 
   /* ================= VIDEO =================
    * Une source de play (useEffect isActive). DÃ©marrage dÃ¨s readyState >= 2 (loadeddata). */
@@ -624,6 +660,7 @@ function VideoCardContent({
     if (!videoRef.current || loadError) return;
 
     const el = videoRef.current;
+    setForceMutedAutoplay(false);
 
     if (isPlaying) {
       userPausedRef.current = true;
@@ -669,13 +706,12 @@ function VideoCardContent({
     el.load();
     if (isActive) {
       const retryPlay = () => {
-        el.muted = true;
+        prepareForAutoplay(el);
         el.play().then(() => {
           setIsPlaying(true);
           setIsReadyToPlay(true);
           hasAutoPlayedRef.current = true;
           setShouldRestoreSound(true);
-          if (!isMuted) setTimeout(() => { if (el && !userPausedRef.current && isActive) el.muted = false; }, 80);
         }).catch(() => {});
       };
       if (el.readyState >= 2) retryPlay();
@@ -696,7 +732,6 @@ function VideoCardContent({
     const safeRange = Math.max(0.001, endTime - startTime);
     const clampedTime = Math.max(startTime, Math.min(endTime, videoRef.current.currentTime));
     const pct = ((clampedTime - startTime) / safeRange) * 100;
-    if (clampedTime > startTime + 0.05) setShowFrameCover(false);
 
     // Throttle setState pour limiter les re-renders (surtout mobile)
     const now = Date.now();
@@ -739,10 +774,9 @@ function VideoCardContent({
     const el = videoRef.current;
     if (!el || loadError || !isActive) return;
     setIsReadyToPlay(true);
-    if ((el.currentTime || 0) > ((video.start_time || 0) + 0.05)) setShowFrameCover(false);
     // Démarrage immédiat type TikTok dès que le navigateur peut jouer (muted = autoplay autorisé)
     if (!userPausedRef.current && el.paused && !hasAutoPlayedRef.current) {
-      el.muted = true;
+      prepareForAutoplay(el);
       el.play().then(() => {
         if (videoRef.current && isActive && !userPausedRef.current) {
           setIsPlaying(true);
@@ -777,16 +811,6 @@ function VideoCardContent({
     }
     hasPlayedOnceRef.current = true;
     setIsPlaying(true);
-    const current = videoRef.current?.currentTime || 0;
-    const startTime = video.start_time || 0;
-    if (current > startTime + 0.05) {
-      // Retirer la couverture après que la première frame soit peinte (évite flash noir au scroll)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setTimeout(() => setShowFrameCover(false), 120);
-        });
-      });
-    }
   };
 
   const handlePause = () => {
@@ -970,18 +994,19 @@ function VideoCardContent({
         ref={videoRef}
         data-afw-feed-video="1"
         src={videoSrc}
-        poster={posterUrl || VIDEO_PLACEHOLDER_IMG}
+        poster={posterUrl || undefined}
         className="absolute top-0 left-0 w-full h-full object-cover"
+        autoPlay
         preload={isActive ? 'auto' : 'metadata'}
         loop
         playsInline
-        muted={shouldRestoreSound ? isMuted : true}
+        muted={forceMutedAutoplay ? true : (shouldRestoreSound ? isMuted : true)}
         onClick={handlePlayPause}
         onTimeUpdate={handleTimeUpdate}
         onProgress={handleProgress}
         onLoadedMetadata={handleLoadedMetadata}
         onCanPlay={handleCanPlay}
-        onLoadStart={() => { setIsReadyToPlay(false); setLoadError(false); setShowFrameCover(true); }}
+        onLoadStart={() => { setIsReadyToPlay(false); setLoadError(false); }}
         onWaiting={handleWaiting}
         onPlaying={handlePlaying}
         onPause={handlePause}
@@ -999,7 +1024,6 @@ function VideoCardContent({
           
           setIsReadyToPlay(false);
           setIsPlaying(false);
-          setShowFrameCover(true);
           
           // Log dÃ©taillÃ© en dÃ©veloppement
           if (process.env.NODE_ENV === 'development') {
@@ -1020,7 +1044,19 @@ function VideoCardContent({
             }
           }, 2000);
         }}
-        onLoadedData={() => { setLoadError(false); setIsReadyToPlay(true); }}
+        onLoadedData={() => {
+          setLoadError(false);
+          setIsReadyToPlay(true);
+          const el = videoRef.current;
+          if (el && isActive && el.paused && !userPausedRef.current) {
+            prepareForAutoplay(el);
+            el.play().then(() => {
+              setIsPlaying(true);
+              hasAutoPlayedRef.current = true;
+              setShouldRestoreSound(true);
+            }).catch(() => {});
+          }
+        }}
         onSeeked={handleMainVideoSeeked}
         style={{ 
           touchAction: 'pan-y',
@@ -1044,19 +1080,6 @@ function VideoCardContent({
           ) : null}
           <p className="text-white text-center mt-4 font-medium ios-text-render">VidÃ©o indisponible</p>
           <p className="text-white/70 text-sm text-center mt-1 ios-text-render">URL de vidÃ©o invalide</p>
-        </div>
-      )}
-      {/* Couverture type TikTok : poster visible jusqu'à ce que la vidéo joue vraiment (jamais d'écran noir) */}
-      {videoUrl && !loadError && showFrameCover && (
-        <div
-          className="absolute inset-0 z-[5] pointer-events-none bg-gray-900"
-          style={{ backgroundImage: `url(${posterUrl || VIDEO_PLACEHOLDER_IMG})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-        >
-          <img
-            src={posterUrl || VIDEO_PLACEHOLDER_IMG}
-            alt=""
-            className="absolute inset-0 w-full h-full object-cover"
-          />
         </div>
       )}
       {videoUrl && enablePreviewScrub && (
@@ -1351,7 +1374,13 @@ function VideoCardContent({
         </div>
 
         <div className="flex flex-col items-center">
-          <button onClick={onMuteToggle} className="flex items-center justify-center w-7 h-7">
+          <button
+            onClick={() => {
+              setForceMutedAutoplay(false);
+              onMuteToggle?.();
+            }}
+            className="flex items-center justify-center w-7 h-7"
+          >
             {isMuted ? (
               <VolumeX className="w-6 h-6 text-white" />
             ) : (
@@ -1571,4 +1600,3 @@ function VideoCardContent({
 }
 
 export default memo(VideoCardContent);
-

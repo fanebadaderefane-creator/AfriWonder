@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { Prisma } from '@prisma/client';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import notificationService from './notification.service.js';
@@ -53,6 +54,27 @@ function maskSensitiveContacts(input: string): string {
 }
 
 class MessageService {
+  private async getMessageForParticipant(messageId: string, userId: string) {
+    const message = await prisma.message.findFirst({
+      where: {
+        id: messageId,
+        conversation: {
+          OR: [{ user1_id: userId }, { user2_id: userId }],
+        },
+      },
+      select: {
+        id: true,
+        sender_id: true,
+        conversation_id: true,
+        is_pinned: true,
+        is_important: true,
+        reactions: true,
+      },
+    });
+    if (!message) throw makeHttpError('Message non trouve ou acces non autorise', 404);
+    return message;
+  }
+
   async isBlocked(blockerId: string, blockedId: string): Promise<boolean> {
     const block = await prisma.userBlock.findFirst({
       where: {
@@ -371,6 +393,52 @@ class MessageService {
     });
     if (messageIo) messageIo.to(`conversation:${msg.conversation_id}`).emit('message:deleted', { messageId });
     return { success: true };
+  }
+
+  async updateMessageMeta(messageId: string, userId: string, data: { is_pinned?: boolean; is_important?: boolean }) {
+    const msg = await this.getMessageForParticipant(messageId, userId);
+    const updateData: { is_pinned?: boolean; is_important?: boolean } = {};
+    if (typeof data.is_pinned === 'boolean') updateData.is_pinned = data.is_pinned;
+    if (typeof data.is_important === 'boolean') updateData.is_important = data.is_important;
+    if (Object.keys(updateData).length === 0) throw makeHttpError('Aucune meta a mettre a jour', 400);
+
+    const updated = await prisma.message.update({
+      where: { id: messageId },
+      data: updateData,
+    });
+
+    if (messageIo) {
+      messageIo.to(`conversation:${msg.conversation_id}`).emit('message:updated', {
+        messageId,
+        ...updateData,
+      });
+    }
+    return updated;
+  }
+
+  async setMessageReaction(messageId: string, userId: string, emoji: string | null) {
+    const msg = await this.getMessageForParticipant(messageId, userId);
+    const prev = (msg.reactions && typeof msg.reactions === 'object' ? msg.reactions : {}) as Record<string, string>;
+    const next = { ...prev };
+
+    if (emoji && String(emoji).trim()) {
+      next[userId] = String(emoji).trim().slice(0, 8);
+    } else {
+      delete next[userId];
+    }
+
+    const updated = await prisma.message.update({
+      where: { id: messageId },
+      data: { reactions: Object.keys(next).length ? next : Prisma.JsonNull },
+    });
+
+    if (messageIo) {
+      messageIo.to(`conversation:${msg.conversation_id}`).emit('message:updated', {
+        messageId,
+        reactions: updated.reactions,
+      });
+    }
+    return updated;
   }
 
   async blockUser(blockerId: string, blockedId: string) {

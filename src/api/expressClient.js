@@ -1463,6 +1463,28 @@ export const api = {
       }
       return fileUrl != null ? { file_url: fileUrl } : (result || {});
     },
+    async audio(input, onProgress) {
+      const file = input?.file ?? input;
+      if (!(file instanceof File || file instanceof Blob)) {
+        throw new Error('Fichier audio invalide');
+      }
+      const formData = new FormData();
+      const blob = file instanceof File
+        ? file
+        : new File([file], 'audio.webm', { type: file.type || 'audio/webm' });
+      formData.append('file', blob);
+      const { data } = await axiosInstance.post('/upload/video', formData, {
+        ...uploadConfig(),
+        onUploadProgress: (progressEvent) => {
+          const total = progressEvent.total || 1;
+          const pct = Math.min(100, Math.round((progressEvent.loaded * 100) / total));
+          onProgress?.(pct);
+        },
+      });
+      const result = data?.data ?? data;
+      const fileUrl = result?.file_url ?? result?.url;
+      return fileUrl != null ? { file_url: fileUrl } : (result || {});
+    },
   },
   saves: {
     async toggle(videoId) {
@@ -1532,6 +1554,18 @@ export const api = {
     },
     async deleteMessage(messageId) {
       const { data } = await axiosInstance.delete(`/messages/message/${messageId}`);
+      return data.data;
+    },
+    async updateMessageMeta(messageId, payload = {}) {
+      const { data } = await axiosInstance.patch(`/messages/message/${messageId}/meta`, payload);
+      return data.data;
+    },
+    async setReaction(messageId, emoji) {
+      const { data } = await axiosInstance.post(`/messages/message/${messageId}/reaction`, { emoji });
+      return data.data;
+    },
+    async clearReaction(messageId) {
+      const { data } = await axiosInstance.delete(`/messages/message/${messageId}/reaction`);
       return data.data;
     },
     async block(userId) {

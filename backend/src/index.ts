@@ -114,6 +114,33 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Direct call signaling (invite / accept / decline / end)
+  socket.on('call:invite', (payload: { toUserId: string; fromUserId: string; type?: 'audio' | 'video'; callerName?: string; callerAvatar?: string }) => {
+    if (!payload?.toUserId || !payload?.fromUserId) return;
+    io.to(`user:${payload.toUserId}`).emit('call:invite', payload);
+  });
+
+  socket.on('call:accept', (payload: { toUserId: string; fromUserId: string; type?: 'audio' | 'video' }) => {
+    if (!payload?.toUserId || !payload?.fromUserId) return;
+    io.to(`user:${payload.toUserId}`).emit('call:accept', payload);
+  });
+
+  socket.on('call:decline', (payload: { toUserId: string; fromUserId: string; reason?: string }) => {
+    if (!payload?.toUserId || !payload?.fromUserId) return;
+    io.to(`user:${payload.toUserId}`).emit('call:decline', payload);
+  });
+
+  socket.on('call:end', (payload: { toUserId?: string; fromUserId?: string; endedBy?: string }) => {
+    if (!payload) return;
+    if (payload.toUserId) io.to(`user:${payload.toUserId}`).emit('call:end', payload);
+    if (payload.fromUserId) io.to(`user:${payload.fromUserId}`).emit('call:end', payload);
+  });
+
+  socket.on('call:signal', (payload: { toUserId: string; fromUserId: string; callId: string; signal: any }) => {
+    if (!payload?.toUserId || !payload?.fromUserId || !payload?.callId || !payload?.signal) return;
+    io.to(`user:${payload.toUserId}`).emit('call:signal', payload);
+  });
+
   // Live: join stream room (pour recevoir chat, gifts, viewers, like)
   socket.on('live:join-room', (streamId: string) => {
     if (streamId) {

@@ -7,7 +7,7 @@ const API_CACHE = 'afriwonder-api-v1';
 const VIDEO_CACHE = 'afriwonder-video-cache-v1';
 const IMAGE_CACHE = 'afriwonder-image-cache-v1';
 const PRECACHE = self.__WB_MANIFEST || [];
-const SW_VERSION = 'v3'; // Invalide l'ancien SW pour corriger le chargement des images en PWA mobile
+const SW_VERSION = 'v4'; // Invalide l'ancien SW pour diffuser le correctif autoplay feed PWA
 
 // Ne pas appeler skipWaiting() ici : on laisse le nouveau worker en "waiting"
 // pour que l'app affiche "Mettre a jour" (PWAUpdateToast). skipWaiting() est

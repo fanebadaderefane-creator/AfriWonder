@@ -7,7 +7,10 @@ import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, Send, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { ArrowLeft, Send, Image as ImageIcon, Loader2, Mic, Square, MoreVertical, ShieldBan, Flag, Trash2, Reply, Copy, Forward, Pin, Star, CheckSquare, Plus, Search, X, Phone, Video } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
@@ -39,6 +42,63 @@ const chatI18n = {
     deletedMessage: 'Message supprime',
     read: 'Lu',
     placeholder: 'Votre message...',
+    voiceStartError: 'Impossible de demarrer le micro',
+    voiceStopError: "Impossible d'envoyer le vocal",
+    recording: 'Enregistrement...',
+    voiceMessage: 'Message vocal',
+    actions: 'Actions',
+    blockUser: 'Bloquer cet utilisateur',
+    blockSuccess: 'Utilisateur bloque',
+    blockError: 'Impossible de bloquer cet utilisateur',
+    reportLast: 'Signaler le dernier message',
+    reportSuccess: 'Message signale',
+    reportError: 'Impossible de signaler ce message',
+    reportNoMessage: 'Aucun message a signaler',
+    deleteMyLast: 'Supprimer mon dernier message',
+    deleteSuccess: 'Message supprime',
+    deleteError: 'Impossible de supprimer ce message',
+    deleteNoMessage: 'Aucun message personnel a supprimer',
+    reportThisMessage: 'Signaler ce message',
+    deleteThisMessage: 'Supprimer ce message',
+    confirmTitleBlock: 'Bloquer cet utilisateur ?',
+    confirmDescBlock: 'Vous ne pourrez plus envoyer ni recevoir de messages avec cet utilisateur.',
+    confirmTitleDelete: 'Supprimer ce message ?',
+    confirmDescDelete: 'Le message sera masque dans la conversation.',
+    confirmTitleReport: 'Signaler ce message ?',
+    confirmDescReport: 'Ce message sera envoye a la moderation.',
+    cancel: 'Annuler',
+    confirm: 'Confirmer',
+    copied: 'Message copie',
+    noTextToCopy: 'Ce message ne contient pas de texte',
+    replyTo: 'Repondre a',
+    replyingTo: 'Reponse a',
+    cancelReply: 'Annuler la reponse',
+    transfer: 'Transferer',
+    pinMessage: 'Epingler',
+    markImportant: 'Marquer comme important',
+    select: 'Selectionner',
+    report: 'Signaler',
+    delete: 'Supprimer',
+    chooseReaction: 'Choisir reaction',
+    searchReaction: 'Rechercher reaction',
+    reactionsRecent: 'Reactions recentes',
+    emojiAndPeople: 'Emojis et personnes',
+    actionUnavailable: 'Fonction disponible bientot',
+    selectModeOn: 'Mode selection active',
+    reactionAdded: 'Reaction ajoutee',
+    copy: 'Copier',
+    transferTo: 'Transferer a',
+    transferSearchPlaceholder: 'Rechercher utilisateur (@nom ou nom)',
+    transferNoUser: 'Aucun utilisateur trouve',
+    transferSuccess: 'Message transfere',
+    transferError: 'Impossible de transferer',
+    pinned: 'Epingle',
+    unpinned: 'Desepingle',
+    markedImportant: 'Marque important',
+    unmarkedImportant: 'Important retire',
+    voiceCall: 'Appel vocal',
+    videoCall: 'Appel video',
+    openingCall: 'Ouverture de l appel...',
   },
   bm: {
     loadOlderError: 'Se ka mesaji koro korow soro te',
@@ -59,8 +119,68 @@ const chatI18n = {
     deletedMessage: 'Mesaji ye bo',
     read: 'Kalanlen',
     placeholder: 'I ka mesaji...',
+    voiceStartError: 'Mikro damine te se',
+    voiceStopError: 'Vocal ci te se',
+    recording: 'A b enregistrement la',
+    voiceMessage: 'Vocal',
+    actions: 'Baro',
+    blockUser: 'Mogo nin da',
+    blockSuccess: 'Mogo da',
+    blockError: 'A ma se ka da',
+    reportLast: 'Mesaji kora laben',
+    reportSuccess: 'Mesaji laben na',
+    reportError: 'A ma se ka laben',
+    reportNoMessage: 'Mesaji si te ka laben',
+    deleteMyLast: 'Ne ka mesaji kora bo',
+    deleteSuccess: 'Mesaji bo',
+    deleteError: 'A ma se ka mesaji bo',
+    deleteNoMessage: 'I ka mesaji si te ka bo',
+    reportThisMessage: 'Mesaji nin laben',
+    deleteThisMessage: 'Mesaji nin bo',
+    confirmTitleBlock: 'Ka mogo nin da wa?',
+    confirmDescBlock: 'Aw te se ka ci wala ka soro mesaji tuguni.',
+    confirmTitleDelete: 'Ka mesaji nin bo wa?',
+    confirmDescDelete: 'Mesaji be dogo la barokan kono.',
+    confirmTitleReport: 'Ka mesaji nin laben wa?',
+    confirmDescReport: 'Mesaji nin bena taa moderation ma.',
+    cancel: 'Foyi',
+    confirm: 'Aw ni',
+    copied: 'Mesaji copy kera',
+    noTextToCopy: 'Sebenni te mesaji nin kono',
+    replyTo: 'Jaabi',
+    replyingTo: 'Jaabi la',
+    cancelReply: 'Jaabi bila',
+    transfer: 'Kafoli',
+    pinMessage: 'Mesaji sinsin',
+    markImportant: 'A ka muhimu taamu',
+    select: 'Sugandi',
+    report: 'Laben',
+    delete: 'Bo',
+    chooseReaction: 'Reaction sugandi',
+    searchReaction: 'Reaction yiriwa',
+    reactionsRecent: 'Reaction kora',
+    emojiAndPeople: 'Emojis ni mogow',
+    actionUnavailable: 'Fonction bena na sisan koro',
+    selectModeOn: 'Sugandi mode dafalen',
+    reactionAdded: 'Reaction fara',
+    copy: 'Copier',
+    transferTo: 'Ka ci ma',
+    transferSearchPlaceholder: 'Mogo yiriwa (@nom wala nom)',
+    transferNoUser: 'Mogo si te soro',
+    transferSuccess: 'Mesaji kafi',
+    transferError: 'A ma se ka kafi',
+    pinned: 'Sinsinnen',
+    unpinned: 'Sinsinbali',
+    markedImportant: 'Muhimu taara',
+    unmarkedImportant: 'Muhimu bo',
+    voiceCall: 'Vocal call',
+    videoCall: 'Video call',
+    openingCall: 'Appel b i na...',
   },
 };
+
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+const EMOJI_LIBRARY = ['😀', '😃', '😄', '😁', '😆', '🥲', '😂', '🤣', '😊', '😉', '😍', '😘', '😎', '🤩', '🥳', '🤔', '🤗', '😴', '😡', '😭', '👍', '👎', '👏', '🙌', '🙏', '💪', '🔥', '✨', '💙', '❤️', '💯', '🎉', '🌍', '🇲🇱', '🇸🇳', '🇨🇮'];
 
 export default function Chat() {
   const { language } = useTranslation();
@@ -72,6 +192,8 @@ export default function Chat() {
   const messageEndRef = useRef(null);
   const typingDebounceRef = useRef(null);
   const fileInputRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
 
   const [currentUser, setCurrentUser] = useState(null);
   const [messageContent, setMessageContent] = useState('');
@@ -79,6 +201,17 @@ export default function Chat() {
   const [olderMessages, setOlderMessages] = useState([]);
   const [cursorForOlder, setCursorForOlder] = useState(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [activeMessage, setActiveMessage] = useState(null);
+  const [messageActionsOpen, setMessageActionsOpen] = useState(false);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [emojiSearch, setEmojiSearch] = useState('');
+  const [replyTarget, setReplyTarget] = useState(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState([]);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferSearch, setTransferSearch] = useState('');
 
   const queryClient = useQueryClient();
 
@@ -187,15 +320,25 @@ export default function Chat() {
     typingDebounceRef.current = setTimeout(() => emitTypingStop(), TYPING_DEBOUNCE_MS);
   };
 
+  const handleStartCall = (type = 'audio') => {
+    if (!otherUser?.id) return;
+    toast.info(labels.openingCall);
+    const callId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `call-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    navigate(`${createPageUrl('DirectCall')}?mode=outgoing&receiverId=${otherUser.id}&type=${type}&callId=${callId}`);
+  };
+
   const sendMessageMutation = useMutation({
-    mutationFn: ({ content, type = 'text', media_url, thumbnail_url } = {}) =>
-      api.messages.send(userId, content ?? '', { type, media_url, thumbnail_url }),
+    mutationFn: ({ content, type = 'text', media_url, thumbnail_url, reply_to_message_id } = {}) =>
+      api.messages.send(userId, content ?? '', { type, media_url, thumbnail_url, reply_to_message_id }),
     onSuccess: () => {
       emitTypingStop();
       refetchMessages();
       queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser?.id] });
       queryClient.invalidateQueries({ queryKey: ['messages-unread-count'] });
       setMessageContent('');
+      setReplyTarget(null);
       toast.success(labels.sendSuccess);
     },
     onError: (err) => {
@@ -209,11 +352,196 @@ export default function Chat() {
     },
   });
 
+  const blockMutation = useMutation({
+    mutationFn: () => api.messages.block(userId),
+    onSuccess: () => {
+      toast.success(labels.blockSuccess);
+      navigate(createPageUrl('Inbox'));
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || err?.apiMessage || labels.blockError);
+    },
+  });
+
+  const reportMutation = useMutation({
+    mutationFn: (messageId) => api.messages.report(messageId, 'Signalement depuis menu chat'),
+    onSuccess: () => toast.success(labels.reportSuccess),
+    onError: (err) => toast.error(err?.response?.data?.message || err?.apiMessage || labels.reportError),
+  });
+
+  const deleteMessageMutation = useMutation({
+    mutationFn: (messageId) => api.messages.deleteMessage(messageId),
+    onSuccess: () => {
+      toast.success(labels.deleteSuccess);
+      refetchMessages();
+    },
+    onError: (err) => toast.error(err?.response?.data?.message || err?.apiMessage || labels.deleteError),
+  });
+
+  const updateMetaMutation = useMutation({
+    mutationFn: ({ messageId, payload }) => api.messages.updateMessageMeta(messageId, payload),
+    onSuccess: () => refetchMessages(),
+    onError: (err) => toast.error(err?.response?.data?.message || err?.apiMessage || labels.sendError),
+  });
+
+  const reactionMutation = useMutation({
+    mutationFn: ({ messageId, emoji }) => api.messages.setReaction(messageId, emoji),
+    onSuccess: () => {
+      refetchMessages();
+      toast.success(labels.reactionAdded);
+    },
+    onError: (err) => toast.error(err?.response?.data?.message || err?.apiMessage || labels.sendError),
+  });
+
+  const handleBlockUser = () => setConfirmAction({ type: 'block' });
+
+  const handleReportLastMessage = () => {
+    const lastIncoming = [...messages].reverse().find((m) => m.sender_id !== currentUser?.id && !m.is_deleted);
+    if (!lastIncoming?.id) {
+      toast.error(labels.reportNoMessage);
+      return;
+    }
+    setConfirmAction({ type: 'report', messageId: lastIncoming.id });
+  };
+
+  const handleDeleteMyLastMessage = () => {
+    const lastOwn = [...messages].reverse().find((m) => m.sender_id === currentUser?.id && !m.is_deleted);
+    if (!lastOwn?.id) {
+      toast.error(labels.deleteNoMessage);
+      return;
+    }
+    setConfirmAction({ type: 'delete', messageId: lastOwn.id });
+  };
+
+  const handleConfirmAction = () => {
+    if (!confirmAction?.type) return;
+    const targetId = confirmAction.messageId || activeMessage?.id;
+    if (confirmAction.type === 'block') {
+      blockMutation.mutate();
+    } else if (confirmAction.type === 'report' && targetId) {
+      reportMutation.mutate(targetId);
+    } else if (confirmAction.type === 'delete' && targetId) {
+      deleteMessageMutation.mutate(targetId);
+    }
+    setMessageActionsOpen(false);
+    setConfirmAction(null);
+  };
+
+  const confirmDialogMeta = (() => {
+    if (confirmAction?.type === 'block') {
+      return { title: labels.confirmTitleBlock, description: labels.confirmDescBlock };
+    }
+    if (confirmAction?.type === 'delete') {
+      return { title: labels.confirmTitleDelete, description: labels.confirmDescDelete };
+    }
+    if (confirmAction?.type === 'report') {
+      return { title: labels.confirmTitleReport, description: labels.confirmDescReport };
+    }
+    return { title: labels.actions, description: '' };
+  })();
+
+  const filteredEmojis = EMOJI_LIBRARY.filter((e) => e.includes(emojiSearch) || emojiSearch.trim().length === 0);
+
+  useEffect(() => {
+    if (!transferOpen) setTransferSearch('');
+  }, [transferOpen]);
+
+  const openMessageActions = (msg) => {
+    setActiveMessage(msg);
+    setMessageActionsOpen(true);
+  };
+
+  const handleCopyMessage = async (msg) => {
+    if (!msg?.content?.trim()) {
+      toast.error(labels.noTextToCopy);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(msg.content);
+      toast.success(labels.copied);
+      setMessageActionsOpen(false);
+    } catch (_e) {
+      toast.error(labels.sendError);
+    }
+  };
+
+  const handleReplyMessage = (msg) => {
+    setReplyTarget(msg);
+    setMessageActionsOpen(false);
+  };
+
+  const handleSelectMessageMode = (msg) => {
+    setSelectionMode(true);
+    if (msg?.id) {
+      setSelectedMessageIds((prev) => (prev.includes(msg.id) ? prev : [...prev, msg.id]));
+    }
+    toast.success(labels.selectModeOn);
+    setMessageActionsOpen(false);
+  };
+
+  const toggleSelectMessage = (messageId) => {
+    setSelectedMessageIds((prev) => (prev.includes(messageId) ? prev.filter((id) => id !== messageId) : [...prev, messageId]));
+  };
+
+  const handleReactToMessage = (emoji) => {
+    if (!activeMessage?.id) return;
+    reactionMutation.mutate({ messageId: activeMessage.id, emoji });
+    setMessageActionsOpen(false);
+    setEmojiPickerOpen(false);
+  };
+
+  const { data: transferUsers = [], isFetching: transferLoading } = useQuery({
+    queryKey: ['chat-transfer-users', transferSearch, currentUser?.id],
+    queryFn: () => api.users.list({ page: 1, limit: 20, search: transferSearch.trim() }),
+    enabled: transferOpen && transferSearch.trim().length >= 2 && !!currentUser?.id,
+  });
+
+  const transferMutation = useMutation({
+    mutationFn: async (targetUser) => {
+      if (!activeMessage) throw new Error('Message absent');
+      const msgType = activeMessage.type || 'text';
+      const content = activeMessage.content || '';
+      return api.messages.send(targetUser.id, content, {
+        type: msgType,
+        media_url: activeMessage.media_url || undefined,
+        thumbnail_url: activeMessage.thumbnail_url || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success(labels.transferSuccess);
+      setTransferOpen(false);
+      setMessageActionsOpen(false);
+      setTransferSearch('');
+    },
+    onError: (err) => toast.error(err?.response?.data?.message || err?.apiMessage || labels.transferError),
+  });
+
+  const handleTransferOpen = () => {
+    setMessageActionsOpen(false);
+    setTransferOpen(true);
+  };
+
+  const handlePinMessage = (msg) => {
+    if (!msg?.id) return;
+    const nextPinned = !msg.is_pinned;
+    updateMetaMutation.mutate({ messageId: msg.id, payload: { is_pinned: nextPinned } });
+    toast.success(nextPinned ? labels.pinned : labels.unpinned);
+    setMessageActionsOpen(false);
+  };
+
+  const handleMarkImportant = (msg) => {
+    if (!msg?.id) return;
+    const nextImportant = !msg.is_important;
+    updateMetaMutation.mutate({ messageId: msg.id, payload: { is_important: nextImportant } });
+    toast.success(nextImportant ? labels.markedImportant : labels.unmarkedImportant);
+    setMessageActionsOpen(false);
+  };
+
   const handleSendMessage = (e) => {
     e.preventDefault();
     const text = messageContent.trim();
     if (!text) return;
-    sendMessageMutation.mutate({ content: text });
+    sendMessageMutation.mutate({ content: text, reply_to_message_id: replyTarget?.id || undefined });
   };
 
   const handleImageSelect = async (e) => {
@@ -225,16 +553,54 @@ export default function Chat() {
     e.target.value = '';
     try {
       const { file_url } = await api.upload.image(file);
-      sendMessageMutation.mutate({ content: '', type: 'image', media_url: file_url });
+      sendMessageMutation.mutate({ content: '', type: 'image', media_url: file_url, reply_to_message_id: replyTarget?.id || undefined });
     } catch (err) {
       toast.error(err?.response?.data?.error?.message || err?.response?.data?.message || err?.apiMessage || labels.uploadError);
     }
   };
 
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+      recorder.onstop = async () => {
+        try {
+          const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+          if (audioBlob.size === 0) return;
+          const ext = audioBlob.type.includes('ogg') ? 'ogg' : 'webm';
+          const audioFile = new File([audioBlob], `voice-${Date.now()}.${ext}`, { type: audioBlob.type || 'audio/webm' });
+          const { file_url } = await api.upload.audio(audioFile);
+          sendMessageMutation.mutate({ content: '', type: 'audio', media_url: file_url, reply_to_message_id: replyTarget?.id || undefined });
+        } catch (_err) {
+          toast.error(labels.voiceStopError);
+        } finally {
+          stream.getTracks().forEach((track) => track.stop());
+        }
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+    } catch (_err) {
+      toast.error(labels.voiceStartError);
+    }
+  };
+
+  const stopRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop();
+    }
+    setIsRecording(false);
+  };
+
   if (!currentUser) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
     );
   }
@@ -252,26 +618,26 @@ export default function Chat() {
   if (loadingConv || !otherUser) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
     );
   }
 
   return (
-    <div className="h-screen bg-white flex flex-col">
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
-        <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-          <ArrowLeft className="w-5 h-5" />
+    <div className="h-[100dvh] bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white flex flex-col overflow-hidden">
+      <div className="flex items-center gap-3 px-3 py-3 border-b border-blue-900/40 shrink-0 bg-slate-950/85 backdrop-blur">
+        <button onClick={() => navigate(-1)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+          <ArrowLeft className="w-5 h-5 text-white" />
         </button>
         <Avatar className="w-10 h-10">
           <AvatarImage src={otherUser?.profile_image} />
-          <AvatarFallback className="bg-gradient-to-br from-orange-400 to-red-500 text-white">
+          <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
             {otherUser?.full_name?.[0]?.toUpperCase() || 'U'}
           </AvatarFallback>
         </Avatar>
-        <div className="flex-1">
-          <p className="font-semibold text-gray-800">{otherUser?.full_name || otherUser?.username || 'Utilisateur'}</p>
-          <p className="text-xs text-gray-500">
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-white truncate">{otherUser?.full_name || otherUser?.username || 'Utilisateur'}</p>
+          <p className="text-xs text-blue-100/70 truncate">
             {typingUser
               ? `${typingUser.name} ${labels.typingSuffix}`
               : presence?.is_online
@@ -281,18 +647,84 @@ export default function Chat() {
                   : labels.offline}
           </p>
         </div>
+        {selectionMode && (
+          <button
+            type="button"
+            className="text-xs font-semibold text-blue-300 hover:text-blue-100 mr-1"
+            onClick={() => {
+              setSelectionMode(false);
+              setSelectedMessageIds([]);
+            }}
+          >
+            {selectedMessageIds.length > 0 ? `${selectedMessageIds.length}` : labels.cancel}
+          </button>
+        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-blue-200 hover:text-white hover:bg-blue-500/30 rounded-full"
+          aria-label={labels.voiceCall}
+          onClick={() => handleStartCall('audio')}
+        >
+          <Phone className="w-5 h-5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-blue-200 hover:text-white hover:bg-blue-500/30 rounded-full"
+          aria-label={labels.videoCall}
+          onClick={() => handleStartCall('video')}
+        >
+          <Video className="w-5 h-5" />
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="text-blue-200 hover:text-white hover:bg-blue-500/30 rounded-full">
+              <MoreVertical className="w-5 h-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onClick={handleBlockUser}
+              disabled={blockMutation.isPending}
+            >
+              <ShieldBan className="w-4 h-4 mr-2 text-blue-600" />
+              {labels.blockUser}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onClick={handleReportLastMessage}
+              disabled={reportMutation.isPending}
+            >
+              <Flag className="w-4 h-4 mr-2 text-blue-600" />
+              {labels.reportLast}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer text-red-600 focus:text-red-600"
+              onClick={handleDeleteMyLastMessage}
+              disabled={deleteMessageMutation.isPending}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              {labels.deleteMyLast}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {orderId && (
-        <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 flex items-center justify-between gap-2">
-          <span className="text-sm text-amber-800">{labels.orderConversation}{orderId.slice(0, 8)}</span>
-          <Button variant="outline" size="sm" className="border-amber-300 text-amber-800 shrink-0" onClick={() => navigate(`${createPageUrl('OrderTracking')}?id=${orderId}`)}>
+        <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-400/20 flex items-center justify-between gap-2">
+          <span className="text-sm text-amber-200">{labels.orderConversation}{orderId.slice(0, 8)}</span>
+          <Button variant="outline" size="sm" className="border-amber-300/60 text-amber-100 bg-transparent shrink-0" onClick={() => navigate(`${createPageUrl('OrderTracking')}?id=${orderId}`)}>
             {labels.viewOrder}
           </Button>
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div
+        className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3"
+        style={{ paddingBottom: 'calc(190px + env(safe-area-inset-bottom, 0px))' }}
+      >
         {hasMore && (
           <div className="flex justify-center py-2">
             <Button variant="ghost" size="sm" onClick={loadOlder} disabled={loadingOlder}>
@@ -302,13 +734,13 @@ export default function Chat() {
         )}
         {loadingMessages ? (
           <div className="flex justify-center h-24">
-            <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
         ) : messages.length === 0 ? (
           <div className="h-full flex items-center justify-center text-center min-h-[200px]">
             <div>
-              <p className="text-gray-500">{labels.noMessage}</p>
-              <p className="text-sm text-gray-400">{labels.startConversation}</p>
+              <p className="text-blue-100/70">{labels.noMessage}</p>
+              <p className="text-sm text-blue-100/50">{labels.startConversation}</p>
             </div>
           </div>
         ) : (
@@ -322,22 +754,61 @@ export default function Chat() {
             }
             const isOwn = msg.sender_id === currentUser.id;
             const isImage = msg.type === 'image' && msg.media_url;
+            const isAudio = msg.type === 'audio' && msg.media_url;
+            const reactionsMap = (msg.reactions && typeof msg.reactions === 'object') ? msg.reactions : {};
+            const myReaction = currentUser?.id ? reactionsMap[currentUser.id] : null;
+            const reactionToShow = myReaction || Object.values(reactionsMap)[0];
             return (
-              <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] ${isOwn ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-800'} rounded-2xl px-4 py-2`}>
+              <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex items-end gap-2 ${isOwn ? 'justify-end' : 'justify-start'}`}>
+                {selectionMode && (
+                  <button
+                    type="button"
+                    className={`w-5 h-5 rounded border ${selectedMessageIds.includes(msg.id) ? 'bg-blue-600 border-blue-600' : 'border-blue-200/40 bg-transparent'}`}
+                    onClick={() => toggleSelectMessage(msg.id)}
+                    aria-label={labels.select}
+                  />
+                )}
+                <div className={`relative max-w-[76%] sm:max-w-[68%] ${isOwn ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white' : 'bg-slate-800 text-blue-50'} rounded-2xl px-4 py-2 shadow-sm`}>
+                  <button
+                    type="button"
+                    className={`absolute top-1 right-1 p-1 rounded-full ${isOwn ? 'hover:bg-white/15' : 'hover:bg-black/5'}`}
+                    onClick={() => openMessageActions(msg)}
+                    aria-label={labels.actions}
+                  >
+                    <MoreVertical className={`w-3.5 h-3.5 ${isOwn ? 'text-white/80' : 'text-blue-100/70'}`} />
+                  </button>
+                  {msg.reply_to && (
+                    <div className={`mb-2 rounded-lg px-2 py-1 border-l-2 ${isOwn ? 'bg-white/15 border-white/60 text-white/90' : 'bg-slate-700 border-blue-200 text-blue-100/80'}`}>
+                      <p className="text-[10px] font-semibold">{labels.replyingTo}</p>
+                      <p className="text-xs truncate">{msg.reply_to.content || labels.voiceMessage}</p>
+                    </div>
+                  )}
                   {isImage && (
                     <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden max-w-[260px] my-1">
                       <img src={msg.media_url} alt="" className="w-full h-auto object-cover" />
                     </a>
                   )}
+                  {isAudio && (
+                    <div className="my-1">
+                      <audio controls src={msg.media_url} className="max-w-[240px]" />
+                      {!msg.content && <p className={`text-xs mt-1 ${isOwn ? 'text-white/80' : 'text-blue-100/70'}`}>{labels.voiceMessage}</p>}
+                    </div>
+                  )}
                   {msg.content && typeof msg.content === 'string' && msg.content.trim() && (
                     <p className="break-words whitespace-pre-wrap">{msg.content}</p>
                   )}
-                  {!isImage && !(msg.content && msg.content.trim()) && <p className="opacity-70">-</p>}
-                  <p className={`text-xs mt-1 ${isOwn ? 'text-white/70' : 'text-gray-500'}`}>
+                  {!isImage && !isAudio && !(msg.content && msg.content.trim()) && <p className="opacity-70">-</p>}
+                  <p className={`text-xs mt-1 flex items-center gap-1 ${isOwn ? 'text-white/70' : 'text-blue-100/65'}`}>
+                    {msg.is_pinned && <Pin className="w-3 h-3" />}
+                    {msg.is_important && <Star className="w-3 h-3" />}
                     {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true, locale: fr })}
                     {isOwn && msg.status === 'read' && ` · ${labels.read}`}
                   </p>
+                  {reactionToShow && (
+                    <div className={`absolute -bottom-3 ${isOwn ? 'left-2' : 'right-2'} bg-white border border-gray-200 rounded-full px-2 py-0.5 text-xs shadow-sm text-black`}>
+                      {String(reactionToShow)}
+                    </div>
+                  )}
                 </div>
               </motion.div>
             );
@@ -347,24 +818,213 @@ export default function Chat() {
       </div>
 
       <input ref={fileInputRef} type="file" accept={FILE_ACCEPT_IMAGES} className="hidden" onChange={handleImageSelect} />
-      <div className="p-4 border-t border-gray-100 flex gap-3">
-        <Button type="button" variant="ghost" size="icon" className="text-orange-500" onClick={() => fileInputRef.current?.click()} disabled={sendMessageMutation.isPending}>
+      {replyTarget && (
+        <div
+          className="fixed left-0 right-0 z-40 bg-slate-900/95 border-t border-blue-500/20 px-4 py-2 flex items-center justify-between gap-3"
+          style={{ bottom: 'calc(164px + env(safe-area-inset-bottom, 0px))' }}
+        >
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-blue-300">{labels.replyTo} {replyTarget.sender?.full_name || replyTarget.sender?.username || 'Utilisateur'}</p>
+            <p className="text-xs text-blue-100/70 truncate">{replyTarget.content || labels.voiceMessage}</p>
+          </div>
+          <button type="button" className="text-blue-300 hover:text-blue-100" onClick={() => setReplyTarget(null)} aria-label={labels.cancelReply}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+      <div
+        className="fixed left-0 right-0 z-40 bg-slate-950/95 backdrop-blur supports-[backdrop-filter]:bg-slate-950/85 border-t border-blue-500/20 p-3 flex gap-2"
+        style={{ bottom: 'calc(92px + env(safe-area-inset-bottom, 0px))' }}
+      >
+        <Button type="button" variant="ghost" size="icon" className="text-blue-200 hover:text-white hover:bg-blue-500/20" onClick={() => fileInputRef.current?.click()} disabled={sendMessageMutation.isPending}>
           <ImageIcon className="w-5 h-5" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={isRecording ? "text-red-400 hover:bg-red-500/20" : "text-blue-200 hover:text-white hover:bg-blue-500/20"}
+          onClick={() => (isRecording ? stopRecording() : startRecording())}
+          disabled={sendMessageMutation.isPending}
+          aria-label={isRecording ? 'Stop recording' : 'Start recording'}
+        >
+          {isRecording ? <Square className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
         </Button>
         <form onSubmit={handleSendMessage} className="flex-1 flex gap-2">
           <Input
-            placeholder={labels.placeholder}
+            placeholder={isRecording ? labels.recording : labels.placeholder}
             value={messageContent}
             onChange={handleInputChange}
-            disabled={sendMessageMutation.isPending}
-            className="rounded-full"
+            disabled={sendMessageMutation.isPending || isRecording}
+            className="rounded-full bg-slate-900 border-blue-500/30 text-blue-50 placeholder:text-blue-100/40"
           />
-          <Button type="submit" disabled={!messageContent.trim() || sendMessageMutation.isPending} size="icon" className="bg-orange-500 hover:bg-orange-600 rounded-full">
+          <Button type="submit" disabled={!messageContent.trim() || sendMessageMutation.isPending || isRecording} size="icon" className="bg-blue-600 hover:bg-blue-700 rounded-full">
             {sendMessageMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>
         </form>
       </div>
       <BottomNav />
+
+      <Dialog open={messageActionsOpen} onOpenChange={setMessageActionsOpen}>
+        <DialogContent className="sm:max-w-md p-0 rounded-2xl overflow-hidden">
+          <DialogHeader className="px-4 pt-3 pb-2 border-b">
+            <DialogTitle className="text-base">{labels.actions}</DialogTitle>
+          </DialogHeader>
+          <div className="px-4 py-3 border-b">
+            <div className="flex items-center gap-3">
+              {QUICK_REACTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  className="text-2xl leading-none hover:scale-110 transition-transform"
+                  onClick={() => handleReactToMessage(emoji)}
+                >
+                  {emoji}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="ml-auto w-9 h-9 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 flex items-center justify-center"
+                onClick={() => setEmojiPickerOpen(true)}
+              >
+                <Plus className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+          <div className="px-2 py-2">
+            <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left" onClick={() => handleReplyMessage(activeMessage)}>
+              <Reply className="w-5 h-5 text-gray-500" />
+              <span>{labels.replyTo}</span>
+            </button>
+            <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left" onClick={() => handleCopyMessage(activeMessage)}>
+              <Copy className="w-5 h-5 text-gray-500" />
+              <span>{labels.copy}</span>
+            </button>
+            <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left" onClick={handleTransferOpen}>
+              <Forward className="w-5 h-5 text-gray-500" />
+              <span>{labels.transfer}</span>
+            </button>
+            <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left" onClick={() => handlePinMessage(activeMessage)}>
+              <Pin className="w-5 h-5 text-gray-500" />
+              <span>{labels.pinMessage}</span>
+            </button>
+            <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left" onClick={() => handleMarkImportant(activeMessage)}>
+              <Star className="w-5 h-5 text-gray-500" />
+              <span>{labels.markImportant}</span>
+            </button>
+            <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left" onClick={() => handleSelectMessageMode(activeMessage)}>
+              <CheckSquare className="w-5 h-5 text-gray-500" />
+              <span>{labels.select}</span>
+            </button>
+            <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left" onClick={() => { setMessageActionsOpen(false); setConfirmAction({ type: 'report', messageId: activeMessage?.id }); }}>
+              <Flag className="w-5 h-5 text-gray-500" />
+              <span>{labels.report}</span>
+            </button>
+            {(activeMessage?.sender_id === currentUser?.id) && (
+              <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-red-50 text-red-600 text-left" onClick={() => { setMessageActionsOpen(false); setConfirmAction({ type: 'delete', messageId: activeMessage?.id }); }}>
+                <Trash2 className="w-5 h-5" />
+                <span>{labels.delete}</span>
+              </button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
+        <DialogContent className="sm:max-w-md p-0 rounded-2xl overflow-hidden">
+          <DialogHeader className="px-4 pt-3 pb-2 border-b">
+            <DialogTitle className="text-base">{labels.chooseReaction}</DialogTitle>
+          </DialogHeader>
+          <div className="px-4 py-3 border-b">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input className="pl-9 rounded-full" placeholder={labels.searchReaction} value={emojiSearch} onChange={(e) => setEmojiSearch(e.target.value)} />
+            </div>
+          </div>
+          <div className="px-4 py-3">
+            <p className="text-sm text-gray-500 mb-2">{labels.reactionsRecent}</p>
+            <div className="flex gap-3 mb-4">
+              {QUICK_REACTIONS.slice(0, 2).map((emoji) => (
+                <button key={`recent-${emoji}`} type="button" className="text-3xl leading-none" onClick={() => handleReactToMessage(emoji)}>
+                  {emoji}
+                </button>
+              ))}
+            </div>
+            <p className="text-sm text-gray-500 mb-2">{labels.emojiAndPeople}</p>
+            <div className="grid grid-cols-8 gap-2 max-h-56 overflow-y-auto">
+              {filteredEmojis.map((emoji) => (
+                <button key={`emoji-${emoji}`} type="button" className="text-2xl leading-none hover:scale-110 transition-transform" onClick={() => handleReactToMessage(emoji)}>
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+        <DialogContent className="sm:max-w-md p-0 rounded-2xl overflow-hidden">
+          <DialogHeader className="px-4 pt-3 pb-2 border-b">
+            <DialogTitle className="text-base">{labels.transferTo}</DialogTitle>
+          </DialogHeader>
+          <div className="px-4 py-3 border-b">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                className="pl-9 rounded-full"
+                placeholder={labels.transferSearchPlaceholder}
+                value={transferSearch}
+                onChange={(e) => setTransferSearch(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="max-h-72 overflow-y-auto p-2">
+            {transferLoading ? (
+              <div className="py-6 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-blue-600" /></div>
+            ) : transferUsers.length > 0 ? (
+              transferUsers
+                .filter((u) => u.id !== currentUser?.id)
+                .map((u) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 text-left"
+                    onClick={() => transferMutation.mutate(u)}
+                    disabled={transferMutation.isPending}
+                  >
+                    <Avatar className="w-9 h-9">
+                      <AvatarImage src={u.profile_image} />
+                      <AvatarFallback className="bg-blue-600 text-white">
+                        {(u.full_name || u.username || 'U')?.[0]?.toUpperCase() || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{u.full_name || u.username}</p>
+                      <p className="text-xs text-gray-500 truncate">@{u.username}</p>
+                    </div>
+                  </button>
+                ))
+            ) : (
+              <p className="text-sm text-gray-500 px-2 py-6 text-center">{labels.transferNoUser}</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!confirmAction} onOpenChange={(open) => !open && setConfirmAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmDialogMeta.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmDialogMeta.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{labels.cancel}</AlertDialogCancel>
+            <AlertDialogAction className="bg-blue-600 hover:bg-blue-700 text-white" onClick={handleConfirmAction}>
+              {labels.confirm}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

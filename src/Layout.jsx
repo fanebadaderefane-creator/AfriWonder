@@ -13,6 +13,7 @@ import PWAUpdateToast from "@/components/pwa/PWAUpdateToast";
 import MenuPlus from "@/components/navigation/MenuPlus";
 import PageTransition from "@/components/common/PageTransition";
 import { useNativeAppEnhancements } from '@/hooks/useNativeAppEnhancements';
+import IncomingCallListener from '@/components/call/IncomingCallListener';
 
 export default function Layout({ children, currentPageName }) {
   return (
@@ -325,6 +326,8 @@ function LayoutContent({ children, currentPageName }) {
       />
 
       {/* Menu latÃ©ral (MenuPlus) â€” accessible via d'autres entrÃ©es si besoin */}
+      {user?.id && <IncomingCallListener user={user} />}
+
       {user && currentPageName !== 'CreateEvent' && (
         <MenuPlus
           isOpen={isMenuOpen}

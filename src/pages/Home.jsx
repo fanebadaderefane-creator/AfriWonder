@@ -16,7 +16,7 @@ import AfriWonderLogo from '../components/common/AfriWonderLogo';
 import { useAppMenu } from '@/contexts/AppMenuContext';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import NotificationService from '../components/notifications/NotificationService';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronRight } from 'lucide-react';
 import { toast } from "sonner";
 import { useNetworkStatus, getCacheStrategy, scheduleTask } from '../components/common/PerformanceOptimizer';
 import { cn } from "@/lib/utils";
@@ -44,6 +44,7 @@ export default function Home() {
   const [followingCount, setFollowingCount] = useState(0);
 
   const [followingVideos, setFollowingVideos] = useState([]);
+  const [showWonderersPanel, setShowWonderersPanel] = useState(false);
   const [firstVideoPreloaded, setFirstVideoPreloaded] = useState(false);
 
   const containerRef = useRef(null);
@@ -257,6 +258,18 @@ export default function Home() {
        return result.following || [];
      },
      enabled: !!user?.id
+   });
+
+   const { data: suggestedWonderers = [] } = useQuery({
+     queryKey: ['wonder-suggestions', user?.id, userFollows.length],
+     queryFn: async () => {
+       const result = await api.users.list({ page: 1, limit: 40 });
+       const followedSet = new Set(userFollows.map((f) => f.id));
+       return result
+         .filter((u) => u.id !== user?.id && !followedSet.has(u.id))
+         .slice(0, 18);
+     },
+     enabled: !!user?.id,
    });
 
    useEffect(() => {
@@ -508,6 +521,24 @@ export default function Home() {
     }
   }, [currentIndex, activeTab, mainFeedItems, followingVideos, preloadVideos]);
 
+  const handleToggleWonder = useCallback(async (creatorId, creatorName = '') => {
+    if (!user) {
+      _navigate('/');
+      return;
+    }
+    const wasInWonder = userFollows.some((f) => f.id === creatorId);
+    const result = await api.users.toggleWonder(creatorId);
+    const inWonder = result?.data?.inWonder ?? result?.inWonder ?? !wasInWonder;
+    queryClient.invalidateQueries({ queryKey: ['user-follows', user.id] });
+    queryClient.invalidateQueries({ queryKey: ['follow-stats', creatorId] });
+    if (inWonder) {
+      NotificationService.notifyNewFollower(user.id, creatorId);
+      toast.success('Vous etes maintenant dans son Wonder');
+    } else {
+      toast.success(`Vous avez quitte le Wonder de ${creatorName || 'ce createur'}`);
+    }
+  }, [_navigate, queryClient, user, userFollows]);
+
   const handleTip = async (amount, method, extra = {}) => {
     if (!user || !selectedVideo) {
       toast.error('Connectez-vous pour envoyer un tip');
@@ -612,6 +643,41 @@ export default function Home() {
             onToggleDarkMode={undefined}
           />
         </div>
+
+        {activeTab === 'abonnements' && followingCount > 0 && (
+          <div className="absolute top-16 left-0 right-0 z-40 px-3 pt-2 pointer-events-auto">
+            <div className="rounded-2xl border border-white/15 bg-black/35 backdrop-blur-md px-3 py-2">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-white/90">Ton Wonder ({followingCount})</p>
+                <button
+                  type="button"
+                  onClick={() => setShowWonderersPanel(true)}
+                  className="text-xs text-white/80 hover:text-white flex items-center gap-1"
+                >
+                  Tout voir
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                {userFollows.slice(0, 12).map((creator) => (
+                  <button
+                    key={creator.id}
+                    type="button"
+                    onClick={() => _navigate(`/Profile?_userId=${creator.id}`)}
+                    className="shrink-0"
+                    title={creator.full_name || creator.username}
+                  >
+                    <img
+                      src={creator.profile_image || '/icon-192.png'}
+                      alt={creator.full_name || creator.username || 'wonderer'}
+                      className="w-10 h-10 rounded-full object-cover border border-white/30"
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {activeTab === 'pourtoi' && topBannerItems.length > 0 && currentIndex === 0 && (
           <div className="absolute top-16 left-0 right-0 z-40 px-3 pt-2 pb-1 gap-2 flex overflow-x-auto overflow-y-hidden no-scrollbar snap-x snap-mandatory pointer-events-auto">
@@ -770,24 +836,7 @@ export default function Home() {
                       setSelectedVideo(video);
                       setShowTip(true);
                     }}
-                    onSubscribe={async () => {
-                      if (!user) {
-                        _navigate('/');
-                        return;
-                      }
-                      const wasInWonder = userFollows.some((f) => f.id === video.creator_id);
-                      const result = await api.users.toggleWonder(video.creator_id);
-                      const inWonder = result?.data?.inWonder ?? result?.inWonder ?? !wasInWonder;
-                      queryClient.invalidateQueries({ queryKey: ['user-follows', user.id] });
-                      queryClient.invalidateQueries({ queryKey: ['follow-stats', video.creator_id] });
-                      
-                      if (inWonder) {
-                        NotificationService.notifyNewFollower(user.id, video.creator_id);
-                        toast.success('Vous etes maintenant dans son Wonder');
-                      } else {
-                        toast.success(`Vous avez quitte le Wonder de ${video.creator_name}`);
-                      }
-                    }}
+                    onSubscribe={() => handleToggleWonder(video.creator_id, video.creator_name)}
                     isFollowing={userFollows.some((f) => f.id === video.creator_id)}
                     onProfileClick={(creatorId) => {
                       _navigate(`/Profile?_userId=${creatorId}`);
@@ -801,6 +850,75 @@ export default function Home() {
           </>
         )}
         </div>
+
+        {showWonderersPanel && (
+          <div className="absolute inset-0 z-[60] bg-black/70 backdrop-blur-sm p-4 pt-20 overflow-y-auto pointer-events-auto">
+            <div className="bg-[#111827] border border-white/10 rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-white font-bold text-base">Tout ton Wonder</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowWonderersPanel(false)}
+                  className="text-white/70 hover:text-white text-sm"
+                >
+                  Fermer
+                </button>
+              </div>
+
+              <div className="space-y-2 mb-5">
+                {userFollows.map((creator) => (
+                  <div key={creator.id} className="flex items-center gap-3 p-2 rounded-xl bg-white/5">
+                    <img
+                      src={creator.profile_image || '/icon-192.png'}
+                      alt={creator.full_name || creator.username || 'creator'}
+                      className="w-11 h-11 rounded-full object-cover"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-semibold truncate">{creator.full_name || creator.username || 'Utilisateur'}</p>
+                      <p className="text-white/60 text-xs truncate">@{creator.username || 'afriwonder'}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleWonder(creator.id, creator.full_name || creator.username)}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-full bg-white/15 text-white hover:bg-white/25"
+                    >
+                      Suivi
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="pt-4 border-t border-white/10">
+                <p className="text-white/80 text-sm font-semibold mb-2">Comptes suggeres</p>
+                <div className="space-y-2">
+                  {suggestedWonderers.map((candidate) => (
+                    <div key={candidate.id} className="flex items-center gap-3 p-2 rounded-xl bg-white/5">
+                      <img
+                        src={candidate.profile_image || '/icon-192.png'}
+                        alt={candidate.full_name || candidate.username || 'candidate'}
+                        className="w-11 h-11 rounded-full object-cover"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-semibold truncate">{candidate.full_name || candidate.username || 'Utilisateur'}</p>
+                        <p className="text-white/60 text-xs truncate">@{candidate.username || candidate.email?.split('@')[0] || 'afriwonder'}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleWonder(candidate.id, candidate.full_name || candidate.username)}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white"
+                      >
+                        Suivre
+                      </button>
+                    </div>
+                  ))}
+                  {suggestedWonderers.length === 0 && (
+                    <p className="text-white/50 text-sm">Pas de suggestion pour le moment.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <BottomNav />
       </div>
