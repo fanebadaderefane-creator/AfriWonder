@@ -14,16 +14,14 @@ export default function BottomNav() {
     { id: 'home', icon: Home, label: t('home'), page: 'Home' },
     { id: 'discover', icon: Compass, label: t('discover'), page: 'Discover' },
     { id: 'create', icon: PlusSquare, label: '', page: 'Create', isCreate: true },
-    { id: 'live', icon: Radio, label: 'Live', page: 'Live' },
+    { id: 'live', icon: Radio, label: 'Live', page: 'Lives' },
     { id: 'profile', icon: User, label: t('profile'), page: 'Profile' },
   ];
 
   
 
   const isActive = (page) => {
-
-    return location.pathname.includes(page.toLowerCase());
-
+    return location.pathname.toLowerCase().includes(page.toLowerCase());
   };
 
   return (

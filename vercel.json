@@ -3,26 +3,12 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "https://afriwonder.onrender.com/api/:path*"
-    },
-    {
-      "source": "/((?!api).*)",
-      "destination": "/index.html"
-    }
+    {"source": "/api/:path*", "destination": "https://afriwonder.onrender.com/api/:path*"},
+    {"source": "/((?!api).*)", "destination": "/index.html"}
   ],
   "headers": [
-    {
-      "source": "/sw-custom.js",
-      "headers": [
-        {"key": "Cache-Control", "value": "no-cache, no-store, must-revalidate"},
-        {"key": "Service-Worker-Allowed", "value": "/"}
-      ]
-    },
-    {
-      "source": "/manifest.webmanifest",
-      "headers": [{"key": "Content-Type", "value": "application/manifest+json"}]
-    }
+    {"source": "/sw-custom.js", "headers": [{"key": "Cache-Control", "value": "no-cache, no-store, must-revalidate"}, {"key": "Service-Worker-Allowed", "value": "/"}]},
+    {"source": "/index.html", "headers": [{"key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate"}]},
+    {"source": "/manifest.webmanifest", "headers": [{"key": "Content-Type", "value": "application/manifest+json"}, {"key": "Cache-Control", "value": "no-cache, max-age=0"}]}
   ]
 }

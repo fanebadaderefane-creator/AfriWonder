@@ -95,7 +95,7 @@ export default function GiftSelector({ isOpen, onClose, liveId, creatorId, onGif
       <SheetContent side="bottom" className="h-[85vh] rounded-_t-3xl">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-yellow-500" />
+            <Sparkles className="w-5 h-5 text-blue-500" />
             Envoyer un cadeau
           </SheetTitle>
         </SheetHeader>
@@ -112,13 +112,13 @@ export default function GiftSelector({ isOpen, onClose, liveId, creatorId, onGif
                   onClick={() => setSelectedGift(gift)}
                   className={`aspect-square rounded-2xl border-2 flex flex-col items-center justify-center p-2 transition-all ${
                     selectedGift?.id === gift.id
-                      ? 'border-pink-500 bg-pink-50 shadow-lg scale-105'
+                      ? 'border-blue-500 bg-blue-50 shadow-lg scale-105'
                       : 'border-gray-200 bg-white'
                   }`}
                 >
                   <span className="text-3xl mb-1">{gift.icon}</span>
                   <span className="text-xs font-medium text-gray-700">{gift.name}</span>
-                  <span className="text-xs text-orange-500 font-bold mt-0.5">
+                  <span className="text-xs text-blue-600 font-bold mt-0.5">
                     {gift.price} F
                   </span>
                 </motion.button>
@@ -140,7 +140,7 @@ export default function GiftSelector({ isOpen, onClose, liveId, creatorId, onGif
                     onClick={() => setPaymentMethod(method.id)}
                     className={`p-4 rounded-xl border-2 font-medium transition-all ${
                       paymentMethod === method.id
-                        ? 'border-pink-500 bg-pink-50'
+                        ? 'border-blue-500 bg-blue-50'
                         : 'border-gray-200 bg-white'
                     }`}
                   >
@@ -157,7 +157,7 @@ export default function GiftSelector({ isOpen, onClose, liveId, creatorId, onGif
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-gradient-to-br from-pink-50 to-orange-50 rounded-2xl p-4"
+              className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-4"
             >
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
@@ -170,7 +170,7 @@ export default function GiftSelector({ isOpen, onClose, liveId, creatorId, onGif
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-orange-500">
+                  <div className="text-2xl font-bold text-blue-600">
                     {selectedGift.price}
                   </div>
                   <div className="text-xs text-gray-500">FCFA</div>
@@ -180,7 +180,7 @@ export default function GiftSelector({ isOpen, onClose, liveId, creatorId, onGif
               <Button
                 onClick={() => sendGiftMutation.mutate()}
                 disabled={sendGiftMutation.isPending}
-                className="w-full bg-gradient-to-r from-pink-500 to-orange-500 hover:from-pink-600 hover:to-orange-600 text-white font-bold py-6"
+                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-6"
               >
                 {sendGiftMutation.isPending ? 'Envoi...' : '🎁 Envoyer le cadeau'}
               </Button>

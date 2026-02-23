@@ -152,20 +152,20 @@ export default function Jobs() {
           />
         </div>
 
-        {/* Categories */}
+        {/* Categories — flex-shrink-0 pour que le texte reste entier sur mobile (scroll horizontal) */}
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
           {categories.map(cat => (
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
               className={cn(
-                "flex items-center gap-1 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors",
+                "flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors",
                 selectedCategory === cat.id
                   ? "bg-[#2563EB] text-white"
                   : "bg-gray-100 text-gray-600"
               )}
             >
-              <span>{cat.icon}</span>
+              <span className="flex-shrink-0">{cat.icon}</span>
               <span>{cat.label}</span>
             </button>
           ))}

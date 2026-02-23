@@ -262,10 +262,11 @@ export default function Discover() {
                       transition={{ delay: index * 0.03 }}
                       className="relative aspect-[9/16] bg-gray-200 rounded-lg overflow-hidden"
                     >
-                      {isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
-                        <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover" />
-                      ) : video.video_url ? (
+                      {/* Priorité : frame vidéo si video_url (évite cartes noires quand pas de miniature), sinon miniature, sinon placeholder */}
+                      {video.video_url ? (
                         <VideoFrameThumbnail videoUrl={video.video_url} alt={video.title} />
+                      ) : isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
+                        <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover" />
                       ) : (
                         <img src={VIDEO_PLACEHOLDER_IMG} alt={video.title} className="w-full h-full object-cover" />
                       )}
@@ -361,10 +362,11 @@ export default function Discover() {
                       transition={{ delay: index * 0.03 }}
                       className="relative aspect-[9/16] bg-gray-200 rounded-lg overflow-hidden"
                     >
-                      {isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
-                        <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover" />
-                      ) : video.video_url ? (
+                      {/* Priorité : frame vidéo si video_url (évite cartes noires), sinon miniature, sinon placeholder */}
+                      {video.video_url ? (
                         <VideoFrameThumbnail videoUrl={video.video_url} alt={video.title} />
+                      ) : isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
+                        <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover" />
                       ) : (
                         <img src={VIDEO_PLACEHOLDER_IMG} alt={video.title} className="w-full h-full object-cover" />
                       )}
@@ -449,10 +451,11 @@ export default function Discover() {
                       transition={{ delay: idx * 0.03 }}
                       className="relative aspect-[9/16] bg-gray-200 rounded-lg overflow-hidden"
                     >
-                      {isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
-                        <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover" />
-                      ) : video.video_url ? (
+                      {/* Priorité : frame vidéo si video_url (évite cartes noires), sinon miniature, sinon placeholder */}
+                      {video.video_url ? (
                         <VideoFrameThumbnail videoUrl={video.video_url} alt={video.title} />
+                      ) : isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
+                        <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover" />
                       ) : (
                         <img src={VIDEO_PLACEHOLDER_IMG} alt={video.title} className="w-full h-full object-cover" />
                       )}

@@ -115,13 +115,13 @@ export default function GiftPurchaseModal({
                       onClick={() => setSelectedGift(gift)}
                       className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                         selectedGift?.id === gift.id
-                          ? 'border-orange-500 bg-orange-50'
-                          : 'border-gray-200 hover:border-orange-300'
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-blue-300'
                       }`}
                     >
                       <div className="text-3xl text-center mb-2">{gift.icon}</div>
                       <p className="font-semibold text-sm text-center">{gift.name}</p>
-                      <p className="text-orange-600 font-bold text-center">
+                      <p className="text-blue-600 font-bold text-center">
                         {gift.price.toLocaleString()} XOF
                       </p>
                     </motion.div>
@@ -144,14 +144,14 @@ export default function GiftPurchaseModal({
                       value={quantity}
                       onChange={(e) => setQuantity(parseInt(e.target.value))}
                     />
-                    <p className="text-sm text-orange-600 mt-1">
+                    <p className="text-sm text-blue-600 mt-1">
                       Total: {(selectedGift.price * quantity).toLocaleString()} XOF
                     </p>
                   </div>
 
                   <Button
                     onClick={() => setStep('message')}
-                    className="w-full bg-orange-500 hover:bg-orange-600"
+                    className="w-full bg-blue-600 hover:bg-blue-700"
                   >
                     Continuer
                   </Button>
@@ -190,7 +190,7 @@ export default function GiftPurchaseModal({
                 </Button>
                 <Button
                   onClick={() => setStep('payment')}
-                  className="flex-1 bg-orange-500 hover:bg-orange-600"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
                 >
                   Paiement
                 </Button>
@@ -206,9 +206,9 @@ export default function GiftPurchaseModal({
             </DialogHeader>
 
             <div className="space-y-4">
-              <div className="bg-orange-50 p-3 rounded-lg">
+              <div className="bg-blue-50 p-3 rounded-lg">
                 <p className="text-sm text-gray-700">Montant à payer</p>
-                <p className="text-2xl font-bold text-orange-600">
+                <p className="text-2xl font-bold text-blue-600">
                   {(selectedGift.price * quantity).toLocaleString()} XOF
                 </p>
               </div>
@@ -246,7 +246,7 @@ export default function GiftPurchaseModal({
                     sendGiftMutation.isPending ||
                     (selectedPayment === 'orange_money' && !phoneNumber)
                   }
-                  className="flex-1 bg-orange-500 hover:bg-orange-600"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
                 >
                   {sendGiftMutation.isPending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />

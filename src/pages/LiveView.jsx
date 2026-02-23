@@ -19,14 +19,65 @@ import { speak, isTtsSupported } from '@/lib/liveTts';
 import { translateToBambara, translateToFrench, detectLanguage } from '@/lib/liveTranslate';
 import { useWakeLock } from '@/hooks/useWakeLock';
 
-const GIFTS = [
-  { id: 'heart', name: 'Cœur', amount: 100, icon: '❤️' },
-  { id: 'star', name: 'Étoile', amount: 500, icon: '⭐' },
-  { id: 'fire', name: 'Feu', amount: 1000, icon: '🔥' },
-  { id: 'crown', name: 'Couronne', amount: 5000, icon: '👑' },
-  { id: 'diamond', name: 'Diamant', amount: 10000, icon: '💎' },
-  { id: 'plane', name: 'Avion', amount: 25000, icon: '✈️' }
-];
+const GIFT_TIERS = ['basique', 'premium', 'luxe', 'legendaire'];
+
+const GIFTS_BY_TIER = {
+  basique: [
+    { id: 'rose', name: 'Rose', amount: 100, icon: '🌹' },
+    { id: 'coeur', name: 'Cœur', amount: 500, icon: '❤️' },
+    { id: 'etoile', name: 'Étoile', amount: 1000, icon: '⭐' },
+    { id: 'pouce', name: 'Pouce', amount: 100, icon: '👍' },
+    { id: 'bisou', name: 'Bisou', amount: 200, icon: '💋' },
+    { id: 'feu', name: 'Feu', amount: 300, icon: '🔥' },
+    { id: 'applaudissements', name: 'Applaudissements', amount: 500, icon: '👏' },
+    { id: 'soleil', name: 'Soleil', amount: 800, icon: '☀️' },
+    { id: 'arcenciel', name: 'Arc-en-ciel', amount: 1500, icon: '🌈' },
+    { id: 'cadeau', name: 'Cadeau', amount: 2000, icon: '🎁' },
+    { id: 'gateau', name: 'Gâteau', amount: 2500, icon: '🎂' },
+  ],
+  premium: [
+    { id: 'diamant', name: 'Diamant', amount: 5000, icon: '💎' },
+    { id: 'couronne', name: 'Couronne', amount: 10000, icon: '👑' },
+    { id: 'confetti', name: 'Confetti', amount: 3000, icon: '🎉' },
+    { id: 'trophee', name: 'Trophée', amount: 5000, icon: '🏆' },
+    { id: 'medaille', name: 'Médaille', amount: 7500, icon: '🥇' },
+    { id: 'flamme', name: 'Flamme', amount: 9900, icon: '🔥' },
+    { id: 'bague', name: 'Bague', amount: 15000, icon: '💍' },
+    { id: 'voiture', name: 'Voiture', amount: 20000, icon: '🚗' },
+    { id: 'avion', name: 'Avion', amount: 30000, icon: '✈️' },
+  ],
+  luxe: [
+    { id: 'fusee', name: 'Fusée', amount: 50000, icon: '🚀' },
+    { id: 'chateau', name: 'Château', amount: 100000, icon: '🏰' },
+    { id: 'yacht', name: 'Yacht', amount: 50000, icon: '🛳️' },
+    { id: 'helicoptere', name: 'Hélicoptère', amount: 75000, icon: '🚁' },
+    { id: 'dragon', name: 'Dragon', amount: 88800, icon: '🐉' },
+    { id: 'licorne', name: 'Licorne', amount: 99900, icon: '🦄' },
+    { id: 'lion', name: 'Lion', amount: 120000, icon: '🦁' },
+    { id: 'aigle', name: 'Aigle', amount: 150000, icon: '🦅' },
+    { id: 'volcan', name: 'Volcan', amount: 190000, icon: '🌋' },
+    { id: 'meteorite', name: 'Météorite', amount: 250000, icon: '☄️' },
+    { id: 'galaxie', name: 'Galaxie', amount: 330000, icon: '🌌' },
+    { id: 'tonnerre', name: 'Tonnerre', amount: 400000, icon: '⚡' },
+  ],
+  legendaire: [
+    { id: 'planete', name: 'Planète', amount: 500000, icon: '🪐' },
+    { id: 'univers', name: 'Univers', amount: 1000000, icon: '🌠' },
+    { id: 'trone', name: 'Trône', amount: 500000, icon: '🪑' },
+    { id: 'palais', name: 'Palais', amount: 670000, icon: '🏛️' },
+    { id: 'phoenix', name: 'Phoenix', amount: 890000, icon: '🔥' },
+    { id: 'etoile-filante', name: 'Étoile Filante', amount: 1000000, icon: '🌠' },
+    { id: 'supernova', name: 'Supernova', amount: 1500000, icon: '💫' },
+    { id: 'couronne-royale', name: 'Couronne Royale', amount: 2000000, icon: '👑' },
+    { id: 'empereur', name: 'Empereur', amount: 3000000, icon: '🤴' },
+    { id: 'dieu-soleil', name: 'Dieu du Soleil', amount: 5000000, icon: '☀️' },
+    { id: 'cosmos-infini', name: 'Cosmos Infini', amount: 8890000, icon: '🌀' },
+    { id: 'legende-eternelle', name: 'Légende Éternelle', amount: 10000000, icon: '♾️' },
+  ],
+};
+
+// Liste plate pour compatibilité (tous les cadeaux)
+const GIFTS = Object.values(GIFTS_BY_TIER).flat();
 
 export default function LiveView() {
   const navigate = useNavigate();
@@ -35,6 +86,8 @@ export default function LiveView() {
   const [user, setUser] = useState(null);
   const [message, setMessage] = useState('');
   const [showGifts, setShowGifts] = useState(false);
+  const [giftTier, setGiftTier] = useState('basique');
+  const [selectedGift, setSelectedGift] = useState(null);
   const [giftAnimations, setGiftAnimations] = useState([]);
   const [selectedUserBan, setSelectedUserBan] = useState(null);
   const [isBanned, setIsBanned] = useState(false);
@@ -298,6 +351,7 @@ export default function LiveView() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['live', liveId] });
       setShowGifts(false);
+      setSelectedGift(null);
     },
     onError: (e) => toast.error(e.apiMessage || e.response?.data?.error?.message || e.message || 'Solde insuffisant ou live terminé'),
   });
@@ -460,7 +514,7 @@ export default function LiveView() {
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div className="text-center text-white">
-              <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-pink-500 to-red-500 flex items-center justify-center">
+              <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
                 <span className="text-4xl">{creatorName?.[0]?.toUpperCase()}</span>
               </div>
               <h2 className="text-2xl font-bold mb-2">{live.title}</h2>
@@ -538,7 +592,7 @@ export default function LiveView() {
                     onClick={() => followMutation.mutate()}
                     disabled={followMutation.isPending}
                     size="sm"
-                    className={isFollowing ? 'bg-gray-600 hover:bg-gray-700' : 'bg-red-600 hover:bg-red-700'}
+                    className={isFollowing ? 'bg-gray-600 hover:bg-gray-700' : 'bg-blue-600 hover:bg-blue-700'}
                   >
                     {isFollowing ? '✓ Suivi' : '+ Suivre'}
                   </Button>
@@ -580,6 +634,48 @@ export default function LiveView() {
             </div>
           </div>
         </div>
+
+        {/* Barre flottante droite : Cœur, Cadeaux, Don, Partager (comme sur les captures) */}
+        {user && !isBanned && live?.status === 'live' && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-3">
+            <Button
+              onClick={() => reactionMutation.mutate('heart')}
+              size="icon"
+              variant="ghost"
+              className="h-12 w-12 rounded-full bg-white/10 hover:bg-pink-500/30 text-pink-400 border border-white/20"
+              title="Cœur"
+            >
+              <Heart className="w-5 h-5" />
+            </Button>
+            <Button
+              onClick={() => setShowGifts(!showGifts)}
+              size="icon"
+              className="h-12 w-12 rounded-full bg-gradient-to-b from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border-2 border-blue-400/50 shadow-lg"
+              title="Cadeaux"
+            >
+              <Gift className="w-5 h-5" />
+            </Button>
+            {(live?.donations_enabled !== false) && (
+              <Button
+                onClick={() => setShowTipModal(true)}
+                size="icon"
+                className="h-12 w-12 rounded-full bg-amber-600 hover:bg-amber-500 text-white border border-amber-400/50"
+                title="Don"
+              >
+                <span className="text-lg">💵</span>
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleShare}
+              className="h-12 w-12 rounded-full bg-white/10 hover:bg-white/20 text-white border border-white/20"
+              title="Partager"
+            >
+              <Share2 className="w-5 h-5" />
+            </Button>
+          </div>
+        )}
 
         {/* Gift Animations - Utiliser AdvancedGiftAnimation pour premium/vip */}
         <AnimatePresence>
@@ -693,7 +789,7 @@ export default function LiveView() {
               onClick={() => sendMessageMutation.mutate()}
               disabled={!message.trim() || sendMessageMutation.isPending}
               size="icon"
-              className="h-8 w-8 bg-red-600 hover:bg-red-700"
+              className="h-8 w-8 bg-blue-600 hover:bg-blue-700"
             >
               <Send className="w-3 h-3" />
             </Button>
@@ -739,20 +835,20 @@ export default function LiveView() {
               <Button
                 onClick={() => setShowGifts(!showGifts)}
                 size="icon"
-                className="h-8 w-8 bg-yellow-600 hover:bg-yellow-700"
+                className="h-8 w-8 bg-blue-600 hover:bg-blue-700"
               >
                 <Gift className="w-3 h-3" />
               </Button>
               {activePolls.length > 0 && (
-                <Button
-                  onClick={() => setShowPolls(!showPolls)}
-                  size="icon"
-                  className="h-8 w-8 bg-purple-600 hover:bg-purple-700 relative"
-                  title="Sondages"
-                >
-                  <BarChart3 className="w-3 h-3" />
-                  {activePolls.length > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+<Button
+                onClick={() => setShowPolls(!showPolls)}
+                size="icon"
+                className="h-8 w-8 bg-blue-600 hover:bg-blue-700 relative"
+                title="Sondages"
+              >
+                <BarChart3 className="w-3 h-3" />
+                {activePolls.length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
                       {activePolls.length}
                     </span>
                   )}
@@ -760,40 +856,91 @@ export default function LiveView() {
               )}
 
               {showGifts && (
-                <div className="absolute bottom-12 right-0 bg-gray-800 rounded-lg p-2 space-y-1 z-50 min-w-[180px]">
-                  <div className="flex items-center justify-between px-1 pb-1 border-b border-gray-700">
-                    <span className="text-xs font-medium text-white">Cadeaux</span>
+                <div className="fixed inset-x-0 bottom-0 top-auto max-h-[85vh] flex flex-col z-[100] bg-gray-900/98 backdrop-blur rounded-t-2xl border border-gray-700 border-b-0 shadow-2xl">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+                    <span className="text-sm font-semibold text-white">Cadeaux</span>
                     <button
                       type="button"
-                      onClick={() => setShowGifts(false)}
-                      className="p-0.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"
+                      onClick={() => { setShowGifts(false); setSelectedGift(null); }}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700"
                       aria-label="Fermer"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="w-5 h-5" />
                     </button>
                   </div>
-                  <p className="text-xs text-gray-400 px-1 pb-1">
-                    Solde : {Number(wallet?.available_balance ?? wallet?.balance ?? 0).toLocaleString()} FCFA
-                  </p>
-                  <p className="text-xs text-gray-500 px-1 py-0.5">
-                    CDC: créateur 85%, plateforme 15%.
-                  </p>
+                  <div className="flex items-center justify-between px-4 py-2 bg-gray-800/50">
+                    <span className="text-xs text-gray-300">Votre solde</span>
+                    <span className="text-sm font-medium text-white flex items-center gap-1">
+                      <span className="text-amber-400">🪙</span>
+                      {Number(wallet?.available_balance ?? wallet?.balance ?? 0).toLocaleString()} FCFA
+                    </span>
+                  </div>
                   <a
                     href={createPageUrl('RechargeWallet')}
-                    className="block text-xs text-amber-400 hover:underline px-1 py-1"
+                    className="text-xs text-blue-400 hover:underline px-4 pb-1"
                   >
                     Recharger le portefeuille
                   </a>
-                  {GIFTS.map((gift) => (
-                    <button
-                      key={gift.id}
-                      onClick={() => sendGiftMutation.mutate(gift)}
-                      disabled={sendGiftMutation.isPending}
-                      className="w-full text-left text-xs text-white hover:bg-gray-700 px-2 py-1 rounded"
+                  {/* Onglets Basique, Premium, Luxe, Légendaire */}
+                  <div className="flex gap-2 px-4 py-2 overflow-x-auto border-b border-gray-700">
+                    {GIFT_TIERS.map((tier) => (
+                      <button
+                        key={tier}
+                        type="button"
+                        onClick={() => { setGiftTier(tier); setSelectedGift(null); }}
+                        className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                          giftTier === tier
+                            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg'
+                            : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                        }`}
+                      >
+                        {tier === 'basique' && 'Basique'}
+                        {tier === 'premium' && 'Premium'}
+                        {tier === 'luxe' && 'Luxe'}
+                        {tier === 'legendaire' && 'Légendaire'}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Grille de cadeaux */}
+                  <div className="flex-1 overflow-y-auto p-4">
+                    <div className="grid grid-cols-4 gap-3">
+                      {(GIFTS_BY_TIER[giftTier] || []).map((gift) => (
+                        <button
+                          key={gift.id}
+                          type="button"
+                          onClick={() => setSelectedGift(selectedGift?.id === gift.id ? null : gift)}
+                          disabled={sendGiftMutation.isPending}
+                          className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
+                            selectedGift?.id === gift.id
+                              ? 'border-blue-500 bg-blue-500/20'
+                              : 'border-gray-700 bg-gray-800/80 hover:border-gray-600 hover:bg-gray-700/80'
+                          }`}
+                        >
+                          <span className="text-2xl mb-1">{gift.icon}</span>
+                          <span className="text-xs font-medium text-white text-center leading-tight">{gift.name}</span>
+                          <span className="text-xs text-amber-400 flex items-center gap-0.5 mt-0.5">
+                            <span>🪙</span>
+                            {gift.amount >= 1000000 ? `${(gift.amount / 1000000).toFixed(1)}M` : gift.amount >= 1000 ? `${(gift.amount / 1000).toFixed(1)}k` : gift.amount.toLocaleString()}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Bouton Sélectionnez un cadeau / Envoyer */}
+                  <div className="p-4 border-t border-gray-700 bg-gray-800/50">
+                    <Button
+                      type="button"
+                      disabled={!selectedGift || sendGiftMutation.isPending}
+                      onClick={() => selectedGift && sendGiftMutation.mutate(selectedGift)}
+                      className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium"
                     >
-                      {gift.name} ({gift.amount.toLocaleString()} FCFA)
-                    </button>
-                  ))}
+                      {sendGiftMutation.isPending
+                        ? 'Envoi...'
+                        : selectedGift
+                          ? `Envoyer ${selectedGift.name} (${selectedGift.amount >= 1000 ? `${(selectedGift.amount / 1000).toFixed(1)}k` : selectedGift.amount} FCFA)`
+                          : 'Sélectionnez un cadeau'}
+                    </Button>
+                  </div>
                 </div>
               )}
 
@@ -844,7 +991,7 @@ export default function LiveView() {
                               disabled={hasVoted}
                               className={`w-full text-left mb-2 p-2 rounded text-xs transition-all ${
                                 isVoted
-                                  ? 'bg-orange-500/30 border border-orange-500 cursor-default'
+                                  ? 'bg-blue-500/30 border border-blue-500 cursor-default'
                                   : hasVoted
                                     ? 'bg-gray-800/50 cursor-not-allowed opacity-60'
                                     : 'bg-gray-800 hover:bg-gray-700'
@@ -852,22 +999,22 @@ export default function LiveView() {
                             >
                               <div className="flex justify-between text-white mb-1">
                                 <span className={isVoted ? 'font-semibold' : ''}>{opt.text}</span>
-                                <span className="text-orange-400">{percentage.toFixed(0)}%</span>
+                                <span className="text-blue-400">{percentage.toFixed(0)}%</span>
                               </div>
                               <div className="w-full bg-gray-700 rounded-full h-1.5">
                                 <motion.div
                                   initial={{ width: 0 }}
                                   animate={{ width: `${percentage}%` }}
-                                  className="bg-orange-500 h-1.5 rounded-full"
+                                  className="bg-blue-500 h-1.5 rounded-full"
                                 />
                               </div>
-                              {isVoted && <span className="text-orange-400 text-xs mt-1 block flex items-center gap-1">✓ Votre vote</span>}
+                              {isVoted && <span className="text-blue-400 text-xs mt-1 block flex items-center gap-1">✓ Votre vote</span>}
                             </button>
                           );
                         })}
                         <p className="text-gray-400 text-xs mt-2 text-center">
                           {totalVotes} vote{totalVotes !== 1 ? 's' : ''}
-                          {hasVoted && <span className="text-orange-400 ml-2">• Vous avez voté</span>}
+                          {hasVoted && <span className="text-blue-400 ml-2">• Vous avez voté</span>}
                         </p>
                       </div>
                     );

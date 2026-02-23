@@ -109,10 +109,10 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
         registration = reg;
         console.log('✅ Service Worker enregistré:', reg.scope);
 
-        // Vérifier les mises à jour toutes les heures
+        // Vérifier les mises à jour toutes les 5 min (mobile PWA utilise souvent ancienne version sinon)
         updateCheckInterval = setInterval(() => {
-          reg.update().catch(() => {});
-        }, 60 * 60 * 1000);
+          if (document.visibilityState === 'visible') reg.update().catch(() => {});
+        }, 5 * 60 * 1000);
 
         // Écouter les mises à jour disponibles
         reg.addEventListener('updatefound', () => {
@@ -126,6 +126,13 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
               window.dispatchEvent(new CustomEvent('sw-update-available', { 
                 detail: { registration: reg, newWorker } 
               }));
+              // PWA mobile : appliquer la mise à jour automatiquement après 3s (évite ancienne version tenace)
+              const isPwaMobile = (window.matchMedia('(display-mode: standalone)').matches || (window.navigator.standalone === true)) && window.innerWidth < 1024;
+              if (isPwaMobile) {
+                setTimeout(() => {
+                  newWorker.postMessage({ type: 'SKIP_WAITING' });
+                }, 3000);
+              }
             } else if (newWorker.state === 'activated') {
               // Nouveau worker activé, recharger la page
               console.log('✅ Nouveau Service Worker activé');
@@ -139,12 +146,21 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
           window.dispatchEvent(new CustomEvent('sw-update-available', { 
             detail: { registration: reg, newWorker: reg.waiting } 
           }));
+          // PWA mobile : appliquer automatiquement après 3s
+          const isPwaMobile = (window.matchMedia('(display-mode: standalone)').matches || (window.navigator.standalone === true)) && window.innerWidth < 1024;
+          if (isPwaMobile) {
+            setTimeout(() => {
+              reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }, 3000);
+          }
         }
 
         // Vérifier les mises à jour immédiatement
         reg.update().catch(() => {});
-        // Revérifier après quelques secondes (au cas où le cache a servi l'ancienne version)
+        // Revérifier après 2s et 5s (cache mobile peut servir l'ancienne version)
+        setTimeout(() => reg.update().catch(() => {}), 2000);
         setTimeout(() => reg.update().catch(() => {}), 5000);
+        setTimeout(() => reg.update().catch(() => {}), 15000);
 
         // Sur mobile : revérifier à chaque retour sur l'app (visibilité)
         const onVis = () => {

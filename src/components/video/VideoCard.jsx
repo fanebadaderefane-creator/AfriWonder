@@ -780,9 +780,11 @@ function VideoCardContent({
     const current = videoRef.current?.currentTime || 0;
     const startTime = video.start_time || 0;
     if (current > startTime + 0.05) {
-      // Retirer la couverture seulement après que la première frame soit peinte (évite flash noir)
+      // Retirer la couverture après que la première frame soit peinte (évite flash noir au scroll)
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => setShowFrameCover(false));
+        requestAnimationFrame(() => {
+          setTimeout(() => setShowFrameCover(false), 120);
+        });
       });
     }
   };
@@ -1046,7 +1048,10 @@ function VideoCardContent({
       )}
       {/* Couverture type TikTok : poster visible jusqu'à ce que la vidéo joue vraiment (jamais d'écran noir) */}
       {videoUrl && !loadError && showFrameCover && (
-        <div className="absolute inset-0 z-[5] pointer-events-none bg-black">
+        <div
+          className="absolute inset-0 z-[5] pointer-events-none bg-gray-900"
+          style={{ backgroundImage: `url(${posterUrl || VIDEO_PLACEHOLDER_IMG})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+        >
           <img
             src={posterUrl || VIDEO_PLACEHOLDER_IMG}
             alt=""

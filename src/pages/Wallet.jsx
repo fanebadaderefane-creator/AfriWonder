@@ -6,14 +6,24 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, CreditCard, Clock, CheckCircle2, Loader2, Plus, ArrowLeft } from 'lucide-react';
+import { TrendingUp, CreditCard, Clock, CheckCircle2, Loader2, Plus, ArrowLeft, Coins, History } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
+const COIN_PACKAGES = [
+  { coins: 100, label: 'Starter', priceFcfa: 500, popular: false },
+  { coins: 500, label: 'Basique', priceFcfa: 2000, popular: false },
+  { coins: 1500, label: 'Standard', priceFcfa: 5000, popular: true },
+  { coins: 5000, label: 'Premium', priceFcfa: 15000, popular: false },
+  { coins: 15000, label: 'Mega', priceFcfa: 40000, popular: false },
+  { coins: 50000, label: 'Légende', priceFcfa: 100000, popular: false },
+];
+
 export default function WalletPage() {
   const navigate = useNavigate();
+  const [walletTab, setWalletTab] = useState('coins'); // 'coins' | 'history'
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [withdrawData, setWithdrawData] = useState({
     amount: '',
@@ -100,110 +110,135 @@ export default function WalletPage() {
 
   if (isLoading) return <div className="text-center py-12">Chargement...</div>;
 
+  const totalSpent = (transactions || []).reduce((s, tx) => s + (tx.type === 'withdrawal' || tx.type === 'payment' ? Number(tx.amount || 0) : 0), 0);
+  const totalEarned = (transactions || []).reduce((s, tx) => s + (tx.type === 'deposit' || tx.type === 'earning' ? Number(tx.amount || 0) : 0), 0);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="max-w-4xl mx-auto p-4 safe-area-pb"
+      className="min-h-screen bg-gray-950 text-white safe-area-pb"
     >
-      <div className="flex items-center gap-3 mb-8">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl text-blue-600 hover:text-blue-700 hover:bg-blue-50" aria-label="Retour">
-          <ArrowLeft className="w-5 h-5" />
-        </Button>
-        <h1 className="text-3xl font-bold text-blue-900">Mon Portefeuille</h1>
-      </div>
-
-      {/* Balance Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        <motion.div whileHover={{ y: -5 }} className="cursor-pointer">
-          <Card className="border-l-4 border-blue-500">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Solde disponible</p>
-                  <p className="text-3xl font-bold text-blue-600">
-                    {wallet?.available_balance?.toLocaleString() || 0} XOF
-                  </p>
-                </div>
-                <CreditCard className="w-12 h-12 text-blue-200" />
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div whileHover={{ y: -5 }} className="cursor-pointer">
-          <Card className="border-l-4 border-blue-400">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">En attente (7 jours)</p>
-                  <p className="text-3xl font-bold text-blue-600">
-                    {wallet?.pending_balance?.toLocaleString() || 0} XOF
-                  </p>
-                </div>
-                <Clock className="w-12 h-12 text-blue-200" />
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div whileHover={{ y: -5 }} className="cursor-pointer">
-          <Card className="border-l-4 border-blue-500">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Gains totaux</p>
-                  <p className="text-3xl font-bold text-blue-600">
-                    {wallet?.total_earnings?.toLocaleString() || 0} XOF
-                  </p>
-                </div>
-                <TrendingUp className="w-12 h-12 text-blue-200" />
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div whileHover={{ y: -5 }} className="cursor-pointer">
-          <Card className="border-l-4 border-blue-500">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Total retraits</p>
-                  <p className="text-3xl font-bold text-blue-600">
-                    {wallet?.total_payouts?.toLocaleString() || 0} XOF
-                  </p>
-                </div>
-                <CheckCircle2 className="w-12 h-12 text-blue-200" />
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </div>
-
-      {/* Action Buttons */}
-      <div className="mb-8 flex gap-4">
-        <Button
-          onClick={() => navigate(createPageUrl('RechargeWallet'))}
-          className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
-          size="lg"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Recharger
-        </Button>
-        {wallet?.available_balance > 0 && (
-          <Button
-            onClick={() => setShowWithdrawModal(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-            size="lg"
-          >
-            Demander un retrait
+      <div className="sticky top-0 bg-gray-900/95 backdrop-blur z-10 border-b border-white/10">
+        <div className="flex items-center gap-3 px-4 py-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl text-white hover:bg-white/10" aria-label="Retour">
+            <ArrowLeft className="w-5 h-5" />
           </Button>
-        )}
+          <h1 className="text-xl font-bold">Portefeuille</h1>
+        </div>
       </div>
+
+      <div className="p-4 max-w-4xl mx-auto">
+        {/* Carte Solde actuel (bleu AfriWonder) */}
+        <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 p-5 mb-6 shadow-xl">
+          <div className="flex items-center gap-2 mb-4">
+            <CreditCard className="w-6 h-6 text-blue-200" />
+            <span className="text-sm text-blue-100">Solde actuel</span>
+          </div>
+          <p className="text-4xl font-bold text-white mb-4">
+            {wallet?.available_balance?.toLocaleString() ?? 0} <span className="text-lg font-normal text-blue-200">FCFA</span>
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-white/10 rounded-xl p-3">
+              <p className="text-xs text-blue-200">Total dépensé</p>
+              <p className="text-lg font-semibold text-white">{totalSpent.toLocaleString()} FCFA</p>
+            </div>
+            <div className="bg-white/10 rounded-xl p-3">
+              <p className="text-xs text-blue-200">Total gagné</p>
+              <p className="text-lg font-semibold text-white">{(wallet?.total_earnings ?? totalEarned ?? 0).toLocaleString()} FCFA</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Onglets Acheter des Coins | Historique */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setWalletTab('coins')}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all ${walletTab === 'coins' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white' : 'bg-gray-800 text-gray-400'}`}
+          >
+            <Coins className="w-4 h-4" />
+            Acheter des Coins
+          </button>
+          <button
+            onClick={() => setWalletTab('history')}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all ${walletTab === 'history' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white' : 'bg-gray-800 text-gray-400'}`}
+          >
+            <History className="w-4 h-4" />
+            Historique
+          </button>
+        </div>
+
+        {walletTab === 'coins' && (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+              {COIN_PACKAGES.map((pkg) => (
+                <motion.button
+                  key={pkg.coins}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => navigate(createPageUrl('RechargeWallet') + `?amount=${pkg.priceFcfa}`)}
+                  className={`relative rounded-xl bg-gray-800/80 border p-4 text-left hover:border-blue-500/50 transition-colors ${pkg.popular ? 'border-blue-500/70 ring-1 ring-blue-500/30' : 'border-gray-700'}`}
+                >
+                  {pkg.popular && (
+                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-[10px] font-bold text-white">POPULAIRE</span>
+                  )}
+                  <div className="flex justify-center mb-2">
+                    <span className="text-2xl">🪙</span>
+                  </div>
+                  <p className="text-xl font-bold text-white text-center">{pkg.coins.toLocaleString()}</p>
+                  <p className="text-xs text-gray-400 text-center mb-1">{pkg.label}</p>
+                  <p className="text-sm text-blue-300 text-center font-medium">{pkg.priceFcfa.toLocaleString()} FCFA</p>
+                </motion.button>
+              ))}
+            </div>
+            <Button
+              onClick={() => navigate(createPageUrl('RechargeWallet'))}
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl"
+              size="lg"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Recharger (montant libre)
+            </Button>
+          </>
+        )}
+
+        {walletTab === 'history' && (
+          <div className="space-y-2 mb-6">
+            {!transactions?.length && <p className="text-gray-400 text-center py-8">Aucune transaction</p>}
+            {transactions?.map((tx) => (
+              <div key={tx.id} className="flex items-center justify-between p-4 rounded-xl bg-gray-800/60 border border-gray-700">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${(tx.type === 'deposit' || tx.type === 'earning') ? 'bg-green-500/20 text-green-400' : 'bg-gray-600 text-gray-300'}`}>
+                    {(tx.type === 'deposit' || tx.type === 'earning') ? '↓' : '↑'}
+                  </div>
+                  <div>
+                    <p className="font-medium text-white">{tx.description || tx.type === 'deposit' ? 'Achat de coins' : tx.type}</p>
+                    <p className="text-xs text-gray-400">{new Date(tx.created_at || tx.created_date).toLocaleDateString('fr-FR')}</p>
+                  </div>
+                </div>
+                <p className={`font-semibold ${(tx.type === 'deposit' || tx.type === 'earning') ? 'text-green-400' : 'text-gray-300'}`}>
+                  {(tx.type === 'deposit' || tx.type === 'earning') ? '+' : '-'}{(tx.amount || 0).toLocaleString()} FCFA
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {wallet?.available_balance > 0 && (
+          <div className="mb-6">
+            <Button
+              onClick={() => setShowWithdrawModal(true)}
+              variant="outline"
+              className="w-full border-blue-500/50 text-blue-400 hover:bg-blue-500/10 rounded-xl"
+              size="lg"
+            >
+              Demander un retrait
+            </Button>
+          </div>
+        )}
 
       {/* Withdraw Modal */}
       {showWithdrawModal && (
-        <Card className="mb-8 border-blue-200 bg-blue-50">
+        <Card className="mb-8 border-blue-500/30 bg-gray-800 text-white">
           <CardHeader>
             <CardTitle>Retrait de fonds</CardTitle>
           </CardHeader>
@@ -322,58 +357,7 @@ export default function WalletPage() {
         </Card>
       )}
 
-      {/* Payouts History */}
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Historique des retraits</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {!payouts?.length && <p className="text-sm text-gray-500">Aucun retrait</p>}
-            {payouts?.map((payout) => (
-              <div key={payout.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div>
-                  <p className="font-semibold">{payout.payment_method === 'paypal' ? payout.paypal_email : (payout.orange_money_phone || payout.payout_method || 'Mobile Money')}</p>
-                  <p className="text-sm text-gray-600">{new Date(payout.created_at || payout.requested_date).toLocaleDateString('fr-FR')}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-bold">{(payout.amount || 0).toLocaleString()} XOF</p>
-                  <Badge className={payout.status === 'completed' || payout.status === 'approved' ? 'bg-blue-100 text-blue-800' : payout.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}>
-                    {payout.status === 'pending' ? 'En attente' : payout.status === 'approved' ? 'Effectué' : payout.status}
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Transactions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Historique des transactions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {transactions?.map((tx) => (
-              <div key={tx.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div>
-                  <p className="font-semibold capitalize">{tx.type}</p>
-                  <p className="text-sm text-gray-600">{new Date(tx.created_at || tx.created_date).toLocaleDateString('fr-FR')}</p>
-                </div>
-                <div className="text-right">
-                  <p className={`font-bold ${tx.type.includes('sent') || tx.type === 'payment' ? 'text-red-600' : 'text-blue-600'}`}>
-                    {tx.type.includes('sent') || tx.type === 'payment' ? '-' : '+'}{tx.amount.toLocaleString()} XOF
-                  </p>
-                  <Badge className={tx.status === 'completed' ? 'bg-blue-100 text-blue-800' : 'bg-blue-100 text-blue-800'}>
-                    {tx.status}
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      </div>
     </motion.div>
   );
 }

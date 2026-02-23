@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, ArrowLeft, Camera, Radio, Eye, Heart, Mic, Sparkles, MessageSquare, Users, BarChart3, X, Music, Monitor, TrendingUp, Volume2, VolumeX } from 'lucide-react';
+import { Loader2, ArrowLeft, Camera, Radio, Eye, Heart, Mic, Sparkles, MessageSquare, Users, BarChart3, X, Music, Monitor, TrendingUp, Volume2, VolumeX, Gift } from 'lucide-react';
 import { toast } from "sonner";
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
@@ -55,6 +55,7 @@ export default function LiveStreamPage() {
   const [showCoHost, setShowCoHost] = useState(false);
   const [showMusic, setShowMusic] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showGiftsPanel, setShowGiftsPanel] = useState(false);
   const [questions, setQuestions] = useState([]);
   const [polls, setPolls] = useState([]);
   const [backgroundMusic, setBackgroundMusic] = useState(null);
@@ -64,6 +65,7 @@ export default function LiveStreamPage() {
   const musicAudioRef = useRef(null);
   const durationRef = useRef(null);
   const clientRef = useRef(null);
+  const autoStartedFromParamsRef = useRef(false);
   
   // Musiques de fond disponibles - charger depuis la config
   const [backgroundMusicTracks, setBackgroundMusicTracks] = useState([
@@ -186,6 +188,54 @@ export default function LiveStreamPage() {
     };
     loadExisting();
   }, [streamIdFromUrl, user?.id, navigate]);
+
+  // Préremplir depuis la page "Lancer un Live" (StartLive) via query params
+  useEffect(() => {
+    if (streamIdFromUrl) return;
+    const title = searchParams.get('title');
+    const category = searchParams.get('category');
+    const description = searchParams.get('description');
+    const goal = searchParams.get('goal');
+    if (title || category || description || goal) {
+      setStreamData((prev) => ({
+        ...prev,
+        ...(title != null && title !== '' && { title: decodeURIComponent(title) }),
+        ...(category != null && category !== '' && { category }),
+        ...(description != null && description !== '' && { description: decodeURIComponent(description) }),
+        ...(goal != null && goal !== '' && !isNaN(Number(goal)) && { goalAmount: Number(goal) }),
+      }));
+    }
+  }, [streamIdFromUrl]); // eslint-disable-line react-hooks/exhaustive-deps -- run once when no stream id
+
+  // Depuis StartLive : démarrer le live directement (pas d'écran "Aperçu caméra"), aller à l'interface streaming (capture 3)
+  useEffect(() => {
+    if (streamIdFromUrl || !user || autoStartedFromParamsRef.current || step !== 'setup') return;
+    const title = searchParams.get('title');
+    if (!title || title.trim() === '') return;
+    autoStartedFromParamsRef.current = true;
+    setLoading(true);
+    const category = searchParams.get('category') || 'other';
+    const description = searchParams.get('description') || '';
+    const goal = searchParams.get('goal');
+    const goalTarget = goal && !isNaN(Number(goal)) ? Number(goal) : 10000;
+    api.live.start({
+      title: decodeURIComponent(title.trim()),
+      description: description ? decodeURIComponent(description) : undefined,
+      category,
+      goal_target: goalTarget > 0 ? goalTarget : undefined,
+    })
+      .then((stream) => {
+        setLiveStream(stream);
+        setGoalAmount(stream.goal_target || goalTarget || 10000);
+        setStep('streaming');
+        toast.success('Live commencé!');
+      })
+      .catch((err) => {
+        autoStartedFromParamsRef.current = false;
+        toast.error(err?.apiMessage || err?.message || 'Erreur au démarrage du live');
+      })
+      .finally(() => setLoading(false));
+  }, [streamIdFromUrl, user?.id, step, searchParams]);
 
   const { data: liveData, refetch: refetchLive } = useQuery({
     queryKey: ['live', liveStream?.id],
@@ -548,7 +598,18 @@ export default function LiveStreamPage() {
   if (!user || loadingExisting) {
     return (
       <div className="h-[100dvh] flex items-center justify-center bg-black">
-        <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  // Démarrage auto depuis StartLive : afficher le loader jusqu'à passage en streaming (pas l'écran "Aperçu caméra")
+  if (loading && searchParams.get('title') && !streamIdFromUrl && step === 'setup') {
+    return (
+      <div className="h-[100dvh] flex flex-col items-center justify-center bg-black gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
+        <p className="text-white font-medium">Démarrage du live...</p>
+        <p className="text-sm text-gray-400">Préparation de la diffusion</p>
       </div>
     );
   }
@@ -809,7 +870,7 @@ export default function LiveStreamPage() {
                                   } catch (_e) {}
                                   navigate(createPageUrl('Lives'));
                                 }}
-                                className="px-6 py-3 rounded-lg border-2 border-orange-500 bg-orange-500/20 text-orange-300 font-medium hover:bg-orange-500/30 transition-colors"
+                                className="px-6 py-3 rounded-lg border-2 border-blue-500 bg-blue-500/20 text-blue-200 font-medium hover:bg-blue-500/30 transition-colors"
                               >
                                 Retour
                               </button>
@@ -829,7 +890,7 @@ export default function LiveStreamPage() {
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="text-center">
-                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center mx-auto mb-4 animate-pulse">
+                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center mx-auto mb-4 animate-pulse">
                       <Camera className="w-12 h-12 text-white" />
                     </div>
                     <p className="text-white font-bold">{streamData.title}</p>
@@ -857,7 +918,7 @@ export default function LiveStreamPage() {
                   >
                     <div className="flex justify-between items-center text-white text-xs mb-1">
                       <span className="font-medium">Objectif: {goalAmount.toLocaleString()} FCFA</span>
-                      <span className="text-orange-400 font-semibold">
+                      <span className="text-blue-400 font-semibold">
                         {totalGifts.toLocaleString()} / {goalAmount.toLocaleString()}
                       </span>
                     </div>
@@ -869,7 +930,7 @@ export default function LiveStreamPage() {
                         className={`h-full rounded-full ${
                           goalProgress >= 100 
                             ? 'bg-gradient-to-r from-green-500 to-emerald-500' 
-                            : 'bg-gradient-to-r from-orange-500 to-red-500'
+                            : 'bg-gradient-to-r from-blue-500 to-indigo-500'
                         }`}
                       />
                     </div>
@@ -904,13 +965,13 @@ export default function LiveStreamPage() {
                         <span className={`font-bold ${
                           idx === 0 ? 'text-yellow-400' : 
                           idx === 1 ? 'text-gray-300' : 
-                          idx === 2 ? 'text-orange-400' : 
+                          idx === 2 ? 'text-blue-400' : 
                           'text-gray-400'
                         }`}>
                           #{idx + 1}
                         </span>
                         <span className="flex-1 truncate">{supporter.name}</span>
-                        <span className="text-orange-400 font-semibold">
+                        <span className="text-blue-400 font-semibold">
                           {supporter.total.toLocaleString()} FCFA
                         </span>
                       </motion.div>
@@ -928,7 +989,7 @@ export default function LiveStreamPage() {
                     animate={{ opacity: 1, x: 0 }}
                     className="bg-black/50 backdrop-blur rounded-full px-3 py-1 w-fit text-xs"
                   >
-                    <span className="text-orange-400 font-medium">{comment.sender_name}:</span>
+                    <span className="text-blue-400 font-medium">{comment.sender_name}:</span>
                     <span className="text-white ml-1">{comment.message}</span>
                   </motion.div>
                 ))}
@@ -971,7 +1032,7 @@ export default function LiveStreamPage() {
                 <Button
                   onClick={() => setShowMusic(!showMusic)}
                   size="icon"
-                  className={`bg-black/70 hover:bg-black/90 text-white rounded-full h-10 w-10 ${backgroundMusic ? 'bg-purple-500/50' : ''}`}
+                  className={`bg-black/70 hover:bg-black/90 text-white rounded-full h-10 w-10 ${backgroundMusic ? 'bg-blue-500/50' : ''}`}
                   title="Musique de fond"
                 >
                   <Music className="w-5 h-5" />
@@ -992,7 +1053,69 @@ export default function LiveStreamPage() {
                 >
                   <TrendingUp className="w-5 h-5" />
                 </Button>
+                <Button
+                  onClick={() => setShowGiftsPanel(!showGiftsPanel)}
+                  size="icon"
+                  className="bg-gradient-to-b from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-full h-10 w-10 border-2 border-blue-400/50 shadow-lg"
+                  title="Cadeaux reçus"
+                >
+                  <Gift className="w-5 h-5" />
+                </Button>
               </div>
+
+              {/* Bouton Cadeaux flottant à droite (visible comme sur les captures) */}
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 z-10">
+                <Button
+                  onClick={() => setShowGiftsPanel(!showGiftsPanel)}
+                  size="icon"
+                  className="h-14 w-14 rounded-full bg-gradient-to-b from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border-2 border-blue-400/50 shadow-xl"
+                  title="Cadeaux reçus"
+                >
+                  <Gift className="w-7 h-7" />
+                </Button>
+              </div>
+
+              {/* Panneau Cadeaux reçus */}
+              {showGiftsPanel && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="fixed inset-x-0 bottom-0 top-auto max-h-[70vh] flex flex-col z-[100] bg-gray-900/98 backdrop-blur rounded-t-2xl border border-gray-700 border-b-0 shadow-2xl"
+                >
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+                    <span className="text-sm font-semibold text-white flex items-center gap-2">
+                      <Gift className="w-5 h-5 text-blue-400" />
+                      Cadeaux reçus
+                    </span>
+                    <button type="button" onClick={() => setShowGiftsPanel(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700" aria-label="Fermer">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3 bg-blue-600/20 border-b border-blue-500/30">
+                    <span className="text-sm text-gray-300">Total reçu</span>
+                    <span className="text-lg font-bold text-white">{Number(totalGifts).toLocaleString()} FCFA</span>
+                  </div>
+                  <p className="text-xs text-gray-400 px-4 py-2">Les spectateurs envoient des cadeaux (Basique, Premium, Luxe, Légendaire) depuis l'écran de visionnage.</p>
+                  {topSupporters.length > 0 ? (
+                    <div className="flex-1 overflow-y-auto p-4">
+                      <h4 className="text-white font-bold text-sm mb-3">🏆 Top supporters</h4>
+                      <div className="space-y-2">
+                        {topSupporters.map((supporter, idx) => (
+                          <div key={supporter.id} className="flex items-center justify-between bg-gray-800/80 rounded-lg px-3 py-2">
+                            <span className={`font-bold text-sm ${idx === 0 ? 'text-amber-400' : idx === 1 ? 'text-gray-300' : idx === 2 ? 'text-blue-400' : 'text-gray-400'}`}>#{idx + 1} {supporter.name}</span>
+                            <span className="text-blue-400 font-semibold text-sm">{supporter.total.toLocaleString()} FCFA</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center p-6 text-center">
+                      <p className="text-gray-500 text-sm">Aucun cadeau reçu pour le moment.</p>
+                      <p className="text-gray-600 text-xs mt-1">Les spectateurs verront l'icône Cadeaux sur l'écran de visionnage.</p>
+                    </div>
+                  )}
+                </motion.div>
+              )}
 
               {/* Audio pour musique de fond */}
               <audio ref={musicAudioRef} />
@@ -1023,7 +1146,7 @@ export default function LiveStreamPage() {
                         }}
                         className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-all ${
                           (backgroundMusic?.id === track.id) || (!backgroundMusic && track.id === 'none')
-                            ? 'bg-purple-500 text-white'
+                            ? 'bg-blue-500 text-white'
                             : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
                         }`}
                       >
@@ -1096,7 +1219,7 @@ export default function LiveStreamPage() {
                         }}
                         className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                           selectedFilter === filter.id
-                            ? 'bg-orange-500 text-white'
+                            ? 'bg-blue-500 text-white'
                             : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
                         }`}
                       >
@@ -1134,7 +1257,7 @@ export default function LiveStreamPage() {
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1">
                               <p className="text-white text-xs">
-                                <span className="text-orange-400 font-medium">{q.sender}:</span> {q.question}
+                                <span className="text-blue-400 font-medium">{q.sender}:</span> {q.question}
                               </p>
                               {q.answered && (
                                 <p className="text-green-400 text-xs mt-1 flex items-center gap-1">
@@ -1155,7 +1278,7 @@ export default function LiveStreamPage() {
                                     toast.error(err?.apiMessage || err?.message || 'Erreur');
                                   }
                                 }}
-                                className="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 rounded bg-orange-500/20"
+                                className="text-xs text-blue-400 hover:text-blue-300 px-2 py-1 rounded bg-blue-500/20"
                               >
                                 Marquer
                               </button>
@@ -1215,7 +1338,7 @@ export default function LiveStreamPage() {
                         }
                       }
                     }}
-                    className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xs"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs"
                     size="sm"
                   >
                     Créer un sondage
@@ -1253,7 +1376,7 @@ export default function LiveStreamPage() {
                                   <motion.div
                                     initial={{ width: 0 }}
                                     animate={{ width: `${percentage}%` }}
-                                    className="bg-orange-500 h-2 rounded-full transition-all"
+                                    className="bg-blue-500 h-2 rounded-full transition-all"
                                   />
                                 </div>
                               </div>
@@ -1333,7 +1456,7 @@ export default function LiveStreamPage() {
                         toast.error(err?.apiMessage || err?.message || 'Erreur invitation');
                       }
                     }}
-                    className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xs"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs"
                     size="sm"
                   >
                     Inviter
@@ -1380,7 +1503,7 @@ export default function LiveStreamPage() {
                   />
                   <Button
                     onClick={addComment}
-                    className="bg-orange-500 hover:bg-orange-600 text-white rounded-full px-4"
+                    className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-4"
                   >
                     Envoyer
                   </Button>
@@ -1463,7 +1586,7 @@ export default function LiveStreamPage() {
                     setLiveStream(null);
                     setTotalDuration(0);
                   }}
-                  className="flex-1 bg-orange-500 hover:bg-orange-600 text-white rounded-xl"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl"
                 >
                   Nouveau Live
                 </Button>

@@ -13,7 +13,7 @@ import { motion } from 'framer-motion';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { createPageUrl } from "@/utils";
-import { getVideoPlaybackUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
+import { cn, getVideoPlaybackUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
 import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 
 import { toast } from "sonner";
@@ -261,7 +261,20 @@ export default function Profile() {
 
   });
 
-
+  // Vidéos likées par l'utilisateur connecté (pour afficher le cœur rouge sur les cartes)
+  const { data: currentUserLikedVideos = [] } = useQuery({
+    queryKey: ['liked-videos', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const list = await api.users.getLikedVideos(user.id, { limit: 0 });
+      return Array.isArray(list) ? list : (list?.videos || []);
+    },
+    enabled: !!user?.id,
+  });
+  const likedByMeIds = React.useMemo(
+    () => new Set((currentUserLikedVideos || []).map((v) => v.id).filter(Boolean)),
+    [currentUserLikedVideos]
+  );
 
   // Fetch products (for sellers)
 
@@ -471,7 +484,7 @@ export default function Profile() {
 
 
 
-  const VideoGrid = ({ videos, isOwnProfile, onDeleteVideo = (_video) => {} }) => (
+  const VideoGrid = ({ videos, isOwnProfile, onDeleteVideo = (_video) => {}, likedByMeIds = new Set() }) => (
 
     <div className="grid grid-cols-3 gap-0.5">
 
@@ -559,19 +572,19 @@ export default function Profile() {
 
               <div className="absolute bottom-1 left-1 right-1 flex items-center justify-between text-white text-xs drop-shadow">
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1" title="Vues">
 
-                  <Play className="w-3 h-3 fill-white" />
+                  <Play className="w-3 h-3 fill-white shrink-0" />
 
                   <span>{((video.views || 0) >= 1000) ? `${((video.views || 0)/1000).toFixed(0)}K` : (video.views || 0)}</span>
 
                 </div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1" title="Likes">
 
-                  <span>â¤</span>
+                  <Heart className={cn('w-3 h-3 shrink-0', likedByMeIds.has(video.id) ? 'fill-red-500 text-red-500' : 'fill-white text-white')} />
 
-                  <span>{video.likes >= 1000 ? `${(video.likes/1000).toFixed(0)}K` : video.likes || 0}</span>
+                  <span>{(video.likes ?? 0) >= 1000 ? `${((video.likes ?? 0)/1000).toFixed(0)}K` : (video.likes ?? 0)}</span>
 
                 </div>
 
@@ -1086,7 +1099,7 @@ export default function Profile() {
 
             <>
 
-              <VideoGrid videos={publishedVideos} isOwnProfile={isOwnProfile} onDeleteVideo={handleDeleteVideo} />
+              <VideoGrid videos={publishedVideos} isOwnProfile={isOwnProfile} onDeleteVideo={handleDeleteVideo} likedByMeIds={likedByMeIds} />
 
               {hasNextPage && (
                 <div className="p-4 flex justify-center">
@@ -1112,7 +1125,7 @@ export default function Profile() {
 
           draftVideos.length > 0 ? (
 
-            <VideoGrid videos={draftVideos} isOwnProfile={true} onDeleteVideo={handleDeleteVideo} />
+            <VideoGrid videos={draftVideos} isOwnProfile={true} onDeleteVideo={handleDeleteVideo} likedByMeIds={likedByMeIds} />
 
           ) : (
 
@@ -1136,7 +1149,7 @@ export default function Profile() {
 
           savedVideos.length > 0 ? (
 
-            <VideoGrid videos={savedVideos} isOwnProfile={false} />
+            <VideoGrid videos={savedVideos} isOwnProfile={false} likedByMeIds={likedByMeIds} />
 
           ) : (
 
@@ -1158,7 +1171,7 @@ export default function Profile() {
 
           likedVideos.length > 0 ? (
 
-            <VideoGrid videos={likedVideos} isOwnProfile={false} />
+            <VideoGrid videos={likedVideos} isOwnProfile={false} likedByMeIds={likedByMeIds} />
 
           ) : (
 
