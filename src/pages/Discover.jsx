@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Input } from "@/components/ui/input";
@@ -114,7 +114,11 @@ export default function Discover() {
   // Fetch category videos when category selected
   const { data: filteredVideos = [] } = useQuery({
     queryKey: ['category-videos', selectedCategory],
-    queryFn: () => api.videos.list({ category: selectedCategory }, '-views', 20),
+    queryFn: async () => {
+      const result = await api.videos.list({ category: selectedCategory, page: 1, limit: 20 });
+      if (Array.isArray(result)) return result;
+      return result?.videos || [];
+    },
     enabled: !!selectedCategory && selectedCategory !== 'trending'
   });
 
@@ -194,6 +198,13 @@ export default function Discover() {
   });
 
   const followingIds = new Set((userFollows || []).map((u) => u.id));
+  const categoryOrTrendingVideos = useMemo(() => {
+    const source =
+      selectedCategory && selectedCategory !== 'trending'
+        ? filteredVideos
+        : trendingVideos;
+    return Array.isArray(source) ? source : [];
+  }, [selectedCategory, filteredVideos, trendingVideos]);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -383,7 +394,7 @@ export default function Discover() {
                 )}
               </div>
               <div className="grid grid-cols-3 gap-1">
-                {(selectedCategory && selectedCategory !== 'trending' ? filteredVideos : trendingVideos).map((video, index) => (
+                {categoryOrTrendingVideos.map((video, index) => (
                   <Link
                     key={video.id}
                     to={`${createPageUrl('VideoView')}?id=${video.id}`}

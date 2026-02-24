@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn, getVideoPlaybackUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, isStrictAutoplayEnvironment } from "@/lib/utils";
+import { cn, getVideoPlaybackUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG } from "@/lib/utils";
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { useTranslation } from "@/components/common/useTranslation";
@@ -103,10 +103,14 @@ function VideoCardContent({
   const hasAutoPlayedRef = useRef(false);
   const hasPlayedOnceRef = useRef(false);
   const hasAppliedStartTimeRef = useRef(false);
-  const [shouldRestoreSound, setShouldRestoreSound] = useState(false);
+  const isMutedRef = useRef(!!isMuted);
   const [autoplayMutedFallback, setAutoplayMutedFallback] = useState(!!isMuted);
   /** PWA/mobile : true une fois l'autoplay réussi, pour afficher le son selon la préférence utilisateur */
   const [hasAutoplaySucceeded, setHasAutoplaySucceeded] = useState(false);
+
+  useEffect(() => {
+    isMutedRef.current = !!isMuted;
+  }, [isMuted]);
 
   const isIOS =
     typeof navigator !== 'undefined' &&
@@ -128,8 +132,8 @@ function VideoCardContent({
   const prepareForAutoplay = useCallback((el, useMuted = true) => {
     if (!el) return;
     if (useMuted) {
-      el.defaultMuted = true;
       el.muted = true;
+      el.defaultMuted = true;
       el.setAttribute('muted', '');
       try { el.volume = 0; } catch (_) {}
     } else {
@@ -147,13 +151,13 @@ function VideoCardContent({
     setIsPlaying(true);
     hasAutoPlayedRef.current = true;
     setHasAutoplaySucceeded(true);
-    setShouldRestoreSound(true);
     setAutoplayMutedFallback(!!usedMutedMode);
   }, []);
 
   const autoplayWithPolicy = useCallback(async (el, options = {}) => {
     if (!el) return false;
-    const preferMuted = typeof options.preferMuted === 'boolean' ? options.preferMuted : !!isMuted;
+    // Autoplay en muet par défaut pour respecter la règle navigateur (mobile/PWA).
+    const preferMuted = typeof options.preferMuted === 'boolean' ? options.preferMuted : true;
     const allowMutedFallback = options.allowMutedFallback !== false;
 
     const attempt = async (mutedMode) => {
@@ -173,7 +177,7 @@ function VideoCardContent({
         return false;
       }
     }
-  }, [isMuted, markAutoPlaySuccess, prepareForAutoplay]);
+  }, [markAutoPlaySuccess, prepareForAutoplay]);
 
   // Connexion lente (2G/3G/saveData) â†’ prÃ©fÃ©rer basse qualitÃ© si dispo (objectif Afrique)
   const slowConnection = useMemo(() => {
@@ -320,7 +324,6 @@ function VideoCardContent({
     setDuration(0);
     hasAutoPlayedRef.current = false;
     hasAppliedStartTimeRef.current = false;
-    setShouldRestoreSound(false);
     setHasAutoplaySucceeded(false);
     userPausedRef.current = false;
     viewRecordedRef.current = false;
@@ -446,7 +449,7 @@ function VideoCardContent({
       hlsRef.current = hls;
       hls.loadSource(videoUrl);
       hls.attachMedia(el);
-      prepareForAutoplay(el, isStrictAutoplayEnvironment() ? true : isMuted);
+      prepareForAutoplay(el, true);
       el.loop = true;
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -455,7 +458,7 @@ function VideoCardContent({
           el.currentTime = video.start_time;
           hasAppliedStartTimeRef.current = true;
         }
-        autoplayWithPolicy(el, { preferMuted: isStrictAutoplayEnvironment() ? true : isMuted }).then(() => {
+        autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true }).then(() => {
           setIsReadyToPlay(true);
         });
       });
@@ -482,11 +485,11 @@ function VideoCardContent({
 
     if (el.canPlayType('application/vnd.apple.mpegurl')) {
       el.src = videoUrl;
-      prepareForAutoplay(el, isStrictAutoplayEnvironment() ? true : isMuted);
+      prepareForAutoplay(el, true);
       el.loop = true;
       const playOnce = () => {
         el.removeEventListener('loadeddata', playOnce);
-        if (isActive && !userPausedRef.current) autoplayWithPolicy(el, { preferMuted: isStrictAutoplayEnvironment() ? true : isMuted });
+        if (isActive && !userPausedRef.current) autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true });
       };
       el.addEventListener('loadeddata', playOnce);
       return () => {
@@ -496,7 +499,7 @@ function VideoCardContent({
     }
 
     
-  }, [isActive, videoUrl, isHls, video.start_time, hasFallbackSource, moveToNextSource, prepareForAutoplay, autoplayWithPolicy, isMuted]);
+  }, [isActive, videoUrl, isHls, video.start_time, hasFallbackSource, moveToNextSource, prepareForAutoplay, autoplayWithPolicy]);
 
   // MP4 : autoplay propre â€” readyState >= 2 ou canplay (une fois)
   useEffect(() => {
@@ -508,7 +511,7 @@ function VideoCardContent({
     const onCanPlay = () => {
       if (cancelled) return;
       if (!el || !isActive || userPausedRef.current) return;
-      autoplayWithPolicy(el, { preferMuted: isStrictAutoplayEnvironment() ? true : isMuted }).then((ok) => {
+      autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true }).then((ok) => {
         if (!ok || cancelled) {
           if (ok) {
             try { el.pause(); } catch (_) {}
@@ -526,7 +529,6 @@ function VideoCardContent({
       setIsPlaying(false);
       userPausedRef.current = false;
       hasAutoPlayedRef.current = false;
-      setShouldRestoreSound(false);
       return;
     }
 
@@ -534,15 +536,15 @@ function VideoCardContent({
       el.currentTime = video.start_time;
       hasAppliedStartTimeRef.current = true;
     }
-    const useMutedForAutoplay = isStrictAutoplayEnvironment() ? true : isMuted;
-    try { el.volume = useMutedForAutoplay ? 0 : 1; } catch (_) {}
-    prepareForAutoplay(el, useMutedForAutoplay);
+    // Autoplay en muet par défaut pour garantir la lecture sur mobile/PWA.
+    try { el.volume = 0; } catch (_) {}
+    prepareForAutoplay(el, true);
     el.loop = true;
 
     const tryPlay = () => {
       if (cancelled || !isActive || userPausedRef.current) return;
       if (hasAutoPlayedRef.current) return;
-      autoplayWithPolicy(el, { preferMuted: isStrictAutoplayEnvironment() ? true : isMuted }).then((ok) => {
+      autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true }).then((ok) => {
         if (!ok || cancelled || !isActive) {
           if (ok) {
             try { el.pause(); } catch (_) {}
@@ -572,7 +574,7 @@ function VideoCardContent({
         if (cancelled || !el || !isActive || userPausedRef.current) return;
         if (hasAutoPlayedRef.current) return;
         if (el.paused && el.readyState >= 2) {
-          prepareForAutoplay(el, isStrictAutoplayEnvironment() ? true : isMuted);
+          prepareForAutoplay(el, true);
           tryPlay();
         }
       }, delay)
@@ -589,9 +591,8 @@ function VideoCardContent({
       setIsPlaying(false);
       userPausedRef.current = false;
       hasAutoPlayedRef.current = false;
-      setShouldRestoreSound(false);
     };
-  }, [isActive, isHls, video.start_time, videoUrl, isMuted, autoplayWithPolicy, prepareForAutoplay]);
+  }, [isActive, isHls, video.start_time, videoUrl, autoplayWithPolicy, prepareForAutoplay]);
 
   // IMPORTANT: ne pas supprimer ce garde-fou.
   // Sans ce bloc, une vidÃ©o prÃ©cÃ©dente peut continuer Ã  jouer aprÃ¨s swipe (audio fantÃ´me + Ã©cran noir perÃ§u).
@@ -611,11 +612,12 @@ function VideoCardContent({
   // Sync muted seulement (comme l'ami) â€” ne pas appeler play() ici
   useEffect(() => {
     const el = videoRef.current;
-    if (el && hasAutoPlayedRef.current && shouldRestoreSound) {
-      try { el.volume = 1; } catch (_) {}
+    if (el && isActive && hasAutoplaySucceeded && hasAutoPlayedRef.current) {
+      try { el.volume = isMuted ? 0 : 1; } catch (_) {}
+      el.defaultMuted = isMuted;
       el.muted = isMuted;
     }
-  }, [isMuted]);
+  }, [isMuted, isActive, hasAutoplaySucceeded, video.id, videoUrl]);
 
   // Onglet masque -> pause ; au retour reprendre automatiquement (PWA/mobile)
   useEffect(() => {
@@ -630,7 +632,7 @@ function VideoCardContent({
       }
 
       if (isActive && !loadError && el.paused && !userPausedRef.current) {
-        autoplayWithPolicy(el, { preferMuted: isStrictAutoplayEnvironment() ? true : isMuted });
+        autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true });
       }
     };
 
@@ -657,7 +659,7 @@ function VideoCardContent({
     const attemptAutoPlay = () => {
       if (!el || !isActive || loadError || userPausedRef.current) return;
       if (!el.paused) return;
-      autoplayWithPolicy(el, { preferMuted: isStrictAutoplayEnvironment() ? true : isMuted });
+      autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true });
     };
 
     const timers = [0, 150, 400, 800, 1500, 2500, 4000].map((delay) =>
@@ -701,32 +703,27 @@ function VideoCardContent({
       setIsPlaying(false);
     } else {
       userPausedRef.current = false;
-      if (isStrictAutoplayEnvironment()) {
-        prepareForAutoplay(el, true);
+      // Important: pour que le son joue, il faut mettre muted=false AVANT play()
+      // dans le même geste utilisateur (règle des navigateurs). Donc on ne force
+      // plus le muet au clic — on utilise la préférence utilisateur (isMuted).
+      setAutoplayMutedFallback(false);
+      prepareForAutoplay(el, isMuted);
+      try { el.volume = isMuted ? 0 : 1; } catch (_) {}
+      el.muted = isMuted;
+      el.play().then(() => {
+        setIsPlaying(true);
+        hasAutoPlayedRef.current = true;
+        setHasAutoplaySucceeded(true);
+      }).catch(() => {
+        // Fallback: si play() avec son échoue (ex. politique stricte), réessayer en muet
+        el.muted = true;
+        try { el.volume = 0; } catch (_) {}
         el.play().then(() => {
           setIsPlaying(true);
           hasAutoPlayedRef.current = true;
-          setHasAutoplaySucceeded(true);
-          setShouldRestoreSound(true);
-          el.muted = isMuted;
-          try { el.volume = isMuted ? 0 : 1; } catch (_) {}
-        }).catch(() => {
-          el.muted = isMuted;
-          el.play().then(() => {
-            setIsPlaying(true);
-            hasAutoPlayedRef.current = true;
-            setShouldRestoreSound(true);
-          }).catch(() => {});
-        });
-      } else {
-        try { el.volume = 1; } catch (_) {}
-        el.muted = isMuted;
-        el.play().then(() => {
-          setIsPlaying(true);
-          hasAutoPlayedRef.current = true;
-          setShouldRestoreSound(true);
+          setAutoplayMutedFallback(true);
         }).catch(() => {});
-      }
+      });
     }
 
     setShowPlayIcon(true);
@@ -747,7 +744,7 @@ function VideoCardContent({
     el.load();
     if (isActive) {
       const retryPlay = () => {
-        autoplayWithPolicy(el, { preferMuted: isStrictAutoplayEnvironment() ? true : isMuted }).then((ok) => {
+        autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true }).then((ok) => {
           if (ok) setIsReadyToPlay(true);
         });
       };
@@ -813,7 +810,7 @@ function VideoCardContent({
     setIsReadyToPlay(true);
     // Démarrage immédiat type TikTok dès que le navigateur peut jouer (muted = autoplay autorisé)
     if (!userPausedRef.current && el.paused && !hasAutoPlayedRef.current) {
-      autoplayWithPolicy(el, { preferMuted: isStrictAutoplayEnvironment() ? true : isMuted }).then((ok) => {
+      autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true }).then((ok) => {
         if (ok && videoRef.current && isActive && !userPausedRef.current) {
           setIsReadyToPlay(true);
         }
@@ -1012,6 +1009,28 @@ function VideoCardContent({
     handleSeek(e.clientX);
   };
 
+  const handleMuteToggleClick = () => {
+    const el = videoRef.current;
+    const nextMuted = !isMuted;
+
+    setAutoplayMutedFallback(false);
+    onMuteToggle?.();
+
+    if (!el || !hasAutoPlayedRef.current) return;
+
+    try {
+      el.muted = nextMuted;
+      el.defaultMuted = nextMuted;
+      el.volume = nextMuted ? 0 : 1;
+    } catch (_) {}
+
+    if (!nextMuted && el.paused && !loadError && isActive && !userPausedRef.current) {
+      try {
+        el.play();
+      } catch (_) {}
+    }
+  };
+
   /* ================= RENDER ================= */
 
   return (
@@ -1033,7 +1052,7 @@ function VideoCardContent({
         preload={isActive ? 'auto' : 'metadata'}
         loop
         playsInline
-        muted={isStrictAutoplayEnvironment() && !hasAutoplaySucceeded ? true : (shouldRestoreSound ? isMuted : autoplayMutedFallback)}
+        muted={isMuted}
         onClick={handlePlayPause}
         onTimeUpdate={handleTimeUpdate}
         onProgress={handleProgress}
@@ -1082,7 +1101,7 @@ function VideoCardContent({
           setIsReadyToPlay(true);
           const el = videoRef.current;
           if (el && isActive && el.paused && !userPausedRef.current) {
-            autoplayWithPolicy(el, { preferMuted: isStrictAutoplayEnvironment() ? true : isMuted });
+            autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true });
           }
         }}
         onSeeked={handleMainVideoSeeked}
@@ -1265,19 +1284,19 @@ function VideoCardContent({
         </div>
       </div>
 
-      {/* ================= ACTIONS DROITE ================= */}
+      {/* ================= ACTIONS DROITE (style TikTok) ================= */}
       <div className={cn(
-        "absolute right-3 bottom-28 flex flex-col items-center gap-2.5 z-[90] transition-opacity duration-300",
+        "absolute right-3 bottom-28 flex flex-col items-center gap-4 z-[90] transition-opacity duration-300",
         hideActions ? "opacity-0 pointer-events-none" : "opacity-100"
       )}>
-        <div className="flex flex-col items-center">
-          <button onClick={() => onProfileClick(video.creator_id)}>
-            <Avatar className="w-12 h-12 border-2 border-white shadow-lg">
+        {/* Avatar */}
+        <div className="flex flex-col items-center gap-1">
+          <button onClick={() => onProfileClick(video.creator_id)} className="flex flex-col items-center">
+            <Avatar className="w-12 h-12 border-2 border-white shadow-lg ring-2 ring-white/20">
               <AvatarImage 
                 src={video.creator_avatar || video.creator?.profile_image} 
                 alt={video.creator_name}
                 onError={(e) => {
-                  // Si l'image ne charge pas, le fallback s'affichera automatiquement
                   e.target.style.display = 'none';
                 }}
               />
@@ -1376,16 +1395,11 @@ function VideoCardContent({
         </div>
 
         <div className="flex flex-col items-center gap-0.5">
-          <button onClick={onShare} className="flex items-center justify-center w-7 h-7">
+          <button onClick={onShare} className="flex items-center justify-center w-8 h-8">
             <Share2 className="w-7 h-7 text-white" />
           </button>
-          <span className="text-white text-xs font-semibold leading-tight min-h-[16px] flex items-center justify-center">
-            {(() => {
-              const raw = video.shares ?? 0;
-              const safe = Number.isFinite(raw) ? raw : 0;
-              if (safe >= 1000) return `${(safe / 1000).toFixed(1)}K`;
-              return safe.toLocaleString();
-            })()}
+          <span className="text-white text-[11px] font-medium leading-tight min-h-[14px] flex items-center justify-center">
+            Partager
           </span>
         </div>
 
@@ -1403,10 +1417,7 @@ function VideoCardContent({
 
         <div className="flex flex-col items-center">
           <button
-            onClick={() => {
-              setAutoplayMutedFallback(false);
-              onMuteToggle?.();
-            }}
+            onClick={handleMuteToggleClick}
             className="flex items-center justify-center w-7 h-7"
           >
             {isMuted ? (
@@ -1628,3 +1639,5 @@ function VideoCardContent({
 }
 
 export default memo(VideoCardContent);
+
+

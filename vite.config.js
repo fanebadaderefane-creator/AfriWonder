@@ -117,6 +117,10 @@ export default defineConfig({
   server: {
     host: '0.0.0.0', // Permet accès depuis mobile sur réseau local
     port: 5173,
+    headers: {
+      // Empêche le navigateur de réutiliser des chunks dev potentiellement corrompus.
+      'Cache-Control': 'no-store',
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3002',

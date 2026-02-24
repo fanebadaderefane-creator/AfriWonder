@@ -35,6 +35,13 @@ if ('serviceWorker' in navigator && (window.location.hostname === 'localhost' ||
       });
     });
   });
+  if ('caches' in window) {
+    caches.keys().then((cacheNames) => {
+      cacheNames.forEach((cacheName) => {
+        caches.delete(cacheName);
+      });
+    });
+  }
 }
 
 // Gestion des rejets non gérés — log en dev, Sentry en prod, évite crash
