@@ -4,6 +4,7 @@
  */
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { loadPreferences, savePreferences } from '@/lib/preferences';
+import { isStrictAutoplayEnvironment } from '@/lib/utils';
 
 const PreferencesContext = createContext(null);
 
@@ -12,6 +13,16 @@ export function PreferencesProvider({ children }) {
 
   useEffect(() => {
     setPrefs(loadPreferences());
+  }, []);
+
+  // PWA/mobile : par défaut démarrer en muet pour que l'autoplay fonctionne (comme TikTok)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const p = loadPreferences();
+    if (p.soundPreferenceSet) return;
+    if (!isStrictAutoplayEnvironment()) return;
+    if (p.isMuted) return;
+    updatePreferences({ isMuted: true, soundPreferenceSet: true });
   }, []);
 
   const updatePreferences = useCallback((patch) => {

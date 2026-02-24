@@ -9,6 +9,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { ChevronDown } from 'lucide-react';
+import { isDeletedUser } from '@/lib/utils';
 
 const DEFAULT_VISIBLE = 8;
 
@@ -52,7 +53,10 @@ export default function FollowersModal({ isOpen, onClose, userId, initialTab = '
     enabled: isOpen && !!currentUser?.id,
   });
 
-  const myFollowingSet = useMemo(() => new Set(myFollowing.map((u) => u.id)), [myFollowing]);
+  const myFollowingSet = useMemo(
+    () => new Set(myFollowing.filter((u) => !isDeletedUser(u)).map((u) => u.id)),
+    [myFollowing]
+  );
 
   const { data: suggestions = [] } = useQuery({
     queryKey: ['followers-modal-suggestions', currentUser?.id, userId, followers.length, following.length, myFollowing.length],
@@ -85,9 +89,15 @@ export default function FollowersModal({ isOpen, onClose, userId, initialTab = '
     navigate(`${createPageUrl('Profile')}?_userId=${targetUser.id}`);
   };
 
-  const visibleFollowers = showAllFollowers ? followers : followers.slice(0, DEFAULT_VISIBLE);
-  const visibleFollowing = showAllFollowing ? following : following.slice(0, DEFAULT_VISIBLE);
-  const visibleSuggestions = showAllSuggested ? suggestions : suggestions.slice(0, DEFAULT_VISIBLE);
+  const visibleFollowers = showAllFollowers
+    ? followers.filter((u) => !isDeletedUser(u))
+    : followers.filter((u) => !isDeletedUser(u)).slice(0, DEFAULT_VISIBLE);
+  const visibleFollowing = showAllFollowing
+    ? following.filter((u) => !isDeletedUser(u))
+    : following.filter((u) => !isDeletedUser(u)).slice(0, DEFAULT_VISIBLE);
+  const visibleSuggestions = showAllSuggested
+    ? suggestions.filter((u) => !isDeletedUser(u))
+    : suggestions.filter((u) => !isDeletedUser(u)).slice(0, DEFAULT_VISIBLE);
 
   const UserList = ({ users, showAll, setShowAll, showFollowButton = true }) => (
     <div className="space-y-2 max-h-[58vh] overflow-y-auto pr-1">
@@ -128,7 +138,7 @@ export default function FollowersModal({ isOpen, onClose, userId, initialTab = '
                     ? "rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300"
                     : "rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"}
                 >
-                  {isFollowingTarget ? 'Suivi' : 'Suivre'}
+                  {isFollowingTarget ? 'Dans son Wonder' : 'Wonder'}
                 </Button>
               )}
             </motion.div>

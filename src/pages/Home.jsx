@@ -20,7 +20,7 @@ import { Loader2, ChevronRight } from 'lucide-react';
 import { toast } from "sonner";
 import { useNetworkStatus, getCacheStrategy, scheduleTask } from '../components/common/PerformanceOptimizer';
 import { cn } from "@/lib/utils";
-import { getVideoPlaybackUrl } from '@/lib/utils';
+import { getVideoPlaybackUrl, isDeletedUser } from '@/lib/utils';
 import { getJSON, setJSON } from '@/utils/safeStorage';
 import { useWakeLock } from '@/hooks/useWakeLock';
 
@@ -266,7 +266,7 @@ export default function Home() {
        const result = await api.users.list({ page: 1, limit: 40 });
        const followedSet = new Set(userFollows.map((f) => f.id));
        return result
-         .filter((u) => u.id !== user?.id && !followedSet.has(u.id))
+         .filter((u) => u.id !== user?.id && !followedSet.has(u.id) && !isDeletedUser(u))
          .slice(0, 18);
      },
      enabled: !!user?.id,
@@ -297,7 +297,7 @@ export default function Home() {
    }, [user?.id]);
 
   const followingIds = useMemo(
-    () => userFollows.map((f) => f.id),
+    () => userFollows.filter((f) => !isDeletedUser(f)).map((f) => f.id),
     [userFollows]
   );
 
@@ -307,7 +307,7 @@ export default function Home() {
   );
 
   useEffect(() => {
-    setFollowingCount(userFollows.length);
+    setFollowingCount(userFollows.filter((f) => !isDeletedUser(f)).length);
     const filtered = videos.filter((v) => followingIds.includes(v.creator_id));
     setFollowingVideos(filtered);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -659,7 +659,7 @@ export default function Home() {
                 </button>
               </div>
               <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-                {userFollows.slice(0, 12).map((creator) => (
+                {userFollows.filter((u) => !isDeletedUser(u)).slice(0, 12).map((creator) => (
                   <button
                     key={creator.id}
                     type="button"
@@ -866,7 +866,7 @@ export default function Home() {
               </div>
 
               <div className="space-y-2 mb-5">
-                {userFollows.map((creator) => (
+                {userFollows.filter((u) => !isDeletedUser(u)).map((creator) => (
                   <div key={creator.id} className="flex items-center gap-3 p-2 rounded-xl bg-white/5">
                     <img
                       src={creator.profile_image || '/icon-192.png'}
@@ -891,7 +891,7 @@ export default function Home() {
               <div className="pt-4 border-t border-white/10">
                 <p className="text-white/80 text-sm font-semibold mb-2">Comptes suggeres</p>
                 <div className="space-y-2">
-                  {suggestedWonderers.map((candidate) => (
+                  {suggestedWonderers.filter((u) => !isDeletedUser(u)).map((candidate) => (
                     <div key={candidate.id} className="flex items-center gap-3 p-2 rounded-xl bg-white/5">
                       <img
                         src={candidate.profile_image || '/icon-192.png'}
@@ -907,11 +907,11 @@ export default function Home() {
                         onClick={() => handleToggleWonder(candidate.id, candidate.full_name || candidate.username)}
                         className="px-3 py-1.5 text-xs font-semibold rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white"
                       >
-                        Suivre
+                        Wonder
                       </button>
                     </div>
                   ))}
-                  {suggestedWonderers.length === 0 && (
+                  {suggestedWonderers.filter((u) => !isDeletedUser(u)).length === 0 && (
                     <p className="text-white/50 text-sm">Pas de suggestion pour le moment.</p>
                   )}
                 </div>

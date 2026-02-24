@@ -13,7 +13,7 @@ import { motion } from 'framer-motion';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { createPageUrl } from "@/utils";
-import { cn, getVideoPlaybackUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
+import { cn, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
 import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 
 import { toast } from "sonner";
@@ -511,52 +511,25 @@ export default function Profile() {
               className="relative w-full h-full overflow-hidden bg-gray-200"
 
             >
-              {/* Avec miniature valide : afficher video + poster ; sinon utiliser une frame de la video ou placeholder */}
-              {video.video_url && isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
-                <>
-                  <video
-                    src={getVideoPlaybackUrl(video.video_url)}
-                    poster={video.thumbnail_url}
-                    className="w-full h-full object-cover absolute inset-0"
-                    preload="metadata"
-                    muted
-                    playsInline
-                    onError={(e) => {
-                      const videoEl = e.currentTarget;
-                      if (videoEl?.style) {
-                        videoEl.style.display = 'none';
-                        const fallback = videoEl.parentElement?.querySelector('.video-fallback-img');
-                        if (fallback instanceof HTMLElement) fallback.style.display = 'block';
-                      }
-                    }}
-                  />
-                  {/* Si le poster echoue : afficher une frame de la video au lieu de noir */}
-                  <div className="video-fallback-img hidden absolute inset-0 w-full h-full">
-                    <VideoFrameThumbnail videoUrl={video.video_url} alt={video.title} className="w-full h-full" />
-                  </div>
-                </>
-              ) : null}
-              {/* Sans miniature ajoutee a la creation : couverture = frame extraite de la video */}
-              {!isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
-                video.video_url ? (
-                  <div className="absolute inset-0 w-full h-full">
-                    <VideoFrameThumbnail
-                      videoUrl={video.video_url}
-                      alt={video.title}
-                      className="w-full h-full"
-                    />
-                  </div>
-                ) : (
-                  <img
-                    src={VIDEO_PLACEHOLDER_IMG}
+              {video.video_url ? (
+                <div className="absolute inset-0 w-full h-full">
+                  <VideoFrameThumbnail
+                    videoUrl={video.video_url}
+                    thumbnailUrl={video.thumbnail_url}
                     alt={video.title}
-                    className="w-full h-full object-cover absolute inset-0"
+                    className="w-full h-full"
+                    frameTime={2}
                   />
-                )
-              ) : null}
-              {!video.video_url && isValidThumbnailUrl(video.thumbnail_url, video.video_url) && (
+                </div>
+              ) : isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
                 <img
-                  src={video.thumbnail_url}
+                  src={getAbsoluteImageUrl(video.thumbnail_url)}
+                  alt={video.title}
+                  className="w-full h-full object-cover absolute inset-0"
+                />
+              ) : (
+                <img
+                  src={VIDEO_PLACEHOLDER_IMG}
                   alt={video.title}
                   className="w-full h-full object-cover absolute inset-0"
                 />
@@ -951,71 +924,19 @@ export default function Profile() {
 
               <div className="relative aspect-video bg-gray-200 rounded-2xl overflow-hidden">
 
-                {featuredVideo.video_url && isValidThumbnailUrl(featuredVideo.thumbnail_url, featuredVideo.video_url) ? (
-
-                  <>
-
-                    <video
-
-                      src={getVideoPlaybackUrl(featuredVideo.video_url)}
-
-                      poster={featuredVideo.thumbnail_url}
-
-                      className="w-full h-full object-cover"
-
-                      preload="metadata"
-
-                      muted
-
-                      playsInline
-
-                      onError={(e) => {
-
-                        const videoEl = e.currentTarget;
-
-                        if (videoEl?.style) {
-
-                          videoEl.style.display = 'none';
-
-                          const fallbackImg = videoEl.parentElement?.querySelector('.featured-fallback-img');
-
-                          if (fallbackImg instanceof HTMLElement) fallbackImg.style.display = 'block';
-
-                        }
-
-                      }}
-
-                    />
-
-                    <img
-
-                      src={VIDEO_PLACEHOLDER_IMG}
-
-                      alt={featuredVideo.title}
-
-                      className="w-full h-full object-cover featured-fallback-img hidden"
-
-                    />
-
-                  </>
-
-                ) : null}
-
-                {featuredVideo.video_url && !isValidThumbnailUrl(featuredVideo.thumbnail_url, featuredVideo.video_url) ? (
+                {featuredVideo.video_url ? (
                   <VideoFrameThumbnail
                     videoUrl={featuredVideo.video_url}
+                    thumbnailUrl={featuredVideo.thumbnail_url}
                     alt={featuredVideo.title}
                     className="w-full h-full"
+                    frameTime={2}
                   />
-                ) : null}
+                ) : isValidThumbnailUrl(featuredVideo.thumbnail_url, featuredVideo.video_url) ? (
 
-                {!featuredVideo.video_url && isValidThumbnailUrl(featuredVideo.thumbnail_url, featuredVideo.video_url) && (
+                  <img src={getAbsoluteImageUrl(featuredVideo.thumbnail_url)} alt={featuredVideo.title} className="w-full h-full object-cover" />
 
-                  <img src={featuredVideo.thumbnail_url} alt={featuredVideo.title} className="w-full h-full object-cover" />
-
-                )}
-
-                {!featuredVideo.video_url && !isValidThumbnailUrl(featuredVideo.thumbnail_url, featuredVideo.video_url) && (
+                ) : (
                   <img
                     src={VIDEO_PLACEHOLDER_IMG}
                     alt={featuredVideo.title}
@@ -1317,4 +1238,3 @@ export default function Profile() {
   );
 
 }
-

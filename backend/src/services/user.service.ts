@@ -3,18 +3,34 @@ import { logger } from '../utils/logger.js';
 import { validateUrl } from '../utils/urlValidator.js';
 import GamificationEngine from './gamification.service.js';
 
+/** Condition Prisma pour exclure les comptes "supprimés" (anonymisés par privacy.service). */
+const NOT_DELETED_USER = {
+  NOT: {
+    OR: [
+      { username: { startsWith: 'deleted_' } },
+      { email: { contains: '@deleted.local' } },
+    ],
+  },
+};
+
 class UserService {
   async list(page: number = 1, limit: number = 20, search?: string) {
     const skip = (page - 1) * limit;
-    const where: any = {};
+    const where: any = { ...NOT_DELETED_USER };
     if (search && search.trim().length >= 2) {
       const term = search.trim().replace(/^@+/, '');
       if (term.length < 2) return { users: [], pagination: { page, limit, total: 0, totalPages: 0 } };
-      where.OR = [
-        { username: { contains: term, mode: 'insensitive' } },
-        { full_name: { contains: term, mode: 'insensitive' } },
-        { email: { contains: term, mode: 'insensitive' } },
+      where.AND = [
+        NOT_DELETED_USER,
+        {
+          OR: [
+            { username: { contains: term, mode: 'insensitive' as const } },
+            { full_name: { contains: term, mode: 'insensitive' as const } },
+            { email: { contains: term, mode: 'insensitive' as const } },
+          ],
+        },
       ];
+      delete where.NOT;
     }
 
     const [users, total] = await Promise.all([
@@ -171,7 +187,10 @@ class UserService {
 
     const [follows, total] = await Promise.all([
       prisma.follow.findMany({
-        where: { following_id: userId },
+        where: {
+          following_id: userId,
+          follower: NOT_DELETED_USER,
+        },
         include: {
           follower: {
             select: {
@@ -186,7 +205,12 @@ class UserService {
         take: limit,
         orderBy: { created_at: 'desc' },
       }),
-      prisma.follow.count({ where: { following_id: userId } }),
+      prisma.follow.count({
+        where: {
+          following_id: userId,
+          follower: NOT_DELETED_USER,
+        },
+      }),
     ]);
 
     return {
@@ -205,7 +229,10 @@ class UserService {
 
     const [follows, total] = await Promise.all([
       prisma.follow.findMany({
-        where: { follower_id: userId },
+        where: {
+          follower_id: userId,
+          following: NOT_DELETED_USER,
+        },
         include: {
           following: {
             select: {
@@ -220,7 +247,12 @@ class UserService {
         take: limit,
         orderBy: { created_at: 'desc' },
       }),
-      prisma.follow.count({ where: { follower_id: userId } }),
+      prisma.follow.count({
+        where: {
+          follower_id: userId,
+          following: NOT_DELETED_USER,
+        },
+      }),
     ]);
 
     return {

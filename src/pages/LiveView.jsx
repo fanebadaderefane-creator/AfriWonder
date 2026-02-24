@@ -594,7 +594,7 @@ export default function LiveView() {
                     size="sm"
                     className={isFollowing ? 'bg-gray-600 hover:bg-gray-700' : 'bg-blue-600 hover:bg-blue-700'}
                   >
-                    {isFollowing ? '✓ Suivi' : '+ Suivre'}
+                    {isFollowing ? 'Dans son Wonder' : 'Wonder'}
                   </Button>
                   <Button
                     onClick={() => setShowSubscribeModal(true)}

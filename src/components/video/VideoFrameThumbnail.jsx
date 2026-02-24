@@ -1,9 +1,10 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { getVideoPlaybackUrl, VIDEO_PLACEHOLDER_IMG } from '@/lib/utils';
+import { getVideoPlaybackUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, isValidThumbnailUrl, isMobileOrPWA } from '@/lib/utils';
+import { API_URL } from '@/api/expressClient';
 
 /**
- * Extrait une frame de la video (vers ~1s) et l'affiche.
- * Evite les fonds gris/blancs pendant le swipe entre videos.
+ * Extrait une frame de la vidéo (vers frameTime) et l'affiche.
+ * Sur mobile/PWA : privilégie thumbnail_url si valide (évite cartes noires, expérience type app native).
  */
 const FRAME_CACHE = new Map();
 const MAX_FRAME_CACHE_ITEMS = 120;
@@ -27,14 +28,31 @@ const writeFrameCache = (key, value) => {
   }
 };
 
-export default function VideoFrameThumbnail({ videoUrl, alt = '', className = '', frameTime = null }) {
+export default function VideoFrameThumbnail({ videoUrl, thumbnailUrl: thumbnailUrlProp, alt = '', className = '', frameTime = null }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [error, setError] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [frameReady, setFrameReady] = useState(false);
+  const mobileOrPWA = useMemo(() => isMobileOrPWA(), []);
+  const useThumbnailOnly = mobileOrPWA && thumbnailUrlProp && isValidThumbnailUrl(thumbnailUrlProp, videoUrl);
+  const resolvedThumbnailUrl = useThumbnailOnly ? getAbsoluteImageUrl(thumbnailUrlProp) : '';
   const playbackUrl = useMemo(() => getVideoPlaybackUrl(videoUrl), [videoUrl]);
+  const fallbackProxyUrl = useMemo(() => {
+    if (!videoUrl || typeof videoUrl !== 'string') return '';
+    const raw = videoUrl.trim();
+    if (!/^https?:\/\//i.test(raw)) return '';
+    const base = API_URL.startsWith('/') ? window.location.origin + API_URL : API_URL;
+    return `${base.replace(/\/$/, '')}/proxy/media?url=${encodeURIComponent(raw)}`;
+  }, [videoUrl]);
+  const attemptUrls = useMemo(() => {
+    const out = [];
+    if (playbackUrl) out.push(playbackUrl);
+    if (fallbackProxyUrl && fallbackProxyUrl !== playbackUrl) out.push(fallbackProxyUrl);
+    return out;
+  }, [playbackUrl, fallbackProxyUrl]);
+  const [attemptIndex, setAttemptIndex] = useState(0);
   const frameTimeKey = Number.isFinite(frameTime) && frameTime >= 0 ? Number(frameTime).toFixed(2) : 'auto';
   const cacheKey = `${playbackUrl || ''}::${frameTimeKey}`;
   const [cachedFrame, setCachedFrame] = useState(() => readFrameCache(cacheKey));
@@ -43,42 +61,62 @@ export default function VideoFrameThumbnail({ videoUrl, alt = '', className = ''
     const cached = readFrameCache(cacheKey);
     setCachedFrame(cached || '');
     setFrameReady(!!cached);
+    setAttemptIndex(0);
+    setError(false);
   }, [cacheKey]);
 
   useEffect(() => {
     if (!videoUrl || error) return;
     const el = containerRef.current;
     if (!el) return;
-
+    if (typeof window === 'undefined' || typeof window.IntersectionObserver === 'undefined') {
+      setIsVisible(true);
+      return;
+    }
+    const rootMargin = mobileOrPWA ? '200px' : '120px';
     const io = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) setIsVisible(true);
       },
-      { rootMargin: '120px', threshold: 0.01 }
+      { rootMargin, threshold: 0.01 }
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [videoUrl, error]);
+  }, [videoUrl, error, mobileOrPWA]);
 
   useEffect(() => {
-    if (!videoUrl || !isVisible || error || cachedFrame) return;
+    if (!videoUrl || !isVisible || error || cachedFrame || useThumbnailOnly) return;
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
+    const sourceToTry = attemptUrls[attemptIndex] || '';
+    if (!sourceToTry) {
+      setError(true);
+      return;
+    }
+    const isSameOrigin = typeof window !== 'undefined' && (() => {
+      try {
+        return new URL(sourceToTry, window.location.href).origin === window.location.origin;
+      } catch {
+        return false;
+      }
+    })();
 
     setFrameReady(false);
     video.muted = true;
     video.playsInline = true;
     video.preload = 'metadata';
-    video.src = playbackUrl;
+    video.crossOrigin = isSameOrigin ? '' : 'anonymous';
+    video.src = sourceToTry;
 
     const drawFrame = () => {
       try {
+        const vw = video.videoWidth || 0;
+        const vh = video.videoHeight || 0;
+        if (vw < 2 || vh < 2) return; // attendre des dimensions réelles pour éviter frame noire 1x1
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        const vw = Math.max(1, video.videoWidth || 1);
-        const vh = Math.max(1, video.videoHeight || 1);
         canvas.width = vw;
         canvas.height = vh;
         ctx.drawImage(video, 0, 0, vw, vh);
@@ -103,33 +141,47 @@ export default function VideoFrameThumbnail({ videoUrl, alt = '', className = ''
     };
 
     const onSeeked = () => drawFrame();
-    const onLoadedData = () => {
-      // Fallback si seeked n'arrive pas vite sur certains navigateurs
+    const seekDelay = mobileOrPWA ? 2500 : 1500;
+    const seekTimeout = window.setTimeout(() => {
+      if (!canvasRef.current || videoRef.current?.readyState < 2) return;
       drawFrame();
+    }, seekDelay);
+
+    const onError = () => {
+      if (attemptIndex < attemptUrls.length - 1) {
+        setAttemptIndex((prev) => prev + 1);
+        return;
+      }
+      setError(true);
     };
-    const onError = () => setError(true);
 
     video.addEventListener('loadedmetadata', onLoadedMetadata);
     video.addEventListener('seeked', onSeeked);
-    video.addEventListener('loadeddata', onLoadedData);
     video.addEventListener('error', onError);
     video.load();
 
     return () => {
+      clearTimeout(seekTimeout);
       video.removeEventListener('loadedmetadata', onLoadedMetadata);
       video.removeEventListener('seeked', onSeeked);
-      video.removeEventListener('loadeddata', onLoadedData);
       video.removeEventListener('error', onError);
       video.pause();
       video.src = '';
     };
-  }, [videoUrl, isVisible, error, playbackUrl, cacheKey, frameTime, cachedFrame]);
+  }, [videoUrl, isVisible, error, cacheKey, frameTime, cachedFrame, attemptUrls, attemptIndex, useThumbnailOnly, mobileOrPWA]);
 
   return (
-    <div ref={containerRef} className={`relative w-full h-full overflow-hidden bg-black ${className}`}>
-      {!frameReady && (
+    <div ref={containerRef} className={`relative w-full h-full overflow-hidden bg-gray-600 ${className}`}>
+      {((!frameReady && !useThumbnailOnly) || (useThumbnailOnly && !resolvedThumbnailUrl)) && (
         <img src={VIDEO_PLACEHOLDER_IMG} alt={alt} className="absolute inset-0 w-full h-full object-cover" />
       )}
+      {useThumbnailOnly && resolvedThumbnailUrl ? (
+        <img
+          src={resolvedThumbnailUrl}
+          alt={alt}
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+      ) : null}
       {cachedFrame && (
         <img
           src={cachedFrame}
@@ -141,7 +193,9 @@ export default function VideoFrameThumbnail({ videoUrl, alt = '', className = ''
         ref={canvasRef}
         className={`absolute inset-0 w-full h-full object-cover ${(frameReady && !cachedFrame) ? 'opacity-100' : 'opacity-0'}`}
         aria-label={alt}
+        style={useThumbnailOnly ? { display: 'none' } : undefined}
       />
+      {!useThumbnailOnly && (
       <video
         ref={videoRef}
         muted
@@ -150,6 +204,7 @@ export default function VideoFrameThumbnail({ videoUrl, alt = '', className = ''
         className="absolute opacity-0 pointer-events-none w-0 h-0"
         aria-hidden
       />
+      )}
     </div>
   );
 }

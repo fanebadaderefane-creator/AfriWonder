@@ -5,7 +5,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, X, Loader2, Video, User, Package, ArrowLeft } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
-import { isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
+import { isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG, isDeletedUser } from "@/lib/utils";
 import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -32,7 +32,7 @@ function VideoThumbnail({ video }) {
   if (!hasValidThumb && video.video_url) {
     return (
       <div className="w-24 h-16 rounded-lg overflow-hidden flex-shrink-0">
-        <VideoFrameThumbnail videoUrl={video.video_url} alt={video.title} />
+        <VideoFrameThumbnail videoUrl={video.video_url} thumbnailUrl={video.thumbnail_url} alt={video.title} />
       </div>
     );
   }
@@ -225,7 +225,7 @@ export default function SearchPage() {
 
   const showSuggestions = searchFocused && localQuery.trim().length >= MIN_CHARS_FOR_SUGGESTIONS;
   const suggestionsLoading = suggestionUsersLoading || suggestionVideosLoading;
-  const hasSuggestions = (suggestionUsers?.length > 0) || (suggestionVideos?.length > 0) || suggestionsLoading;
+  const hasSuggestions = (suggestionUsers?.filter((u) => !isDeletedUser(u)).length > 0) || (suggestionVideos?.length > 0) || suggestionsLoading;
 
   // Clic en dehors du bloc recherche → fermer les suggestions
   useEffect(() => {
@@ -339,10 +339,10 @@ export default function SearchPage() {
                           ))}
                         </div>
                       )}
-                      {suggestionUsers && suggestionUsers.length > 0 && (
+                      {suggestionUsers && suggestionUsers.filter((u) => !isDeletedUser(u)).length > 0 && (
                         <div className={filters.type === 'videos' && suggestionVideos?.length ? 'px-2 pt-2 border-t border-gray-100' : 'px-2 pb-2'}>
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-2 py-1">Utilisateurs</p>
-                          {suggestionUsers.map((u) => (
+                          {suggestionUsers.filter((u) => !isDeletedUser(u)).map((u) => (
                             <button
                               key={u.id}
                               type="button"

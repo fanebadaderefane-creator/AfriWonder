@@ -12,6 +12,16 @@ export function setMessageIo(io: import('socket.io').Server) {
 const DEFAULT_PAGE_SIZE = 20;
 const MESSAGES_PAGE_SIZE = 30;
 
+/** Exclure les comptes supprimés (anonymisés) des listes. */
+const NOT_DELETED_USER = {
+  NOT: {
+    OR: [
+      { username: { startsWith: 'deleted_' } },
+      { email: { contains: '@deleted.local' } },
+    ],
+  },
+};
+
 type UnreadCountMap = Record<string, number>;
 
 function getUnreadForUser(map: UnreadCountMap | null, userId: string): number {
@@ -94,7 +104,10 @@ class MessageService {
     const [conversations, total] = await Promise.all([
       prisma.conversation.findMany({
         where: {
-          OR: [{ user1_id: userId }, { user2_id: userId }],
+          OR: [
+            { user1_id: userId, user2: NOT_DELETED_USER },
+            { user2_id: userId, user1: NOT_DELETED_USER },
+          ],
         },
         include: {
           user1: { select: { id: true, username: true, full_name: true, profile_image: true } },
@@ -106,7 +119,10 @@ class MessageService {
       }),
       prisma.conversation.count({
         where: {
-          OR: [{ user1_id: userId }, { user2_id: userId }],
+          OR: [
+            { user1_id: userId, user2: NOT_DELETED_USER },
+            { user2_id: userId, user1: NOT_DELETED_USER },
+          ],
         },
       }),
     ]);

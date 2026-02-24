@@ -10,6 +10,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+import { isDeletedUser } from '@/lib/utils';
 import BottomNav from '../components/navigation/BottomNav';
 
 export default function Inbox() {
@@ -64,7 +65,9 @@ export default function Inbox() {
     queryFn: async () => {
       const users = await api.users.list({ page: 1, limit: 40 });
       const followedSet = new Set(userFollows.map((u) => u.id));
-      return users.filter((u) => u.id !== user?.id && !followedSet.has(u.id)).slice(0, 20);
+      return users
+        .filter((u) => u.id !== user?.id && !followedSet.has(u.id) && !isDeletedUser(u))
+        .slice(0, 20);
     },
     enabled: !!user?.id,
   });
@@ -106,6 +109,7 @@ export default function Inbox() {
     const source = activeFilter === 'unread' ? unreadConversations : conversations;
     return source.filter((conv) => {
       const name = conv.other?.full_name || conv.other?.username || '';
+      if (isDeletedUser(conv.other)) return false;
       return name.toLowerCase().includes(searchQuery.toLowerCase());
     });
   }, [activeFilter, unreadConversations, conversations, searchQuery]);
@@ -124,9 +128,15 @@ export default function Inbox() {
   };
 
   const visibleSuggestions = showAllSuggested ? suggestions : suggestions.slice(0, 6);
-  const friendsForChat = useMemo(() => userFollows.slice(0, 30), [userFollows]);
+  const friendsForChat = useMemo(
+    () => userFollows.filter((u) => !isDeletedUser(u)).slice(0, 30),
+    [userFollows]
+  );
   const activeThreads = useMemo(
-    () => conversations.filter((conv) => conv?.other?.id).slice(0, 12),
+    () =>
+      conversations
+        .filter((conv) => conv?.other?.id && !isDeletedUser(conv.other))
+        .slice(0, 12),
     [conversations]
   );
 
@@ -324,7 +334,7 @@ export default function Inbox() {
                   disabled={toggleWonderMutation.isPending}
                   onClick={() => toggleWonderMutation.mutate(candidate)}
                 >
-                  {(followStateMap[candidate.id] ?? userFollows.some((u) => u.id === candidate.id)) ? 'Suivi' : 'Suivre'}
+                  {(followStateMap[candidate.id] ?? userFollows.some((u) => u.id === candidate.id)) ? 'Dans son Wonder' : 'Wonder'}
                 </Button>
               </div>
             ))}

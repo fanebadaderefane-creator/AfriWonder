@@ -61,7 +61,7 @@ export default function FeaturedVideoSelector({ isOpen, onClose, videos, current
                     className="w-full h-full object-cover"
                   />
                 ) : video.video_url ? (
-                  <VideoFrameThumbnail videoUrl={video.video_url} alt={video.title} />
+                  <VideoFrameThumbnail videoUrl={video.video_url} thumbnailUrl={video.thumbnail_url} alt={video.title} />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">Pas de miniature</div>
                 )}

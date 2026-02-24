@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AfriWonder</string>
+    <string name="title_activity_main">AfriWonder</string>
+    <string name="package_name">com.afriwonder.app</string>
+    <string name="custom_url_scheme">com.afriwonder.app</string>
+</resources>

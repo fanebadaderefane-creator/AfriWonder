@@ -42,7 +42,11 @@
     "verify-persistence": "node scripts/verify-persistence.js",
     "pre-production-checklist": "node scripts/pre-production-checklist.js",
     "test-pwa": "node scripts/test-pwa.js",
-    "test-server": "node scripts/start-test-server.js"
+    "test-server": "node scripts/start-test-server.js",
+    "build:cap": "npm run build && npx cap sync",
+    "cap:sync": "npx cap sync",
+    "cap:open:android": "npx cap open android",
+    "cap:open:ios": "npx cap open ios"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^17.0.0",
@@ -120,7 +124,8 @@
     "vaul": "^1.1.2",
     "vite-plugin-pwa": "^0.21.2",
     "workbox-window": "^7.0.0",
-    "zod": "^3.24.2"
+    "zod": "^3.24.2",
+    "@capacitor/core": "^6.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",
@@ -149,6 +154,9 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.2",
     "vite": "^6.1.0",
-    "vitest": "^1.0.4"
+    "vitest": "^1.0.4",
+    "@capacitor/cli": "^6.0.0",
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/ios": "^6.0.0"
   }
 }

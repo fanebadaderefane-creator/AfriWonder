@@ -22,6 +22,49 @@ export function cn(...inputs) {
   return twMerge(clsx(inputs))
 }
 
+/**
+ * Détecte mobile (viewport étroit) ou PWA installée (standalone).
+ * Utilisé pour adapter l’UX (miniatures vidéo, timeouts, etc.) comme une app native.
+ */
+export function isMobileOrPWA() {
+  if (typeof window === 'undefined') return false;
+  const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches === true
+    || window.navigator?.standalone === true;
+  const narrow = window.innerWidth < 1024;
+  return standalone || narrow;
+}
+
+/**
+ * Détecte si l'app tourne dans Capacitor (WebView native iOS/Android).
+ * Option 3 : permet d'activer des comportements "native-like" (ex: vidéo type TikTok).
+ */
+export function isCapacitor() {
+  if (typeof window === 'undefined') return false;
+  return !!(window.Capacitor || window.capacitor);
+}
+
+/**
+ * Environnement où l'autoplay avec son est bloqué (PWA, mobile, standalone).
+ * Pour que la vidéo démarre automatiquement comme TikTok, il faut démarrer en muet.
+ */
+export function isStrictAutoplayEnvironment() {
+  return isMobileOrPWA() || isCapacitor();
+}
+
+/**
+ * Indique si un utilisateur est un compte "supprimé" (anonymisé côté backend).
+ * À utiliser pour ne pas afficher "Compte supprimé" / @deleted_xxx dans les listes.
+ */
+export function isDeletedUser(user) {
+  if (!user) return true;
+  const u = user.username ?? user.email ?? '';
+  const name = user.full_name ?? '';
+  if (typeof u === 'string' && u.startsWith('deleted_')) return true;
+  if (typeof u === 'string' && u.includes('@deleted.local')) return true;
+  if (name === 'Compte supprimé') return true;
+  return false;
+}
+
 /** Placeholder neutre (gris + play) pour vidéos sans miniature — évite toute ressemblance avec logos tiers */
 export const VIDEO_PLACEHOLDER_IMG = 'data:image/svg+xml,' + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400" fill="%23374151">' +

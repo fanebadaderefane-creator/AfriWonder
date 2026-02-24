@@ -65,7 +65,8 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   // Videos same-origin + HLS (.m3u8, .ts) : CacheFirst pour relecture offline
-  // Ne jamais intercepter /api/proxy/media : Chrome/mobile envoient des Range, ont besoin de 206 (streaming)
+  // Ne jamais intercepter /api/proxy/media : Chrome/mobile envoient des Range, ont besoin de 206 (streaming).
+  // Ne pas cacher les requêtes avec Range (metadata/thumbnails) pour éviter miniatures cassées sur PWA.
   const isSameOrigin = url.origin === self.location.origin;
   const isProxyMedia = url.pathname.includes('proxy/media');
   const isHlsSegment = /\.ts(\?|$)/i.test(url.pathname + url.search);

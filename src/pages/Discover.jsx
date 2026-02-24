@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/api/expressClient';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, TrendingUp, Hash, Flame, Music2, Utensils, Shirt, Briefcase, Dumbbell, GraduationCap, Laugh, Sparkles, Book, Calendar, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
-import { isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG } from "@/lib/utils";
+import { isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl } from "@/lib/utils";
+import { isDeletedUser } from "@/lib/utils";
 import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 import BottomNav from '../components/navigation/BottomNav';
 import ProductCard from '../components/marketplace/ProductCard';
 import RecommendationEngine from '../components/common/RecommendationEngine';
+import { toast } from 'sonner';
 
 const categories = [
   { id: 'trending', label: 'Tendances', icon: Flame, color: 'from-blue-500 to-indigo-500' },
@@ -100,10 +102,14 @@ export default function Discover() {
   });
 
   // Fetch creators
-  const { data: creators = [] } = useQuery({
+  const { data: creatorsRaw = [] } = useQuery({
     queryKey: ['creators'],
     queryFn: () => api.entities.User.list('-created_date', 10),
   });
+  const creators = useMemo(
+    () => (Array.isArray(creatorsRaw) ? creatorsRaw.filter((u) => !isDeletedUser(u)) : []),
+    [creatorsRaw]
+  );
 
   // Fetch category videos when category selected
   const { data: filteredVideos = [] } = useQuery({
@@ -162,6 +168,32 @@ export default function Discover() {
         .slice(0, 10);
     }
   });
+
+  const { data: userFollows = [] } = useQuery({
+    queryKey: ['user-follows', user?.id],
+    queryFn: async () => {
+      const result = await api.users.getFollowing(user.id, { page: 1, limit: 200 });
+      return result?.following || [];
+    },
+    enabled: !!user?.id,
+  });
+
+  const queryClient = useQueryClient();
+  const toggleWonderMutation = useMutation({
+    mutationFn: (creatorId) => api.users.toggleWonder(creatorId),
+    onSuccess: (response, creatorId) => {
+      queryClient.invalidateQueries({ queryKey: ['user-follows', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['trending-creators'] });
+      queryClient.invalidateQueries({ queryKey: ['creators'] });
+      queryClient.invalidateQueries({ queryKey: ['follow-stats', creatorId] });
+      const inWonder = response?.data?.inWonder ?? response?.inWonder;
+      if (inWonder) toast.success('Vous etes maintenant dans son Wonder');
+      else toast.success('Vous avez quitte son Wonder');
+    },
+    onError: () => toast.error('Connectez-vous pour ajouter à votre Wonder'),
+  });
+
+  const followingIds = new Set((userFollows || []).map((u) => u.id));
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -264,9 +296,9 @@ export default function Discover() {
                     >
                       {/* Priorité : frame vidéo si video_url (évite cartes noires quand pas de miniature), sinon miniature, sinon placeholder */}
                       {video.video_url ? (
-                        <VideoFrameThumbnail videoUrl={video.video_url} alt={video.title} />
+                        <VideoFrameThumbnail videoUrl={video.video_url} thumbnailUrl={video.thumbnail_url} alt={video.title} />
                       ) : isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
-                        <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover" />
+                        <img src={getAbsoluteImageUrl(video.thumbnail_url)} alt={video.title} className="w-full h-full object-cover" />
                       ) : (
                         <img src={VIDEO_PLACEHOLDER_IMG} alt={video.title} className="w-full h-full object-cover" />
                       )}
@@ -364,9 +396,9 @@ export default function Discover() {
                     >
                       {/* Priorité : frame vidéo si video_url (évite cartes noires), sinon miniature, sinon placeholder */}
                       {video.video_url ? (
-                        <VideoFrameThumbnail videoUrl={video.video_url} alt={video.title} />
+                        <VideoFrameThumbnail videoUrl={video.video_url} thumbnailUrl={video.thumbnail_url} alt={video.title} />
                       ) : isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
-                        <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover" />
+                        <img src={getAbsoluteImageUrl(video.thumbnail_url)} alt={video.title} className="w-full h-full object-cover" />
                       ) : (
                         <img src={VIDEO_PLACEHOLDER_IMG} alt={video.title} className="w-full h-full object-cover" />
                       )}
@@ -383,7 +415,9 @@ export default function Discover() {
             <div>
               <h2 className="font-bold text-gray-800 mb-3">Créateurs tendances</h2>
               <div className="space-y-2">
-                {trendingCreators.slice(0, 5).map((creator, index) => (
+                {trendingCreators.slice(0, 5).map((creator, index) => {
+                  const isInWonder = followingIds.has(creator.id);
+                  return (
                   <motion.div
                     key={creator.id}
                     initial={{ opacity: 0, x: -20 }}
@@ -409,18 +443,28 @@ export default function Discover() {
                            creator.totalViews >= 1000 ? `${(creator.totalViews/1000).toFixed(0)}K` : creator.totalViews} vues • {creator.videoCount} vidéos
                         </p>
                       </div>
-                      <button 
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }}
-                        className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-semibold rounded-full hover:opacity-90"
-                      >
-                        Suivre
-                      </button>
+                      {user && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleWonderMutation.mutate(creator.id);
+                          }}
+                          disabled={toggleWonderMutation.isPending}
+                          className={`px-3 py-1.5 text-xs font-semibold rounded-full shrink-0 ${
+                            isInWonder
+                              ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                              : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:opacity-90'
+                          }`}
+                        >
+                          {isInWonder ? 'Dans son Wonder' : 'Wonder'}
+                        </button>
+                      )}
                     </Link>
                   </motion.div>
-                ))}
+                );
+                })}
               </div>
             </div>
           </div>
@@ -453,9 +497,9 @@ export default function Discover() {
                     >
                       {/* Priorité : frame vidéo si video_url (évite cartes noires), sinon miniature, sinon placeholder */}
                       {video.video_url ? (
-                        <VideoFrameThumbnail videoUrl={video.video_url} alt={video.title} />
+                        <VideoFrameThumbnail videoUrl={video.video_url} thumbnailUrl={video.thumbnail_url} alt={video.title} />
                       ) : isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
-                        <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover" />
+                        <img src={getAbsoluteImageUrl(video.thumbnail_url)} alt={video.title} className="w-full h-full object-cover" />
                       ) : (
                         <img src={VIDEO_PLACEHOLDER_IMG} alt={video.title} className="w-full h-full object-cover" />
                       )}
@@ -577,7 +621,9 @@ export default function Discover() {
         {/* Creators Tab */}
         {activeTab === 'creators' && (
           <div className="space-y-3">
-            {creators.map((creator, index) => (
+            {creators.map((creator, index) => {
+              const isInWonder = followingIds.has(creator.id);
+              return (
               <motion.div
                 key={creator.id}
                 initial={{ opacity: 0, x: -20 }}
@@ -595,18 +641,28 @@ export default function Discover() {
                     <p className="font-semibold text-gray-800">{creator.full_name || 'Utilisateur'}</p>
                     <p className="text-sm text-gray-400">@{creator.email?.split('@')[0]}</p>
                   </div>
-                  <button 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                    className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold rounded-full hover:opacity-90"
-                  >
-                    Suivre
-                  </button>
+                  {user && user.id !== creator.id && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleWonderMutation.mutate(creator.id);
+                      }}
+                      disabled={toggleWonderMutation.isPending}
+                      className={`px-4 py-2 text-sm font-semibold rounded-full shrink-0 ${
+                        isInWonder
+                          ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:opacity-90'
+                      }`}
+                    >
+                      {isInWonder ? 'Dans son Wonder' : 'Wonder'}
+                    </button>
+                  )}
                 </Link>
               </motion.div>
-            ))}
+            );
+            })}
           </div>
         )}
       </div>
