@@ -9,7 +9,8 @@ import { getJSON, setJSON } from '@/utils/safeStorage';
 const PREFERENCES_KEY = 'afw_preferences';
 
 const DEFAULTS = {
-  isMuted: true,
+  isMuted: false,
+  soundPreferenceSet: false,
   language: 'fr',
 };
 
@@ -20,7 +21,11 @@ const DEFAULTS = {
 export function loadPreferences() {
   const stored = getJSON(PREFERENCES_KEY);
   if (!stored || typeof stored !== 'object') return { ...DEFAULTS };
-  return { ...DEFAULTS, ...stored };
+  const merged = { ...DEFAULTS, ...stored };
+  if (!merged.soundPreferenceSet) {
+    merged.isMuted = false;
+  }
+  return merged;
 }
 
 /**
@@ -31,7 +36,11 @@ export function loadPreferences() {
 export function savePreferences(patch) {
   if (!patch || typeof patch !== 'object') return false;
   const current = loadPreferences();
-  const next = { ...current, ...patch };
+  const normalizedPatch = { ...patch };
+  if (Object.prototype.hasOwnProperty.call(normalizedPatch, 'isMuted')) {
+    normalizedPatch.soundPreferenceSet = true;
+  }
+  const next = { ...current, ...normalizedPatch };
   return setJSON(PREFERENCES_KEY, next);
 }
 

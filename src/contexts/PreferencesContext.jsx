@@ -42,7 +42,7 @@ export function usePreferences() {
   const context = useContext(PreferencesContext);
   if (!context) {
     return {
-      isMuted: true,
+      isMuted: false,
       language: 'fr',
       setMuted: () => {},
       setLanguage: () => {},

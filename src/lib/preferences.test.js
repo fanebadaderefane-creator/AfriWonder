@@ -15,7 +15,8 @@ describe('preferences', () => {
   });
 
   it('exports DEFAULTS with isMuted and language', () => {
-    expect(DEFAULTS).toHaveProperty('isMuted', true);
+    expect(DEFAULTS).toHaveProperty('isMuted', false);
+    expect(DEFAULTS).toHaveProperty('soundPreferenceSet', false);
     expect(DEFAULTS).toHaveProperty('language', 'fr');
   });
 
@@ -32,9 +33,16 @@ describe('preferences', () => {
     expect(prefs.isMuted).toBe(DEFAULTS.isMuted);
   });
 
+  it('loadPreferences migrates legacy prefs to unmuted when sound preference was never set', () => {
+    getJSON.mockReturnValue({ isMuted: true, language: 'fr' });
+    const prefs = loadPreferences();
+    expect(prefs.isMuted).toBe(false);
+    expect(prefs.soundPreferenceSet).toBe(false);
+  });
+
   it('savePreferences accepts patch and calls setJSON', () => {
     const ok = savePreferences({ isMuted: false });
     expect(ok).toBe(true);
-    expect(setJSON).toHaveBeenCalledWith('afw_preferences', expect.objectContaining({ isMuted: false }));
+    expect(setJSON).toHaveBeenCalledWith('afw_preferences', expect.objectContaining({ isMuted: false, soundPreferenceSet: true }));
   });
 });
