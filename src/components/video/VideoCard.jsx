@@ -446,7 +446,7 @@ function VideoCardContent({
       hlsRef.current = hls;
       hls.loadSource(videoUrl);
       hls.attachMedia(el);
-      prepareForAutoplay(el, isMuted);
+      prepareForAutoplay(el, isStrictAutoplayEnvironment() ? true : isMuted);
       el.loop = true;
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -482,7 +482,7 @@ function VideoCardContent({
 
     if (el.canPlayType('application/vnd.apple.mpegurl')) {
       el.src = videoUrl;
-      prepareForAutoplay(el, isMuted);
+      prepareForAutoplay(el, isStrictAutoplayEnvironment() ? true : isMuted);
       el.loop = true;
       const playOnce = () => {
         el.removeEventListener('loadeddata', playOnce);
@@ -534,8 +534,9 @@ function VideoCardContent({
       el.currentTime = video.start_time;
       hasAppliedStartTimeRef.current = true;
     }
-    try { el.volume = 1; } catch (_) {}
-    prepareForAutoplay(el, isMuted);
+    const useMutedForAutoplay = isStrictAutoplayEnvironment() ? true : isMuted;
+    try { el.volume = useMutedForAutoplay ? 0 : 1; } catch (_) {}
+    prepareForAutoplay(el, useMutedForAutoplay);
     el.loop = true;
 
     const tryPlay = () => {
@@ -556,21 +557,22 @@ function VideoCardContent({
       if (!el || !isActive || userPausedRef.current) return;
       if (el.readyState >= 2) {
         tryPlay();
-      } else {
-        el.addEventListener('canplay', onCanPlay);
-        el.addEventListener('loadeddata', onCanPlay);
+      } else if (el.readyState >= 1) {
+        tryPlay();
       }
+      el.addEventListener('canplay', onCanPlay);
+      el.addEventListener('loadeddata', onCanPlay);
     };
 
     playVideo();
 
     // Plusieurs retries (type TikTok) pour tous mobiles : autoplay fiable
-    const timers = [400, 900, 1800].map((delay) =>
+    const timers = [100, 400, 900, 1800, 3000, 4500].map((delay) =>
       window.setTimeout(() => {
         if (cancelled || !el || !isActive || userPausedRef.current) return;
         if (hasAutoPlayedRef.current) return;
         if (el.paused && el.readyState >= 2) {
-          prepareForAutoplay(el, isMuted);
+          prepareForAutoplay(el, isStrictAutoplayEnvironment() ? true : isMuted);
           tryPlay();
         }
       }, delay)
@@ -658,7 +660,7 @@ function VideoCardContent({
       autoplayWithPolicy(el, { preferMuted: isStrictAutoplayEnvironment() ? true : isMuted });
     };
 
-    const timers = [0, 220, 520, 900, 1500, 2400].map((delay) =>
+    const timers = [0, 150, 400, 800, 1500, 2500, 4000].map((delay) =>
       window.setTimeout(attemptAutoPlay, delay)
     );
 
@@ -699,13 +701,32 @@ function VideoCardContent({
       setIsPlaying(false);
     } else {
       userPausedRef.current = false;
-      try { el.volume = 1; } catch (_) {}
-      el.muted = isMuted;
-      el.play().then(() => {
-        setIsPlaying(true);
-        hasAutoPlayedRef.current = true;
-        setShouldRestoreSound(true);
-      }).catch(() => {});
+      if (isStrictAutoplayEnvironment()) {
+        prepareForAutoplay(el, true);
+        el.play().then(() => {
+          setIsPlaying(true);
+          hasAutoPlayedRef.current = true;
+          setHasAutoplaySucceeded(true);
+          setShouldRestoreSound(true);
+          el.muted = isMuted;
+          try { el.volume = isMuted ? 0 : 1; } catch (_) {}
+        }).catch(() => {
+          el.muted = isMuted;
+          el.play().then(() => {
+            setIsPlaying(true);
+            hasAutoPlayedRef.current = true;
+            setShouldRestoreSound(true);
+          }).catch(() => {});
+        });
+      } else {
+        try { el.volume = 1; } catch (_) {}
+        el.muted = isMuted;
+        el.play().then(() => {
+          setIsPlaying(true);
+          hasAutoPlayedRef.current = true;
+          setShouldRestoreSound(true);
+        }).catch(() => {});
+      }
     }
 
     setShowPlayIcon(true);
