@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn, getVideoPlaybackUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG } from "@/lib/utils";
+import { cn, getVideoPlaybackUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, isMobileOrPWA } from "@/lib/utils";
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { useTranslation } from "@/components/common/useTranslation";
@@ -227,6 +227,7 @@ function VideoCardContent({
 
   useEffect(() => {
     setSourceIndex(0);
+    errorRetriedRef.current = false;
   }, [video.id, playbackUrls.join('|')]);
 
   useEffect(() => {
@@ -245,6 +246,7 @@ function VideoCardContent({
 
   const [loadError, setLoadError] = useState(false);
   const [isReadyToPlay, setIsReadyToPlay] = useState(false);
+  const errorRetriedRef = useRef(false);
 
   const { t } = useTranslation();
   
@@ -1064,6 +1066,18 @@ function VideoCardContent({
       style={{ touchAction: 'pan-y' }}
     >
       <div className="absolute inset-0 overflow-hidden">
+      {/* Poster en arrière-plan : évite le flash noir au scroll sur mobile/PWA */}
+      {video.media_type !== 'image' && (posterUrl || VIDEO_PLACEHOLDER_IMG) && (
+        <div
+          className="absolute inset-0 bg-black"
+          style={{
+            backgroundImage: `url(${posterUrl || VIDEO_PLACEHOLDER_IMG})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+          aria-hidden
+        />
+      )}
       {/* ================= IMAGE (photo) ou VIDEO ================= */}
       {video.media_type === 'image' ? (
         <img
@@ -1121,14 +1135,20 @@ function VideoCardContent({
           }
           
           // Afficher l'erreur aprÃ¨s dÃ©lai (pas de load() â€” Ã©vite Ã©cran noir)
+          if (isMobileOrPWA() && !errorRetriedRef.current) {
+            errorRetriedRef.current = true;
+            try { videoElement.load(); } catch (_) {}
+            return;
+          }
           setTimeout(() => {
             if (videoElement && videoElement.error && isActive) {
               setLoadError(true);
             }
-          }, 2000);
+          }, isMobileOrPWA() ? 4000 : 2000);
         }}
         onLoadedData={() => {
           setLoadError(false);
+          errorRetriedRef.current = false;
           setIsReadyToPlay(true);
           const el = videoRef.current;
           if (el && isActive && el.paused && !userPausedRef.current) {
@@ -1156,8 +1176,8 @@ function VideoCardContent({
               className="max-w-full max-h-[50%] object-contain rounded-lg opacity-80"
             />
           ) : null}
-          <p className="text-white text-center mt-4 font-medium ios-text-render">VidÃ©o indisponible</p>
-          <p className="text-white/70 text-sm text-center mt-1 ios-text-render">URL de vidÃ©o invalide</p>
+          <p className="text-white text-center mt-4 font-medium ios-text-render">Vidéo indisponible</p>
+          <p className="text-white/70 text-sm text-center mt-1 ios-text-render">URL de vidéo invalide</p>
         </div>
       ) }
       {video.media_type !== 'image' && videoUrl && enablePreviewScrub && (
@@ -1186,14 +1206,14 @@ function VideoCardContent({
               className="max-w-full max-h-[50%] object-contain rounded-lg opacity-80"
             />
           ) : null}
-          <p className="text-white text-center mt-4 font-medium ios-text-render">VidÃ©o indisponible</p>
-          <p className="text-white/70 text-sm text-center mt-1 ios-text-render">Impossible de charger la vidÃ©o</p>
+          <p className="text-white text-center mt-4 font-medium ios-text-render">Vidéo indisponible</p>
+          <p className="text-white/70 text-sm text-center mt-1 ios-text-render">Impossible de charger la vidéo. Connexion lente ? Appuyez sur Réessayer.</p>
           <button
             type="button"
             onClick={handleRetryLoad}
             className="mt-4 px-6 py-2.5 bg-white text-black rounded-full font-semibold hover:bg-gray-200 active:scale-95 transition-transform ios-text-render"
           >
-            RÃ©essayer
+            Réessayer
           </button>
         </div>
       )}

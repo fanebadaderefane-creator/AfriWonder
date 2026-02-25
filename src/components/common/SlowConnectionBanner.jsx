@@ -2,9 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { Info } from 'lucide-react';
 import { useNetworkStatus } from './PerformanceOptimizer';
 
+const DISMISS_KEY = 'afw_slow_connection_dismissed';
+const DISMISS_VALID_MS = 7 * 24 * 60 * 60 * 1000; // 7 jours
+
 /**
  * Bannière discrète pour connexions lentes.
  * S'appuie sur navigator.connection (2G/3G/saveData) via useNetworkStatus.
+ * La fermeture est mémorisée 7 jours (localStorage) pour ne pas réafficher à chaque ouverture.
  */
 export default function SlowConnectionBanner() {
   const { isOnline, isSlowConnection } = useNetworkStatus();
@@ -12,8 +16,10 @@ export default function SlowConnectionBanner() {
 
   useEffect(() => {
     try {
-      const stored = sessionStorage.getItem('afw_slow_connection_dismissed');
-      if (stored === '1') {
+      const raw = localStorage.getItem(DISMISS_KEY);
+      if (!raw) return;
+      const at = parseInt(raw, 10);
+      if (!Number.isNaN(at) && Date.now() - at < DISMISS_VALID_MS) {
         setDismissed(true);
       }
     } catch {
@@ -26,7 +32,7 @@ export default function SlowConnectionBanner() {
   const handleClose = () => {
     setDismissed(true);
     try {
-      sessionStorage.setItem('afw_slow_connection_dismissed', '1');
+      localStorage.setItem(DISMISS_KEY, String(Date.now()));
     } catch {
       // ignore
     }
@@ -34,7 +40,7 @@ export default function SlowConnectionBanner() {
 
   return (
     <div
-      className="fixed top-10 left-0 right-0 z-[9998] flex items-center justify-between gap-2 px-4 py-2 bg-amber-900/95 text-amber-50 text-xs sm:text-sm shadow-md"
+      className="fixed top-10 left-0 right-0 z-[9998] flex items-center justify-between gap-2 px-4 py-2 bg-blue-600/95 text-white text-xs sm:text-sm shadow-md"
       role="status"
       aria-live="polite"
     >
@@ -47,7 +53,7 @@ export default function SlowConnectionBanner() {
       <button
         type="button"
         onClick={handleClose}
-        className="ml-2 text-amber-100/80 hover:text-white text-[11px] font-medium underline-offset-2 hover:underline"
+        className="ml-2 text-blue-100 hover:text-white text-[11px] font-medium underline-offset-2 hover:underline"
         aria-label="Masquer le message de connexion lente"
       >
         OK

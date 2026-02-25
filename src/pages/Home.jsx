@@ -53,6 +53,9 @@ export default function Home() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const touchStartYRef = useRef(0);
   const pullDistanceRef = useRef(0);
+  const scrollEndTimeoutRef = useRef(null);
+  const feedLengthRef = useRef(0);
+  const isSnappingRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -469,28 +472,59 @@ export default function Home() {
     }
   }, []);
 
+  const feedLength = activeTab === 'pourtoi' ? mainFeedItems.length : followingVideos.length;
+  useEffect(() => {
+    feedLengthRef.current = feedLength;
+  }, [feedLength]);
+
   useEffect(() => {
     const items = activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map((v) => ({ type: 'video', video: v }));
     preloadVideos(items, currentIndex);
   }, [currentIndex, activeTab, mainFeedItems, followingVideos, preloadVideos]);
 
+  // Snap une seule vidéo à la fois (comportement TikTok/YouTube) — au relâchement et à la fin du scroll
+  const snapToNearestSlide = useCallback(() => {
+    if (isSnappingRef.current) return;
+    const container = containerRef.current;
+    if (!container || feedLengthRef.current <= 0) return;
+    if (Date.now() < likeScrollLockUntilRef.current) return;
+    const pullEl = container.firstElementChild;
+    const pullHeight = pullEl ? pullEl.offsetHeight : 0;
+    const slideHeight = container.clientHeight;
+    if (slideHeight <= 0) return;
+    const scrollTop = container.scrollTop;
+    const targetIndex = Math.round((scrollTop - pullHeight) / slideHeight);
+    const clamped = Math.max(0, Math.min(targetIndex, feedLengthRef.current - 1));
+    const targetTop = pullHeight + clamped * slideHeight;
+    if (Math.abs(container.scrollTop - targetTop) > 2) {
+      isSnappingRef.current = true;
+      container.scrollTo({ top: targetTop, behavior: 'smooth' });
+      setTimeout(() => { isSnappingRef.current = false; }, 400);
+    }
+  }, []);
+
   const handleScroll = useCallback(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    // Verrouillage court après un like pour éviter un changement d'index non intentionnel
-    if (Date.now() < likeScrollLockUntilRef.current) {
-      return;
-    }
+    if (Date.now() < likeScrollLockUntilRef.current) return;
 
-    const index = Math.round(container.scrollTop / container.clientHeight);
+    const pullEl = container.firstElementChild;
+    const pullHeight = pullEl ? pullEl.offsetHeight : 0;
+    const slideHeight = container.clientHeight;
+    const index = slideHeight > 0 ? Math.round((container.scrollTop - pullHeight) / slideHeight) : 0;
 
     if (index !== currentIndex) {
       setCurrentIndex(index);
       const items = activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map((v) => ({ type: 'video', video: v }));
       preloadVideos(items, index);
     }
-  }, [currentIndex, activeTab, mainFeedItems, followingVideos, preloadVideos]);
+
+    if (scrollEndTimeoutRef.current) clearTimeout(scrollEndTimeoutRef.current);
+    // Mobile: délai plus long pour laisser le momentum finir avant de snap (évite double mouvement)
+    const isMobile = typeof window !== 'undefined' && (window.innerWidth < 768 || 'ontouchstart' in window);
+    scrollEndTimeoutRef.current = setTimeout(snapToNearestSlide, isMobile ? 200 : 120);
+  }, [currentIndex, activeTab, mainFeedItems, followingVideos, preloadVideos, snapToNearestSlide]);
 
   const handleToggleWonder = useCallback(async (creatorId, creatorName = '') => {
     if (!user) {
@@ -685,9 +719,12 @@ export default function Home() {
           }}
           onTouchEnd={(e) => {
             if (e.changedTouches.length > 0) handlePullEnd();
+            // Mobile: snap après la fin du momentum (évite de snap trop tôt puis re-scroll)
+            const isMobile = typeof window !== 'undefined' && (window.innerWidth < 768 || 'ontouchstart' in window);
+            setTimeout(snapToNearestSlide, isMobile ? 220 : 100);
           }}
           onTouchCancel={() => handlePullEnd()}
-          className="snap-y snap-mandatory flex-1 w-full"
+          className="snap-y snap-mandatory flex-1 w-full flex flex-col"
           style={{ 
             overflowY: 'auto',
             overflowX: 'hidden',
@@ -697,6 +734,7 @@ export default function Home() {
             touchAction: 'pan-y',
             scrollSnapType: 'y mandatory',
             WebkitScrollSnapType: 'y mandatory',
+            gap: 0,
           }}
         >
         <div
@@ -767,8 +805,8 @@ export default function Home() {
                 return (
                   <div
                     key={`ad-${item.ad?.id || index}`}
-                    className="relative w-full snap-start overflow-hidden bg-black"
-                    style={{ height: '100%', touchAction: 'pan-y' }}
+                    className="relative w-full snap-start snap-always overflow-hidden bg-black flex-shrink-0"
+                    style={{ flex: '0 0 100%', minHeight: '100%', height: '100%', touchAction: 'pan-y' }}
                   >
                     <AdCard
                       ad={item.ad}
@@ -786,8 +824,8 @@ export default function Home() {
               return (
                 <div
                   key={video.id}
-                  className="relative w-full snap-start overflow-hidden bg-black"
-                  style={{ height: '100%', touchAction: 'pan-y' }}
+                  className="relative w-full snap-start snap-always overflow-hidden bg-black flex-shrink-0"
+                  style={{ flex: '0 0 100%', minHeight: '100%', height: '100%', touchAction: 'pan-y' }}
                 >
                   <VideoCard
                     video={video}

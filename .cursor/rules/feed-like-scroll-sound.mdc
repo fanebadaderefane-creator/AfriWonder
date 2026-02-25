@@ -1,0 +1,47 @@
+---
+description: Feed Home — likes, scroll, son, rechargement (ne pas casser)
+alwaysApply: true
+---
+
+# Feed Home — Comportement Like / Scroll / Son / Rechargement
+
+Ces corrections ont été demandées pour stabiliser l’UX du feed (style TikTok). **Ne pas les supprimer ni les contourner** sans demande explicite de l’utilisateur.
+
+## VideoCard.jsx — À préserver
+
+### Like (1 like / 1 dislike par utilisateur)
+- **État local** : `localIsLiked` + `likeCount` ; synchronisation **uniquement** au changement de `video.id` (useEffect avec `[video.id]`).
+- **Ne pas** remettre de sync sur `isLiked` ou `video.likes` dans les deps de l’effet de reset (sinon le compteur "saute").
+- **handleLike** : toggle `localIsLiked`, `setLikeCount(prev => prev + (nextLiked ? 1 : -1))`, puis `onLike?.(video)`. Ne pas appeler `setLikeCount` ailleurs (ex. dans l’effet de reset quand la vidéo change).
+- **Affichage** : icône cœur avec `localIsLiked` ; compteur avec `likeCount`.
+
+### Scroll / Like (pas de saut de vidéo au like)
+- Bouton Like : `style={{ touchAction: 'none' }}`, `onTouchStart` avec `preventDefault` + `stopPropagation` (pas d’appel à `handleLike` dans onTouchStart pour éviter double exécution).
+- Home : `likeScrollLockUntilRef` + dans `handleScroll` ignorer les changements d’index tant que `Date.now() < likeScrollLockUntilRef.current` (ex. 400 ms après un like).
+
+### Son (premier clic = son sans pause/play)
+- **autoplayMutedFallback** : quand `true` et préférence globale `!isMuted`, le premier clic sur l’icône volume doit uniquement enlever le mute du player (`el.muted = false`, `el.volume = 1`) et ne pas toucher à la préférence globale.
+- Icône volume : afficher "muet" si `isMuted || autoplayMutedFallback`.
+
+### Player vidéo
+- Respecter la règle **video-player-locked** : ne pas modifier la logique de lecture (buffer, autoplay, handlers play/pause, etc.).
+
+## Home.jsx — À préserver
+
+### Pas de rechargement automatique après le premier affichage
+- **homeCacheStrategy** : `refetchOnWindowFocus: false`, `refetchOnReconnect: false`, `refetchOnMount: false`. Utiliser cette stratégie pour les queries `feed`, `videos`, `comments` (et cohérent pour le Home).
+- **Ne pas** remettre de `useEffect` qui appelle `refetch()` (ou `refetchRef.current?.()`) au mount ou quand `activeTab`/`user?.id` changent (sinon double chargement au premier affichage et sur les images uploadées).
+
+### Like (cache)
+- **likeMutation.onSuccess** : mettre à jour uniquement `setLikedVideos` (Set d’IDs). **Ne pas** mettre à jour `queryClient.setQueryData` pour `feed` ou `videos` avec les nouveaux `likes` (sinon re-renders et sensation de "rechargement" de la vidéo).
+- **handleLike** : `useCallback` stable, reçoit `(video)` et appelle `likeMutation.mutate(video)` ; poser le verrou scroll avant : `likeScrollLockUntilRef.current = Date.now() + 400`.
+
+## Checklist rapide après toute modif du feed / VideoCard
+
+1. Like : 1er clic = +1, 2e clic = −1 ; pas de saut de carte ni de reload vidéo.
+2. Son : premier clic sur l’icône volume donne le son sans avoir à faire pause/play.
+3. Ouverture de l’app : un seul chargement visuel (vidéos + images), pas de second reload automatique.
+
+## Si l’utilisateur demande un changement sur ce comportement
+
+Alors tu peux modifier en restant cohérent avec l’objectif (un seul like/dislike par user, pas de rechargement intempestif, son au premier clic).
