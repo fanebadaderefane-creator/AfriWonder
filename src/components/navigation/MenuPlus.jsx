@@ -70,12 +70,6 @@ const MENU_SECTIONS = [
     ],
   },
   {
-    title: "FINANCE",
-    items: [
-      { icon: Wallet, label: "Mon Wallet", color: "text-green-600", page: 'Wallet' },
-    ],
-  },
-  {
     title: "PARAMÈTRES",
     items: [
       { icon: User, label: "Profil", color: "text-gray-600", page: 'Profile' },

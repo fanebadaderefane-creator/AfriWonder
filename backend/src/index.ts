@@ -39,6 +39,13 @@ try {
 }
 
 const httpServer = createServer(app);
+
+// Timeout pour requêtes longues (upload vidéo/audio) : 5 min, aligné avec le client
+const UPLOAD_TIMEOUT_MS = 300000;
+httpServer.timeout = UPLOAD_TIMEOUT_MS;
+httpServer.keepAliveTimeout = UPLOAD_TIMEOUT_MS + 1000;
+httpServer.headersTimeout = UPLOAD_TIMEOUT_MS + 2000;
+
 const corsOrigins = [
   ...(process.env.CORS_ORIGIN || '')
     .split(',')
@@ -167,6 +174,22 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
     const redis = await initRedis();
     if (redis) logger.info('✅ Cache Redis initialisé');
     else logger.info('ℹ️ Cache: mémoire locale (REDIS_URL absent ou connexion indisponible)');
+
+    // Adapter Redis pour Socket.io : scale WebSocket sur plusieurs nœuds (charges massives)
+    const redisUrl = process.env.REDIS_URL?.trim();
+    if (redisUrl) {
+      try {
+        const { createClient } = await import('redis');
+        const { createAdapter } = await import('@socket.io/redis-adapter');
+        const pubClient = createClient({ url: redisUrl });
+        const subClient = pubClient.duplicate();
+        await Promise.all([pubClient.connect(), subClient.connect()]);
+        io.adapter(createAdapter(pubClient, subClient));
+        logger.info('✅ Socket.io Redis adapter activé (multi-nœuds)');
+      } catch (adapterErr) {
+        logger.warn('Socket.io Redis adapter non activé (connexion Redis Socket échouée)', adapterErr);
+      }
+    }
 
     const r2Config = await import('./config/cloudflare-r2.js');
     if (r2Config.isR2Configured()) {

@@ -1,8 +1,6 @@
 import axios from 'axios';
 import { getItem, setItem, removeItem } from '@/utils/safeStorage';
 
-// En dev : utiliser le proxy Vite (/api → localhost:3000) pour éviter CORS.
-// En prod sans VITE_API_URL : proxy Vercel (/api). Avec VITE_API_URL : appels directs (CORS requis).
 const raw = import.meta.env.VITE_API_URL;
 const API_URL = raw
   ? `${raw.replace(/\/api\/?$/, '')}/api`
@@ -10,7 +8,10 @@ const API_URL = raw
 
 export { API_URL };
 
-const DEFAULT_TIMEOUT_MS = 30000; // 30s — adapté aux réseaux lents
+const DEFAULT_TIMEOUT_MS = 30000;
+const UPLOAD_TIMEOUT_MS = 300000;
+const MAX_NETWORK_RETRIES = 2; // 2 retries = 3 attempts total (connexions difficiles Afrique)
+const RETRY_DELAYS_MS = [1000, 2000]; // backoff
 
 const axiosInstance = axios.create({
   baseURL: API_URL,
@@ -26,10 +27,15 @@ axiosInstance.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  try {
+    const deviceId = localStorage.getItem('afw_device_id');
+    if (deviceId) {
+      config.headers['X-Device-Id'] = deviceId;
+    }
+  } catch (_) {}
   return config;
 });
 
-// Variable pour éviter les refresh multiples simultanés
 let isRefreshing = false;
 let failedQueue = [];
 
@@ -113,6 +119,18 @@ axiosInstance.interceptors.response.use(
         return Promise.reject(_refreshError);
       }
     }
+
+    // Retry automatique pour erreurs réseau / timeout (connexions lentes ou instables, ex. Afrique)
+    const isNetworkError = error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED' || error.message?.includes('timeout') || !error.response;
+    const isRetryableMethod = originalRequest?.method && ['get', 'GET', 'head', 'HEAD'].includes(originalRequest.method);
+    const retryCount = originalRequest?._networkRetryCount ?? 0;
+    if (isNetworkError && originalRequest && isRetryableMethod && retryCount < MAX_NETWORK_RETRIES) {
+      originalRequest._networkRetryCount = retryCount + 1;
+      const delay = RETRY_DELAYS_MS[retryCount] ?? 2000;
+      await new Promise((r) => setTimeout(r, delay));
+      return axiosInstance(originalRequest);
+    }
+
     // Message d'erreur unifié pour affichage (toasts, formulaires) — jamais de détail technique
     if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
       error.apiMessage = 'La requête a pris trop de temps. Vérifiez votre connexion et réessayez.';
@@ -126,7 +144,7 @@ axiosInstance.interceptors.response.use(
   }
 );
 
-/** Config pour upload (image/vidéo) : ne pas envoyer Content-Type pour que le navigateur envoie multipart/form-data avec boundary (Chrome/Safari/iOS). */
+/** Upload requests: omit Content-Type so browser sets multipart boundary. */
 function uploadConfig() {
   return {
     transformRequest: [(data, headers) => {
@@ -1450,6 +1468,7 @@ export const api = {
       formData.append('file', blob);
       const { data } = await axiosInstance.post('/upload/video', formData, {
         ...uploadConfig(),
+        timeout: UPLOAD_TIMEOUT_MS,
         onUploadProgress: (progressEvent) => {
           const total = progressEvent.total || 1;
           const pct = Math.min(100, Math.round((progressEvent.loaded * 100) / total));
@@ -1475,6 +1494,7 @@ export const api = {
       formData.append('file', blob);
       const { data } = await axiosInstance.post('/upload/video', formData, {
         ...uploadConfig(),
+        timeout: UPLOAD_TIMEOUT_MS,
         onUploadProgress: (progressEvent) => {
           const total = progressEvent.total || 1;
           const pct = Math.min(100, Math.round((progressEvent.loaded * 100) / total));
@@ -1606,10 +1626,11 @@ export const api = {
       const { data } = await axiosInstance.get('/view-history', { params });
       return data.data ?? [];
     },
-    async record(videoId, watchTimeSeconds = 0) {
+    async record(videoId, watchTimeSeconds = 0, watchPercent = null) {
       const { data } = await axiosInstance.post('/view-history', {
         video_id: videoId,
         watch_time_seconds: watchTimeSeconds,
+        ...(watchPercent != null && { watch_percent: watchPercent }),
       });
       return data.data;
     },

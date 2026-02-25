@@ -346,7 +346,7 @@ class VideoService {
 
     const video = await prisma.video.findUnique({
       where: { id: videoId },
-      select: { id: true, creator_id: true, views: true, avg_retention_pct: true },
+      select: { id: true, creator_id: true, views: true, avg_retention_pct: true, category: true },
     });
     const prevViews = video?.views ?? 0;
 
@@ -379,6 +379,26 @@ class VideoService {
           interactionDetected,
         });
       }
+      // Mettre à jour ViewHistory pour l'algo même si la vue n'est pas comptée (même bucket)
+      if (userId) {
+        const existing = await prisma.viewHistory.findFirst({
+          where: { user_id: userId, video_id: videoId },
+        });
+        const payload = {
+          watch_seconds: Math.round(watchSeconds),
+          watch_percent: watchPercent,
+          completed: watchPercent >= 80,
+          category: video.category ?? undefined,
+          updated_at: new Date(),
+        };
+        if (existing) {
+          await prisma.viewHistory.update({ where: { id: existing.id }, data: payload });
+        } else {
+          await prisma.viewHistory.create({
+            data: { user_id: userId, video_id: videoId, ...payload },
+          });
+        }
+      }
       return { recorded: false, views: video.views };
     }
 
@@ -405,6 +425,33 @@ class VideoService {
         scrollSlow,
         interactionDetected,
       });
+    }
+    // Algo de recommandation : mettre à jour l'historique de visionnage (watch_seconds, watch_percent)
+    if (userId) {
+      const existing = await prisma.viewHistory.findFirst({
+        where: { user_id: userId, video_id: videoId },
+      });
+      const payload = {
+        watch_seconds: Math.round(watchSeconds),
+        watch_percent: watchPercent,
+        completed: watchPercent >= 80,
+        category: video.category ?? undefined,
+        updated_at: new Date(),
+      };
+      if (existing) {
+        await prisma.viewHistory.update({
+          where: { id: existing.id },
+          data: payload,
+        });
+      } else {
+        await prisma.viewHistory.create({
+          data: {
+            user_id: userId,
+            video_id: videoId,
+            ...payload,
+          },
+        });
+      }
     }
     const [viralBonusService, videoAlgoService, dailyMissionsService] = await Promise.all([
       import('./viralBonus.service.js'),
@@ -435,6 +482,7 @@ class VideoService {
     category?: string;
     hashtags?: string[];
     music_title?: string;
+    media_type?: 'video' | 'image';
   }) {
     // Valider les données requises
     if (!data.title || !data.video_url) {
@@ -477,6 +525,7 @@ class VideoService {
         category: data.category,
         hashtags: hashtagsArray.length ? JSON.stringify(hashtagsArray) : undefined,
         music_title: data.music_title,
+        media_type: data.media_type || 'video',
       },
       include: {
         creator: {

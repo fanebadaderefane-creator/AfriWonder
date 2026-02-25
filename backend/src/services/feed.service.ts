@@ -47,6 +47,7 @@ class FeedService {
         page,
         limit: limit + 20,
         userId: options.userId,
+        deviceId: options.deviceId,
         category: options.category,
         hashtag: options.hashtag,
       }),

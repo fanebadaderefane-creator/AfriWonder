@@ -27,10 +27,11 @@ const emptyInitialData = {};
  * @param {Object} props
  * @param {React.RefObject<HTMLVideoElement|null>} [props.videoRef]
  * @param {string} [props.previewUrl]
+ * @param {boolean} [props.isImage] - true si le media est une image (affiche img au lieu de video)
  * @param {(data: object) => void} [props.onVideoDataChange]
  * @param {Record<string, unknown>} [props.initialData]
  */
-export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, initialData = emptyInitialData }) {
+export default function VideoEditor({ videoRef, previewUrl, isImage = false, onVideoDataChange, initialData = emptyInitialData }) {
 
   const [activeTab, setActiveTab] = useState(null);
 
@@ -373,70 +374,55 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
 
       >
 
+        {/* Image ou vidéo selon le type de média */}
+        {previewUrl && isImage && (
+          <img
+            src={previewUrl}
+            alt="Aperçu"
+            className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+            style={{
+              filter: filter === 'Normal' ? 'none' :
+                      filter === 'Noir & Blanc' ? 'grayscale(100%)' :
+                      filter === 'Sépia' ? 'sepia(100%)' :
+                      filter === 'Vibrant' ? 'saturate(200%)' :
+                      filter === 'Foncé' ? 'brightness(0.75)' :
+                      filter === 'Lumineux' ? 'brightness(1.25)' : 'none'
+            }}
+          />
+        )}
+
         {/* Video Preview */}
-
-        {previewUrl && (
-
+        {previewUrl && !isImage && (
           <>
-
             <video
-
               ref={videoRef}
-
               src={previewUrl}
-
               className="absolute inset-0 w-full h-full object-contain pointer-events-none"
-
               style={{
-
                 filter: filter === 'Normal' ? 'none' :
-
                         filter === 'Noir & Blanc' ? 'grayscale(100%)' :
-
                         filter === 'Sépia' ? 'sepia(100%)' :
-
                         filter === 'Vibrant' ? 'saturate(200%)' :
-
                         filter === 'Foncé' ? 'brightness(0.75)' :
-
                         filter === 'Lumineux' ? 'brightness(1.25)' : 'none'
-
               }}
-
               muted={isMuted}
-
               loop
-
               playsInline
-
               onLoadedMetadata={(e) => {
-
                 const v = /** @type {HTMLVideoElement} */ (e.target);
-
                 if (v && typeof v.duration === 'number' && !Number.isNaN(v.duration)) {
-
                   setDuration(v.duration);
-
                   setEndTime((prev) => (prev <= 0 || prev > v.duration ? v.duration : prev));
-
                 }
-
                 if (v && v.videoWidth && v.videoHeight) {
-
                   setVideoSize({ w: v.videoWidth, h: v.videoHeight });
-
                 }
-
               }}
-
               onPlay={() => setIsPlaying(true)}
-
               onPause={() => setIsPlaying(false)}
-
               onEnded={() => setIsPlaying(false)}
-
             />
-
             {/* Contrôles lecture / son */}
             <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-2 p-3 bg-gradient-to-t from-black/80 to-transparent pointer-events-auto">
               <Button
@@ -476,7 +462,6 @@ export default function VideoEditor({ videoRef, previewUrl, onVideoDataChange, i
               </Button>
             </div>
           </>
-
         )}
 
         {/* Text Overlay */}

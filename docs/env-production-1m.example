@@ -1,0 +1,12 @@
+# Variables additionnelles pour la production 1M+ users
+# À ajouter dans Render (ou votre hébergeur) en plus de vos variables existantes.
+# Ne pas commiter de vraies valeurs.
+
+# Redis (obligatoire pour cache + rate limit distribué + Socket.io multi-nœuds)
+REDIS_URL=redis://default:VOTRE_MOT_DE_PASSE@host:6379
+
+# Connexions DB par processus (défaut prod = 20, max 100)
+DATABASE_POOL_MAX=20
+
+# Si vous utilisez PgBouncer ou un pooler (Neon/Supabase), DATABASE_URL pointe vers le pooler
+# DATABASE_URL=postgresql://user:pass@pgbouncer-host:6432/afriwonder

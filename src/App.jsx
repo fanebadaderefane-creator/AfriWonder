@@ -14,6 +14,7 @@ import { PreferencesProvider } from '@/contexts/PreferencesContext';
 import { AdminProvider } from '@/lib/admin-context';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import OfflineBanner from '@/components/common/OfflineBanner';
+import SlowConnectionBanner from '@/components/common/SlowConnectionBanner';
 import TranslationProvider from '@/components/common/TranslationProvider';
 import CookieBanner from '@/components/legal/CookieBanner';
 import PageLoader from '@/components/common/PageLoader';
@@ -139,6 +140,7 @@ function App() {
                 <Router>
                   <TranslationProvider>
                     <OfflineBanner />
+                    <SlowConnectionBanner />
                     <NavigationTracker />
                     <AuthenticatedApp />
                     <CookieBanner />

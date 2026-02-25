@@ -2,10 +2,7 @@ import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { getVideoPlaybackUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, isValidThumbnailUrl, isMobileOrPWA } from '@/lib/utils';
 import { API_URL } from '@/api/expressClient';
 
-/**
- * Extrait une frame de la vidéo (vers frameTime) et l'affiche.
- * Sur mobile/PWA : privilégie thumbnail_url si valide (évite cartes noires, expérience type app native).
- */
+/** Video frame thumbnail. Uses thumbnail_url on mobile when valid; otherwise extracts frame at frameTime. */
 const FRAME_CACHE = new Map();
 const MAX_FRAME_CACHE_ITEMS = 120;
 

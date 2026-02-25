@@ -173,7 +173,6 @@ export default function Home() {
   const refetchRef = useRef(refetch);
   refetchRef.current = refetch;
 
-  // Refetch on mount and when tab or user changes
   useEffect(() => {
     refetchRef.current?.();
   }, [activeTab, user?.id]);
@@ -221,7 +220,6 @@ export default function Home() {
     touchStartYRef.current = 0;
   }, [refetchFeed, refetchVideos]);
 
-  // Invalider le cache quand l'utilisateur change (apres mise a jour du profil)
   useEffect(() => {
     if (user?.id) {
       queryClient.invalidateQueries({ queryKey: ['videos'] });
@@ -229,7 +227,6 @@ export default function Home() {
     }
   }, [user?.profile_image, queryClient, user?.id]);
 
-  // Fetch comments for current video
   const { data: comments = [] } = useQuery({
     queryKey: ['comments', selectedVideo?.id],
     ...cacheStrategy,
@@ -241,7 +238,6 @@ export default function Home() {
     enabled: !!selectedVideo?.id && showComments,
   });
 
-  // Fetch wallet balance for tip modal
   const { data: walletData } = useQuery({
     queryKey: ['wallet', user?.id],
     queryFn: () => api.payments.getWallet(),
@@ -249,7 +245,6 @@ export default function Home() {
   });
   const walletBalance = walletData?.available_balance ?? walletData?.balance ?? 0;
 
-  // Fetch user follows
    const { data: userFollows = [] } = useQuery({
      queryKey: ['user-follows', user?.id],
      ...cacheStrategy,
@@ -281,7 +276,6 @@ export default function Home() {
          } catch (_e) {}
        });
        
-       // Charger les likes existants
        scheduleTask(async () => {
          try {
            const likedVideosResult = await api.users.getLikedVideos(user.id, { limit: 0 });
@@ -351,7 +345,6 @@ export default function Home() {
           return next;
         });
         
-        // Mettre a jour le compteur de likes (feed ou videos selon l'onglet)
         if (activeTab === 'pourtoi') {
           queryClient.setQueryData(['feed', user?.id], (oldItems) => {
             if (!Array.isArray(oldItems)) return oldItems;
@@ -374,7 +367,6 @@ export default function Home() {
           });
         }
         
-        // Mettre a jour aussi followingVideos si necessaire
         setFollowingVideos(prev => prev.map(v => {
           if (v.id === data.video.id) {
             return {
@@ -391,7 +383,6 @@ export default function Home() {
     }
   });
 
-  // Save mutation
   const saveMutation = useMutation({
     mutationFn: async (video) => {
       if (!user) {
@@ -417,7 +408,6 @@ export default function Home() {
     }
   });
 
-  // Comment mutation with notifications
   const commentMutation = useMutation({
     mutationFn: async ({ content, parentId }) => {
       if (!user || !selectedVideo) {
@@ -426,10 +416,8 @@ export default function Home() {
       }
       await api.videos.comment(selectedVideo.id, content, parentId);
       
-      // Send notification to video creator
       NotificationService.notifyVideoComment(user.id, selectedVideo.id, selectedVideo.creator_id, content);
       
-      // Check for mentions and notify mentioned users
       const mentions = NotificationService.extractMentions(content);
       if (mentions.length > 0) {
         const mentionedUserIds = await NotificationService.getUserIdsFromMentions(mentions);
@@ -440,7 +428,6 @@ export default function Home() {
     },
     onSuccess: () => {
       if (selectedVideo) {
-        // Mettre a jour le compteur de commentaires de maniere optimiste
         queryClient.setQueryData(['videos', activeTab, user?.id], (oldData) => {
           if (!oldData) return oldData;
           return oldData.map(v => {
@@ -454,7 +441,6 @@ export default function Home() {
           });
         });
         
-        // Mettre a jour aussi followingVideos si necessaire
         setFollowingVideos(prev => prev.map(v => {
           if (v.id === selectedVideo.id) {
             return {
@@ -466,7 +452,6 @@ export default function Home() {
         }));
       }
       
-      // Invalider les queries pour recharger depuis le backend et persister les donnees
       queryClient.invalidateQueries({ queryKey: ['comments', selectedVideo?.id] });
       queryClient.invalidateQueries({ queryKey: ['videos'] });
       queryClient.invalidateQueries({ queryKey: ['feed'] });
@@ -479,7 +464,6 @@ export default function Home() {
 
 
 
-  // Prechargement des +1 et +2 (niveau TikTok) - scroll = lecture instantanee
   const preloadLinksRef = useRef([]);
   const preloadVideos = useCallback((items, index) => {
     if (!items || !Array.isArray(items)) return;
@@ -507,7 +491,6 @@ export default function Home() {
     preloadVideos(items, currentIndex);
   }, [currentIndex, activeTab, mainFeedItems, followingVideos, preloadVideos]);
 
-  // Handle scroll - Calcul simple de l'index actif + precharge les 2 suivantes
   const handleScroll = useCallback(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -570,7 +553,6 @@ export default function Home() {
     }
   };
 
-  // Premiere video en prechargement (first impression = lecture instantanee)
   const waitingFirstVideo =
     activeTab === 'pourtoi' &&
     mainFeedItems.length > 0 &&
@@ -581,7 +563,10 @@ export default function Home() {
     return (
       <div
         className="w-full bg-black flex justify-center text-white"
-        style={{ height: 'calc(var(--app-vh, 1vh) * 100)' }}
+        style={{
+          height: '100dvh',
+          minHeight: 'calc(var(--app-vh, 1vh) * 100)',
+        }}
         aria-busy="true"
         aria-label="Chargement du fil"
       >
@@ -610,14 +595,15 @@ export default function Home() {
   }
 
   return (
-    <div 
+    <div
       className="w-full bg-black overflow-hidden flex justify-center"
       style={{
-        height: 'calc(var(--app-vh, 1vh) * 100)',
+        height: '100dvh',
+        minHeight: 'calc(var(--app-vh, 1vh) * 100)',
         paddingLeft: 'env(safe-area-inset-left)',
         paddingRight: 'env(safe-area-inset-right)',
         paddingTop: 'env(safe-area-inset-top)',
-        paddingBottom: 'env(safe-area-inset-bottom)'
+        paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
       <div className="w-full sm:max-w-[400px] h-full relative flex flex-col bg-black">
@@ -793,8 +779,8 @@ export default function Home() {
                 return (
                   <div
                     key={`ad-${item.ad?.id || index}`}
-                    className="relative w-full snap-start overflow-hidden"
-                    style={{ height: 'calc(var(--app-vh, 1vh) * 100)', touchAction: 'pan-y' }}
+                    className="relative w-full snap-start overflow-hidden bg-black"
+                    style={{ height: '100%', touchAction: 'pan-y' }}
                   >
                     <AdCard
                       ad={item.ad}
@@ -810,10 +796,10 @@ export default function Home() {
 
               const video = item.video;
               return (
-                <div 
+                <div
                   key={video.id}
-                  className="relative w-full snap-start overflow-hidden"
-                  style={{ height: 'calc(var(--app-vh, 1vh) * 100)', touchAction: 'pan-y' }}
+                  className="relative w-full snap-start overflow-hidden bg-black"
+                  style={{ height: '100%', touchAction: 'pan-y' }}
                 >
                   <VideoCard
                     video={video}
@@ -852,8 +838,8 @@ export default function Home() {
         </div>
 
         {showWonderersPanel && (
-          <div className="absolute inset-0 z-[60] bg-black/70 backdrop-blur-sm p-4 pt-20 overflow-y-auto pointer-events-auto">
-            <div className="bg-[#111827] border border-white/10 rounded-2xl p-4">
+          <div className="fixed inset-0 z-[110] bg-black/95 backdrop-blur-md p-4 pt-20 overflow-y-auto pointer-events-auto isolate">
+            <div className="relative z-10 bg-[#111827] border border-white/10 rounded-2xl p-4 shadow-2xl">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-white font-bold text-base">Tout ton Wonder</h3>
                 <button
@@ -923,7 +909,6 @@ export default function Home() {
         <BottomNav />
       </div>
 
-      {/* Comments Sheet */}
       <CommentSheet
         isOpen={showComments}
         onClose={() => setShowComments(false)}
@@ -937,7 +922,6 @@ export default function Home() {
         onRefresh={() => queryClient.invalidateQueries({ queryKey: ['comments', selectedVideo?.id] })}
       />
 
-      {/* Tip Modal */}
       <TipModal
         isOpen={showTip}
         onClose={() => setShowTip(false)}
@@ -949,7 +933,6 @@ export default function Home() {
         walletBalance={walletBalance}
       />
 
-      {/* Share Sheet */}
       <ShareSheet
         isOpen={showShare}
         onClose={() => setShowShare(false)}
@@ -986,7 +969,6 @@ export default function Home() {
         }}
       />
 
-      {/* Gift Purchase Modal */}
       <GiftPurchaseModal
         isOpen={showGift}
         onClose={() => setShowGift(false)}

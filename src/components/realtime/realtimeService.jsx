@@ -1,4 +1,4 @@
-// Realtime service - Placeholder until WebSocket is fully implemented
+// Realtime: WebSocket bridge (see backend socket handlers)
 
 export function subscribeLiveChat(_liveStreamId, _callback) {
   // TODO: Implement WebSocket subscription

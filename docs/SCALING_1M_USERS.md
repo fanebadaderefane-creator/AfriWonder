@@ -4,13 +4,26 @@ Ce guide décrit les étapes pour dimensionner l'infrastructure AfriWonder vers 
 
 ---
 
+## Réponse courte : l’app supporte-t-elle 1M d’utilisateurs connectés ?
+
+**Aujourd’hui, non.** En configuration actuelle (un ou quelques serveurs, une base PostgreSQL, Redis optionnel), l’application n’est **pas** dimensionnée pour 1 million d’utilisateurs **simultanés**. Elle peut tenir une charge raisonnable (milliers de connexions selon la machine et le trafic) mais pas 1M en même temps sans évolution.
+
+**Pour éviter les pannes et les bugs sous la charge :**
+- Mettre en place les mesures du présent guide (plusieurs serveurs, pool DB maîtrisé, Redis, read replicas).
+- Tester la charge avec k6/load tests avant de viser une forte croissance.
+- Pour viser vraiment 1M simultanés : architecture distribuée (multi-serveurs, load balancer, Redis Cluster / Sentinel, PostgreSQL avec réplication, CDN, éventuellement Kubernetes).
+
+**En résumé :** l’app ne “craquera” pas à petite/moyenne échelle si l’infra est correcte (Redis, PM2, DB), mais **sans scaling elle ne supporte pas 1M d’utilisateurs connectés en même temps**. Ce document décrit ce qu’il faut pour y tendre.
+
+---
+
 ## 1. État actuel (MVP)
 
 | Composant | Configuration actuelle |
 |-----------|------------------------|
 | Backend | PM2 cluster (instances: max), Nginx reverse proxy |
 | Load tests | k6 + Node.js (500 requêtes, 50 concurrent ; k6 jusqu'à 1000 VUs) |
-| Base de données | PostgreSQL, pool de connexions, ~556 index |
+| Base de données | PostgreSQL, pool (max par process via `DATABASE_POOL_MAX`, défaut 10), ~556 index |
 | Cache | Redis (rate limiting) |
 | CDN vidéos | Cloudflare R2 |
 

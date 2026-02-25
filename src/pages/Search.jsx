@@ -258,7 +258,14 @@ export default function SearchPage() {
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div className="flex-1 relative min-w-0" ref={searchWrapperRef}>
-              <div className="flex items-center gap-2 bg-gray-100 rounded-full px-4 py-2 min-w-0">
+              <form
+                className="flex items-center gap-2 bg-gray-100 rounded-full px-4 py-2 min-w-0"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setSearchFocused(false);
+                  handleSearch(localQuery);
+                }}
+              >
                 <Search className="w-5 h-5 text-gray-400 flex-shrink-0" />
                 <input
                   type="text"
@@ -276,12 +283,6 @@ export default function SearchPage() {
                   value={localQuery}
                   onChange={(e) => setLocalQuery(e.target.value)}
                   onFocus={() => setSearchFocused(true)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      setSearchFocused(false);
-                      handleSearch(localQuery);
-                    }
-                  }}
                   className="flex-1 bg-transparent outline-none text-gray-900 min-w-0"
                   autoFocus
                 />
@@ -291,13 +292,12 @@ export default function SearchPage() {
                   </button>
                 ) : null}
                 <button
-                  type="button"
-                  onClick={() => { setSearchFocused(false); handleSearch(localQuery); }}
+                  type="submit"
                   className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-full font-medium text-sm flex-shrink-0"
                 >
                   Rechercher
                 </button>
-              </div>
+              </form>
 
               {/* Suggestions à la frappe : utilisateurs et vidéos (même principe que pour les noms) */}
               {showSuggestions && (
@@ -320,7 +320,7 @@ export default function SearchPage() {
                               onMouseDown={(e) => e.preventDefault()}
                               onClick={() => {
                                 setSearchFocused(false);
-                                navigate(createPageUrl('VideoView') + `?_videoId=${v.id}`);
+                                navigate(createPageUrl('VideoView') + `?id=${v.id}`);
                               }}
                               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-orange-50 text-left"
                             >
@@ -382,7 +382,7 @@ export default function SearchPage() {
                               onMouseDown={(e) => e.preventDefault()}
                               onClick={() => {
                                 setSearchFocused(false);
-                                navigate(createPageUrl('VideoView') + `?_videoId=${v.id}`);
+                                navigate(createPageUrl('VideoView') + `?id=${v.id}`);
                               }}
                               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-orange-50 text-left"
                             >
@@ -519,7 +519,7 @@ export default function SearchPage() {
                         key={video.id}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        onClick={() => navigate(createPageUrl('VideoView') + `?_videoId=${video.id}`)}
+                        onClick={() => navigate(createPageUrl('VideoView') + `?id=${video.id}`)}
                         className="bg-white rounded-lg p-3 flex gap-3 cursor-pointer hover:bg-gray-50"
                       >
                         <VideoThumbnail video={video} />

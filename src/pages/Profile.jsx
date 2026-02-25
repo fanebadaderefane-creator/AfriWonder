@@ -511,7 +511,13 @@ export default function Profile() {
               className="relative w-full h-full overflow-hidden bg-gray-200"
 
             >
-              {video.video_url ? (
+              {video.media_type === 'image' ? (
+                <img
+                  src={getAbsoluteImageUrl(video.thumbnail_url || video.video_url)}
+                  alt={video.title}
+                  className="w-full h-full object-cover absolute inset-0"
+                />
+              ) : video.video_url ? (
                 <div className="absolute inset-0 w-full h-full">
                   <VideoFrameThumbnail
                     videoUrl={video.video_url}
@@ -737,27 +743,24 @@ export default function Profile() {
 
       />
 
-      {/* Analytics achats (propre profil) */}
       {isOwnProfile && orderStats && (orderStats.order_count > 0 || orderStats.total_spent > 0) && (
         <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <span className="text-sm font-medium text-gray-700">Mes achats</span>
             {orderStats.is_loyal_client && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-medium">Client fidele</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-medium">Client fidèle</span>
             )}
           </div>
           <div className="flex gap-4 mt-2 text-sm text-gray-600">
             <span>{orderStats.order_count} commande{orderStats.order_count !== 1 ? 's' : ''}</span>
-            <span>{Number(orderStats.total_spent || 0).toLocaleString('fr-FR')} {orderStats.currency || 'FCFA'} depenses</span>
-            {orderStats.favorite_category && <span>Categorie preferee : {orderStats.favorite_category}</span>}
+            <span>{Number(orderStats.total_spent || 0).toLocaleString('fr-FR')} {orderStats.currency || 'FCFA'} dépensés</span>
+            {orderStats.favorite_category && <span>Catégorie préférée : {orderStats.favorite_category}</span>}
           </div>
           {orderStats.yearly_history && Object.keys(orderStats.yearly_history).length > 0 && (
             <p className="text-xs text-gray-500 mt-1">Historique : {Object.entries(orderStats.yearly_history).map(([y, total]) => `${y}: ${Number(total).toLocaleString('fr-FR')} FCFA`).join(' - ')}</p>
           )}
         </div>
       )}
-
-      {/* Tabs */}
 
       <div className="sticky top-0 bg-white border-b border-gray-100 z-30">
 
@@ -924,7 +927,13 @@ export default function Profile() {
 
               <div className="relative aspect-video bg-gray-200 rounded-2xl overflow-hidden">
 
-                {featuredVideo.video_url ? (
+                {featuredVideo.media_type === 'image' ? (
+                  <img
+                    src={getAbsoluteImageUrl(featuredVideo.thumbnail_url || featuredVideo.video_url)}
+                    alt={featuredVideo.title}
+                    className="w-full h-full object-cover"
+                  />
+                ) : featuredVideo.video_url ? (
                   <VideoFrameThumbnail
                     videoUrl={featuredVideo.video_url}
                     thumbnailUrl={featuredVideo.thumbnail_url}
@@ -933,9 +942,7 @@ export default function Profile() {
                     frameTime={2}
                   />
                 ) : isValidThumbnailUrl(featuredVideo.thumbnail_url, featuredVideo.video_url) ? (
-
                   <img src={getAbsoluteImageUrl(featuredVideo.thumbnail_url)} alt={featuredVideo.title} className="w-full h-full object-cover" />
-
                 ) : (
                   <img
                     src={VIDEO_PLACEHOLDER_IMG}

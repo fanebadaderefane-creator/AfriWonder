@@ -21,19 +21,29 @@ export default function OptimizedImage({
   useEffect(() => {
     if (!src) return;
 
-    // Check connection speed
-    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-    const effectiveType = connection?.effectiveType || '4g';
-    
-    // Determine image quality based on connection
+    // Check connection speed / data saver (si disponible)
     let optimizedUrl = src;
-    if (effectiveType === '2g' || effectiveType === '3g') {
-      // For slow connections, request lower quality
-      if (src.includes('?')) {
-        optimizedUrl = src + '&q=40';
-      } else {
-        optimizedUrl = src + '?q=40';
+    try {
+      const connection =
+        typeof navigator !== 'undefined'
+          ? (navigator.connection || navigator.mozConnection || navigator.webkitConnection)
+          : null;
+      const effectiveType = connection?.effectiveType || '4g';
+      const saveData = !!connection?.saveData;
+
+      const isVerySlow = effectiveType === 'slow-2g' || effectiveType === '2g' || saveData;
+      const isSlow = effectiveType === '3g';
+
+      if (isVerySlow || isSlow) {
+        const quality = isVerySlow ? '30' : '40';
+        if (src.includes('?')) {
+          optimizedUrl = `${src}&q=${quality}`;
+        } else {
+          optimizedUrl = `${src}?q=${quality}`;
+        }
       }
+    } catch {
+      // Fallback: garder l'URL d'origine si navigator.connection n'est pas dispo
     }
 
     setSrc(optimizedUrl);

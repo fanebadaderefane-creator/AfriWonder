@@ -82,21 +82,47 @@ Règle : éviter les états temporaires non sauvegardés pour tout ce qui doit s
 
 ---
 
-## 7. Checklist avant mise en production
+## 7. Vérification fonctionnalités Live et flux critiques (pré-production)
+
+### Live (streaming)
+- **Routes backend** : `/api/live`, `/api/live/:id`, `/api/live/:id/token`, `/api/live/start`, `/api/live/:id/end`, chat, gift, join/leave — tous exposés et alignés avec le client.
+- **Frontend** : `LiveStream.jsx` (créateur), `LiveView.jsx` (spectateur), `Lives.jsx` (liste) — flèche Retour présente sur toutes les pages Live.
+- **Agora** : si non configuré côté backend, le live peut afficher un message ; vérifier `AGORA_*` en production pour le vrai streaming vidéo/audio.
+
+### Flux récemment corrigés (à re-tester avant mise en prod)
+- **Recherche** : page Search — soumission du formulaire (Entrée + bouton « Rechercher »), onglets Tous/Vidéos/Utilisateurs/Produits, lien vers une vidéo utilise `?id=` (ouverture correcte de VideoView).
+- **VideoView** : accepte `?id=` et `?_videoId=` ; normalise l’URL en `?id=`.
+- **Create** : upload image vs vidéo (boutons Photo / Vidéo), prévisualisation image dans l’éditeur, écran Détails avec libellés « image » quand c’est une image, message de succès « Image publiée » / « Vidéo publiée ».
+- **Profil** : grille et vidéo à la une — affichage des **images** (media_type === 'image') via `thumbnail_url` ou `video_url`, pas seulement les frames vidéo.
+- **Upload** : timeout client 5 min (`UPLOAD_TIMEOUT_MS`), timeout serveur 5 min (`httpServer.timeout`, `keepAliveTimeout`, `headersTimeout`) pour éviter « timeout 30000ms exceeded » sur gros fichiers.
+- **Musique (Create)** : sélection fichier musique avec `FILE_ACCEPT_MUSIC` pour que le picker mobile affiche les fichiers audio.
+
+### Points à valider manuellement
+- [ ] Recherche : taper un mot-clé, cliquer « Rechercher » ou Entrée → résultats affichés ; cliquer sur une vidéo → ouverture de la lecture.
+- [ ] Create : choisir Photo → prévisualisation image ; choisir Vidéo → prévisualisation vidéo ; publier → bon message (Image/Vidéo publiée).
+- [ ] Profil : publications image et vidéo affichent bien une miniature (pas de cadre vide pour les images).
+- [ ] Upload vidéo lourd : pas de timeout avant 5 min (ou augmenter si besoin).
+- [ ] Live : démarrer un live (si Agora configuré), rejoindre en spectateur, chat, dons (si wallet/paiement configurés).
+
+---
+
+## 8. Checklist avant mise en production
 
 ### Automatique
-`npm run pre-production-checklist`
+`npm run pre-production-checklist`  
+`npm run pre-launch-check` (backend + frontend + env)
 
 ### Manuelle
 - [ ] `VITE_API_URL` défini (frontend pointe vers l’API réelle).
 - [ ] `VITE_SENTRY_DSN` défini pour le suivi des erreurs (recommandé).
-- [ ] Backend : variables d’environnement (DB, JWT, R2, CORS, etc.) configurées sur l’hébergeur.
-- [ ] Tests manuels : cold start, offline, timeout, déconnexion (voir §5).
+- [ ] Backend : variables d’environnement (DB, JWT, R2, CORS, Agora si live, etc.) configurées sur l’hébergeur.
+- [ ] Proxy / hébergeur : timeout ≥ 5 min pour les routes d’upload si vous utilisez un reverse proxy (nginx, Vercel, etc.).
+- [ ] Tests manuels : cold start, offline, timeout, déconnexion (voir §5) + flux §7.
 - [ ] Aucune clé API ou secret dans le code source ou le bundle client.
 
 ---
 
-## 8. Vision produit
+## 9. Vision produit
 
 > Une application instable détruit la confiance ; une application stable construit un écosystème.
 

@@ -23,12 +23,18 @@ export default function VideoView() {
   const [isLiked, setIsLiked] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
-  // Get video ID from URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const id = params.get('id');
+    const id = params.get('id') || params.get('_videoId');
     if (id) {
       setVideoId(id);
+      // Normaliser l’URL avec id si on est arrivé avec _videoId
+      if (params.get('_videoId') && !params.get('id')) {
+        const next = new URLSearchParams(window.location.search);
+        next.delete('_videoId');
+        next.set('id', id);
+        window.history.replaceState({}, '', window.location.pathname + '?' + next.toString());
+      }
     } else {
       navigate(createPageUrl('Home'));
     }

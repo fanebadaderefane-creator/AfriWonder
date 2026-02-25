@@ -1039,8 +1039,14 @@ function VideoCardContent({
       style={{ touchAction: 'pan-y' }}
     >
       <div className="absolute inset-0 overflow-hidden">
-      {/* ================= VIDEO ================= */}
-      {videoUrl ? (
+      {/* ================= IMAGE (photo) ou VIDEO ================= */}
+      {video.media_type === 'image' ? (
+        <img
+          src={getVideoPlaybackUrl(video.video_url) || video.video_url}
+          alt={video.title || ''}
+          className="absolute top-0 left-0 w-full h-full object-contain bg-black"
+        />
+      ) : videoUrl ? (
       <video
         key={`${video.id}-${videoUrl}`}
         ref={videoRef}
@@ -1128,8 +1134,8 @@ function VideoCardContent({
           <p className="text-white text-center mt-4 font-medium ios-text-render">VidÃ©o indisponible</p>
           <p className="text-white/70 text-sm text-center mt-1 ios-text-render">URL de vidÃ©o invalide</p>
         </div>
-      )}
-      {videoUrl && enablePreviewScrub && (
+      ) }
+      {video.media_type !== 'image' && videoUrl && enablePreviewScrub && (
         <video
           ref={previewVideoRef}
           src={videoUrl}
@@ -1181,7 +1187,8 @@ function VideoCardContent({
         style={{ touchAction: 'pan-y' }}
       />
 
-      {/* ================= PLAY / PAUSE ================= */}
+      {/* ================= PLAY / PAUSE (vidéo uniquement) ================= */}
+      {video.media_type !== 'image' && (
       <AnimatePresence>
         {showPlayIcon && (
           <motion.div
@@ -1201,10 +1208,12 @@ function VideoCardContent({
           </motion.div>
         )}
       </AnimatePresence>
+      )}
 
-      {/* ================= BARRE DE PROGRESSION ================= */}
+      {/* ================= BARRE DE PROGRESSION (vidéo uniquement) ================= */}
+      {video.media_type !== 'image' && (
       <div className={cn(
-        "absolute left-0 right-0 bottom-[100px] px-3 z-[95] transition-opacity duration-300",
+        "absolute left-0 right-0 bottom-24 px-3 z-[95] transition-opacity duration-300",
         hideActions ? "opacity-0 pointer-events-none" : "opacity-100"
       )}>
         <div className="flex items-center gap-2">
@@ -1283,10 +1292,11 @@ function VideoCardContent({
           </span>
         </div>
       </div>
+      )}
 
       {/* ================= ACTIONS DROITE (style TikTok) ================= */}
       <div className={cn(
-        "absolute right-3 bottom-28 flex flex-col items-center gap-4 z-[90] transition-opacity duration-300",
+        "absolute right-3 bottom-40 flex flex-col items-center gap-4 z-[90] transition-opacity duration-300",
         hideActions ? "opacity-0 pointer-events-none" : "opacity-100"
       )}>
         {/* Avatar */}
@@ -1434,14 +1444,16 @@ function VideoCardContent({
             <button
               type="button"
               onClick={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 onTip();
               }}
-              className="flex items-center justify-center w-7 h-7 touch-manipulation"
+              className="flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11 touch-manipulation active:scale-95 transition-transform select-none"
+              aria-label="Soutenir"
             >
-              <DollarSign className="w-6 h-6 text-yellow-400" />
+              <DollarSign className="w-7 h-7 text-yellow-400 pointer-events-none" />
             </button>
-            <span className="text-white text-xs font-semibold leading-tight min-h-[16px]"></span>
+            <span className="text-white text-xs font-semibold leading-tight min-h-[16px]">Soutenir</span>
           </div>
         )}
       </div>

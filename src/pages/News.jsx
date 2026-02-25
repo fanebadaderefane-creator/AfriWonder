@@ -46,7 +46,7 @@ const LANG_OPTIONS = [
   { id: 'PT', code: 'pt', labelKey: null, label: 'Português' },
 ];
 
-// Données fictives pour que l'interface ne soit pas vide (production ready)
+// Fallback data when API returns empty
 const MOCK_FEATURED = {
   id: 'mock-featured-satellite',
   slug: 'mock-mali-satellite',

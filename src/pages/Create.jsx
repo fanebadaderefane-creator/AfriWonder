@@ -35,7 +35,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { createPageUrl } from "@/utils";
 
-import { FILE_ACCEPT_IMAGES, FILE_ACCEPT_MEDIA } from '@/lib/fileAccept';
+import { FILE_ACCEPT_IMAGES, FILE_ACCEPT_VIDEOS, FILE_ACCEPT_MUSIC } from '@/lib/fileAccept';
 
 import VideoEditor from '../components/video/VideoEditor';
 
@@ -103,7 +103,8 @@ export default function Create() {
   const queryClient = useQueryClient();
   const isAdMode = searchParams.get('mode') === 'ad';
   const adCampaignId = searchParams.get('campaignId');
-  const fileInputRef = useRef(null);
+  const fileInputImageRef = useRef(null);
+  const fileInputVideoRef = useRef(null);
 
   const cameraInputRef = useRef(null);
 
@@ -455,14 +456,7 @@ export default function Create() {
 
     if (file) {
       let normalizedFile = file;
-      if (file.type.startsWith('image/')) {
-        try {
-          toast.info('Conversion de l’image en vidéo...');
-          normalizedFile = await convertImageToVideoFile(file);
-        } catch (error) {
-          toast.error(error?.message || "Impossible d'utiliser cette image");
-          return;
-        }
+      if (file.type.startsWith('image/')) {          normalizedFile = file;
       } else if (!file.type.startsWith('video/')) {
         toast.error('Veuillez sélectionner une image ou une vidéo');
         return;
@@ -1062,7 +1056,7 @@ export default function Create() {
       setUploadProgress(0);
       try {
         const uploadResult = await api.upload.video(selectedFile, (p) =>
-          setUploadProgress(Math.min(p, 90))
+          setUploadProgress((prev) => Math.max(prev, Math.min(p, 90)))
         );
         const videoUrl = uploadResult?.file_url || uploadResult?.url || '';
         if (!videoUrl) {
@@ -1110,9 +1104,7 @@ export default function Create() {
         setUploadProgress(50);
 
         const hashtagsText = videoData.hashtags?.length > 0
-
           ? '\n\n#' + videoData.hashtags.join(' #')
-
           : '';
 
         const fullDescription = [videoData.description || '', hashtagsText].filter(Boolean).join('');
@@ -1166,18 +1158,20 @@ export default function Create() {
     setStep('uploading');
     setUploadProgress(0);
 
-    let progressInterval = null;
     try {
-      progressInterval = setInterval(() => {
-        setUploadProgress((prev) => Math.min(prev + 10, 90));
-      }, 300);
-
       let videoUrl = '';
+      const isImage = selectedFile?.type?.startsWith('image/');
       try {
-        const uploadResult = await api.upload.video(selectedFile, (progress) => {
-          setUploadProgress(Math.min(progress, 90));
-        });
-        videoUrl = uploadResult?.file_url ?? uploadResult?.url ?? '';
+        if (isImage) {
+          const imageResult = await api.upload.image(selectedFile);
+          videoUrl = imageResult?.file_url ?? imageResult?.url ?? '';
+          setUploadProgress(90);
+        } else {
+          const uploadResult = await api.upload.video(selectedFile, (progress) => {
+            setUploadProgress((prev) => Math.max(prev, Math.min(progress, 90)));
+          });
+          videoUrl = uploadResult?.file_url ?? uploadResult?.url ?? '';
+        }
       } catch (uploadError) {
         const status = uploadError?.response?.status;
         const rawMsg = uploadError?.response?.data?.error ?? uploadError?.response?.data?.message ?? (uploadError && typeof uploadError === 'object' && 'message' in uploadError ? String(uploadError.message) : '');
@@ -1213,11 +1207,12 @@ export default function Create() {
         visibility: videoData.visibility || 'public',
         hashtags: videoData.hashtags?.length > 0 ? videoData.hashtags : undefined,
         music_title: videoData.music_title || undefined,
+        media_type: isImage ? 'image' : 'video',
       };
 
       await api.videos.create(videoRecord);
 
-      toast.success('Vidéo publiée avec succès ! 🎉');
+      toast.success(isImage ? 'Image publiée avec succès ! 🎉' : 'Vidéo publiée avec succès ! 🎉');
       setTimeout(() => {
         try {
           navigate(createPageUrl('Home'));
@@ -1231,8 +1226,6 @@ export default function Create() {
       if (import.meta.env.DEV) console.error('[Create] Publish error:', error);
       toast.error('Erreur lors de la publication: ' + errMsg);
       setStep('details');
-    } finally {
-      if (progressInterval) clearInterval(progressInterval);
     }
   };
 
@@ -1286,37 +1279,59 @@ export default function Create() {
 
               <div className="w-full max-w-sm space-y-4">
 
-                {/* Upload Video from Gallery */}
+                <motion.button
+
+                  whileTap={{ scale: 0.98 }}
+
+                  onClick={() => fileInputImageRef.current?.click()}
+
+                  className="w-full p-6 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-600 text-white flex items-center gap-4 shadow-lg shadow-emerald-500/30"
+
+                >
+
+                  <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center">
+
+                    <Upload className="w-7 h-7" />
+
+                  </div>
+
+                  <div className="text-left">
+
+                    <p className="font-semibold">Photo</p>
+
+                    <p className="text-white/70 text-sm">Choisir une image depuis la galerie</p>
+
+                  </div>
+
+                </motion.button>
 
                 <motion.button
 
                   whileTap={{ scale: 0.98 }}
 
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => fileInputVideoRef.current?.click()}
 
-                  className="w-full p-8 rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex flex-col items-center gap-4 shadow-lg shadow-blue-500/30"
+                  className="w-full p-6 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center gap-4 shadow-lg shadow-blue-500/30"
 
                 >
 
-                  <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center">
+                  <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center">
 
-                    <Upload className="w-10 h-10" />
+                    <Upload className="w-7 h-7" />
 
                   </div>
 
-                  <div>
+                  <div className="text-left">
 
-                    <p className="text-xl font-bold">Importer un média</p>
+                    <p className="font-semibold">Vidéo</p>
 
-                    <p className="text-white/70 text-sm">Image ou vidéo depuis votre galerie</p>
+                    <p className="text-white/70 text-sm">Choisir une vidéo depuis la galerie</p>
 
                   </div>
 
                 </motion.button>
 
 
-
-                {/* Record Video with Camera */}
 
                 <motion.button
 
@@ -1345,8 +1360,6 @@ export default function Create() {
                 </motion.button>
 
 
-
-                {/* Go Live */}
 
                 <motion.button
 
@@ -1382,11 +1395,25 @@ export default function Create() {
 
             <input
 
-              ref={fileInputRef}
+              ref={fileInputImageRef}
 
               type="file"
 
-              accept={FILE_ACCEPT_MEDIA}
+              accept={FILE_ACCEPT_IMAGES}
+
+              onChange={handleFileSelect}
+
+              className="hidden"
+
+            />
+
+            <input
+
+              ref={fileInputVideoRef}
+
+              type="file"
+
+              accept={FILE_ACCEPT_VIDEOS}
 
               onChange={handleFileSelect}
 
@@ -1739,7 +1766,7 @@ export default function Create() {
 
               type="file"
 
-              accept="audio/*"
+              accept={FILE_ACCEPT_MUSIC}
 
               onChange={async (e) => {
 
@@ -2094,6 +2121,8 @@ export default function Create() {
 
                 previewUrl={previewUrl}
 
+                isImage={selectedFile?.type?.startsWith('image/')}
+
                 initialData={videoData}
 
                 onVideoDataChange={(updates) => {
@@ -2149,7 +2178,11 @@ export default function Create() {
                 </Button>
 
                 <h1 className="text-lg font-bold">
-                  {isAdMode ? 'Vidéo pour la pub' : editingVideoId ? 'Modifier la vidéo' : 'Détails'}
+                  {isAdMode
+                    ? (selectedFile?.type?.startsWith('image/') ? 'Image pour la pub' : 'Vidéo pour la pub')
+                    : editingVideoId
+                      ? 'Modifier la vidéo'
+                      : 'Détails'}
                 </h1>
 
                 <Button
@@ -2176,11 +2209,13 @@ export default function Create() {
 
                 <div className="w-24 h-32 rounded-xl overflow-hidden bg-gray-100">
 
-                  {previewUrl && (
+                  {previewUrl && (selectedFile?.type?.startsWith('image/') ? (
 
-                    <video 
+                    <img
 
-                      src={previewUrl} 
+                      src={previewUrl}
+
+                      alt="Aperçu"
 
                       className="w-full h-full object-cover"
 
@@ -2202,7 +2237,33 @@ export default function Create() {
 
                     />
 
-                  )}
+                  ) : (
+
+                    <video
+
+                      src={previewUrl}
+
+                      className="w-full h-full object-cover"
+
+                      style={{
+
+                        filter: videoData.filter === 'Normal' || !videoData.filter ? 'none' :
+
+                                videoData.filter === 'Noir & Blanc' ? 'grayscale(100%)' :
+
+                                videoData.filter === 'Sépia' ? 'sepia(100%)' :
+
+                                videoData.filter === 'Vibrant' ? 'saturate(200%)' :
+
+                                videoData.filter === 'Foncé' ? 'brightness(0.75)' :
+
+                                videoData.filter === 'Lumineux' ? 'brightness(1.25)' : 'none'
+
+                      }}
+
+                    />
+
+                  ))}
 
                 </div>
 
@@ -2211,7 +2272,7 @@ export default function Create() {
 
                     <Textarea
 
-                      placeholder="Décrivez votre vidéo..."
+                      placeholder={selectedFile?.type?.startsWith('image/') ? 'Décrivez votre image...' : 'Décrivez votre vidéo...'}
 
                       value={videoData.description}
 
@@ -2236,7 +2297,7 @@ export default function Create() {
 
                 <Input
 
-                  placeholder="Donnez un titre à votre vidéo"
+                  placeholder={selectedFile?.type?.startsWith('image/') ? 'Donnez un titre à votre image' : 'Donnez un titre à votre vidéo'}
 
                   value={videoData.title}
 
@@ -2632,11 +2693,10 @@ export default function Create() {
 
       </AnimatePresence>
 
-      {/* Hidden Music File Input - Accessible from all steps */}
       <input
         ref={musicInputRef}
         type="file"
-        accept="audio/*"
+        accept={FILE_ACCEPT_MUSIC}
         style={{ display: 'none' }}
         onChange={async (e) => {
           const file = e.target.files?.[0];

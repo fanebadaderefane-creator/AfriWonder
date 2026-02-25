@@ -28,7 +28,12 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
 router.post('/', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
-    const { video_id: videoId, watch_time_seconds: watchTimeSeconds } = req.body;
+    const {
+      video_id: videoId,
+      watch_time_seconds: watchTimeSeconds,
+      watch_percent: watchPercent,
+      completed: completedBody,
+    } = req.body;
 
     if (!videoId) {
       return res.status(400).json({ success: false, error: 'video_id requis' });
@@ -36,11 +41,15 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 
     const video = await prisma.video.findUnique({
       where: { id: videoId },
-      select: { id: true, views: true, creator_id: true },
+      select: { id: true, views: true, creator_id: true, category: true },
     });
     if (!video) {
       return res.status(404).json({ success: false, error: 'Vidéo introuvable' });
     }
+
+    const watchSec = watchTimeSeconds != null ? Number(watchTimeSeconds) : undefined;
+    const pct = watchPercent != null ? Number(watchPercent) : undefined;
+    const completed = completedBody != null ? Boolean(completedBody) : (pct != null && pct >= 80);
 
     const existing = await prisma.viewHistory.findFirst({
       where: { user_id: userId, video_id: videoId },
@@ -48,19 +57,28 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
     if (existing) {
       await prisma.viewHistory.update({
         where: { id: existing.id },
-        data: { created_at: new Date() },
+        data: {
+          ...(watchSec != null && { watch_seconds: Math.round(watchSec) }),
+          ...(pct != null && { watch_percent: pct }),
+          completed,
+          ...(video.category != null && { category: video.category }),
+          updated_at: new Date(),
+        },
       });
     } else {
       await prisma.viewHistory.create({
-        data: { user_id: userId, video_id: videoId },
+        data: {
+          user_id: userId,
+          video_id: videoId,
+          ...(watchSec != null && { watch_seconds: Math.round(watchSec) }),
+          ...(pct != null && { watch_percent: pct }),
+          completed,
+          ...(video.category != null && { category: video.category }),
+        },
       });
     }
-    await prisma.video.update({
-      where: { id: videoId },
-      data: { views: video.views + 1 },
-    });
-
-    res.json({ success: true, data: { video_id: videoId, views: video.views + 1 } });
+    // Ne pas incrémenter views ici : POST /videos/:id/view (recordView) est la source de vérité pour les vues
+    res.json({ success: true, data: { video_id: videoId } });
   } catch (error: unknown) {
     next(error);
   }

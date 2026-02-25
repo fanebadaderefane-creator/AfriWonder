@@ -47,14 +47,11 @@ export default function Discover() {
       try {
         const u = await api.auth.me();
         setUser(u);
-      } catch (_e) {
-        console.log('Non authentifié');
-      }
+      } catch (_e) {}
     };
     getUser();
   }, []);
 
-  // Fetch trending videos
   const { data: trendingVideos = [] } = useQuery({
     queryKey: ['trending-videos'],
     queryFn: async () => {
@@ -63,7 +60,6 @@ export default function Discover() {
     },
   });
 
-  // Recommended videos (personalized)
   const { data: recommendedVideos = [], isLoading: loadingRecommended } = useQuery({
     queryKey: ['recommendedVideos', user?.id],
     queryFn: () => RecommendationEngine.getPersonalizedFeed(user.id, 20),
@@ -71,28 +67,24 @@ export default function Discover() {
     staleTime: 5 * 60 * 1000
   });
 
-  // Creator recommendations
   const { data: creatorRecommendations = [], isLoading: _loadingCreators } = useQuery({
     queryKey: ['creatorRecommendations', user?.id],
     queryFn: () => RecommendationEngine.getCreatorRecommendations(user.id, 10),
     enabled: !!user?.id
   });
 
-  // Course recommendations
   const { data: courseRecommendations = [], isLoading: _loadingCourses } = useQuery({
     queryKey: ['courseRecommendations', user?.id],
     queryFn: () => RecommendationEngine.getCourseRecommendations(user.id, 10),
     enabled: !!user?.id
   });
 
-  // Event recommendations
   const { data: eventRecommendations = [], isLoading: _loadingEvents } = useQuery({
     queryKey: ['eventRecommendations', user?.id],
     queryFn: () => RecommendationEngine.getEventRecommendations(user.id, 10),
     enabled: !!user?.id
   });
 
-  // Fetch products
   const { data: products = [] } = useQuery({
     queryKey: ['products'],
     queryFn: async () => {
@@ -101,7 +93,6 @@ export default function Discover() {
     },
   });
 
-  // Fetch creators
   const { data: creatorsRaw = [] } = useQuery({
     queryKey: ['creators'],
     queryFn: () => api.entities.User.list('-created_date', 10),
@@ -111,7 +102,6 @@ export default function Discover() {
     [creatorsRaw]
   );
 
-  // Fetch category videos when category selected
   const { data: filteredVideos = [] } = useQuery({
     queryKey: ['category-videos', selectedCategory],
     queryFn: async () => {
@@ -122,7 +112,6 @@ export default function Discover() {
     enabled: !!selectedCategory && selectedCategory !== 'trending'
   });
 
-  // Fetch viral videos
   const { data: viralVideos = [] } = useQuery({
     queryKey: ['viral-videos'],
     queryFn: async () => {
@@ -139,13 +128,11 @@ export default function Discover() {
     }
   });
 
-  // Fetch challenges
   const { data: challenges = [] } = useQuery({
     queryKey: ['challenges'],
     queryFn: () => api.entities.Challenge.filter({ status: 'active' }, '-participants_count', 10)
   });
 
-  // Fetch trending creators
   const { data: trendingCreators = [] } = useQuery({
     queryKey: ['trending-creators'],
     queryFn: async () => {
@@ -208,7 +195,6 @@ export default function Discover() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Header */}
       <div className="sticky top-0 z-40 bg-white border-b border-gray-100">
         <div className="px-4 py-3">
           <div className="relative">
@@ -254,12 +240,9 @@ export default function Discover() {
         </Tabs>
       </div>
 
-      {/* Content */}
       <div className="p-4">
-        {/* Explore Tab */}
         {activeTab === 'explore' && (
           <div className="space-y-6">
-            {/* Categories */}
             <div className="overflow-x-auto -mx-4 px-4 pb-2 scrollbar-hide">
               <div className="flex gap-3">
                 {categories.map((cat, index) => {
@@ -287,7 +270,6 @@ export default function Discover() {
               </div>
             </div>
 
-            {/* Viral Videos */}
             <div>
               <h2 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
                 <Flame className="w-5 h-5 text-blue-600" />
@@ -305,8 +287,9 @@ export default function Discover() {
                       transition={{ delay: index * 0.03 }}
                       className="relative aspect-[9/16] bg-gray-200 rounded-lg overflow-hidden"
                     >
-                      {/* Priorité : frame vidéo si video_url (évite cartes noires quand pas de miniature), sinon miniature, sinon placeholder */}
-                      {video.video_url ? (
+                      {video.media_type === 'image' ? (
+                        <img src={getAbsoluteImageUrl(video.thumbnail_url || video.video_url)} alt={video.title} className="w-full h-full object-cover" />
+                      ) : video.video_url ? (
                         <VideoFrameThumbnail videoUrl={video.video_url} thumbnailUrl={video.thumbnail_url} alt={video.title} />
                       ) : isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
                         <img src={getAbsoluteImageUrl(video.thumbnail_url)} alt={video.title} className="w-full h-full object-cover" />
@@ -325,7 +308,6 @@ export default function Discover() {
               </div>
             </div>
 
-            {/* Challenges */}
             {challenges.length > 0 && (
               <div>
                 <h2 className="font-bold text-gray-800 mb-3">Défis tendances</h2>
@@ -350,7 +332,6 @@ export default function Discover() {
               </div>
             )}
 
-            {/* Trending Hashtags */}
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <TrendingUp className="w-5 h-5 text-blue-600" />
@@ -376,7 +357,6 @@ export default function Discover() {
               </div>
             </div>
 
-            {/* Category Videos or Trending */}
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h2 className="font-bold text-gray-800">
@@ -405,8 +385,9 @@ export default function Discover() {
                       transition={{ delay: index * 0.03 }}
                       className="relative aspect-[9/16] bg-gray-200 rounded-lg overflow-hidden"
                     >
-                      {/* Priorité : frame vidéo si video_url (évite cartes noires), sinon miniature, sinon placeholder */}
-                      {video.video_url ? (
+                      {video.media_type === 'image' ? (
+                        <img src={getAbsoluteImageUrl(video.thumbnail_url || video.video_url)} alt={video.title} className="w-full h-full object-cover" />
+                      ) : video.video_url ? (
                         <VideoFrameThumbnail videoUrl={video.video_url} thumbnailUrl={video.thumbnail_url} alt={video.title} />
                       ) : isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
                         <img src={getAbsoluteImageUrl(video.thumbnail_url)} alt={video.title} className="w-full h-full object-cover" />
@@ -422,7 +403,6 @@ export default function Discover() {
               </div>
             </div>
 
-            {/* Trending Creators */}
             <div>
               <h2 className="font-bold text-gray-800 mb-3">Créateurs tendances</h2>
               <div className="space-y-2">
@@ -481,7 +461,6 @@ export default function Discover() {
           </div>
         )}
 
-        {/* Recommended Tab */}
         {activeTab === 'recommended' && (
           <div className="space-y-4">
             <h2 className="font-bold text-gray-800 flex items-center gap-2 mb-4">
@@ -506,8 +485,9 @@ export default function Discover() {
                       transition={{ delay: idx * 0.03 }}
                       className="relative aspect-[9/16] bg-gray-200 rounded-lg overflow-hidden"
                     >
-                      {/* Priorité : frame vidéo si video_url (évite cartes noires), sinon miniature, sinon placeholder */}
-                      {video.video_url ? (
+                      {video.media_type === 'image' ? (
+                        <img src={getAbsoluteImageUrl(video.thumbnail_url || video.video_url)} alt={video.title} className="w-full h-full object-cover" />
+                      ) : video.video_url ? (
                         <VideoFrameThumbnail videoUrl={video.video_url} thumbnailUrl={video.thumbnail_url} alt={video.title} />
                       ) : isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
                         <img src={getAbsoluteImageUrl(video.thumbnail_url)} alt={video.title} className="w-full h-full object-cover" />
@@ -527,7 +507,6 @@ export default function Discover() {
               </div>
             )}
 
-            {/* Recommended Creators */}
             {creatorRecommendations.length > 0 && (
               <div className="mt-8">
                 <h3 className="font-bold text-gray-800 mb-3">Créateurs à découvrir</h3>
@@ -553,7 +532,6 @@ export default function Discover() {
               </div>
             )}
 
-            {/* Recommended Courses */}
             {courseRecommendations.length > 0 && (
               <div className="mt-8">
                 <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
@@ -577,7 +555,6 @@ export default function Discover() {
               </div>
             )}
 
-            {/* Recommended Events */}
             {eventRecommendations.length > 0 && (
               <div className="mt-8">
                 <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
@@ -603,7 +580,6 @@ export default function Discover() {
           </div>
         )}
 
-        {/* Shop Tab */}
         {activeTab === 'shop' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -629,7 +605,6 @@ export default function Discover() {
           </div>
         )}
 
-        {/* Creators Tab */}
         {activeTab === 'creators' && (
           <div className="space-y-3">
             {creators.map((creator, index) => {

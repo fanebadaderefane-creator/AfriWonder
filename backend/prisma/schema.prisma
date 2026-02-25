@@ -251,6 +251,7 @@ model Video {
   description           String?
   video_url             String
   thumbnail_url         String?
+  media_type            String?               @default("video") // "video" | "image" — affichage feed
   creator_id            String
   visibility            String                @default("public")
   category              String?
@@ -541,17 +542,21 @@ model Save {
 
 
 model ViewHistory {
-  id         String   @id @default(uuid())
-  user_id    String
-  video_id   String
-  completed  Boolean  @default(false)
-  category   String?
-  created_at DateTime @default(now())
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  video      Video    @relation(fields: [video_id], references: [id], onDelete: Cascade)
+  id             String   @id @default(uuid())
+  user_id        String
+  video_id       String
+  completed      Boolean  @default(false)
+  watch_seconds  Int?     // Pour l'algo de recommandation (rétention par user)
+  watch_percent  Float?
+  category       String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  video          Video    @relation(fields: [video_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@index([video_id])
+  @@index([user_id, updated_at])
 }
 
 /// Comptage vues enterprise: 1 vue / 30 min / user|device / vidéo. Backend source de vérité.

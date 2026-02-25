@@ -115,8 +115,16 @@ export default defineConfig({
   },
   // Mobile optimization + proxy API en dev (évite CORS front 5173 → backend 3000)
   server: {
-    host: '0.0.0.0', // Permet accès depuis mobile sur réseau local
+    // `true` = écoute sur IPv4 + IPv6 (meilleure compat Firefox pour ws://localhost)
+    host: true,
     port: 5173,
+    strictPort: true,
+    hmr: {
+      protocol: 'ws',
+      host: 'localhost',
+      port: 5173,
+      clientPort: 5173,
+    },
     headers: {
       // Empêche le navigateur de réutiliser des chunks dev potentiellement corrompus.
       'Cache-Control': 'no-store',

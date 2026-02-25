@@ -31,7 +31,19 @@ if (!connectionString) {
   throw new Error('DATABASE_URL is not defined in environment variables');
 }
 
-const pool = new Pool({ connectionString });
+// Pool size: en production avec beaucoup de nœuds, garder par processus raisonnable (ex. 10–25).
+// Total connexions ≈ DATABASE_POOL_MAX × nombre de processus (PM2 instances). Ne pas dépasser max_connections du serveur PostgreSQL (ou PgBouncer).
+const poolMaxEnv = parseInt(process.env.DATABASE_POOL_MAX || '', 10);
+const poolMax = Number.isFinite(poolMaxEnv) && poolMaxEnv > 0
+  ? Math.min(poolMaxEnv, 100)
+  : (process.env.NODE_ENV === 'production' ? 20 : 10);
+
+const pool = new Pool({
+  connectionString,
+  max: poolMax,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+});
 const adapter = new PrismaPg(pool);
 
 const prisma = new PrismaClient({

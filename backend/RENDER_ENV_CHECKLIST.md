@@ -28,8 +28,8 @@ Copie les **valeurs** depuis ton fichier `backend/.env` (ne les note pas ici pou
 ## Base de données / cache (si utilisé)
 
 - [ ] `SUPABASE_URL` (si utilisé)
-- [ ] `REDIS_URL` — **À ne mettre que si tu as un Redis sur Render** (addon ou service externe). Sinon **supprime cette variable** sur Render pour éviter que l’app reste bloquée au démarrage (connexion impossible).
-
+- [ ] `REDIS_URL` — Recommandé en prod (cache + rate limit + Socket.io). Upstash / Redis Cloud / Railway. Voir docs/PRODUCTION_1M_CHECKLIST.md §1. Si absent, pas de cache distribué.
+- [ ] `DATABASE_POOL_MAX` — Optionnel. Pour 1M+ users : 20. Voir docs/PRODUCTION_1M_CHECKLIST.md §2.éviter que l’app 
 ## Envoi d’emails
 
 - [ ] `SENDGRID_API_KEY`

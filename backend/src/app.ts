@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 
 // Import middleware sécurité
@@ -198,6 +199,8 @@ app.get('/health/ready', async (req, res) => {
 
 // Middleware (CORP cross-origin pour permettre au front d’utiliser les réponses ex. proxy média)
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+// Compression gzip pour réduire bande passante et latence (charges massives)
+app.use(compression());
 // Webhooks paiement exigent body brut pour vérification signature (avant express.json)
 app.use('/api/payments/stripe/webhook', express.raw({ type: 'application/json' }));
 app.use('/api/payments/orange-money/webhook', express.raw({ type: 'application/json' }));

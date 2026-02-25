@@ -62,6 +62,13 @@ export const getCacheStrategy = (isSlowConnection) => {
     gcTime: isSlowConnection ? 600000 : 300000,
     refetchOnWindowFocus: !isSlowConnection,
     retry: isSlowConnection ? 3 : 1,
+    retryDelay: (attempt) => {
+      // Connexions lentes : backoff plus long pour laisser le temps au réseau de revenir
+      if (isSlowConnection) {
+        return Math.min(2000 * (attempt + 1), 5000);
+      }
+      return 500 * (attempt + 1);
+    },
   };
 };
 
