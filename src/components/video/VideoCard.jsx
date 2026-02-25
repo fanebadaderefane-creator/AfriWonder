@@ -120,11 +120,20 @@ function VideoCardContent({
     ('ontouchstart' in window || navigator.maxTouchPoints > 0);
   const enablePreviewScrub = !isIOS && !isTouchDevice;
   
-  // Synchroniser avec la prop isFollowing
+  // Synchroniser avec les props (abonnement + likes)
   useEffect(() => {
     setFollowing(isFollowing || false);
   }, [isFollowing]);
+
+  // État local pour like (toggle immédiat, 1 like max par utilisateur)
+  const [localIsLiked, setLocalIsLiked] = useState(!!isLiked);
   const [likeCount, setLikeCount] = useState(video.likes || 0);
+
+  // Quand on change de vidéo, on resynchronise sur l'état serveur
+  useEffect(() => {
+    setLocalIsLiked(!!isLiked);
+    setLikeCount(video.likes || 0);
+  }, [video.id]);
   const [isAnimating, setIsAnimating] = useState(false);
   const [showParticles, setShowParticles] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
@@ -314,7 +323,6 @@ function VideoCardContent({
       return;
     }
     
-    setLikeCount(video.likes || 0);
     setShowFullDescription(false);
     setLoadError(false);
     setIsReadyToPlay(false);
@@ -336,12 +344,13 @@ function VideoCardContent({
     }
   }, [video.id, videoUrl]);
   
-  // Handler pour le like avec mise Ã  jour optimiste du compteur et animation
+  // Handler pour le like avec compteur local + animation (le parent s'occupe juste de l'API)
   const handleLike = () => {
-    const wasLiked = isLiked;
+    const wasLiked = localIsLiked;
+    const nextLiked = !wasLiked;
     
-    // Animation seulement si on like (pas si on unlike)
-    if (!wasLiked) {
+    // Animation + record view seulement si on passe à "liked"
+    if (nextLiked) {
       setIsAnimating(true);
       setShowParticles(true);
       const startTime = video.start_time || 0;
@@ -360,16 +369,13 @@ function VideoCardContent({
       setTimeout(() => setIsAnimating(false), 600);
       setTimeout(() => setShowParticles(false), 800);
     }
-    
-    // Mise Ã  jour optimiste du compteur
-    if (wasLiked) {
-      setLikeCount(prev => Math.max(0, prev - 1));
-    } else {
-      setLikeCount(prev => prev + 1);
-    }
-    
-    // Appeler le callback parent
-    onLike();
+
+    // Mettre à jour l'état local (toggle 1 like / dislike)
+    setLocalIsLiked(nextLiked);
+    setLikeCount((prev) => prev + (nextLiked ? 1 : -1));
+
+    // Appeler le callback parent (Home gère l'appel API)
+    onLike?.(video);
   };
 
   /* ================= INIT ================= */
@@ -1011,6 +1017,25 @@ function VideoCardContent({
 
   const handleMuteToggleClick = () => {
     const el = videoRef.current;
+
+    // Cas particulier: autoplay forcé en muet (fallback) alors que la préférence globale n'est pas "muted".
+    // Dans ce cas, le premier clic doit juste enlever le mute du player (sans changer la préférence globale).
+    if (autoplayMutedFallback && !isMuted) {
+      setAutoplayMutedFallback(false);
+      if (!el || !hasAutoPlayedRef.current) return;
+      try {
+        el.muted = false;
+        el.defaultMuted = false;
+        el.volume = 1;
+      } catch (_) {}
+      if (el.paused && !loadError && isActive && !userPausedRef.current) {
+        try {
+          el.play();
+        } catch (_) {}
+      }
+      return;
+    }
+
     const nextMuted = !isMuted;
 
     setAutoplayMutedFallback(false);
@@ -1318,7 +1343,20 @@ function VideoCardContent({
         </div>
 
         <div className="flex flex-col items-center gap-0.5 relative">
-          <button onClick={handleLike} className="flex items-center justify-center w-7 h-7 relative z-10">
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleLike();
+            }}
+            onTouchStart={(e) => {
+              // Empêche qu'un léger mouvement de doigt déclenche un scroll + snap vers la vidéo suivante
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            className="flex items-center justify-center w-7 h-7 relative z-10 touch-manipulation"
+            style={{ touchAction: 'none' }}
+          >
             <motion.div
               animate={isAnimating ? {
                 scale: [1, 1.3, 1],
@@ -1332,7 +1370,7 @@ function VideoCardContent({
               <Heart
                 className={cn(
                   "w-7 h-7 transition-colors",
-                  isLiked ? "text-red-500 fill-red-500" : "text-white"
+                  localIsLiked ? "text-red-500 fill-red-500" : "text-white"
                 )}
               />
             </motion.div>
@@ -1430,7 +1468,7 @@ function VideoCardContent({
             onClick={handleMuteToggleClick}
             className="flex items-center justify-center w-7 h-7"
           >
-            {isMuted ? (
+            {isMuted || autoplayMutedFallback ? (
               <VolumeX className="w-6 h-6 text-white" />
             ) : (
               <Volume2 className="w-6 h-6 text-white" />

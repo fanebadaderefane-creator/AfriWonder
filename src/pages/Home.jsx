@@ -62,17 +62,25 @@ export default function Home() {
 
   const { isSlowConnection } = useNetworkStatus();
   const cacheStrategy = getCacheStrategy(isSlowConnection);
+  const homeCacheStrategy = {
+    ...cacheStrategy,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
+  };
 
   const { data: earlyAccessConfig } = useQuery({
     queryKey: ['early-access-config'],
     queryFn: () => api.earlyAccess.getConfig(),
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const { data: feedData, isLoading: feedLoading, refetch: refetchFeed } = useQuery({
     queryKey: ['feed', user?.id],
-    ...cacheStrategy,
+    ...homeCacheStrategy,
     queryFn: async () => {
       const result = await api.feed.list({ page: 1, limit: 25 });
       return result?.items ?? [];
@@ -82,7 +90,7 @@ export default function Home() {
 
   const { data: videos = [], isLoading: videosLoading, refetch: refetchVideos } = useQuery({
     queryKey: ['videos', user?.id],
-    ...cacheStrategy,
+    ...homeCacheStrategy,
     queryFn: async () => {
       const result = await api.videos.list({ page: 1, limit: 25 });
       return result.videos || [];
@@ -170,19 +178,13 @@ export default function Home() {
     };
   }, [activeTab, mainFeedItems]);
 
-  const refetchRef = useRef(refetch);
-  refetchRef.current = refetch;
-
-  useEffect(() => {
-    refetchRef.current?.();
-  }, [activeTab, user?.id]);
+  // Plus de refetch automatique ici : on se repose sur la stratégie de cache React Query
 
   const handleRefreshHome = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['feed'] });
     queryClient.invalidateQueries({ queryKey: ['videos'] });
     refetchFeed().catch(() => {});
     refetchVideos().catch(() => {});
-    refetchRef.current?.().catch(() => {});
   }, [queryClient, refetchFeed, refetchVideos]);
 
   const PULL_THRESHOLD = 55;
@@ -229,7 +231,7 @@ export default function Home() {
 
   const { data: comments = [] } = useQuery({
     queryKey: ['comments', selectedVideo?.id],
-    ...cacheStrategy,
+    ...homeCacheStrategy,
     queryFn: async () => {
       if (!selectedVideo?.id) return [];
       const result = await api.videos.getComments(selectedVideo.id, { page: 1, limit: 50 });
@@ -242,6 +244,8 @@ export default function Home() {
     queryKey: ['wallet', user?.id],
     queryFn: () => api.payments.getWallet(),
     enabled: !!user?.id && showTip,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
   const walletBalance = walletData?.available_balance ?? walletData?.balance ?? 0;
 
@@ -344,44 +348,23 @@ export default function Home() {
           }
           return next;
         });
-        
-        if (activeTab === 'pourtoi') {
-          queryClient.setQueryData(['feed', user?.id], (oldItems) => {
-            if (!Array.isArray(oldItems)) return oldItems;
-            return oldItems.map(it => {
-              if (it.type === 'video' && it.video?.id === data.video.id) {
-                return { ...it, video: { ...it.video, likes: data.isLiked ? (it.video.likes || 0) + 1 : Math.max(0, (it.video.likes || 0) - 1) } };
-              }
-              return it;
-            });
-          });
-        } else {
-          queryClient.setQueryData(['videos', user?.id], (oldData) => {
-            if (!oldData) return oldData;
-            return oldData.map(v => {
-              if (v.id === data.video.id) {
-                return { ...v, likes: data.isLiked ? (v.likes || 0) + 1 : Math.max(0, (v.likes || 0) - 1) };
-              }
-              return v;
-            });
-          });
-        }
-        
-        setFollowingVideos(prev => prev.map(v => {
-          if (v.id === data.video.id) {
-            return {
-              ...v,
-              likes: data.isLiked ? (v.likes || 0) + 1 : Math.max(0, (v.likes || 0) - 1)
-            };
-          }
-          return v;
-        }));
-        
-        queryClient.invalidateQueries({ queryKey: ['videos'] });
-        queryClient.invalidateQueries({ queryKey: ['feed'] });
       }
     }
   });
+
+  // Empêche un changement d'index immédiat juste après un like (scroll snap parasite)
+  const likeScrollLockUntilRef = useRef(0);
+
+  const handleLike = useCallback(
+    (video) => {
+      if (!video) return;
+      likeScrollLockUntilRef.current = Date.now() + 400;
+      if (!likeMutation.isPending) {
+        likeMutation.mutate(video);
+      }
+    },
+    [likeMutation]
+  );
 
   const saveMutation = useMutation({
     mutationFn: async (video) => {
@@ -494,6 +477,11 @@ export default function Home() {
   const handleScroll = useCallback(() => {
     const container = containerRef.current;
     if (!container) return;
+
+    // Verrouillage court après un like pour éviter un changement d'index non intentionnel
+    if (Date.now() < likeScrollLockUntilRef.current) {
+      return;
+    }
 
     const index = Math.round(container.scrollTop / container.clientHeight);
 
@@ -808,7 +796,7 @@ export default function Home() {
                     isSaved={savedVideos.has(video.id)}
                     isMuted={isMuted}
                     onMuteToggle={() => setMuted(!isMuted)}
-                    onLike={() => likeMutation.mutate(video)}
+                    onLike={handleLike}
                     onComment={() => {
                       setSelectedVideo(video);
                       setShowComments(true);
