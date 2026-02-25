@@ -187,7 +187,7 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
         io.adapter(createAdapter(pubClient, subClient));
         logger.info('✅ Socket.io Redis adapter activé (multi-nœuds)');
       } catch (adapterErr) {
-        logger.warn('Socket.io Redis adapter non activé (connexion Redis Socket échouée)', adapterErr);
+        logger.warn('Socket.io Redis adapter non activé (connexion Redis Socket échouée)', { error: adapterErr });
       }
     }
 
@@ -211,6 +211,6 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
     logger.info('✅ Jobs automatiques démarrés');
     logger.info('🛡️ Sécurité: Rate limiting + Anti-bot + Chiffrement ACTIVÉS');
   } catch (err) {
-    logger.error('Erreur post-démarrage (Redis / rétention / jobs):', err);
+    logger.error('Erreur post-démarrage (Redis / rétention / jobs):', { error: err });
   }
 });
