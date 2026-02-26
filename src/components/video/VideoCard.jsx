@@ -914,7 +914,6 @@ function VideoCardContent({
       }
     }
     hasPlayedOnceRef.current = true;
-    setShowVideoFrame(true);
     setIsPlaying(true);
   };
 
@@ -1158,7 +1157,6 @@ function VideoCardContent({
         src={videoSrc}
         poster={posterUrl || undefined}
         className="absolute top-0 left-0 w-full h-full object-cover"
-        style={{ opacity: showVideoFrame ? 1 : 0 }}
         autoPlay
         preload={slowConnection ? 'metadata' : preload}
         loop
@@ -1216,6 +1214,7 @@ function VideoCardContent({
           setLoadError(false);
           errorRetriedRef.current = false;
           setIsReadyToPlay(true);
+          setShowVideoFrame(true);
           const el = videoRef.current;
           if (el && isActive && el.paused && !userPausedRef.current) {
             autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true });
@@ -1223,6 +1222,8 @@ function VideoCardContent({
         }}
         onSeeked={handleMainVideoSeeked}
         style={{ 
+          opacity: showVideoFrame ? 1 : 0,
+          transition: 'opacity 80ms linear',
           touchAction: 'pan-y',
           filter: video.filter === 'Normal' || !video.filter ? 'none' :
                   video.filter === 'Noir & Blanc' ? 'grayscale(100%)' :

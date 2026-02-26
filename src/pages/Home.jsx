@@ -850,8 +850,10 @@ export default function Home() {
               const slideStyle = {
                 flex: '0 0 auto',
                 width: '100%',
-                minHeight: '100dvh',
-                height: '100dvh',
+                // Important: use container height instead of viewport height
+                // so there is no black gap at the bottom of the video
+                minHeight: '100%',
+                height: '100%',
                 touchAction: 'pan-y',
                 contain: 'layout paint',
               };
