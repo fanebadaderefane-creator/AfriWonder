@@ -53,10 +53,8 @@ export default function Home() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const touchStartYRef = useRef(0);
   const pullDistanceRef = useRef(0);
-  const scrollEndTimeoutRef = useRef(null);
-  const feedLengthRef = useRef(0);
-  const isSnappingRef = useRef(false);
   const currentIndexRef = useRef(0);
+  const observerRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -473,71 +471,92 @@ export default function Home() {
     }
   }, []);
 
-  const feedLength = activeTab === 'pourtoi' ? mainFeedItems.length : followingVideos.length;
-  useEffect(() => {
-    feedLengthRef.current = feedLength;
-  }, [feedLength]);
   useEffect(() => {
     currentIndexRef.current = currentIndex;
   }, [currentIndex]);
+
+  const feedLength = activeTab === 'pourtoi' ? mainFeedItems.length : followingVideos.length;
+  useEffect(() => {
+    if (feedLength > 0 && currentIndex >= feedLength) {
+      currentIndexRef.current = 0;
+      setCurrentIndex(0);
+    }
+  }, [feedLength, currentIndex]);
 
   useEffect(() => {
     const items = activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map((v) => ({ type: 'video', video: v }));
     preloadVideos(items, currentIndex);
   }, [currentIndex, activeTab, mainFeedItems, followingVideos, preloadVideos]);
 
-  // Snap une seule vidéo à la fois : au plus une vidéo en avant ou en arrière (évite le retour à la précédente sur mobile)
-  const snapToNearestSlide = useCallback(() => {
-    if (isSnappingRef.current) return;
+  // IntersectionObserver : détection slide active (60% visible) — natif, pas de scroll handler
+  useEffect(() => {
     const container = containerRef.current;
-    if (!container || feedLengthRef.current <= 0) return;
-    if (Date.now() < likeScrollLockUntilRef.current) return;
+    if (!container) return;
+
+    observerRef.current?.disconnect();
+    const options = { root: container, threshold: [0, 0.6, 1] };
+    observerRef.current = new IntersectionObserver((entries) => {
+      let best = { index: -1, ratio: 0 };
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const index = Number(entry.target.dataset.index);
+        if (Number.isNaN(index)) return;
+        const ratio = entry.intersectionRatio ?? 0;
+        if (ratio > best.ratio || (ratio === best.ratio && index < best.index)) {
+          best = { index, ratio };
+        }
+      });
+      if (best.index >= 0) {
+        currentIndexRef.current = best.index;
+        setCurrentIndex(best.index);
+      }
+    }, options);
+
+    const scheduleObserve = () => {
+      const slides = container.querySelectorAll('[data-index]');
+      slides.forEach((el) => observerRef.current?.observe(el));
+    };
+    const id = requestAnimationFrame(scheduleObserve);
+    return () => {
+      cancelAnimationFrame(id);
+      observerRef.current?.disconnect();
+    };
+  }, [mainFeedItems, followingVideos, activeTab]);
+
+  // Backup: mettre à jour l'index au scroll pour que les bonnes vidéos soient montées (évite écrans noirs)
+  const handleScroll = useCallback(() => {
+    const container = containerRef.current;
+    if (!container || feedLength === 0) return;
     const pullEl = container.firstElementChild;
     const pullHeight = pullEl ? pullEl.offsetHeight : 0;
     const slideHeight = container.clientHeight;
     if (slideHeight <= 0) return;
-    const scrollTop = container.scrollTop;
-    const current = currentIndexRef.current;
-    const currentTop = pullHeight + current * slideHeight;
-    const threshold = slideHeight * 0.25;
-    // Ne jamais sauter plus d'une vidéo : soit rester, soit +1, soit -1 selon la position
-    let targetIndex = current;
-    if (scrollTop >= currentTop + slideHeight - threshold) targetIndex = Math.min(current + 1, feedLengthRef.current - 1);
-    else if (scrollTop <= currentTop - threshold) targetIndex = Math.max(current - 1, 0);
-    const targetTop = pullHeight + targetIndex * slideHeight;
-    if (Math.abs(container.scrollTop - targetTop) > 2) {
-      isSnappingRef.current = true;
-      currentIndexRef.current = targetIndex;
-      setCurrentIndex(targetIndex);
-      container.scrollTo({ top: targetTop, behavior: 'smooth' });
-      const isMobile = typeof window !== 'undefined' && (window.innerWidth < 768 || 'ontouchstart' in window);
-      setTimeout(() => { isSnappingRef.current = false; }, isMobile ? 700 : 400);
-    }
-  }, []);
-
-  const handleScroll = useCallback(() => {
-    if (isSnappingRef.current) return;
-    const container = containerRef.current;
-    if (!container) return;
-
-    if (Date.now() < likeScrollLockUntilRef.current) return;
-
-    const pullEl = container.firstElementChild;
-    const pullHeight = pullEl ? pullEl.offsetHeight : 0;
-    const slideHeight = container.clientHeight;
-    const index = slideHeight > 0 ? Math.round((container.scrollTop - pullHeight) / slideHeight) : 0;
-
-    if (index !== currentIndex) {
+    const rawIndex = Math.floor((container.scrollTop - pullHeight) / slideHeight);
+    const index = Math.max(0, Math.min(rawIndex, feedLength - 1));
+    if (index !== currentIndexRef.current) {
+      currentIndexRef.current = index;
       setCurrentIndex(index);
-      const items = activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map((v) => ({ type: 'video', video: v }));
-      preloadVideos(items, index);
     }
+  }, [feedLength]);
 
-    if (scrollEndTimeoutRef.current) clearTimeout(scrollEndTimeoutRef.current);
-    // Mobile: délai plus long pour laisser le momentum finir avant de snap (évite double mouvement)
-    const isMobile = typeof window !== 'undefined' && (window.innerWidth < 768 || 'ontouchstart' in window);
-    scrollEndTimeoutRef.current = setTimeout(snapToNearestSlide, isMobile ? 200 : 120);
-  }, [currentIndex, activeTab, mainFeedItems, followingVideos, preloadVideos, snapToNearestSlide]);
+  // Préchargement en avance : 2 vidéos suivantes (lien preload) pour que tout soit prêt au scroll
+  useEffect(() => {
+    const items = activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map((v) => ({ type: 'video', video: v }));
+    const links = [];
+    for (let i = 1; i <= 2; i++) {
+      const item = items[currentIndex + i];
+      const video = item?.type === 'video' ? item.video : null;
+      const url = video?.video_url ? getVideoPlaybackUrl(video.video_url) : null;
+      if (!url) continue;
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'video';
+      link.href = url;
+      document.head.appendChild(link);
+      links.push(link);
+    }
+    return () => { links.forEach((l) => { try { document.head.removeChild(l); } catch (_) {} }); };
+  }, [currentIndex, activeTab, mainFeedItems, followingVideos]);
 
   const handleToggleWonder = useCallback(async (creatorId, creatorName = '') => {
     if (!user) {
@@ -732,21 +751,17 @@ export default function Home() {
           }}
           onTouchEnd={(e) => {
             if (e.changedTouches.length > 0) handlePullEnd();
-            // Mobile: snap après la fin du momentum (évite de snap trop tôt puis re-scroll)
-            const isMobile = typeof window !== 'undefined' && (window.innerWidth < 768 || 'ontouchstart' in window);
-            setTimeout(snapToNearestSlide, isMobile ? 220 : 100);
           }}
           onTouchCancel={() => handlePullEnd()}
-          className="snap-y snap-mandatory flex-1 w-full flex flex-col"
-          style={{ 
-            overflowY: 'auto',
+          className="snap-y snap-mandatory h-full flex-1 w-full flex flex-col overflow-y-auto"
+          style={{
             overflowX: 'hidden',
             scrollbarWidth: 'none',
             msOverflowStyle: 'none',
-            WebkitOverflowScrolling: 'touch',
-            touchAction: 'pan-y',
             scrollSnapType: 'y mandatory',
             WebkitScrollSnapType: 'y mandatory',
+            WebkitOverflowScrolling: 'touch',
+            touchAction: 'pan-y',
             gap: 0,
           }}
         >
@@ -812,23 +827,37 @@ export default function Home() {
         ) : (
           <>
             {(activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map(v => ({ type: 'video', video: v }))).map((item, index) => {
-              const isNeighbor = Math.abs(index - currentIndex) <= 1;
+              const isNeighbor = Math.abs(index - currentIndex) <= 2;
+              const slideStyle = {
+                flex: '0 0 100%',
+                minHeight: '100%',
+                height: '100dvh',
+                touchAction: 'pan-y',
+                willChange: 'transform',
+                transform: 'translateZ(0)',
+                backfaceVisibility: 'hidden',
+              };
 
               if (item.type === 'ad') {
                 return (
                   <div
                     key={`ad-${item.ad?.id || index}`}
-                    className="relative w-full snap-start snap-always overflow-hidden bg-black flex-shrink-0"
-                    style={{ flex: '0 0 100%', minHeight: '100%', height: '100%', touchAction: 'pan-y' }}
+                    data-index={index}
+                    className="relative w-full h-full flex-shrink-0 snap-start overflow-hidden bg-black"
+                    style={slideStyle}
                   >
-                    <AdCard
-                      ad={item.ad}
-                      isActive={index === currentIndex}
-                      isMuted={isMuted}
-                      onMuteToggle={() => setMuted(!isMuted)}
-                      onHide={handleHideAd}
-                      hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
-                    />
+                    {isNeighbor ? (
+                      <AdCard
+                        ad={item.ad}
+                        isActive={index === currentIndex}
+                        isMuted={isMuted}
+                        onMuteToggle={() => setMuted(!isMuted)}
+                        onHide={handleHideAd}
+                        hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
+                      />
+                    ) : (
+                      <div className="h-full w-full bg-black" aria-hidden />
+                    )}
                   </div>
                 );
               }
@@ -837,9 +866,11 @@ export default function Home() {
               return (
                 <div
                   key={video.id}
-                  className="relative w-full snap-start snap-always overflow-hidden bg-black flex-shrink-0"
-                  style={{ flex: '0 0 100%', minHeight: '100%', height: '100%', touchAction: 'pan-y' }}
+                  data-index={index}
+                  className="relative w-full h-full flex-shrink-0 snap-start overflow-hidden bg-black"
+                  style={slideStyle}
                 >
+                  {isNeighbor ? (
                   <VideoCard
                     video={video}
                     isActive={index === currentIndex}
@@ -868,7 +899,11 @@ export default function Home() {
                     }}
                     hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
                     preload={isNeighbor ? 'auto' : 'metadata'}
+                    shouldPreload={isNeighbor}
                   />
+                  ) : (
+                    <div className="h-full w-full bg-black" aria-hidden />
+                  )}
                 </div>
               );
             })}

@@ -17,6 +17,7 @@ import {
   DollarSign,
   UserPlus,
   UserCheck,
+  Loader2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -65,6 +66,7 @@ function VideoCardContent({
   isFollowing,
   hideActions = false,
   preload = 'metadata',
+  shouldPreload = false,
 }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
@@ -246,6 +248,7 @@ function VideoCardContent({
 
   const [loadError, setLoadError] = useState(false);
   const [isReadyToPlay, setIsReadyToPlay] = useState(false);
+  const [showVideoFrame, setShowVideoFrame] = useState(false);
   const errorRetriedRef = useRef(false);
 
   const { t } = useTranslation();
@@ -338,6 +341,7 @@ function VideoCardContent({
     userPausedRef.current = false;
     viewRecordedRef.current = false;
     hasPlayedOnceRef.current = false;
+    setShowVideoFrame(false);
     
     // Pause + reset time uniquement (pas de load() â€” cause Ã©cran noir)
     if (el) {
@@ -437,7 +441,7 @@ function VideoCardContent({
   useEffect(() => {
     const el = videoRef.current;
     if (!el || !videoUrl || !isHls) return;
-    if (!isActive) {
+    if (!isActive && !shouldPreload) {
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -446,7 +450,20 @@ function VideoCardContent({
       return;
     }
 
+    const isPreloadOnly = !isActive && shouldPreload;
+
     if (Hls.isSupported()) {
+      // Réutilisation de l'instance HLS déjà préchargée : on lance la lecture sans recréer (garde le buffer)
+      if (isActive && hlsRef.current) {
+        prepareForAutoplay(el, true);
+        if (!hasAppliedStartTimeRef.current && video.start_time != null && video.start_time > 0) {
+          el.currentTime = video.start_time;
+          hasAppliedStartTimeRef.current = true;
+        }
+        autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true }).then(() => setIsReadyToPlay(true));
+        return () => {};
+      }
+
       const hls = new Hls({
         maxBufferLength: 6,
         maxMaxBufferLength: 10,
@@ -457,11 +474,12 @@ function VideoCardContent({
       hlsRef.current = hls;
       hls.loadSource(videoUrl);
       hls.attachMedia(el);
-      prepareForAutoplay(el, true);
       el.loop = true;
+      if (!isPreloadOnly) prepareForAutoplay(el, true);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        if (!el || !isActive || userPausedRef.current) return;
+        if (!el) return;
+        if (isPreloadOnly || !isActive || userPausedRef.current) return;
         if (!hasAppliedStartTimeRef.current && video.start_time != null && video.start_time > 0) {
           el.currentTime = video.start_time;
           hasAppliedStartTimeRef.current = true;
@@ -477,11 +495,11 @@ function VideoCardContent({
         } else if (data.fatal) {
           hls.destroy();
           hlsRef.current = null;
-          if (hasFallbackSource) {
+          if (!isPreloadOnly && hasFallbackSource) {
             moveToNextSource();
             return;
           }
-          setLoadError(true);
+          if (isActive) setLoadError(true);
         }
       });
 
@@ -493,8 +511,8 @@ function VideoCardContent({
 
     if (el.canPlayType('application/vnd.apple.mpegurl')) {
       el.src = videoUrl;
-      prepareForAutoplay(el, true);
       el.loop = true;
+      if (!isPreloadOnly) prepareForAutoplay(el, true);
       const playOnce = () => {
         el.removeEventListener('loadeddata', playOnce);
         if (isActive && !userPausedRef.current) autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true });
@@ -507,7 +525,7 @@ function VideoCardContent({
     }
 
     
-  }, [isActive, videoUrl, isHls, video.start_time, hasFallbackSource, moveToNextSource, prepareForAutoplay, autoplayWithPolicy]);
+  }, [isActive, shouldPreload, videoUrl, isHls, video.start_time, hasFallbackSource, moveToNextSource, prepareForAutoplay, autoplayWithPolicy]);
 
   // MP4 : autoplay propre â€” readyState >= 2 ou canplay (une fois)
   useEffect(() => {
@@ -658,6 +676,33 @@ function VideoCardContent({
       window.removeEventListener('focus', handleFocus);
     };
   }, [isActive, loadError, isMuted, autoplayWithPolicy]);
+
+  // Auto play / pause selon isActive (virtualisation) + replay au canplay si actif
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (!isActive) {
+      el.pause();
+      return;
+    }
+    const tryPlay = () => { el.play().catch(() => {}); };
+    tryPlay();
+    el.addEventListener('canplay', tryPlay);
+    el.addEventListener('loadeddata', tryPlay);
+    return () => {
+      el.removeEventListener('canplay', tryPlay);
+      el.removeEventListener('loadeddata', tryPlay);
+    };
+  }, [isActive]);
+
+  // Tracking vue 3s (monétisation / analytics)
+  useEffect(() => {
+    if (!isActive) return;
+    const timer = setTimeout(() => {
+      api.analytics.recordVideo({ video_id: video.id }).catch(() => {});
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [isActive, video.id]);
 
   // Watchdog autoplay: relances simples pour telephones/PWA stricts.
   useEffect(() => {
@@ -848,6 +893,7 @@ function VideoCardContent({
       }
     }
     hasPlayedOnceRef.current = true;
+    setShowVideoFrame(true);
     setIsPlaying(true);
   };
 
@@ -1066,17 +1112,26 @@ function VideoCardContent({
       style={{ touchAction: 'pan-y' }}
     >
       <div className="absolute inset-0 overflow-hidden">
-      {/* Poster en arrière-plan : évite le flash noir au scroll sur mobile/PWA */}
-      {video.media_type !== 'image' && (posterUrl || VIDEO_PLACEHOLDER_IMG) && (
+      {/* Poster / frame visible pendant tout le chargement — jamais de carte noire */}
+      {video.media_type !== 'image' && (
         <div
-          className="absolute inset-0 bg-black"
+          className="absolute inset-0 bg-gray-900"
           style={{
-            backgroundImage: `url(${posterUrl || VIDEO_PLACEHOLDER_IMG})`,
+            backgroundImage: posterUrl ? `url(${posterUrl})` : `url(${VIDEO_PLACEHOLDER_IMG})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }}
           aria-hidden
         />
+      )}
+      {/* Indicateur de chargement discret : la frame (poster) reste visible */}
+      {video.media_type !== 'image' && isActive && !loadError && !showVideoFrame && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="flex flex-col items-center gap-2 px-4 py-3 rounded-2xl bg-black/50 backdrop-blur-sm">
+            <Loader2 className="w-6 h-6 text-white animate-spin" aria-hidden />
+            <span className="text-white/95 text-xs">Chargement…</span>
+          </div>
+        </div>
       )}
       {/* ================= IMAGE (photo) ou VIDEO ================= */}
       {video.media_type === 'image' ? (
@@ -1092,9 +1147,10 @@ function VideoCardContent({
         data-afw-feed-video="1"
         src={videoSrc}
         poster={posterUrl || undefined}
-        className="absolute top-0 left-0 w-full h-full object-cover"
+        className="absolute top-0 left-0 w-full h-full object-cover transition-opacity duration-300"
+        style={{ opacity: showVideoFrame ? 1 : 0 }}
         autoPlay
-        preload={isActive ? 'auto' : 'metadata'}
+        preload={slowConnection ? 'metadata' : preload}
         loop
         playsInline
         muted={isMuted}
