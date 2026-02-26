@@ -507,12 +507,16 @@ export default function Home() {
     const targetTop = pullHeight + targetIndex * slideHeight;
     if (Math.abs(container.scrollTop - targetTop) > 2) {
       isSnappingRef.current = true;
+      currentIndexRef.current = targetIndex;
+      setCurrentIndex(targetIndex);
       container.scrollTo({ top: targetTop, behavior: 'smooth' });
-      setTimeout(() => { isSnappingRef.current = false; }, 400);
+      const isMobile = typeof window !== 'undefined' && (window.innerWidth < 768 || 'ontouchstart' in window);
+      setTimeout(() => { isSnappingRef.current = false; }, isMobile ? 700 : 400);
     }
   }, []);
 
   const handleScroll = useCallback(() => {
+    if (isSnappingRef.current) return;
     const container = containerRef.current;
     if (!container) return;
 

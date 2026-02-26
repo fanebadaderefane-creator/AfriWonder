@@ -147,7 +147,7 @@ describe('Home page', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText(/aucune vidéo pour l'instant/i)).toBeInTheDocument();
+    expect(screen.getByText(/aucune video pour l'instant/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /s'inscrire pour commencer/i })).toBeInTheDocument();
   });
 });
