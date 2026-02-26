@@ -293,7 +293,7 @@ export default function SearchPage() {
                 ) : null}
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-full font-medium text-sm flex-shrink-0"
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-full font-medium text-sm flex-shrink-0"
                 >
                   Rechercher
                 </button>
@@ -304,7 +304,7 @@ export default function SearchPage() {
                 <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 max-h-[70vh] overflow-y-auto">
                   {suggestionsLoading ? (
                     <div className="flex items-center justify-center gap-2 py-6 text-gray-500">
-                      <Loader2 className="w-5 h-5 animate-spin text-orange-500" />
+                      <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
                       <span className="text-sm">Chargement des propositions...</span>
                     </div>
                   ) : hasSuggestions ? (
@@ -322,7 +322,7 @@ export default function SearchPage() {
                                 setSearchFocused(false);
                                 navigate(createPageUrl('VideoView') + `?id=${v.id}`);
                               }}
-                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-orange-50 text-left"
+                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-blue-50 text-left"
                             >
                               <div className="w-14 h-10 rounded-lg bg-gray-200 flex-shrink-0 overflow-hidden flex items-center justify-center">
                                 {v.thumbnail_url ? (
@@ -355,11 +355,11 @@ export default function SearchPage() {
                                   navigate(createPageUrl('Profile') + `?_userId=${u.id}`);
                                 }
                               }}
-                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-orange-50 text-left"
+                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-blue-50 text-left"
                             >
                               <Avatar className="w-10 h-10 flex-shrink-0 ring-2 ring-white shadow">
                                 <AvatarImage src={u.profile_image} />
-                                <AvatarFallback className="bg-gradient-to-br from-orange-400 to-red-500 text-white font-semibold text-sm">
+                                <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white font-semibold text-sm">
                                   {(u.full_name || u.username || u.email || 'U')?.[0]?.toUpperCase()}
                                 </AvatarFallback>
                               </Avatar>
@@ -384,7 +384,7 @@ export default function SearchPage() {
                                 setSearchFocused(false);
                                 navigate(createPageUrl('VideoView') + `?id=${v.id}`);
                               }}
-                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-orange-50 text-left"
+                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-blue-50 text-left"
                             >
                               <div className="w-14 h-10 rounded-lg bg-gray-200 flex-shrink-0 overflow-hidden flex items-center justify-center">
                                 {v.thumbnail_url ? (
@@ -439,8 +439,8 @@ export default function SearchPage() {
       <div className="p-4 space-y-6">
         {!query ? (
           <div className="text-center py-10 max-w-sm mx-auto">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-orange-100 to-amber-100 flex items-center justify-center mx-auto mb-5">
-              <Search className="w-8 h-8 text-orange-500" />
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center mx-auto mb-5">
+              <Search className="w-8 h-8 text-blue-500" />
             </div>
             <h2 className="text-lg font-semibold text-gray-800 mb-1">Que recherchez-vous ?</h2>
             <p className="text-sm text-gray-500 mb-6">Vidéos, créateurs, produits — tapez un mot-clé ou choisissez une catégorie ci-dessous.</p>
@@ -458,7 +458,7 @@ export default function SearchPage() {
                       setFilters((prev) => ({ ...prev, type }));
                       document.querySelector('input[type="text"]')?.focus();
                     }}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-white border border-gray-200 text-gray-700 text-sm font-medium hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 transition-colors shadow-sm"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-white border border-gray-200 text-gray-700 text-sm font-medium hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-colors shadow-sm"
                   >
                     <Icon className="w-4 h-4" />
                     {label}
@@ -482,7 +482,7 @@ export default function SearchPage() {
           </div>
         ) : isLoading ? (
           <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-            <Loader2 className="w-8 h-8 animate-spin text-orange-500 mb-3" />
+            <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-3" />
             <p className="text-sm">Recherche en cours...</p>
           </div>
         ) : totalResults === 0 ? (
@@ -509,7 +509,7 @@ export default function SearchPage() {
             {shouldShowVideos && videos && videos.length > 0 && (
               <div className="space-y-3">
                 <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                  <Video className="w-5 h-5 text-orange-500" />
+                  <Video className="w-5 h-5 text-blue-500" />
                   Vidéos <span className="text-sm font-normal text-gray-500">({videos.length})</span>
                 </h2>
                 <div className="space-y-2">
@@ -539,7 +539,7 @@ export default function SearchPage() {
             {shouldShowUsers && users && users.length > 0 && (
               <div className="space-y-3">
                 <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                  <User className="w-5 h-5 text-orange-500" />
+                  <User className="w-5 h-5 text-blue-500" />
                   Utilisateurs <span className="text-sm font-normal text-gray-500">({users.length})</span>
                 </h2>
                 <div className="grid grid-cols-2 gap-3">
@@ -561,7 +561,7 @@ export default function SearchPage() {
                       >
                         <Avatar className="w-12 h-12 mx-auto mb-2 ring-2 ring-white shadow-md">
                           <AvatarImage src={u.profile_image} />
-                          <AvatarFallback className="bg-gradient-to-br from-orange-400 to-red-500 text-white font-semibold">
+                          <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white font-semibold">
                             {(u.full_name || u.username || u.email || 'U')?.[0]?.toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
@@ -578,7 +578,7 @@ export default function SearchPage() {
             {shouldShowProducts && products && products.length > 0 && (
               <div className="space-y-3">
                 <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                  <Package className="w-5 h-5 text-orange-500" />
+                  <Package className="w-5 h-5 text-blue-500" />
                   Produits <span className="text-sm font-normal text-gray-500">({products.length})</span>
                 </h2>
                 <div className="space-y-2">
@@ -601,7 +601,7 @@ export default function SearchPage() {
                         </div>
                         <div className="flex-1">
                           <h3 className="font-semibold text-gray-900 truncate">{product.name || product.title}</h3>
-                          <p className="text-sm font-bold text-orange-600">{product.price?.toLocaleString()} FCFA</p>
+                          <p className="text-sm font-bold text-blue-600">{product.price?.toLocaleString()} FCFA</p>
                         </div>
                       </motion.div>
                     ))}

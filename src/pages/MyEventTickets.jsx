@@ -50,7 +50,7 @@ export default function MyEventTickets() {
       <div className="p-4 space-y-4">
         {isLoading ? (
           <div className="flex justify-center py-12">
-            <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : list.length === 0 ? (
           <Card>
@@ -58,7 +58,7 @@ export default function MyEventTickets() {
               <Ticket className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-600">Vous n'avez pas de billet</p>
               <Button
-                className="mt-4 bg-orange-500"
+                className="mt-4 bg-blue-500"
                 onClick={() => navigate(createPageUrl('Events'))}
               >
                 Voir les événements

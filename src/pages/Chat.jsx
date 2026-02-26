@@ -713,7 +713,7 @@ export default function Chat() {
       </div>
 
       {orderId && (
-        <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-400/20 flex items-center justify-between gap-2">
+        <div className="px-4 py-2 bg-blue-500/10 border-b border-blue-400/20 flex items-center justify-between gap-2">
           <span className="text-sm text-amber-200">{labels.orderConversation}{orderId.slice(0, 8)}</span>
           <Button variant="outline" size="sm" className="border-amber-300/60 text-amber-100 bg-transparent shrink-0" onClick={() => navigate(`${createPageUrl('OrderTracking')}?id=${orderId}`)}>
             {labels.viewOrder}

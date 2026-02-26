@@ -43,7 +43,7 @@ export default function Ticketing() {
 
   const categories = [
     { id: 'concert', name: 'Concerts', icon: Music, color: 'from-purple-500 to-pink-500', count: 45 },
-    { id: 'cinema', name: 'Cinéma', icon: Film, color: 'from-red-500 to-orange-500', count: 23 },
+    { id: 'cinema', name: 'Cinéma', icon: Film, color: 'from-red-500 to-blue-500', count: 23 },
     { id: 'transport', name: 'Transport', icon: Bus, color: 'from-blue-500 to-cyan-500', count: 100 },
     { id: 'sports', name: 'Sports', icon: Trophy, color: 'from-green-500 to-teal-500', count: 18 },
     { id: 'theater', name: 'Théâtre', icon: Theater, color: 'from-indigo-500 to-purple-500', count: 12 },
@@ -141,7 +141,7 @@ export default function Ticketing() {
                 <Link key={ticket.id} to={`${createPageUrl('TicketDetails')}?id=${ticket.id}`}>
                   <motion.div
                     whileHover={{ scale: 1.05 }}
-                    className="min-w-[200px] p-4 bg-gradient-to-br from-orange-500 to-pink-500 rounded-xl"
+                    className="min-w-[200px] p-4 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl"
                   >
                     <div className="text-center mb-3">
                       <p className="text-white font-bold mb-1">{ticket.event}</p>
@@ -203,7 +203,7 @@ export default function Ticketing() {
                       className="w-full h-40 object-cover"
                     />
                     {event.trending && (
-                      <Badge className="absolute top-2 right-2 bg-gradient-to-r from-orange-500 to-red-500">
+                      <Badge className="absolute top-2 right-2 bg-gradient-to-r from-blue-500 to-indigo-500">
                         🔥 Tendance
                       </Badge>
                     )}

@@ -93,7 +93,7 @@ export default function CouponApplier({
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-orange-50 border-2 border-orange-500 rounded-lg p-4 mb-4"
+        className="bg-blue-50 border-2 border-blue-500 rounded-lg p-4 mb-4"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -130,7 +130,7 @@ export default function CouponApplier({
         <Button
           onClick={handleApply}
           disabled={validateCoupon.isPending || !couponCode}
-          className="bg-orange-500 hover:bg-orange-600"
+          className="bg-blue-500 hover:bg-blue-600"
         >
           {validateCoupon.isPending ? (
             <Loader2 className="w-4 h-4 animate-spin" />

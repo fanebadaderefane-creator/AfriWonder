@@ -39,6 +39,6 @@ describe('CurrencySelector', () => {
     mockCurrency = 'EUR';
     render(<CurrencySelector />);
     const eurBtn = screen.getByRole('button', { name: /EUR/i });
-    expect(eurBtn).toHaveClass('bg-orange-500');
+    expect(eurBtn).toHaveClass('bg-blue-500');
   });
 });

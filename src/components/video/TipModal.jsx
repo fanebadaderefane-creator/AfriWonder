@@ -9,17 +9,17 @@ import { cn } from "@/lib/utils";
 
 const tipAmounts = [
   { amount: 100, icon: Heart, label: '100 F', color: 'from-pink-400 to-rose-500' },
-  { amount: 500, icon: Sparkles, label: '500 F', color: 'from-yellow-400 to-orange-500' },
+  { amount: 500, icon: Sparkles, label: '500 F', color: 'from-yellow-400 to-blue-500' },
   { amount: 1000, icon: Gift, label: '1K F', color: 'from-purple-400 to-pink-500' },
-  { amount: 2500, icon: Crown, label: '2.5K F', color: 'from-amber-400 to-yellow-500' },
+  { amount: 2500, icon: Crown, label: '2.5K F', color: 'from-blue-400 to-indigo-500' },
   { amount: 5000, icon: Gem, label: '5K F', color: 'from-blue-400 to-purple-500' },
 ];
 
 const paymentMethods = [
-  { id: 'orange_money', name: 'Orange Money', color: 'bg-orange-500', icon: '🟠' },
+  { id: 'orange_money', name: 'Orange Money', color: 'bg-blue-500', icon: '🟠' },
   { id: 'wave', name: 'Wave', color: 'bg-blue-500', icon: '🔵' },
   { id: 'mtn_money', name: 'MTN Money', color: 'bg-yellow-500', icon: '🟡' },
-  { id: 'wallet', name: 'Mon Wallet', color: 'bg-gradient-to-r from-orange-500 to-red-500', icon: '💰' },
+  { id: 'wallet', name: 'Mon Wallet', color: 'bg-gradient-to-r from-blue-500 to-indigo-500', icon: '💰' },
 ];
 
 export default function TipModal({ 
@@ -70,7 +70,7 @@ export default function TipModal({
         {step === 'amount' && (
           <>
             {/* Header with gradient */}
-            <div className="bg-gradient-to-br from-orange-500 via-red-500 to-pink-500 p-6 text-white">
+            <div className="bg-gradient-to-br from-blue-500 via-indigo-500 to-indigo-600 p-6 text-white">
               <div className="flex items-center gap-4">
                 <Avatar className="w-16 h-16 border-4 border-white/30">
                   <AvatarImage src={creator?.avatar} />
@@ -101,8 +101,8 @@ export default function TipModal({
                       className={cn(
                         "p-4 rounded-2xl border-2 transition-all",
                         selectedAmount === tip.amount
-                          ? "border-orange-500 bg-orange-50"
-                          : "border-gray-100 hover:border-orange-200"
+                          ? "border-blue-500 bg-blue-50"
+                          : "border-gray-100 hover:border-blue-200"
                       )}
                     >
                       <div className={cn(
@@ -127,7 +127,7 @@ export default function TipModal({
                     setCustomAmount(e.target.value);
                     setSelectedAmount(null);
                   }}
-                  className="pl-10 pr-16 py-6 text-lg rounded-xl border-2 border-gray-100 focus:border-orange-500"
+                  className="pl-10 pr-16 py-6 text-lg rounded-xl border-2 border-gray-100 focus:border-blue-500"
                 />
                 <Coins className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">
@@ -139,7 +139,7 @@ export default function TipModal({
               <Button
                 onClick={() => setStep('payment')}
                 disabled={!finalAmount || finalAmount < 50}
-                className="w-full py-6 text-lg rounded-xl bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                className="w-full py-6 text-lg rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600"
               >
                 Continuer · {finalAmount.toLocaleString()} FCFA
               </Button>
@@ -166,8 +166,8 @@ export default function TipModal({
                   className={cn(
                     "w-full p-4 rounded-xl border-2 flex items-center gap-4 transition-all",
                     selectedMethod === method.id
-                      ? "border-orange-500 bg-orange-50"
-                      : "border-gray-100 hover:border-orange-200"
+                      ? "border-blue-500 bg-blue-50"
+                      : "border-gray-100 hover:border-blue-200"
                   )}
                 >
                   <span className="text-2xl">{method.icon}</span>
@@ -212,7 +212,7 @@ export default function TipModal({
               <Button
                 onClick={handleSendTip}
                 disabled={isLoading || !canSend}
-                className="flex-1 py-6 rounded-xl bg-gradient-to-r from-orange-500 to-red-500"
+                className="flex-1 py-6 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500"
               >
                 {isLoading ? 'Envoi...' : 'Envoyer'}
               </Button>
@@ -242,7 +242,7 @@ export default function TipModal({
 
             <Button
               onClick={handleClose}
-              className="w-full py-6 rounded-xl bg-gradient-to-r from-orange-500 to-red-500"
+              className="w-full py-6 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500"
             >
               Fermer
             </Button>

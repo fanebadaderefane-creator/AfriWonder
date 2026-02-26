@@ -18,7 +18,7 @@ const FEATURES = [
   { type: "marketplace", name: "Marketplace", icon: ShoppingCart, color: "bg-amber-100 text-amber-600" },
   { type: "event", name: "Événements", icon: Calendar, color: "bg-purple-100 text-purple-600" },
   { type: "transport_driver", name: "Chauffeurs", icon: Car, color: "bg-blue-100 text-blue-600" },
-  { type: "food_restaurant", name: "Restaurants", icon: UtensilsCrossed, color: "bg-orange-100 text-orange-600" },
+  { type: "food_restaurant", name: "Restaurants", icon: UtensilsCrossed, color: "bg-blue-100 text-blue-600" },
   { type: "service_provider", name: "Prestataires", icon: Users, color: "bg-green-100 text-green-600" },
   { type: "marketplace_service", name: "Services", icon: Wrench, color: "bg-teal-100 text-teal-700" },
   { type: "health_doctor", name: "Santé", icon: Stethoscope, color: "bg-red-100 text-red-600" },

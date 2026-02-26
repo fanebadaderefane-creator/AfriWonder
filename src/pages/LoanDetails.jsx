@@ -120,7 +120,7 @@ export default function LoanDetails() {
       <div className="bg-white p-4 border-b border-gray-100">
         <div className="flex justify-between mb-2">
           <span className="text-sm font-medium">{loan.current_amount?.toLocaleString()} / {loan.amount_requested?.toLocaleString()} FCFA</span>
-          <span className="text-sm font-bold text-orange-600">{Math.round(progressPercent)}%</span>
+          <span className="text-sm font-bold text-blue-600">{Math.round(progressPercent)}%</span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
           <div
@@ -171,7 +171,7 @@ export default function LoanDetails() {
               className="flex justify-between items-center p-2 bg-gray-50 rounded text-sm"
             >
               <span className="font-medium">{contrib.lender_name}</span>
-              <span className="text-orange-600 font-bold">{contrib.amount?.toLocaleString()} FCFA</span>
+              <span className="text-blue-600 font-bold">{contrib.amount?.toLocaleString()} FCFA</span>
             </motion.div>
           ))}
         </div>
@@ -192,7 +192,7 @@ export default function LoanDetails() {
             <Button
               onClick={() => contributeMutation.mutate()}
               disabled={contributeMutation.isPending || !contributionAmount}
-              className="bg-orange-500 hover:bg-orange-600"
+              className="bg-blue-500 hover:bg-blue-600"
             >
               {contributeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Heart className="w-4 h-4" />}
             </Button>

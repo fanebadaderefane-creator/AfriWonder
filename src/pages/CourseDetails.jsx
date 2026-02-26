@@ -129,7 +129,7 @@ export default function CourseDetailsPage() {
     return () => { cancelled = true; };
   }, [enrollment?.id, currentLesson?.id, videoQuality]);
 
-  if (!course) return <div className="h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>;
+  if (!course) return <div className="h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   const videoSrc = lessonStreamUrl || currentLesson?.video_url;
   const handleDownloadLesson = () => {
@@ -215,7 +215,7 @@ export default function CourseDetailsPage() {
                     </Button>
                   )}
                   {currentLessonIdx < course.lessons.length - 1 && (
-                    <Button onClick={() => setCurrentLessonIdx(currentLessonIdx + 1)} className="bg-orange-500 hover:bg-orange-600">
+                    <Button onClick={() => setCurrentLessonIdx(currentLessonIdx + 1)} className="bg-blue-500 hover:bg-blue-600">
                       Suivante →
                     </Button>
                   )}
@@ -252,7 +252,7 @@ export default function CourseDetailsPage() {
                 <Button
                   onClick={() => enrollMutation.mutate()}
                   disabled={enrollMutation.isPending}
-                  className="w-full bg-orange-500 hover:bg-orange-600 text-white"
+                  className="w-full bg-blue-500 hover:bg-blue-600 text-white"
                 >
                   {course.price > 0 ? `Acheter - ${course.price.toLocaleString()} FCFA` : 'S\'inscrire gratuitement'}
                 </Button>
@@ -263,7 +263,7 @@ export default function CourseDetailsPage() {
                   <div>
                     <div className="flex justify-between mb-2">
                       <span className="text-sm font-semibold">Progression</span>
-                      <span className="text-sm font-bold text-orange-600">{progress}%</span>
+                      <span className="text-sm font-bold text-blue-600">{progress}%</span>
                     </div>
                     <Progress value={progress} className="h-2" />
                   </div>
@@ -307,7 +307,7 @@ export default function CourseDetailsPage() {
                     key={idx}
                     onClick={() => setCurrentLessonIdx(idx)}
                     className={`w-full text-left p-2 rounded transition-colors text-sm ${
-                      idx === currentLessonIdx ? 'bg-orange-100 border-l-4 border-orange-500' : 'hover:bg-gray-50'
+                      idx === currentLessonIdx ? 'bg-blue-100 border-l-4 border-blue-500' : 'hover:bg-gray-50'
                     }`}
                   >
                     <div className="flex items-center gap-2">

@@ -143,7 +143,7 @@ export default function Support() {
                   key={t.id}
                   onClick={() => navigate(`${createPageUrl('Support')}?id=${t.id}`)}
                   className={`w-full text-left p-4 border-b hover:bg-gray-50 flex items-start gap-3 ${
-                    selectedTicketId === t.id ? 'bg-orange-50 border-l-4 border-l-blue-600' : ''
+                    selectedTicketId === t.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''
                   }`}
                 >
                   <MessageCircle className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />

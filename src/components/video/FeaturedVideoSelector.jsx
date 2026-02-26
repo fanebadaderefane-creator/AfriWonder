@@ -30,7 +30,7 @@ export default function FeaturedVideoSelector({ isOpen, onClose, videos, current
       <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Star className="w-5 h-5 text-orange-500" />
+            <Star className="w-5 h-5 text-blue-500" />
             Choisir une vidéo mise en avant
           </DialogTitle>
         </DialogHeader>
@@ -49,8 +49,8 @@ export default function FeaturedVideoSelector({ isOpen, onClose, videos, current
               onClick={() => handleSetFeatured(video.id)}
               className={`relative cursor-pointer rounded-xl overflow-hidden border-2 transition-all ${
                 video.id === currentFeaturedId 
-                  ? 'border-orange-500 shadow-lg' 
-                  : 'border-gray-200 hover:border-orange-300'
+                  ? 'border-blue-500 shadow-lg' 
+                  : 'border-gray-200 hover:border-blue-300'
               }`}
             >
               <div className="aspect-video bg-gray-900">
@@ -68,7 +68,7 @@ export default function FeaturedVideoSelector({ isOpen, onClose, videos, current
               </div>
               
               {video.id === currentFeaturedId && (
-                <div className="absolute top-2 right-2 bg-orange-500 rounded-full p-1">
+                <div className="absolute top-2 right-2 bg-blue-500 rounded-full p-1">
                   <Check className="w-4 h-4 text-white" />
                 </div>
               )}

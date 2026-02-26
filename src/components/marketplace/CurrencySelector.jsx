@@ -10,7 +10,7 @@ export default function CurrencySelector() {
       <Button
         variant={currency === 'XOF' ? 'default' : 'ghost'}
         size="sm"
-        className={`rounded-none border-0 ${currency === 'XOF' ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'text-gray-600'}`}
+        className={`rounded-none border-0 ${currency === 'XOF' ? 'bg-blue-500 hover:bg-blue-600 text-white' : 'text-gray-600'}`}
         onClick={() => setCurrency('XOF')}
       >
         FCFA
@@ -18,7 +18,7 @@ export default function CurrencySelector() {
       <Button
         variant={currency === 'EUR' ? 'default' : 'ghost'}
         size="sm"
-        className={`rounded-none border-0 ${currency === 'EUR' ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'text-gray-600'}`}
+        className={`rounded-none border-0 ${currency === 'EUR' ? 'bg-blue-500 hover:bg-blue-600 text-white' : 'text-gray-600'}`}
         onClick={() => setCurrency('EUR')}
       >
         EUR

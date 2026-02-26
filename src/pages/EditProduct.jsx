@@ -136,7 +136,7 @@ export default function EditProduct() {
   if (isLoading || !product) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -277,7 +277,7 @@ export default function EditProduct() {
           </Select>
         </div>
 
-        <Button type="submit" disabled={updateMutation.isPending} className="w-full py-6 bg-orange-500 hover:bg-orange-600">
+        <Button type="submit" disabled={updateMutation.isPending} className="w-full py-6 bg-blue-500 hover:bg-blue-600">
           {updateMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
           Enregistrer les modifications
         </Button>

@@ -101,7 +101,7 @@ export default function VideoExport({ _videoId, videoTitle, videoUrl, className 
                 <Button
                   onClick={handleExport}
                   disabled={loading}
-                  className="w-full bg-orange-500 hover:bg-orange-600"
+                  className="w-full bg-blue-500 hover:bg-blue-600"
                 >
                   {loading ? (
                     <Loader2 className="w-4 h-4 animate-spin mr-2" />

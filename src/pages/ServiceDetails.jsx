@@ -111,7 +111,7 @@ export default function ServiceDetails() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
           <p className="mt-4 text-gray-600">Chargement...</p>
         </div>
       </div>
@@ -179,7 +179,7 @@ export default function ServiceDetails() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-orange-600" />
+                <DollarSign className="w-5 h-5 text-blue-600" />
                 <div>
                   <p className="text-sm text-gray-600">Prix</p>
                   <p className="font-bold text-lg">{service.price} FCFA</p>
@@ -187,7 +187,7 @@ export default function ServiceDetails() {
               </div>
               {service.duration && (
                 <div className="flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-orange-600" />
+                  <Clock className="w-5 h-5 text-blue-600" />
                   <div>
                     <p className="text-sm text-gray-600">Durée</p>
                     <p className="font-bold">{service.duration} min</p>
@@ -196,7 +196,7 @@ export default function ServiceDetails() {
               )}
               {service.travel_fee > 0 && (
                 <div className="flex items-center gap-2">
-                  <MapPin className="w-5 h-5 text-orange-600" />
+                  <MapPin className="w-5 h-5 text-blue-600" />
                   <div>
                     <p className="text-sm text-gray-600">Frais de déplacement</p>
                     <p className="font-bold">{service.travel_fee} FCFA</p>
@@ -205,7 +205,7 @@ export default function ServiceDetails() {
               )}
               {service.location_type && (
                 <div className="flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-orange-600" />
+                  <Shield className="w-5 h-5 text-blue-600" />
                   <div>
                     <p className="text-sm text-gray-600">Type</p>
                     <p className="font-bold capitalize">
@@ -219,7 +219,7 @@ export default function ServiceDetails() {
 
             {service.location && (
               <div className="flex items-start gap-2 pt-2 border-t">
-                <MapPin className="w-5 h-5 text-orange-600 mt-0.5" />
+                <MapPin className="w-5 h-5 text-blue-600 mt-0.5" />
                 <p className="text-gray-700">{service.location}</p>
               </div>
             )}
@@ -241,8 +241,8 @@ export default function ServiceDetails() {
                     className="w-16 h-16 rounded-full object-cover"
                   />
                 ) : (
-                  <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center">
-                    <User className="w-8 h-8 text-orange-600" />
+                  <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center">
+                    <User className="w-8 h-8 text-blue-600" />
                   </div>
                 )}
                 <div className="flex-1">
@@ -459,7 +459,7 @@ export default function ServiceDetails() {
                   <Button
                     type="submit"
                     disabled={createBookingMutation.isPending}
-                    className="flex-1 bg-orange-500 hover:bg-orange-600"
+                    className="flex-1 bg-blue-500 hover:bg-blue-600"
                   >
                     {createBookingMutation.isPending ? 'Réservation...' : 'Réserver'}
                   </Button>
@@ -471,7 +471,7 @@ export default function ServiceDetails() {
           <div className="sticky bottom-4">
             <Button
               onClick={() => setShowBookingForm(true)}
-              className="w-full bg-orange-500 hover:bg-orange-600 h-12 text-lg"
+              className="w-full bg-blue-500 hover:bg-blue-600 h-12 text-lg"
               size="lg"
             >
               Réserver maintenant

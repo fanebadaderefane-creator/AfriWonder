@@ -129,7 +129,7 @@ export default function SellerWallet() {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           <Card className="p-4 text-center">
-            <Clock className="w-5 h-5 text-orange-500 mx-auto mb-2" />
+            <Clock className="w-5 h-5 text-blue-500 mx-auto mb-2" />
             <p className="text-xs text-gray-500 mb-1">En attente</p>
             <p className="font-bold">{(wallet?.pending_balance ?? 0).toLocaleString()}</p>
           </Card>
@@ -163,7 +163,7 @@ export default function SellerWallet() {
                   <div className={`px-3 py-1 rounded-full text-xs font-medium ${
                     payout.status === 'completed' ? 'bg-green-100 text-green-700' :
                     payout.status === 'failed' ? 'bg-red-100 text-red-700' :
-                    'bg-orange-100 text-orange-700'
+                    'bg-blue-100 text-blue-700'
                   }`}>
                     {payout.status}
                   </div>

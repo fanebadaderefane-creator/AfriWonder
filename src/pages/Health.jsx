@@ -59,7 +59,7 @@ export default function Health() {
         </div>
 
         {isLoading ? (
-          <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-amber-500" /></div>
+          <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20">
             <Stethoscope className="w-12 h-12 text-muted-foreground mx-auto mb-3" />

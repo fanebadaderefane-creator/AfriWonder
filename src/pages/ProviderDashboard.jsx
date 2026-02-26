@@ -58,7 +58,7 @@ export default function ProviderDashboard() {
               Créez votre compte prestataire pour commencer à proposer vos services
             </p>
             <Button
-              className="bg-orange-500 hover:bg-orange-600"
+              className="bg-blue-500 hover:bg-blue-600"
               onClick={() => navigate(createPageUrl('BecomeProvider'))}
             >
               Devenir prestataire
@@ -153,11 +153,11 @@ export default function ProviderDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Disponible</p>
-                  <p className="text-2xl font-bold text-orange-600">
+                  <p className="text-2xl font-bold text-blue-600">
                     {availablePayout?.available_for_payout || 0} FCFA
                   </p>
                 </div>
-                <TrendingUp className="w-8 h-8 text-orange-600" />
+                <TrendingUp className="w-8 h-8 text-blue-600" />
               </div>
             </CardContent>
           </Card>

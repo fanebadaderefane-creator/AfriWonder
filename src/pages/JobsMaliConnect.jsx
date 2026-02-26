@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
 const CONTRACT_LABELS = { cdi: "CDI", cdd: "CDD", freelance: "Freelance", internship: "Stage", parttime: "Temps partiel" };
-const CONTRACT_COLORS = { cdi: "bg-green-100 text-green-800", cdd: "bg-blue-100 text-blue-800", freelance: "bg-purple-100 text-purple-800", internship: "bg-orange-100 text-orange-800", parttime: "bg-gray-100 text-gray-800" };
+const CONTRACT_COLORS = { cdi: "bg-green-100 text-green-800", cdd: "bg-blue-100 text-blue-800", freelance: "bg-purple-100 text-purple-800", internship: "bg-blue-100 text-blue-800", parttime: "bg-gray-100 text-gray-800" };
 const CITIES = ["Bamako", "Sikasso", "Mopti", "Ségou", "Kayes", "Koulikoro", "Gao", "Tombouctou"];
 
 async function fetchJobs() {
@@ -90,7 +90,7 @@ export default function JobsMaliConnect() {
         </div>
 
         {isLoading ? (
-          <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-amber-500" /></div>
+          <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20">
             <Briefcase className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
@@ -103,7 +103,7 @@ export default function JobsMaliConnect() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h3 className="font-bold text-lg">{j.title}</h3>
-                    <p className="text-amber-700 font-medium">{j.company_name || j.companyName}</p>
+                    <p className="text-blue-700 font-medium">{j.company_name || j.companyName}</p>
                   </div>
                   <Badge className={`${CONTRACT_COLORS[j.contract_type || j.jobType]} flex-shrink-0`}>{CONTRACT_LABELS[j.contract_type || j.jobType]}</Badge>
                 </div>

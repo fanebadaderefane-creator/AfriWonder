@@ -83,7 +83,7 @@ export default function DriverDashboard() {
             aria-checked={isOnline}
             onClick={() => setIsOnline(!isOnline)}
             className={`relative w-12 h-7 rounded-full transition-colors ${
-              isOnline ? 'bg-orange-500' : 'bg-gray-300'
+              isOnline ? 'bg-blue-500' : 'bg-gray-300'
             }`}
           >
             <span
@@ -106,7 +106,7 @@ export default function DriverDashboard() {
             <p className="text-lg font-bold text-gray-900">{todayRides}</p>
             <p className="text-xs text-gray-600">Courses</p>
           </div>
-          <div className="p-4 bg-orange-50 rounded-xl border border-orange-100">
+          <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
             <Star className="w-5 h-5 text-orange-600 mb-2" />
             <p className="text-lg font-bold text-gray-900">{rating}</p>
             <p className="text-xs text-gray-600">Note</p>
@@ -137,7 +137,7 @@ export default function DriverDashboard() {
 
         <Button
           variant="outline"
-          className="w-full mt-6 border-orange-500 text-orange-600 hover:bg-orange-50"
+          className="w-full mt-6 border-blue-500 text-blue-600 hover:bg-blue-50"
           onClick={() => navigate(createPageUrl('Home'))}
         >
           <LogOut className="w-4 h-4 mr-2" />

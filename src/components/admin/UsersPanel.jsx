@@ -66,7 +66,7 @@ export default function UsersPanel() {
             <Checkbox
               checked={includeTest}
               onCheckedChange={(c) => { setIncludeTest(!!c); setPage(1); }}
-              className="border-white/40 data-[state=checked]:bg-orange-500"
+              className="border-white/40 data-[state=checked]:bg-blue-500"
             />
             Inclure comptes test
           </label>

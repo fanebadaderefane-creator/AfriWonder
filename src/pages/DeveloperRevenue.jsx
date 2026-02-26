@@ -81,11 +81,11 @@ export default function DeveloperRevenue() {
               <p className="text-xs text-gray-600">Revenus développeur</p>
             </CardContent>
           </Card>
-          <Card className="bg-gradient-to-br from-[#f97316]/10 to-[#ea580c]/10 border-[#f97316]/30">
+          <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border-blue-500/30">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
-                <TrendingUp className="w-5 h-5 text-[#f97316]" />
-                <span className="text-2xl font-bold text-[#f97316]">
+                <TrendingUp className="w-5 h-5 text-blue-600" />
+                <span className="text-2xl font-bold text-blue-600">
                   {totalGMV.toLocaleString()} XOF
                 </span>
               </div>
@@ -154,7 +154,7 @@ export default function DeveloperRevenue() {
                 return (
                   <div key={day} className="flex-1 flex flex-col items-center gap-1">
                     <div
-                      className="w-full bg-gradient-to-t from-[#f97316] to-[#ea580c] rounded-t"
+                      className="w-full bg-gradient-to-t from-blue-500 to-blue-600 rounded-t"
                       style={{ height: `${height}%` }}
                     />
                     <span className="text-xs text-gray-500">J{day}</span>
@@ -174,7 +174,7 @@ export default function DeveloperRevenue() {
             {MOCK_REVENUE_DATA.top_earning_apps.map((app, index) => (
               <div key={app.app_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-[#f97316] flex items-center justify-center text-white font-bold">
+                  <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">
                     {index + 1}
                   </div>
                   <div>
@@ -242,7 +242,7 @@ export default function DeveloperRevenue() {
                     <span className="text-gray-500">
                       Transaction: {txn.amount.toLocaleString()} XOF
                     </span>
-                    <span className="text-[#f97316]">
+                    <span className="text-blue-600">
                       -{txn.commission_amount.toLocaleString()} XOF commission
                     </span>
                   </div>
@@ -253,7 +253,7 @@ export default function DeveloperRevenue() {
         </Card>
 
         {/* Bouton Retrait */}
-        <Button className="w-full bg-[#f97316] hover:bg-[#ea580c] text-white">
+        <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">
           <DollarSign className="w-4 h-4 mr-2" />
           Retirer mes revenus
         </Button>

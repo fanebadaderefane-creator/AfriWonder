@@ -145,7 +145,7 @@ export default function AdminDashboard() {
 
   const allData = { providers: allProviders, transport, restaurants, health, properties, jobs, formations, events, crowdfunding };
 
-  if (!user) return <div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin text-amber-500" /></div>;
+  if (!user) return <div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
@@ -169,7 +169,7 @@ export default function AdminDashboard() {
           <TabsTrigger value="overview">Vue d'ensemble</TabsTrigger>
           <TabsTrigger value="search">Recherche globale</TabsTrigger>
           <TabsTrigger value="pending">
-            En attente {pendingProviders.length > 0 && <Badge className="ml-1.5 bg-amber-500 text-white text-[10px] px-1.5">{pendingProviders.length}</Badge>}
+            En attente {pendingProviders.length > 0 && <Badge className="ml-1.5 bg-blue-500 text-white text-[10px] px-1.5">{pendingProviders.length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="providers">Prestataires</TabsTrigger>
           <TabsTrigger value="featured">Vedettes</TabsTrigger>
@@ -208,7 +208,7 @@ export default function AdminDashboard() {
                       {p.photo_url ? (
                         <img src={p.photo_url} alt="" className="w-14 h-14 rounded-xl object-cover" />
                       ) : (
-                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-amber-400 to-green-600 flex items-center justify-center text-white font-bold text-lg">{p.display_name?.[0]}</div>
+                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-400 to-green-600 flex items-center justify-center text-white font-bold text-lg">{p.display_name?.[0]}</div>
                       )}
                       <div>
                         <h3 className="font-semibold">{p.display_name}</h3>
@@ -253,7 +253,7 @@ export default function AdminDashboard() {
               <Card key={p.id}>
                 <CardContent className="p-4 flex items-center justify-between flex-wrap gap-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-400 to-green-600 flex items-center justify-center text-white font-medium text-sm">{p.display_name?.[0]}</div>
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-green-600 flex items-center justify-center text-white font-medium text-sm">{p.display_name?.[0]}</div>
                     <div>
                       <p className="font-medium text-sm">{p.display_name}</p>
                       <p className="text-xs text-muted-foreground">{p.city} · {p.user_email}</p>
@@ -263,10 +263,10 @@ export default function AdminDashboard() {
                     <Badge className={p.is_verified ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}>
                       {p.is_verified ? "Vérifié" : "En attente"}
                     </Badge>
-                    {p.is_featured && <Badge className="bg-amber-100 text-amber-800"><Star className="w-3 h-3 mr-1 fill-amber-500" />Vedette</Badge>}
+                    {p.is_featured && <Badge className="bg-blue-100 text-blue-800"><Star className="w-3 h-3 mr-1 fill-blue-500" />Vedette</Badge>}
                     <Badge variant="outline">{p.subscription_plan}</Badge>
                     <span className="text-sm flex items-center gap-1">
-                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                      <Star className="w-3.5 h-3.5 fill-blue-400 text-blue-400" />
                       {p.average_rating?.toFixed(1) || "0.0"}
                     </span>
                     {!p.is_verified && (
@@ -315,7 +315,7 @@ export default function AdminDashboard() {
                       <Flag className="w-4 h-4 text-red-500" />
                       <p className="font-medium text-sm">{r.reviewer_name}</p>
                       <div className="flex items-center gap-1">
-                        <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />{r.rating}
+                        <Star className="w-3.5 h-3.5 fill-blue-400 text-blue-400" />{r.rating}
                       </div>
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">{r.comment}</p>

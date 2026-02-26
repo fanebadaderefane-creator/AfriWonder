@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 
 const CAT_COLORS = {
   politics: "bg-red-100 text-red-800", economy: "bg-green-100 text-green-800",
-  culture: "bg-orange-100 text-orange-800", sport: "bg-blue-100 text-blue-800",
+  culture: "bg-blue-100 text-blue-800", sport: "bg-blue-100 text-blue-800",
   technology: "bg-purple-100 text-purple-800", health: "bg-teal-100 text-teal-800",
   other: "bg-gray-100 text-gray-800"
 };
@@ -81,7 +81,7 @@ export default function NewsMaliConnect() {
         </div>
 
         {isLoading ? (
-          <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-amber-500" /></div>
+          <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20">
             <Newspaper className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
@@ -104,7 +104,7 @@ export default function NewsMaliConnect() {
                   )}
                   {featured.is_premium && <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />}
                   {featured.is_premium && (
-                    <Badge className="absolute top-3 right-3 bg-amber-500 text-white border-0">
+                    <Badge className="absolute top-3 right-3 bg-blue-500 text-white border-0">
                       <Lock className="w-3 h-3 mr-1" /> Premium
                     </Badge>
                   )}
@@ -175,7 +175,7 @@ export default function NewsMaliConnect() {
                     <Badge className={`${CAT_COLORS[selectedArticle.category]} border-0`}>{CAT_LABELS[selectedArticle.category]}</Badge>
                   )}
                   {selectedArticle.is_premium && (
-                    <Badge className="bg-amber-500 text-white border-0"><Lock className="w-3 h-3 mr-1" />Premium</Badge>
+                    <Badge className="bg-blue-500 text-white border-0"><Lock className="w-3 h-3 mr-1" />Premium</Badge>
                   )}
                 </div>
                 <DialogTitle className="text-xl leading-tight">{selectedArticle.title}</DialogTitle>
@@ -190,10 +190,10 @@ export default function NewsMaliConnect() {
               )}
               {selectedArticle.is_premium ? (
                 <div className="text-center py-8">
-                  <Lock className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+                  <Lock className="w-10 h-10 text-blue-500 mx-auto mb-3" />
                   <p className="font-semibold">Article Premium</p>
                   <p className="text-muted-foreground text-sm mt-1">Abonnez-vous pour lire cet article</p>
-                  <Button className="mt-4 bg-amber-500 hover:bg-amber-600 text-white rounded-xl">S&apos;abonner</Button>
+                  <Button className="mt-4 bg-blue-500 hover:bg-blue-600 text-white rounded-xl">S&apos;abonner</Button>
                 </div>
               ) : (
                 <div className="prose prose-sm max-w-none text-foreground leading-relaxed whitespace-pre-wrap">

@@ -140,7 +140,7 @@ export default function SellerProfile() {
   if (!seller) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-orange-500 border-_t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -162,11 +162,11 @@ export default function SellerProfile() {
         <div className="p-4">
           <div className="flex items-start gap-4 mb-4">
             <div className="relative">
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white text-2xl font-bold">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-2xl font-bold">
                 {seller.full_name?.[0]?.toUpperCase() || seller.email?.[0]?.toUpperCase() || 'V'}
               </div>
               {(seller.seller_profile?.is_verified || seller.is_verified) && (
-                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center" title="Vendeur vérifié">
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center" title="Vendeur vérifié">
                   <BadgeCheck className="w-4 h-4 text-white" />
                 </div>
               )}
@@ -233,7 +233,7 @@ export default function SellerProfile() {
               className={`flex-1 ${
                 isFollowing
                   ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  : 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
+                  : 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white'
               }`}
             >
               {isFollowing ? 'Suivi' : 'Suivre'}
@@ -327,7 +327,7 @@ export default function SellerProfile() {
                     </Button>
                     <Button
                       size="sm"
-                      className="flex-1 bg-orange-500 hover:bg-orange-600"
+                      className="flex-1 bg-blue-500 hover:bg-blue-600"
                       disabled={createReviewMutation.isPending}
                       onClick={() => createReviewMutation.mutate()}
                     >

@@ -117,7 +117,7 @@ export default function ServiceBooking() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
           <p className="mt-4 text-gray-600">Chargement...</p>
         </div>
       </div>
@@ -164,7 +164,7 @@ export default function ServiceBooking() {
             <div key={s} className="flex items-center flex-1">
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  step >= s ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-600'
+                  step >= s ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
                 }`}
               >
                 {step > s ? '✓' : s}
@@ -172,7 +172,7 @@ export default function ServiceBooking() {
               {s < 3 && (
                 <div
                   className={`flex-1 h-1 mx-2 ${
-                    step > s ? 'bg-orange-500' : 'bg-gray-200'
+                    step > s ? 'bg-blue-500' : 'bg-gray-200'
                   }`}
                 />
               )}
@@ -236,7 +236,7 @@ export default function ServiceBooking() {
                   <Button
                     onClick={handleNext}
                     disabled={!bookingData.booking_date || !bookingData.booking_time}
-                    className="w-full bg-orange-500 hover:bg-orange-600"
+                    className="w-full bg-blue-500 hover:bg-blue-600"
                   >
                     Suivant
                   </Button>
@@ -384,7 +384,7 @@ export default function ServiceBooking() {
                   )}
                   <div className="flex justify-between items-center pt-2 border-t">
                     <span className="text-lg font-bold">Total</span>
-                    <span className="text-lg font-bold text-orange-600">
+                    <span className="text-lg font-bold text-blue-600">
                       {depositAmount.toFixed(0)} FCFA
                       {bookingData.deposit_only && (
                         <span className="text-sm text-gray-600 ml-2">
@@ -406,7 +406,7 @@ export default function ServiceBooking() {
                   <Button
                     onClick={handleSubmit}
                     disabled={createBookingMutation.isPending || (bookingData.location_type === 'customer_address' && !bookingData.customer_address_id)}
-                    className="flex-1 bg-orange-500 hover:bg-orange-600"
+                    className="flex-1 bg-blue-500 hover:bg-blue-600"
                   >
                     {createBookingMutation.isPending ? 'Réservation...' : 'Confirmer'}
                   </Button>
@@ -435,7 +435,7 @@ export default function ServiceBooking() {
                 <div className="space-y-3">
                   <Button
                     onClick={() => navigate(createPageUrl('Marketplace'))}
-                    className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white"
+                    className="w-full bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white"
                   >
                     Fermer
                   </Button>

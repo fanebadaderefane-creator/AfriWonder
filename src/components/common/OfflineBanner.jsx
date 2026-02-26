@@ -18,7 +18,7 @@ export default function OfflineBanner() {
 
   return (
     <div
-      className="fixed top-0 left-0 right-0 z-[9999] flex items-center justify-center gap-2 py-2.5 px-4 bg-amber-600 text-white text-sm font-medium shadow-lg"
+      className="fixed top-0 left-0 right-0 z-[9999] flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 text-white text-sm font-medium shadow-lg"
       role="alert"
       aria-live="polite"
     >

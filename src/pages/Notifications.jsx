@@ -17,7 +17,7 @@ const notificationIcons = {
   like: { icon: Heart, color: 'bg-red-100 text-red-500' },
   comment: { icon: MessageCircle, color: 'bg-blue-100 text-blue-500' },
   follow: { icon: UserPlus, color: 'bg-purple-100 text-purple-500' },
-  mention: { icon: AtSign, color: 'bg-orange-100 text-orange-500' },
+  mention: { icon: AtSign, color: 'bg-blue-100 text-blue-500' },
   tip: { icon: Coins, color: 'bg-yellow-100 text-yellow-600' },
   order: { icon: ShoppingBag, color: 'bg-green-100 text-green-500' },
   message: { icon: MessageCircle, color: 'bg-indigo-100 text-indigo-500' },
@@ -108,7 +108,7 @@ export default function Notifications() {
             </Button>
             <h1 className="text-lg font-bold">Notifications</h1>
             {unreadCount > 0 && (
-              <span className="bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full">
+              <span className="bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full">
                 {unreadCount}
               </span>
             )}
@@ -120,7 +120,7 @@ export default function Notifications() {
                 variant="ghost"
                 size="sm"
                 onClick={() => markAllReadMutation.mutate()}
-                className="text-orange-500 font-medium"
+                className="text-blue-500 font-medium"
               >
                 <Check className="w-4 h-4 mr-1" />
                 Tout lire
@@ -165,13 +165,13 @@ export default function Notifications() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.03 }}
                       className={`flex gap-3 p-4 rounded-xl transition-colors ${
-                        !notification.is_read ? 'bg-orange-50 border border-orange-100' : 'bg-white'
+                        !notification.is_read ? 'bg-blue-50 border border-blue-100' : 'bg-white'
                       }`}
                     >
                       <div className="relative">
                         <Avatar className="w-12 h-12">
                           <AvatarImage src={notification.from_user_avatar} />
-                          <AvatarFallback className="bg-gradient-to-br from-orange-400 to-red-500 text-white">
+                          <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white">
                             {notification.from_user_name?.[0]?.toUpperCase() || 'U'}
                           </AvatarFallback>
                         </Avatar>
@@ -191,7 +191,7 @@ export default function Notifications() {
                       </div>
 
                       {!notification.is_read && (
-                        <div className="w-2 h-2 rounded-full bg-orange-500 mt-2 flex-shrink-0" />
+                        <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
                       )}
                     </motion.div>
                   );

@@ -246,7 +246,7 @@ export default function TopHeader({
               <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 h-9 w-9 relative">
                 <MessageCircle className="w-5 h-5" />
                 {messagesCount > 0 && (
-                  <span className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 bg-orange-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
+                  <span className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 bg-blue-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
                     {messagesCount > 99 ? '99+' : messagesCount}
                   </span>
                 )}

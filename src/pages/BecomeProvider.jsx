@@ -113,7 +113,7 @@ export default function BecomeProvider() {
             <div key={s} className="flex items-center flex-1">
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  step >= s ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-600'
+                  step >= s ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
                 }`}
               >
                 {step > s ? '✓' : s}
@@ -121,7 +121,7 @@ export default function BecomeProvider() {
               {s < 3 && (
                 <div
                   className={`flex-1 h-1 mx-2 ${
-                    step > s ? 'bg-orange-500' : 'bg-gray-200'
+                    step > s ? 'bg-blue-500' : 'bg-gray-200'
                   }`}
                 />
               )}
@@ -151,7 +151,7 @@ export default function BecomeProvider() {
                       key={category}
                       className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
                         formData.service_categories.includes(category)
-                          ? 'border-orange-500 bg-orange-50'
+                          ? 'border-blue-500 bg-blue-50'
                           : 'border-gray-200 hover:border-gray-300'
                       }`}
                       onClick={() => handleCategoryToggle(category)}
@@ -159,7 +159,7 @@ export default function BecomeProvider() {
                       <div className="flex items-center justify-between">
                         <span className="font-semibold capitalize">{category}</span>
                         {formData.service_categories.includes(category) && (
-                          <CheckCircle className="w-5 h-5 text-orange-500" />
+                          <CheckCircle className="w-5 h-5 text-blue-500" />
                         )}
                       </div>
                     </div>
@@ -200,7 +200,7 @@ export default function BecomeProvider() {
                 <Button
                   onClick={() => setStep(2)}
                   disabled={formData.service_categories.length === 0}
-                  className="w-full bg-orange-500 hover:bg-orange-600"
+                  className="w-full bg-blue-500 hover:bg-blue-600"
                 >
                   Suivant
                 </Button>
@@ -329,7 +329,7 @@ export default function BecomeProvider() {
                   <Button
                     onClick={handleSubmit}
                     disabled={createProviderMutation.isPending || !formData.payout_method || !formData.payout_account}
-                    className="flex-1 bg-orange-500 hover:bg-orange-600"
+                    className="flex-1 bg-blue-500 hover:bg-blue-600"
                   >
                     {createProviderMutation.isPending ? 'Création...' : 'Créer mon compte'}
                   </Button>
@@ -355,7 +355,7 @@ export default function BecomeProvider() {
                 <div className="space-y-3">
                   <Button
                     onClick={() => navigate(createPageUrl('ProviderDashboard'))}
-                    className="w-full bg-orange-500 hover:bg-orange-600"
+                    className="w-full bg-blue-500 hover:bg-blue-600"
                   >
                     Accéder au tableau de bord
                   </Button>

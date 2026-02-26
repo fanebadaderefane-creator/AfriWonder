@@ -26,7 +26,7 @@ const shareOptions = [
 const offlineOptions = [
   { id: 'bluetooth', name: 'Bluetooth', icon: Bluetooth, color: 'bg-indigo-500', description: 'Sans data' },
   { id: 'nearby', name: 'WiFi Direct', icon: Wifi, color: 'bg-cyan-500', description: 'Proches de vous' },
-  { id: 'offline', name: 'Pour hors ligne', icon: Save, color: 'bg-amber-500', description: "Dans l'app" },
+  { id: 'offline', name: 'Pour hors ligne', icon: Save, color: 'bg-blue-500', description: "Dans l'app" },
 ];
 
 export default function ShareSheet({ isOpen, onClose, video, onShareSuccess }) {
@@ -208,7 +208,7 @@ export default function ShareSheet({ isOpen, onClose, video, onShareSuccess }) {
 
         <div className="border-t pt-4">
           <div className="flex items-center gap-2 mb-3">
-            <Users className="w-4 h-4 text-orange-500" />
+            <Users className="w-4 h-4 text-blue-500" />
             <span className="text-sm font-medium text-gray-700">Partage sans internet</span>
           </div>
 
@@ -222,7 +222,7 @@ export default function ShareSheet({ isOpen, onClose, video, onShareSuccess }) {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.2 + index * 0.1 }}
                   onClick={() => handleShare(option.id)}
-                  className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-orange-200 hover:bg-orange-50 transition-all"
+                  className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-all"
                 >
                   <div className={`w-10 h-10 ${option.color} rounded-full flex items-center justify-center`}>
                     <Icon className="w-5 h-5 text-white" />

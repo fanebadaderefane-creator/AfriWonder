@@ -205,7 +205,7 @@ export default function ProviderProfile() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto" />
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto" />
           <p className="mt-4 text-gray-600">Chargement...</p>
         </div>
       </div>
@@ -330,7 +330,7 @@ function ProviderProfileContent({
           </p>
         </div>
         <Button
-          className="w-full h-12 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-medium"
+          className="w-full h-12 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-medium"
           onClick={() => navigate(createPageUrl("Messages") + `?provider=${providerId}`)}
         >
           <MessageCircle className="w-5 h-5 mr-2" />
@@ -412,7 +412,7 @@ function ProviderProfileContent({
           {/* Colonne principale */}
           <div className="lg:col-span-2 space-y-6">
             {/* Image / bannière — toujours une image (mobile Android/iOS, vrais utilisateurs) */}
-            <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-amber-100 to-green-100 aspect-[16/10] min-h-[200px] flex items-center justify-center">
+            <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-blue-100 to-green-100 aspect-[16/10] min-h-[200px] flex items-center justify-center">
               <img
                 src={(p.portfolio_urls?.[0] && p.portfolio_urls[0].trim()) ? p.portfolio_urls[0] : DEFAULT_CARD_IMAGE}
                 alt=""
@@ -439,7 +439,7 @@ function ProviderProfileContent({
                         {p.display_name || "Prestataire"}
                       </h1>
                       {p.is_verified && (
-                        <span className="inline-flex w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center">
+                        <span className="inline-flex w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
                           <CheckCircle className="w-3.5 h-3.5 text-white" />
                         </span>
                       )}
@@ -465,7 +465,7 @@ function ProviderProfileContent({
                   </Button>
                 </div>
                 {/* Note et avis */}
-                <div className="mt-4 pt-4 border-t bg-amber-50/80 rounded-xl px-4 py-3">
+                <div className="mt-4 pt-4 border-t bg-blue-50/80 rounded-xl px-4 py-3">
                   <div className="flex items-center gap-2">
                     <StarRating rating={p.average_rating} readOnly />
                     <span className="font-semibold text-foreground">
@@ -530,7 +530,7 @@ function ProviderProfileContent({
                       >
                         <Star
                           className={`w-8 h-8 ${
-                            i <= reviewRating ? "fill-amber-400 text-amber-400" : "text-gray-300"
+                            i <= reviewRating ? "fill-blue-400 text-blue-400" : "text-gray-300"
                           }`}
                         />
                       </button>
@@ -543,7 +543,7 @@ function ProviderProfileContent({
                     className="min-h-[100px] rounded-xl resize-y"
                   />
                   <Button
-                    className="mt-3 rounded-xl bg-orange-500 hover:bg-orange-600"
+                    className="mt-3 rounded-xl bg-blue-500 hover:bg-blue-600"
                     onClick={onPublishReview}
                   >
                     Publier l'avis

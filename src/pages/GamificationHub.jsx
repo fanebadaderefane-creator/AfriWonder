@@ -17,7 +17,7 @@ export default function GamificationHub() {
       title: "Succès & Accomplissements", 
       desc: "Découvrez tous vos badges et accomplissements débloqués", 
       Icon: Trophy,
-      color: "from-[#f97316] to-[#ea580c]",
+      color: "from-blue-500 to-blue-600",
       count: "6 badges débloqués"
     },
     { 
@@ -33,7 +33,7 @@ export default function GamificationHub() {
       title: "Mes Badges", 
       desc: "Votre collection personnelle de badges et récompenses", 
       Icon: Award,
-      color: "from-purple-400 to-pink-500",
+      color: "from-blue-400 to-indigo-500",
       count: "6 badges gagnés"
     },
   ];
@@ -71,7 +71,7 @@ export default function GamificationHub() {
                   </div>
                   <div className="flex-1">
                     <div className="text-gray-900">{title}</div>
-                    <div className="text-xs font-normal text-[#f97316] mt-1">{count}</div>
+                    <div className="text-xs font-normal text-blue-600 mt-1">{count}</div>
                   </div>
                   <ChevronRight className="w-5 h-5 text-gray-400" />
                 </CardTitle>
@@ -89,9 +89,9 @@ export default function GamificationHub() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
         >
-          <Card className="bg-[#f97316]/10 border-[#f97316]/30">
+          <Card className="bg-blue-100 border border-blue-200">
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2 text-[#f97316]">
+              <CardTitle className="text-base flex items-center gap-2 text-blue-600">
                 <Trophy className="w-5 h-5" />
                 Comment ça marche ?
               </CardTitle>

@@ -45,7 +45,7 @@ export default function OfflineIndicator() {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="fixed top-0 left-0 right-0 z-[100] bg-amber-500 text-white shadow-lg"
+            className="fixed top-0 left-0 right-0 z-[100] bg-blue-500 text-white shadow-lg"
           >
             <div className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium">
               <WifiOff className="w-5 h-5 shrink-0" />

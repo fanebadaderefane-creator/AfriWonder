@@ -149,12 +149,12 @@ export default function ShareOffline() {
           </div>
         </div>
 
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
           <div className="flex gap-2">
-            <Wifi className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <Wifi className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
             <div>
-              <p className="font-medium text-amber-900">Partage sans Bluetooth</p>
-              <p className="text-sm text-amber-800 mt-1">
+              <p className="font-medium text-blue-900">Partage sans Bluetooth</p>
+              <p className="text-sm text-blue-800 mt-1">
                 Le Bluetooth natif n’est pas disponible dans les navigateurs web. Utilisez le partage
                 natif (Web Share), WhatsApp, Telegram ou la copie de lien pour envoyer du contenu
                 rapidement.

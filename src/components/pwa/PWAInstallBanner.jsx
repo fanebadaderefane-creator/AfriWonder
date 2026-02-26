@@ -119,7 +119,7 @@ export default function PWAInstallBanner({ isFullScreen = false, currentPageName
           <button
             type="button"
             onClick={handleInstall}
-            className="flex items-center gap-2 px-4 py-2 rounded-full bg-orange-500 hover:bg-orange-600 font-medium text-sm"
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500 hover:bg-blue-600 font-medium text-sm"
           >
             <Download className="w-4 h-4" />
             Installer

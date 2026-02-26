@@ -160,7 +160,7 @@ export default function Achievements() {
 
       <div className="max-w-4xl mx-auto p-6">
         {/* Stats */}
-        <Card className="mb-8 bg-gradient-to-br from-orange-50 to-red-50 border-orange-200">
+        <Card className="mb-8 bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
           <CardContent className="p-6">
             {(badgesLoading || statsLoading) ? (
               <div className="grid grid-cols-3 gap-4 text-center">

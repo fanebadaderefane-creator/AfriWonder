@@ -118,7 +118,7 @@ export default function MaintenanceGuide() {
       </Card>
 
       {/* Priority */}
-      <Card className="border-orange-200 bg-orange-50">
+      <Card className="border-blue-200 bg-blue-50">
         <CardHeader>
           <CardTitle className="text-base">🎯 Priorités (par ordre)</CardTitle>
         </CardHeader>

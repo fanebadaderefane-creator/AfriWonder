@@ -8,7 +8,7 @@ export default function UserLevelBadge({ level = 1, points = 0, nextLevelPoints 
     if (lvl >= 50) return "from-yellow-500 to-yellow-600";
     if (lvl >= 30) return "from-purple-500 to-purple-600";
     if (lvl >= 20) return "from-blue-500 to-blue-600";
-    if (lvl >= 10) return "from-orange-500 to-orange-600";
+    if (lvl >= 10) return "from-blue-500 to-blue-600";
     return "from-green-500 to-green-600";
   };
 

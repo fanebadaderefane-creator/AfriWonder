@@ -83,7 +83,7 @@ export default function CartPage() {
   };
 
   if (!user || !cart) {
-    return <div className="h-[100dvh] flex items-center justify-center"><div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>;
+    return <div className="h-[100dvh] flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>;
   }
 
   const items = cart.items || [];
@@ -105,7 +105,7 @@ export default function CartPage() {
           <ShoppingCart className="w-16 h-16 mx-auto text-gray-400 mb-4" />
           <h2 className="text-2xl font-bold mb-2">Votre panier est vide</h2>
           <p className="text-gray-600 mb-6">Commencez à acheter pour remplir votre panier</p>
-          <Button onClick={() => navigate(createPageUrl('Marketplace'))} className="bg-orange-500 hover:bg-orange-600">
+          <Button onClick={() => navigate(createPageUrl('Marketplace'))} className="bg-blue-500 hover:bg-blue-600">
             Retour au marketplace
           </Button>
         </div>
@@ -138,7 +138,7 @@ export default function CartPage() {
                         )}
                         <div className="flex-1">
                           <h3 className="font-semibold">{name}</h3>
-                          <p className="text-lg font-bold text-orange-600 mt-2">
+                          <p className="text-lg font-bold text-blue-600 mt-2">
                             {(item.price * item.quantity).toLocaleString()} XOF
                           </p>
                         </div>
@@ -189,7 +189,7 @@ export default function CartPage() {
               )}
               <div className="border-t pt-3 flex justify-between">
                 <span className="font-bold">Total</span>
-                <span className="font-bold text-lg text-orange-600">
+                <span className="font-bold text-lg text-blue-600">
                   {totalAmount.toLocaleString()} XOF
                 </span>
               </div>
@@ -232,7 +232,7 @@ export default function CartPage() {
           ) : (
             <Button
               onClick={() => navigate(createPageUrl('Checkout'))}
-              className="w-full bg-orange-500 hover:bg-orange-600 text-white py-6 text-lg"
+              className="w-full bg-blue-500 hover:bg-blue-600 text-white py-6 text-lg"
             >
               Passer la commande →
             </Button>

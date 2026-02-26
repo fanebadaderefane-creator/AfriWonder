@@ -171,7 +171,7 @@ export default function CommunityDetails() {
                 <Button
                   onClick={() => joinMutation.mutate()}
                   disabled={joinMutation.isPending}
-                  className="bg-orange-500 hover:bg-orange-600 whitespace-nowrap"
+                  className="bg-blue-500 hover:bg-blue-600 whitespace-nowrap"
                 >
                   Rejoindre
                 </Button>
@@ -210,7 +210,7 @@ export default function CommunityDetails() {
                     onClick={() => postMutation.mutate()}
                     disabled={!postText.trim() || postMutation.isPending}
                     size="icon"
-                    className="bg-orange-500 hover:bg-orange-600"
+                    className="bg-blue-500 hover:bg-blue-600"
                   >
                     <Send className="w-4 h-4" />
                   </Button>

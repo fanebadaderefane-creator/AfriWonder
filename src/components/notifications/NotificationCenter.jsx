@@ -31,7 +31,7 @@ const notificationColors = {
   order_status: 'bg-purple-100 text-purple-600',
   rating: 'bg-yellow-100 text-yellow-600',
   comment: 'bg-green-100 text-green-600',
-  mention: 'bg-orange-100 text-orange-600',
+  mention: 'bg-blue-100 text-blue-600',
   escrow: 'bg-emerald-100 text-emerald-600',
   like: 'bg-red-100 text-red-600',
   follow: 'bg-indigo-100 text-indigo-600',
@@ -116,7 +116,7 @@ export default function NotificationCenter({ isOpen, onClose, userId }) {
         <SheetHeader className="px-4 pr-12 py-3 border-b shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Bell className="w-5 h-5 text-orange-500" />
+              <Bell className="w-5 h-5 text-blue-500" />
               <SheetTitle className="text-lg">Notifications</SheetTitle>
               {unreadCount > 0 && (
                 <Badge className="bg-orange-500 text-white">{unreadCount}</Badge>
@@ -140,8 +140,8 @@ export default function NotificationCenter({ isOpen, onClose, userId }) {
         <div className="overflow-y-auto flex-1 min-h-0">
           {notifications.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-              <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center mb-4">
-                <Bell className="w-8 h-8 text-orange-500" />
+              <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mb-4">
+                <Bell className="w-8 h-8 text-blue-500" />
               </div>
               <p className="font-medium text-gray-800 mb-1">Aucune notification</p>
               <p className="text-sm text-gray-500">Vous serez notifié des likes, commentaires et suivis</p>

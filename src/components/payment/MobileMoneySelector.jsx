@@ -20,7 +20,7 @@ export default function MobileMoneySelector({
       id: 'orange_money',
       name: 'Orange Money',
       icon: '🟠',
-      color: 'from-orange-500 to-orange-600',
+      color: 'from-blue-500 to-blue-600',
       description: 'Paiement sécurisé par Orange Money'
     },
     {
@@ -34,7 +34,7 @@ export default function MobileMoneySelector({
       id: 'mtn_money',
       name: 'MTN Money',
       icon: '💛',
-      color: 'from-yellow-500 to-orange-500',
+      color: 'from-yellow-500 to-blue-500',
       description: 'Paiement par MTN Money'
     },
     {
@@ -91,7 +91,7 @@ export default function MobileMoneySelector({
             whileTap={{ scale: 0.95 }}
             className={`p-3 rounded-xl border-2 transition-all ${
               selectedMethod === method.id
-                ? `border-orange-500 bg-gradient-to-br ${method.color} text-white shadow-lg`
+                ? `border-blue-500 bg-gradient-to-br ${method.color} text-white shadow-lg`
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
           >
@@ -132,10 +132,10 @@ export default function MobileMoneySelector({
       )}
 
       {/* Amount Summary */}
-      <div className="bg-gradient-to-r from-orange-50 to-red-50 rounded-lg p-3 border border-orange-200">
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-3 border border-blue-200">
         <div className="flex justify-between items-center">
           <span className="font-semibold text-gray-700">Montant total</span>
-          <span className="text-lg font-bold text-orange-600">
+          <span className="text-lg font-bold text-blue-600">
             {amount.toLocaleString()} XOF
           </span>
         </div>
@@ -148,7 +148,7 @@ export default function MobileMoneySelector({
       <Button
         onClick={handleConfirm}
         disabled={isLoading || (showPhoneInput && (!phone || phoneError))}
-        className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
+        className="w-full bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white"
       >
         {isLoading ? (
           <>

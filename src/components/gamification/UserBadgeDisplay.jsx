@@ -18,7 +18,7 @@ export default function UserBadgeDisplay({ badges = [] }) {
         </motion.div>
       ))}
       {badges.length > 5 && (
-        <div className="text-sm font-semibold text-orange-600 self-center">
+        <div className="text-sm font-semibold text-blue-600 self-center">
           +{badges.length - 5}
         </div>
       )}

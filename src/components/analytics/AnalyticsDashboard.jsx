@@ -31,7 +31,7 @@ const StatCard = ({ icon: Icon, label, value, change, color }) => (
 );
 
 export default function AnalyticsDashboard({ stats, trendData, topVideos }) {
-  const chartColors = ["#f97316", "#ef4444", "#ec4899", "#a855f7", "#3b82f6"];
+  const chartColors = ["#2563eb", "#ef4444", "#ec4899", "#a855f7", "#3b82f6"];
 
   return (
     <div className="space-y-6">
@@ -73,7 +73,7 @@ export default function AnalyticsDashboard({ stats, trendData, topVideos }) {
               <YAxis />
               <Tooltip />
               <Legend />
-              <Line type="monotone" dataKey="views" stroke="#f97316" name="Vues" />
+              <Line type="monotone" dataKey="views" stroke="#2563eb" name="Vues" />
               <Line type="monotone" dataKey="engagement" stroke="#ec4899" name="Engagements" />
               <Line type="monotone" dataKey="revenue" stroke="#10b981" name="Revenus" />
             </LineChart>
@@ -103,7 +103,7 @@ export default function AnalyticsDashboard({ stats, trendData, topVideos }) {
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-orange-600">
+                  <p className="font-bold text-blue-600">
                     {video.revenue_30d?.toFixed(2) || 0} FCFA
                   </p>
                   <p className="text-xs text-gray-500">revenus</p>

@@ -530,7 +530,7 @@ export default function News() {
                 key={cat.id}
                 onClick={() => setSelectedCategory(cat.id)}
                 className={cn(
-                  'px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all',
+                  'flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all',
                   selectedCategory === cat.id
                     ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
                     : 'bg-white border border-slate-200 text-slate-700 hover:border-blue-200 hover:text-blue-700'
@@ -542,7 +542,7 @@ export default function News() {
           </div>
 
           {/* Langue — relié à la traduction globale (changeLanguage) */}
-          <div className="flex items-center gap-2 overflow-x-auto pt-0.5">
+          <div className="flex items-center gap-2 overflow-x-auto pt-0.5 scrollbar-hide">
             <Globe className="w-4 h-4 text-slate-500 flex-shrink-0" />
             {LANG_OPTIONS.map((lang) => {
               const isSelected = lang.code ? appLanguage === lang.code : (language === '' && appLanguage === 'fr');
@@ -559,7 +559,7 @@ export default function News() {
                     }
                   }}
                   className={cn(
-                    'px-3 py-1 rounded-full text-xs whitespace-nowrap transition-colors',
+                    'flex-shrink-0 px-3 py-1 rounded-full text-xs whitespace-nowrap transition-colors',
                     isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   )}
                 >

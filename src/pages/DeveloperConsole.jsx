@@ -115,22 +115,22 @@ export default function DeveloperConsole() {
 
       <div className="px-4 py-4 space-y-4">
         {/* Plan Actuel */}
-        <Card className="bg-gradient-to-br from-[#f97316]/10 to-[#ea580c]/10 border-[#f97316]/30">
+        <Card className="bg-gradient-to-br from-[#2563eb]/10 to-[#1d4ed8]/10 border-[#2563eb]/30">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
               <div>
                 <p className="text-sm font-medium text-gray-700">Plan actuel</p>
-                <p className="text-lg font-bold text-[#f97316]">
+                <p className="text-lg font-bold text-[#2563eb]">
                   {DEVELOPER_PLANS[currentPlan].name}
                 </p>
               </div>
-              <Badge className="bg-[#f97316] text-white border-0">
+              <Badge className="bg-[#2563eb] text-white border-0">
                 Commission {(DEVELOPER_PLANS[currentPlan].commission_rate * 100).toFixed(0)}%
               </Badge>
             </div>
             {currentPlan === 'starter' && (
               <Link to={createPageUrl('DeveloperSubscription')}>
-                <Button size="sm" className="w-full mt-2 bg-[#f97316] hover:bg-[#ea580c] text-white">
+                <Button size="sm" className="w-full mt-2 bg-[#2563eb] hover:bg-[#1d4ed8] text-white">
                   <TrendingUp className="w-4 h-4 mr-1" />
                   Passer au Plan Pro
                 </Button>
@@ -144,7 +144,7 @@ export default function DeveloperConsole() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
-                <Code className="w-5 h-5 text-[#f97316]" />
+                <Code className="w-5 h-5 text-[#2563eb]" />
                 <span className="text-2xl font-bold">{stats.totalApps}</span>
               </div>
               <p className="text-xs text-gray-600">Mini-Apps</p>
@@ -153,7 +153,7 @@ export default function DeveloperConsole() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
-                <BarChart3 className="w-5 h-5 text-[#f97316]" />
+                <BarChart3 className="w-5 h-5 text-[#2563eb]" />
                 <span className="text-2xl font-bold">{stats.totalInstalls.toLocaleString()}</span>
               </div>
               <p className="text-xs text-gray-600">Installations</p>
@@ -171,7 +171,7 @@ export default function DeveloperConsole() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
-                <TrendingUp className="w-5 h-5 text-[#f97316]" />
+                <TrendingUp className="w-5 h-5 text-[#2563eb]" />
                 <span className="text-2xl font-bold">{stats.totalGMV.toLocaleString()} XOF</span>
               </div>
               <p className="text-xs text-gray-600">GMV total</p>
@@ -196,7 +196,7 @@ export default function DeveloperConsole() {
 
         {/* Create App Button */}
         <Button
-          className="w-full bg-[#f97316] hover:bg-[#ea580c] text-white"
+          className="w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white"
           onClick={() => {
             // Ici on pourrait ouvrir un modal ou rediriger vers une page de création
             alert('Fonctionnalité de création à venir');
@@ -223,7 +223,7 @@ export default function DeveloperConsole() {
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <span className="text-sm text-gray-700">Apps publiées</span>
-                  <span className="font-bold text-[#f97316]">{stats.publishedApps}</span>
+                  <span className="font-bold text-[#2563eb]">{stats.publishedApps}</span>
                 </div>
                 <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <span className="text-sm text-gray-700">En attente de validation</span>
@@ -235,7 +235,7 @@ export default function DeveloperConsole() {
                 </div>
                 <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <span className="text-sm text-gray-700">Taux commission</span>
-                  <span className="font-bold text-[#f97316]">
+                  <span className="font-bold text-[#2563eb]">
                     {(DEVELOPER_PLANS[currentPlan].commission_rate * 100).toFixed(0)}%
                   </span>
                 </div>
@@ -268,9 +268,9 @@ export default function DeveloperConsole() {
                 </Card>
               </Link>
               <Link to={createPageUrl('DeveloperSubscription')}>
-                <Card className="cursor-pointer hover:shadow-md transition-shadow bg-gradient-to-br from-[#f97316]/10 to-[#ea580c]/10 border-[#f97316]/30">
+                <Card className="cursor-pointer hover:shadow-md transition-shadow bg-gradient-to-br from-[#2563eb]/10 to-[#1d4ed8]/10 border-[#2563eb]/30">
                   <CardContent className="p-4 text-center">
-                    <Rocket className="w-6 h-6 text-[#f97316] mx-auto mb-2" />
+                    <Rocket className="w-6 h-6 text-[#2563eb] mx-auto mb-2" />
                     <p className="text-sm font-medium text-gray-900">Abonnements</p>
                   </CardContent>
                 </Card>
@@ -302,7 +302,7 @@ export default function DeveloperConsole() {
                     <div className="grid grid-cols-2 gap-3 mb-3">
                       <div>
                         <p className="text-xs text-gray-600">Installations</p>
-                        <p className="font-bold text-[#f97316]">{app.installs.toLocaleString()}</p>
+                        <p className="font-bold text-[#2563eb]">{app.installs.toLocaleString()}</p>
                       </div>
                       <div>
                         <p className="text-xs text-gray-600">Revenus</p>
@@ -365,7 +365,7 @@ export default function DeveloperConsole() {
                 <div>
                   <label className="text-sm font-medium text-gray-700">Plan actuel</label>
                   <div className="mt-1 flex items-center gap-2">
-                    <Badge className="bg-[#f97316] text-white border-0">
+                    <Badge className="bg-[#2563eb] text-white border-0">
                       {DEVELOPER_PLANS[currentPlan].name}
                     </Badge>
                     <Link to={createPageUrl('DeveloperSubscription')}>

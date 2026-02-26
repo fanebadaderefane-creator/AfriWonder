@@ -87,14 +87,14 @@ export default function AdvertiserRegistration() {
   if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
-        <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-orange-900/20 to-slate-900 pb-24">
-      <div className="sticky top-0 bg-gradient-to-r from-orange-600 to-amber-600 border-b border-white/20 shadow-xl z-40">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900/20 to-slate-900 pb-24">
+      <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-indigo-600 border-b border-white/20 shadow-xl z-40">
         <div className="px-4 py-4 flex items-center justify-between">
           <button
             onClick={() => navigate(-1)}
@@ -169,7 +169,7 @@ export default function AdvertiserRegistration() {
 
           <Button
             type="submit"
-            className="w-full bg-orange-500 hover:bg-orange-600"
+            className="w-full bg-blue-500 hover:bg-blue-600"
             disabled={submitting}
           >
             {submitting ? (

@@ -113,7 +113,7 @@ export default function EventOrganizerDashboard() {
   if (isLoading || !dashboard) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
@@ -169,16 +169,16 @@ export default function EventOrganizerDashboard() {
         </div>
 
         {/* Mise en avant payante */}
-        <Card className={isFeatured ? 'border-amber-200 bg-amber-50/50' : ''}>
+        <Card className={isFeatured ? 'border-blue-200 bg-blue-50/50' : ''}>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Star className="w-5 h-5 text-amber-500" />
+              <Star className="w-5 h-5 text-blue-500" />
               Mise en avant
             </CardTitle>
           </CardHeader>
           <CardContent>
             {isFeatured && featuredUntil && featuredUntil > new Date() ? (
-              <p className="text-sm text-amber-800">
+              <p className="text-sm text-blue-800">
                 En vedette jusqu&apos;au {featuredUntil.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}.
               </p>
             ) : canFeature ? (
@@ -188,7 +188,7 @@ export default function EventOrganizerDashboard() {
                 </p>
                 <Button
                   size="sm"
-                  className="bg-amber-500 hover:bg-amber-600"
+                  className="bg-blue-500 hover:bg-blue-600"
                   disabled={payFeatureMutation.isPending}
                   onClick={() => payFeatureMutation.mutate()}
                 >
@@ -270,7 +270,7 @@ export default function EventOrganizerDashboard() {
               onKeyDown={(e) => e.key === 'Enter' && checkInMutation.mutate()}
             />
             <Button
-              className="w-full bg-orange-500 hover:bg-orange-600"
+              className="w-full bg-blue-500 hover:bg-blue-600"
               disabled={!qrInput.trim() || checkInMutation.isPending}
               onClick={() => checkInMutation.mutate()}
             >
@@ -294,7 +294,7 @@ export default function EventOrganizerDashboard() {
             <Button
               variant="outline"
               size="sm"
-              className="flex-1 border-amber-200 text-amber-700"
+              className="flex-1 border-blue-200 text-blue-700"
               onClick={() => closeEventMutation.mutate()}
               disabled={closeEventMutation.isPending}
             >
@@ -318,7 +318,7 @@ export default function EventOrganizerDashboard() {
             />
             <Button
               size="sm"
-              className="w-full bg-orange-500 hover:bg-orange-600"
+              className="w-full bg-blue-500 hover:bg-blue-600"
               disabled={!messageToAll.trim() || notifyAllMutation.isPending}
               onClick={() => notifyAllMutation.mutate()}
             >

@@ -50,7 +50,7 @@ export default function InstructorDashboard() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -77,7 +77,7 @@ export default function InstructorDashboard() {
           </p>
           <div className="flex flex-col gap-3">
             <Button
-              className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white border-0"
+              className="w-full bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white border-0"
               onClick={() => navigate(createPageUrl('BecomeTrainer'))}
             >
               Devenir formateur
@@ -109,7 +109,7 @@ export default function InstructorDashboard() {
           <h1 className="text-xl font-bold">Dashboard instructeur</h1>
           <Button
             size="sm"
-            className="ml-auto bg-orange-500 hover:bg-orange-600"
+            className="ml-auto bg-blue-500 hover:bg-blue-600"
             onClick={() => navigate(createPageUrl('CreateCourse'))}
           >
             <BookOpen className="w-4 h-4 mr-1" />
@@ -127,7 +127,7 @@ export default function InstructorDashboard() {
                 <DollarSign className="w-4 h-4" />
                 <span className="text-xs font-medium">Revenus totaux</span>
               </div>
-              <p className="text-xl font-bold text-orange-600">
+              <p className="text-xl font-bold text-blue-600">
                 {totalRevenue.toLocaleString('fr-FR')} FCFA
               </p>
             </CardContent>
@@ -183,7 +183,7 @@ export default function InstructorDashboard() {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-semibold text-orange-600">
+                    <p className="text-sm font-semibold text-blue-600">
                       {(c.revenue ?? 0).toLocaleString('fr-FR')} FCFA
                     </p>
                     <Button

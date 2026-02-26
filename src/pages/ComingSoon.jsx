@@ -15,9 +15,9 @@ export default function ComingSoon() {
   const moduleName = searchParams.get('module') || 'Ce module';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-orange-900/20 to-slate-900 flex flex-col items-center justify-center px-6 pb-24">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900/20 to-slate-900 flex flex-col items-center justify-center px-6 pb-24">
       <div className="text-center max-w-md">
-        <div className="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
+        <div className="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
           <Sparkles className="w-12 h-12 text-white" />
         </div>
         <h1 className="text-2xl font-bold text-white mb-2">Bientôt disponible</h1>
@@ -26,7 +26,7 @@ export default function ComingSoon() {
         </p>
         <Button
           onClick={() => navigate(createPageUrl('Home'))}
-          className="bg-gradient-to-r from-orange-500 to-red-500"
+          className="bg-gradient-to-r from-blue-500 to-indigo-500"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Retour à l'accueil

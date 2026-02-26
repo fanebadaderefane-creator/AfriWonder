@@ -15,7 +15,7 @@ const CATEGORY_COLORS = {
   concert: "bg-purple-100 text-purple-800",
   conference: "bg-blue-100 text-blue-800",
   sport: "bg-green-100 text-green-800",
-  festival: "bg-orange-100 text-orange-800",
+  festival: "bg-blue-100 text-blue-800",
   wedding: "bg-pink-100 text-pink-800",
   other: "bg-gray-100 text-gray-800"
 };
@@ -64,13 +64,13 @@ export default function EventsMaliConnect() {
               ))}
             </SelectContent>
           </Select>
-          <Button asChild className="bg-amber-500 hover:bg-amber-600 text-white rounded-xl">
+          <Button asChild className="bg-blue-500 hover:bg-blue-600 text-white rounded-xl">
             <Link to={createPageUrl("CreateEvent")}><Plus className="w-4 h-4 mr-2" />Créer un événement</Link>
           </Button>
         </div>
 
         {isLoading ? (
-          <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-amber-500" /></div>
+          <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20">
             <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-3" />

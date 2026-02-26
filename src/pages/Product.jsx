@@ -164,7 +164,7 @@ export default function Product() {
   if (isLoading || !product) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -243,7 +243,7 @@ export default function Product() {
                 key={index}
                 onClick={() => setSelectedImage(index)}
                 className={`w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden border-2 bg-gray-100 ${
-                  index === selectedImage ? 'border-orange-500' : 'border-gray-200'
+                  index === selectedImage ? 'border-blue-500' : 'border-gray-200'
                 }`}
               >
                 <img src={img} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }} />
@@ -264,7 +264,7 @@ export default function Product() {
                   {(product.stock ?? 0) > 0 ? `${product.stock} en stock` : 'Rupture de stock'}
                 </Badge>
                 {(product.seller?.seller_profile?.is_verified || product.is_verified) && (
-                  <Badge className="bg-orange-100 text-orange-700">
+                  <Badge className="bg-blue-100 text-blue-700">
                     <BadgeCheck className="w-3 h-3 mr-1" />
                     Vérifié
                   </Badge>
@@ -280,7 +280,7 @@ export default function Product() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-3xl font-bold text-orange-500">
+            <p className="text-3xl font-bold text-blue-500">
               {formatPrice(product.price)}
             </p>
             {product.negotiable_price && (
@@ -311,14 +311,14 @@ export default function Product() {
                 onClick={() => navigate(`/SellerProfile?id=${seller.id}`)}
               >
                 <AvatarImage src={seller.profile_image} />
-                <AvatarFallback className="bg-orange-100 text-orange-600">
+                <AvatarFallback className="bg-blue-100 text-blue-600">
                   {seller.full_name?.[0]?.toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1">
                 <button
                   onClick={() => navigate(`/SellerProfile?id=${seller.id}`)}
-                  className="font-semibold hover:text-orange-500"
+                  className="font-semibold hover:text-blue-500"
                 >
                   {seller.full_name || seller.email?.split('@')[0]}
                 </button>
@@ -405,14 +405,14 @@ export default function Product() {
         {(product.latitude && product.longitude) && (
           <Card className="p-4">
             <h3 className="font-semibold mb-2 flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-orange-500" />
+              <MapPin className="w-4 h-4 text-blue-500" />
               Localisation
             </h3>
             <a
               href={`https://www.openstreetmap.org/?mlat=${product.latitude}&mlon=${product.longitude}&zoom=15`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-orange-600 hover:underline"
+              className="text-sm text-blue-600 hover:underline"
             >
               Voir sur la carte →
             </a>
@@ -422,7 +422,7 @@ export default function Product() {
         {/* Q/R publiques (CDC) */}
         <Card className="p-4">
           <h3 className="font-semibold mb-3 flex items-center gap-2">
-            <HelpCircle className="w-4 h-4 text-orange-500" />
+            <HelpCircle className="w-4 h-4 text-blue-500" />
             Questions & Réponses ({questions.length})
           </h3>
           <div className="space-y-3">
@@ -448,7 +448,7 @@ export default function Product() {
                         <Button size="sm" variant="ghost" onClick={() => { setAnsweringQuestionId(null); setAnswerText(''); }}>Annuler</Button>
                       </div>
                     ) : (
-                      <button type="button" onClick={() => setAnsweringQuestionId(q.id)} className="text-xs text-orange-600 hover:underline">
+                      <button type="button" onClick={() => setAnsweringQuestionId(q.id)} className="text-xs text-blue-600 hover:underline">
                         Répondre
                       </button>
                     )}
@@ -546,8 +546,8 @@ export default function Product() {
                     </div>
                   )}
                   {r.seller_reply ? (
-                    <div className="mt-2 ml-4 pl-3 border-l-2 border-orange-200 bg-orange-50/50 rounded p-2">
-                      <p className="text-xs font-medium text-orange-700">Réponse du vendeur</p>
+                    <div className="mt-2 ml-4 pl-3 border-l-2 border-blue-200 bg-blue-50/50 rounded p-2">
+                      <p className="text-xs font-medium text-blue-700">Réponse du vendeur</p>
                       <p className="text-sm text-gray-700">{r.seller_reply}</p>
                     </div>
                   ) : user?.id === sellerId && (
@@ -566,7 +566,7 @@ export default function Product() {
                           <Button size="sm" variant="ghost" onClick={() => { setReplyingToReviewId(null); setReplyText(''); }}>Annuler</Button>
                         </div>
                       ) : (
-                        <button type="button" onClick={() => setReplyingToReviewId(r.id)} className="text-xs text-orange-600 hover:underline flex items-center gap-1">
+                        <button type="button" onClick={() => setReplyingToReviewId(r.id)} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
                           <MessageCircle className="w-3 h-3" /> Répondre
                         </button>
                       )}
@@ -645,7 +645,7 @@ export default function Product() {
                     />
                   </div>
                   <p className="text-xs font-medium text-left truncate">{relatedProduct.name}</p>
-                    <p className="text-sm font-bold text-orange-500 text-left">
+                    <p className="text-sm font-bold text-blue-500 text-left">
                     {formatPrice(relatedProduct.price)}
                   </p>
                 </button>
@@ -668,7 +668,7 @@ export default function Product() {
               addToCartMutation.mutate();
             }}
             disabled={(product.stock ?? 0) === 0 || addToCartMutation.isPending}
-            className="py-6 border-orange-500 text-orange-600 hover:bg-orange-50"
+            className="py-6 border-blue-500 text-blue-600 hover:bg-blue-50"
           >
             <ShoppingCart className="w-5 h-5 mr-2" />
             Panier

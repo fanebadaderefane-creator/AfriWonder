@@ -47,7 +47,7 @@ export default function FeaturedProviderManager({ providers }) {
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge className="bg-amber-100 text-amber-800 flex items-center gap-1">
-                    <Star className="w-3 h-3 fill-amber-500" /> En vedette
+                    <Star className="w-3 h-3 fill-blue-500" /> En vedette
                   </Badge>
                   <Button size="sm" variant="outline" onClick={() => toggleFeatured(p)} disabled={loading === p.id} className="rounded-lg">
                     <StarOff className="w-3.5 h-3.5 mr-1" /> Retirer
@@ -76,7 +76,7 @@ export default function FeaturedProviderManager({ providers }) {
                   <p className="text-xs text-muted-foreground">{p.city} · Plan {p.subscription_plan}</p>
                 </div>
               </div>
-              <Button size="sm" onClick={() => toggleFeatured(p)} disabled={loading === p.id} className="rounded-lg bg-amber-500 hover:bg-amber-600 text-white">
+              <Button size="sm" onClick={() => toggleFeatured(p)} disabled={loading === p.id} className="rounded-lg bg-blue-500 hover:bg-blue-600 text-white">
                 <Star className="w-3.5 h-3.5 mr-1" /> Mettre en vedette
               </Button>
             </div>

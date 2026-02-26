@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Search, User, Car, UtensilsCrossed, Stethoscope, Building2, Briefcase, GraduationCap, Calendar, Users } from "lucide-react";
 
 const MODULE_ICONS = {
-  providers: { icon: User, label: "Prestataire", color: "bg-amber-100 text-amber-800" },
+  providers: { icon: User, label: "Prestataire", color: "bg-blue-100 text-blue-800" },
   transport: { icon: Car, label: "Transport", color: "bg-blue-100 text-blue-800" },
   restaurants: { icon: UtensilsCrossed, label: "Restaurant", color: "bg-orange-100 text-orange-800" },
   health: { icon: Stethoscope, label: "Santé", color: "bg-teal-100 text-teal-800" },

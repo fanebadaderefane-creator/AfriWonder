@@ -125,10 +125,10 @@ export default function RequestLoan() {
           {/* Calculation */}
           <div className="bg-gray-50 p-3 rounded space-y-1 text-sm">
             <p className="text-gray-600">
-              Paiement mensuel: <span className="font-bold text-orange-600">{monthlyPayment.toFixed(0)} FCFA</span>
+              Paiement mensuel: <span className="font-bold text-blue-600">{monthlyPayment.toFixed(0)} FCFA</span>
             </p>
             <p className="text-gray-600">
-              Total à rembourser: <span className="font-bold text-orange-600">{totalToRepay.toFixed(0)} FCFA</span>
+              Total à rembourser: <span className="font-bold text-blue-600">{totalToRepay.toFixed(0)} FCFA</span>
             </p>
           </div>
         </div>
@@ -189,7 +189,7 @@ export default function RequestLoan() {
         </div>
 
         {/* Important */}
-        <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded">
+        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
           <p className="text-xs text-amber-800">
             <strong>Important:</strong> Fournissez des informations exactes et honnêtes. Les fausses déclarations peuvent entraîner le rejet de votre demande et des conséquences légales.
           </p>

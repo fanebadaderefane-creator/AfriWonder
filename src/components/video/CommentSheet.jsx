@@ -297,11 +297,11 @@ export default function CommentSheet({
     return (
       <div
         key={comment.id}
-        className={cn('flex gap-3', isReply && 'ml-10 mt-3 pl-2 border-l-2 border-orange-100')}
+        className={cn('flex gap-3', isReply && 'ml-10 mt-3 pl-2 border-l-2 border-blue-100')}
       >
         <Avatar className="w-8 h-8 flex-shrink-0">
           <AvatarImage src={comment.user_avatar ?? comment.user?.profile_image} />
-          <AvatarFallback className="bg-gradient-to-br from-orange-400 to-red-500 text-white text-xs">
+          <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white text-xs">
             {displayName?.[0]?.toUpperCase()}
           </AvatarFallback>
         </Avatar>
@@ -309,7 +309,7 @@ export default function CommentSheet({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-sm">{displayName}</span>
             {comment.is_creator && (
-              <span className="bg-orange-500/10 text-orange-500 text-xs px-2 py-0.5 rounded-full font-medium">
+              <span className="bg-blue-500/10 text-blue-500 text-xs px-2 py-0.5 rounded-full font-medium">
                 Créateur
               </span>
             )}
@@ -322,7 +322,7 @@ export default function CommentSheet({
             <button
               type="button"
               onClick={() => toggleCommentExpand(comment.id)}
-              className="text-xs text-orange-500 font-medium mt-0.5 hover:text-orange-600"
+              className="text-xs text-blue-500 font-medium mt-0.5 hover:text-blue-600"
             >
               {isExpanded ? 'Voir moins' : 'Voir plus'}
             </button>
@@ -349,7 +349,7 @@ export default function CommentSheet({
             </button>
             <button
               onClick={() => handleReply(comment)}
-              className="text-xs text-gray-400 hover:text-orange-500 font-medium transition"
+              className="text-xs text-gray-400 hover:text-blue-500 font-medium transition"
             >
               Répondre
             </button>
@@ -445,7 +445,7 @@ export default function CommentSheet({
 
               onClick={handleCancelEdit}
 
-              className="text-sm text-orange-500 font-medium"
+              className="text-sm text-blue-500 font-medium"
 
             >
 
@@ -473,7 +473,7 @@ export default function CommentSheet({
 
             onClick={(e) => { e?.stopPropagation?.(); onTip?.(); }}
 
-            className="flex-shrink-0 border-orange-200 text-orange-500 hover:bg-orange-50"
+            className="flex-shrink-0 border-blue-200 text-blue-500 hover:bg-blue-50"
 
           >
 
@@ -507,7 +507,7 @@ export default function CommentSheet({
 
             disabled={!newComment.trim()}
 
-            className="flex-shrink-0 rounded-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 disabled:opacity-50"
+            className="flex-shrink-0 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 disabled:opacity-50"
 
           >
 

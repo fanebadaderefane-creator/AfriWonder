@@ -11,7 +11,7 @@ describe('OfflineIndicator', () => {
 
   it('renders nothing when online and no recent offline', () => {
     const { container } = render(<OfflineIndicator />);
-    expect(container.querySelector('.bg-amber-500')).not.toBeInTheDocument();
+    expect(container.querySelector('.bg-blue-500')).not.toBeInTheDocument();
     expect(container.querySelector('.bg-green-500')).not.toBeInTheDocument();
   });
 

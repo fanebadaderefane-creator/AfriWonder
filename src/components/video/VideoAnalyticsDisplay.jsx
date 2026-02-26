@@ -20,7 +20,7 @@ const StatCard = ({ icon: Icon, label, value, change }) => (
         <p className="text-2xl font-bold mt-1">{value}</p>
         {change && <p className="text-xs text-green-600 mt-1">↑ {change}% depuis hier</p>}
       </div>
-      <Icon className="w-8 h-8 text-orange-500" />
+      <Icon className="w-8 h-8 text-blue-500" />
     </div>
   </motion.div>
 );
@@ -112,7 +112,7 @@ export default function VideoAnalyticsDisplay({ videoId, days = 30 }) {
                   <YAxis />
                   <Tooltip />
                   <Legend />
-                  <Line type="monotone" dataKey="views" stroke="#f97316" name="Vues" />
+                  <Line type="monotone" dataKey="views" stroke="#2563eb" name="Vues" />
                   <Line type="monotone" dataKey="engagement" stroke="#ef4444" name="Engagement" />
                 </LineChart>
               </ResponsiveContainer>
@@ -139,7 +139,7 @@ export default function VideoAnalyticsDisplay({ videoId, days = 30 }) {
                       fill="#8884d8"
                       dataKey="value"
                     >
-                      <Cell fill="#f97316" />
+                      <Cell fill="#2563eb" />
                       <Cell fill="#ec4899" />
                     </Pie>
                   </PieChart>
@@ -184,7 +184,7 @@ export default function VideoAnalyticsDisplay({ videoId, days = 30 }) {
                   <YAxis />
                   <Tooltip />
                   <Legend />
-                  <Bar dataKey="engagement" fill="#f97316" name="Engagement" />
+                  <Bar dataKey="engagement" fill="#2563eb" name="Engagement" />
                   <Bar dataKey="watchTime" fill="#ef4444" name="Temps (min)" />
                 </BarChart>
               </ResponsiveContainer>

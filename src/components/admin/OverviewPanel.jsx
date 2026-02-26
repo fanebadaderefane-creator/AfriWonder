@@ -69,7 +69,7 @@ export default function OverviewPanel({ onTabChange }) {
             <UserCheck className="w-4 h-4 mr-2" />KYC
           </Button>
           <Button
-            className="bg-orange-500 hover:bg-orange-600 border-none"
+            className="bg-blue-500 hover:bg-blue-600 border-none"
             onClick={() => onTabChange?.('reports')}
           >
             <Shield className="w-4 h-4 mr-2" />Moderation
@@ -91,7 +91,7 @@ export default function OverviewPanel({ onTabChange }) {
           <p className="text-sm opacity-90">Commandes</p>
           <p className="text-2xl font-bold">{totalOrders}</p>
         </Card>
-        <Card className="p-4 bg-gradient-to-br from-orange-500 to-red-600 text-white shadow-xl border-none">
+        <Card className="p-4 bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-xl border-none">
           <p className="text-sm opacity-90">Videos</p>
           <p className="text-2xl font-bold">{totalVideos >= 1000 ? (totalVideos / 1000).toFixed(1) + 'K' : totalVideos}</p>
         </Card>

@@ -121,7 +121,7 @@ export default function CandidateProfile() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Formation (JSON)</label>
             <Textarea value={form.education} onChange={(e) => setForm({ ...form, education: e.target.value })} rows={4} className="font-mono text-sm" />
           </div>
-          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="w-full bg-orange-500">
+          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="w-full bg-blue-500">
             {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
             Enregistrer
           </Button>

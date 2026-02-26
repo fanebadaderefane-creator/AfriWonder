@@ -89,12 +89,12 @@ export default function SellerSubscription() {
       </div>
 
       <div className="p-4 space-y-4">
-        <Card className="bg-orange-50 border-orange-200">
+        <Card className="bg-blue-50 border-blue-200">
           <CardContent className="py-4">
             <p className="text-sm font-medium text-orange-800">
               Votre formule actuelle : <Badge className="ml-1">{currentTier.label}</Badge>
             </p>
-            <p className="text-xs text-orange-700 mt-1">
+            <p className="text-xs text-blue-700 mt-1">
               {currentTier.maxProducts === -1 ? 'Produits illimités' : `${currentTier.maxProducts} produits max`} · Phase 1 : abonnements uniquement
             </p>
           </CardContent>
@@ -105,14 +105,14 @@ export default function SellerSubscription() {
             const isCurrent = tier.id === currentTierId;
             const isFree = tier.id === 'free';
             return (
-              <Card key={tier.id} className={isCurrent ? 'border-orange-500 border-2' : ''}>
+              <Card key={tier.id} className={isCurrent ? 'border-blue-500 border-2' : ''}>
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-lg flex items-center gap-2">
                       {tier.id === 'enterprise' ? <Zap className="w-5 h-5" /> : <Store className="w-5 h-5" />}
                       {tier.label}
                     </CardTitle>
-                    {isCurrent && <Badge className="bg-orange-500">Actuel</Badge>}
+                    {isCurrent && <Badge className="bg-blue-500">Actuel</Badge>}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -134,10 +134,10 @@ export default function SellerSubscription() {
                         <>
                           <p className="text-xs font-medium text-gray-600">Mode de paiement</p>
                           <div className="flex gap-2">
-                            <Button size="sm" variant={paymentMethod === 'wallet' ? 'default' : 'outline'} className={paymentMethod === 'wallet' ? 'bg-orange-500' : ''} onClick={() => setPaymentMethod('wallet')}>
+                            <Button size="sm" variant={paymentMethod === 'wallet' ? 'default' : 'outline'} className={paymentMethod === 'wallet' ? 'bg-blue-500' : ''} onClick={() => setPaymentMethod('wallet')}>
                               <Wallet className="w-4 h-4 mr-1" /> Wallet
                             </Button>
-                            <Button size="sm" variant={paymentMethod === 'orange_money' ? 'default' : 'outline'} className={paymentMethod === 'orange_money' ? 'bg-orange-500' : ''} onClick={() => setPaymentMethod('orange_money')}>
+                            <Button size="sm" variant={paymentMethod === 'orange_money' ? 'default' : 'outline'} className={paymentMethod === 'orange_money' ? 'bg-blue-500' : ''} onClick={() => setPaymentMethod('orange_money')}>
                               <Smartphone className="w-4 h-4 mr-1" /> Orange Money
                             </Button>
                           </div>
@@ -151,7 +151,7 @@ export default function SellerSubscription() {
                           )}
                           <div className="flex gap-2">
                             <Button
-                              className="bg-orange-500 hover:bg-orange-600"
+                              className="bg-blue-500 hover:bg-blue-600"
                               onClick={() => chooseTierMutation.mutate({
                                 tierId: tier.id,
                                 method: paymentMethod,
@@ -167,7 +167,7 @@ export default function SellerSubscription() {
                       ) : (
                         <Button
                           variant={isFree ? 'outline' : 'default'}
-                          className={!isFree ? 'bg-orange-500 hover:bg-orange-600' : ''}
+                          className={!isFree ? 'bg-blue-500 hover:bg-blue-600' : ''}
                           onClick={() => isFree ? chooseTierMutation.mutate({ tierId: tier.id }) : setSelectedTierForPayment(tier.id)}
                           disabled={chooseTierMutation.isPending}
                         >

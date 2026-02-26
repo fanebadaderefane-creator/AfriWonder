@@ -151,7 +151,7 @@ export default function SellerDashboard() {
           {comparison.orders_growth_pct != null && (
             <span
               className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${
-                comparison.orders_growth_pct >= 0 ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'
+                comparison.orders_growth_pct >= 0 ? 'bg-blue-100 text-blue-800' : 'bg-blue-100 text-blue-800'
               }`}
             >
               Commandes: {comparison.orders_growth_pct >= 0 ? '+' : ''}{comparison.orders_growth_pct}%

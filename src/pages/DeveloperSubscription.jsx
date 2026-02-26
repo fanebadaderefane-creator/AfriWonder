@@ -64,7 +64,7 @@ export default function DeveloperSubscription() {
 
       <div className="px-4 py-4 space-y-4">
         {/* Info Card */}
-        <Card className="bg-[#f97316]/10 border-[#f97316]/30">
+        <Card className="bg-[#2563eb]/10 border-[#2563eb]/30">
           <CardContent className="p-4">
             <p className="text-sm text-gray-700">
               💡 <strong>Pourquoi passer au Plan Pro ?</strong>
@@ -94,8 +94,8 @@ export default function DeveloperSubscription() {
                 <Card
                   className={cn(
                     "cursor-pointer transition-all",
-                    isSelected && "ring-2 ring-[#f97316] shadow-lg",
-                    isPopular && "border-[#f97316]"
+                    isSelected && "ring-2 ring-[#2563eb] shadow-lg",
+                    isPopular && "border-[#2563eb]"
                   )}
                   onClick={() => setSelectedPlan(plan.id)}
                 >
@@ -105,7 +105,7 @@ export default function DeveloperSubscription() {
                         <div className={cn(
                           "p-2 rounded-lg",
                           plan.id === 'starter' && "bg-gray-100 text-gray-600",
-                          plan.id === 'pro' && "bg-[#f97316] text-white",
+                          plan.id === 'pro' && "bg-[#2563eb] text-white",
                           plan.id === 'enterprise' && "bg-purple-100 text-purple-600"
                         )}>
                           {planIcons[plan.id]}
@@ -116,14 +116,14 @@ export default function DeveloperSubscription() {
                         </div>
                       </div>
                       {isPopular && (
-                        <Badge className="bg-[#f97316] text-white border-0">Populaire</Badge>
+                        <Badge className="bg-[#2563eb] text-white border-0">Populaire</Badge>
                       )}
                     </div>
                   </CardHeader>
                   <CardContent>
                     <div className="mb-4">
                       <div className="flex items-baseline gap-2 mb-2">
-                        <span className="text-2xl font-bold text-[#f97316]">
+                        <span className="text-2xl font-bold text-[#2563eb]">
                           Commission {(plan.commission_rate * 100).toFixed(0)}%
                         </span>
                       </div>
@@ -150,7 +150,7 @@ export default function DeveloperSubscription() {
                         className={cn(
                           "w-full",
                           isSelected 
-                            ? "bg-[#f97316] hover:bg-[#ea580c] text-white" 
+                            ? "bg-[#2563eb] hover:bg-[#1d4ed8] text-white" 
                             : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                         )}
                         onClick={(e) => {
@@ -188,31 +188,31 @@ export default function DeveloperSubscription() {
                   <tr className="border-b">
                     <td className="py-2">Commission</td>
                     <td className="text-center">10%</td>
-                    <td className="text-center text-[#f97316] font-bold">8%</td>
+                    <td className="text-center text-[#2563eb] font-bold">8%</td>
                     <td className="text-center text-purple-600 font-bold">5%</td>
                   </tr>
                   <tr className="border-b">
                     <td className="py-2">Mini-apps</td>
                     <td className="text-center">1</td>
-                    <td className="text-center text-[#f97316] font-bold">Illimité</td>
+                    <td className="text-center text-[#2563eb] font-bold">Illimité</td>
                     <td className="text-center text-purple-600 font-bold">Illimité</td>
                   </tr>
                   <tr className="border-b">
                     <td className="py-2">Analytics</td>
                     <td className="text-center">Basique</td>
-                    <td className="text-center text-[#f97316] font-bold">Avancé</td>
+                    <td className="text-center text-[#2563eb] font-bold">Avancé</td>
                     <td className="text-center text-purple-600 font-bold">Premium</td>
                   </tr>
                   <tr className="border-b">
                     <td className="py-2">Support</td>
                     <td className="text-center">Email</td>
-                    <td className="text-center text-[#f97316] font-bold">Prioritaire</td>
+                    <td className="text-center text-[#2563eb] font-bold">Prioritaire</td>
                     <td className="text-center text-purple-600 font-bold">Dédié</td>
                   </tr>
                   <tr>
                     <td className="py-2">Retrait</td>
                     <td className="text-center">Hebdomadaire</td>
-                    <td className="text-center text-[#f97316] font-bold">Quotidien</td>
+                    <td className="text-center text-[#2563eb] font-bold">Quotidien</td>
                     <td className="text-center text-purple-600 font-bold">Instantané</td>
                   </tr>
                 </tbody>

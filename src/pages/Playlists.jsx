@@ -88,7 +88,7 @@ export default function PlaylistsPage() {
             <Button
               size="sm"
               onClick={() => setIsCreating(true)}
-              className="bg-orange-500 hover:bg-orange-600"
+              className="bg-blue-500 hover:bg-orange-600"
             >
               <Plus className="w-4 h-4 mr-1" />
               Nouvelle
@@ -106,7 +106,7 @@ export default function PlaylistsPage() {
           <div className="text-center py-12">
             <p className="text-gray-500 mb-4">Aucune playlist</p>
             {isViewingOwnPlaylists && (
-              <Button onClick={() => setIsCreating(true)} className="bg-orange-500">
+              <Button onClick={() => setIsCreating(true)} className="bg-blue-500">
                 Créer une playlist
               </Button>
             )}
@@ -128,7 +128,7 @@ export default function PlaylistsPage() {
                     {playlist.cover_image ? (
                       <img src={playlist.cover_image} alt={playlist.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-500 to-red-500 group-hover:from-orange-600 group-hover:to-red-600 transition-all">
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-500 to-indigo-500 group-hover:from-blue-600 group-hover:to-indigo-600 transition-all">
                         <Play className="w-8 h-8 text-white/50" />
                       </div>
                     )}
@@ -199,7 +199,7 @@ export default function PlaylistsPage() {
             <Button
               onClick={handleCreatePlaylist}
               disabled={createPlaylistMutation.isPending}
-              className="w-full bg-orange-500"
+              className="w-full bg-blue-500"
             >
               {createPlaylistMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Créer'}
             </Button>

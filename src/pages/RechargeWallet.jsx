@@ -96,7 +96,7 @@ export default function RechargeWallet() {
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
@@ -119,7 +119,7 @@ export default function RechargeWallet() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-orange-600">
+            <p className="text-2xl font-bold text-blue-600">
               {Number(wallet?.balance ?? 0).toLocaleString()} FCFA
             </p>
             <p className="text-sm text-gray-500 mt-1">
@@ -160,7 +160,7 @@ export default function RechargeWallet() {
               onChange={(e) => setPhone(e.target.value)}
             />
             <Button
-              className="w-full bg-orange-500 hover:bg-orange-600"
+              className="w-full bg-blue-500 hover:bg-blue-600"
               disabled={!amount || Number(amount) < 100 || !phone?.replace(/\D/g, '').length || phone.replace(/\D/g, '').length < 8 || rechargeMutation.isPending}
               onClick={handleRecharge}
             >

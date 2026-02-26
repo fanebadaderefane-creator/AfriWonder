@@ -42,12 +42,12 @@ export default function JobsEmployerDashboard() {
         <button onClick={() => navigate(-1)}><ArrowLeft className="w-6 h-6" /></button>
         <h1 className="text-xl font-bold">Dashboard employeur</h1>
         <Link to={createPageUrl('PostJob')} className="ml-auto">
-          <Button size="sm" className="bg-orange-500">Publier une offre</Button>
+          <Button size="sm" className="bg-blue-500">Publier une offre</Button>
         </Link>
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div>
+        <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>
       ) : (
         <div className="p-4 space-y-6">
           <div className="grid grid-cols-2 gap-3">
@@ -66,7 +66,7 @@ export default function JobsEmployerDashboard() {
               </div>
             </div>
             <div className="bg-white rounded-xl p-4 shadow-sm flex items-center gap-3 col-span-2">
-              <TrendingUp className="w-8 h-8 text-orange-500" />
+              <TrendingUp className="w-8 h-8 text-blue-500" />
               <div>
                 <p className="text-2xl font-bold">{conversionRate}%</p>
                 <p className="text-xs text-gray-600">Taux de conversion (candidatures / vues)</p>
@@ -92,7 +92,7 @@ export default function JobsEmployerDashboard() {
               <div className="p-6 text-center text-gray-500">
                 <Briefcase className="w-12 h-12 mx-auto mb-2 text-gray-300" />
                 <p>Aucune offre publiée.</p>
-                <Link to={createPageUrl('PostJob')}><Button className="mt-3 bg-orange-500">Publier une offre</Button></Link>
+                <Link to={createPageUrl('PostJob')}><Button className="mt-3 bg-blue-500">Publier une offre</Button></Link>
               </div>
             ) : (
               <ul className="divide-y">
@@ -130,7 +130,7 @@ export default function JobsEmployerDashboard() {
                                 href={app.resume_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="shrink-0 flex items-center gap-1 text-xs text-orange-600 hover:underline"
+                                className="shrink-0 flex items-center gap-1 text-xs text-blue-600 hover:underline"
                               >
                                 <Download className="w-3.5 h-3.5" />
                                 CV

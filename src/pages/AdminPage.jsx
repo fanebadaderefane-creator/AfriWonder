@@ -20,10 +20,10 @@ const SUPER_ADMIN_EMAIL = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'fanebadade
 const FEATURES = [
   { type: "event", name: "Événements", icon: Calendar, color: "bg-purple-100 text-purple-600" },
   { type: "transport_driver", name: "Chauffeurs", icon: Car, color: "bg-blue-100 text-blue-600" },
-  { type: "food_restaurant", name: "Restaurants", icon: UtensilsCrossed, color: "bg-orange-100 text-orange-600" },
+  { type: "food_restaurant", name: "Restaurants", icon: UtensilsCrossed, color: "bg-blue-100 text-blue-600" },
   { type: "service_provider", name: "Prestataires", icon: Users, color: "bg-green-100 text-green-600" },
   { type: "health_doctor", name: "Santé", icon: Stethoscope, color: "bg-red-100 text-red-600" },
-  { type: "realestate_property", name: "Immobilier", icon: Home, color: "bg-amber-100 text-amber-600" },
+  { type: "realestate_property", name: "Immobilier", icon: Home, color: "bg-blue-100 text-blue-600" },
   { type: "insurance_provider", name: "Assurances", icon: Briefcase, color: "bg-indigo-100 text-indigo-600" },
   { type: "course", name: "Formations", icon: GraduationCap, color: "bg-cyan-100 text-cyan-600" },
   { type: "crowdfunding_campaign", name: "Crowdfunding", icon: Heart, color: "bg-pink-100 text-pink-600" },
@@ -70,7 +70,7 @@ export default function AdminPage() {
   if (!user) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -535,15 +535,15 @@ export default function AdminPage() {
             ))}
           </div>
           
-          <div className="bg-orange-50 rounded-xl p-4">
-            <h4 className="font-bold text-orange-900 flex items-center gap-2">
+          <div className="bg-blue-50 rounded-xl p-4">
+            <h4 className="font-bold text-blue-900 flex items-center gap-2">
               <DollarSign className="w-4 h-4" />
               Paiement via Orange Money
             </h4>
-            <p className="text-sm text-orange-700 mt-1">
+            <p className="text-sm text-blue-700 mt-1">
               Pour activer un abonnement, l&apos;utilisateur doit effectuer un paiement via Orange Money au numéro suivant:
             </p>
-            <p className="text-xl font-black text-orange-900 mt-2">+223 70 00 00 00</p>
+            <p className="text-xl font-black text-blue-900 mt-2">+223 70 00 00 00</p>
           </div>
           
           <Button fullWidth onClick={() => setShowSubscriptionModal(false)}>

@@ -76,7 +76,7 @@ const MOCK_COURSES = [
 ];
 
 const PAYMENT_METHODS = [
-  { id: 'orange', label: 'Orange Money', color: 'bg-orange-500' },
+  { id: 'orange', label: 'Orange Money', color: 'bg-blue-500' },
   { id: 'mtn', label: 'MTN', color: 'bg-yellow-400' },
   { id: 'wave', label: 'Wave', color: 'bg-blue-500' },
   { id: 'wallet', label: 'Wallet', color: 'bg-green-500' },
@@ -209,7 +209,7 @@ export default function Courses() {
                 key={cat.id}
                 onClick={() => setSelectedCategory(cat.id)}
                 className={cn(
-                  'px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all',
+                  'flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all',
                   selectedCategory === cat.id
                     ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
@@ -303,7 +303,7 @@ export default function Courses() {
                   <p className="text-sm text-slate-500 mb-3">Par {course.creator?.full_name || course.creator?.username || 'Formateur'}</p>
                   <div className="flex items-center gap-3 text-xs text-slate-600 mb-3">
                     <span className="flex items-center gap-1">
-                      <Star className="w-4 h-4 text-blue-600 fill-amber-500" />
+                      <Star className="w-4 h-4 text-blue-600 fill-blue-500" />
                       {course.rating ?? 0}
                     </span>
                     <span className="flex items-center gap-1">
@@ -324,14 +324,14 @@ export default function Courses() {
                   <div className="flex gap-2">
                     <Button
                       size="sm"
-                      className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-orange-600 hover:to-red-600 text-white border-0 rounded-xl"
+                      className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-0 rounded-xl"
                       onClick={() => (course._mock ? handleEnrollClick(course) : navigate(`${createPageUrl('CourseDetails')}?id=${course.id}`))}
                     >
                       Voir
                     </Button>
                     <Button
                       size="sm"
-                      className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-orange-600 hover:to-red-600 text-white border-0 rounded-xl"
+                      className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-0 rounded-xl"
                       onClick={() => handleEnrollClick(course)}
                     >
                       S&apos;inscrire
@@ -433,7 +433,7 @@ export default function Courses() {
                 ))}
               </div>
               <Button
-                className="w-full mt-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-orange-600 hover:to-red-600 text-white border-0 rounded-xl py-6 text-base font-medium"
+                className="w-full mt-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-0 rounded-xl py-6 text-base font-medium"
                 onClick={handlePay}
               >
                 Payer {(enrollModalCourse.price || 0).toLocaleString()} F CFA
@@ -452,7 +452,7 @@ export default function Courses() {
           <h3 className="text-xl font-bold text-slate-900">Inscription réussie !</h3>
           <p className="text-slate-600 mt-1">Vous pouvez commencer votre formation.</p>
           <Button
-            className="w-full mt-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-orange-600 hover:to-red-600 text-white border-0 rounded-xl py-6"
+            className="w-full mt-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-0 rounded-xl py-6"
             onClick={handleStartCourse}
           >
             Commencer le cours

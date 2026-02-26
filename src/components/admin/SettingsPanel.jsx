@@ -64,7 +64,7 @@ export default function SettingsPanel({ userRole }) {
         <h3 className="font-bold mb-6 flex items-center gap-2"><Settings className="w-5 h-5" /> Parametres plateforme</h3>
 
         {!isSuperAdmin && (
-          <div className="p-3 bg-amber-500/20 rounded-lg flex items-center gap-2 mb-4">
+          <div className="p-3 bg-blue-500/20 rounded-lg flex items-center gap-2 mb-4">
             <AlertTriangle className="w-5 h-5" /> Seul super_admin peut modifier le mode urgence et les kill switch.
           </div>
         )}
@@ -101,7 +101,7 @@ export default function SettingsPanel({ userRole }) {
             <h4 className="font-semibold mb-2 flex items-center gap-2"><ToggleLeft className="w-4 h-4" /> Modules (Phase 2) — Réactiver en 1 clic</h4>
             <p className="text-sm text-white/60 mb-3">Modules cachés au lancement. Activer pour les afficher dans le menu.</p>
             {!isSuperAdmin && (
-              <p className="text-sm text-amber-300/80 mb-2">Seul le super_admin peut activer/désactiver les modules.</p>
+              <p className="text-sm text-blue-300/80 mb-2">Seul le super_admin peut activer/désactiver les modules.</p>
             )}
             <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${!isSuperAdmin ? 'opacity-60 pointer-events-none' : ''}`}>
               {(featureFlags || []).map((f) => (

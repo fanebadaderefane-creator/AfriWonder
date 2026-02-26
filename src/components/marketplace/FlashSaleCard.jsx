@@ -48,7 +48,7 @@ export default function FlashSaleCard({ flashSale }) {
       className="cursor-pointer"
     >
       <Card className="overflow-hidden">
-        <div className="relative h-48 bg-gradient-to-br from-orange-500 via-red-500 to-pink-500">
+        <div className="relative h-48 bg-gradient-to-br from-blue-500 via-indigo-500 to-indigo-600">
           {flashSale.banner_image && (
             <img
               src={flashSale.banner_image}
@@ -70,7 +70,7 @@ export default function FlashSaleCard({ flashSale }) {
         </div>
 
         <CardContent className="p-4 space-y-3">
-          <div className="flex items-center gap-2 text-orange-600 font-semibold">
+          <div className="flex items-center gap-2 text-blue-600 font-semibold">
             <Clock className="w-4 h-4" />
             {timeLeft.expired ? (
               <span className="text-red-600">Expirée</span>
@@ -88,7 +88,7 @@ export default function FlashSaleCard({ flashSale }) {
                 initial={{ width: 0 }}
                 animate={{ width: `${soldPercentage}%` }}
                 transition={{ duration: 1 }}
-                className="bg-gradient-to-r from-orange-500 to-red-500 h-full rounded-full"
+                className="bg-gradient-to-r from-blue-500 to-indigo-500 h-full rounded-full"
               />
             </div>
             <p className="text-xs text-gray-600 mt-1">{totalSold} / {totalAvailable} vendus</p>
@@ -98,7 +98,7 @@ export default function FlashSaleCard({ flashSale }) {
             {flashSale.products.slice(0, 2).map((product, idx) => (
               <div key={idx} className="bg-gray-50 p-2 rounded">
                 <p className="font-semibold truncate">{product.product_id}</p>
-                <p className="text-orange-600 font-bold">{product.sale_price.toLocaleString()} XOF</p>
+                <p className="text-blue-600 font-bold">{product.sale_price.toLocaleString()} XOF</p>
               </div>
             ))}
           </div>

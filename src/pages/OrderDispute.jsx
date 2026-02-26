@@ -77,7 +77,7 @@ export default function OrderDispute() {
   };
 
   if (isLoading) {
-    return <div className="h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>;
+    return <div className="h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>;
   }
   if (!order) {
     return <div className="text-center py-16"><p className="text-gray-500">Commande non trouvée</p><Button onClick={() => navigate(createPageUrl('Orders'))} className="mt-4">Retour</Button></div>;

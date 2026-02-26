@@ -127,7 +127,7 @@ export default function Crowdfunding() {
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
               className={cn(
-                "flex items-center gap-1 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors",
+                "flex items-center gap-1 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors flex-shrink-0",
                 selectedCategory === cat.id
                   ? "bg-blue-600 text-white"
                   : "bg-gray-100 text-gray-600"

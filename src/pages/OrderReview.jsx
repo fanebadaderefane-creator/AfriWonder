@@ -121,7 +121,7 @@ export default function OrderReview() {
   if (isLoading) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -324,7 +324,7 @@ export default function OrderReview() {
           <Button
             onClick={handleSubmit}
             disabled={!selectedItem || !content.trim() || createReviewMutation.isPending}
-            className="w-full bg-gradient-to-r from-orange-500 to-red-500"
+            className="w-full bg-gradient-to-r from-blue-500 to-indigo-500"
           >
             <Star className="w-4 h-4 mr-2" />
             {createReviewMutation.isPending ? 'Enregistrement...' : 'Publier l\'avis'}

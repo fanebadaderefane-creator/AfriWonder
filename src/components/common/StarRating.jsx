@@ -21,7 +21,7 @@ export default function StarRating({ rating, onRate, size = "md", readOnly = fal
           <Star
             className={`${s} transition-colors ${
               star <= (hover || rating)
-                ? "fill-amber-400 text-amber-400"
+                ? "fill-blue-400 text-blue-400"
                 : "fill-transparent text-gray-300"
             }`}
           />

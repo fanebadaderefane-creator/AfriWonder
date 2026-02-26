@@ -9,7 +9,7 @@ export default function PageLoader() {
       role="status"
       aria-label="Chargement"
     >
-      <div className="w-10 h-10 border-2 border-slate-200 border-t-orange-500 rounded-full animate-spin" />
+      <div className="w-10 h-10 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin" />
       <p className="text-sm text-slate-500">Chargement...</p>
     </div>
   );
@@ -19,7 +19,7 @@ export default function PageLoader() {
 export function SpinnerLoader({ className = '' }) {
   return (
     <div
-      className={`w-8 h-8 border-2 border-slate-200 border-t-orange-500 rounded-full animate-spin ${className}`}
+      className={`w-8 h-8 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin ${className}`}
       role="status"
       aria-label="Chargement"
     />

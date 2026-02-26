@@ -109,7 +109,7 @@ export default function BookingDetails() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
           <p className="mt-4 text-gray-600">Chargement...</p>
         </div>
       </div>
@@ -348,7 +348,7 @@ export default function BookingDetails() {
           <Button
             onClick={() => completeBookingMutation.mutate(booking.id)}
             disabled={completeBookingMutation.isPending}
-            className="w-full bg-orange-500 hover:bg-orange-600"
+            className="w-full bg-blue-500 hover:bg-blue-600"
           >
             Marquer comme terminée
           </Button>
@@ -367,7 +367,7 @@ export default function BookingDetails() {
         {isCustomer && booking.status === 'completed' && !booking.review && (
           <Button
             onClick={() => setShowReviewModal(true)}
-            className="w-full bg-orange-500 hover:bg-orange-600"
+            className="w-full bg-blue-500 hover:bg-blue-600"
           >
             Laisser un avis
           </Button>
@@ -475,7 +475,7 @@ export default function BookingDetails() {
                   <Button
                     onClick={() => createReviewMutation.mutate(reviewData)}
                     disabled={createReviewMutation.isPending || !reviewData.content}
-                    className="flex-1 bg-orange-500 hover:bg-orange-600"
+                    className="flex-1 bg-blue-500 hover:bg-blue-600"
                   >
                     Publier
                   </Button>

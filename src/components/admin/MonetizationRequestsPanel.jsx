@@ -45,7 +45,7 @@ export default function MonetizationRequestsPanel() {
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
-        <Loader2 className="w-12 h-12 animate-spin text-orange-500" />
+        <Loader2 className="w-12 h-12 animate-spin text-blue-500" />
       </div>
     );
   }

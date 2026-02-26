@@ -172,7 +172,7 @@ export default function ArticleDetails() {
   if (isLoading && !isMock) {
     return (
       <div className="h-screen flex items-center justify-center bg-slate-50">
-        <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
@@ -183,7 +183,7 @@ export default function ArticleDetails() {
         <p>Article introuvable</p>
         <Button
           onClick={() => navigate(createPageUrl('News'))}
-          className="mt-4 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white border-0"
+          className="mt-4 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white border-0"
         >
           Retour aux actualités
         </Button>
@@ -201,7 +201,7 @@ export default function ArticleDetails() {
     <div className="min-h-screen bg-slate-50 pb-20">
       {/* Header — AfriWonder */}
       <div className="sticky top-0 bg-white border-b border-slate-200 z-40 px-4 py-3 flex items-center gap-3 shadow-sm">
-        <button onClick={() => navigate(-1)} aria-label="Retour" className="text-slate-700 hover:text-orange-600">
+        <button onClick={() => navigate(-1)} aria-label="Retour" className="text-slate-700 hover:text-blue-600">
           <ArrowLeft className="w-6 h-6" />
         </button>
         <h1 className="text-lg font-bold flex-1 truncate text-slate-900">Article</h1>
@@ -221,19 +221,19 @@ export default function ArticleDetails() {
         {/* Badges — AfriWonder */}
         <div className="flex flex-wrap gap-2 mb-2">
           {article.is_breaking && (
-            <span className="px-2 py-0.5 rounded bg-orange-500 text-white text-xs font-bold">URGENT</span>
+            <span className="px-2 py-0.5 rounded bg-blue-500 text-white text-xs font-bold">URGENT</span>
           )}
           {article.is_verified && (
             <span className="px-2 py-0.5 rounded bg-slate-700 text-white text-xs">✓ Vérifié</span>
           )}
           {article.is_sponsored && (
-            <span className="px-2 py-0.5 rounded bg-amber-500 text-white text-xs">Sponsorisé</span>
+            <span className="px-2 py-0.5 rounded bg-blue-500 text-white text-xs">Sponsorisé</span>
           )}
           {article.is_premium && (
             <span className="px-2 py-0.5 rounded bg-purple-500 text-white text-xs">Premium</span>
           )}
           {article.category && (
-            <span className="px-2 py-0.5 rounded bg-gradient-to-r from-orange-100 to-red-50 text-orange-800 text-xs font-medium">{article.category}</span>
+            <span className="px-2 py-0.5 rounded bg-gradient-to-r from-blue-100 to-indigo-50 text-blue-800 text-xs font-medium">{article.category}</span>
           )}
         </div>
 
@@ -264,11 +264,11 @@ export default function ArticleDetails() {
         <div className="flex flex-wrap items-center gap-4 py-3 text-sm text-slate-600 border-b border-slate-100">
           <span className="flex items-center gap-1"><Eye className="w-4 h-4" />{(article.views || 0).toLocaleString()} vues</span>
           <button
-            className="flex items-center gap-1 hover:text-orange-600"
+            className="flex items-center gap-1 hover:text-blue-600"
             onClick={() => (user || isMock) && likeMutation.mutate()}
             disabled={likeMutation.isPending}
           >
-            <Heart className={`w-4 h-4 ${likeStatus.liked ? 'fill-orange-500 text-orange-500' : ''}`} />
+            <Heart className={`w-4 h-4 ${likeStatus.liked ? 'fill-blue-500 text-blue-500' : ''}`} />
             {article.likes_count ?? 0} j&apos;aime
           </button>
           <span className="flex items-center gap-1"><MessageCircle className="w-4 h-4" />{article.comments_count ?? 0} commentaires</span>
@@ -277,16 +277,16 @@ export default function ArticleDetails() {
 
         {/* Share buttons — AfriWonder gradient */}
         <div className="flex flex-wrap gap-2 py-3">
-          <Button variant="outline" size="sm" onClick={() => handleShare('copy')} className="border-slate-200 text-slate-700 hover:bg-orange-50 hover:border-orange-200 hover:text-orange-700">
+          <Button variant="outline" size="sm" onClick={() => handleShare('copy')} className="border-slate-200 text-slate-700 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700">
             Copier le lien
           </Button>
-          <Button variant="outline" size="sm" onClick={() => handleShare('whatsapp')} className="border-slate-200 text-slate-700 hover:bg-orange-50 hover:border-orange-200 hover:text-orange-700">
+          <Button variant="outline" size="sm" onClick={() => handleShare('whatsapp')} className="border-slate-200 text-slate-700 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700">
             WhatsApp
           </Button>
-          <Button variant="outline" size="sm" onClick={() => handleShare('facebook')} className="border-slate-200 text-slate-700 hover:bg-orange-50 hover:border-orange-200 hover:text-orange-700">
+          <Button variant="outline" size="sm" onClick={() => handleShare('facebook')} className="border-slate-200 text-slate-700 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700">
             Facebook
           </Button>
-          <Button variant="outline" size="sm" onClick={() => handleShare('twitter')} className="border-slate-200 text-slate-700 hover:bg-orange-50 hover:border-orange-200 hover:text-orange-700">
+          <Button variant="outline" size="sm" onClick={() => handleShare('twitter')} className="border-slate-200 text-slate-700 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700">
             X
           </Button>
         </div>
@@ -299,10 +299,10 @@ export default function ArticleDetails() {
             <p className="whitespace-pre-wrap text-slate-700">{displayContent}</p>
           )}
           {isPremiumLocked && (
-            <div className="mt-6 p-4 rounded-xl bg-gradient-to-br from-orange-50 to-red-50 border border-orange-200">
-              <p className="font-medium text-orange-800">Article réservé aux abonnés Premium</p>
+            <div className="mt-6 p-4 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200">
+              <p className="font-medium text-blue-800">Article réservé aux abonnés Premium</p>
               <p className="text-sm text-slate-600 mt-1">Débloquez l&apos;accès pour lire la suite.</p>
-              <Button className="mt-3 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white border-0" onClick={() => navigate(createPageUrl('Subscription') || '#')}>
+              <Button className="mt-3 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white border-0" onClick={() => navigate(createPageUrl('Subscription') || '#')}>
                 S&apos;abonner
               </Button>
             </div>
@@ -327,7 +327,7 @@ export default function ArticleDetails() {
                 className="flex-1 rounded-xl border-slate-200"
               />
               <Button
-                className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white border-0"
+                className="bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white border-0"
                 onClick={() => commentMutation.mutate()}
                 disabled={commentMutation.isPending || !newComment.trim()}
                 size="icon"
@@ -354,7 +354,7 @@ export default function ArticleDetails() {
               key={comment.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className={comment.parent_id ? 'pl-6 border-l-2 border-orange-200' : ''}
+              className={comment.parent_id ? 'pl-6 border-l-2 border-blue-200' : ''}
             >
               <div className="flex gap-2">
                 <img
@@ -371,7 +371,7 @@ export default function ArticleDetails() {
                     </span>
                     {user && !comment.parent_id && (
                       <button
-                        className="text-xs text-slate-500 hover:text-orange-600 flex items-center gap-0.5"
+                        className="text-xs text-slate-500 hover:text-blue-600 flex items-center gap-0.5"
                         onClick={() => setReplyToId(comment.id)}
                       >
                         <Reply className="w-3 h-3" /> Répondre

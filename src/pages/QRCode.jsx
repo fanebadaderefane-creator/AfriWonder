@@ -31,7 +31,7 @@ export default function QRCodePage() {
   const qrTypes = [
     { id: 'profile', label: 'Mon Profil', icon: User, color: 'from-blue-500 to-cyan-500' },
     { id: 'payment', label: 'Recevoir paiement', icon: Wallet, color: 'from-green-500 to-emerald-500' },
-    { id: 'shop', label: 'Ma Boutique', icon: ShoppingBag, color: 'from-orange-500 to-red-500' },
+    { id: 'shop', label: 'Ma Boutique', icon: ShoppingBag, color: 'from-blue-500 to-indigo-500' },
   ];
 
   const handleCopy = async () => {
@@ -150,7 +150,7 @@ export default function QRCodePage() {
               return (
                 <Card
                   key={type.id}
-                  className={`p-4 flex items-center gap-4 cursor-pointer transition-shadow ${isSelected ? 'ring-2 ring-orange-500' : ''}`}
+                  className={`p-4 flex items-center gap-4 cursor-pointer transition-shadow ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
                   onClick={() => setSelectedType(type.id)}
                 >
                   <div

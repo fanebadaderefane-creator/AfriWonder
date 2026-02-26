@@ -97,7 +97,7 @@ export default function CompanyProfile() {
               <p className="text-sm text-gray-600">Note moyenne: <strong>{profile.rating_avg?.toFixed(1) ?? '—'}</strong> / 5 ({profile.rating_count} avis)</p>
             </div>
           )}
-          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="w-full bg-orange-500">
+          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="w-full bg-blue-500">
             {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
             Enregistrer
           </Button>

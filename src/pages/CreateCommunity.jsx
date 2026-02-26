@@ -140,7 +140,7 @@ export default function CreateCommunity() {
               <Button
                 onClick={() => createMutation.mutate()}
                 disabled={createMutation.isPending || !formData.name.trim()}
-                className="flex-1 bg-orange-500 hover:bg-orange-600"
+                className="flex-1 bg-blue-500 hover:bg-blue-600"
               >
                 {createMutation.isPending ? 'Création...' : 'Créer'}
               </Button>

@@ -97,7 +97,7 @@ export default function ProductCard({
 
           {/* Price */}
           <div className="flex items-baseline gap-1 mb-2">
-            <span className="text-lg font-bold text-orange-500">
+            <span className="text-lg font-bold text-blue-500">
               {formatPrice(product.price)}
             </span>
           </div>
@@ -121,7 +121,7 @@ export default function ProductCard({
             >
               <Avatar className="w-6 h-6">
                 <AvatarImage src={product.seller_avatar} />
-                <AvatarFallback className="bg-orange-100 text-orange-600 text-xs">
+                <AvatarFallback className="bg-blue-100 text-blue-600 text-xs">
                   {product.seller_name?.[0]?.toUpperCase()}
                 </AvatarFallback>
               </Avatar>
@@ -159,7 +159,7 @@ export default function ProductCard({
               e.stopPropagation();
               navigate(`/Product?id=${product.id}`);
             }}
-            className="mt-3 w-full py-2.5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg font-semibold text-sm hover:shadow-lg transition-all active:scale-95"
+            className="mt-3 w-full py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg font-semibold text-sm hover:shadow-lg transition-all active:scale-95"
           >
             Acheter
           </button>

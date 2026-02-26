@@ -77,7 +77,7 @@ export default function Addresses() {
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -143,7 +143,7 @@ export default function Addresses() {
                 <Button type="button" variant="outline" onClick={() => setShowForm(false)} className="flex-1">
                   Annuler
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending} className="flex-1 bg-orange-500 hover:bg-orange-600">
+                <Button type="submit" disabled={createMutation.isPending} className="flex-1 bg-blue-500 hover:bg-blue-600">
                   {createMutation.isPending ? 'Enregistrement...' : 'Enregistrer'}
                 </Button>
               </div>
@@ -153,20 +153,20 @@ export default function Addresses() {
 
         {isLoading ? (
           <div className="flex justify-center py-8">
-            <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : addresses.length === 0 && !showForm ? (
           <Card className="p-8 text-center">
             <MapPin className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500 mb-4">Aucune adresse enregistrée</p>
-            <Button onClick={() => setShowForm(true)} className="bg-orange-500 hover:bg-orange-600">
+            <Button onClick={() => setShowForm(true)} className="bg-blue-500 hover:bg-blue-600">
               <Plus className="w-4 h-4 mr-2" /> Ajouter une adresse
             </Button>
           </Card>
         ) : (
           addresses.map((a) => (
             <Card key={a.id} className="p-4 flex items-start gap-3">
-              <MapPin className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
+              <MapPin className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
                 <p className="font-medium">{a.street}</p>
                 <p className="text-sm text-gray-600">{a.city}{a.postal_code ? `, ${a.postal_code}` : ''}</p>

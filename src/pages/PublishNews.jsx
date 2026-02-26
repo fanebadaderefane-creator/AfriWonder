@@ -76,13 +76,13 @@ export default function PublishNews() {
   if (user === null) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 pb-24">
-        <FileText className="w-16 h-16 text-orange-500 mb-4" />
+        <FileText className="w-16 h-16 text-blue-500 mb-4" />
         <h2 className="text-xl font-bold text-gray-900 mb-2">Connexion requise</h2>
         <p className="text-gray-600 text-center mb-6">
           Connectez-vous pour publier une actualité sur AfriWonder.
         </p>
         <Button
-          className="bg-orange-500 hover:bg-orange-600"
+          className="bg-blue-500 hover:bg-blue-600"
           onClick={() => navigate(createPageUrl('Landing'))}
         >
           Se connecter
@@ -184,7 +184,7 @@ export default function PublishNews() {
           </Button>
           <Button
             type="submit"
-            className="flex-1 bg-orange-500 hover:bg-orange-600 rounded-xl"
+            className="flex-1 bg-blue-500 hover:bg-blue-600 rounded-xl"
             disabled={createMutation.isPending || !form.title.trim() || !form.content.trim()}
           >
             {createMutation.isPending ? (

@@ -134,7 +134,7 @@ export default function SubtitleGenerator({ videoId, videoUrl, videoTitle, class
                 <Button
                   onClick={generateSubtitles}
                   disabled={loading}
-                  className="w-full bg-orange-500 hover:bg-orange-600"
+                  className="w-full bg-blue-500 hover:bg-blue-600"
                 >
                   {loading ? (
                     <>
@@ -171,7 +171,7 @@ export default function SubtitleGenerator({ videoId, videoUrl, videoTitle, class
               <div className="bg-gray-50 rounded-lg p-3 max-h-48 overflow-y-auto">
                 <div className="text-xs text-gray-600 space-y-2">
                   {subtitles.subtitles?.slice(0, 5).map((sub, idx) => (
-                    <div key={idx} className="border-l-2 border-orange-500 pl-2">
+                    <div key={idx} className="border-l-2 border-blue-500 pl-2">
                       <p className="font-mono text-gray-500">{sub.startTime} → {sub.endTime}</p>
                       <p className="text-gray-900">{sub.text}</p>
                     </div>
@@ -195,7 +195,7 @@ export default function SubtitleGenerator({ videoId, videoUrl, videoTitle, class
                 </Button>
                 <Button
                   onClick={downloadSubtitles}
-                  className="flex-1 bg-orange-500 hover:bg-orange-600"
+                  className="flex-1 bg-blue-500 hover:bg-blue-600"
                 >
                   Télécharger
                 </Button>

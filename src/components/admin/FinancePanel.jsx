@@ -156,7 +156,7 @@ export default function FinancePanel() {
           <div><p className="text-sm text-white/70">Wallets utilisateur</p><p className="text-xl font-bold">{wallets.totalUserWallets ?? 0}</p></div>
         </div>
         {alerts.length > 0 && (
-          <div className="p-3 bg-amber-500/20 rounded-lg flex items-center gap-2 mb-4">
+          <div className="p-3 bg-blue-500/20 rounded-lg flex items-center gap-2 mb-4">
             <AlertTriangle className="w-5 h-5" />
             <div>{alerts.map((a, i) => <p key={i} className="text-sm">{a}</p>)}</div>
           </div>
@@ -178,7 +178,7 @@ export default function FinancePanel() {
           {(wallets.list ?? []).map((w) => (
             <div
               key={w.id}
-              className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${freezeWalletId === w.id ? 'bg-amber-500/30 border border-amber-500/50' : 'bg-white/5 hover:bg-white/10 border border-transparent'}`}
+              className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${freezeWalletId === w.id ? 'bg-blue-500/30 border border-blue-500/50' : 'bg-white/5 hover:bg-white/10 border border-transparent'}`}
             >
               <button type="button" onClick={() => setFreezeWalletId(w.id)} className="flex-1 text-left min-w-0">
                 <span className="font-mono text-white/90" title={w.id}>{w.id.slice(0, 8)}…</span>
@@ -352,7 +352,7 @@ export default function FinancePanel() {
               <div><p className="text-xs text-white/70">Total cadeaux</p><p className="font-bold text-white">{(liveRevenueSummary.totalGiftsAmount ?? 0).toLocaleString()} FCFA</p></div>
               <div><p className="text-xs text-white/70">Total dons</p><p className="font-bold text-white">{(liveRevenueSummary.totalTipsAmount ?? 0).toLocaleString()} FCFA</p></div>
               <div><p className="text-xs text-white/70">Part créateurs</p><p className="font-bold text-emerald-400">{(liveRevenueSummary.totalCreatorEarnings ?? 0).toLocaleString()} FCFA</p></div>
-              <div><p className="text-xs text-white/70">Part plateforme</p><p className="font-bold text-amber-400">{(liveRevenueSummary.totalPlatformCommission ?? 0).toLocaleString()} FCFA</p></div>
+              <div><p className="text-xs text-white/70">Part plateforme</p><p className="font-bold text-blue-400">{(liveRevenueSummary.totalPlatformCommission ?? 0).toLocaleString()} FCFA</p></div>
             </div>
             <div className="space-y-2 max-h-80 overflow-y-auto">
               {liveRevenueRows.length === 0 && <p className="text-white/60 text-sm">Aucun revenu live sur la période.</p>}
@@ -365,7 +365,7 @@ export default function FinancePanel() {
                   <div className="text-right">
                     <p className="font-bold text-white">{(r.total_amount ?? 0).toLocaleString()} FCFA</p>
                     <p className="text-xs text-emerald-400">Créateur: {(r.creator_earnings ?? 0).toLocaleString()}</p>
-                    <p className="text-xs text-amber-400">Plateforme: {(r.platform_commission ?? 0).toLocaleString()}</p>
+                    <p className="text-xs text-blue-400">Plateforme: {(r.platform_commission ?? 0).toLocaleString()}</p>
                   </div>
                 </div>
               ))}

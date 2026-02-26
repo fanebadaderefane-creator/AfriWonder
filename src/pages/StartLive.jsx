@@ -218,7 +218,7 @@ export default function StartLive() {
           transition={{ delay: 0.2 }}
           className="flex items-start gap-3 p-3 rounded-xl bg-blue-900/30 border border-blue-500/20"
         >
-          <Lightbulb className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+          <Lightbulb className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
           <p className="text-sm text-gray-300">
             Astuce: Assurez-vous d'avoir une bonne connexion Internet avant de démarrer votre live.
           </p>

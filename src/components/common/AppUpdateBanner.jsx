@@ -52,7 +52,7 @@ export default function AppUpdateBanner() {
           role="region"
           aria-label="Mise à jour de l'application"
         >
-          <div className="bg-gradient-to-r from-orange-500/95 to-red-500/95 text-white shadow-md relative">
+          <div className="bg-gradient-to-r from-blue-500/95 to-indigo-500/95 text-white shadow-md relative">
             <div className="max-w-4xl mx-auto px-4 py-3 flex items-start gap-3 pr-14">
               <Sparkles className="w-5 h-5 shrink-0 mt-0.5 text-white/90" aria-hidden />
               <div className="flex-1 min-w-0">

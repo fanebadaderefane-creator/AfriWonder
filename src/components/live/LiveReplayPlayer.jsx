@@ -202,7 +202,7 @@ export default function LiveReplayPlayer({ liveId, replayUrl, isCreator }) {
               step="0.1"
               value={isMuted ? 0 : volume}
               onChange={handleVolumeChange}
-              className="w-16 h-1 accent-amber-500"
+              className="w-16 h-1 accent-blue-500"
             />
           </div>
           <Button size="sm" variant="ghost" className="h-7 text-xs text-white" onClick={toggleFullscreen} title="Plein écran">
@@ -242,7 +242,7 @@ export default function LiveReplayPlayer({ liveId, replayUrl, isCreator }) {
               <Badge
                 key={ch.id}
                 variant="secondary"
-                className="cursor-pointer hover:bg-amber-600/30 text-xs py-1 px-2"
+                className="cursor-pointer hover:bg-blue-600/30 text-xs py-1 px-2"
                 onClick={() => seekTo(ch.start_seconds ?? 0)}
               >
                 {formatTime(ch.start_seconds ?? 0)} — {ch.title}

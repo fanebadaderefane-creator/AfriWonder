@@ -38,7 +38,7 @@ const MENU_SECTIONS = [
       { icon: Newspaper, label: "Actualités", color: "text-gray-600", page: 'News' },
       { icon: CreditCard, label: "Microcrédit", color: "text-emerald-600", page: 'Microcredit' },
       { icon: Target, label: "Crowdfunding", color: "text-pink-600", page: 'Crowdfunding' },
-      { icon: Briefcase, label: "Emplois", color: "text-amber-600", page: 'Jobs' },
+      { icon: Briefcase, label: "Emplois", color: "text-blue-600", page: 'Jobs' },
       { icon: Grid3x3, label: "Mini-Apps", color: "text-blue-600", badge: "Nouveau", page: 'MiniAppsStore' },
     ],
   },
@@ -66,7 +66,7 @@ const MENU_SECTIONS = [
   {
     title: "PARCOURS INTELLIGENT",
     items: [
-      { icon: Sparkles, label: "Parcours Intelligent", color: "text-amber-600", badge: "IA", page: 'MatchingCenter' },
+      { icon: Sparkles, label: "Parcours Intelligent", color: "text-blue-600", badge: "IA", page: 'MatchingCenter' },
     ],
   },
   {

@@ -57,7 +57,7 @@ export default function MarketplaceMap() {
   if (!mapReady) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -132,7 +132,7 @@ export default function MarketplaceMap() {
                     onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
                   />
                   <h3 className="font-semibold text-sm">{p.name}</h3>
-                  <p className="text-orange-600 font-bold text-sm">{p.price?.toLocaleString()} FCFA</p>
+                  <p className="text-blue-600 font-bold text-sm">{p.price?.toLocaleString()} FCFA</p>
                   <Button
                     size="sm"
                     className="w-full mt-2"

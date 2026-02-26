@@ -47,7 +47,7 @@ export default function VerifyCertificate() {
     <div className="min-h-screen bg-gray-50 p-4 flex flex-col items-center justify-center">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6">
         <div className="flex items-center gap-2 mb-6">
-          <Award className="w-8 h-8 text-amber-500" />
+          <Award className="w-8 h-8 text-blue-500" />
           <h1 className="text-xl font-bold">Vérifier un certificat</h1>
         </div>
 
@@ -70,7 +70,7 @@ export default function VerifyCertificate() {
 
         {loading && (
           <div className="flex justify-center py-6">
-            <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 

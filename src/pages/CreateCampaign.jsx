@@ -148,7 +148,7 @@ export default function CreateCampaign() {
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-orange-500 border-_t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -167,7 +167,7 @@ export default function CreateCampaign() {
           <Button
             onClick={handleSubmit}
             disabled={createCampaignMutation.isPending}
-            className="bg-orange-500 hover:bg-orange-600"
+            className="bg-blue-500 hover:bg-blue-600"
           >
             {createCampaignMutation.isPending ? 'Création...' : 'Publier'}
           </Button>
@@ -190,7 +190,7 @@ export default function CreateCampaign() {
                 </button>
               </div>
             ))}
-            <label className="aspect-square border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-orange-500">
+            <label className="aspect-square border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-blue-500">
               <Upload className="w-6 h-6 text-gray-400 mb-1" />
               <span className="text-xs text-gray-500">Ajouter</span>
               <input

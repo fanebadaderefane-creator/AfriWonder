@@ -190,7 +190,7 @@ self.addEventListener('fetch', (event) => {
                   width: 40px;
                   height: 40px;
                   border: 4px solid rgba(255,255,255,0.1);
-                  border-top-color: #f97316;
+                  border-top-color: #2563eb;
                   border-radius: 50%;
                   animation: spin 1s linear infinite;
                 }

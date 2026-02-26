@@ -163,7 +163,7 @@ export default function PetitionDetails() {
     active: 'bg-green-100 text-green-700',
     under_review: 'bg-blue-100 text-blue-700',
     accepted: 'bg-purple-100 text-purple-700',
-    implemented: 'bg-orange-100 text-orange-700'
+    implemented: 'bg-blue-100 text-blue-700'
   };
   const creator = petition.creator || {};
   const signatures = petition.signatures || [];
@@ -208,7 +208,7 @@ export default function PetitionDetails() {
       <div className="p-4 border-b border-gray-100">
         <div className="flex justify-between mb-2">
           <span className="text-sm font-medium">{petition.current_signatures ?? 0} / {petition.goal_signatures} signatures</span>
-          <span className="text-sm font-bold text-orange-600">{Math.round(progressPercent)}%</span>
+          <span className="text-sm font-bold text-blue-600">{Math.round(progressPercent)}%</span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
           <div
@@ -257,7 +257,7 @@ export default function PetitionDetails() {
                     type="button"
                     onClick={() => likeCommentMutation.mutate(c.id)}
                     disabled={likeCommentMutation.isPending}
-                    className="flex items-center gap-1 text-xs text-gray-500 hover:text-orange-600 shrink-0"
+                    className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 shrink-0"
                     title="J'aime"
                   >
                     <ThumbsUp className="w-3.5 h-3.5" />
@@ -281,13 +281,13 @@ export default function PetitionDetails() {
 
       {/* Soutenir la pétition (dons) */}
       {petition.status === 'active' && user && (
-        <div className="p-4 border-b border-gray-100 bg-gradient-to-br from-orange-50 to-amber-50">
+        <div className="p-4 border-b border-gray-100 bg-gradient-to-br from-blue-50 to-indigo-50">
           <h3 className="font-bold mb-2 flex items-center gap-2">
-            <Gift className="w-4 h-4 text-orange-600" />
+            <Gift className="w-4 h-4 text-blue-600" />
             Soutenir cette pétition
           </h3>
           {!showDonate ? (
-            <Button variant="outline" size="sm" onClick={() => setShowDonate(true)} className="border-orange-300 text-orange-700">
+            <Button variant="outline" size="sm" onClick={() => setShowDonate(true)} className="border-blue-300 text-blue-700">
               Faire un don (Orange Money)
             </Button>
           ) : (
@@ -323,7 +323,7 @@ export default function PetitionDetails() {
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => setShowDonate(false)}>Annuler</Button>
-                <Button size="sm" className="bg-orange-500" onClick={() => donateMutation.mutate()} disabled={!donateForm.phone.trim() || donateMutation.isPending}>
+                <Button size="sm" className="bg-blue-500" onClick={() => donateMutation.mutate()} disabled={!donateForm.phone.trim() || donateMutation.isPending}>
                   {donateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Payer'}
                 </Button>
               </div>

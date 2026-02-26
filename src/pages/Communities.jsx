@@ -59,7 +59,7 @@ export default function Communities() {
             <Button
               onClick={() => navigate(createPageUrl('CreateCommunity'))}
               size="sm"
-              className="ml-auto bg-orange-500 hover:bg-orange-600"
+              className="ml-auto bg-blue-500 hover:bg-blue-600"
             >
               <Plus className="w-4 h-4 mr-1" />
               Créer
@@ -87,7 +87,7 @@ export default function Communities() {
               onClick={() => setFilterCategory(cat)}
               className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
                 filterCategory === cat
-                  ? 'bg-orange-500 text-white'
+                  ? 'bg-blue-500 text-white'
                   : 'bg-gray-100 text-gray-600'
               }`}
             >

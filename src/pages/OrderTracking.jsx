@@ -186,7 +186,7 @@ export default function OrderTracking() {
   });
 
   if (isLoading) {
-    return <div className="h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>;
+    return <div className="h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>;
   }
 
   if (!order) {
@@ -216,11 +216,11 @@ export default function OrderTracking() {
             const isDone = idx < currentStepIndex;
             return (
               <div key={step.status} className="flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isDone ? 'bg-green-500 text-white' : isActive ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isDone ? 'bg-green-500 text-white' : isActive ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
                   <Icon className="w-5 h-5" />
                 </div>
                 <div className="flex-1">
-                  <p className={`font-medium ${isActive ? 'text-orange-600' : isDone ? 'text-green-600' : 'text-gray-500'}`}>
+                  <p className={`font-medium ${isActive ? 'text-blue-600' : isDone ? 'text-green-600' : 'text-gray-500'}`}>
                     {step.label}
                   </p>
                   {isActive && <p className="text-sm text-gray-500">Étape actuelle</p>}
@@ -248,7 +248,7 @@ export default function OrderTracking() {
             <div className="flex-1">
               <h3 className="font-semibold">{order.product_name}</h3>
               <p className="text-sm text-gray-600">Quantité: {order.quantity}</p>
-              <p className="text-orange-600 font-bold mt-2">{order.total_amount?.toLocaleString()} FCFA</p>
+              <p className="text-blue-600 font-bold mt-2">{order.total_amount?.toLocaleString()} FCFA</p>
             </div>
           </div>
 
@@ -316,7 +316,7 @@ export default function OrderTracking() {
             <div className="space-y-3">
               {order.tracking_updates.map((update, idx) => (
                 <div key={idx} className="flex gap-3 pb-3 border-b last:border-0">
-                  <div className="w-2 h-2 rounded-full bg-orange-500 flex-shrink-0 mt-1.5" />
+                  <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />
                   <div className="flex-1">
                     <p className="font-semibold text-sm">{update.status}</p>
                     <p className="text-xs text-gray-500 mt-0.5">{update.message}</p>
@@ -384,7 +384,7 @@ export default function OrderTracking() {
             Montant: {orderRefund.amount?.toLocaleString()} FCFA — Statut:{' '}
             <Badge className={
               orderRefund.status === 'approved' ? 'bg-green-100 text-green-800' :
-              orderRefund.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
+              orderRefund.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'
             }>
               {orderRefund.status === 'pending' ? 'En attente' : orderRefund.status === 'approved' ? 'Approuvé' : 'Refusé'}
             </Badge>
@@ -404,7 +404,7 @@ export default function OrderTracking() {
             Montant: {orderReturn.refund_amount?.toLocaleString()} FCFA - Statut:{' '}
             <Badge className={
               ['approved', 'exchange_approved'].includes(orderReturn.status) ? 'bg-green-100 text-green-800' :
-              ['rejected'].includes(orderReturn.status) ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
+              ['rejected'].includes(orderReturn.status) ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'
             }>
               {orderReturn.status}
             </Badge>
@@ -417,9 +417,9 @@ export default function OrderTracking() {
       {/* Actions */}
       <div className="space-y-3">
         {order.payment_status === 'pending' && order.payment_method === 'cod' && (
-          <Card className="p-4 bg-amber-50 border-amber-200">
-            <p className="font-medium text-amber-800">💵 Paiement à la livraison</p>
-            <p className="text-sm text-amber-700 mt-1">
+          <Card className="p-4 bg-blue-50 border-blue-200">
+            <p className="font-medium text-blue-800">💵 Paiement à la livraison</p>
+            <p className="text-sm text-blue-700 mt-1">
               Vous réglerez {order.total_amount?.toLocaleString()} FCFA auprès du livreur à la réception du colis.
             </p>
           </Card>
@@ -427,7 +427,7 @@ export default function OrderTracking() {
         {order.payment_status === 'pending' && order.payment_method !== 'cod' && (
           <Button
             onClick={() => setShowPayModal(true)}
-            className="w-full bg-orange-500 hover:bg-orange-600 text-white"
+            className="w-full bg-blue-500 hover:bg-blue-600 text-white"
           >
             <CreditCard className="w-4 h-4 mr-2" />
             Payer avec {
@@ -452,7 +452,7 @@ export default function OrderTracking() {
         {order.status === 'delivered' && !order.seller_rating && (
           <Button
             onClick={() => setShowRating(true)}
-            className="w-full bg-orange-500 hover:bg-orange-600"
+            className="w-full bg-blue-500 hover:bg-blue-600"
           >
             <Star className="w-4 h-4 mr-2" />
             Laisser un avis
@@ -462,7 +462,7 @@ export default function OrderTracking() {
         {!orderRefund && ['paid', 'preparing', 'in_transit', 'delivered', 'completed'].includes(order.status) && (
           <Button
             variant="outline"
-            className="w-full border-amber-200 text-amber-700 hover:bg-amber-50"
+            className="w-full border-blue-200 text-blue-700 hover:bg-blue-50"
             onClick={() => setShowRefundModal(true)}
           >
             <RotateCcw className="w-4 h-4 mr-2" />
@@ -484,7 +484,7 @@ export default function OrderTracking() {
         {['paid', 'preparing', 'in_transit', 'delivered', 'completed'].includes(order.status) && (
           <Button
             variant="outline"
-            className="w-full border-amber-200 text-amber-700 hover:bg-amber-50"
+            className="w-full border-blue-200 text-blue-700 hover:bg-blue-50"
             onClick={() => navigate(`${createPageUrl('OrderDispute')}?orderId=${order.id}`)}
           >
             <AlertTriangle className="w-4 h-4 mr-2" />
@@ -583,7 +583,7 @@ export default function OrderTracking() {
                     ? 'bg-blue-500 hover:bg-blue-600'
                     : order?.payment_method === 'wallet'
                       ? 'bg-emerald-600 hover:bg-emerald-700'
-                      : 'bg-orange-500 hover:bg-orange-600'
+                      : 'bg-blue-500 hover:bg-blue-600'
                 }`}
                 disabled={
                   payLoading
@@ -725,7 +725,7 @@ export default function OrderTracking() {
                 Annuler
               </Button>
               <Button
-                className="flex-1 bg-orange-500 hover:bg-orange-600"
+                className="flex-1 bg-blue-500 hover:bg-blue-600"
                 disabled={requestRefundMutation.isPending || !refundAmount}
                 onClick={() => requestRefundMutation.mutate()}
               >
@@ -774,7 +774,7 @@ export default function OrderTracking() {
               <Button
                 onClick={() => submitRatingMutation.mutate()}
                 disabled={submitRatingMutation.isPending}
-                className="flex-1 bg-orange-500 hover:bg-orange-600"
+                className="flex-1 bg-blue-500 hover:bg-blue-600"
               >
                 Envoyer l'avis
               </Button>

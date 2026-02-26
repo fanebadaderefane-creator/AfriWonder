@@ -123,7 +123,7 @@ export default function Civic() {
                 <Button size="sm" variant="outline">Dashboard</Button>
               </Link>
               <Link to={createPageUrl('CreatePetition')}>
-                <Button size="sm" className="bg-orange-500 hover:bg-orange-600">
+                <Button size="sm" className="bg-blue-500 hover:bg-blue-600">
                   <Plus className="w-4 h-4 mr-1" />
                   Créer
                 </Button>
@@ -152,7 +152,7 @@ export default function Civic() {
               className={cn(
                 "flex items-center gap-1 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors",
                 selectedCategory === cat.id
-                  ? "bg-orange-500 text-white"
+                  ? "bg-blue-500 text-white"
                   : "bg-gray-100 text-gray-600"
               )}
             >

@@ -99,7 +99,7 @@ export default function MobileMoneyPayment() {
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
@@ -126,7 +126,7 @@ export default function MobileMoneyPayment() {
                 Montant à recharger
               </label>
               <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-4 py-3">
-                <span className="text-2xl font-bold text-orange-500">₣</span>
+                <span className="text-2xl font-bold text-blue-500">₣</span>
                 <Input
                   type="number"
                   placeholder="0"
@@ -148,7 +148,7 @@ export default function MobileMoneyPayment() {
                     onClick={() => setAmount(qAmount.toString())}
                     className={`p-3 rounded-xl border-2 text-sm font-semibold transition-all ${
                       amount === qAmount.toString()
-                        ? 'border-orange-500 bg-orange-50 text-orange-600'
+                        ? 'border-blue-500 bg-blue-50 text-blue-600'
                         : 'border-gray-200 text-gray-700'
                     }`}
                   >
@@ -161,7 +161,7 @@ export default function MobileMoneyPayment() {
             <Button
               onClick={() => setStep('method')}
               disabled={!amount || parseFloat(amount) < 100}
-              className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white h-12 rounded-xl"
+              className="w-full bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white h-12 rounded-xl"
             >
               Continuer
             </Button>
@@ -171,9 +171,9 @@ export default function MobileMoneyPayment() {
         {/* Step: Payment Method */}
         {step === 'method' && (
           <div className="space-y-4">
-            <div className="bg-gradient-to-r from-orange-50 to-red-50 rounded-2xl p-4 border border-orange-200">
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-200">
               <p className="text-sm font-medium text-gray-700">
-                Montant: <span className="font-bold text-orange-600">{parseFloat(amount).toLocaleString()} FCFA</span>
+                Montant: <span className="font-bold text-blue-600">{parseFloat(amount).toLocaleString()} FCFA</span>
               </p>
             </div>
 
@@ -187,7 +187,7 @@ export default function MobileMoneyPayment() {
                   onClick={() => setMethod(pm.id)}
                   className={`w-full p-4 rounded-2xl border-2 text-left transition-all ${
                     method === pm.id
-                      ? 'border-orange-500 bg-orange-50'
+                      ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-200 bg-white'
                   }`}
                 >
@@ -198,7 +198,7 @@ export default function MobileMoneyPayment() {
                       <p className="text-xs text-gray-500">{pm.description}</p>
                     </div>
                     <div className={`w-5 h-5 rounded-full border-2 ${
-                      method === pm.id ? 'bg-orange-500 border-orange-500' : 'border-gray-300'
+                      method === pm.id ? 'bg-blue-500 border-blue-500' : 'border-gray-300'
                     }`} />
                   </div>
                 </button>
@@ -232,7 +232,7 @@ export default function MobileMoneyPayment() {
               <Button
                 onClick={() => setStep('confirm')}
                 disabled={!method || !phoneNumber}
-                className="flex-1 bg-orange-500 hover:bg-orange-600 text-white h-12 rounded-xl"
+                className="flex-1 bg-blue-500 hover:bg-blue-600 text-white h-12 rounded-xl"
               >
                 Suivant
               </Button>
@@ -277,7 +277,7 @@ export default function MobileMoneyPayment() {
               <Button
                 onClick={handleInitiatePayment}
                 disabled={loading}
-                className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white h-12 rounded-xl"
+                className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white h-12 rounded-xl"
               >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Payer maintenant'}
               </Button>
@@ -288,8 +288,8 @@ export default function MobileMoneyPayment() {
         {/* Step: Processing */}
         {step === 'processing' && (
           <div className="flex flex-col items-center justify-center py-20 space-y-4">
-            <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center animate-pulse">
-              <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+            <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center animate-pulse">
+              <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
             </div>
             <h2 className="text-lg font-bold text-gray-900">Traitement en cours...</h2>
             <p className="text-center text-gray-500">

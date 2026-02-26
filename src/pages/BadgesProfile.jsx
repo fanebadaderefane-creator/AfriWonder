@@ -117,7 +117,7 @@ export default function BadgesProfile() {
   if (!user) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-[#f97316]" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
     );
   }
@@ -180,15 +180,15 @@ export default function BadgesProfile() {
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-3">
-              <div className="bg-white rounded-xl p-4 text-center border-l-4 border-[#f97316]">
+              <div className="bg-white rounded-xl p-4 text-center border-l-4 border-blue-600">
                 <p className="text-2xl font-bold text-gray-900">{userStats?.videos ?? 0}</p>
                 <p className="text-xs text-gray-600 mt-1">Vidéos</p>
               </div>
-              <div className="bg-white rounded-xl p-4 text-center border-l-4 border-[#f97316]">
+              <div className="bg-white rounded-xl p-4 text-center border-l-4 border-blue-600">
                 <p className="text-2xl font-bold text-gray-900">{userStats?.followers ?? 0}</p>
                 <p className="text-xs text-gray-600 mt-1">Followers</p>
               </div>
-              <div className="bg-white rounded-xl p-4 text-center border-l-4 border-[#f97316]">
+              <div className="bg-white rounded-xl p-4 text-center border-l-4 border-blue-600">
                 <p className="text-2xl font-bold text-gray-900">{earnedBadges.length}</p>
                 <p className="text-xs text-gray-600 mt-1">Badges</p>
               </div>
@@ -207,12 +207,12 @@ export default function BadgesProfile() {
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   transition={{ type: 'spring', stiffness: 300 }}
-                  className="bg-white rounded-2xl p-4 text-center border-2 border-[#f97316] shadow-lg"
+                  className="bg-white rounded-2xl p-4 text-center border-2 border-blue-600 shadow-lg"
                 >
                   <div className="text-4xl mb-2">{badge.icon}</div>
                   <p className="font-bold text-sm text-gray-900">{badge.name}</p>
                   <p className="text-xs text-gray-600 mt-1">{badge.description}</p>
-                  <div className="mt-3 flex items-center justify-center gap-1 text-[#f97316] text-xs font-semibold">
+                  <div className="mt-3 flex items-center justify-center gap-1 text-blue-600 text-xs font-semibold">
                     <Star className="w-3 h-3" />
                     +{badge.points}
                   </div>
@@ -238,7 +238,7 @@ export default function BadgesProfile() {
                   <Lock className="w-5 h-5 mx-auto mb-2 text-gray-400" />
                   <p className="font-bold text-sm text-gray-700">{badge.name}</p>
                   <p className="text-xs text-gray-500 mt-1">{badge.description}</p>
-                  <div className="mt-3 text-[#f97316] text-xs font-semibold">+{badge.points}</div>
+                  <div className="mt-3 text-blue-600 text-xs font-semibold">+{badge.points}</div>
                 </motion.div>
               ))}
             </div>
@@ -246,8 +246,8 @@ export default function BadgesProfile() {
         )}
 
         {/* Achievement tips */}
-        <div className="bg-[#f97316]/10 border border-[#f97316]/30 rounded-xl p-4 space-y-2">
-          <p className="font-semibold text-[#f97316] text-sm">💡 Comment débloquer plus de badges</p>
+        <div className="bg-blue-100 border border-blue-200 rounded-xl p-4 space-y-2">
+          <p className="font-semibold text-blue-600 text-sm">💡 Comment débloquer plus de badges</p>
           <ul className="text-xs text-gray-700 space-y-1">
             <li>• Publiez votre première vidéo</li>
             <li>• Atteindrez 100 followers</li>
