@@ -2,7 +2,7 @@
 /**
  * VideoCard — full-screen feed player. Single active item, poster until first frame, HLS/MP4.
  */
-import React, { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, memo } from 'react';
 import {
   Heart,
   MessageCircle,
@@ -676,6 +676,28 @@ function VideoCardContent({
       window.removeEventListener('focus', handleFocus);
     };
   }, [isActive, loadError, isMuted, autoplayWithPolicy]);
+
+  // Pause synchrone dès que la carte n'est plus active (mobile : évite que la mauvaise vidéo joue en fond)
+  useLayoutEffect(() => {
+    if (isActive) return;
+    const el = videoRef.current;
+    if (el) {
+      try { el.pause(); } catch (_) {}
+    }
+  }, [isActive]);
+
+  // Dès que cette carte est active : pause des autres vidéos avant paint (mobile)
+  useLayoutEffect(() => {
+    if (!isActive || typeof document === 'undefined') return;
+    const el = videoRef.current;
+    if (!el) return;
+    const players = document.querySelectorAll('video[data-afw-feed-video="1"]');
+    players.forEach((node) => {
+      if (node !== el) {
+        try { node.pause(); } catch (_) {}
+      }
+    });
+  }, [isActive]);
 
   // Auto play / pause selon isActive (virtualisation) + replay au canplay si actif
   useEffect(() => {

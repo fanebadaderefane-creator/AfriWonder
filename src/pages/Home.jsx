@@ -20,7 +20,7 @@ import { Loader2, ChevronRight } from 'lucide-react';
 import { toast } from "sonner";
 import { useNetworkStatus, getCacheStrategy, scheduleTask } from '../components/common/PerformanceOptimizer';
 import { cn } from "@/lib/utils";
-import { getVideoPlaybackUrl, isDeletedUser } from '@/lib/utils';
+import { getVideoPlaybackUrl, isDeletedUser, isMobileOrPWA } from '@/lib/utils';
 import { getJSON, setJSON } from '@/utils/safeStorage';
 import { useWakeLock } from '@/hooks/useWakeLock';
 
@@ -488,14 +488,19 @@ export default function Home() {
     preloadVideos(items, currentIndex);
   }, [currentIndex, activeTab, mainFeedItems, followingVideos, preloadVideos]);
 
-  // IntersectionObserver : détection slide active (60% visible) — natif, pas de scroll handler
+  // IntersectionObserver : sur mobile on se base sur le scroll pour l'index (plus fiable)
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     observerRef.current?.disconnect();
+    const isMobile = isMobileOrPWA();
     const options = { root: container, threshold: [0, 0.6, 1] };
     observerRef.current = new IntersectionObserver((entries) => {
+      if (isMobile) {
+        updateIndexFromScrollRef.current?.();
+        return;
+      }
       let best = { index: -1, ratio: 0 };
       entries.forEach((entry) => {
         if (!entry.isIntersecting) return;
@@ -523,21 +528,30 @@ export default function Home() {
     };
   }, [mainFeedItems, followingVideos, activeTab]);
 
-  // Backup: mettre à jour l'index au scroll pour que les bonnes vidéos soient montées (évite écrans noirs)
-  const handleScroll = useCallback(() => {
+  // Index actif = slide qui contient le centre du viewport (fiable sur mobile, évite mauvaise vidéo en fond)
+  const updateIndexFromScroll = useCallback(() => {
     const container = containerRef.current;
     if (!container || feedLength === 0) return;
     const pullEl = container.firstElementChild;
     const pullHeight = pullEl ? pullEl.offsetHeight : 0;
     const slideHeight = container.clientHeight;
     if (slideHeight <= 0) return;
-    const rawIndex = Math.floor((container.scrollTop - pullHeight) / slideHeight);
+    const scrollTop = container.scrollTop;
+    const viewportCenter = scrollTop + slideHeight / 2;
+    const rawIndex = Math.floor((viewportCenter - pullHeight) / slideHeight);
     const index = Math.max(0, Math.min(rawIndex, feedLength - 1));
     if (index !== currentIndexRef.current) {
       currentIndexRef.current = index;
       setCurrentIndex(index);
     }
   }, [feedLength]);
+
+  const handleScroll = useCallback(() => {
+    updateIndexFromScroll();
+  }, [updateIndexFromScroll]);
+
+  const updateIndexFromScrollRef = useRef(updateIndexFromScroll);
+  updateIndexFromScrollRef.current = updateIndexFromScroll;
 
   // Préchargement en avance : 2 vidéos suivantes (lien preload) pour que tout soit prêt au scroll
   useEffect(() => {
@@ -750,7 +764,10 @@ export default function Home() {
             }
           }}
           onTouchEnd={(e) => {
-            if (e.changedTouches.length > 0) handlePullEnd();
+            if (e.changedTouches.length > 0) {
+              handlePullEnd();
+              requestAnimationFrame(() => updateIndexFromScroll());
+            }
           }}
           onTouchCancel={() => handlePullEnd()}
           className="snap-y snap-mandatory h-full flex-1 w-full flex flex-col overflow-y-auto"
