@@ -34,6 +34,7 @@ export function useNativeAppEnhancements() {
 
     setViewportVars();
     window.addEventListener('resize', setViewportVars, { passive: true });
+    window.addEventListener('orientationchange', setViewportVars, { passive: true });
     window.visualViewport?.addEventListener('resize', setViewportVars, { passive: true });
     window.visualViewport?.addEventListener('scroll', setViewportVars, { passive: true });
 
@@ -56,6 +57,7 @@ export function useNativeAppEnhancements() {
 
     return () => {
       window.removeEventListener('resize', setViewportVars);
+      window.removeEventListener('orientationchange', setViewportVars);
       window.visualViewport?.removeEventListener('resize', setViewportVars);
       window.visualViewport?.removeEventListener('scroll', setViewportVars);
       document.removeEventListener('pointerup', onTapFeedback, true);

@@ -20,7 +20,7 @@ import { Loader2, ChevronRight } from 'lucide-react';
 import { toast } from "sonner";
 import { useNetworkStatus, getCacheStrategy, scheduleTask } from '../components/common/PerformanceOptimizer';
 import { cn } from "@/lib/utils";
-import { getVideoPlaybackUrl, isDeletedUser, isMobileOrPWA } from '@/lib/utils';
+import { getVideoPlaybackUrl, isDeletedUser, isMobileOrPWA, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG } from '@/lib/utils';
 import { getJSON, setJSON } from '@/utils/safeStorage';
 import { useWakeLock } from '@/hooks/useWakeLock';
 
@@ -630,7 +630,7 @@ export default function Home() {
   if (showHomeLoading) {
     return (
       <div
-        className="w-full bg-black flex justify-center text-white"
+        className="w-full bg-gray-950 flex justify-center text-white"
         style={{
           height: '100dvh',
           minHeight: 'calc(var(--app-vh, 1vh) * 100)',
@@ -664,7 +664,7 @@ export default function Home() {
 
   return (
     <div
-      className="w-full bg-black overflow-hidden flex justify-center"
+      className="w-full bg-gray-950 overflow-hidden flex justify-center"
       style={{
         height: '100dvh',
         minHeight: 'calc(var(--app-vh, 1vh) * 100)',
@@ -674,7 +674,7 @@ export default function Home() {
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
-      <div className="w-full sm:max-w-[400px] h-full relative flex flex-col bg-black">
+      <div className="w-full sm:max-w-[400px] h-full relative flex flex-col bg-gray-950">
         <button
           onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
           className={cn(
@@ -778,12 +778,14 @@ export default function Home() {
             scrollSnapType: 'y mandatory',
             WebkitScrollSnapType: 'y mandatory',
             WebkitOverflowScrolling: 'touch',
+            scrollBehavior: 'auto',
             touchAction: 'pan-y',
             gap: 0,
+            backgroundColor: '#0a0a0a',
           }}
         >
         <div
-          className="flex items-center justify-center shrink-0 overflow-hidden transition-[height] duration-150 ease-out bg-black"
+          className="flex items-center justify-center shrink-0 overflow-hidden transition-[height] duration-150 ease-out bg-gray-950"
           style={{
             height: isRefreshing ? 56 : pullDistance,
             minHeight: isRefreshing ? 56 : 0,
@@ -846,13 +848,12 @@ export default function Home() {
             {(activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map(v => ({ type: 'video', video: v }))).map((item, index) => {
               const isNeighbor = Math.abs(index - currentIndex) <= 2;
               const slideStyle = {
-                flex: '0 0 100%',
-                minHeight: '100%',
+                flex: '0 0 auto',
+                width: '100%',
+                minHeight: '100dvh',
                 height: '100dvh',
                 touchAction: 'pan-y',
-                willChange: 'transform',
-                transform: 'translateZ(0)',
-                backfaceVisibility: 'hidden',
+                contain: 'layout paint',
               };
 
               if (item.type === 'ad') {
@@ -860,7 +861,7 @@ export default function Home() {
                   <div
                     key={`ad-${item.ad?.id || index}`}
                     data-index={index}
-                    className="relative w-full h-full flex-shrink-0 snap-start overflow-hidden bg-black"
+                    className="relative w-full h-full flex-shrink-0 snap-start overflow-hidden bg-gray-950"
                     style={slideStyle}
                   >
                     {isNeighbor ? (
@@ -873,19 +874,23 @@ export default function Home() {
                         hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
                       />
                     ) : (
-                      <div className="h-full w-full bg-black" aria-hidden />
+                      <div className="h-full w-full bg-gray-950" aria-hidden />
                     )}
                   </div>
                 );
               }
 
               const video = item.video;
+              const posterUrl = (item.type === 'video' && video && isValidThumbnailUrl(video.thumbnail_url, video.video_url)) ? video.thumbnail_url : null;
+              const slideBgStyle = posterUrl
+                ? { backgroundImage: `url(${posterUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                : { backgroundImage: `url(${VIDEO_PLACEHOLDER_IMG})`, backgroundSize: 'cover', backgroundPosition: 'center' };
               return (
                 <div
                   key={video.id}
                   data-index={index}
-                  className="relative w-full h-full flex-shrink-0 snap-start overflow-hidden bg-black"
-                  style={slideStyle}
+                  className="relative w-full h-full flex-shrink-0 snap-start overflow-hidden bg-gray-950"
+                  style={{ ...slideStyle, ...slideBgStyle }}
                 >
                   {isNeighbor ? (
                   <VideoCard
@@ -919,7 +924,7 @@ export default function Home() {
                     shouldPreload={isNeighbor}
                   />
                   ) : (
-                    <div className="h-full w-full bg-black" aria-hidden />
+                    <div className="h-full w-full" aria-hidden style={{ background: 'transparent' }} />
                   )}
                 </div>
               );

@@ -17,7 +17,6 @@ import {
   DollarSign,
   UserPlus,
   UserCheck,
-  Loader2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -1130,46 +1129,35 @@ function VideoCardContent({
 
   return (
     <div 
-      className="relative w-full h-[100dvh] bg-black overflow-hidden"
+      className="relative w-full h-[100dvh] bg-gray-950 overflow-hidden"
       style={{ touchAction: 'pan-y' }}
     >
       <div className="absolute inset-0 overflow-hidden">
-      {/* Poster / frame visible pendant tout le chargement — jamais de carte noire */}
+      {/* Frame de la vidéo en fond (toujours visible si pas encore de premier frame) */}
       {video.media_type !== 'image' && (
-        <div
-          className="absolute inset-0 bg-gray-900"
-          style={{
-            backgroundImage: posterUrl ? `url(${posterUrl})` : `url(${VIDEO_PLACEHOLDER_IMG})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-          }}
+        <img
+          src={posterUrl || VIDEO_PLACEHOLDER_IMG}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover bg-gray-950"
           aria-hidden
         />
-      )}
-      {/* Indicateur de chargement discret : la frame (poster) reste visible */}
-      {video.media_type !== 'image' && isActive && !loadError && !showVideoFrame && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="flex flex-col items-center gap-2 px-4 py-3 rounded-2xl bg-black/50 backdrop-blur-sm">
-            <Loader2 className="w-6 h-6 text-white animate-spin" aria-hidden />
-            <span className="text-white/95 text-xs">Chargement…</span>
-          </div>
-        </div>
       )}
       {/* ================= IMAGE (photo) ou VIDEO ================= */}
       {video.media_type === 'image' ? (
         <img
           src={getVideoPlaybackUrl(video.video_url) || video.video_url}
           alt={video.title || ''}
-          className="absolute top-0 left-0 w-full h-full object-contain bg-black"
+          className="absolute top-0 left-0 w-full h-full object-contain bg-gray-950"
         />
       ) : videoUrl ? (
+      <>
       <video
         key={`${video.id}-${videoUrl}`}
         ref={videoRef}
         data-afw-feed-video="1"
         src={videoSrc}
         poster={posterUrl || undefined}
-        className="absolute top-0 left-0 w-full h-full object-cover transition-opacity duration-300"
+        className="absolute top-0 left-0 w-full h-full object-cover"
         style={{ opacity: showVideoFrame ? 1 : 0 }}
         autoPlay
         preload={slowConnection ? 'metadata' : preload}
@@ -1244,6 +1232,16 @@ function VideoCardContent({
                   video.filter === 'Lumineux' ? 'brightness(1.25)' : 'none'
         }}
       />
+      {/* Frame au-dessus de la vidéo jusqu'au premier frame — évite le cadre noir */}
+      {video.media_type !== 'image' && !showVideoFrame && (
+        <img
+          src={posterUrl || VIDEO_PLACEHOLDER_IMG}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover z-10 pointer-events-none bg-gray-950"
+          aria-hidden
+        />
+      )}
+      </>
       ) : (
         // Si pas d'URL valide, afficher l'erreur directement
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-[50] p-4">
