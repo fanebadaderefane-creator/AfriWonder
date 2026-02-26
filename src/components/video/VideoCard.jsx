@@ -526,6 +526,33 @@ function VideoCardContent({
     
   }, [isActive, shouldPreload, videoUrl, isHls, video.start_time, hasFallbackSource, moveToNextSource, prepareForAutoplay, autoplayWithPolicy]);
 
+  // Gestion de la source pour les flux non-HLS (MP4, etc.) afin d'Ã©viter les flashes noirs en PWA.
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || isHls) return;
+
+    // Si la carte n'est ni active ni en prÃ©chargement, on dÃ©monte la source.
+    if (!isActive && !shouldPreload) {
+      try {
+        el.removeAttribute('src');
+        el.load();
+      } catch (_) {}
+      setShowVideoFrame(false);
+      return;
+    }
+
+    if (!videoSrc) return;
+
+    // Injecter la source uniquement quand la carte est active ou voisine (preload).
+    const currentSrc = el.getAttribute('src') || '';
+    if (currentSrc !== videoSrc) {
+      try {
+        el.setAttribute('src', videoSrc);
+        el.load();
+      } catch (_) {}
+    }
+  }, [isActive, shouldPreload, videoSrc, isHls]);
+
   // MP4 : autoplay propre â€” readyState >= 2 ou canplay (une fois)
   useEffect(() => {
     const el = videoRef.current;
