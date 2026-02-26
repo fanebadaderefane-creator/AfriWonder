@@ -56,6 +56,7 @@ export default function Home() {
   const scrollEndTimeoutRef = useRef(null);
   const feedLengthRef = useRef(0);
   const isSnappingRef = useRef(false);
+  const currentIndexRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -476,13 +477,16 @@ export default function Home() {
   useEffect(() => {
     feedLengthRef.current = feedLength;
   }, [feedLength]);
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
 
   useEffect(() => {
     const items = activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map((v) => ({ type: 'video', video: v }));
     preloadVideos(items, currentIndex);
   }, [currentIndex, activeTab, mainFeedItems, followingVideos, preloadVideos]);
 
-  // Snap une seule vidéo à la fois (comportement TikTok/YouTube) — au relâchement et à la fin du scroll
+  // Snap une seule vidéo à la fois : au plus une vidéo en avant ou en arrière (évite le retour à la précédente sur mobile)
   const snapToNearestSlide = useCallback(() => {
     if (isSnappingRef.current) return;
     const container = containerRef.current;
@@ -493,9 +497,14 @@ export default function Home() {
     const slideHeight = container.clientHeight;
     if (slideHeight <= 0) return;
     const scrollTop = container.scrollTop;
-    const targetIndex = Math.round((scrollTop - pullHeight) / slideHeight);
-    const clamped = Math.max(0, Math.min(targetIndex, feedLengthRef.current - 1));
-    const targetTop = pullHeight + clamped * slideHeight;
+    const current = currentIndexRef.current;
+    const currentTop = pullHeight + current * slideHeight;
+    const threshold = slideHeight * 0.25;
+    // Ne jamais sauter plus d'une vidéo : soit rester, soit +1, soit -1 selon la position
+    let targetIndex = current;
+    if (scrollTop >= currentTop + slideHeight - threshold) targetIndex = Math.min(current + 1, feedLengthRef.current - 1);
+    else if (scrollTop <= currentTop - threshold) targetIndex = Math.max(current - 1, 0);
+    const targetTop = pullHeight + targetIndex * slideHeight;
     if (Math.abs(container.scrollTop - targetTop) > 2) {
       isSnappingRef.current = true;
       container.scrollTo({ top: targetTop, behavior: 'smooth' });
