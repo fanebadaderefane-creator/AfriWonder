@@ -1,18 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { WifiOff } from 'lucide-react';
 import { useNetworkStatus } from './PerformanceOptimizer';
+import { toast } from 'sonner';
 
 /**
  * Bannière fixe affichée quand l'utilisateur est hors ligne.
- * Production-ready : message clair, pas de crash si navigator non dispo.
+ * Au retour en ligne : toast pour confirmer (UX consolidation phase 2).
  */
 export default function OfflineBanner() {
   const { isOnline } = useNetworkStatus();
   const [mounted, setMounted] = useState(false);
+  const wasOfflineRef = useRef(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (!isOnline) wasOfflineRef.current = true;
+    else if (wasOfflineRef.current) {
+      wasOfflineRef.current = false;
+      toast.success('Vous êtes de nouveau en ligne', { duration: 3000 });
+    }
+  }, [isOnline, mounted]);
 
   if (!mounted || isOnline) return null;
 

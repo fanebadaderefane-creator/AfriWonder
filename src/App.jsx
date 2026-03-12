@@ -1,3 +1,4 @@
+// AfriWonder full review PR - CodeRabbit
 import { Toaster } from "@/components/ui/toaster"
 import { ThemeProvider } from 'next-themes'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'

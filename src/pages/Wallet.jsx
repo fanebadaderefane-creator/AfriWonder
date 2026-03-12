@@ -1,3 +1,4 @@
+// AfriWonder full review PR - CodeRabbit
 import React, { useState } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -43,7 +44,7 @@ export default function WalletPage() {
   });
   const needsPin = walletSecurity?.has_pin && walletSecurity?.two_fa_required_for_withdrawal;
 
-  const { data: wallet, isLoading } = useQuery({
+  const { data: wallet, isLoading, isError, refetch } = useQuery({
     queryKey: ['wallet'],
     queryFn: async () => {
       return await api.payments.getWallet();
@@ -109,6 +110,27 @@ export default function WalletPage() {
   });
 
   if (isLoading) return <div className="text-center py-12">Chargement...</div>;
+
+  if (isError) {
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-screen bg-gray-950 text-white">
+        <div className="sticky top-0 bg-gray-900/95 backdrop-blur z-10 border-b border-white/10">
+          <div className="flex items-center gap-3 px-4 py-3">
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl text-white hover:bg-white/10" aria-label="Retour">
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <h1 className="text-xl font-bold">Portefeuille</h1>
+          </div>
+        </div>
+        <div className="flex flex-col items-center justify-center py-24 px-6 text-center">
+          <p className="text-gray-300 font-medium mb-4">Une erreur s&apos;est produite.</p>
+          <Button onClick={() => refetch()} className="bg-blue-600 hover:bg-blue-700 text-white">
+            Réessayer
+          </Button>
+        </div>
+      </motion.div>
+    );
+  }
 
   const totalSpent = (transactions || []).reduce((s, tx) => s + (tx.type === 'withdrawal' || tx.type === 'payment' ? Number(tx.amount || 0) : 0), 0);
   const totalEarned = (transactions || []).reduce((s, tx) => s + (tx.type === 'deposit' || tx.type === 'earning' ? Number(tx.amount || 0) : 0), 0);

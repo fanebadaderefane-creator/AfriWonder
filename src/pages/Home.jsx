@@ -1,3 +1,4 @@
+// AfriWonder full review PR - CodeRabbit
 // @ts-nocheck
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -19,10 +20,20 @@ import NotificationService from '../components/notifications/NotificationService
 import { Loader2, ChevronRight } from 'lucide-react';
 import { toast } from "sonner";
 import { useNetworkStatus, getCacheStrategy, scheduleTask } from '../components/common/PerformanceOptimizer';
-import { cn } from "@/lib/utils";
-import { getVideoPlaybackUrl, isDeletedUser, isMobileOrPWA, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG } from '@/lib/utils';
+import { cn, isDeletedUser, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl } from "@/lib/utils";
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { getJSON, setJSON } from '@/utils/safeStorage';
 import { useWakeLock } from '@/hooks/useWakeLock';
+import VideoPreviewCard from '../components/video/VideoPreviewCard';
+
+/** Initiales pour avatar sans photo (max 2 caractères). */
+function getAvatarInitials(user) {
+  const name = (user?.full_name || user?.username || '?').trim();
+  if (!name || name === '?') return '?';
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
 
 export default function Home() {
   const _navigate = useNavigate();
@@ -45,7 +56,6 @@ export default function Home() {
 
   const [followingVideos, setFollowingVideos] = useState([]);
   const [showWonderersPanel, setShowWonderersPanel] = useState(false);
-  const [firstVideoPreloaded, setFirstVideoPreloaded] = useState(false);
 
   const containerRef = useRef(null);
   const queryClient = useQueryClient();
@@ -55,6 +65,7 @@ export default function Home() {
   const pullDistanceRef = useRef(0);
   const currentIndexRef = useRef(0);
   const observerRef = useRef(null);
+  const [activePreviewId, setActivePreviewId] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -128,57 +139,42 @@ export default function Home() {
     () => feedItems.filter((i) => i.type === 'top_banner'),
     [feedItems]
   );
-  const mainFeedItems = useMemo(
-    () => feedItems.filter((i) => i.type !== 'top_banner'),
-    [feedItems]
-  );
+  const mainFeedItems = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    for (const item of feedItems) {
+      if (item.type === 'top_banner') {
+        continue;
+      }
+      if (item.type === 'video' && item.video && item.video.id != null) {
+        const key = String(item.video.id);
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+      out.push(item);
+    }
+    return out;
+  }, [feedItems]);
   const isLoading = activeTab === 'pourtoi' ? feedLoading : videosLoading;
-  const refetch = activeTab === 'pourtoi' ? refetchFeed : refetchVideos;
 
+  // Préchargement des vignettes (current + 2 suivantes) pour éviter écran noir au scroll
   useEffect(() => {
-    if (activeTab !== 'pourtoi') {
-      setFirstVideoPreloaded(true);
-      return;
-    }
-    const firstVideoItem = mainFeedItems.find((i) => i.type === 'video');
-    const firstVideo = firstVideoItem?.video;
-    if (!firstVideo?.video_url) {
-      setFirstVideoPreloaded(true);
-      return;
-    }
-    const url = getVideoPlaybackUrl(firstVideo.video_url);
-    if (!url) {
-      setFirstVideoPreloaded(true);
-      return;
-    }
-    setFirstVideoPreloaded(false);
-    const video = document.createElement('video');
-    video.preload = 'auto';
-    video.muted = true;
-    video.playsInline = true;
-    video.setAttribute('playsinline', '');
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      video.removeAttribute('src');
-      video.load();
-      setFirstVideoPreloaded(true);
-    };
-    const PRELOAD_TIMEOUT_MS = 10000;
-    const t = setTimeout(finish, PRELOAD_TIMEOUT_MS);
-    video.addEventListener('loadeddata', finish, { once: true });
-    video.addEventListener('error', finish, { once: true });
-    video.src = url;
-    video.load();
-    return () => {
-      clearTimeout(t);
-      video.removeEventListener('loadeddata', finish);
-      video.removeEventListener('error', finish);
-      video.removeAttribute('src');
-      video.load();
-    };
-  }, [activeTab, mainFeedItems]);
+    const list = activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map((v) => ({ type: 'video', video: v }));
+    const start = Math.max(0, currentIndex);
+    const slice = list.slice(start, start + 3);
+    slice.forEach((item) => {
+      const video = item?.video;
+      if (!video) return;
+      const posterUrl = isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? video.thumbnail_url : VIDEO_PLACEHOLDER_IMG;
+      if (!posterUrl || posterUrl.startsWith('data:')) return;
+      const url = getAbsoluteImageUrl(posterUrl);
+      if (url) {
+        const img = new Image();
+        img.src = url;
+      }
+    });
+  }, [currentIndex, activeTab, mainFeedItems, followingVideos]);
+  const refetch = activeTab === 'pourtoi' ? refetchFeed : refetchVideos;
 
   // Plus de refetch automatique ici : on se repose sur la stratégie de cache React Query
 
@@ -443,134 +439,7 @@ export default function Home() {
       toast.success('Commentaire ajoute');
     }
   });
-
-
-
-
-
-
-  const preloadLinksRef = useRef([]);
-  const preloadVideos = useCallback((items, index) => {
-    if (!items || !Array.isArray(items)) return;
-    const toPreload = [items[index + 1], items[index + 2]].filter(Boolean);
-    toPreload.forEach((item) => {
-      if (item?.type !== 'video' || !item?.video?.video_url) return;
-      const url = getVideoPlaybackUrl(item.video.video_url);
-      if (!url) return;
-      if (preloadLinksRef.current.some((l) => l.href === url)) return;
-      const link = document.createElement('link');
-      link.rel = 'preload';
-      link.as = 'video';
-      link.href = url;
-      document.head.appendChild(link);
-      preloadLinksRef.current.push(link);
-    });
-    while (preloadLinksRef.current.length > 6) {
-      const old = preloadLinksRef.current.shift();
-      if (old?.parentNode) old.parentNode.removeChild(old);
-    }
-  }, []);
-
-  useEffect(() => {
-    currentIndexRef.current = currentIndex;
-  }, [currentIndex]);
-
   const feedLength = activeTab === 'pourtoi' ? mainFeedItems.length : followingVideos.length;
-  useEffect(() => {
-    if (feedLength > 0 && currentIndex >= feedLength) {
-      currentIndexRef.current = 0;
-      setCurrentIndex(0);
-    }
-  }, [feedLength, currentIndex]);
-
-  useEffect(() => {
-    const items = activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map((v) => ({ type: 'video', video: v }));
-    preloadVideos(items, currentIndex);
-  }, [currentIndex, activeTab, mainFeedItems, followingVideos, preloadVideos]);
-
-  // IntersectionObserver : sur mobile on se base sur le scroll pour l'index (plus fiable)
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    observerRef.current?.disconnect();
-    const isMobile = isMobileOrPWA();
-    const options = { root: container, threshold: [0, 0.6, 1] };
-    observerRef.current = new IntersectionObserver((entries) => {
-      if (isMobile) {
-        updateIndexFromScrollRef.current?.();
-        return;
-      }
-      let best = { index: -1, ratio: 0 };
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        const index = Number(entry.target.dataset.index);
-        if (Number.isNaN(index)) return;
-        const ratio = entry.intersectionRatio ?? 0;
-        if (ratio > best.ratio || (ratio === best.ratio && index < best.index)) {
-          best = { index, ratio };
-        }
-      });
-      if (best.index >= 0) {
-        currentIndexRef.current = best.index;
-        setCurrentIndex(best.index);
-      }
-    }, options);
-
-    const scheduleObserve = () => {
-      const slides = container.querySelectorAll('[data-index]');
-      slides.forEach((el) => observerRef.current?.observe(el));
-    };
-    const id = requestAnimationFrame(scheduleObserve);
-    return () => {
-      cancelAnimationFrame(id);
-      observerRef.current?.disconnect();
-    };
-  }, [mainFeedItems, followingVideos, activeTab]);
-
-  // Index actif = slide qui contient le centre du viewport (fiable sur mobile, évite mauvaise vidéo en fond)
-  const updateIndexFromScroll = useCallback(() => {
-    const container = containerRef.current;
-    if (!container || feedLength === 0) return;
-    const pullEl = container.firstElementChild;
-    const pullHeight = pullEl ? pullEl.offsetHeight : 0;
-    const slideHeight = container.clientHeight;
-    if (slideHeight <= 0) return;
-    const scrollTop = container.scrollTop;
-    const viewportCenter = scrollTop + slideHeight / 2;
-    const rawIndex = Math.floor((viewportCenter - pullHeight) / slideHeight);
-    const index = Math.max(0, Math.min(rawIndex, feedLength - 1));
-    if (index !== currentIndexRef.current) {
-      currentIndexRef.current = index;
-      setCurrentIndex(index);
-    }
-  }, [feedLength]);
-
-  const handleScroll = useCallback(() => {
-    updateIndexFromScroll();
-  }, [updateIndexFromScroll]);
-
-  const updateIndexFromScrollRef = useRef(updateIndexFromScroll);
-  updateIndexFromScrollRef.current = updateIndexFromScroll;
-
-  // Préchargement en avance : 2 vidéos suivantes (lien preload) pour que tout soit prêt au scroll
-  useEffect(() => {
-    const items = activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map((v) => ({ type: 'video', video: v }));
-    const links = [];
-    for (let i = 1; i <= 2; i++) {
-      const item = items[currentIndex + i];
-      const video = item?.type === 'video' ? item.video : null;
-      const url = video?.video_url ? getVideoPlaybackUrl(video.video_url) : null;
-      if (!url) continue;
-      const link = document.createElement('link');
-      link.rel = 'preload';
-      link.as = 'video';
-      link.href = url;
-      document.head.appendChild(link);
-      links.push(link);
-    }
-    return () => { links.forEach((l) => { try { document.head.removeChild(l); } catch (_) {} }); };
-  }, [currentIndex, activeTab, mainFeedItems, followingVideos]);
 
   const handleToggleWonder = useCallback(async (creatorId, creatorName = '') => {
     if (!user) {
@@ -621,12 +490,34 @@ export default function Home() {
     }
   };
 
-  const waitingFirstVideo =
-    activeTab === 'pourtoi' &&
-    mainFeedItems.length > 0 &&
-    mainFeedItems.some((i) => i.type === 'video') &&
-    !firstVideoPreloaded;
-  const showHomeLoading = isLoading || waitingFirstVideo;
+  const showHomeLoading = isLoading;
+
+  // Mise à jour de l'index actif en fonction du scroll (style TikTok)
+  const updateIndexFromScroll = useCallback(() => {
+    const container = containerRef.current;
+    if (!container || feedLength === 0) return;
+    const slideHeight = container.clientHeight;
+    if (slideHeight <= 0) return;
+    const scrollTop = container.scrollTop;
+    const rawIndex = Math.round(scrollTop / slideHeight);
+    const index = Math.max(0, Math.min(rawIndex, feedLength - 1));
+
+    // Verrou après un like pour éviter un saut de carte parasite
+    if (Date.now() < likeScrollLockUntilRef.current) return;
+
+    if (index !== currentIndexRef.current) {
+      currentIndexRef.current = index;
+      setCurrentIndex(index);
+    }
+  }, [feedLength]);
+
+  const handleScroll = useCallback(() => {
+    updateIndexFromScroll();
+  }, [updateIndexFromScroll]);
+
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
   if (showHomeLoading) {
     return (
       <div
@@ -685,7 +576,7 @@ export default function Home() {
           <AfriWonderLogo size="sm" className="shadow-lg group-hover:shadow-xl transition-shadow" />
         </button>
 
-        <div className="relative z-40 pl-28 sm:pl-32">
+        <div className="absolute top-0 left-0 right-0 z-40 pl-28 sm:pl-32 pointer-events-none [&>*]:pointer-events-auto">
           <TopHeader 
             activeTab={activeTab}
             onTabChange={setActiveTab}
@@ -721,11 +612,12 @@ export default function Home() {
                     className="shrink-0"
                     title={creator.full_name || creator.username}
                   >
-                    <img
-                      src={creator.profile_image || '/icon-192.png'}
-                      alt={creator.full_name || creator.username || 'wonderer'}
-                      className="w-10 h-10 rounded-full object-cover border border-white/30"
-                    />
+                    <Avatar className="w-10 h-10 border border-white/30">
+                      <AvatarImage src={creator.profile_image} alt={creator.full_name || creator.username || 'wonderer'} />
+                      <AvatarFallback className="bg-white/20 text-white text-xs font-semibold">
+                        {getAvatarInitials(creator)}
+                      </AvatarFallback>
+                    </Avatar>
                   </button>
                 ))}
               </div>
@@ -749,7 +641,7 @@ export default function Home() {
         )}
 
 
-        <div 
+        <div
           ref={containerRef}
           onScroll={handleScroll}
           onTouchStart={(e) => {
@@ -763,25 +655,17 @@ export default function Home() {
               }
             }
           }}
-          onTouchEnd={(e) => {
-            if (e.changedTouches.length > 0) {
-              handlePullEnd();
-              requestAnimationFrame(() => updateIndexFromScroll());
-            }
-          }}
+          onTouchEnd={() => handlePullEnd()}
           onTouchCancel={() => handlePullEnd()}
-          className="snap-y snap-mandatory h-full flex-1 w-full flex flex-col overflow-y-auto"
+          className="w-full flex-1 min-h-0 flex flex-col overflow-y-auto overflow-x-hidden snap-y snap-mandatory"
           style={{
-            overflowX: 'hidden',
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
             scrollSnapType: 'y mandatory',
-            WebkitScrollSnapType: 'y mandatory',
             WebkitOverflowScrolling: 'touch',
             scrollBehavior: 'auto',
             touchAction: 'pan-y',
-            gap: 0,
-            backgroundColor: '#0a0a0a',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+            backgroundColor: 'rgb(3 7 18)',
           }}
         >
         <div
@@ -845,92 +729,66 @@ export default function Home() {
           </div>
         ) : (
           <>
-            {(activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map(v => ({ type: 'video', video: v }))).map((item, index) => {
-              const isNeighbor = Math.abs(index - currentIndex) <= 2;
-              const slideStyle = {
-                flex: '0 0 auto',
-                width: '100%',
-                // Important: use container height instead of viewport height
-                // so there is no black gap at the bottom of the video
-                minHeight: '100%',
-                height: '100%',
-                touchAction: 'pan-y',
-                contain: 'layout paint',
-              };
-
-              if (item.type === 'ad') {
+            {(activeTab === 'pourtoi'
+              ? mainFeedItems
+              : followingVideos.map(v => ({ type: 'video', video: v })))
+              .map((item, index) => {
+                if (item.type !== 'video' || !item.video) return null;
+                const video = item.video;
+                const posterUrl = isValidThumbnailUrl(video.thumbnail_url, video.video_url)
+                  ? video.thumbnail_url
+                  : VIDEO_PLACEHOLDER_IMG;
+                const slideBgUrl = posterUrl.startsWith('data:') ? posterUrl : (getAbsoluteImageUrl(posterUrl) || posterUrl);
                 return (
                   <div
-                    key={`ad-${item.ad?.id || index}`}
+                    key={video.id}
                     data-index={index}
-                    className="relative w-full h-full flex-shrink-0 snap-start overflow-hidden bg-gray-950"
-                    style={slideStyle}
+                    className="relative w-full flex-shrink-0 overflow-hidden bg-gray-950 snap-start"
+                    style={{
+                      width: '100%',
+                      height: '100dvh',
+                      minHeight: '100dvh',
+                      scrollSnapAlign: 'start',
+                      scrollSnapStop: 'always',
+                      touchAction: 'pan-y',
+                      contain: 'layout paint',
+                      backgroundImage: posterUrl ? `url(${slideBgUrl})` : undefined,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                    }}
+                    aria-hidden={index !== currentIndex}
                   >
-                    {isNeighbor ? (
-                      <AdCard
-                        ad={item.ad}
-                        isActive={index === currentIndex}
-                        isMuted={isMuted}
-                        onMuteToggle={() => setMuted(!isMuted)}
-                        onHide={handleHideAd}
-                        hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
-                      />
-                    ) : (
-                      <div className="h-full w-full bg-gray-950" aria-hidden />
-                    )}
+                    <VideoCard
+                      video={video}
+                      isActive={index === currentIndex}
+                      isLiked={likedVideos.has(video.id)}
+                      isSaved={savedVideos.has(video.id)}
+                      isMuted={isMuted}
+                      onMuteToggle={() => setMuted(!isMuted)}
+                      onLike={handleLike}
+                      onComment={() => {
+                        setSelectedVideo(video);
+                        setShowComments(true);
+                      }}
+                      onShare={() => {
+                        setSelectedVideo(video);
+                        setShowShare(true);
+                      }}
+                      onSave={() => saveMutation.mutate(video)}
+                      onTip={() => {
+                        setSelectedVideo(video);
+                        setShowTip(true);
+                      }}
+                      onSubscribe={() => handleToggleWonder(video.creator_id, video.creator_name)}
+                      isFollowing={userFollows.some((f) => f.id === video.creator_id)}
+                      onProfileClick={(creatorId) => {
+                        _navigate(`/Profile?_userId=${creatorId}`);
+                      }}
+                      hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
+                    />
                   </div>
                 );
-              }
-
-              const video = item.video;
-              const posterUrl = (item.type === 'video' && video && isValidThumbnailUrl(video.thumbnail_url, video.video_url)) ? video.thumbnail_url : null;
-              const slideBgStyle = posterUrl
-                ? { backgroundImage: `url(${posterUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-                : { backgroundImage: `url(${VIDEO_PLACEHOLDER_IMG})`, backgroundSize: 'cover', backgroundPosition: 'center' };
-              return (
-                <div
-                  key={video.id}
-                  data-index={index}
-                  className="relative w-full h-full flex-shrink-0 snap-start overflow-hidden bg-gray-950"
-                  style={{ ...slideStyle, ...slideBgStyle }}
-                >
-                  {isNeighbor ? (
-                  <VideoCard
-                    video={video}
-                    isActive={index === currentIndex}
-                    isLiked={likedVideos.has(video.id)}
-                    isSaved={savedVideos.has(video.id)}
-                    isMuted={isMuted}
-                    onMuteToggle={() => setMuted(!isMuted)}
-                    onLike={handleLike}
-                    onComment={() => {
-                      setSelectedVideo(video);
-                      setShowComments(true);
-                    }}
-                    onShare={() => {
-                      setSelectedVideo(video);
-                      setShowShare(true);
-                    }}
-                    onSave={() => saveMutation.mutate(video)}
-                    onTip={() => {
-                      setSelectedVideo(video);
-                      setShowTip(true);
-                    }}
-                    onSubscribe={() => handleToggleWonder(video.creator_id, video.creator_name)}
-                    isFollowing={userFollows.some((f) => f.id === video.creator_id)}
-                    onProfileClick={(creatorId) => {
-                      _navigate(`/Profile?_userId=${creatorId}`);
-                    }}
-                    hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
-                    preload={isNeighbor ? 'auto' : 'metadata'}
-                    shouldPreload={isNeighbor}
-                  />
-                  ) : (
-                    <div className="h-full w-full" aria-hidden style={{ background: 'transparent' }} />
-                  )}
-                </div>
-              );
-            })}
+              })}
           </>
         )}
         </div>
@@ -952,11 +810,12 @@ export default function Home() {
               <div className="space-y-2 mb-5">
                 {userFollows.filter((u) => !isDeletedUser(u)).map((creator) => (
                   <div key={creator.id} className="flex items-center gap-3 p-2 rounded-xl bg-white/5">
-                    <img
-                      src={creator.profile_image || '/icon-192.png'}
-                      alt={creator.full_name || creator.username || 'creator'}
-                      className="w-11 h-11 rounded-full object-cover"
-                    />
+                    <Avatar className="w-11 h-11">
+                      <AvatarImage src={creator.profile_image} alt={creator.full_name || creator.username || 'creator'} />
+                      <AvatarFallback className="bg-white/20 text-white text-sm font-semibold">
+                        {getAvatarInitials(creator)}
+                      </AvatarFallback>
+                    </Avatar>
                     <div className="flex-1 min-w-0">
                       <p className="text-white font-semibold truncate">{creator.full_name || creator.username || 'Utilisateur'}</p>
                       <p className="text-white/60 text-xs truncate">@{creator.username || 'afriwonder'}</p>
@@ -977,11 +836,12 @@ export default function Home() {
                 <div className="space-y-2">
                   {suggestedWonderers.filter((u) => !isDeletedUser(u)).map((candidate) => (
                     <div key={candidate.id} className="flex items-center gap-3 p-2 rounded-xl bg-white/5">
-                      <img
-                        src={candidate.profile_image || '/icon-192.png'}
-                        alt={candidate.full_name || candidate.username || 'candidate'}
-                        className="w-11 h-11 rounded-full object-cover"
-                      />
+                      <Avatar className="w-11 h-11">
+                        <AvatarImage src={candidate.profile_image} alt={candidate.full_name || candidate.username || 'candidate'} />
+                        <AvatarFallback className="bg-white/20 text-white text-sm font-semibold">
+                          {getAvatarInitials(candidate)}
+                        </AvatarFallback>
+                      </Avatar>
                       <div className="flex-1 min-w-0">
                         <p className="text-white font-semibold truncate">{candidate.full_name || candidate.username || 'Utilisateur'}</p>
                         <p className="text-white/60 text-xs truncate">@{candidate.username || candidate.email?.split('@')[0] || 'afriwonder'}</p>

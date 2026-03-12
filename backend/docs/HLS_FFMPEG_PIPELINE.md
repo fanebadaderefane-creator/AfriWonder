@@ -68,8 +68,8 @@ Exemple : `POST /api/videos/:id/view` ou `POST /api/track` avec `{ videoId, watc
 
 ## Checklist déploiement
 
-- [ ] FFmpeg installé sur la machine qui fait la conversion
-- [ ] Bucket CDN configuré (R2/S3/Bunny) avec URLs publiques
-- [ ] Script ou worker qui convertit chaque nouvel upload en HLS
-- [ ] `video.video_url` (ou `hls_url`) pointe vers l’URL du **master.m3u8**
-- [ ] Front : déjà prêt (HLS.js + cache SW)
+- [ ] FFmpeg installé sur la machine qui exécute le worker
+- [ ] Bucket CDN configuré (R2/S3/Bunny) ; option `uploadToStorage` ou `TRANSCODE_OUTPUT_BASE_URL` dans le worker
+- [ ] Cron ou worker qui appelle `npm run transcode:one` (ou équivalent) pour traiter les jobs `pending`
+- [ ] `video.hls_url` mis à jour par le worker après transcodage
+- [ ] Front : déjà prêt (HLS.js + cache SW) ; utiliser `video.hls_url` si présent

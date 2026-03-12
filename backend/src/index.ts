@@ -1,8 +1,10 @@
+// AfriWonder full review PR - CodeRabbit
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { initSentry } from './config/sentry.js';
 import app from './app.js';
+import prisma from './config/database.js';
 import { logger } from './utils/logger.js';
 import messageService from './services/message.service.js';
 import { setMessageIo } from './services/message.service.js';
@@ -14,6 +16,7 @@ import { startModerationTimeoutJob } from './jobs/moderationTimeout.job.js';
 import { initRedis } from './utils/cache.js';
 
 const socketToUserId = new Map<string, string>();
+const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 30000;
 
 dotenv.config();
 
@@ -163,6 +166,30 @@ io.on('connection', (socket) => {
 
 // Export io for use in routes
 export { io };
+
+/** Arrêt propre : ferme le serveur HTTP puis déconnexion DB (K8s, Docker, Render). */
+function gracefulShutdown(signal: string) {
+  logger.info(`Received ${signal}, starting graceful shutdown...`);
+  httpServer.close(() => {
+    logger.info('HTTP server closed');
+    prisma.$disconnect()
+      .then(() => {
+        logger.info('Database disconnected');
+        process.exit(0);
+      })
+      .catch((err: Error) => {
+        logger.error('Error disconnecting database', err);
+        process.exit(1);
+      });
+  });
+  setTimeout(() => {
+    logger.warn('Forced shutdown after timeout');
+    process.exit(1);
+  }, GRACEFUL_SHUTDOWN_TIMEOUT_MS);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Start server — écouter sur 0.0.0.0 pour accepter les connexions externes (Railway, Docker, Render)
 httpServer.listen(PORT, '0.0.0.0', async () => {

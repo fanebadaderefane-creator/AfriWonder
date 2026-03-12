@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "install:all": "node scripts/install-all.cjs",
+    "verify:cdc": "node scripts/verify-cdc-functionality.cjs",
     "dev": "vite --force",
     "build": "vite build",
     "lint": "eslint . --quiet",

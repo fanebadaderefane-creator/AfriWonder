@@ -1,3 +1,4 @@
+// AfriWonder full review PR - CodeRabbit
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import speakeasy from 'speakeasy';
@@ -31,10 +32,43 @@ class AuthService {
       throw error;
     }
 
+    const emailTrimmed = data.email.trim();
+    const usernameTrimmed = data.username.trim();
+
     // Valider le format de l'email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(data.email)) {
+    if (!emailRegex.test(emailTrimmed)) {
       const error: any = new Error('Format d\'email invalide');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Force du mot de passe : min 8 caractères, au moins une lettre et un chiffre (sécurité / consolidation)
+    const passwordMinLength = 8;
+    if (data.password.length < passwordMinLength) {
+      const error: any = new Error(`Le mot de passe doit contenir au moins ${passwordMinLength} caractères`);
+      error.statusCode = 400;
+      throw error;
+    }
+    if (!/[a-zA-Z]/.test(data.password)) {
+      const error: any = new Error('Le mot de passe doit contenir au moins une lettre');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (!/\d/.test(data.password)) {
+      const error: any = new Error('Le mot de passe doit contenir au moins un chiffre');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Username : alphanum + underscore, 3–30 caractères
+    if (usernameTrimmed.length < 3 || usernameTrimmed.length > 30) {
+      const error: any = new Error('Le nom d\'utilisateur doit faire entre 3 et 30 caractères');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(usernameTrimmed)) {
+      const error: any = new Error('Le nom d\'utilisateur ne peut contenir que lettres, chiffres et underscore');
       error.statusCode = 400;
       throw error;
     }
@@ -43,8 +77,8 @@ class AuthService {
     const existingUser = await prisma.user.findFirst({
       where: {
         OR: [
-          { email: data.email },
-          { username: data.username },
+          { email: emailTrimmed },
+          { username: usernameTrimmed },
         ],
       },
     });
@@ -58,13 +92,13 @@ class AuthService {
     // Hasher le mot de passe
     const password_hash = await bcrypt.hash(data.password, 10);
 
-    // Créer l'utilisateur
+    // Créer l'utilisateur (valeurs nettoyées)
     const user = await prisma.user.create({
       data: {
-        email: data.email,
-        username: data.username,
+        email: emailTrimmed,
+        username: usernameTrimmed,
         password_hash,
-        full_name: data.full_name,
+        full_name: data.full_name?.trim() || null,
       },
       select: {
         id: true,

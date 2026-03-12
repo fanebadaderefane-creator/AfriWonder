@@ -1,3 +1,4 @@
+// AfriWonder full review PR - CodeRabbit
 import axios from 'axios';
 import { getItem, setItem, removeItem } from '@/utils/safeStorage';
 
@@ -303,10 +304,37 @@ export const api = {
       const { data } = await axiosInstance.post(`/videos/${id}/tip-wallet`, { amount, message });
       return data.data;
     },
+    async getTrendingHashtags(limit = 15) {
+      const { data } = await axiosInstance.get('/videos/hashtags/trending', { params: { limit } });
+      return data.data || [];
+    },
   },
   feed: {
     async list(params = {}) {
       const { data } = await axiosInstance.get('/feed', { params });
+      return data.data;
+    },
+  },
+  /** Recherche globale CDC : un seul appel pour vidéos, utilisateurs, produits */
+  search: {
+    async global(params = {}) {
+      const { data } = await axiosInstance.get('/search', {
+        params: {
+          q: params.q ?? params.query ?? '',
+          type: params.type ?? 'all',
+          page: params.page ?? 1,
+          limit: params.limit ?? 20,
+          category: params.category,
+          hashtag: params.hashtag,
+          duration: params.duration,
+        },
+      });
+      return data.data;
+    },
+    async suggest(params = {}) {
+      const { data } = await axiosInstance.get('/search/suggest', {
+        params: { q: params.q ?? params.query ?? '', limit: params.limit ?? 8 },
+      });
       return data.data;
     },
   },
@@ -1594,6 +1622,48 @@ export const api = {
     },
     async report(messageId, reason) {
       const { data } = await axiosInstance.post('/messages/report', { messageId, reason });
+      return data.data;
+    },
+    // Group messaging (CDC)
+    async createGroup(name, memberIds = []) {
+      const { data } = await axiosInstance.post('/messages/groups', { name: name || 'Groupe', memberIds });
+      return data.data;
+    },
+    async getGroups(page = 1, limit = 50) {
+      const { data } = await axiosInstance.get('/messages/groups', { params: { page, limit } });
+      return data.data;
+    },
+    async getGroup(groupId) {
+      const { data } = await axiosInstance.get(`/messages/group/${groupId}`);
+      return data.data;
+    },
+    async getGroupMessages(groupId, cursor = null, limit = 30) {
+      const params = { limit };
+      if (cursor) params.cursor = cursor;
+      const { data } = await axiosInstance.get(`/messages/group/${groupId}/messages`, { params });
+      return data.data;
+    },
+    async sendGroupMessage(groupId, content, options = {}) {
+      const { data } = await axiosInstance.post(`/messages/group/${groupId}/send`, {
+        content: content ?? '',
+        type: options.type || 'text',
+        media_url: options.media_url,
+        thumbnail_url: options.thumbnail_url,
+      });
+      return data.data;
+    },
+    async addGroupMembers(groupId, userIds) {
+      const { data } = await axiosInstance.post(`/messages/group/${groupId}/members`, {
+        userIds: Array.isArray(userIds) ? userIds : [userIds],
+      });
+      return data.data;
+    },
+    async removeGroupMember(groupId, userId) {
+      const { data } = await axiosInstance.delete(`/messages/group/${groupId}/members/${userId}`);
+      return data.data;
+    },
+    async leaveGroup(groupId) {
+      const { data } = await axiosInstance.post(`/messages/group/${groupId}/leave`);
       return data.data;
     },
   },
@@ -3261,6 +3331,57 @@ export const api = {
     async trackOpportunityAction(payload) {
       const { data } = await axiosInstance.post('/matching/opportunity-action', payload || {});
       return data.data;
+    },
+  },
+  travel: {
+    async listHotels(params = {}) {
+      const { data } = await axiosInstance.get('/travel/hotels', { params });
+      return data.data ?? { items: [], total: 0, page: 1, limit: 20 };
+    },
+    async listFlights(params = {}) {
+      const { data } = await axiosInstance.get('/travel/flights', { params });
+      return data.data ?? { items: [], total: 0, page: 1, limit: 20 };
+    },
+    async bookHotel(payload) {
+      const { data } = await axiosInstance.post('/travel/bookings/hotel', payload);
+      return data.data;
+    },
+    async bookFlight(payload) {
+      const { data } = await axiosInstance.post('/travel/bookings/flight', payload);
+      return data.data;
+    },
+    async getMyBookings(params = {}) {
+      const { data } = await axiosInstance.get('/travel/bookings', { params });
+      return data.data ?? { items: [], total: 0, page: 1, limit: 20 };
+    },
+  },
+  ai: {
+    async assistant(message) {
+      const { data } = await axiosInstance.post('/ai/assistant', { message });
+      return data.data ?? { reply: '', data: null };
+    },
+  },
+  mapPlaces: {
+    async listNearby(params = {}) {
+      const { data } = await axiosInstance.get('/map-places', { params });
+      return data.data ?? { items: [], total: 0 };
+    },
+  },
+  cloud: {
+    async list(params = {}) {
+      const { data } = await axiosInstance.get('/cloud', { params });
+      return data.data ?? { items: [], total: 0, page: 1, limit: 50 };
+    },
+    async upload(file, folder = '') {
+      const form = new FormData();
+      form.append('file', file);
+      if (folder) form.append('folder', folder);
+      const { data } = await axiosInstance.post('/cloud/upload', form, { ...uploadConfig(), timeout: 120000 });
+      return data.data;
+    },
+    async delete(fileId) {
+      const { data } = await axiosInstance.delete(`/cloud/${fileId}`);
+      return data;
     },
   },
 };

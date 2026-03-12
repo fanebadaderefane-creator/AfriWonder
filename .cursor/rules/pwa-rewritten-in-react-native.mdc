@@ -1,0 +1,15 @@
+# PWA réécrite en React Native (mobile-afriwonder)
+
+L'application mobile **mobile-afriwonder** est une réécriture complète de la PWA AfriWonder en **React Native** (Expo). Toutes les fonctionnalités et tout le contenu de la PWA doivent être implémentés en écrans et composants RN natifs.
+
+## Règle
+
+- **Ne pas** utiliser de WebView pour afficher la PWA ou des pages web comme interface principale.
+- **Ne pas** rediriger vers la PWA pour des écrans ou flux métier : chaque écran équivalent PWA doit exister en RN (View, Text, ScrollView, TouchableOpacity, etc.).
+- **Linking.openURL** est réservé aux liens externes (site, email, tel, partage) — pas pour embarquer la PWA dans l'app.
+- L'écran **Module** est un placeholder temporaire pour les modules pas encore portés ; l'objectif est de créer un écran RN dédié pour chaque module et de faire `navigate('NomEcran', params)` au lieu de `navigate('Module', { module: '...' })`.
+- Lors de l'ajout d'une nouvelle fonctionnalité existante en PWA : créer l'écran RN correspondant dans `mobile-afriwonder/src/screens/`, l'enregistrer dans `App.js`, et brancher la navigation (menu, listes, etc.) vers cet écran.
+
+## Référence
+
+Les commentaires "parité PWA", "réécriture RN depuis PWA" dans le code indiquent que l'écran a été réécrit en RN à partir de la PWA — pas qu'il charge la PWA.

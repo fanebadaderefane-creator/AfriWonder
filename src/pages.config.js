@@ -90,6 +90,7 @@ import DisputeCenter from './pages/DisputeCenter';
 import FAQ from './pages/FAQ';
 import Favorites from './pages/Favorites';
 import Formations from './pages/Formations';
+import GroupChat from './pages/GroupChat';
 import Health from './pages/Health';
 import Messages from './pages/MessagesMaliConnect';
 import Downloads from './pages/Downloads';
@@ -195,6 +196,9 @@ import DeveloperConsole from './pages/DeveloperConsole';
 import DeveloperRevenue from './pages/DeveloperRevenue';
 import DeveloperSubscription from './pages/DeveloperSubscription';
 import AppBoost from './pages/AppBoost';
+import Voyage from './pages/Voyage';
+import Cloud from './pages/Cloud';
+import Assistant from './pages/Assistant';
 import __Layout from './Layout.jsx';
 
 
@@ -242,6 +246,7 @@ export const PAGES = {
     "FAQ": FAQ,
     "Favorites": Favorites,
     "Formations": Formations,
+    "GroupChat": GroupChat,
     "Health": Health,
     "Messages": Messages,
     "Downloads": Downloads,
@@ -347,6 +352,9 @@ export const PAGES = {
     "DeveloperRevenue": DeveloperRevenue,
     "DeveloperSubscription": DeveloperSubscription,
     "AppBoost": AppBoost,
+    "Voyage": Voyage,
+    "Cloud": Cloud,
+    "Assistant": Assistant,
 }
 
 export const pagesConfig = {

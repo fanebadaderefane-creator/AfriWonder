@@ -1,3 +1,4 @@
+// AfriWonder full review PR - CodeRabbit
 import { Router } from 'express';
 import { authService } from '../services/auth.service.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';

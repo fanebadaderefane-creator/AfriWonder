@@ -96,6 +96,7 @@ export function getHttpMetricsSummary() {
     error_rate: totalRequests > 0 ? Number((totalErrors / totalRequests).toFixed(4)) : 0,
     p95_ms: percentile(allRecent, 95),
     top_routes: byRoute.slice(0, 25),
+    recent_latencies_ms: allRecent.slice(-1000),
   };
 }
 

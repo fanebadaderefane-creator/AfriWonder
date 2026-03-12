@@ -1,3 +1,4 @@
+// AfriWonder full review PR - CodeRabbit
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -14,7 +15,8 @@ import {
   webhookLimiter 
 } from './middleware/rateLimiting.js';
 import { antiBotMiddleware, antiSpamMiddleware } from './middleware/antiBot.js';
-import { attachRequestId, httpMetricsMiddleware } from './middleware/observability.middleware.js';
+import { attachRequestId, httpMetricsMiddleware, apiRequestTimeoutMiddleware } from './middleware/observability.middleware.js';
+import { getPrometheusExposition } from './services/prometheusMetrics.service.js';
 import {
   cachePolicyMiddleware,
   csrfProtectionMiddleware,
@@ -123,6 +125,11 @@ import publicApiRoutes from './routes/publicApi.routes.js';
 // AI Engine & Business Intelligence
 import aiEngineRoutes from './routes/aiEngine.routes.js';
 import businessIntelligenceRoutes from './routes/businessIntelligence.routes.js';
+import travelRoutes from './routes/travel.routes.js';
+import cloudRoutes from './routes/cloud.routes.js';
+import mapPlacesRoutes from './routes/mapPlaces.routes.js';
+import aiRoutes from './routes/ai.routes.js';
+import searchRoutes from './routes/search.routes.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -170,6 +177,7 @@ app.use(cors(corsOptions));
 
 app.use(attachRequestId);
 app.use(httpMetricsMiddleware);
+app.use(apiRequestTimeoutMiddleware); // 30s timeout API (hors upload/webhooks) — stabilité
 
 // Charger les overrides de commissions au demarrage (sans bloquer le boot)
 commissionSettingsService.loadFromDb().catch(() => {});
@@ -179,6 +187,21 @@ commissionSettingsService.loadFromDb().catch(() => {});
 // Health check (AVANT anti-bot pour que curl/k8s/CI puissent appeler /health)
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), env: process.env.NODE_ENV || 'development' });
+});
+
+// Prometheus metrics (CDC Observabilité) — format text/plain pour scraper
+app.get('/metrics', (req, res) => {
+  const apiKey = req.headers['x-health-key'] || req.query.key;
+  const expected = process.env.HEALTH_API_KEY;
+  if (expected && apiKey !== expected) {
+    return res.status(401).set('Content-Type', 'text/plain').send('# Unauthorized\n');
+  }
+  try {
+    const body = getPrometheusExposition();
+    res.set('Content-Type', 'text/plain; charset=utf-8').send(body);
+  } catch (err) {
+    res.status(500).set('Content-Type', 'text/plain').send('# Error generating metrics\n');
+  }
 });
 // Test Sentry backend (dev) — GET /test-sentry pour déclencher une erreur
 app.get('/test-sentry', (req, res) => {
@@ -376,6 +399,11 @@ app.use('/api/stories', storiesRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/ads', adsRoutes);
 app.use('/api/feed', feedRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api/travel', travelRoutes);
+app.use('/api/cloud', cloudRoutes);
+app.use('/api/map-places', mapPlacesRoutes);
+app.use('/api/ai', aiRoutes);
 app.use('/api/creator-support', creatorSupportRoutes);
 app.use('/api/creator-subscription', creatorSubscriptionRoutes);
 

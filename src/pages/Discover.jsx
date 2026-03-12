@@ -1,3 +1,4 @@
+// AfriWonder full review PR - CodeRabbit
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -5,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, TrendingUp, Hash, Flame, Music2, Utensils, Shirt, Briefcase, Dumbbell, GraduationCap, Laugh, Sparkles, Book, Calendar, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl } from "@/lib/utils";
 import { isDeletedUser } from "@/lib/utils";
@@ -27,16 +28,8 @@ const categories = [
   { id: 'education', label: 'Education', icon: GraduationCap, color: 'from-green-500 to-emerald-500' },
 ];
 
-const trendingHashtags = [
-  { tag: 'AfricanVibes', count: '2.5M', trending: true },
-  { tag: 'DakarLife', count: '1.2M' },
-  { tag: 'AfroBeats', count: '980K', trending: true },
-  { tag: 'MadeInAfrica', count: '750K' },
-  { tag: 'AfricanFood', count: '620K' },
-  { tag: 'Entrepreneurship', count: '450K' },
-];
-
 export default function Discover() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('explore');
@@ -60,7 +53,7 @@ export default function Discover() {
     },
   });
 
-  const { data: recommendedVideos = [], isLoading: loadingRecommended } = useQuery({
+  const { data: recommendedVideos = [], isLoading: loadingRecommended, isError: recommendedError, refetch: refetchRecommended } = useQuery({
     queryKey: ['recommendedVideos', user?.id],
     queryFn: () => RecommendationEngine.getPersonalizedFeed(user.id, 20),
     enabled: !!user?.id,
@@ -92,6 +85,20 @@ export default function Discover() {
       return result.products || [];
     },
   });
+
+  const { data: trendingHashtagsData = [] } = useQuery({
+    queryKey: ['trending-hashtags'],
+    queryFn: () => api.videos.getTrendingHashtags(15),
+    staleTime: 2 * 60 * 1000,
+  });
+  const trendingHashtags = useMemo(() => {
+    if (!Array.isArray(trendingHashtagsData)) return [];
+    return trendingHashtagsData.map((h) => ({
+      tag: h.tag || h.tag_name,
+      count: h.countFormatted || (h.count >= 1000 ? `${(h.count / 1000).toFixed(0)}K` : String(h.count || '')),
+      trending: (h.count || 0) >= 100,
+    }));
+  }, [trendingHashtagsData]);
 
   const { data: creatorsRaw = [] } = useQuery({
     queryKey: ['creators'],
@@ -197,7 +204,14 @@ export default function Discover() {
     <div className="min-h-screen bg-gray-50 pb-20">
       <div className="sticky top-0 z-40 bg-white border-b border-gray-100">
         <div className="px-4 py-3">
-          <div className="relative">
+          <form
+            className="relative"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const q = searchQuery.trim();
+              if (q) navigate(`${createPageUrl('Search')}?q=${encodeURIComponent(q)}`);
+            }}
+          >
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <Input
               placeholder="Rechercher vidéos, créateurs, produits..."
@@ -205,7 +219,7 @@ export default function Discover() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10 pr-4 py-6 rounded-2xl border-gray-200 bg-gray-50 focus:bg-white text-base"
             />
-          </div>
+          </form>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="px-4">
@@ -338,22 +352,24 @@ export default function Discover() {
                 <h2 className="font-bold text-gray-800">Tendances</h2>
               </div>
               <div className="flex flex-wrap gap-2">
-                {trendingHashtags.map((hashtag, index) => (
-                  <motion.button
-                    key={hashtag.tag}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: index * 0.05 }}
-                    className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-all"
-                  >
-                    <Hash className="w-4 h-4 text-blue-600" />
-                    <span className="font-medium text-gray-700">{hashtag.tag}</span>
-                    <span className="text-xs text-gray-400">{hashtag.count}</span>
-                    {hashtag.trending && (
-                      <Flame className="w-3 h-3 text-blue-600" />
-                    )}
-                  </motion.button>
-                ))}
+                {trendingHashtags.length === 0 ? (
+                  <p className="text-sm text-gray-500">Aucun hashtag pour le moment. Publiez des vidéos avec des #hashtags.</p>
+                ) : (
+                  trendingHashtags.map((hashtag, index) => (
+                    <Link
+                      key={hashtag.tag}
+                      to={`${createPageUrl('Search')}?q=${encodeURIComponent('#' + hashtag.tag)}`}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-all"
+                    >
+                      <Hash className="w-4 h-4 text-blue-600" />
+                      <span className="font-medium text-gray-700">#{hashtag.tag}</span>
+                      <span className="text-xs text-gray-400">{hashtag.count}</span>
+                      {hashtag.trending && (
+                        <Flame className="w-3 h-3 text-blue-600" />
+                      )}
+                    </Link>
+                  ))
+                )}
               </div>
             </div>
 
@@ -468,7 +484,18 @@ export default function Discover() {
               Recommandations personnalisées
             </h2>
             
-            {loadingRecommended ? (
+            {recommendedError ? (
+              <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+                <p className="text-gray-700 font-medium mb-3">Une erreur s&apos;est produite.</p>
+                <button
+                  type="button"
+                  onClick={() => refetchRecommended()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                >
+                  Réessayer
+                </button>
+              </div>
+            ) : loadingRecommended ? (
               <div className="flex justify-center py-20">
                 <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
               </div>

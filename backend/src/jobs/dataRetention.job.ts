@@ -57,25 +57,40 @@ const DEFAULT_RETENTION_POLICIES = [
   },
 ];
 
+const RETENTION_INIT_MAX_RETRIES = 3;
+const RETENTION_INIT_RETRY_DELAY_MS = 2000;
+
 /**
- * Initialiser les politiques de rétention par défaut
+ * Initialiser les politiques de rétention par défaut (avec retry en cas de timeout connexion)
  */
 export async function initializeRetentionPolicies() {
-  try {
-    logger.info('📋 Initialisation des politiques de rétention...');
+  let lastError: any;
+  for (let attempt = 1; attempt <= RETENTION_INIT_MAX_RETRIES; attempt++) {
+    try {
+      logger.info('📋 Initialisation des politiques de rétention...', attempt > 1 ? { attempt } : undefined);
 
-    for (const policy of DEFAULT_RETENTION_POLICIES) {
-      await prisma.dataRetentionPolicy.upsert({
-        where: { data_type: policy.data_type },
-        update: {},
-        create: policy,
-      });
+      for (const policy of DEFAULT_RETENTION_POLICIES) {
+        await prisma.dataRetentionPolicy.upsert({
+          where: { data_type: policy.data_type },
+          update: {},
+          create: policy,
+        });
+      }
+
+      logger.info('✅ Politiques de rétention initialisées');
+      return;
+    } catch (error: any) {
+      lastError = error;
+      const isTimeout = /connection timeout|Connection terminated/i.test(error?.message || '');
+      if (isTimeout && attempt < RETENTION_INIT_MAX_RETRIES) {
+        logger.warn(`⏳ Timeout lors de l'init des politiques (tentative ${attempt}/${RETENTION_INIT_MAX_RETRIES}), nouvel essai dans ${RETENTION_INIT_RETRY_DELAY_MS / 1000}s...`);
+        await new Promise((r) => setTimeout(r, RETENTION_INIT_RETRY_DELAY_MS));
+      } else {
+        break;
+      }
     }
-
-    logger.info('✅ Politiques de rétention initialisées');
-  } catch (error: any) {
-    logger.error('❌ Erreur lors de l\'initialisation des politiques:', error);
   }
+  logger.error('❌ Erreur lors de l\'initialisation des politiques:', lastError);
 }
 
 /**

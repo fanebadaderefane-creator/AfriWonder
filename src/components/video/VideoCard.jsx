@@ -1,3 +1,4 @@
+// AfriWonder full review PR - CodeRabbit
 // @ts-nocheck
 /**
  * VideoCard — full-screen feed player. Single active item, poster until first frame, HLS/MP4.
@@ -20,7 +21,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn, getVideoPlaybackUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, isMobileOrPWA } from "@/lib/utils";
+import { cn, getVideoPlaybackUrl, getAbsoluteImageUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, isMobileOrPWA } from "@/lib/utils";
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { useTranslation } from "@/components/common/useTranslation";
@@ -202,11 +203,11 @@ function VideoCardContent({
   const playbackUrls = useMemo(() => {
     const out = [];
     const pushUrl = (raw) => {
-      const u = getVideoPlaybackUrl(raw) || '';
+      const u = getVideoPlaybackUrl(raw) || (typeof raw === 'string' ? raw : '');
       if (!u || typeof u !== 'string' || u.trim() === '') return;
       if (!out.includes(u)) out.push(u);
     };
-
+    if (video.hls_url) pushUrl(video.hls_url);
     if (slowConnection) {
       pushUrl(video.low_quality_url);
       pushUrl(video.video_url || video.hd_url);
@@ -217,7 +218,7 @@ function VideoCardContent({
       pushUrl(video.low_quality_url);
     }
     return out;
-  }, [video.video_url, video.low_quality_url, video.hd_url, slowConnection]);
+  }, [video.hls_url, video.video_url, video.low_quality_url, video.hd_url, slowConnection]);
 
   const [sourceIndex, setSourceIndex] = useState(0);
   const videoUrl = playbackUrls[sourceIndex] || '';
@@ -1153,10 +1154,18 @@ function VideoCardContent({
 
   /* ================= RENDER ================= */
 
+  const posterOrPlaceholder = posterUrl || VIDEO_PLACEHOLDER_IMG;
+  const posterBgUrl = posterOrPlaceholder.startsWith('data:') ? posterOrPlaceholder : getAbsoluteImageUrl(posterOrPlaceholder) || posterOrPlaceholder;
+
   return (
-    <div 
+    <div
       className="relative w-full h-[100dvh] bg-gray-950 overflow-hidden"
-      style={{ touchAction: 'pan-y' }}
+      style={{
+        touchAction: 'pan-y',
+        backgroundImage: posterOrPlaceholder ? `url(${posterBgUrl})` : undefined,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }}
     >
       <div className="absolute inset-0 overflow-hidden">
       {/* Frame de la vidéo en fond (toujours visible si pas encore de premier frame) */}
@@ -1173,7 +1182,7 @@ function VideoCardContent({
         <img
           src={getVideoPlaybackUrl(video.video_url) || video.video_url}
           alt={video.title || ''}
-          className="absolute top-0 left-0 w-full h-full object-contain bg-gray-950"
+          className="absolute top-0 left-0 w-full h-full object-cover bg-gray-950"
         />
       ) : videoUrl ? (
       <>
@@ -1667,17 +1676,6 @@ function VideoCardContent({
         style={{ touchAction: 'pan-y' }}
       >
         <div className="flex items-center gap-2 mb-2">
-          <button
-            onClick={() => onProfileClick(video.creator_id)}
-            className="flex items-center gap-2"
-          >
-            <span className="text-white font-extrabold text-lg">
-              @{video.creator_name}
-            </span>
-            {video.is_verified && (
-              <BadgeCheck className="w-5 h-5 text-blue-400 fill-blue-400" />
-            )}
-          </button>
           {onSubscribe && currentUser && currentUser.id !== video.creator_id && (
             <button
               onClick={() => {
@@ -1707,6 +1705,17 @@ function VideoCardContent({
               )}
             </button>
           )}
+          <button
+            onClick={() => onProfileClick(video.creator_id)}
+            className="flex items-center gap-2"
+          >
+            <span className="text-white font-extrabold text-lg">
+              @{video.creator_name}
+            </span>
+            {video.is_verified && (
+              <BadgeCheck className="w-5 h-5 text-blue-400 fill-blue-400" />
+            )}
+          </button>
         </div>
 
         {/* Titre + description (sÃ©parÃ©s) avec hashtags cliquables */}

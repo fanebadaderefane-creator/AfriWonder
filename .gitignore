@@ -34,3 +34,6 @@ test-results
 *.sw?
 
 .env
+
+# Flutter supprimé — mobile = React Native (mobile-afriwonder)
+flutter-afriwonder/

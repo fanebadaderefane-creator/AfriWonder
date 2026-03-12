@@ -56,6 +56,7 @@ const translations = {
     logout: "Déconnexion",
     
     // Common
+    selected: "Sélectionné",
     loading: "Chargement...",
     save: "Enregistrer",
     cancel: "Annuler",
@@ -67,6 +68,16 @@ const translations = {
     previous: "Précédent",
     yes: "Oui",
     no: "Non",
+    // Search
+    search_placeholder: "Vidéos, utilisateurs, produits...",
+    search_placeholder_videos: "Rechercher des vidéos...",
+    search_placeholder_users: "Rechercher des utilisateurs...",
+    search_placeholder_products: "Rechercher des produits...",
+    search_button: "Rechercher",
+    search_no_results: "Aucun résultat pour",
+    search_try_other: "Essayez d'autres mots-clés ou changez de catégorie.",
+    search_try_other_users: "Essayez un autre nom ou email.",
+    search_results_count: "résultat(s) pour",
     
     // Errors
     error: "Erreur",
@@ -165,6 +176,7 @@ const translations = {
     logout: "Logout",
     
     // Common
+    selected: "Selected",
     loading: "Loading...",
     save: "Save",
     cancel: "Cancel",
@@ -176,6 +188,16 @@ const translations = {
     previous: "Previous",
     yes: "Yes",
     no: "No",
+    // Search
+    search_placeholder: "Videos, users, products...",
+    search_placeholder_videos: "Search videos...",
+    search_placeholder_users: "Search users...",
+    search_placeholder_products: "Search products...",
+    search_button: "Search",
+    search_no_results: "No results for",
+    search_try_other: "Try other keywords or change category.",
+    search_try_other_users: "Try another name or email.",
+    search_results_count: "result(s) for",
     
     // Errors
     error: "Error",
@@ -274,6 +296,7 @@ const translations = {
     logout: "تسجيل الخروج",
     
     // Common
+    selected: "محدد",
     loading: "جاري التحميل...",
     save: "حفظ",
     cancel: "إلغاء",
@@ -285,6 +308,16 @@ const translations = {
     previous: "السابق",
     yes: "نعم",
     no: "لا",
+    // Search
+    search_placeholder: "فيديوهات، مستخدمون، منتجات...",
+    search_placeholder_videos: "البحث عن فيديوهات...",
+    search_placeholder_users: "البحث عن مستخدمين...",
+    search_placeholder_products: "البحث عن منتجات...",
+    search_button: "بحث",
+    search_no_results: "لا توجد نتائج لـ",
+    search_try_other: "جرب كلمات أخرى أو غير الفئة.",
+    search_try_other_users: "جرب اسماً أو بريداً آخر.",
+    search_results_count: "نتيجة لـ",
     
     // Errors
     error: "خطأ",
@@ -343,9 +376,17 @@ const translations = {
     profile: "Perfil",
     settings: "Definições",
     language: "Idioma",
+    selected: "Selecionado",
     loading: "A carregar...",
     save: "Guardar",
     cancel: "Cancelar",
+    back: "Voltar",
+    search_placeholder: "Vídeos, utilizadores, produtos...",
+    search_button: "Pesquisar",
+    search_no_results: "Nenhum resultado para",
+    search_try_other: "Tente outras palavras-chave ou mude a categoria.",
+    search_try_other_users: "Tente outro nome ou e-mail.",
+    search_results_count: "resultado(s) para",
     // News
     news_title: "Notícias",
     news_subtitle: "Informação local e nacional",
@@ -379,6 +420,8 @@ const translations = {
     quantity: "Dɔgɔ",
     add_to_cart: "Panier ma don",
     checkout: "Tɛmɛn",
+    selected: "Sɛbɛn",
+    language: "Kan",
     loading: "A bɛ cɛ...",
     save: "Dɔnni",
     cancel: "Bɔ",
@@ -388,7 +431,13 @@ const translations = {
     back: "Kɔ",
     error: "Fali",
     follow: "Tɛmɛ",
-    unfollow: "Tɛmɛ ma tɛmɛ"
+    unfollow: "Tɛmɛ ma tɛmɛ",
+    search_placeholder: "Wideyo, mɔgɔw, fɛnw...",
+    search_button: "Cɛ",
+    search_no_results: "Fɛn ma sɔrɔ",
+    search_try_other: "O kɛ kan in ɲɛmɑ.",
+    search_try_other_users: "Mɔgɔ in ɲɛmɑ.",
+    search_results_count: "sɔrɔ"
   }
 };
 
@@ -404,7 +453,7 @@ export default function TranslationProvider({ children }) {
   }, [language]);
 
   const t = (key) => {
-    return translations[language]?.[key] || key;
+    return translations[language]?.[key] || translations.fr?.[key] || key;
   };
 
   const changeLanguage = (lang) => {

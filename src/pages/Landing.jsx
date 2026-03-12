@@ -1,3 +1,4 @@
+// AfriWonder full review PR - CodeRabbit
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -450,6 +451,27 @@ export default function Landing() {
                 e.preventDefault();
                 if (!regFullName?.trim() || !regUsername?.trim() || !regEmail?.trim() || !regPassword) {
                   toast.error('Tous les champs sont requis');
+                  return;
+                }
+                const usernameTrimmed = regUsername.trim();
+                if (usernameTrimmed.length < 3 || usernameTrimmed.length > 30) {
+                  toast.error('Le nom d\'utilisateur doit faire entre 3 et 30 caractères');
+                  return;
+                }
+                if (!/^[a-zA-Z0-9_]+$/.test(usernameTrimmed)) {
+                  toast.error('Le nom d\'utilisateur ne peut contenir que lettres, chiffres et underscore');
+                  return;
+                }
+                if (regPassword.length < 8) {
+                  toast.error('Le mot de passe doit contenir au moins 8 caractères');
+                  return;
+                }
+                if (!/[a-zA-Z]/.test(regPassword)) {
+                  toast.error('Le mot de passe doit contenir au moins une lettre');
+                  return;
+                }
+                if (!/\d/.test(regPassword)) {
+                  toast.error('Le mot de passe doit contenir au moins un chiffre');
                   return;
                 }
                 if (!regAcceptTerms) {

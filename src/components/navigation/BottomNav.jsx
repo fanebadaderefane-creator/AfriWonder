@@ -101,14 +101,14 @@ export default function BottomNav() {
                 <Icon 
                   className={cn(
                     "w-6 h-6 transition-colors duration-200 ease-out",
-                    active ? "text-blue-400" : "text-white/70"
+                    active ? "text-white" : "text-white/60"
                   )} 
                 />
               </motion.div>
 
               <span className={cn(
                 "text-[10px] transition-colors duration-200 ease-out",
-                active ? "text-blue-400 font-semibold" : "text-white/60"
+                active ? "text-white font-semibold" : "text-white/60"
               )}>
 
                 {item.label}
@@ -121,7 +121,7 @@ export default function BottomNav() {
 
                   layoutId="activeTab"
 
-                  className="absolute bottom-0 w-1 h-1 bg-blue-400 rounded-full"
+                  className="absolute bottom-0 w-1 h-1 bg-white rounded-full"
 
                   data-testid="active-tab-indicator"
 

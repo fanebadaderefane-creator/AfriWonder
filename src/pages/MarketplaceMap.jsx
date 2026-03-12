@@ -54,6 +54,17 @@ export default function MarketplaceMap() {
   const products = Array.isArray(productsData) ? productsData : (productsData?.products || []);
   const productsWithCoords = products.filter((p) => p.latitude != null && p.longitude != null);
 
+  const { data: placesData } = useQuery({
+    queryKey: ['map-places', userPosition[0], userPosition[1], radiusKm],
+    queryFn: () => api.mapPlaces.listNearby({
+      latitude: userPosition[0],
+      longitude: userPosition[1],
+      radius_km: radiusKm,
+      limit: 100,
+    }),
+  });
+  const places = placesData?.items ?? [];
+
   if (!mapReady) {
     return (
       <div className="h-screen flex items-center justify-center">
@@ -122,7 +133,7 @@ export default function MarketplaceMap() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           {productsWithCoords.map((p) => (
-            <Marker key={p.id} position={[p.latitude, p.longitude]}>
+            <Marker key={`p-${p.id}`} position={[p.latitude, p.longitude]}>
               <Popup>
                 <div className="min-w-[180px]">
                   <img
@@ -144,11 +155,23 @@ export default function MarketplaceMap() {
               </Popup>
             </Marker>
           ))}
+          {places.map((pl) => (
+            <Marker key={`pl-${pl.id}`} position={[pl.latitude, pl.longitude]}>
+              <Popup>
+                <div className="min-w-[160px]">
+                  <span className="text-xs text-slate-500 uppercase">{pl.category}</span>
+                  <h3 className="font-semibold text-sm">{pl.name}</h3>
+                  {pl.address && <p className="text-xs text-gray-600">{pl.address}</p>}
+                  {pl.distance_km != null && <p className="text-xs text-blue-600">{pl.distance_km.toFixed(1)} km</p>}
+                </div>
+              </Popup>
+            </Marker>
+          ))}
         </MapContainer>
       </div>
 
       <p className="text-xs text-center py-2 bg-gray-50 text-gray-500">
-        {productsWithCoords.length} produit(s) dans {radiusKm} km
+        {productsWithCoords.length} produit(s), {places.length} lieu(x) — {radiusKm} km
       </p>
 
       <BottomNav />

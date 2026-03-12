@@ -43,6 +43,12 @@ const MENU_SECTIONS = [
     ],
   },
   {
+    title: "SOCIAL & MESSAGERIE",
+    items: [
+      { icon: MessageCircle, label: "Messages", color: "text-blue-600", page: 'Inbox' },
+    ],
+  },
+  {
     title: "CRÉATEURS & LIVE",
     items: [
       { icon: Compass, label: "Découvrir", color: "text-primary", page: 'Discover' },

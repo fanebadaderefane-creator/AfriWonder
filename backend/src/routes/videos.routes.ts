@@ -1,7 +1,10 @@
+// AfriWonder full review PR - CodeRabbit
 import { Router } from 'express';
 import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import { videoService } from '../services/video.service.js';
+import { createJob } from '../services/transcoding.service.js';
+import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
 const router = Router();
@@ -52,6 +55,27 @@ router.get('/category/:id', optionalAuth, async (req: AuthRequest, res, next) =>
       success: true,
       data: videos,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/videos/hashtags/trending - Hashtags tendances (agrégation VideoHashtag)
+router.get('/hashtags/trending', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const limit = Math.min(Math.max(1, parseInt(String(req.query.limit || '15'), 10)), 50);
+    const result = await prisma.videoHashtag.groupBy({
+      by: ['tag_name'],
+      _count: { tag_name: true },
+      orderBy: { _count: { tag_name: 'desc' } },
+      take: limit,
+    });
+    const hashtags = result.map((r) => ({
+      tag: r.tag_name,
+      count: r._count.tag_name,
+      countFormatted: r._count.tag_name >= 1000000 ? `${(r._count.tag_name / 1000000).toFixed(1)}M` : r._count.tag_name >= 1000 ? `${(r._count.tag_name / 1000).toFixed(0)}K` : String(r._count.tag_name),
+    }));
+    res.json({ success: true, data: hashtags });
   } catch (error) {
     next(error);
   }
@@ -217,6 +241,40 @@ router.post('/:id/comment', authenticate, async (req: AuthRequest, res, next) =>
   }
 });
 
+// PATCH /api/videos/comments/:commentId - Modifier un commentaire (auteur uniquement)
+router.patch('/comments/:commentId', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const commentId = param(req, 'commentId');
+    const userId = req.user!.id;
+    const { content } = req.body || {};
+
+    const comment = await videoService.updateComment(commentId, userId, { content });
+
+    res.json({
+      success: true,
+      data: comment,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/videos/comments/:commentId - Supprimer un commentaire (auteur uniquement)
+router.delete('/comments/:commentId', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const commentId = param(req, 'commentId');
+    const userId = req.user!.id;
+
+    await videoService.deleteComment(commentId, userId);
+
+    res.json({
+      success: true,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /api/videos/:id/comments - Liste des commentaires
 router.get('/:id/comments', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
@@ -328,6 +386,70 @@ router.post('/:id/share', optionalAuth, async (req: AuthRequest, res, next) => {
     res.json({
       success: true,
       message: 'Partage enregistré',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ========== Pipeline HLS (CDC) ==========
+// POST /api/videos/:id/transcode - Enqueue transcoding job (créateur uniquement)
+router.post('/:id/transcode', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const videoId = param(req, 'id');
+    const video = await prisma.video.findUnique({
+      where: { id: videoId },
+      select: { id: true, video_url: true, creator_id: true },
+    });
+    if (!video) {
+      return res.status(404).json({ success: false, error: 'Vidéo introuvable' });
+    }
+    if (video.creator_id !== req.user!.id) {
+      return res.status(403).json({ success: false, error: 'Seul le créateur peut lancer le transcodage' });
+    }
+    const { job, created } = await createJob({
+      video_id: videoId,
+      source_url: video.video_url,
+    });
+    res.status(created ? 201 : 200).json({
+      success: true,
+      data: job,
+      message: created ? 'Job de transcodage créé' : 'Un job est déjà en cours ou en attente',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/videos/:id/transcode/status - Statut du job de transcodage
+router.get('/:id/transcode/status', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const videoId = param(req, 'id');
+    const job = await prisma.transcodingJob.findFirst({
+      where: { video_id: videoId },
+      orderBy: { created_at: 'desc' },
+    });
+    if (!job) {
+      return res.json({ success: true, data: { job: null, hasHls: false } });
+    }
+    const video = await prisma.video.findUnique({
+      where: { id: videoId },
+      select: { hls_url: true },
+    });
+    res.json({
+      success: true,
+      data: {
+        job: {
+          id: job.id,
+          status: job.status,
+          hls_manifest_url: job.hls_manifest_url,
+          error_message: job.error_message,
+          created_at: job.created_at,
+          completed_at: job.completed_at,
+        },
+        hasHls: !!video?.hls_url,
+        hls_url: video?.hls_url ?? null,
+      },
     });
   } catch (error) {
     next(error);

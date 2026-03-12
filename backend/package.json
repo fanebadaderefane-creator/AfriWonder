@@ -26,7 +26,8 @@
     "test:smoke": "cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js --testPathPattern=smoke.critical-path --runInBand",
     "test:ads": "npm run test:db:prepare && cross-env NODE_ENV=test JWT_SECRET=test_secret_key_for_jest_tests_only JWT_REFRESH_SECRET=test_refresh_secret_key_for_jest_tests node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js --testPathPattern=__tests__/ads --runInBand",
     "check:prod-env": "node scripts/check-prod-env.js",
-    "load-test": "node scripts/load-test-node.js"
+    "load-test": "node scripts/load-test-node.js",
+    "transcode:one": "tsx scripts/run-transcode-one.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.700.0",

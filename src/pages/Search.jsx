@@ -1,6 +1,8 @@
+// AfriWonder full review PR - CodeRabbit
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from '@/components/common/useTranslation';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, X, Loader2, Video, User, Package, ArrowLeft } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -53,6 +55,7 @@ function VideoThumbnail({ video }) {
 }
 
 export default function SearchPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get('q') || '';
@@ -90,141 +93,46 @@ export default function SearchPage() {
     setSearchParams(term ? { q: term, category: filters.category } : {});
   };
 
-  const isHashtagSearch = query.trim().startsWith('#') || /^#?\w+$/.test(query.trim());
-  const hashtagForApi = isHashtagSearch ? query.trim().replace(/^#/, '') : '';
   const isMessagesContext = from === 'inbox' || mode === 'messages';
+  const effectiveSearchType = isMessagesContext ? 'users' : filters.type;
 
-  // Fetch videos (utilise l'API hashtag si recherche par hashtag)
-  const { data: videos, isLoading: videosLoading, error: videosError } = useQuery({
-    queryKey: ['searchVideos', query, filters, hashtagForApi],
+  // Recherche globale CDC : un seul appel API pour vidéos, utilisateurs, produits
+  const { data: globalSearchData, isLoading: searchLoading, error: searchError } = useQuery({
+    queryKey: ['searchGlobal', query, effectiveSearchType, filters.category, filters.duration],
     queryFn: async () => {
-      if (!query.trim()) return [];
-
-      if (hashtagForApi && filters.type !== 'users' && filters.type !== 'products') {
-        const res = await api.videos.list({ page: 1, limit: 50, hashtag: hashtagForApi });
-        let results = Array.isArray(res) ? res : (res?.videos || []);
-        if (filters.category && filters.category !== 'all') {
-          results = results.filter((v) => v.category === filters.category);
-        }
-        if (filters.duration !== 'all') {
-          results = results.filter((v) => {
-            const dur = v.duration || 0;
-            if (filters.duration === 'short') return dur < 60;
-            if (filters.duration === 'medium') return dur >= 60 && dur <= 600;
-            if (filters.duration === 'long') return dur > 600;
-            return true;
-          });
-        }
-        return results.slice(0, 20);
-      }
-
-      const videoResult = await api.videos.list({ 
-        page: 1, 
-        limit: 50, 
-        hashtag: hashtagForApi || undefined,
-        search: !hashtagForApi ? query.trim() : undefined
+      const result = await api.search.global({
+        q: query.trim(),
+        type: effectiveSearchType,
+        limit: 20,
+        category: filters.category && filters.category !== 'all' ? filters.category : undefined,
+        duration: filters.duration !== 'all' ? filters.duration : undefined,
       });
-      let results = Array.isArray(videoResult) ? videoResult : (videoResult?.videos || []);
-
-      if (filters.category && filters.category !== 'all') {
-        results = results.filter((v) => v.category === filters.category);
-      }
-      if (filters.duration !== 'all') {
-        results = results.filter((v) => {
-          const dur = v.duration || 0;
-          if (filters.duration === 'short') return dur < 60;
-          if (filters.duration === 'medium') return dur >= 60 && dur <= 600;
-          if (filters.duration === 'long') return dur > 600;
-          return true;
-        });
-      }
-      return results.slice(0, 20);
+      return result;
     },
-    enabled: !!(query && (isMessagesContext ? false : (filters.type === 'all' || filters.type === 'videos'))),
+    enabled: !!query.trim(),
     retry: 1,
     onError: (err) => {
-      console.error('Erreur recherche vidéos:', err);
+      console.error('Erreur recherche globale:', err);
     },
   });
 
-  // Terme normalisé pour la recherche utilisateurs (sans @ en tête, pour matcher username)
-  const searchTermForUsers = query.trim().replace(/^@+/, '');
+  const videos = globalSearchData?.videos ?? [];
+  const users = globalSearchData?.users ?? [];
+  const products = globalSearchData?.products ?? [];
 
-  // Fetch users
-  const { data: users, isLoading: usersLoading, error: usersError } = useQuery({
-    queryKey: ['searchUsers', searchTermForUsers, filters.type],
-    queryFn: async () => {
-      if (!searchTermForUsers) return [];
-      try {
-        const result = await api.users.list({ page: 1, limit: 20, search: searchTermForUsers });
-        const list = Array.isArray(result) ? result : (result?.users || []);
-        return Array.isArray(list) ? list : [];
-      } catch (err) {
-        console.error('Erreur recherche utilisateurs:', err);
-        return [];
-      }
-    },
-    enabled: !!(query && (isMessagesContext || filters.type === 'all' || filters.type === 'users')),
-    retry: 1,
-  });
-
-  // Fetch products
-  const { data: products, isLoading: productsLoading, error: productsError } = useQuery({
-    queryKey: ['searchProducts', query, filters],
-    queryFn: async () => {
-      if (!query.trim()) return [];
-      try {
-        const result = await api.products.list({ 
-          search: query.trim(), 
-          category: filters.category !== 'all' ? filters.category : undefined,
-          page: 1, 
-          limit: 50 
-        });
-        return Array.isArray(result) ? result : (result?.products || []);
-      } catch (err) {
-        console.error('Erreur recherche produits:', err);
-        throw err;
-      }
-    },
-    enabled: !!(query && (isMessagesContext ? false : (filters.type === 'all' || filters.type === 'products'))),
-    retry: 1,
-  });
-
-  // Suggestions à la frappe (utilisateurs + vidéos) — pour le dropdown sous la barre de recherche
-  const { data: suggestionUsers, isLoading: suggestionUsersLoading } = useQuery({
-    queryKey: ['searchSuggestUsers', debouncedSuggestTerm],
-    queryFn: async () => {
-      if (!debouncedSuggestTerm) return [];
-      try {
-        const result = await api.users.list({ page: 1, limit: 8, search: debouncedSuggestTerm });
-        const list = Array.isArray(result) ? result : (result?.users || []);
-        return Array.isArray(list) ? list : [];
-      } catch {
-        return [];
-      }
-    },
+  // Suggestions à la frappe (API unifiée /search/suggest)
+  const { data: suggestData, isLoading: suggestionLoading } = useQuery({
+    queryKey: ['searchSuggest', debouncedSuggestTerm],
+    queryFn: async () => api.search.suggest({ q: debouncedSuggestTerm, limit: 8 }),
     enabled: debouncedSuggestTerm.length >= MIN_CHARS_FOR_SUGGESTIONS,
     staleTime: 60 * 1000,
   });
 
-  const { data: suggestionVideos, isLoading: suggestionVideosLoading } = useQuery({
-    queryKey: ['searchSuggestVideos', debouncedSuggestTerm],
-    queryFn: async () => {
-      if (!debouncedSuggestTerm) return [];
-      try {
-        const res = await api.videos.list({ page: 1, limit: 8, search: debouncedSuggestTerm });
-        const list = Array.isArray(res) ? res : (res?.videos || []);
-        return list.slice(0, 8);
-      } catch {
-        return [];
-      }
-    },
-    enabled: debouncedSuggestTerm.length >= MIN_CHARS_FOR_SUGGESTIONS && !isMessagesContext,
-    staleTime: 60 * 1000,
-  });
+  const suggestionUsers = suggestData?.users ?? [];
+  const suggestionVideos = isMessagesContext ? [] : (suggestData?.videos ?? []);
 
   const showSuggestions = searchFocused && localQuery.trim().length >= MIN_CHARS_FOR_SUGGESTIONS;
-  const suggestionsLoading = suggestionUsersLoading || suggestionVideosLoading;
+  const suggestionsLoading = suggestionLoading;
   const hasSuggestions = (suggestionUsers?.filter((u) => !isDeletedUser(u)).length > 0) || (suggestionVideos?.length > 0) || suggestionsLoading;
 
   // Clic en dehors du bloc recherche → fermer les suggestions
@@ -238,8 +146,8 @@ export default function SearchPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const isLoading = videosLoading || usersLoading || productsLoading;
-  const hasError = videosError || usersError || productsError;
+  const isLoading = searchLoading;
+  const hasError = searchError;
   const totalResults = (videos?.length || 0) + (users?.length || 0) + (products?.length || 0);
 
   // En mode messages, forcer le filtre users et toujours afficher les résultats users
@@ -271,14 +179,14 @@ export default function SearchPage() {
                   type="text"
                   placeholder={
                     isMessagesContext
-                      ? "Rechercher un utilisateur..."
+                      ? t("search_placeholder_users")
                       : filters.type === "videos"
-                        ? "Rechercher des vidéos..."
+                        ? t("search_placeholder_videos")
                         : filters.type === "users"
-                          ? "Rechercher des utilisateurs..."
+                          ? t("search_placeholder_users")
                           : filters.type === "products"
-                            ? "Rechercher des produits..."
-                            : "Vidéos, utilisateurs, produits..."
+                            ? t("search_placeholder_products")
+                            : t("search_placeholder")
                   }
                   value={localQuery}
                   onChange={(e) => setLocalQuery(e.target.value)}
@@ -295,7 +203,7 @@ export default function SearchPage() {
                   type="submit"
                   className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-full font-medium text-sm flex-shrink-0"
                 >
-                  Rechercher
+                  {t("search_button")}
                 </button>
               </form>
 
@@ -490,20 +398,18 @@ export default function SearchPage() {
             <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
               <Search className="w-7 h-7 text-gray-400" />
             </div>
-            <p className="font-semibold text-gray-800 mb-1">Aucun résultat pour « {query} »</p>
+            <p className="font-semibold text-gray-800 mb-1">{t("search_no_results")} « {query} »</p>
             <p className="text-sm text-gray-500 mb-4">
-              {isMessagesContext 
-                ? 'Essayez un autre nom ou email.'
-                : 'Essayez d\'autres mots-clés ou changez de catégorie ci-dessus.'}
+              {isMessagesContext ? t("search_try_other_users") : t("search_try_other")}
             </p>
             {!isMessagesContext && (
-              <p className="text-xs text-gray-400">Astuce : passez par « Tous » pour chercher partout.</p>
+              <p className="text-xs text-gray-400">{t("search_try_other")}</p>
             )}
           </div>
         ) : (
           <>
             <p className="text-sm text-gray-500 mb-2">
-              {totalResults} résultat{totalResults > 1 ? 's' : ''} pour « {query} »
+              {totalResults} {t("search_results_count")} « {query} »
             </p>
             {/* Videos — affiché pour Tous ou Vidéos */}
             {shouldShowVideos && videos && videos.length > 0 && (

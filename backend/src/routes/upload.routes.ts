@@ -4,6 +4,10 @@ import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { r2Client, R2_BUCKET_NAME, R2_PUBLIC_URL, getR2ConfigDiagnostic } from '../config/cloudflare-r2.js';
 import { logger } from '../utils/logger.js';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { spawn } from 'child_process';
 
 const router = Router();
 
@@ -45,6 +49,61 @@ function createSafeFilename(originalName: string): string {
   if (!safe) safe = 'file';
 
   return safe + extension.toLowerCase();
+}
+
+async function generateVideoThumbnailToR2(fileBuffer: Buffer, safeName: string): Promise<string | undefined> {
+  if (!r2Client || !R2_PUBLIC_URL) return undefined;
+
+  const tmpDir = os.tmpdir();
+  const baseName = safeName.replace(/\.[^/.]+$/, '');
+  const inputPath = path.join(tmpDir, `${Date.now()}-${baseName}-src.tmp`);
+  const outputPath = path.join(tmpDir, `${Date.now()}-${baseName}-thumb.jpg`);
+
+  try {
+    await fs.promises.writeFile(inputPath, fileBuffer);
+
+    const ffmpegArgs = [
+      '-y',
+      '-i', inputPath,
+      '-ss', '00:00:01.000',
+      '-vframes', '1',
+      '-vf', 'scale=720:-1:force_original_aspect_ratio=decrease',
+      outputPath,
+    ];
+
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn('ffmpeg', ffmpegArgs);
+      proc.on('error', reject);
+      proc.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`ffmpeg exited with code ${code}`));
+      });
+    });
+
+    const thumbBuffer = await fs.promises.readFile(outputPath);
+    const thumbFileName = `${Date.now()}-${baseName}-thumb.jpg`;
+    const thumbKey = `thumbnails/${thumbFileName}`;
+
+    const command = new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: thumbKey,
+      Body: thumbBuffer,
+      ContentType: 'image/jpeg',
+      CacheControl: 'public, max-age=31536000, immutable',
+    });
+
+    await r2Client.send(command);
+
+    const encodedThumbName = encodeURIComponent(thumbFileName);
+    const thumbUrl = `${R2_PUBLIC_URL}/thumbnails/${encodedThumbName}`;
+    return thumbUrl;
+  } catch (err) {
+    logger.warn('Thumbnail generation from video failed', { err: (err as Error)?.message || String(err) });
+    return undefined;
+  } finally {
+    fs.promises.unlink(inputPath).catch(() => {});
+    fs.promises.unlink(outputPath).catch(() => {});
+  }
 }
 
 router.post('/image', authenticate, upload.single('file'), async (req: AuthRequest, res, next) => {
@@ -121,6 +180,14 @@ router.post('/video', authenticate, upload.single('file'), async (req: AuthReque
 
     await r2Client.send(command);
 
+    // Générer une miniature à partir de la vidéo si possible
+    let thumbnailUrl: string | undefined;
+    try {
+      thumbnailUrl = await generateVideoThumbnailToR2(req.file.buffer, safeName);
+    } catch {
+      thumbnailUrl = undefined;
+    }
+
     // Encoder l'URL (même si le nom est déjà safe, c'est une bonne pratique)
     const encodedFileName = encodeURIComponent(fileName);
     const fileUrl = `${R2_PUBLIC_URL}/videos/${encodedFileName}`;
@@ -129,6 +196,7 @@ router.post('/video', authenticate, upload.single('file'), async (req: AuthReque
       success: true,
       data: {
         file_url: fileUrl,
+        thumbnail_url: thumbnailUrl,
       },
     });
   } catch (error) {

@@ -88,13 +88,19 @@ function LayoutContent({ children, currentPageName }) {
   const { isOpen: isMenuOpen, closeMenu, openMenu, reopenMenuOnPath, clearReopenMenuOnPath, scheduleReopenWhenReturn } = useAppMenu();
   const location = useLocation();
 
-  // Ã€ son retour sur la page d'oÃ¹ il avait ouvert le menu, rouvrir le menu
+  // À son retour sur la page d'où il avait ouvert le menu, rouvrir le menu
   useEffect(() => {
     if (reopenMenuOnPath && location.pathname === reopenMenuOnPath) {
       openMenu();
       clearReopenMenuOnPath();
     }
   }, [location.pathname, reopenMenuOnPath, openMenu, clearReopenMenuOnPath]);
+
+  // Depuis l'app React Native : ouvrir le menu si l'URL contient ?openMenu=1
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('openMenu') === '1') openMenu();
+  }, [location.search, openMenu]);
 
   return (
     <div

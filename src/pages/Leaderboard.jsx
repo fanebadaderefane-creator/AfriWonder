@@ -45,29 +45,23 @@ export default function Leaderboard() {
   const [category, setCategory] = useState("");
 
   // Production ready : utilise API réelle, mockées seulement en cas d'erreur
-  const { data: leaderboardData, isLoading } = useQuery({
+  const { data: leaderboardData, isLoading, isError, refetch } = useQuery({
     queryKey: ["leaderboard", timeRange, country, category],
     queryFn: async () => {
-      try {
-        const res = await api.leaderboard.get({
-          range: timeRange,
-          country: country || undefined,
-          category: category || undefined,
-        });
-        const leaderboard = Array.isArray(res?.leaderboard) ? res.leaderboard : (Array.isArray(res) ? res : []);
-        // Retourner les vraies données même si vide (pas de fallback mock)
-        return { leaderboard, isMock: false };
-      } catch (_e) {
-        // Seulement en cas d'erreur API, utiliser les mockées pour la démo
-        console.warn('API error, using demo data:', _e);
-        return { leaderboard: MOCK_LEADERBOARD, isMock: true };
-      }
+      const res = await api.leaderboard.get({
+        range: timeRange,
+        country: country || undefined,
+        category: category || undefined,
+      });
+      const leaderboard = Array.isArray(res?.leaderboard) ? res.leaderboard : (Array.isArray(res) ? res : []);
+      return { leaderboard, isMock: false };
     },
     staleTime: 60000, // Cache 1min pour le leaderboard
+    retry: 1,
   });
 
-  const leaderboard = Array.isArray(leaderboardData?.leaderboard) 
-    ? leaderboardData.leaderboard 
+  const leaderboard = Array.isArray(leaderboardData?.leaderboard)
+    ? leaderboardData.leaderboard
     : (Array.isArray(leaderboardData) ? leaderboardData : []);
   const isUsingMockData = leaderboardData?.isMock === true;
 
@@ -99,13 +93,24 @@ export default function Leaderboard() {
       </div>
 
       <div className="max-w-4xl mx-auto p-6 space-y-6">
+        {isError ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-gray-700 font-medium mb-4">Une erreur s&apos;est produite.</p>
+              <Button onClick={() => refetch()} variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50">
+                Réessayer
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <>
         {/* Banner démo si données mockées */}
         {isUsingMockData && (
           <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 text-center">
             📊 Mode démo — Données fictives pour illustration
           </div>
         )}
-        
+
         {/* Période : Global / Hebdo / Mensuel / Annuel */}
         <div className="flex flex-wrap gap-2">
           {[
@@ -368,6 +373,8 @@ export default function Leaderboard() {
             <p>• Compléter votre profil: +100 points</p>
           </CardContent>
         </Card>
+          </>
+        )}
       </div>
     </div>
   );

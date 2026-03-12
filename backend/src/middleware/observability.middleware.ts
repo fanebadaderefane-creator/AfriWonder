@@ -45,3 +45,18 @@ export const httpMetricsMiddleware = (req: Request, res: Response, next: NextFun
 
   next();
 };
+
+/** Timeout des requêtes API (hors upload/webhooks) pour éviter requêtes bloquées — stabilité / consolidation. */
+const API_REQUEST_TIMEOUT_MS = 30000; // 30s
+
+function isLongRunningPath(path: string): boolean {
+  return path.startsWith('/api/upload') || /\/webhook$/i.test(path);
+}
+
+export const apiRequestTimeoutMiddleware = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.path.startsWith('/api/') || isLongRunningPath(req.path)) return next();
+  res.setTimeout(API_REQUEST_TIMEOUT_MS, () => {
+    if (!res.headersSent) (req.socket as NodeJS.ReadableStream & { destroy?: () => void }).destroy?.();
+  });
+  next();
+};

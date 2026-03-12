@@ -43,8 +43,15 @@ router.get('/media', async (req: Request, res: ExpressResponse) => {
     return res.status(400).json({ error: 'URL invalide' });
   }
 
-  if (!isAllowedVideoUrl(targetUrl)) {
-    return res.status(403).json({ error: 'URL non autorisée' });
+  try {
+    const targetHost = new URL(targetUrl).hostname.toLowerCase();
+    const requestHost = (req.get('host') || '').split(':')[0].toLowerCase();
+    const sameOrigin = requestHost && (targetHost === requestHost || targetHost === '127.0.0.1' && requestHost === 'localhost');
+    if (!sameOrigin && !isAllowedVideoUrl(targetUrl)) {
+      return res.status(403).json({ error: 'URL non autorisée' });
+    }
+  } catch {
+    return res.status(400).json({ error: 'URL invalide' });
   }
 
   if (process.env.NODE_ENV === 'development') {

@@ -1,10 +1,12 @@
+// AfriWonder full review PR - CodeRabbit
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '@/api/expressClient';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Edit, MessageCircle, ArrowLeft, UserPlus, Bell, Filter, Users } from 'lucide-react';
+import { Search, Edit, MessageCircle, ArrowLeft, UserPlus, Bell, Filter, Users, Plus } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -21,6 +23,10 @@ export default function Inbox() {
   const [activeFilter, setActiveFilter] = useState('all');
   const [showAllSuggested, setShowAllSuggested] = useState(false);
   const [followStateMap, setFollowStateMap] = useState({});
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [selectedMemberIds, setSelectedMemberIds] = useState([]);
+  const [creatingGroup, setCreatingGroup] = useState(false);
 
   useEffect(() => {
     const getUser = async () => {
@@ -34,12 +40,20 @@ export default function Inbox() {
     getUser();
   }, [navigate]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['messages-conversations', user?.id],
     queryFn: () => api.messages.getConversations(1, 50),
     enabled: !!user?.id,
     refetchInterval: 10000,
   });
+
+  const { data: groupsData } = useQuery({
+    queryKey: ['messages-groups', user?.id],
+    queryFn: () => api.messages.getGroups(1, 50),
+    enabled: !!user?.id,
+    refetchInterval: 10000,
+  });
+  const groups = groupsData?.groups ?? [];
 
   const { data: notificationsData = [] } = useQuery({
     queryKey: ['notifications', user?.id],
@@ -125,6 +139,29 @@ export default function Inbox() {
     } catch {
       return '';
     }
+  };
+
+  const handleCreateGroup = async () => {
+    if (!newGroupName.trim() || selectedMemberIds.length === 0) return;
+    setCreatingGroup(true);
+    try {
+      const group = await api.messages.createGroup(newGroupName.trim(), selectedMemberIds);
+      setCreateGroupOpen(false);
+      setNewGroupName('');
+      setSelectedMemberIds([]);
+      queryClient.invalidateQueries({ queryKey: ['messages-groups', user?.id] });
+      navigate(createPageUrl('GroupChat') + `?groupId=${group.id}`);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
+  const toggleMemberForGroup = (id) => {
+    setSelectedMemberIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
   };
 
   const visibleSuggestions = showAllSuggested ? suggestions : suggestions.slice(0, 6);
@@ -273,6 +310,99 @@ export default function Inbox() {
           </button>
         </div>
 
+        {/* Groupes (CDC) */}
+        {(groups.length > 0 || user?.id) && (
+          <div className="rounded-2xl bg-white border border-gray-100 p-2">
+            <div className="flex items-center justify-between px-2 py-2">
+              <span className="font-semibold text-gray-900 flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-600" /> Groupes
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={() => setCreateGroupOpen(true)}
+              >
+                <Plus className="w-4 h-4 mr-1" /> Créer un groupe
+              </Button>
+            </div>
+            {groups.length > 0 && (
+              <div className="space-y-1">
+                {groups.map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => navigate(createPageUrl('GroupChat') + `?groupId=${g.id}`)}
+                    className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-xl text-left"
+                  >
+                    <Avatar className="w-12 h-12 rounded-xl flex-shrink-0">
+                      <AvatarImage src={g.avatar_url} />
+                      <AvatarFallback className="bg-blue-100 text-blue-700 rounded-xl">
+                        {(g.name || 'G').slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 truncate">{g.name}</p>
+                      <p className="text-sm text-gray-500 truncate">
+                        {g.last_message_text || `${g.members_count ?? g.members?.length ?? 0} membre(s)`}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {groups.length === 0 && (
+              <p className="text-sm text-gray-500 px-2 pb-2">Aucun groupe. Créez-en un avec « Créer un groupe ».</p>
+            )}
+          </div>
+        )}
+
+        <Dialog open={createGroupOpen} onOpenChange={setCreateGroupOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Créer un groupe</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <Input
+                placeholder="Nom du groupe"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                className="rounded-xl"
+              />
+              <p className="text-sm text-gray-600">Ajoutez des membres (vos abonnements et suggestions)</p>
+              <div className="max-h-48 overflow-y-auto space-y-2 border rounded-xl p-2">
+                {friendsForChat.slice(0, 20).map((u) => (
+                  <label key={u.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedMemberIds.includes(u.id)}
+                      onChange={() => toggleMemberForGroup(u.id)}
+                      className="rounded"
+                    />
+                    <Avatar className="w-8 h-8">
+                      <AvatarImage src={u.profile_image} />
+                      <AvatarFallback className="bg-gray-200 text-gray-700 text-sm">
+                        {(u.full_name || u.username || 'U')[0].toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm font-medium truncate">{u.full_name || u.username || 'Utilisateur'}</span>
+                  </label>
+                ))}
+                {friendsForChat.length === 0 && (
+                  <p className="text-sm text-gray-500 py-2">Suivez des utilisateurs pour les ajouter à un groupe.</p>
+                )}
+              </div>
+              <Button
+                className="w-full rounded-xl"
+                onClick={handleCreateGroup}
+                disabled={!newGroupName.trim() || selectedMemberIds.length === 0 || creatingGroup}
+              >
+                {creatingGroup ? 'Création...' : 'Créer le groupe'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <div className="rounded-2xl bg-white border border-gray-100 p-2">
           <div className="flex items-center gap-2 px-2 py-1">
             <Users className="w-4 h-4 text-blue-600" />
@@ -346,7 +476,14 @@ export default function Inbox() {
       </div>
 
       <div className="px-2 mt-2">
-        {isLoading ? (
+        {isError ? (
+          <div className="flex flex-col items-center justify-center py-24 px-4 text-center">
+            <p className="text-gray-700 font-medium mb-3">Une erreur s&apos;est produite.</p>
+            <Button onClick={() => refetch()} variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50">
+              Réessayer
+            </Button>
+          </div>
+        ) : isLoading ? (
           <div className="flex flex-col items-center justify-center py-24">
             <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4" />
             <p className="text-sm text-gray-500">Chargement des conversations...</p>

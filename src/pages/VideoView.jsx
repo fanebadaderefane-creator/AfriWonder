@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Smartphone } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
@@ -22,6 +22,7 @@ export default function VideoView() {
   const [showShare, setShowShare] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [isOpeningApp, setIsOpeningApp] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -144,6 +145,18 @@ export default function VideoView() {
     toast.success(`Tip de ${amount} FCFA envoyé !`);
   };
 
+  const handleOpenInApp = () => {
+    if (!videoId) return;
+    const deepLink = `afriwonder://video/${videoId}`;
+    try {
+      setIsOpeningApp(true);
+      window.location.href = deepLink;
+      setTimeout(() => setIsOpeningApp(false), 2000);
+    } catch (_) {
+      setIsOpeningApp(false);
+    }
+  };
+
   if (isLoading || !video) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-black">
@@ -183,6 +196,18 @@ export default function VideoView() {
           navigate(`${createPageUrl('Profile')}?_userId=${creatorId}`);
         }}
       />
+
+      {/* CTA ouvrir dans l'app */}
+      <div className="absolute bottom-4 left-0 right-0 flex justify-center px-4 z-50">
+        <button
+          type="button"
+          onClick={handleOpenInApp}
+          className="inline-flex items-center justify-center gap-2 rounded-full bg-white text-black text-xs font-semibold px-4 py-2 shadow-lg hover:bg-gray-100 transition-colors"
+        >
+          <Smartphone className="w-4 h-4" />
+          {isOpeningApp ? 'Ouverture de l’app…' : "Ouvrir dans l’app pour une meilleure expérience"}
+        </button>
+      </div>
 
       {/* Comments Sheet */}
       <CommentSheet

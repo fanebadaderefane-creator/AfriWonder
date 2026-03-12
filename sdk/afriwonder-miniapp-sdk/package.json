@@ -1,0 +1,32 @@
+{
+  "name": "@afriwonder/miniapp-sdk",
+  "version": "1.0.0",
+  "description": "SDK officiel AfriWonder pour développeurs de mini-apps — API, authentification, store et revenus",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "node build.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "afriwonder",
+    "miniapp",
+    "sdk",
+    "super-app",
+    "africa"
+  ],
+  "author": "AfriWonder",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/afriwonder/afriwonder"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

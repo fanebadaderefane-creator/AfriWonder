@@ -1,3 +1,4 @@
+// AfriWonder full review PR - CodeRabbit
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
@@ -31,18 +32,23 @@ if (!connectionString) {
   throw new Error('DATABASE_URL is not defined in environment variables');
 }
 
-// Pool size: en production avec beaucoup de nœuds, garder par processus raisonnable (ex. 10–25).
-// Total connexions ≈ DATABASE_POOL_MAX × nombre de processus (PM2 instances). Ne pas dépasser max_connections du serveur PostgreSQL (ou PgBouncer).
+// Pool size: avec Supabase/Supavisor en Session mode (port 5432), le pooler limite les connexions
+// (erreur MaxClientsInSessionMode). Garder un petit pool (2–5) pour ne pas saturer.
+const connectionStringLower = (connectionString || '').toLowerCase();
+const isPoolerSession = /pooler\.|supabase\.com|supavisor/i.test(connectionStringLower);
+
 const poolMaxEnv = parseInt(process.env.DATABASE_POOL_MAX || '', 10);
 const poolMax = Number.isFinite(poolMaxEnv) && poolMaxEnv > 0
   ? Math.min(poolMaxEnv, 100)
-  : (process.env.NODE_ENV === 'production' ? 20 : 10);
+  : isPoolerSession
+    ? 3
+    : (process.env.NODE_ENV === 'production' ? 20 : 10);
 
 const pool = new Pool({
   connectionString,
   max: poolMax,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  connectionTimeoutMillis: 30000, // 30s pour éviter timeout lors de l'init (politiques de rétention, etc.)
 });
 const adapter = new PrismaPg(pool);
 

@@ -1,39 +1,24 @@
 #!/usr/bin/env bash
-# Convertit un MP4 en HLS multi-qualité (360p, 480p, 720p) — AfriWonder
-# Usage: ./convert-to-hls.sh input.mp4 [output_dir]
-# Si output_dir est omis, les fichiers sont créés à côté de input.mp4.
+# Pipeline HLS — AfriWonder CDC.
+# Usage: ./convert-to-hls.sh <input.mp4> <output_dir>
+# Produit: <output_dir>/master.m3u8 et segments .ts (3 qualités: 360p, 480p, 720p).
 
 set -e
-INPUT="$1"
-OUTPUT_DIR="${2:-$(dirname "$INPUT")}"
+INPUT="${1:?Usage: $0 <input.mp4> <output_dir>}"
+OUTDIR="${2:?Usage: $0 <input.mp4> <output_dir>}"
+mkdir -p "$OUTDIR"
 
-if [ -z "$INPUT" ] || [ ! -f "$INPUT" ]; then
-  echo "Usage: $0 input.mp4 [output_dir]"
-  echo "  output_dir: dossier de sortie (défaut: même dossier que input)"
-  exit 1
-fi
+ffmpeg -y -i "$INPUT" \
+  -filter_complex '[0:v]split=3[v1][v2][v3];[v1]scale=640:360[v1o];[v2]scale=842:480[v2o];[v3]scale=1280:720[v3o]' \
+  -map '[v1o]' -b:v:0 800k \
+  -map '[v2o]' -b:v:1 1400k \
+  -map '[v3o]' -b:v:2 2800k \
+  -map a:0? -c:a aac -b:a 128k \
+  -f hls -hls_time 4 -hls_playlist_type vod \
+  -hls_segment_filename "$OUTDIR/seg_%v_%03d.ts" \
+  -master_pl_name master.m3u8 \
+  -var_stream_map 'v:0 v:1 v:2' \
+  "$OUTDIR/out_%v.m3u8"
 
-mkdir -p "$OUTPUT_DIR"
-cd "$OUTPUT_DIR"
-
-# Base des noms de fichiers (sans chemin)
-BASENAME=$(basename "$INPUT" .mp4)
-# Chemins absolus pour FFmpeg
-INPUT_ABS=$(cd "$(dirname "$INPUT")" && pwd)/$(basename "$INPUT")
-OUT_ABS=$(pwd)
-
-ffmpeg -i "$INPUT_ABS" \
-  -filter_complex "[0:v]split=3[v1][v2][v3]" \
-  -map "[v1]" -b:v:0 800k -s:v:0 640x360 \
-  -map "[v2]" -b:v:1 1400k -s:v:1 842x480 \
-  -map "[v3]" -b:v:2 2800k -s:v:2 1280x720 \
-  -map a:0 -c:a aac -b:a 128k \
-  -f hls \
-  -hls_time 4 \
-  -hls_playlist_type vod \
-  -hls_segment_filename "${BASENAME}_%v_%03d.ts" \
-  -master_pl_name "${BASENAME}_master.m3u8" \
-  "${BASENAME}_%v.m3u8"
-
-echo "Done. Master playlist: ${OUT_ABS}/${BASENAME}_master.m3u8"
-echo "Upload this file and all .m3u8 /.ts to your CDN and set video.video_url to the master URL."
+echo "HLS generated in $OUTDIR (master.m3u8)"
+test -f "$OUTDIR/master.m3u8"

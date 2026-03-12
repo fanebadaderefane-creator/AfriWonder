@@ -69,7 +69,16 @@ class FeedService {
       }),
     ]);
 
-    const videos = videoResult.videos || [];
+    const rawVideos = videoResult.videos || [];
+    // Éviter les doublons de vidéos dans un même batch de feed (même id répété)
+    const seenIds = new Set<string>();
+    const videos = rawVideos.filter((v: any) => {
+      const id = v?.id != null ? String(v.id) : undefined;
+      if (!id) return true;
+      if (seenIds.has(id)) return false;
+      seenIds.add(id);
+      return true;
+    });
     const pagination = videoResult.pagination || { page, limit, total: videos.length, totalPages: 1 };
 
     const items: FeedItem[] = [];

@@ -1,3 +1,4 @@
+// AfriWonder full review PR - CodeRabbit
 // @ts-nocheck
 import React, { useState, useRef, useEffect } from 'react';
 
@@ -1171,6 +1172,10 @@ export default function Create() {
             setUploadProgress((prev) => Math.max(prev, Math.min(progress, 90)));
           });
           videoUrl = uploadResult?.file_url ?? uploadResult?.url ?? '';
+          // Si le backend a généré une miniature, l'utiliser par défaut
+          if (!videoData.thumbnail_url && uploadResult?.thumbnail_url) {
+            videoData.thumbnail_url = uploadResult.thumbnail_url;
+          }
         }
       } catch (uploadError) {
         const status = uploadError?.response?.status;
@@ -1198,11 +1203,16 @@ export default function Create() {
       const hashtagsText = videoData.hashtags?.length > 0 ? '\n\n#' + videoData.hashtags.join(' #') : '';
       const fullDescription = [videoData.description || '', hashtagsText].filter(Boolean).join('');
 
+      const thumbnailUrlForRecord =
+        videoData.thumbnail_url && videoData.thumbnail_url.trim()
+          ? videoData.thumbnail_url
+          : videoUrl;
+
       const videoRecord = {
         title: videoData.title,
         description: fullDescription,
         video_url: videoUrl,
-        thumbnail_url: videoData.thumbnail_url || videoUrl,
+        thumbnail_url: thumbnailUrlForRecord,
         category: videoData.category || 'divertissement',
         visibility: videoData.visibility || 'public',
         hashtags: videoData.hashtags?.length > 0 ? videoData.hashtags : undefined,
@@ -2269,19 +2279,12 @@ export default function Create() {
 
                 {!isAdMode && (
                   <div className="flex-1">
-
                     <Textarea
-
                       placeholder={selectedFile?.type?.startsWith('image/') ? 'Décrivez votre image...' : 'Décrivez votre vidéo...'}
-
                       value={videoData.description}
-
                       onChange={(e) => setVideoData(prev => ({ ...prev, description: e.target.value }))}
-
-                      className="h-32 resize-none rounded-xl"
-
+                      className="h-32 resize-none rounded-xl bg-white text-gray-900 placeholder:text-gray-400 border border-gray-200"
                     />
-
                   </div>
                 )}
 
@@ -2294,17 +2297,11 @@ export default function Create() {
               <div>
 
                 <Label className="text-gray-600 text-sm">Titre</Label>
-
                 <Input
-
                   placeholder={selectedFile?.type?.startsWith('image/') ? 'Donnez un titre à votre image' : 'Donnez un titre à votre vidéo'}
-
                   value={videoData.title}
-
                   onChange={(e) => setVideoData(prev => ({ ...prev, title: e.target.value }))}
-
-                  className="mt-1 rounded-xl"
-
+                  className="mt-1 rounded-xl bg-white text-gray-900 placeholder:text-gray-400 border border-gray-200"
                 />
 
               </div>
@@ -2316,19 +2313,12 @@ export default function Create() {
                 <Label className="text-gray-600 text-sm">Hashtags</Label>
 
                 <div className="flex gap-2 mt-1">
-
                   <Input
-
                     placeholder="Ajouter un hashtag"
-
                     value={hashtagInput}
-
                     onChange={(e) => setHashtagInput(e.target.value)}
-
                     onKeyPress={(e) => e.key === 'Enter' && handleAddHashtag()}
-
-                    className="rounded-xl"
-
+                    className="rounded-xl bg-white text-gray-900 placeholder:text-gray-400 border border-gray-200"
                   />
 
                   <Button onClick={handleAddHashtag} variant="outline" className="rounded-xl">
