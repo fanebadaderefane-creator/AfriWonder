@@ -1,3 +1,4 @@
+<!-- CodeRabbit test PR -->
 # Entités AfriWonder
 
 Dans AfriWonder, les **entités** ne sont pas des fichiers JSON séparés : elles sont définies dans le schéma **Prisma** du backend. Ce dossier documente le mapping des 150+ entités cibles.
