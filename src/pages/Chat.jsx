@@ -7,7 +7,7 @@ import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, Send, Image as ImageIcon, Loader2, Mic, Square, MoreVertical, ShieldBan, Flag, Trash2, Reply, Copy, Forward, Pin, Star, CheckSquare, Plus, Search, X, Phone, Video } from 'lucide-react';
+import { ArrowLeft, Send, Image as ImageIcon, Loader2, Mic, Square, MoreVertical, ShieldBan, Flag, Trash2, Reply, Copy, Forward, Pin, Star, CheckSquare, Plus, Search, X, Phone, Video, Clock, Download, MapPin, UserPlus, Timer } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -17,7 +17,9 @@ import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import BottomNav from '../components/navigation/BottomNav';
 import { useConversationSocket } from '@/hooks/useMessageSocket';
+import { usePageVisibility } from '@/hooks/usePageVisibility';
 import { useTranslation } from '@/components/common/useTranslation';
+import { useAuth } from '@/lib/AuthContext';
 
 const MESSAGES_LIMIT = 30;
 const TYPING_DEBOUNCE_MS = 400;
@@ -94,6 +96,16 @@ const chatI18n = {
     transferError: 'Impossible de transferer',
     pinned: 'Epingle',
     unpinned: 'Desepingle',
+    deleteForAll: 'Supprimer pour tous',
+    deleteForAllConfirm: 'Supprimer ce message pour tout le monde ? (possible uniquement dans les 15 min)',
+    deleteForAllSuccess: 'Message supprimé pour tous',
+    deleteForAllError: 'Impossible (délai dépassé ou message inexistant)',
+    pinnedMessage: 'Message épinglé',
+    ephemeralMode: 'Disparaît après lecture',
+    shareLocation: 'Partager ma position',
+    shareContact: 'Partager un contact',
+    locationMessage: 'Position',
+    contactMessage: 'Contact partagé',
     markedImportant: 'Marque important',
     unmarkedImportant: 'Important retire',
     voiceCall: 'Appel vocal',
@@ -171,6 +183,16 @@ const chatI18n = {
     transferError: 'A ma se ka kafi',
     pinned: 'Sinsinnen',
     unpinned: 'Sinsinbali',
+    deleteForAll: 'Ka bo bɛɛ ma',
+    deleteForAllConfirm: 'Ka mesaji nin bo bɛɛ ma? (15 min kono doro)',
+    deleteForAllSuccess: 'Mesaji bora bɛɛ ma',
+    deleteForAllError: 'A ma se (waati tigi wala mesaji te)',
+    pinnedMessage: 'Mesaji sinsin',
+    ephemeralMode: 'Ka bila kalanden',
+    shareLocation: 'N so sigida ci',
+    shareContact: 'Mogo ci',
+    locationMessage: 'Sigida',
+    contactMessage: 'Mogo ci',
     markedImportant: 'Muhimu taara',
     unmarkedImportant: 'Muhimu bo',
     voiceCall: 'Vocal call',
@@ -195,7 +217,7 @@ export default function Chat() {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
 
-  const [currentUser, setCurrentUser] = useState(null);
+  const { user: currentUser, isAuthenticated, isLoadingAuth } = useAuth();
   const [messageContent, setMessageContent] = useState('');
   const [conversation, setConversation] = useState(null);
   const [olderMessages, setOlderMessages] = useState([]);
@@ -212,22 +234,30 @@ export default function Chat() {
   const [selectedMessageIds, setSelectedMessageIds] = useState([]);
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferSearch, setTransferSearch] = useState('');
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [ephemeralMode, setEphemeralMode] = useState(false);
+  const [contactDialogOpen, setContactDialogOpen] = useState(false);
+  const [contactSearchQuery, setContactSearchQuery] = useState('');
+  const [locationLoading, setLocationLoading] = useState(false);
+  const draftSavedRef = useRef(false);
 
   const queryClient = useQueryClient();
 
-  useEffect(() => {
-    const getUser = async () => {
-      try {
-        const u = await api.auth.me();
-        setCurrentUser(u);
-      } catch (_e) {
-        navigate('/');
-      }
-    };
-    getUser();
-  }, [navigate]);
+  // Laisser le garde global gérer les non-authentifiés
+  if (isLoadingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
 
-  const { data: conversationData, isLoading: loadingConv } = useQuery({
+  if (!isAuthenticated || !currentUser) {
+    return null;
+  }
+
+  const { data: conversationData, isLoading: loadingConv, isError: isErrorConv, refetch: refetchConv } = useQuery({
     queryKey: ['conversation', currentUser?.id, userId],
     queryFn: () => api.messages.getConversation(userId),
     enabled: !!currentUser?.id && !!userId,
@@ -245,11 +275,38 @@ export default function Chat() {
 
   const conversationId = conversation?.id;
 
-  const { data: messagesData, isLoading: loadingMessages, refetch: refetchMessages } = useQuery({
+  const { data: draftData } = useQuery({
+    queryKey: ['conversation-draft', conversationId, currentUser?.id],
+    queryFn: () => api.messages.getDraft(conversationId),
+    enabled: !!conversationId && !!currentUser?.id,
+  });
+  useEffect(() => {
+    if (!conversationId || !draftData) return;
+    const content = draftData?.draft_content ?? draftData?.content ?? '';
+    if (typeof content === 'string' && !draftSavedRef.current) {
+      setMessageContent(content);
+      draftSavedRef.current = true;
+    }
+  }, [conversationId, draftData]);
+  useEffect(() => {
+    if (!conversationId) draftSavedRef.current = false;
+  }, [conversationId]);
+
+  const putDraftMutation = useMutation({
+    mutationFn: ({ cId, content }) => api.messages.putDraft(cId, content),
+  });
+  const saveDraft = useCallback(() => {
+    if (!conversationId || !messageContent.trim()) return;
+    putDraftMutation.mutate({ cId: conversationId, content: messageContent });
+  }, [conversationId, messageContent]);
+
+  const { data: messagesData, isLoading: loadingMessages, isError: isErrorMessages, refetch: refetchMessages } = useQuery({
     queryKey: ['messages-list', conversationId],
     queryFn: () => api.messages.getMessages(conversationId, null, MESSAGES_LIMIT),
     enabled: !!conversationId,
   });
+
+  const isPageVisible = usePageVisibility();
 
   const onNewMessage = useCallback(() => {
     refetchMessages();
@@ -258,14 +315,26 @@ export default function Chat() {
   }, [refetchMessages, queryClient, currentUser?.id]);
   const onMessageRead = useCallback(() => refetchMessages(), [refetchMessages]);
 
+  useEffect(() => {
+    if (isErrorConv && userId) {
+      toast.error(labels.selectConversation, { action: { label: labels.backToMessages, onClick: () => navigate(createPageUrl('Inbox')) } });
+    }
+  }, [isErrorConv, userId, labels.selectConversation, labels.backToMessages, navigate]);
+
+  useEffect(() => {
+    if (isErrorMessages && conversationId) {
+      toast.error(labels.loadOlderError, { action: { label: 'Réessayer', onClick: () => refetchMessages() } });
+    }
+  }, [isErrorMessages, conversationId, labels.loadOlderError, refetchMessages]);
+
   const { data: presence } = useQuery({
     queryKey: ['presence', userId],
     queryFn: () => api.messages.getPresence(userId),
     enabled: !!userId,
-    refetchInterval: 15000,
+    refetchInterval: isPageVisible ? 15000 : false,
   });
 
-  const { typingUser, emitTypingStart, emitTypingStop } = useConversationSocket({
+  const { typingUser, emitTypingStart, emitTypingStop, isConnected } = useConversationSocket({
     userId: currentUser?.id,
     conversationId,
     userName: currentUser?.full_name || currentUser?.username,
@@ -305,7 +374,7 @@ export default function Chat() {
     if (!conversationId || !currentUser?.id) return;
     api.messages.markAsRead(conversationId).then(() => {
       queryClient.invalidateQueries({ queryKey: ['messages-unread-count'] });
-      queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser.id] });
+      queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser?.id] });
     }).catch(() => {});
   }, [conversationId, currentUser?.id, queryClient]);
 
@@ -320,6 +389,28 @@ export default function Chat() {
     typingDebounceRef.current = setTimeout(() => emitTypingStop(), TYPING_DEBOUNCE_MS);
   };
 
+  useEffect(() => {
+    if (!conversationId || !messageContent.trim()) return;
+    const t = setTimeout(() => saveDraft(), 1500);
+    return () => clearTimeout(t);
+  }, [messageContent, conversationId, saveDraft]);
+
+  const handleExportConversations = async () => {
+    try {
+      const data = await api.messages.exportConversations();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `afriwonder-messages-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Export téléchargé');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || 'Export impossible');
+    }
+  };
+
   const handleStartCall = (type = 'audio') => {
     if (!otherUser?.id) return;
     toast.info(labels.openingCall);
@@ -330,16 +421,49 @@ export default function Chat() {
   };
 
   const sendMessageMutation = useMutation({
-    mutationFn: ({ content, type = 'text', media_url, thumbnail_url, reply_to_message_id } = {}) =>
-      api.messages.send(userId, content ?? '', { type, media_url, thumbnail_url, reply_to_message_id }),
-    onSuccess: () => {
+    mutationFn: ({
+      content,
+      type = 'text',
+      media_url,
+      thumbnail_url,
+      reply_to_message_id,
+      scheduled_at,
+      is_ephemeral,
+      expires_at,
+      location_lat,
+      location_lng,
+      location_label,
+      contact_user_id,
+      contact_name,
+    } = {}) =>
+      api.messages.send(userId, content ?? '', {
+        type,
+        media_url,
+        thumbnail_url,
+        reply_to_message_id,
+        scheduled_at: scheduled_at || undefined,
+        is_ephemeral: is_ephemeral || undefined,
+        expires_at: expires_at || undefined,
+        location_lat,
+        location_lng,
+        location_label,
+        contact_user_id,
+        contact_name,
+      }),
+    onSuccess: (_data, variables) => {
       emitTypingStop();
       refetchMessages();
       queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser?.id] });
       queryClient.invalidateQueries({ queryKey: ['messages-unread-count'] });
       setMessageContent('');
       setReplyTarget(null);
-      toast.success(labels.sendSuccess);
+      setScheduledAt('');
+      setShowSchedule(false);
+      setEphemeralMode(false);
+      if (conversationId && !variables?.scheduled_at) {
+        api.messages.putDraft(conversationId, '').catch(() => {});
+      }
+      toast.success(variables?.scheduled_at ? 'Message programmé' : labels.sendSuccess);
     },
     onError: (err) => {
       toast.error(
@@ -373,9 +497,21 @@ export default function Chat() {
     mutationFn: (messageId) => api.messages.deleteMessage(messageId),
     onSuccess: () => {
       toast.success(labels.deleteSuccess);
+      queryClient.invalidateQueries({ queryKey: ['messages-list', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, userId] });
       refetchMessages();
     },
     onError: (err) => toast.error(err?.response?.data?.message || err?.apiMessage || labels.deleteError),
+  });
+
+  const deleteForAllMutation = useMutation({
+    mutationFn: (messageId) => api.messages.deleteForAll(messageId),
+    onSuccess: () => {
+      toast.success(labels.deleteForAllSuccess ?? 'Message supprimé pour tous');
+      refetchMessages();
+      queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, userId] });
+    },
+    onError: (err) => toast.error(err?.response?.data?.error || err?.response?.data?.message || labels.deleteForAllError),
   });
 
   const updateMetaMutation = useMutation({
@@ -422,6 +558,8 @@ export default function Chat() {
       reportMutation.mutate(targetId);
     } else if (confirmAction.type === 'delete' && targetId) {
       deleteMessageMutation.mutate(targetId);
+    } else if (confirmAction.type === 'delete_for_all' && targetId) {
+      deleteForAllMutation.mutate(targetId);
     }
     setMessageActionsOpen(false);
     setConfirmAction(null);
@@ -433,6 +571,9 @@ export default function Chat() {
     }
     if (confirmAction?.type === 'delete') {
       return { title: labels.confirmTitleDelete, description: labels.confirmDescDelete };
+    }
+    if (confirmAction?.type === 'delete_for_all') {
+      return { title: labels.deleteForAll ?? 'Supprimer pour tous', description: labels.deleteForAllConfirm ?? 'Ce message sera supprimé pour tout le monde (possible uniquement dans les 15 min).' };
     }
     if (confirmAction?.type === 'report') {
       return { title: labels.confirmTitleReport, description: labels.confirmDescReport };
@@ -496,6 +637,12 @@ export default function Chat() {
     enabled: transferOpen && transferSearch.trim().length >= 2 && !!currentUser?.id,
   });
 
+  const { data: contactSearchUsers = [], isFetching: contactSearchLoading } = useQuery({
+    queryKey: ['chat-contact-search', contactSearchQuery, currentUser?.id],
+    queryFn: () => api.users.list({ page: 1, limit: 30, search: contactSearchQuery.trim() }),
+    enabled: contactDialogOpen && contactSearchQuery.trim().length >= 1 && !!currentUser?.id,
+  });
+
   const transferMutation = useMutation({
     mutationFn: async (targetUser) => {
       if (!activeMessage) throw new Error('Message absent');
@@ -521,11 +668,24 @@ export default function Chat() {
     setTransferOpen(true);
   };
 
+  const pinnedMessageId = conversation?.pinned_message_id ?? conversation?.pinned_message?.id;
+
   const handlePinMessage = (msg) => {
-    if (!msg?.id) return;
-    const nextPinned = !msg.is_pinned;
-    updateMetaMutation.mutate({ messageId: msg.id, payload: { is_pinned: nextPinned } });
-    toast.success(nextPinned ? labels.pinned : labels.unpinned);
+    if (!msg?.id || !conversationId) return;
+    const isCurrentlyPinned = pinnedMessageId === msg.id;
+    if (isCurrentlyPinned) {
+      api.messages.unpinMessage(conversationId).then(() => {
+        toast.success(labels.unpinned);
+        refetchMessages();
+        queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, userId] });
+      }).catch((err) => toast.error(err?.response?.data?.message || labels.sendError));
+    } else {
+      api.messages.pinMessage(conversationId, msg.id).then(() => {
+        toast.success(labels.pinned);
+        refetchMessages();
+        queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, userId] });
+      }).catch((err) => toast.error(err?.response?.data?.message || labels.sendError));
+    }
     setMessageActionsOpen(false);
   };
 
@@ -541,7 +701,57 @@ export default function Chat() {
     e.preventDefault();
     const text = messageContent.trim();
     if (!text) return;
-    sendMessageMutation.mutate({ content: text, reply_to_message_id: replyTarget?.id || undefined });
+    const scheduled_at = showSchedule && scheduledAt ? new Date(scheduledAt).toISOString() : undefined;
+    const is_ephemeral = ephemeralMode;
+    const expires_at = is_ephemeral ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : undefined;
+    sendMessageMutation.mutate({
+      content: text,
+      reply_to_message_id: replyTarget?.id || undefined,
+      scheduled_at,
+      is_ephemeral: is_ephemeral || undefined,
+      expires_at,
+    });
+  };
+
+  const handleShareLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error('La géolocalisation n’est pas supportée');
+      return;
+    }
+    setLocationLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const label = labels.shareLocation ?? 'Position';
+        sendMessageMutation.mutate({
+          content: label,
+          type: 'location',
+          location_lat: lat,
+          location_lng: lng,
+          location_label: label,
+          reply_to_message_id: replyTarget?.id || undefined,
+        });
+        setLocationLoading(false);
+      },
+      () => {
+        toast.error('Impossible d’obtenir la position');
+        setLocationLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  };
+
+  const handleShareContact = (user) => {
+    sendMessageMutation.mutate({
+      content: user.full_name || user.username || user.id,
+      type: 'contact',
+      contact_user_id: user.id,
+      contact_name: user.full_name || user.username || undefined,
+      reply_to_message_id: replyTarget?.id || undefined,
+    });
+    setContactDialogOpen(false);
+    setContactSearchQuery('');
   };
 
   const handleImageSelect = async (e) => {
@@ -574,7 +784,7 @@ export default function Chat() {
           const ext = audioBlob.type.includes('ogg') ? 'ogg' : 'webm';
           const audioFile = new File([audioBlob], `voice-${Date.now()}.${ext}`, { type: audioBlob.type || 'audio/webm' });
           const { file_url } = await api.upload.audio(audioFile);
-          sendMessageMutation.mutate({ content: '', type: 'audio', media_url: file_url, reply_to_message_id: replyTarget?.id || undefined });
+          sendMessageMutation.mutate({ content: '', type: 'voice', media_url: file_url, reply_to_message_id: replyTarget?.id || undefined });
         } catch (_err) {
           toast.error(labels.voiceStopError);
         } finally {
@@ -625,8 +835,13 @@ export default function Chat() {
 
   return (
     <div className="h-[100dvh] bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white flex flex-col overflow-hidden">
+      {!isConnected && (
+        <div className="shrink-0 px-3 py-1.5 bg-amber-500/20 text-amber-200 text-xs text-center border-b border-amber-500/30" role="status">
+          Reconnexion en cours…
+        </div>
+      )}
       <div className="flex items-center gap-3 px-3 py-3 border-b border-blue-900/40 shrink-0 bg-slate-950/85 backdrop-blur">
-        <button onClick={() => navigate(-1)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+        <button onClick={() => navigate(-1)} className="p-2 hover:bg-white/10 rounded-lg transition-colors" aria-label="Retour">
           <ArrowLeft className="w-5 h-5 text-white" />
         </button>
         <Avatar className="w-10 h-10">
@@ -708,6 +923,10 @@ export default function Chat() {
               <Trash2 className="w-4 h-4 mr-2" />
               {labels.deleteMyLast}
             </DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer" onClick={handleExportConversations}>
+              <Download className="w-4 h-4 mr-2" />
+              Exporter la conversation
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -718,6 +937,16 @@ export default function Chat() {
           <Button variant="outline" size="sm" className="border-amber-300/60 text-amber-100 bg-transparent shrink-0" onClick={() => navigate(`${createPageUrl('OrderTracking')}?id=${orderId}`)}>
             {labels.viewOrder}
           </Button>
+        </div>
+      )}
+
+      {conversation?.pinned_message && (
+        <div className="shrink-0 px-3 py-2 bg-blue-500/15 border-b border-blue-400/20 flex items-center gap-2">
+          <Pin className="w-4 h-4 text-blue-300 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-blue-200/80">{labels.pinnedMessage ?? 'Message épinglé'}</p>
+            <p className="text-sm text-blue-50 truncate">{conversation.pinned_message.content || '—'}</p>
+          </div>
         </div>
       )}
 
@@ -752,9 +981,11 @@ export default function Chat() {
                 </div>
               );
             }
-            const isOwn = msg.sender_id === currentUser.id;
+            const isOwn = msg.sender_id === currentUser?.id;
             const isImage = msg.type === 'image' && msg.media_url;
-            const isAudio = msg.type === 'audio' && msg.media_url;
+            const isAudio = (msg.type === 'audio' || msg.type === 'voice') && msg.media_url;
+            const isLocation = msg.type === 'location' && (msg.location_lat != null && msg.location_lng != null);
+            const isContact = msg.type === 'contact' && (msg.contact_user_id || msg.contact_name);
             const reactionsMap = (msg.reactions && typeof msg.reactions === 'object') ? msg.reactions : {};
             const myReaction = currentUser?.id ? reactionsMap[currentUser.id] : null;
             const reactionToShow = myReaction || Object.values(reactionsMap)[0];
@@ -794,13 +1025,31 @@ export default function Chat() {
                       {!msg.content && <p className={`text-xs mt-1 ${isOwn ? 'text-white/80' : 'text-blue-100/70'}`}>{labels.voiceMessage}</p>}
                     </div>
                   )}
-                  {msg.content && typeof msg.content === 'string' && msg.content.trim() && (
+                  {isLocation && (
+                    <a
+                      href={`https://www.google.com/maps?q=${msg.location_lat},${msg.location_lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`inline-flex items-center gap-2 my-1 px-2 py-1.5 rounded-lg ${isOwn ? 'bg-white/15 text-white' : 'bg-slate-700 text-blue-100'}`}
+                    >
+                      <MapPin className="w-4 h-4 shrink-0" />
+                      <span className="text-sm">{msg.location_label || msg.content || labels.locationMessage}</span>
+                    </a>
+                  )}
+                  {isContact && (
+                    <div className={`inline-flex items-center gap-2 my-1 px-2 py-1.5 rounded-lg ${isOwn ? 'bg-white/15 text-white' : 'bg-slate-700 text-blue-100'}`}>
+                      <UserPlus className="w-4 h-4 shrink-0" />
+                      <span className="text-sm">{msg.contact_name || msg.content || labels.contactMessage}</span>
+                    </div>
+                  )}
+                  {msg.content && typeof msg.content === 'string' && msg.content.trim() && !isLocation && !isContact && (
                     <p className="break-words whitespace-pre-wrap">{msg.content}</p>
                   )}
-                  {!isImage && !isAudio && !(msg.content && msg.content.trim()) && <p className="opacity-70">-</p>}
-                  <p className={`text-xs mt-1 flex items-center gap-1 ${isOwn ? 'text-white/70' : 'text-blue-100/65'}`}>
-                    {msg.is_pinned && <Pin className="w-3 h-3" />}
+                  {!isImage && !isAudio && !isLocation && !isContact && !(msg.content && msg.content.trim()) && <p className="opacity-70">-</p>}
+                  <p className={`text-xs mt-1 flex items-center gap-1 flex-wrap ${isOwn ? 'text-white/70' : 'text-blue-100/65'}`}>
+                    {(msg.id === pinnedMessageId) && <Pin className="w-3 h-3" />}
                     {msg.is_important && <Star className="w-3 h-3" />}
+                    {msg.is_ephemeral && <Timer className="w-3 h-3" title={labels.ephemeralMode} />}
                     {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true, locale: fr })}
                     {isOwn && msg.status === 'read' && ` · ${labels.read}`}
                   </p>
@@ -850,20 +1099,131 @@ export default function Chat() {
         >
           {isRecording ? <Square className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
         </Button>
-        <form onSubmit={handleSendMessage} className="flex-1 flex gap-2">
-          <Input
-            placeholder={isRecording ? labels.recording : labels.placeholder}
-            value={messageContent}
-            onChange={handleInputChange}
-            disabled={sendMessageMutation.isPending || isRecording}
-            className="rounded-full bg-slate-900 border-blue-500/30 text-blue-50 placeholder:text-blue-100/40"
-          />
-          <Button type="submit" disabled={!messageContent.trim() || sendMessageMutation.isPending || isRecording} size="icon" className="bg-blue-600 hover:bg-blue-700 rounded-full">
-            {sendMessageMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={ephemeralMode ? 'text-amber-300 hover:bg-amber-500/20' : 'text-blue-200 hover:text-white hover:bg-blue-500/20'}
+          onClick={() => setEphemeralMode((prev) => !prev)}
+          aria-label={labels.ephemeralMode}
+          title={labels.ephemeralMode}
+        >
+          <Timer className="w-5 h-5" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="text-blue-200 hover:text-white hover:bg-blue-500/20"
+          onClick={handleShareLocation}
+          disabled={sendMessageMutation.isPending || locationLoading}
+          aria-label={labels.shareLocation}
+          title={labels.shareLocation}
+        >
+          {locationLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <MapPin className="w-5 h-5" />}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="text-blue-200 hover:text-white hover:bg-blue-500/20"
+          onClick={() => setContactDialogOpen(true)}
+          disabled={sendMessageMutation.isPending}
+          aria-label={labels.shareContact}
+          title={labels.shareContact}
+        >
+          <UserPlus className="w-5 h-5" />
+        </Button>
+        <form onSubmit={handleSendMessage} className="flex-1 flex flex-col gap-2">
+          {showSchedule && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Input
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+                min={new Date().toISOString().slice(0, 16)}
+                className="rounded-lg bg-slate-800 border-blue-500/30 text-blue-50 text-sm"
+              />
+              <button type="button" className="text-blue-200 hover:text-white text-sm" onClick={() => { setShowSchedule(false); setScheduledAt(''); }}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setShowSchedule((prev) => !prev)}
+              className="text-blue-200 hover:text-white hover:bg-blue-500/20 rounded-full p-2"
+              title="Programmer l'envoi"
+              aria-label="Programmer l'envoi"
+            >
+              <Clock className="w-5 h-5" />
+            </button>
+            <Input
+              placeholder={isRecording ? labels.recording : labels.placeholder}
+              value={messageContent}
+              onChange={handleInputChange}
+              onBlur={saveDraft}
+              disabled={sendMessageMutation.isPending || isRecording}
+              className="rounded-full bg-slate-900 border-blue-500/30 text-blue-50 placeholder:text-blue-100/40 flex-1"
+            />
+            <Button type="submit" disabled={!messageContent.trim() || sendMessageMutation.isPending || isRecording} size="icon" className="bg-blue-600 hover:bg-blue-700 rounded-full">
+              {sendMessageMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </Button>
+          </div>
         </form>
       </div>
       <BottomNav />
+
+      <Dialog open={contactDialogOpen} onOpenChange={setContactDialogOpen}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>{labels.shareContact}</DialogTitle>
+          </DialogHeader>
+          <div className="relative mt-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              className="pl-9 rounded-full"
+              placeholder={labels.transferSearchPlaceholder ?? 'Rechercher un utilisateur...'}
+              value={contactSearchQuery}
+              onChange={(e) => setContactSearchQuery(e.target.value)}
+            />
+          </div>
+          <div className="mt-3 max-h-64 overflow-y-auto space-y-1">
+            {contactSearchLoading && (
+              <div className="flex justify-center py-4">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+              </div>
+            )}
+            {!contactSearchLoading && contactSearchQuery.trim().length < 1 && (
+              <p className="text-sm text-gray-500 text-center py-4">{labels.transferSearchPlaceholder ?? 'Tapez pour rechercher'}</p>
+            )}
+            {!contactSearchLoading && contactSearchQuery.trim().length >= 1 && contactSearchUsers.length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-4">{labels.transferNoUser}</p>
+            )}
+            {!contactSearchLoading &&
+              contactSearchUsers
+                .filter((u) => u.id !== currentUser?.id && u.id !== userId)
+                .map((u) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left"
+                    onClick={() => handleShareContact(u)}
+                  >
+                    <Avatar className="w-9 h-9">
+                      <AvatarImage src={u.profile_image} />
+                      <AvatarFallback>{(u.full_name || u.username || '?')[0]}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-sm truncate">{u.full_name || u.username || u.id}</p>
+                      {u.username && u.full_name && <p className="text-xs text-gray-500 truncate">@{u.username}</p>}
+                    </div>
+                  </button>
+                ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={messageActionsOpen} onOpenChange={setMessageActionsOpen}>
         <DialogContent className="sm:max-w-md p-0 rounded-2xl overflow-hidden">
@@ -906,7 +1266,7 @@ export default function Chat() {
             </button>
             <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left" onClick={() => handlePinMessage(activeMessage)}>
               <Pin className="w-5 h-5 text-gray-500" />
-              <span>{labels.pinMessage}</span>
+              <span>{activeMessage?.id === pinnedMessageId ? labels.unpinned : labels.pinMessage}</span>
             </button>
             <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left" onClick={() => handleMarkImportant(activeMessage)}>
               <Star className="w-5 h-5 text-gray-500" />
@@ -921,10 +1281,18 @@ export default function Chat() {
               <span>{labels.report}</span>
             </button>
             {(activeMessage?.sender_id === currentUser?.id) && (
-              <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-red-50 text-red-600 text-left" onClick={() => { setMessageActionsOpen(false); setConfirmAction({ type: 'delete', messageId: activeMessage?.id }); }}>
-                <Trash2 className="w-5 h-5" />
-                <span>{labels.delete}</span>
-              </button>
+              <>
+                <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-red-50 text-red-600 text-left" onClick={() => { setMessageActionsOpen(false); setConfirmAction({ type: 'delete', messageId: activeMessage?.id }); }}>
+                  <Trash2 className="w-5 h-5" />
+                  <span>{labels.delete}</span>
+                </button>
+                {activeMessage?.created_at && (Date.now() - new Date(activeMessage.created_at).getTime() < 15 * 60 * 1000) && (
+                  <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-red-50 text-red-600 text-left" onClick={() => { setMessageActionsOpen(false); setConfirmAction({ type: 'delete_for_all', messageId: activeMessage?.id }); }} disabled={deleteForAllMutation.isPending}>
+                    <Trash2 className="w-5 h-5" />
+                    <span>{labels.deleteForAll ?? 'Supprimer pour tous'}</span>
+                  </button>
+                )}
+              </>
             )}
           </div>
         </DialogContent>

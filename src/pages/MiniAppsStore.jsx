@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { ArrowLeft, Search, Star, Grid3x3, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Search, Star, Grid3x3, TrendingUp, Car, UtensilsCrossed, Calendar, Heart, Plane, Baby, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -86,6 +86,36 @@ export default function MiniAppsStore() {
       </div>
 
       <div className="px-4 py-4 space-y-6">
+        {/* CPO 8.11–8.19 — Services intégrés (taxi, food, billetterie, etc.) = catalogue mini-app */}
+        <div>
+          <h2 className="font-bold text-lg mb-3">Services intégrés</h2>
+          <p className="text-sm text-gray-500 mb-3">Taxi, restauration, billetterie, santé, voyage — tout dans l’app.</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {[
+              { page: 'Transport', label: 'Transport / Taxi', icon: Car, color: 'bg-blue-500' },
+              { page: 'FoodDelivery', label: 'Livraison repas', icon: UtensilsCrossed, color: 'bg-orange-500' },
+              { page: 'Events', label: 'Événements & billets', icon: Calendar, color: 'bg-purple-500' },
+              { page: 'Health', label: 'Santé', icon: Heart, color: 'bg-red-500' },
+              { page: 'Childcare', label: 'Garde d\'enfants / Aide à la personne', icon: Baby, color: 'bg-amber-500' },
+              { page: 'VehicleRental', label: 'Location de véhicules', icon: Car, color: 'bg-slate-600' },
+              { page: 'Covoiturage', label: 'Co-voiturage', icon: Users, color: 'bg-emerald-600' },
+              { page: 'Voyage', label: 'Voyage (vols, hôtels)', icon: Plane, color: 'bg-cyan-500' },
+            ].map(({ page, label, icon: Icon, color }) => (
+              <button
+                key={page}
+                type="button"
+                onClick={() => navigate(createPageUrl(page))}
+                className="flex flex-col items-center justify-center p-4 rounded-2xl bg-white border border-gray-200 hover:shadow-md hover:border-[#2563EB]/30 transition-all text-left w-full"
+              >
+                <div className={`w-12 h-12 rounded-xl ${color} flex items-center justify-center text-white mb-2`}>
+                  <Icon className="w-6 h-6" />
+                </div>
+                <span className="text-sm font-medium text-gray-800 line-clamp-2 text-center">{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Catégories — une carte par catégorie, scroll horizontal, pas de texte mélangé sur mobile */}
         <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4">
           {MOCK_CATEGORIES.map(cat => (

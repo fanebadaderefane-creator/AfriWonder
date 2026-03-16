@@ -238,7 +238,7 @@ export default function PetitionDetails() {
         </h3>
         {user && (
           <div className="mb-3">
-            <form onSubmit={(e) => { e.preventDefault(); const c = e.target.content?.value; if (c?.trim()) api.civic.addComment(petitionId, c.trim()).then(() => queryClient.invalidateQueries(['civic-comments', petitionId])).then(() => toast.success('Commentaire ajouté')); }}>
+            <form onSubmit={(e) => { e.preventDefault(); const c = e.target.content?.value; if (c?.trim()) api.civic.addComment(petitionId, c.trim()).then(() => queryClient.invalidateQueries(['civic-comments', petitionId])).then(() => toast.success('Commentaire ajouté')).catch(() => toast.error('Impossible d\'ajouter le commentaire')); }}>
               <Textarea name="content" placeholder="Ajouter un commentaire..." className="mb-2" rows={2} />
               <Button type="submit" size="sm">Publier</Button>
             </form>

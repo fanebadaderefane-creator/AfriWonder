@@ -9,6 +9,19 @@ import { logger } from '../utils/logger.js';
 
 const router = Router();
 
+const PAGE_MIN = 1;
+const LIMIT_MIN = 1;
+const LIMIT_MAX = 50;
+
+function parsePageLimit(query: Record<string, unknown>, defaultLimit: number): { page: number; limit: number } {
+  const page = Math.max(PAGE_MIN, parseInt(String(query.page || 1), 10) || PAGE_MIN);
+  const limit = Math.min(
+    LIMIT_MAX,
+    Math.max(LIMIT_MIN, parseInt(String(query.limit || defaultLimit), 10) || defaultLimit)
+  );
+  return { page, limit };
+}
+
 const sendLimiter = rateLimit({
   windowMs: 10 * 1000,
   max: 20,
@@ -37,12 +50,22 @@ router.get('/unread/count', authenticate, async (req: AuthRequest, res, next) =>
   }
 });
 
+// GET /api/messages/export — sauvegarde cloud (export conversations + messages, hors éphémères expirés)
+router.get('/export', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageService.exportConversations(req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
 // GET /api/messages/conversations
 router.get('/conversations', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
-    const result = await messageService.getConversations(req.user!.id, page, limit);
+    const { page, limit } = parsePageLimit(req.query as Record<string, unknown>, 20);
+    const includeArchived = req.query.includeArchived === 'true';
+    const result = await messageService.getConversations(req.user!.id, page, limit, includeArchived);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
     next(error);
@@ -59,16 +82,97 @@ router.get('/conversation/:userId', authenticate, async (req: AuthRequest, res, 
   }
 });
 
+// PATCH /api/messages/conversations/:conversationId/archive — archiver / désarchiver (body: archived boolean)
+router.patch('/conversations/:conversationId/archive', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageService.setConversationArchived(
+      param(req, 'conversationId'),
+      req.user!.id,
+      req.body?.archived === true
+    );
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// GET /api/messages/conversations/:conversationId/draft
+router.get('/conversations/:conversationId/draft', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageService.getConversationDraft(param(req, 'conversationId'), req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// PUT /api/messages/conversations/:conversationId/draft — body: content (string, vide pour effacer)
+router.put('/conversations/:conversationId/draft', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageService.setConversationDraft(
+      param(req, 'conversationId'),
+      req.user!.id,
+      req.body?.content ?? null
+    );
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// PATCH /api/messages/conversations/:conversationId/notifications — body: { muted: boolean } (CPO 4.39)
+router.patch('/conversations/:conversationId/notifications', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageService.setConversationMuted(
+      param(req, 'conversationId'),
+      req.user!.id,
+      req.body?.muted === true
+    );
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
 // POST /api/messages/send
 router.post('/send', authenticate, sendLimiter, async (req: AuthRequest, res, next) => {
   try {
-    const { recipientId, content, type, media_url, thumbnail_url, reply_to_message_id } = req.body;
+    const {
+      recipientId,
+      content,
+      type,
+      media_url,
+      thumbnail_url,
+      reply_to_message_id,
+      is_ephemeral,
+      expires_at,
+      scheduled_at,
+      location_lat,
+      location_lng,
+      location_label,
+      contact_user_id,
+      contact_name,
+      sticker_url,
+    } = req.body;
     const message = await messageService.sendMessage(
       req.user!.id,
       recipientId,
       content ?? '',
       type || 'text',
-      { media_url, thumbnail_url, reply_to_message_id }
+      {
+        media_url,
+        thumbnail_url,
+        reply_to_message_id,
+        is_ephemeral,
+        expires_at,
+        scheduled_at,
+        location_lat,
+        location_lng,
+        location_label,
+        contact_user_id,
+        contact_name,
+        sticker_url,
+      }
     );
     res.json({ success: true, data: message });
   } catch (error: unknown) {
@@ -126,8 +230,7 @@ router.post('/groups', authenticate, sendLimiter, async (req: AuthRequest, res, 
 // GET /api/messages/groups — list my groups
 router.get('/groups', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 50;
+    const { page, limit } = parsePageLimit(req.query as Record<string, unknown>, 50);
     const result = await messageGroupService.listMyGroups(req.user!.id, page, limit);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
@@ -149,7 +252,7 @@ router.get('/group/:groupId', authenticate, async (req: AuthRequest, res, next) 
 router.get('/group/:groupId/messages', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const cursor = (req.query.cursor as string) || null;
-    const limit = parseInt(req.query.limit as string) || 30;
+    const { limit } = parsePageLimit(req.query as Record<string, unknown>, 30);
     const result = await messageGroupService.getGroupMessages(param(req, 'groupId'), req.user!.id, cursor, limit);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
@@ -216,7 +319,7 @@ router.post('/group/:groupId/leave', authenticate, async (req: AuthRequest, res,
 router.get('/:conversationId', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const cursor = (req.query.cursor as string) || null;
-    const limit = parseInt(req.query.limit as string) || 30;
+    const { limit } = parsePageLimit(req.query as Record<string, unknown>, 30);
     const result = await messageService.getMessages(param(req, 'conversationId'), cursor, limit, req.user!.id);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
@@ -238,6 +341,42 @@ router.put('/:conversationId/read', authenticate, async (req: AuthRequest, res, 
 router.delete('/message/:messageId', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const result = await messageService.deleteMessage(param(req, 'messageId'), req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// POST /api/messages/message/:messageId/delete-for-all — CPO 4.17 (expéditeur, < 15 min)
+router.post('/message/:messageId/delete-for-all', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageService.deleteForAll(param(req, 'messageId'), req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// POST /api/messages/conversations/:conversationId/pin — body: { messageId }
+router.post('/conversations/:conversationId/pin', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const messageId = req.body?.messageId;
+    if (!messageId) return res.status(400).json({ success: false, error: 'messageId requis' });
+    const result = await messageService.pinMessage(
+      param(req, 'conversationId'),
+      messageId,
+      req.user!.id
+    );
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// DELETE /api/messages/conversations/:conversationId/pin — CPO 4.23 désépingler
+router.delete('/conversations/:conversationId/pin', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageService.unpinMessage(param(req, 'conversationId'), req.user!.id);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
     next(error);

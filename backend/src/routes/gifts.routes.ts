@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { requireWebhookSecret } from '../middleware/webhookSecret.js';
 import { param } from '../utils/params.js';
 import giftService from '../services/gift.service.js';
 import prisma from '../config/database.js';
@@ -52,8 +53,8 @@ router.post('/send', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-// POST /api/gifts/:id/confirm - Confirmer le paiement (webhook)
-router.post('/:id/confirm', async (req, res, next) => {
+// POST /api/gifts/:id/confirm - Confirmer le paiement (webhook; protéger par PAYMENT_WEBHOOK_SECRET en prod)
+router.post('/:id/confirm', requireWebhookSecret, async (req, res, next) => {
   try {
     const transactionId = param(req, 'id');
     const result = await giftService.confirmGiftPayment(transactionId);

@@ -97,18 +97,29 @@ class MessageService {
     return !!block;
   }
 
-  async getConversations(userId: string, page: number = 1, limit: number = DEFAULT_PAGE_SIZE) {
+  async getConversations(userId: string, page: number = 1, limit: number = DEFAULT_PAGE_SIZE, includeArchived: boolean = false) {
     const skip = (page - 1) * limit;
     const take = Math.min(50, Math.max(1, limit));
 
+    const baseWhere = {
+      OR: [
+        { user1_id: userId, user2: NOT_DELETED_USER },
+        { user2_id: userId, user1: NOT_DELETED_USER },
+      ],
+    } as const;
+    const archiveFilter = includeArchived
+      ? null
+      : {
+          OR: [
+            { user1_id: userId, is_archived_user1: false },
+            { user2_id: userId, is_archived_user2: false },
+          ],
+        };
+    const where = archiveFilter ? { AND: [baseWhere, archiveFilter] } : baseWhere;
+
     const [conversations, total] = await Promise.all([
       prisma.conversation.findMany({
-        where: {
-          OR: [
-            { user1_id: userId, user2: NOT_DELETED_USER },
-            { user2_id: userId, user1: NOT_DELETED_USER },
-          ],
-        },
+        where,
         include: {
           user1: { select: { id: true, username: true, full_name: true, profile_image: true } },
           user2: { select: { id: true, username: true, full_name: true, profile_image: true } },
@@ -117,19 +128,15 @@ class MessageService {
         take,
         orderBy: { last_message_at: 'desc' },
       }),
-      prisma.conversation.count({
-        where: {
-          OR: [
-            { user1_id: userId, user2: NOT_DELETED_USER },
-            { user2_id: userId, user1: NOT_DELETED_USER },
-          ],
-        },
-      }),
+      prisma.conversation.count({ where }),
     ]);
 
     const list = conversations.map((c) => {
       const other = c.user1_id === userId ? c.user2 : c.user1;
       const unread = getUnreadForUser(c.unread_count_map as UnreadCountMap | null, userId);
+      const is_archived = c.user1_id === userId ? c.is_archived_user1 : c.is_archived_user2;
+      const draft_content = (c.draft_content as Record<string, string> | null)?.[userId] ?? null;
+      const muted = c.user1_id === userId ? !!c.muted_user1 : !!c.muted_user2;
       return {
         id: c.id,
         last_message_id: c.last_message_id,
@@ -139,6 +146,9 @@ class MessageService {
         is_group: c.is_group,
         group_name: c.group_name,
         group_avatar: c.group_avatar,
+        is_archived,
+        draft_content,
+        muted,
         other,
         user1: c.user1,
         user2: c.user2,
@@ -160,7 +170,7 @@ class MessageService {
 
   async getOrCreateConversation(user1Id: string, user2Id: string) {
     const blocked = await this.isBlocked(user1Id, user2Id);
-    if (blocked) throw new Error('Cannot start conversation with this user');
+    if (blocked) throw makeHttpError('Impossible de démarrer une conversation avec cet utilisateur', 403);
 
     const [id1, id2] = user1Id < user2Id ? [user1Id, user2Id] : [user2Id, user1Id];
 
@@ -169,6 +179,16 @@ class MessageService {
       include: {
         user1: { select: { id: true, username: true, full_name: true, profile_image: true } },
         user2: { select: { id: true, username: true, full_name: true, profile_image: true } },
+        pinned_message: {
+          select: {
+            id: true,
+            content: true,
+            type: true,
+            created_at: true,
+            sender_id: true,
+            deleted_for_all_at: true,
+          },
+        },
       },
     });
 
@@ -178,10 +198,23 @@ class MessageService {
         include: {
           user1: { select: { id: true, username: true, full_name: true, profile_image: true } },
           user2: { select: { id: true, username: true, full_name: true, profile_image: true } },
+          pinned_message: {
+            select: {
+              id: true,
+              content: true,
+              type: true,
+              created_at: true,
+              sender_id: true,
+              deleted_for_all_at: true,
+            },
+          },
         },
       });
     }
 
+    if ((conversation as any).pinned_message?.deleted_for_all_at) {
+      (conversation as any).pinned_message.content = 'Ce message a été supprimé';
+    }
     return conversation;
   }
 
@@ -197,11 +230,17 @@ class MessageService {
 
     const take = Math.min(50, Math.max(1, limit)) + 1;
 
-    const where: { conversation_id: string; is_deleted: boolean; created_at?: { lt: Date } } = {
+    const now = new Date();
+    const where: Prisma.MessageWhereInput = {
       conversation_id: conversationId,
       is_deleted: false,
+      OR: [
+        { is_ephemeral: false },
+        { is_ephemeral: true, expires_at: { gt: now } },
+        { is_ephemeral: true, expires_at: null },
+      ],
     };
-    if (cursor) where.created_at = { lt: new Date(cursor) };
+    if (cursor) (where as Prisma.MessageWhereInput).created_at = { lt: new Date(cursor) };
 
     const messages = await prisma.message.findMany({
       where,
@@ -217,8 +256,27 @@ class MessageService {
     const list = hasMore ? messages.slice(0, limit) : messages;
     const nextCursor = hasMore && list.length ? list[list.length - 1].created_at.toISOString() : null;
 
+    const DELETED_PLACEHOLDER = 'Ce message a été supprimé';
+    const normalized = list.reverse().map((m) => {
+      if ((m as any).deleted_for_all_at) {
+        return {
+          ...m,
+          content: DELETED_PLACEHOLDER,
+          media_url: null,
+          thumbnail_url: null,
+          sticker_url: null,
+          location_lat: null,
+          location_lng: null,
+          location_label: null,
+          contact_user_id: null,
+          contact_name: null,
+        };
+      }
+      return m;
+    });
+
     return {
-      messages: list.reverse(),
+      messages: normalized,
       nextCursor,
       hasMore,
     };
@@ -229,13 +287,26 @@ class MessageService {
     recipientId: string,
     content: string,
     type: string = 'text',
-    options?: { media_url?: string; thumbnail_url?: string; reply_to_message_id?: string }
+    options?: {
+      media_url?: string;
+      thumbnail_url?: string;
+      reply_to_message_id?: string;
+      is_ephemeral?: boolean;
+      expires_at?: string;
+      location_lat?: number;
+      location_lng?: number;
+      location_label?: string;
+      contact_user_id?: string;
+      contact_name?: string;
+      sticker_url?: string;
+      scheduled_at?: string;
+    }
   ) {
     const blocked = await this.isBlocked(senderId, recipientId);
-    if (blocked) throw new Error('Cannot send message to this user');
+    if (blocked) throw makeHttpError('Impossible d\'envoyer un message à cet utilisateur', 403);
 
     const normalizedType = String(type || 'text').trim().toLowerCase();
-    const allowedTypes = new Set(['text', 'image', 'video', 'audio', 'file']);
+    const allowedTypes = new Set(['text', 'image', 'video', 'audio', 'voice', 'file', 'sticker', 'location', 'contact']);
     if (!allowedTypes.has(normalizedType)) {
       throw makeHttpError('Type de message invalide', 400);
     }
@@ -244,33 +315,62 @@ class MessageService {
     const maskedContent = maskSensitiveContacts(rawContent.trim()).slice(0, 2000);
     const mediaUrl = options?.media_url ? String(options.media_url).trim() : '';
     const thumbnailUrl = options?.thumbnail_url ? String(options.thumbnail_url).trim() : '';
+    const stickerUrl = options?.sticker_url ? String(options.sticker_url).trim() : '';
 
     if (normalizedType === 'text' && !maskedContent) {
       throw makeHttpError('Le contenu texte est requis', 400);
     }
-    if (normalizedType !== 'text' && !mediaUrl) {
+    if (['image', 'video', 'audio', 'voice', 'file'].includes(normalizedType) && !mediaUrl) {
       throw makeHttpError('media_url est requis pour ce type de message', 400);
+    }
+    if (normalizedType === 'sticker' && !stickerUrl) {
+      throw makeHttpError('sticker_url est requis pour un sticker', 400);
+    }
+    if (normalizedType === 'location' && (options?.location_lat == null || options?.location_lng == null)) {
+      throw makeHttpError('location_lat et location_lng sont requis pour partager une localisation', 400);
+    }
+    if (normalizedType === 'contact' && !options?.contact_user_id && !options?.contact_name) {
+      throw makeHttpError('contact_user_id ou contact_name requis pour partager un contact', 400);
     }
 
     const conversation = await this.getOrCreateConversation(senderId, recipientId);
     const otherId = conversation.user1_id === senderId ? conversation.user2_id : conversation.user1_id;
 
+    const isEphemeral = Boolean(options?.is_ephemeral);
+    const expiresAt = options?.expires_at ? new Date(options.expires_at) : (isEphemeral ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null);
+    const scheduledAt = options?.scheduled_at ? new Date(options.scheduled_at) : null;
+    const isScheduled = scheduledAt != null && scheduledAt.getTime() > Date.now();
+
     const message = await prisma.message.create({
       data: {
         conversation_id: conversation.id,
         sender_id: senderId,
-        content: maskedContent,
+        content: normalizedType === 'location' ? (options?.location_label || `${options?.location_lat},${options?.location_lng}`) : maskedContent,
         type: normalizedType,
-        status: 'sent',
+        status: isScheduled ? 'scheduled' : 'sent',
+        scheduled_at: scheduledAt,
         media_url: mediaUrl || null,
         thumbnail_url: thumbnailUrl || null,
         reply_to_message_id: options?.reply_to_message_id || null,
+        is_ephemeral: isEphemeral,
+        expires_at: expiresAt,
+        location_lat: options?.location_lat ?? null,
+        location_lng: options?.location_lng ?? null,
+        location_label: options?.location_label ?? null,
+        contact_user_id: options?.contact_user_id ?? null,
+        contact_name: options?.contact_name ?? null,
+        sticker_url: stickerUrl || null,
       },
       include: {
         sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
         reply_to: { select: { id: true, content: true, type: true, sender_id: true, created_at: true } },
       },
     });
+
+    if (isScheduled) {
+      logger.info('Message programmé créé', { messageId: message.id, conversationId: conversation.id, scheduled_at: scheduledAt });
+      return message;
+    }
 
     const prevMap = (conversation.unread_count_map as UnreadCountMap) || {};
     const newMap = incrementUnreadForUser(prevMap, otherId);
@@ -281,9 +381,15 @@ class MessageService {
         ? 'Image'
         : normalizedType === 'video'
           ? 'Video'
-          : normalizedType === 'audio'
+          : normalizedType === 'audio' || normalizedType === 'voice'
             ? 'Audio'
-            : 'Fichier';
+            : normalizedType === 'sticker'
+              ? 'Sticker'
+              : normalizedType === 'location'
+                ? 'Position'
+                : normalizedType === 'contact'
+                  ? 'Contact'
+                  : 'Fichier';
 
     await prisma.conversation.update({
       where: { id: conversation.id },
@@ -300,21 +406,84 @@ class MessageService {
       messageIo.to(`user:${otherId}`).emit('message:unread', { conversationId: conversation.id, unread: getUnreadForUser(newMap, otherId) });
     }
 
-    try {
-      await notificationService.create(otherId, {
-        type: 'message_new',
-        title: 'Nouveau message',
-        message: normalizedType === 'text' ? (maskedContent.slice(0, 120) || 'Message recu') : `Nouveau ${normalizedType}`,
-        reference_type: 'conversation',
-        reference_id: conversation.id,
-        data: { conversationId: conversation.id, senderId },
-      });
-    } catch (err) {
-      logger.warn('Message notification failed', { senderId, recipientId, err });
+    const recipientMuted =
+      (conversation as any).muted_user2 === true && otherId === conversation.user2_id ||
+      (conversation as any).muted_user1 === true && otherId === conversation.user1_id;
+    if (!recipientMuted) {
+      try {
+        await notificationService.create(otherId, {
+          type: 'message_new',
+          title: 'Nouveau message',
+          message: normalizedType === 'text' ? (maskedContent.slice(0, 120) || 'Message recu') : `Nouveau ${normalizedType}`,
+          reference_type: 'conversation',
+          reference_id: conversation.id,
+          data: { conversationId: conversation.id, senderId },
+        });
+      } catch (err) {
+        logger.warn('Message notification failed', { senderId, recipientId, err });
+      }
     }
 
     logger.info('Message sent', { senderId, recipientId, messageId: message.id });
     return message;
+  }
+
+  /** Envoie un message programmé dont l'heure est due (appelé par le job cron). */
+  async deliverScheduledMessage(messageId: string): Promise<boolean> {
+    const message = await prisma.message.findFirst({
+      where: { id: messageId, status: 'scheduled', scheduled_at: { not: null, lte: new Date() } },
+      include: {
+        conversation: true,
+        sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
+        reply_to: { select: { id: true, content: true, type: true, sender_id: true, created_at: true } },
+      },
+    });
+    if (!message) return false;
+
+    const conv = message.conversation;
+    const senderId = message.sender_id;
+    const otherId = conv.user1_id === senderId ? conv.user2_id : conv.user1_id;
+    const lastText = message.type === 'text' ? (message.content?.slice(0, 200) || 'Message') : message.type;
+    const prevMap = (conv.unread_count_map as UnreadCountMap) || {};
+    const newMap = incrementUnreadForUser(prevMap, otherId);
+
+    await prisma.$transaction([
+      prisma.message.update({
+        where: { id: messageId },
+        data: { status: 'sent' },
+      }),
+      prisma.conversation.update({
+        where: { id: conv.id },
+        data: {
+          last_message_id: message.id,
+          last_message_text: lastText,
+          last_message_at: new Date(),
+          unread_count_map: newMap,
+        },
+      }),
+    ]);
+
+    if (messageIo) {
+      const sentMessage = { ...message, status: 'sent' as const };
+      messageIo.to(`conversation:${conv.id}`).emit('message:new', sentMessage);
+      messageIo.to(`user:${otherId}`).emit('message:unread', { conversationId: conv.id, unread: getUnreadForUser(newMap, otherId) });
+    }
+
+    try {
+      await notificationService.create(otherId, {
+        type: 'message_new',
+        title: 'Nouveau message',
+        message: message.type === 'text' ? (message.content?.slice(0, 120) || 'Message reçu') : `Nouveau ${message.type}`,
+        reference_type: 'conversation',
+        reference_id: conv.id,
+        data: { conversationId: conv.id, senderId },
+      });
+    } catch (err) {
+      logger.warn('Scheduled message notification failed', { messageId, err });
+    }
+
+    logger.info('Message programmé envoyé', { messageId, conversationId: conv.id });
+    return true;
   }
 
   async sendOrderTrackingUpdate(orderId: string, status: string, actorId: string) {
@@ -388,6 +557,60 @@ class MessageService {
     return { success: true };
   }
 
+  async setConversationArchived(conversationId: string, userId: string, archived: boolean) {
+    const conv = await prisma.conversation.findFirst({
+      where: { id: conversationId, OR: [{ user1_id: userId }, { user2_id: userId }] },
+      select: { id: true, user1_id: true, user2_id: true },
+    });
+    if (!conv) throw makeHttpError('Conversation non trouvée', 404);
+    const isUser1 = conv.user1_id === userId;
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: isUser1 ? { is_archived_user1: archived } : { is_archived_user2: archived },
+    });
+    return { archived };
+  }
+
+  async setConversationMuted(conversationId: string, userId: string, muted: boolean) {
+    const conv = await prisma.conversation.findFirst({
+      where: { id: conversationId, OR: [{ user1_id: userId }, { user2_id: userId }] },
+      select: { id: true, user1_id: true, user2_id: true },
+    });
+    if (!conv) throw makeHttpError('Conversation non trouvée', 404);
+    const isUser1 = conv.user1_id === userId;
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: isUser1 ? { muted_user1: muted } : { muted_user2: muted },
+    });
+    return { muted };
+  }
+
+  async setConversationDraft(conversationId: string, userId: string, content: string | null) {
+    const conv = await prisma.conversation.findFirst({
+      where: { id: conversationId, OR: [{ user1_id: userId }, { user2_id: userId }] },
+      select: { id: true, draft_content: true },
+    });
+    if (!conv) throw makeHttpError('Conversation non trouvée', 404);
+    const draft = (conv.draft_content as Record<string, string> | null) || {};
+    if (content === null || content === '') delete draft[userId];
+    else draft[userId] = content;
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { draft_content: Object.keys(draft).length ? draft : null },
+    });
+    return { draft_content: content || null };
+  }
+
+  async getConversationDraft(conversationId: string, userId: string) {
+    const conv = await prisma.conversation.findFirst({
+      where: { id: conversationId, OR: [{ user1_id: userId }, { user2_id: userId }] },
+      select: { draft_content: true },
+    });
+    if (!conv) throw makeHttpError('Conversation non trouvée', 404);
+    const draft = (conv.draft_content as Record<string, string> | null)?.[userId] ?? null;
+    return { draft_content: draft };
+  }
+
   async getUnreadCount(userId: string) {
     const conversations = await prisma.conversation.findMany({
       where: { OR: [{ user1_id: userId }, { user2_id: userId }] },
@@ -408,6 +631,72 @@ class MessageService {
       data: { is_deleted: true, content: '', media_url: null },
     });
     if (messageIo) messageIo.to(`conversation:${msg.conversation_id}`).emit('message:deleted', { messageId });
+    return { success: true };
+  }
+
+  /** CPO 4.17 — Suppression pour tous (uniquement l’expéditeur, dans les 15 min). */
+  private static readonly DELETE_FOR_ALL_WINDOW_MS = 15 * 60 * 1000;
+
+  async deleteForAll(messageId: string, userId: string) {
+    const msg = await prisma.message.findFirst({
+      where: { id: messageId },
+      select: { id: true, sender_id: true, conversation_id: true, created_at: true },
+    });
+    if (!msg || msg.sender_id !== userId) throw makeHttpError('Message non trouvé ou non autorisé', 404);
+    const elapsed = Date.now() - msg.created_at.getTime();
+    if (elapsed > MessageService.DELETE_FOR_ALL_WINDOW_MS) {
+      throw makeHttpError('La suppression pour tous n’est possible que dans les 15 minutes suivant l’envoi', 400);
+    }
+    await prisma.message.update({
+      where: { id: messageId },
+      data: {
+        deleted_for_all_at: new Date(),
+        content: 'Ce message a été supprimé',
+        media_url: null,
+        thumbnail_url: null,
+        sticker_url: null,
+        location_lat: null,
+        location_lng: null,
+        location_label: null,
+        contact_user_id: null,
+        contact_name: null,
+      },
+    });
+    if (messageIo) messageIo.to(`conversation:${msg.conversation_id}`).emit('message:deleted_for_all', { messageId });
+    return { success: true };
+  }
+
+  /** CPO 4.23 — Épingler un message en tête de conversation (1-1 uniquement). */
+  async pinMessage(conversationId: string, messageId: string, userId: string) {
+    const conv = await prisma.conversation.findFirst({
+      where: { id: conversationId, OR: [{ user1_id: userId }, { user2_id: userId }], is_group: false },
+      select: { id: true },
+    });
+    if (!conv) throw makeHttpError('Conversation non trouvée ou non autorisée', 404);
+    const msg = await prisma.message.findFirst({
+      where: { id: messageId, conversation_id: conversationId },
+    });
+    if (!msg) throw makeHttpError('Message non trouvé dans cette conversation', 404);
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { pinned_message_id: messageId },
+    });
+    if (messageIo) messageIo.to(`conversation:${conversationId}`).emit('message:pinned', { messageId });
+    return { success: true, pinned_message_id: messageId };
+  }
+
+  /** CPO 4.23 — Désépingler le message de la conversation. */
+  async unpinMessage(conversationId: string, userId: string) {
+    const conv = await prisma.conversation.findFirst({
+      where: { id: conversationId, OR: [{ user1_id: userId }, { user2_id: userId }] },
+      select: { id: true },
+    });
+    if (!conv) throw makeHttpError('Conversation non trouvée ou non autorisée', 404);
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { pinned_message_id: null },
+    });
+    if (messageIo) messageIo.to(`conversation:${conversationId}`).emit('message:unpinned', {});
     return { success: true };
   }
 
@@ -478,6 +767,52 @@ class MessageService {
       },
     });
     return { success: true };
+  }
+
+  /** Export des conversations de l'utilisateur (sauvegarde cloud) — exclut messages éphémères expirés. */
+  async exportConversations(userId: string): Promise<{ conversations: Array<{ conversationId: string; otherUser: { id: string; username: string; full_name: string | null }; messages: Array<Record<string, unknown>> }> }> {
+    const convs = await prisma.conversation.findMany({
+      where: {
+        OR: [{ user1_id: userId }, { user2_id: userId }],
+      },
+      include: {
+        user1: { select: { id: true, username: true, full_name: true } },
+        user2: { select: { id: true, username: true, full_name: true } },
+      },
+      orderBy: { last_message_at: 'desc' },
+    });
+    const now = new Date();
+    const result: Array<{ conversationId: string; otherUser: { id: string; username: string; full_name: string | null }; messages: Array<Record<string, unknown>> }> = [];
+    for (const c of convs) {
+      const other = c.user1_id === userId ? c.user2 : c.user1;
+      const messages = await prisma.message.findMany({
+        where: {
+          conversation_id: c.id,
+          is_deleted: false,
+          OR: [
+            { is_ephemeral: false },
+            { is_ephemeral: true, expires_at: { gt: now } },
+            { is_ephemeral: true, expires_at: null },
+          ],
+        },
+        include: { sender: { select: { id: true, username: true, full_name: true } } },
+        orderBy: { created_at: 'asc' },
+      });
+      result.push({
+        conversationId: c.id,
+        otherUser: { id: other.id, username: other.username, full_name: other.full_name },
+        messages: messages.map((m) => ({
+          id: m.id,
+          sender_id: m.sender_id,
+          sender: m.sender,
+          content: m.content,
+          type: m.type,
+          media_url: m.media_url,
+          created_at: m.created_at.toISOString(),
+        })),
+      });
+    }
+    return { conversations: result };
   }
 
   async getPresence(userId: string) {

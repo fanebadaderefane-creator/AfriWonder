@@ -11,6 +11,7 @@ import escrowService from './escrow.service.js';
 import invoiceService from './invoice.service.js';
 import GamificationEngine from './gamification.service.js';
 import messageService from './message.service.js';
+import loyaltyService from './loyalty.service.js';
 
 class OrderService {
   async list(userId: string, page: number = 1, limit: number = 20) {
@@ -576,12 +577,40 @@ class OrderService {
     });
 
     // Mettre Ã  jour le statut de la commande
+    let cashbackAmount = 0;
+    try {
+      const config = await prisma.cashbackConfig.findFirst({ where: { is_active: true }, orderBy: { created_at: 'desc' } });
+      if (config && config.percent > 0 && (config.min_order_amount == null || order.total_amount >= config.min_order_amount)) {
+        cashbackAmount = Math.round((order.total_amount * config.percent / 100) * 100) / 100;
+        if (cashbackAmount > 0) {
+          const wallet = await prisma.wallet.findFirst({ where: { user_id: order.user_id, wallet_type: 'user' } });
+          if (wallet) {
+            await prisma.wallet.update({ where: { id: wallet.id }, data: { balance: { increment: cashbackAmount } } });
+            await prisma.transaction.create({
+              data: {
+                user_id: order.user_id,
+                amount: cashbackAmount,
+                type: 'cashback',
+                status: 'completed',
+                reference_id: orderId,
+                currency: order.currency || 'XOF',
+                description: 'Cashback commande',
+              },
+            });
+          }
+        }
+      }
+    } catch (err) {
+      logger.warn('Cashback commande échoué', { orderId, err });
+    }
+
     const updatedOrder = await prisma.order.update({
       where: { id: orderId },
       data: {
         status: 'paid',
         payment_status: 'escrow',
         paid_at: new Date(),
+        ...(cashbackAmount > 0 && { cashback_amount: cashbackAmount }),
       },
     });
 
@@ -832,6 +861,13 @@ class OrderService {
       } catch (err) {
         logger.warn('Erreur gamification first sale', { sellerId, err });
       }
+    }
+
+    // CPO 10.21 — Points fidélité vendeur (programme fidélité business)
+    try {
+      await loyaltyService.addPointsFromOrder(id);
+    } catch (err: any) {
+      logger.warn('Erreur fidélité vendeur', { orderId: id, err: err?.message });
     }
 
     // Gamification : points acheteur pour commande livrÃ©e (1 pt / 100 FCFA, min 10, max 200)

@@ -182,6 +182,23 @@ async function main() {
     console.warn('   ⚠ Feature flags non initialisés (table feature_flags absente?). Exécutez: npx prisma migrate deploy');
   }
 
+  // Mots interdits (CPO 2.43) — liste initiale modérée
+  try {
+    const BANNED_WORDS = ['spam', 'scam', 'arnaque', 'hack', 'piratage'];
+    for (const word of BANNED_WORDS) {
+      const w = word.trim().toLowerCase();
+      if (w.length < 2) continue;
+      await prisma.bannedWord.upsert({
+        where: { word: w },
+        create: { word: w, is_active: true },
+        update: {},
+      });
+    }
+    console.log('   ✓ Mots interdits (BannedWord) initialisés');
+  } catch (err: any) {
+    console.warn('   ⚠ BannedWord non initialisés (table absente?). Exécutez la migration RUN_MANUAL_CPO_WAVE2.sql');
+  }
+
   console.log('✅ Seed completed.');
 }
 

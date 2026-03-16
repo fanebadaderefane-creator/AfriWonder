@@ -13,6 +13,12 @@ model User {
   password_hash                String
   full_name                    String?
   profile_image                String?
+  profile_cover_url            String?
+  is_private                   Boolean                   @default(false)
+  preferred_language           String?
+  timezone                     String?
+  theme                        String?                   @default("system")
+  preferred_categories         Json?
   role                         String                    @default("user")
   is_verified                  Boolean                   @default(false)
   created_at                   DateTime                  @default(now())
@@ -31,6 +37,7 @@ model User {
   phone_verified               Boolean                   @default(false)
   monetization_enabled         Boolean                   @default(false)
   monetization_suspended_at    DateTime?
+  messaging_e2e_enabled        Boolean                   @default(false)   // CPO 4.40 — préférence E2E (implémentation à venir)
   ad_campaigns                 AdCampaign[]
   addresses                    Address[]
   airtime_recharges            AirtimeRecharge[]
@@ -79,6 +86,8 @@ model User {
   event_tickets                EventTicket[]
   follows                      Follow[]                  @relation("Follower")
   following                    Follow[]                  @relation("Following")
+  follow_requests_sent         FollowRequest[]           @relation("FollowRequestRequester")
+  follow_requests_received     FollowRequest[]           @relation("FollowRequestTarget")
   food_orders_customer         FoodOrder[]               @relation("FoodOrderCustomer")
   food_orders_delivery         FoodOrder[]               @relation("FoodOrderDelivery")
   insurance_claims             InsuranceClaim[]
@@ -142,6 +151,8 @@ model User {
   service_provider             ServiceProvider?          @relation("ServiceProvider")
   service_reviews              ServiceReview[]           @relation("ServiceReviewCustomer")
   stories                      Story[]
+  story_reactions              StoryReaction[]
+  story_poll_votes             StoryPollVote[]
   subscriptions                Subscription[]
   support_messages             SupportMessage[]
   support_tickets              SupportTicket[]
@@ -166,6 +177,17 @@ model User {
   wallets                      Wallet[]
   wallet_security              WalletSecurity?
   wishlist                     Wishlist[]
+  product_alerts               ProductAlert[]
+  preorders                    Preorder[]
+  product_offers               ProductOffer[]
+  product_auctions_sold        ProductAuction[]
+  product_auctions_bid         ProductAuction[]    @relation("AuctionBidder")
+  travel_price_alerts          TravelPriceAlert[]
+  group_buys_created           GroupBuy[]
+  group_buy_participations     GroupBuyParticipant[]
+  experiment_assignments       UserExperimentAssignment[]
+  ride_shares_driven           RideShare[]
+  ride_share_bookings          RideShareBooking[]
   withdrawals                  Withdrawal[]
   wonder_relations_received    WonderRelation[]          @relation("WonderCreator")
   wonder_relations_given       WonderRelation[]          @relation("Wonderer")
@@ -176,12 +198,28 @@ model User {
   developer_subscription       DeveloperSubscription?    @relation("DeveloperSubscriptions")
   mini_app_installs            MiniAppInstall[]          @relation("MiniAppInstalls")
   mini_app_transactions        MiniAppTransaction[]      @relation("MiniAppTransactions")
+  mini_app_reviews             MiniAppReview[]
   developer_mini_apps          MiniApp[]                 @relation("DeveloperMiniApps")
   security_logs                SecurityLog[]
   suspicious_activity_alerts   SuspiciousActivityAlert[]
   two_factor_auth              User2FA?
   cookie_preferences           UserCookiePreference?
   legal_acceptances            UserLegalAcceptance[]
+  posts                       Post[]
+  post_poll_votes             PostPollVote[]
+  business_page               BusinessPage?
+  payment_requests_from       PaymentRequest[]          @relation("PaymentRequestFrom")
+  brand_deals_as_creator      BrandDeal[]
+  group_calls_created         GroupCall[]
+  group_call_participations    GroupCallParticipant[]
+  user_sessions               UserSession[]
+  parcel_shipments            ParcelShipment[]
+  close_friends               CloseFriend[]              @relation("CloseFriendOwner")
+  close_friend_of              CloseFriend[]             @relation("CloseFriendTarget")
+  virtual_cards               VirtualCard[]
+  international_transfers_sent InternationalTransfer[]   @relation("InternationalTransferSender")
+  payment_preauths            PaymentPreauth[]
+  creator_contracts           CreatorContract[]
 }
 
 /// Demande de monétisation — créateur envoie, admin valide
@@ -197,6 +235,303 @@ model MonetizationRequest {
 
   @@index([creator_id])
   @@index([status])
+}
+
+/// Posts texte / image (feed social type Facebook) — CPO 2.4, 2.5, 2.7
+model Post {
+  id           String      @id @default(uuid())
+  user_id      String
+  text         String?
+  image_url    String?     // première image (rétrocompat) ; si images[] présent, priorité aux PostImage
+  visibility   String      @default("public")
+  scheduled_at DateTime?
+  is_pinned    Boolean     @default(false)
+  created_at   DateTime   @default(now())
+  updated_at   DateTime   @updatedAt
+  user         User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  poll         PostPoll?
+  images       PostImage[] // carrousel multi-images (CPO 2.5, 2.7)
+
+  @@index([user_id])
+  @@index([visibility, created_at])
+  @@index([scheduled_at])
+}
+
+/// Image d'un carrousel de post (CPO 2.5, 2.7)
+model PostImage {
+  id        String   @id @default(uuid())
+  post_id   String
+  image_url String
+  position  Int      @default(0)
+  created_at DateTime @default(now())
+  post      Post     @relation(fields: [post_id], references: [id], onDelete: Cascade)
+
+  @@index([post_id])
+}
+
+/// Sondage dans un post (CPO 2.20)
+model PostPoll {
+  id        String    @id @default(uuid())
+  post_id   String    @unique
+  question  String
+  options   Json
+  ends_at   DateTime?
+  created_at DateTime @default(now())
+  post      Post      @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  votes     PostPollVote[]
+
+  @@index([post_id])
+}
+
+model PostPollVote {
+  id           String   @id @default(uuid())
+  poll_id      String
+  user_id      String
+  option_index Int
+  created_at   DateTime @default(now())
+  poll         PostPoll @relation(fields: [poll_id], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([poll_id, user_id])
+  @@index([poll_id])
+  @@index([user_id])
+}
+
+/// Liste « proches » / close friends (CPO 1.18)
+model CloseFriend {
+  id        String   @id @default(uuid())
+  user_id   String
+  friend_id String
+  created_at DateTime @default(now())
+  user      User     @relation("CloseFriendOwner", fields: [user_id], references: [id], onDelete: Cascade)
+  friend    User     @relation("CloseFriendTarget", fields: [friend_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, friend_id])
+  @@index([user_id])
+  @@index([friend_id])
+}
+
+/// Mots interdits pour filtrage commentaires (CPO 2.43)
+model BannedWord {
+  id        String   @id @default(uuid())
+  word      String   @unique
+  is_active Boolean  @default(true)
+  created_at DateTime @default(now())
+
+  @@index([word])
+  @@index([is_active])
+}
+
+/// Chapitres pour vidéo VOD (début/fin en secondes)
+model VideoChapter {
+  id             String   @id @default(uuid())
+  video_id       String
+  title          String
+  start_time_sec Int
+  end_time_sec   Int?
+  created_at     DateTime @default(now())
+  video          Video    @relation(fields: [video_id], references: [id], onDelete: Cascade)
+
+  @@index([video_id])
+}
+
+/// Demande de paiement par QR (génération + paiement par scan)
+model PaymentRequest {
+  id           String    @id @default(uuid())
+  from_user_id String
+  amount       Float
+  currency     String    @default("XOF")
+  status       String    @default("pending")
+  qr_token     String    @unique
+  expires_at   DateTime
+  paid_at      DateTime?
+  paid_by_id   String?
+  created_at   DateTime  @default(now())
+  from_user    User      @relation("PaymentRequestFrom", fields: [from_user_id], references: [id], onDelete: Cascade)
+
+  @@index([from_user_id])
+  @@index([qr_token])
+  @@index([status])
+  @@index([expires_at])
+}
+
+/// Page entreprise (type Facebook business page)
+model BusinessPage {
+  id          String   @id @default(uuid())
+  user_id     String   @unique
+  name        String
+  slug        String   @unique
+  description String?
+  avatar_url  String?
+  cover_url   String?
+  website     String?
+  phone       String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([slug])
+}
+
+/// Produits mis en avant pendant un live (live commerce)
+model LiveStreamProduct {
+  id         String      @id @default(uuid())
+  live_id    String
+  product_id String
+  position   Int         @default(0)
+  created_at DateTime    @default(now())
+  live       LiveStream  @relation(fields: [live_id], references: [id], onDelete: Cascade)
+  product    Product     @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@unique([live_id, product_id])
+  @@index([live_id])
+  @@index([product_id])
+}
+
+/// Config cashback plateforme (pourcentage sur commandes)
+model CashbackConfig {
+  id              String   @id @default(uuid())
+  percent         Float    @default(0)
+  min_order_amount Float?
+  is_active       Boolean  @default(true)
+  created_at     DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@index([is_active])
+}
+
+/// Bot de chat (réponses automatiques / mini-apps dans chat)
+model ChatBot {
+  id           String   @id @default(uuid())
+  name         String
+  username     String   @unique
+  avatar_url   String?
+  is_active    Boolean  @default(true)
+  welcome_message String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@index([username])
+  @@index([is_active])
+}
+
+/// Filtres vidéo (côté client ; backend = catalogue)
+model VideoFilter {
+  id            String   @id @default(uuid())
+  name          String
+  thumbnail_url String?
+  config        Json?
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  videos        Video[]
+
+  @@index([is_active])
+}
+
+/// Packs de stickers pour messagerie
+model StickerPack {
+  id          String    @id @default(uuid())
+  name        String
+  thumbnail_url String?
+  is_active   Boolean   @default(true)
+  created_at  DateTime  @default(now())
+  stickers   Sticker[]
+
+  @@index([is_active])
+}
+
+model Sticker {
+  id          String      @id @default(uuid())
+  pack_id    String
+  url        String
+  emoji      String?
+  created_at DateTime    @default(now())
+  pack      StickerPack  @relation(fields: [pack_id], references: [id], onDelete: Cascade)
+
+  @@index([pack_id])
+}
+
+/// Appel groupe (audio/vidéo) — room + participants
+model GroupCall {
+  id          String    @id @default(uuid())
+  creator_id String
+  room_id     String    @unique
+  status      String    @default("active")
+  type        String    @default("video")
+  started_at  DateTime  @default(now())
+  ended_at    DateTime?
+  created_at  DateTime  @default(now())
+  creator     User      @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+  participants GroupCallParticipant[]
+
+  @@index([creator_id])
+  @@index([room_id])
+  @@index([status])
+}
+
+model GroupCallParticipant {
+  id         String    @id @default(uuid())
+  call_id    String
+  user_id    String
+  joined_at  DateTime @default(now())
+  left_at    DateTime?
+  role       String    @default("participant")
+  call       GroupCall @relation(fields: [call_id], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([call_id, user_id])
+  @@index([call_id])
+  @@index([user_id])
+}
+
+/// Collaboration marques / sponsoring créateur
+model BrandDeal {
+  id          String   @id @default(uuid())
+  creator_id  String
+  brand_name  String
+  status      String   @default("pending")
+  amount      Float?
+  currency    String?
+  campaign_id String?
+  notes       String?
+  created_at  DateTime @default(now())
+  updated_at DateTime @updatedAt
+  creator     User     @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+
+  @@index([creator_id])
+  @@index([status])
+}
+
+/// Session / appareil connecté (multi-device)
+model UserSession {
+  id         String   @id @default(uuid())
+  user_id    String
+  device_id  String?
+  user_agent String?
+  last_seen  DateTime @default(now())
+  created_at DateTime @default(now())
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([last_seen])
+}
+
+/// Services publics / administratifs (liste pour le hub)
+model PublicService {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?
+  category    String?
+  link_url    String?
+  is_active   Boolean  @default(true)
+  sort_order  Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@index([slug])
+  @@index([is_active])
 }
 
 model VideoHashtag {
@@ -257,6 +592,21 @@ model Video {
   avg_retention_pct     Float?
   qualified_views_count Int                   @default(0)
   media_type            String?               @default("video")
+  remix_of_id           String?
+  subtitle_url           String?
+  download_allowed      Boolean               @default(false)
+  is_premium            Boolean               @default(false)
+  trim_start_sec        Int?
+  trim_end_sec          Int?
+  filter_id             String?
+  comments_disabled     Boolean               @default(false)
+  comment_visibility    String                @default("everyone")
+  hide_likes            Boolean               @default(false)
+  scheduled_at          DateTime?
+  filter                VideoFilter?          @relation(fields: [filter_id], references: [id], onDelete: SetNull)
+  remix_of              Video?                @relation("VideoRemix", fields: [remix_of_id], references: [id], onDelete: SetNull)
+  remixes               Video[]               @relation("VideoRemix")
+  chapters              VideoChapter[]
   collaborator_revenues CollaboratorRevenue[]
   video_comments        Comment[]
   video_likes           Like[]
@@ -271,11 +621,13 @@ model Video {
   video_views           VideoView[]
   view_history          ViewHistory[]
   transcoding_jobs      TranscodingJob[]
+  subtitle_generations  VideoSubtitleGeneration[]
 
   @@index([creator_id, created_at])
   @@index([visibility, created_at])
   @@index([category])
   @@index([is_featured])
+  @@index([remix_of_id])
   @@index([category], map: "idx_videos_category")
 }
 
@@ -283,11 +635,13 @@ model Like {
   id         String   @id @default(uuid())
   user_id    String
   video_id   String
+  type       String   @default("like")
   created_at DateTime @default(now())
   user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
   video      Video    @relation(fields: [video_id], references: [id], onDelete: Cascade)
 
   @@unique([user_id, video_id])
+  @@index([video_id, type])
   @@index([video_id])
   @@index([user_id])
 }
@@ -342,6 +696,7 @@ model MiniApp {
   boosts              MiniAppBoost[]
   installs            MiniAppInstall[]
   transactions        MiniAppTransaction[]
+  reviews             MiniAppReview[]
   developer           User                 @relation("DeveloperMiniApps", fields: [developer_id], references: [id], onDelete: Cascade)
 
   @@index([developer_id])
@@ -350,6 +705,22 @@ model MiniApp {
   @@index([featured])
   @@index([installs_count])
   @@map("mini_apps")
+}
+
+/// CPO 8.25 — Notes et avis sur une mini-app
+model MiniAppReview {
+  id          String   @id @default(uuid())
+  mini_app_id String
+  user_id     String
+  rating      Int      // 1-5
+  comment     String?
+  created_at  DateTime @default(now())
+  mini_app    MiniApp  @relation(fields: [mini_app_id], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([mini_app_id, user_id])
+  @@index([mini_app_id])
+  @@index([user_id])
 }
 
 model MiniAppTransaction {
@@ -464,6 +835,8 @@ model Comment {
   parent_id   String?
   user_name   String?
   user_avatar String?
+  mention_ids String[]  @default([])
+  is_pinned   Boolean   @default(false)
   created_at  DateTime  @default(now())
   parent      Comment?  @relation("CommentReplies", fields: [parent_id], references: [id])
   replies     Comment[] @relation("CommentReplies")
@@ -486,6 +859,23 @@ model Follow {
   @@unique([follower_id, following_id])
   @@index([follower_id])
   @@index([following_id])
+}
+
+/// Demande de suivi pour compte privé (CPO 2.2)
+model FollowRequest {
+  id           String   @id @default(uuid())
+  requester_id String
+  target_id    String
+  status       String   @default("pending")
+  created_at   DateTime @default(now())
+  responded_at DateTime?
+  requester    User     @relation("FollowRequestRequester", fields: [requester_id], references: [id], onDelete: Cascade)
+  target       User     @relation("FollowRequestTarget", fields: [target_id], references: [id], onDelete: Cascade)
+
+  @@unique([requester_id, target_id])
+  @@index([requester_id])
+  @@index([target_id])
+  @@index([status])
 }
 
 model WonderRelation {
@@ -584,12 +974,220 @@ model Product {
   variants          ProductVariant[]
   reviews           Review[]
   wishlist          Wishlist[]
+  product_alerts    ProductAlert[]
+  preorders         Preorder[]
+  price_offers      ProductOffer[]
+  auction           ProductAuction?
+  group_buys        GroupBuy[]
+  delivery_url      String?
+  is_merchandising  Boolean   @default(false)
+  is_preorder       Boolean   @default(false)
+  preorder_available_at DateTime?
+  live_products     LiveStreamProduct[]
 
   @@index([status])
+  @@index([seller_id, is_merchandising])
   @@index([seller_id, status])
   @@index([category, status])
   @@index([status, created_at])
   @@index([seller_id, status], map: "idx_products_seller_status")
+}
+
+/// CPO 6.38 — Alertes prix ou disponibilité (notification quand le prix baisse ou le produit revient en stock)
+model ProductAlert {
+  id          String   @id @default(uuid())
+  product_id  String
+  user_id     String
+  alert_type  String   // 'price' | 'stock'
+  target_price Float?  // pour price: notifier si prix <= target_price
+  created_at  DateTime @default(now())
+  notified_at DateTime?
+  product     Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([product_id, user_id, alert_type])
+  @@index([product_id])
+  @@index([user_id])
+  @@index([alert_type])
+}
+
+/// CPO 6.37 — Précommandes : réserver un produit pas encore disponible ; paiement à la sortie
+model Preorder {
+  id          String   @id @default(uuid())
+  product_id  String
+  user_id     String
+  quantity    Int      @default(1)
+  status      String   @default("reserved")   // reserved | cancelled
+  reserved_at DateTime @default(now())
+  product     Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([product_id])
+  @@index([user_id])
+  @@index([status])
+}
+
+/// CPO 6.36 — Négociation de prix : acheteur propose un prix, vendeur accepte ou refuse
+model ProductOffer {
+  id           String    @id @default(uuid())
+  product_id   String
+  buyer_id     String
+  offered_price Float
+  status       String    @default("pending")   // pending | accepted | declined
+  seller_note  String?
+  created_at   DateTime  @default(now())
+  responded_at DateTime?
+  product      Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  buyer        User      @relation(fields: [buyer_id], references: [id], onDelete: Cascade)
+
+  @@index([product_id])
+  @@index([buyer_id])
+  @@index([status])
+}
+
+/// CPO 6.35 — Enchères : mise aux enchères d'un produit
+model ProductAuction {
+  id               String    @id @default(uuid())
+  product_id       String    @unique
+  seller_id        String
+  start_price      Float
+  current_bid      Float
+  current_bidder_id String?
+  end_at           DateTime
+  status           String    @default("open")   // open | closed
+  created_at       DateTime  @default(now())
+  product          Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  seller           User      @relation(fields: [seller_id], references: [id], onDelete: Cascade)
+  current_bidder   User?     @relation("AuctionBidder", fields: [current_bidder_id], references: [id], onDelete: SetNull)
+
+  @@index([seller_id])
+  @@index([status])
+  @@index([end_at])
+}
+
+/// CPO 9.33 — Alertes prix voyage (destination / hôtel) : notification quand le prix baisse
+model TravelPriceAlert {
+  id             String    @id @default(uuid())
+  user_id        String
+  type           String             // flight | hotel
+  origin         String?            // code aéroport ou ville (vol)
+  destination    String
+  target_price   Float
+  check_in       DateTime?         // pour hôtel
+  check_out      DateTime?
+  notified_at    DateTime?
+  created_at     DateTime  @default(now())
+  user           User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([type, destination])
+}
+
+/// CPO 9.25 — Groupes d'achat : commander en groupe pour prix ou livraison
+model GroupBuy {
+  id           String    @id @default(uuid())
+  product_id   String
+  creator_id   String
+  min_quantity Int       @default(2)
+  status       String    @default("open")   // open | closed | fulfilled
+  end_at       DateTime?
+  created_at   DateTime  @default(now())
+  product      Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  creator      User      @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+  participants GroupBuyParticipant[]
+
+  @@index([product_id])
+  @@index([creator_id])
+  @@index([status])
+}
+
+model GroupBuyParticipant {
+  id          String   @id @default(uuid())
+  group_buy_id String
+  user_id     String
+  quantity    Int      @default(1)
+  joined_at   DateTime @default(now())
+  group_buy   GroupBuy @relation(fields: [group_buy_id], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([group_buy_id, user_id])
+  @@index([group_buy_id])
+  @@index([user_id])
+}
+
+/// CPO 11.36 — A/B testing (admin) : expériences et affectation utilisateur
+model Experiment {
+  id          String    @id @default(uuid())
+  key         String    @unique
+  name        String
+  description String?
+  is_active   Boolean   @default(true)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  variants    ExperimentVariant[]
+  assignments UserExperimentAssignment[]
+}
+
+model ExperimentVariant {
+  id            String     @id @default(uuid())
+  experiment_id String
+  variant_key   String     // e.g. control | variant_a
+  traffic_pct   Int        @default(50)   // 0-100
+  config        Json?      // payload optionnel pour le front
+  experiment    Experiment @relation(fields: [experiment_id], references: [id], onDelete: Cascade)
+
+  @@unique([experiment_id, variant_key])
+  @@index([experiment_id])
+}
+
+model UserExperimentAssignment {
+  id            String    @id @default(uuid())
+  user_id       String
+  experiment_id String
+  variant_key   String
+  assigned_at   DateTime  @default(now())
+  user          User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  experiment    Experiment @relation(fields: [experiment_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, experiment_id])
+  @@index([user_id])
+  @@index([experiment_id])
+}
+
+/// CPO 9.22 — Co-voiturage : trajets proposés par des conducteurs
+model RideShare {
+  id               String    @id @default(uuid())
+  driver_id        String
+  origin           String
+  destination      String
+  departure_at     DateTime
+  seats_available  Int       @default(4)
+  price_per_seat   Float     @default(0)
+  status           String    @default("open")   // open | full | cancelled | completed
+  notes            String?
+  created_at       DateTime  @default(now())
+  driver           User      @relation(fields: [driver_id], references: [id], onDelete: Cascade)
+  bookings         RideShareBooking[]
+
+  @@index([driver_id])
+  @@index([departure_at])
+  @@index([status])
+  @@index([origin, destination])
+}
+
+model RideShareBooking {
+  id           String   @id @default(uuid())
+  ride_share_id String
+  passenger_id  String
+  seats         Int      @default(1)
+  status        String   @default("confirmed")   // confirmed | cancelled
+  created_at    DateTime @default(now())
+  ride_share    RideShare @relation(fields: [ride_share_id], references: [id], onDelete: Cascade)
+  passenger     User     @relation(fields: [passenger_id], references: [id], onDelete: Cascade)
+
+  @@unique([ride_share_id, passenger_id])
+  @@index([ride_share_id])
+  @@index([passenger_id])
 }
 
 model ProductQuestion {
@@ -642,6 +1240,7 @@ model Order {
   logistics_fee           Float?
   priority_fee            Float?
   source                  String             @default("marketplace")
+  cashback_amount         Float              @default(0)
   disputes                Dispute[]
   user                    User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
   buyer_reviews           OrderBuyerReview[]
@@ -783,6 +1382,7 @@ model LiveStream {
   moderators            LiveModerator[]
   polls                 LivePoll[]
   replay_chapters       LiveReplayChapter[]
+  live_products         LiveStreamProduct[]
   creator               User                    @relation(fields: [creator_id], references: [id], onDelete: Cascade)
   bans                  LiveStreamBan[]
   tips                  LiveTip[]
@@ -1390,6 +1990,44 @@ model ShippingRate {
 
   @@index([provider])
   @@index([destination_country])
+}
+
+/// Envoi de colis standalone (livraison colis, hors commande marketplace)
+model ParcelShipment {
+  id                   String    @id @default(uuid())
+  user_id              String
+  recipient_name       String
+  recipient_phone      String?
+  recipient_address    String
+  destination_country  String
+  weight_kg             Float
+  carrier              String
+  tracking_number      String    @unique
+  status               String    @default("pending")
+  cost                 Float
+  estimated_delivery   DateTime?
+  actual_delivery      DateTime?
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+  user                 User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  tracking_events      ParcelTrackingEvent[]
+
+  @@index([user_id])
+  @@index([tracking_number])
+  @@index([status])
+}
+
+model ParcelTrackingEvent {
+  id         String         @id @default(uuid())
+  parcel_id  String
+  event_type String
+  location   String?
+  description String?
+  timestamp  DateTime       @default(now())
+  parcel     ParcelShipment @relation(fields: [parcel_id], references: [id], onDelete: Cascade)
+
+  @@index([parcel_id])
+  @@index([timestamp])
 }
 
 model PickupPoint {
@@ -2411,21 +3049,28 @@ model DirectCall {
 }
 
 model Conversation {
-  id                String    @id @default(uuid())
-  user1_id          String
-  user2_id          String
-  last_message_at   DateTime?
-  created_at        DateTime  @default(now())
-  updated_at        DateTime  @updatedAt
-  last_message_id   String?
-  last_message_text String?
-  unread_count_map  Json?
-  is_group          Boolean   @default(false)
-  group_name        String?
-  group_avatar      String?
-  user1             User      @relation("User1", fields: [user1_id], references: [id], onDelete: Cascade)
-  user2             User      @relation("User2", fields: [user2_id], references: [id], onDelete: Cascade)
-  messages          Message[]
+  id                 String    @id @default(uuid())
+  user1_id           String
+  user2_id           String
+  last_message_at    DateTime?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+  last_message_id    String?
+  last_message_text  String?
+  unread_count_map   Json?
+  is_group           Boolean   @default(false)
+  group_name         String?
+  group_avatar       String?
+  draft_content      Json?
+  is_archived_user1  Boolean   @default(false)
+  is_archived_user2  Boolean   @default(false)
+  muted_user1        Boolean   @default(false)
+  muted_user2        Boolean   @default(false)
+  pinned_message_id  String?   @unique // CPO 4.23 — message épinglé en haut (1-1) ; @unique requis pour relation 1-1
+  user1              User      @relation("User1", fields: [user1_id], references: [id], onDelete: Cascade)
+  user2              User      @relation("User2", fields: [user2_id], references: [id], onDelete: Cascade)
+  pinned_message     Message?  @relation("PinnedInConversation", fields: [pinned_message_id], references: [id], onDelete: SetNull)
+  messages           Message[] @relation("ConversationMessages")
 
   @@unique([user1_id, user2_id])
   @@index([user1_id])
@@ -2487,35 +3132,49 @@ model GroupMessage {
 }
 
 model Message {
-  id                  String          @id @default(uuid())
-  conversation_id     String
-  sender_id           String
-  content             String
-  created_at          DateTime        @default(now())
-  updated_at          DateTime        @updatedAt
-  type                String          @default("text")
-  status              String          @default("sent")
-  media_url           String?
-  thumbnail_url       String?
-  is_edited           Boolean         @default(false)
-  is_deleted          Boolean         @default(false)
-  read_by             Json?
-  reply_to_message_id String?
-  is_important        Boolean         @default(false)
-  is_pinned           Boolean         @default(false)
-  reactions           Json?
-  conversation        Conversation    @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
-  reply_to            Message?        @relation("Reply", fields: [reply_to_message_id], references: [id])
-  replies             Message[]       @relation("Reply")
-  sender              User            @relation(fields: [sender_id], references: [id], onDelete: Cascade)
-  reports             MessageReport[]
+  id                   String          @id @default(uuid())
+  conversation_id      String
+  sender_id            String
+  content              String
+  created_at           DateTime        @default(now())
+  updated_at           DateTime        @updatedAt
+  scheduled_at         DateTime?
+  type                 String          @default("text")
+  status               String          @default("sent")
+  media_url            String?
+  thumbnail_url        String?
+  is_edited            Boolean         @default(false)
+  is_deleted           Boolean         @default(false)
+  deleted_for_all_at   DateTime?       // CPO 4.17 — suppression pour tous (délai limité)
+  read_by              Json?
+  reply_to_message_id  String?
+  is_important         Boolean         @default(false)
+  is_pinned            Boolean         @default(false)
+  reactions            Json?
+  is_ephemeral         Boolean         @default(false)
+  expires_at           DateTime?
+  location_lat         Float?
+  location_lng         Float?
+  location_label       String?
+  contact_user_id      String?
+  contact_name         String?
+  sticker_url          String?
+  conversation         Conversation    @relation("ConversationMessages", fields: [conversation_id], references: [id], onDelete: Cascade)
+  pinned_in            Conversation?   @relation("PinnedInConversation")
+  reply_to             Message?        @relation("Reply", fields: [reply_to_message_id], references: [id])
+  replies              Message[]       @relation("Reply")
+  sender               User            @relation(fields: [sender_id], references: [id], onDelete: Cascade)
+  reports              MessageReport[]
 
   @@index([conversation_id])
+  @@index([conversation_id, created_at])
   @@index([sender_id])
   @@index([created_at])
   @@index([status])
   @@index([is_pinned])
   @@index([is_important])
+  @@index([expires_at])
+  @@index([scheduled_at])
   @@index([sender_id], map: "idx_messages_sender")
 }
 
@@ -2592,17 +3251,62 @@ model CommunityMember {
 }
 
 model Story {
-  id          String   @id @default(uuid())
+  id          String           @id @default(uuid())
   user_id     String
   media_url   String
   media_type  String
   expires_at  DateTime
-  views_count Int      @default(0)
-  created_at  DateTime @default(now())
-  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  views_count Int              @default(0)
+  created_at  DateTime         @default(now())
+  user        User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  reactions   StoryReaction[]  // CPO 2.19
+  poll        StoryPoll?       // CPO 2.21
 
   @@index([user_id])
   @@index([expires_at])
+}
+
+/// Réaction emoji sur une story (CPO 2.19)
+model StoryReaction {
+  id        String   @id @default(uuid())
+  story_id  String
+  user_id   String
+  emoji     String   @default("❤️")
+  created_at DateTime @default(now())
+  story     Story    @relation(fields: [story_id], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([story_id, user_id])
+  @@index([story_id])
+  @@index([user_id])
+}
+
+/// Sondage dans une story (CPO 2.21)
+model StoryPoll {
+  id        String    @id @default(uuid())
+  story_id  String   @unique
+  question  String
+  options   Json      // ["Option A", "Option B", ...]
+  ends_at   DateTime?
+  created_at DateTime @default(now())
+  story     Story    @relation(fields: [story_id], references: [id], onDelete: Cascade)
+  votes     StoryPollVote[]
+
+  @@index([story_id])
+}
+
+model StoryPollVote {
+  id           String    @id @default(uuid())
+  poll_id      String
+  user_id      String
+  option_index Int
+  created_at   DateTime  @default(now())
+  poll         StoryPoll @relation(fields: [poll_id], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([poll_id, user_id])
+  @@index([poll_id])
+  @@index([user_id])
 }
 
 model Playlist {
@@ -4801,4 +5505,98 @@ model UserCloudFile {
 
   @@unique([user_id, key])
   @@index([user_id])
+}
+
+// CPO 3.9 — Génération sous-titres (STT) asynchrone
+model VideoSubtitleGeneration {
+  id            String   @id @default(uuid())
+  video_id      String
+  status        String   @default("pending")   // pending | processing | completed | failed
+  source        String   @default("auto")     // auto | manual
+  result_url    String?
+  error_message String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+  video         Video    @relation(fields: [video_id], references: [id], onDelete: Cascade)
+
+  @@index([video_id])
+  @@index([status])
+}
+
+// CPO 5.9 — Cartes virtuelles
+model VirtualCard {
+  id            String    @id @default(uuid())
+  user_id       String
+  last4         String
+  brand         String    @default("virtual")
+  status        String    @default("active")   // active | blocked | expired
+  expires_at    DateTime
+  spending_limit Float?   // limite optionnelle en FCFA
+  external_id   String?   // id partenaire (Stripe Issuing, etc.)
+  created_at    DateTime  @default(now())
+  user          User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([status])
+}
+
+// CPO 5.23 — Transferts internationaux
+model InternationalTransfer {
+  id              String   @id @default(uuid())
+  sender_id       String
+  recipient_name  String
+  recipient_country String
+  recipient_iban   String?
+  recipient_phone  String?
+  amount          Float
+  currency        String   @default("XOF")
+  target_currency String?
+  status          String   @default("pending")   // pending | processing | completed | failed | cancelled
+  reference       String?
+  fee             Float?
+  exchange_rate   Float?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  sender          User     @relation("InternationalTransferSender", fields: [sender_id], references: [id], onDelete: Cascade)
+
+  @@index([sender_id])
+  @@index([status])
+}
+
+// CPO 5.39 — Préautorisation carte
+model PaymentPreauth {
+  id            String    @id @default(uuid())
+  user_id       String
+  amount        Float
+  currency      String    @default("XOF")
+  order_id      String?
+  reference     String?
+  status        String    @default("pending")   // pending | captured | cancelled | expired
+  expires_at    DateTime?
+  captured_at   DateTime?
+  created_at    DateTime  @default(now())
+  user          User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([order_id])
+  @@index([status])
+}
+
+// CPO 7.19 — Contrats et droits musicaux (créateur)
+model CreatorContract {
+  id           String    @id @default(uuid())
+  creator_id   String
+  type         String    // music_license | rights_agreement | partnership
+  provider     String?
+  reference    String?
+  start_at     DateTime?
+  end_at       DateTime?
+  notes        String?
+  attachment_url String?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  creator      User      @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+
+  @@index([creator_id])
+  @@index([type])
 }

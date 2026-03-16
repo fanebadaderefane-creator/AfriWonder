@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 
 import { 
 
@@ -126,7 +127,6 @@ export default function Create() {
   const [uploadProgress, setUploadProgress] = useState(0);
 
   const [user, setUser] = useState(null);
-
   
 
   // Camera state
@@ -197,7 +197,15 @@ export default function Create() {
 
     filter: 'Normal',
 
-    thumbnail_url: ''
+    thumbnail_url: '',
+
+    hide_likes: false,
+
+    comments_disabled: false,
+
+    comment_visibility: 'everyone',
+
+    scheduled_at: ''
 
   });
 
@@ -208,28 +216,18 @@ export default function Create() {
   const [editingVideoId, setEditingVideoId] = useState(null);
 
   useEffect(() => {
-
     const getUser = async () => {
-
       try {
-
         const u = await api.auth.me();
-
         setUser(u);
-
       } catch (e) {
-
-        toast.error('Connectez-vous pour publier');
-
-        navigate(createPageUrl('Home'));
-
+        // Si la récupération de l'utilisateur échoue (non connecté ou token expiré),
+        // on ne spamme plus l'utilisateur avec un toast ni redirection.
+        setUser(null);
       }
-
     };
-
     getUser();
-
-  }, [navigate]);
+  }, []);
 
   useEffect(() => {
 
@@ -348,7 +346,7 @@ export default function Create() {
 
 
 
-  // Cleanup camera on unmount
+  // Cleanup camera and live intervals on unmount
 
   useEffect(() => {
 
@@ -356,6 +354,8 @@ export default function Create() {
 
       if (streamRef.current) {
 
+        if (streamRef.current.viewerInterval) clearInterval(streamRef.current.viewerInterval);
+        if (streamRef.current.commentInterval) clearInterval(streamRef.current.commentInterval);
         streamRef.current.getTracks().forEach(track => track.stop());
 
       }
@@ -1126,6 +1126,12 @@ export default function Create() {
 
           thumbnail_url: videoData.thumbnail_url || undefined,
 
+          hide_likes: videoData.hide_likes,
+
+          comments_disabled: videoData.comments_disabled,
+
+          comment_visibility: videoData.comment_visibility || 'everyone',
+
         };
 
         await api.videos.update(editingVideoId, updateData);
@@ -1218,7 +1224,14 @@ export default function Create() {
         hashtags: videoData.hashtags?.length > 0 ? videoData.hashtags : undefined,
         music_title: videoData.music_title || undefined,
         media_type: isImage ? 'image' : 'video',
+        hide_likes: videoData.hide_likes,
+        comments_disabled: videoData.comments_disabled,
+        comment_visibility: videoData.comment_visibility || 'everyone',
       };
+      if (videoData.scheduled_at) {
+        const d = new Date(videoData.scheduled_at);
+        if (!isNaN(d.getTime())) videoRecord.scheduled_at = d.toISOString();
+      }
 
       await api.videos.create(videoRecord);
 
@@ -2359,7 +2372,7 @@ export default function Create() {
 
                 <Select value={videoData.category} onValueChange={(v) => setVideoData(prev => ({ ...prev, category: v }))}>
 
-                  <SelectTrigger className="mt-1 rounded-xl"><SelectValue placeholder="Choisir une catégorie" /></SelectTrigger>
+                  <SelectTrigger className="mt-1 rounded-xl bg-white text-gray-900 border-gray-200 data-[placeholder]:text-gray-400"><SelectValue placeholder="Choisir une catégorie" /></SelectTrigger>
 
                   <SelectContent>
 
@@ -2413,7 +2426,7 @@ export default function Create() {
 
                   >
 
-                    <SelectTrigger className="rounded-xl">
+                    <SelectTrigger className="rounded-xl bg-white text-gray-900 border-gray-200 data-[placeholder]:text-gray-400">
 
                       <SelectValue placeholder="Sélectionner une musique">
 
@@ -2491,7 +2504,7 @@ export default function Create() {
 
                 <Select value={videoData.language} onValueChange={(v) => setVideoData(prev => ({ ...prev, language: v }))}>
 
-                  <SelectTrigger className="mt-1 rounded-xl">
+                  <SelectTrigger className="mt-1 rounded-xl bg-white text-gray-900 border-gray-200 data-[placeholder]:text-gray-400">
 
                     <SelectValue placeholder="Sélectionner une langue">
 
@@ -2520,6 +2533,51 @@ export default function Create() {
               </div>
 
 
+
+              <div className="space-y-3 border-t border-gray-100 pt-4 mt-4">
+                <Label className="text-gray-700 font-medium">Options de publication</Label>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Cacher les likes</span>
+                  <Switch
+                    checked={videoData.hide_likes}
+                    onCheckedChange={(v) => setVideoData(prev => ({ ...prev, hide_likes: v }))}
+                    className="data-[state=checked]:bg-blue-600"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Désactiver les commentaires</span>
+                  <Switch
+                    checked={videoData.comments_disabled}
+                    onCheckedChange={(v) => setVideoData(prev => ({ ...prev, comments_disabled: v }))}
+                    className="data-[state=checked]:bg-blue-600"
+                  />
+                </div>
+                {!videoData.comments_disabled && (
+                  <div>
+                    <Label className="text-gray-600 text-sm">Qui peut commenter</Label>
+                    <Select value={videoData.comment_visibility || 'everyone'} onValueChange={(v) => setVideoData(prev => ({ ...prev, comment_visibility: v }))}>
+                      <SelectTrigger className="mt-1 rounded-xl bg-white text-gray-900 border-gray-200">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="everyone">Tout le monde</SelectItem>
+                        <SelectItem value="followers">Abonnés uniquement</SelectItem>
+                        <SelectItem value="mentioned_only">Personnes mentionnées uniquement</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div>
+                  <Label className="text-gray-600 text-sm">Programmer la publication (optionnel)</Label>
+                  <Input
+                    type="datetime-local"
+                    value={videoData.scheduled_at || ''}
+                    onChange={(e) => setVideoData(prev => ({ ...prev, scheduled_at: e.target.value }))}
+                    className="mt-1 rounded-xl"
+                    min={new Date().toISOString().slice(0, 16)}
+                  />
+                </div>
+              </div>
 
               <div>
 

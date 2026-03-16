@@ -7,25 +7,23 @@ import * as earlyAccessService from '../services/earlyAccess.service.js';
 
 const router = Router();
 
-// GET /api/early-access/config — Public, stats Early Access
-router.get('/config', async (_req, res, next) => {
+const EARLY_ACCESS_FALLBACK = {
+  maxUsers: 10000,
+  totalUsers: 0,
+  isFull: false,
+  spotsLeft: 10000,
+  monetizedCreators: 0,
+  maxMonetizedCreators: 50,
+};
+
+// GET /api/early-access/config — Public, stats Early Access (ne jamais renvoyer 500)
+router.get('/config', async (_req, res) => {
   try {
     const config = await earlyAccessService.getEarlyAccessConfig();
-    res.json({ success: true, data: config });
-  } catch (error: any) {
-    // Fallback si la DB n'est pas disponible
-    logger.error('Early access config error', { error: error.message });
-    res.json({
-      success: true,
-      data: {
-        maxUsers: 10000,
-        totalUsers: 0,
-        isFull: false,
-        spotsLeft: 10000,
-        monetizedCreators: 0,
-        maxMonetizedCreators: 50,
-      },
-    });
+    return res.json({ success: true, data: config });
+  } catch (error: unknown) {
+    logger.warn('Early access config error', { err: error instanceof Error ? error.message : String(error) });
+    return res.json({ success: true, data: EARLY_ACCESS_FALLBACK });
   }
 });
 

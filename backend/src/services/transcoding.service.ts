@@ -21,6 +21,12 @@ const QUALITIES = [
 const HLS_TIME = 4;
 const AUDIO_BITRATE = '128k';
 
+// Watermark configuration (logo + @username gravés dans la vidéo)
+const WATERMARK_LOGO_PATH = process.env.TRANSCODE_WATERMARK_LOGO_PATH || '';
+const WATERMARK_FONT_PATH =
+  process.env.TRANSCODE_WATERMARK_FONT_PATH ||
+  '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+
 export interface CreateJobInput {
   video_id: string;
   source_url: string;
@@ -82,30 +88,108 @@ function downloadFile(url: string, destPath: string): Promise<void> {
 }
 
 /**
- * Génère la commande FFmpeg pour HLS multi-qualité (3 rendus).
+ * Génère la commande FFmpeg pour HLS multi-qualité (3 rendus) avec watermark optionnel.
+ *
+ * Si WATERMARK_LOGO_PATH est configuré et watermarkText fourni, on "brûle" dans la vidéo :
+ * - un texte @username
+ * - le logo AfriWonder
  */
-function buildFfmpegArgs(inputPath: string, outputDir: string): string[] {
+function buildFfmpegArgs(
+  inputPath: string,
+  outputDir: string,
+  watermarkText?: string,
+): string[] {
   const segPattern = path.join(outputDir, 'seg_%v_%03d.ts');
   const outPattern = path.join(outputDir, 'out_%v.m3u8');
-  const filter =
-    '[0:v]split=3[v1][v2][v3];[v1]scale=640:360[v1o];[v2]scale=842:480[v2o];[v3]scale=1280:720[v3o]';
-  return [
-    '-y', '-i', inputPath,
-    '-filter_complex', filter,
-    '-map', '[v1o]', '-b:v:0', '800k', '-map', '[v2o]', '-b:v:1', '1400k', '-map', '[v3o]', '-b:v:2', '2800k',
-    '-map', 'a:0?', '-c:a', 'aac', '-b:a', AUDIO_BITRATE,
-    '-f', 'hls', '-hls_time', String(HLS_TIME), '-hls_playlist_type', 'vod',
-    '-hls_segment_filename', segPattern, '-master_pl_name', 'master.m3u8',
-    '-var_stream_map', 'v:0 v:1 v:2', outPattern,
-  ];
+
+  const useWatermark = Boolean(WATERMARK_LOGO_PATH && watermarkText);
+
+  // Sanitiser un minimum le texte pour FFmpeg (pas d'apostrophes / retours à la ligne)
+  const safeText = (watermarkText || '')
+    .replace(/['\n\r]/g, ' ')
+    .trim()
+    || '@AfriWonder';
+
+  let filter: string;
+
+  if (useWatermark) {
+    // 0:v = vidéo source, 1:v = logo
+    filter =
+      `[0:v]drawtext=fontfile='${WATERMARK_FONT_PATH}':` +
+      `text='${safeText}':fontsize=28:fontcolor=white:` +
+      `borderw=2:bordercolor=black@0.6:x=20:y=H-80[txt];` +
+      `[txt][1:v]overlay=20:20:format=auto:alpha=0.9[base];` +
+      `[base]split=3[v1][v2][v3];` +
+      `[v1]scale=640:360[v1o];` +
+      `[v2]scale=842:480[v2o];` +
+      `[v3]scale=1280:720[v3o]`;
+  } else {
+    // Pas de watermark configuré → pipeline HLS standard
+    filter =
+      '[0:v]split=3[v1][v2][v3];' +
+      '[v1]scale=640:360[v1o];' +
+      '[v2]scale=842:480[v2o];' +
+      '[v3]scale=1280:720[v3o]';
+  }
+
+  const args: string[] = ['-y', '-i', inputPath];
+
+  if (useWatermark) {
+    args.push('-i', WATERMARK_LOGO_PATH);
+  }
+
+  args.push(
+    '-filter_complex',
+    filter,
+    // Vidéo multi-rendues
+    '-map',
+    '[v1o]',
+    '-b:v:0',
+    '800k',
+    '-map',
+    '[v2o]',
+    '-b:v:1',
+    '1400k',
+    '-map',
+    '[v3o]',
+    '-b:v:2',
+    '2800k',
+    // Audio
+    '-map',
+    'a:0?',
+    '-c:a',
+    'aac',
+    '-b:a',
+    AUDIO_BITRATE,
+    // HLS
+    '-f',
+    'hls',
+    '-hls_time',
+    String(HLS_TIME),
+    '-hls_playlist_type',
+    'vod',
+    '-hls_segment_filename',
+    segPattern,
+    '-master_pl_name',
+    'master.m3u8',
+    '-var_stream_map',
+    'v:0 v:1 v:2',
+    outPattern,
+  );
+
+  return args;
 }
 
 /**
  * Exécute FFmpeg et attend la fin.
  */
-function runFfmpeg(inputPath: string, outputDir: string): Promise<void> {
+function runFfmpeg(
+  inputPath: string,
+  outputDir: string,
+  watermarkText?: string,
+): Promise<void> {
   return new Promise((resolve, reject) => {
-    const args = buildFfmpegArgs(inputPath, outputDir);
+    const args = buildFfmpegArgs(inputPath, outputDir, watermarkText);
     const proc = spawn('ffmpeg', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -154,7 +238,12 @@ export async function processJob(
     await fs.mkdir(outputDir, { recursive: true });
 
     await downloadFile(job.source_url, inputPath);
-    await runFfmpeg(inputPath, outputDir);
+
+    // Construire le texte de watermark à partir du créateur (ex: @username)
+    const creatorName = (job.video as any)?.creator_name || 'AfriWonder';
+    const watermarkText = `@${String(creatorName || 'AfriWonder')}`;
+
+    await runFfmpeg(inputPath, outputDir, watermarkText);
 
     const masterPath = path.join(outputDir, 'master.m3u8');
     await fs.access(masterPath);

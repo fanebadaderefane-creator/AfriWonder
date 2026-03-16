@@ -162,7 +162,10 @@ export const AuthProvider = ({ children }) => {
       setCachedUser(userData);
       return userData;
     } catch (_error) {
-      const message = _error.apiMessage || _error.response?.data?.error?.message || _error.response?.data?.message || 'Email ou mot de passe incorrect';
+      let message = _error.apiMessage || _error.response?.data?.error?.message || _error.response?.data?.message || 'Email ou mot de passe incorrect';
+      if (/Circuit breaker|upstream database|temporairement indisponible/i.test(message)) {
+        message = 'Service temporairement indisponible. Réessayez dans quelques instants.';
+      }
       logger.error(message, _error, { context: 'login' });
       setAuthError({ type: 'login_failed', message });
       throw new Error(message);
@@ -192,7 +195,10 @@ export const AuthProvider = ({ children }) => {
       setCachedUser(newUser);
       return newUser;
     } catch (_error) {
-      const message = _error.apiMessage || _error.response?.data?.error?.message || _error.response?.data?.message || 'Inscription impossible';
+      let message = _error.apiMessage || _error.response?.data?.error?.message || _error.response?.data?.message || 'Inscription impossible';
+      if (/Circuit breaker|upstream database|temporairement indisponible/i.test(message)) {
+        message = 'Service temporairement indisponible. Réessayez dans quelques instants.';
+      }
       logger.error(message, _error, { context: 'register' });
       setAuthError({ type: 'registration_failed', message });
       throw new Error(message);

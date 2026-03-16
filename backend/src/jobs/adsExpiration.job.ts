@@ -19,6 +19,7 @@ export function startAdsExpirationJob() {
     }
   };
 
-  run(); // Exécuter au démarrage
+  // Premier run après stabilisation du pool (init rétention à 2.5s → run à 5s)
+  setTimeout(run, 5000);
   setInterval(run, INTERVAL_MS);
 }

@@ -264,7 +264,7 @@ export default function AdvertiserDashboard() {
                     if (campaign.status !== 'draft') {
                       api.ads.getCampaignStats(campaign.id).then((stats) => {
                         toast.info(`${campaign.name}: ${stats.total_views || 0} vues, ${stats.total_clicks || 0} clics`);
-                      });
+                      }).catch(() => toast.error('Impossible de charger les stats'));
                     }
                   }}
                 >

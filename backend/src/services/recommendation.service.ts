@@ -3,7 +3,11 @@
  * Personnalisation: historique de visionnage, likes, sauvegardes, abonnements
  * Diversité: plafond par créateur, injection exploration
  * Cold start: trending + récence
+ *
+ * Fallback: si la base n'a pas toutes les colonnes du schéma (drift), on utilise
+ * une requête SQL brute avec uniquement les colonnes de base pour que le feed reste fonctionnel.
  */
+import { Prisma } from '@prisma/client';
 import prisma from '../config/database.js';
 
 const FAVORED_DURATION_MIN = 8;
@@ -19,6 +23,7 @@ export interface RecommendationOptions {
   deviceId?: string;
   category?: string;
   hashtag?: string;
+  mediaType?: 'video' | 'image';
 }
 
 /**
@@ -103,6 +108,70 @@ async function loadUserPreferences(userId: string): Promise<{
   };
 }
 
+/** Colonnes Video de base (sans algo_tier, avg_retention_pct, qualified_views_count, media_type) pour fallback en cas de drift DB. */
+const VIDEO_CORE_SELECT = `v.id, v.title, v.description, v.video_url, v.thumbnail_url, v.creator_id, v.visibility, v.category, v.views, v.likes, v.comments_count, v.shares, v.saves, v.duration, v.created_at, v.updated_at, v.hashtags, v.music_title, v.is_featured`;
+
+/**
+ * Récupère un pool de vidéos via SQL brut (colonnes de base uniquement) quand prisma.video.findMany
+ * échoue parce que la base n'a pas toutes les colonnes du schéma.
+ */
+async function getVideoPoolFallback(
+  poolSize: number,
+  category?: string | null,
+  hashtag?: string | null
+): Promise<any[]> {
+  const tag = hashtag?.trim() ? String(hashtag).replace(/^#/, '').toLowerCase() : null;
+  type Row = {
+    id: string;
+    title: string;
+    description: string | null;
+    video_url: string;
+    thumbnail_url: string | null;
+    creator_id: string;
+    visibility: string;
+    category: string | null;
+    views: number;
+    likes: number;
+    comments_count: number;
+    shares: number;
+    saves: number;
+    duration: number | null;
+    created_at: Date;
+    updated_at: Date;
+    hashtags: unknown;
+    music_title: string | null;
+    is_featured: boolean;
+    creator_username: string | null;
+    creator_full_name: string | null;
+    creator_profile_image: string | null;
+  };
+  const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
+    SELECT ${Prisma.raw(VIDEO_CORE_SELECT)},
+      u.username AS "creator_username", u.full_name AS "creator_full_name", u.profile_image AS "creator_profile_image"
+    FROM "Video" v
+    INNER JOIN "User" u ON u.id = v.creator_id
+    WHERE v.visibility = 'public' AND (v.video_url NOT LIKE '%example.com%')
+      AND (v.scheduled_at IS NULL OR v.scheduled_at <= NOW())
+      AND (${category ?? null}::text IS NULL OR v.category = ${category ?? null})
+      AND (${tag ?? null}::text IS NULL OR EXISTS (SELECT 1 FROM "VideoHashtag" vh WHERE vh.video_id = v.id AND LOWER(vh.tag_name) = ${tag ?? null}))
+    ORDER BY v.created_at DESC
+    LIMIT ${poolSize}
+  `);
+  return rows.map((r) => ({
+    ...r,
+    algo_tier: 'test',
+    avg_retention_pct: null as number | null,
+    qualified_views_count: 0,
+    media_type: 'video',
+    creator: {
+      id: r.creator_id,
+      username: r.creator_username,
+      full_name: r.creator_full_name,
+      profile_image: r.creator_profile_image,
+    },
+  }));
+}
+
 /**
  * Feed personnalisé type TikTok : contenu score + personnalisation + diversité + exploration
  */
@@ -115,12 +184,15 @@ export async function getPersonalizedFeed(options: RecommendationOptions): Promi
   const skip = (page - 1) * limit;
   const userId = options.userId;
 
+  const now = new Date();
   const where: any = {
     visibility: 'public',
     video_url: { not: { contains: 'example.com' } },
     algo_tier: { not: 'dead' },
+    OR: [{ scheduled_at: null }, { scheduled_at: { lte: now } }],
   };
   if (options.category) where.category = options.category;
+  if (options.mediaType) where.media_type = options.mediaType;
   if (options.hashtag?.trim()) {
     const tag = String(options.hashtag).replace(/^#/, '').toLowerCase();
     where.video_hashtags = { some: { tag_name: tag } };
@@ -128,16 +200,26 @@ export async function getPersonalizedFeed(options: RecommendationOptions): Promi
 
   const poolSize = Math.min(limit * CANDIDATE_POOL_MULT, 500);
 
-  let videos: any[] = await prisma.video.findMany({
-    where,
-    include: {
-      creator: {
-        select: { id: true, username: true, full_name: true, profile_image: true },
+  let videos: any[];
+  try {
+    videos = await prisma.video.findMany({
+      where,
+      include: {
+        creator: {
+          select: { id: true, username: true, full_name: true, profile_image: true },
+        },
       },
-    },
-    orderBy: { created_at: 'desc' },
-    take: poolSize,
-  });
+      orderBy: { created_at: 'desc' },
+      take: poolSize,
+    });
+  } catch (err: any) {
+    // Drift schéma / base : colonnes manquantes (ex. algo_tier, avg_retention_pct)
+    if (err?.name === 'PrismaClientKnownRequestError' && /does not exist|column/i.test(String(err?.message || ''))) {
+      videos = await getVideoPoolFallback(poolSize, options.category, options.hashtag);
+    } else {
+      throw err;
+    }
+  }
 
   // Cold start ou pas d'userId : tri par score contenu uniquement (trending)
   if (!userId) {

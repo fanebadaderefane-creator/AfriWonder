@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ArrowLeft, Send, Users, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import BottomNav from '../components/navigation/BottomNav';
@@ -43,6 +44,10 @@ export default function GroupChat() {
       setInput('');
       queryClient.invalidateQueries({ queryKey: ['group-messages', groupId] });
       queryClient.invalidateQueries({ queryKey: ['messages-groups'] });
+    },
+    onError: (err) => {
+      const msg = err?.response?.data?.error?.message ?? err?.response?.data?.message ?? err?.apiMessage ?? err?.message;
+      toast.error(msg || 'Impossible d\'envoyer le message.');
     },
   });
 
@@ -111,8 +116,8 @@ export default function GroupChat() {
           messages
             .slice()
             .reverse()
-            .map((m) => (
-              <div key={m.id} className="flex gap-2">
+            .map((m, idx) => (
+              <div key={m.id ?? `msg-${idx}`} className="flex gap-2">
                 <Avatar className="w-8 h-8 rounded-lg flex-shrink-0">
                   <AvatarImage src={m.sender?.profile_image} />
                   <AvatarFallback className="bg-gray-200 text-gray-700 text-xs rounded-lg">

@@ -9,8 +9,9 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { 
   ArrowLeft, Star, MapPin, Truck, ShoppingCart,
   Heart, Share2, BadgeCheck, ChevronLeft, ChevronRight, Shield, HelpCircle, Send,
-  Flag, MessageCircle, MessageCircleMore
+  Flag, MessageCircle, MessageCircleMore, Bell, BellOff, Calendar, Tag, Scale, Gavel, Users
 } from 'lucide-react';
+import { addToCompare, getCompareIds } from '@/pages/CompareProducts';
 
 /** Génère l'URL WhatsApp (Phase 1: contact direct, pas de paiement sur AfriWonder) */
 function getWhatsAppUrl(phoneOrWhatsapp, message = '') {
@@ -51,6 +52,14 @@ export default function Product() {
   const [replyText, setReplyText] = useState('');
   const [reportingReviewId, setReportingReviewId] = useState(null);
   const [reportReason, setReportReason] = useState('');
+  const [alertTargetPrice, setAlertTargetPrice] = useState('');
+  const [offerPrice, setOfferPrice] = useState('');
+  const [bidAmount, setBidAmount] = useState('');
+  const [showCreateAuction, setShowCreateAuction] = useState(false);
+  const [auctionStartPrice, setAuctionStartPrice] = useState('');
+  const [auctionEndAt, setAuctionEndAt] = useState('');
+  const [showCreateGroupBuy, setShowCreateGroupBuy] = useState(false);
+  const [groupMinQuantity, setGroupMinQuantity] = useState('2');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -107,6 +116,25 @@ export default function Product() {
   });
   const questions = questionsData?.questions ?? [];
 
+  const { data: productAlerts = [] } = useQuery({
+    queryKey: ['product-alerts', productId],
+    queryFn: () => api.products.getAlertsForProduct(productId),
+    enabled: !!user && !!productId,
+  });
+  const { data: groupBuys = [] } = useQuery({
+    queryKey: ['product-group-buys', productId],
+    queryFn: () => api.products.getGroupBuys(productId),
+    enabled: !!productId,
+  });
+  const { data: myOffer } = useQuery({
+    queryKey: ['product-offer', productId],
+    queryFn: () => api.products.getMyOffer(productId),
+    enabled: !!user && !!productId && !!product?.negotiable_price,
+  });
+  const hasPriceAlert = productAlerts.some((a) => a.alert_type === 'price');
+  const hasStockAlert = productAlerts.some((a) => a.alert_type === 'stock');
+  const priceAlertTarget = productAlerts.find((a) => a.alert_type === 'price')?.target_price;
+
   const askQuestionMutation = useMutation({
     mutationFn: (q) => api.products.askQuestion(productId, q),
     onSuccess: () => {
@@ -161,6 +189,79 @@ export default function Product() {
     }
   });
 
+  const addAlertMutation = useMutation({
+    mutationFn: ({ alert_type, target_price }) => api.products.addAlert(productId, { alert_type, target_price }),
+    onSuccess: (_, { alert_type }) => {
+      queryClient.invalidateQueries({ queryKey: ['product-alerts', productId] });
+      toast.success(alert_type === 'price' ? 'Alerte prix enregistrée' : 'Vous serez notifié quand le produit sera en stock');
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+  });
+  const removeAlertMutation = useMutation({
+    mutationFn: (alertType) => api.products.removeAlert(productId, alertType),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product-alerts', productId] });
+      toast.success('Alerte supprimée');
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+  });
+
+  const [preorderQty, setPreorderQty] = useState(1);
+  const preorderMutation = useMutation({
+    mutationFn: () => api.products.createPreorder(productId, preorderQty),
+    onSuccess: () => {
+      toast.success('Précommande enregistrée. Paiement à la sortie.');
+      navigate(createPageUrl('Orders') + '?tab=preorders');
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+  });
+  const offerMutation = useMutation({
+    mutationFn: (price) => api.products.createOffer(productId, price),
+    onSuccess: () => {
+      toast.success('Offre envoyée au vendeur');
+      setOfferPrice('');
+      queryClient.invalidateQueries({ queryKey: ['product-offer', productId] });
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+  });
+  const bidMutation = useMutation({
+    mutationFn: (amount) => api.products.placeBid(productId, amount),
+    onSuccess: () => {
+      toast.success('Enchère enregistrée');
+      setBidAmount('');
+      queryClient.invalidateQueries({ queryKey: ['product', productId] });
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+  });
+  const createAuctionMutation = useMutation({
+    mutationFn: ({ start_price, end_at }) => api.products.createAuction(productId, { start_price, end_at }),
+    onSuccess: () => {
+      toast.success('Enchère créée');
+      setShowCreateAuction(false);
+      setAuctionStartPrice('');
+      setAuctionEndAt('');
+      queryClient.invalidateQueries({ queryKey: ['product', productId] });
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+  });
+  const createGroupBuyMutation = useMutation({
+    mutationFn: () => api.products.createGroupBuy(productId, { min_quantity: parseInt(groupMinQuantity, 10) || 2 }),
+    onSuccess: () => {
+      toast.success('Groupe d\'achat créé');
+      setShowCreateGroupBuy(false);
+      queryClient.invalidateQueries({ queryKey: ['product-group-buys', productId] });
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+  });
+  const joinGroupMutation = useMutation({
+    mutationFn: (groupId) => api.groupBuys.join(groupId, 1),
+    onSuccess: () => {
+      toast.success('Vous avez rejoint le groupe');
+      queryClient.invalidateQueries({ queryKey: ['product-group-buys', productId] });
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+  });
+
   if (isLoading || !product) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -185,6 +286,18 @@ export default function Product() {
           </button>
           <CurrencySelector />
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
+              onClick={() => {
+                const nextIds = addToCompare(product.id);
+                toast.success('Ajouté au comparateur');
+                navigate(createPageUrl('CompareProducts') + `?ids=${nextIds.join(',')}`);
+              }}
+              aria-label="Ajouter au comparateur"
+            >
+              <Scale className="w-5 h-5" />
+            </button>
             <button className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
               <Share2 className="w-5 h-5" />
             </button>
@@ -302,6 +415,178 @@ export default function Product() {
           )}
         </div>
 
+        {/* CPO 6.35 — Enchère */}
+        {product.auction && (
+          <Card className="p-4 border-amber-200 bg-amber-50/50">
+            <div className="flex items-center gap-2 mb-2">
+              <Gavel className="w-5 h-5 text-amber-600" />
+              <span className="font-semibold text-amber-800">Enchère en cours</span>
+              {product.auction.status === 'closed' && (
+                <Badge variant="secondary">Terminée</Badge>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-4 mb-3">
+              <div>
+                <p className="text-xs text-gray-500">Prix actuel</p>
+                <p className="text-xl font-bold text-amber-700">{formatPrice(product.auction.current_bid)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Fin</p>
+                <p className="text-sm font-medium">{new Date(product.auction.end_at).toLocaleString('fr-FR')}</p>
+              </div>
+              {product.auction.current_bidder && (
+                <div>
+                  <p className="text-xs text-gray-500">Enchérisseur actuel</p>
+                  <p className="text-sm">{product.auction.current_bidder?.full_name || 'Anonyme'}</p>
+                </div>
+              )}
+            </div>
+            {product.auction.status === 'open' && new Date(product.auction.end_at) > new Date() && user?.id && user.id !== sellerId && (
+              <div className="flex gap-2 flex-wrap items-end">
+                <div className="flex-1 min-w-[120px]">
+                  <label className="text-xs text-gray-500 block mb-1">Votre enchère (min. +5%)</label>
+                  <Input
+                    type="number"
+                    min={product.auction.current_bid * 1.05}
+                    step="0.01"
+                    placeholder={formatPrice(product.auction.current_bid * 1.05)}
+                    value={bidAmount}
+                    onChange={(e) => setBidAmount(e.target.value)}
+                  />
+                </div>
+                <Button
+                  onClick={() => {
+                    const n = parseFloat(bidAmount);
+                    if (!Number.isFinite(n) || n < product.auction.current_bid * 1.05) {
+                      toast.error('Enchère minimale : ' + formatPrice(product.auction.current_bid * 1.05));
+                      return;
+                    }
+                    bidMutation.mutate(n);
+                  }}
+                  disabled={bidMutation.isPending}
+                  className="bg-amber-600 hover:bg-amber-700"
+                >
+                  Enchérir
+                </Button>
+              </div>
+            )}
+          </Card>
+        )}
+        {!product.auction && user?.id === sellerId && (
+          <Card className="p-4">
+            {!showCreateAuction ? (
+              <Button variant="outline" onClick={() => setShowCreateAuction(true)} className="w-full">
+                <Gavel className="w-4 h-4 mr-2" />
+                Créer une enchère
+              </Button>
+            ) : (
+              <div className="space-y-3">
+                <p className="font-medium text-sm">Nouvelle enchère</p>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Prix de départ</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0"
+                    value={auctionStartPrice}
+                    onChange={(e) => setAuctionStartPrice(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Date et heure de fin (ISO ou locale)</label>
+                  <Input
+                    type="datetime-local"
+                    value={auctionEndAt}
+                    onChange={(e) => setAuctionEndAt(e.target.value)}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => {
+                      const start = parseFloat(auctionStartPrice);
+                      const end = auctionEndAt ? new Date(auctionEndAt) : null;
+                      if (!Number.isFinite(start) || start <= 0 || !end || isNaN(end.getTime())) {
+                        toast.error('Prix de départ > 0 et date de fin requises');
+                        return;
+                      }
+                      createAuctionMutation.mutate({ start_price: start, end_at: end.toISOString() });
+                    }}
+                    disabled={createAuctionMutation.isPending}
+                    className="bg-amber-600 hover:bg-amber-700"
+                  >
+                    Créer l'enchère
+                  </Button>
+                  <Button variant="ghost" onClick={() => setShowCreateAuction(false)}>Annuler</Button>
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* CPO 9.25 — Groupes d'achat */}
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              Groupes d'achat
+            </span>
+            <button
+              type="button"
+              className="text-sm text-blue-600"
+              onClick={() => navigate(createPageUrl('GroupBuys'))}
+            >
+              Mes groupes
+            </button>
+          </div>
+          {groupBuys.length === 0 && !showCreateGroupBuy && (
+            <p className="text-sm text-gray-500 mb-2">Aucun groupe ouvert. Créez-en un pour acheter à plusieurs.</p>
+          )}
+          {groupBuys.length > 0 && (
+            <ul className="space-y-2 mb-3">
+              {groupBuys.map((g) => {
+                const totalQty = (g.participants || []).reduce((s, p) => s + (p.quantity || 0), 0);
+                const isInGroup = user?.id && (g.participants || []).some((p) => p.user_id === user.id);
+                return (
+                  <li key={g.id} className="flex items-center justify-between text-sm p-2 bg-gray-50 rounded-lg">
+                    <span>{totalQty} / {g.min_quantity} participants</span>
+                    {user?.id !== sellerId && !isInGroup && (
+                      <Button size="sm" variant="outline" onClick={() => joinGroupMutation.mutate(g.id)} disabled={joinGroupMutation.isPending}>
+                        Rejoindre
+                      </Button>
+                    )}
+                    {isInGroup && <Badge variant="secondary">Inscrit</Badge>}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {user?.id && user.id !== sellerId && (
+            showCreateGroupBuy ? (
+              <div className="space-y-2">
+                <Input
+                  type="number"
+                  min={2}
+                  value={groupMinQuantity}
+                  onChange={(e) => setGroupMinQuantity(e.target.value)}
+                  placeholder="Quantité min."
+                />
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => createGroupBuyMutation.mutate()} disabled={createGroupBuyMutation.isPending}>
+                    Créer le groupe
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setShowCreateGroupBuy(false)}>Annuler</Button>
+                </div>
+              </div>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => setShowCreateGroupBuy(true)}>
+                <Users className="w-4 h-4 mr-1" />
+                Créer un groupe d'achat
+              </Button>
+            )
+          )}
+        </Card>
+
         {/* Seller Info */}
         {seller && (
           <Card className="p-4">
@@ -376,6 +661,38 @@ export default function Product() {
           </Card>
         )}
 
+        {/* CPO 6.37 — Précommande */}
+        {product.is_preorder && user && user.id !== sellerId && (
+          <Card className="p-4 border-blue-100 bg-blue-50/30">
+            <h3 className="font-semibold mb-2 flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-blue-500" />
+              Précommande — Paiement à la sortie
+            </h3>
+            {product.preorder_available_at && (
+              <p className="text-sm text-gray-600 mb-3">
+                Disponible à partir du {new Date(product.preorder_available_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+              </p>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                type="number"
+                min={1}
+                max={99}
+                value={preorderQty}
+                onChange={(e) => setPreorderQty(Math.max(1, Math.min(99, parseInt(e.target.value, 10) || 1)))}
+                className="w-20"
+              />
+              <Button
+                onClick={() => preorderMutation.mutate()}
+                disabled={preorderMutation.isPending}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {preorderMutation.isPending ? 'Enregistrement…' : 'Précommander'}
+              </Button>
+            </div>
+          </Card>
+        )}
+
         {/* Video produit */}
         {product.video_url && (
           <Card className="p-4">
@@ -400,6 +717,132 @@ export default function Product() {
             {product.description || 'Aucune description disponible'}
           </p>
         </Card>
+
+        {/* CPO 6.36 — Négociation de prix */}
+        {user && product?.negotiable_price && user.id !== sellerId && (
+          <Card className="p-4 border-amber-100 bg-amber-50/30">
+            <h3 className="font-semibold mb-2 flex items-center gap-2">
+              <Tag className="w-4 h-4 text-amber-600" />
+              Proposer un prix
+            </h3>
+            {myOffer ? (
+              <p className="text-sm text-gray-600">
+                Votre offre : <strong>{formatPrice(myOffer.offered_price)}</strong>
+                {myOffer.status === 'pending' && ' — En attente de réponse du vendeur'}
+                {myOffer.status === 'accepted' && ' — Acceptée'}
+                {myOffer.status === 'declined' && ' — Refusée'}
+                {myOffer.seller_note && ` (${myOffer.seller_note})`}
+              </p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="Votre offre (FCFA)"
+                  value={offerPrice}
+                  onChange={(e) => setOfferPrice(e.target.value)}
+                  className="w-32 text-sm"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-amber-600 text-amber-700 hover:bg-amber-50"
+                  onClick={() => {
+                    const val = parseFloat(offerPrice);
+                    if (!val || val <= 0) {
+                      toast.error('Indiquez un montant valide');
+                      return;
+                    }
+                    offerMutation.mutate(val);
+                  }}
+                  disabled={offerMutation.isPending}
+                >
+                  Envoyer l'offre
+                </Button>
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* CPO 6.38 — Alertes prix / disponibilité */}
+        {user && (
+          <Card className="p-4">
+            <h3 className="font-semibold mb-3 flex items-center gap-2">
+              <Bell className="w-4 h-4 text-blue-500" />
+              Alertes
+            </h3>
+            <div className="space-y-3">
+              {hasPriceAlert ? (
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-sm text-gray-600">
+                    Vous serez notifié si le prix descend {priceAlertTarget != null ? `à ${formatPrice(priceAlertTarget)} ou moins` : ''}.
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => removeAlertMutation.mutate('price')}
+                    disabled={removeAlertMutation.isPending}
+                  >
+                    <BellOff className="w-4 h-4 mr-1" /> Ne plus notifier
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Prix cible (optionnel)"
+                    value={alertTargetPrice}
+                    onChange={(e) => setAlertTargetPrice(e.target.value)}
+                    className="w-28 text-sm"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const target = alertTargetPrice ? parseFloat(alertTargetPrice) : (product?.price ?? 0);
+                      if (target <= 0) {
+                        toast.error('Indiquez un prix cible ou laissez vide pour le prix actuel');
+                        return;
+                      }
+                      addAlertMutation.mutate({ alert_type: 'price', target_price: target });
+                      setAlertTargetPrice('');
+                    }}
+                    disabled={addAlertMutation.isPending}
+                  >
+                    <Bell className="w-4 h-4 mr-1" /> Me notifier si le prix baisse
+                  </Button>
+                </div>
+              )}
+              {Number(product?.stock ?? 0) <= 0 && (
+                hasStockAlert ? (
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-sm text-gray-600">Vous serez notifié quand le produit sera en stock.</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => removeAlertMutation.mutate('stock')}
+                      disabled={removeAlertMutation.isPending}
+                    >
+                      <BellOff className="w-4 h-4 mr-1" /> Ne plus notifier
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => addAlertMutation.mutate({ alert_type: 'stock' })}
+                    disabled={addAlertMutation.isPending}
+                  >
+                    <Bell className="w-4 h-4 mr-1" /> Me notifier quand en stock
+                  </Button>
+                )
+              )}
+            </div>
+          </Card>
+        )}
 
         {/* Géolocalisation (CDC) */}
         {(product.latitude && product.longitude) && (

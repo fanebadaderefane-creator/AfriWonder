@@ -46,6 +46,7 @@ const MENU_SECTIONS = [
     title: "SOCIAL & MESSAGERIE",
     items: [
       { icon: MessageCircle, label: "Messages", color: "text-blue-600", page: 'Inbox' },
+      { icon: BarChart3, label: "Publications & Sondages", color: "text-indigo-600", page: 'FeedPosts' },
     ],
   },
   {
@@ -122,8 +123,8 @@ export default function MenuPlus({ isOpen, onClose, onNavigateFromMenu, user }) 
         // Fallback: utiliser les endpoints de followers/following
         try {
           const [followersRes, followingRes] = await Promise.all([
-            api.users.getFollowers(user.id).catch(() => ({ followers: [] })),
-            api.users.getFollowing(user.id).catch(() => ({ following: [] }))
+            api.users.getFollowers(user?.id).catch(() => ({ followers: [] })),
+            api.users.getFollowing(user?.id).catch(() => ({ following: [] }))
           ]);
           return {
             followers: Array.isArray(followersRes?.followers) ? followersRes.followers.length : 

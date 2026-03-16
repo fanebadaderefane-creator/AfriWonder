@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { MapPin, Star, User, CheckCircle, Heart, MessageCircle, Send, Phone, ArrowLeft, Check } from "lucide-react";
+import { MapPin, Star, User, CheckCircle, Heart, MessageCircle, Send, Phone, ArrowLeft, Check, Calendar } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import BottomNav from "../components/navigation/BottomNav";
@@ -295,6 +295,14 @@ function ProviderProfileContent({
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [requestText, setRequestText] = useState("");
   const [sendingRequest, setSendingRequest] = useState(false);
+  const [showRdvServices, setShowRdvServices] = useState(false);
+
+  const { data: providerServices = [] } = useQuery({
+    queryKey: ["provider-services", providerId],
+    queryFn: () => api.providers.getServices(providerId),
+    enabled: !!providerId && !isFictitious,
+  });
+  const servicesList = Array.isArray(providerServices) ? providerServices : providerServices?.services ?? [];
 
   const p = provider;
   const locationText = [p.city, p.neighborhood].filter(Boolean).join(", ");
@@ -329,6 +337,36 @@ function ProviderProfileContent({
             {priceLabel || "—"}
           </p>
         </div>
+        {servicesList.length > 0 && (
+          <Button
+            className="w-full h-12 rounded-xl bg-green-600 hover:bg-green-700 text-white font-medium"
+            onClick={() => {
+              if (servicesList.length === 1) {
+                navigate(createPageUrl("ServiceBooking") + `?id=${servicesList[0].id}`);
+              } else {
+                setShowRdvServices((prev) => !prev);
+              }
+            }}
+          >
+            <Calendar className="w-5 h-5 mr-2" />
+            Prendre RDV
+          </Button>
+        )}
+        {servicesList.length > 1 && showRdvServices && (
+          <div className="space-y-2 rounded-xl border p-3 bg-gray-50">
+            {servicesList.map((s) => (
+              <Button
+                key={s.id}
+                variant="outline"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => navigate(createPageUrl("ServiceBooking") + `?id=${s.id}`)}
+              >
+                {s.name || "Service"} — Réserver
+              </Button>
+            ))}
+          </div>
+        )}
         <Button
           className="w-full h-12 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-medium"
           onClick={() => navigate(createPageUrl("Messages") + `?provider=${providerId}`)}

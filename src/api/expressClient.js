@@ -137,6 +137,9 @@ axiosInstance.interceptors.response.use(
       error.apiMessage = 'La requête a pris trop de temps. Vérifiez votre connexion et réessayez.';
     } else if (error.code === 'ERR_NETWORK' || !error.response) {
       error.apiMessage = 'Connexion impossible. Vérifiez votre réseau et réessayez.';
+    } else if (error.response?.status === 429) {
+      const raw = error.response?.data?.error ?? error.response?.data?.message;
+      error.apiMessage = typeof raw === 'string' ? raw : (raw?.message ?? 'Trop de requêtes. Réessayez dans quelques secondes.');
     } else {
       const raw = error.response?.data?.message ?? error.response?.data?.error ?? error.message;
       error.apiMessage = typeof raw === 'string' ? raw : (raw && typeof raw === 'object' ? (raw.message || 'Une erreur est survenue') : 'Une erreur est survenue');
@@ -249,6 +252,137 @@ export const api = {
       return data.data;
     },
   },
+  /** CPO 1.18, 2.2, 2.33 — liste proches, demandes de suivi, suggestions */
+  me: {
+    async getCloseFriends() {
+      const { data } = await axiosInstance.get('/me/close-friends');
+      return data.data ?? [];
+    },
+    async addCloseFriend(friendId) {
+      const { data } = await axiosInstance.post('/me/close-friends', { friend_id: friendId });
+      return data.data;
+    },
+    async removeCloseFriend(friendId) {
+      await axiosInstance.delete(`/me/close-friends/${friendId}`);
+    },
+    async getFollowRequests() {
+      const { data } = await axiosInstance.get('/me/follow-requests');
+      return data.data ?? [];
+    },
+    async acceptFollowRequest(requestId) {
+      const { data } = await axiosInstance.post(`/me/follow-requests/${requestId}/accept`);
+      return data;
+    },
+    async rejectFollowRequest(requestId) {
+      const { data } = await axiosInstance.post(`/me/follow-requests/${requestId}/reject`);
+      return data;
+    },
+    async getSuggestedFollows(limit = 20) {
+      const { data } = await axiosInstance.get('/me/suggested-follows', { params: { limit } });
+      return data.data ?? [];
+    },
+    async getSessions() {
+      const { data } = await axiosInstance.get('/me/sessions');
+      return data.data ?? [];
+    },
+    async revokeSession(sessionId) {
+      await axiosInstance.delete(`/me/sessions/${sessionId}`);
+    },
+    async getActivity(limit = 50) {
+      const { data } = await axiosInstance.get('/me/activity', { params: { limit } });
+      return data.data ?? [];
+    },
+    // CPO 9.33 — Alertes prix voyage
+    getTravelAlerts(params = {}) {
+      return axiosInstance.get('/me/travel-alerts', { params }).then(({ data }) => ({ alerts: data.data ?? [], pagination: data.pagination }));
+    },
+    createTravelAlert(payload) {
+      return axiosInstance.post('/me/travel-alerts', payload).then(({ data }) => data.data);
+    },
+    deleteTravelAlert(id) {
+      return axiosInstance.delete(`/me/travel-alerts/${id}`).then(() => {});
+    },
+    // CPO 9.25 — Mes groupes d'achat
+    getGroupBuys(params = {}) {
+      return axiosInstance.get('/me/group-buys', { params }).then(({ data }) => ({ groups: data.data ?? [], pagination: data.pagination }));
+    },
+    // CPO 11.36 — Variante A/B
+    getExperiment(key) {
+      return axiosInstance.get(`/me/experiment/${encodeURIComponent(key)}`).then(({ data }) => data.data);
+    },
+    // CPO 5.9 — Cartes virtuelles
+    getVirtualCards() {
+      return axiosInstance.get('/me/virtual-cards').then(({ data }) => data.data ?? []);
+    },
+    createVirtualCard(options) {
+      return axiosInstance.post('/me/virtual-cards', options ?? {}).then(({ data }) => data.data);
+    },
+    revokeVirtualCard(id) {
+      return axiosInstance.delete(`/me/virtual-cards/${id}`).then(({ data }) => data.data);
+    },
+    // CPO 5.23 — Transferts internationaux
+    getInternationalTransfers(params = {}) {
+      return axiosInstance.get('/me/international-transfers', { params }).then(({ data }) => ({ items: data.data ?? [], pagination: data.pagination }));
+    },
+    createInternationalTransfer(payload) {
+      return axiosInstance.post('/me/international-transfers', payload).then(({ data }) => data.data);
+    },
+    getInternationalTransfer(id) {
+      return axiosInstance.get(`/me/international-transfers/${id}`).then(({ data }) => data.data);
+    },
+    // CPO 5.39 — Préautorisation
+    getPreauths(params = {}) {
+      return axiosInstance.get('/me/preauths', { params }).then(({ data }) => ({ items: data.data ?? [], pagination: data.pagination }));
+    },
+    createPreauth(payload) {
+      return axiosInstance.post('/me/preauths', payload).then(({ data }) => data.data);
+    },
+    capturePreauth(id) {
+      return axiosInstance.post(`/me/preauths/${id}/capture`).then(({ data }) => data.data);
+    },
+    cancelPreauth(id) {
+      return axiosInstance.post(`/me/preauths/${id}/cancel`).then(({ data }) => data.data);
+    },
+    // CPO 7.19 — Contrats créateur
+    getCreatorContracts() {
+      return axiosInstance.get('/me/creator-contracts').then(({ data }) => data.data ?? []);
+    },
+    createCreatorContract(payload) {
+      return axiosInstance.post('/me/creator-contracts', payload).then(({ data }) => data.data);
+    },
+    updateCreatorContract(id, payload) {
+      return axiosInstance.patch(`/me/creator-contracts/${id}`, payload).then(({ data }) => data.data);
+    },
+    deleteCreatorContract(id) {
+      return axiosInstance.delete(`/me/creator-contracts/${id}`).then(() => {});
+    },
+  },
+  groupBuys: {
+    join(groupBuyId, quantity = 1) {
+      return axiosInstance.post(`/group-buys/${groupBuyId}/join`, { quantity }).then(({ data }) => data.data);
+    },
+  },
+  // CPO 9.22 — Co-voiturage
+  rideShare: {
+    list(params = {}) {
+      return axiosInstance.get('/ride-share', { params }).then(({ data }) => ({
+        rides: data.data ?? [],
+        pagination: data.pagination ?? { page: 1, limit: 20, total: 0, totalPages: 0 },
+      }));
+    },
+    getById(id) {
+      return axiosInstance.get(`/ride-share/${id}`).then(({ data }) => data.data);
+    },
+    create(body) {
+      return axiosInstance.post('/ride-share', body).then(({ data }) => data.data);
+    },
+    book(rideShareId, seats = 1) {
+      return axiosInstance.post(`/ride-share/${rideShareId}/book`, { seats }).then(({ data }) => data.data);
+    },
+    listMy(asDriver = false) {
+      return axiosInstance.get('/ride-share/me', { params: asDriver ? { as: 'driver' } : {} }).then(({ data }) => data.data ?? []);
+    },
+  },
   videos: {
     async list(params = {}) {
       const { data } = await axiosInstance.get('/videos', { params });
@@ -269,8 +403,17 @@ export const api = {
     async delete(id) {
       await axiosInstance.delete(`/videos/${id}`);
     },
-    async like(id) {
-      const { data } = await axiosInstance.post(`/videos/${id}/like`);
+    async like(id, type = 'like') {
+      const { data } = await axiosInstance.post(`/videos/${id}/like`, type ? { type } : undefined);
+      return data.data;
+    },
+    /** Réactions multiples (CPO 2.44) — type: 'like' | 'love' | 'fire' | etc. */
+    async setReaction(id, type) {
+      const { data } = await axiosInstance.post(`/videos/${id}/reaction`, { type });
+      return data.data;
+    },
+    async deleteReaction(id) {
+      const { data } = await axiosInstance.delete(`/videos/${id}/reaction`);
       return data.data;
     },
     async comment(id, content, parentId = null) {
@@ -308,10 +451,49 @@ export const api = {
       const { data } = await axiosInstance.get('/videos/hashtags/trending', { params: { limit } });
       return data.data || [];
     },
+    // CPO 3.9 — Sous-titres automatiques
+    async getSubtitles(videoId) {
+      const { data } = await axiosInstance.get(`/videos/${videoId}/subtitles`);
+      return data.data;
+    },
+    async generateSubtitles(videoId, source = 'auto') {
+      const { data } = await axiosInstance.post(`/videos/${videoId}/subtitles/generate`, { source });
+      return data.data;
+    },
+    async setSubtitleUrl(videoId, subtitleUrl) {
+      const { data } = await axiosInstance.patch(`/videos/${videoId}/subtitles`, { subtitle_url: subtitleUrl });
+      return data.data;
+    },
   },
   feed: {
     async list(params = {}) {
       const { data } = await axiosInstance.get('/feed', { params });
+      return data.data;
+    },
+  },
+  /** Posts (feed social) avec sondages (CPO 2.20) — aligné backend /api/posts */
+  posts: {
+    async create(payload) {
+      const { data } = await axiosInstance.post('/posts', payload);
+      return data.data;
+    },
+    async list(params = {}) {
+      const { data } = await axiosInstance.get('/posts', { params });
+      return data.data;
+    },
+    async getById(id) {
+      const { data } = await axiosInstance.get(`/posts/${id}`);
+      return data.data;
+    },
+    async update(id, payload) {
+      const { data } = await axiosInstance.put(`/posts/${id}`, payload);
+      return data.data;
+    },
+    async delete(id) {
+      await axiosInstance.delete(`/posts/${id}`);
+    },
+    async votePoll(pollId, optionIndex) {
+      const { data } = await axiosInstance.post(`/posts/polls/${pollId}/vote`, { option_index: optionIndex });
       return data.data;
     },
   },
@@ -583,6 +765,12 @@ export const api = {
       const { data } = await axiosInstance.get(`/products/${id}`);
       return data.data;
     },
+    async compare(ids) {
+      const idList = Array.isArray(ids) ? ids : [ids].filter(Boolean);
+      if (idList.length === 0) return [];
+      const { data } = await axiosInstance.get('/products/compare', { params: { ids: idList.join(',') } });
+      return data.data || [];
+    },
     async create(productData) {
       // Rejeter les URLs de domaines externes non autorisés
       if (productData.images) {
@@ -625,6 +813,53 @@ export const api = {
     async answerQuestion(questionId, answer) {
       const { data } = await axiosInstance.post(`/products/questions/${questionId}/answer`, { answer });
       return data.data;
+    },
+    // CPO 6.38 — Alertes prix / stock
+    getAlertsMe(params = {}) {
+      return axiosInstance.get('/products/alerts/me', { params }).then(({ data }) => ({ alerts: data.data || [], pagination: data.pagination }));
+    },
+    getAlertsForProduct(productId) {
+      return axiosInstance.get(`/products/${productId}/alerts/me`).then(({ data }) => data.data || []);
+    },
+    addAlert(productId, { alert_type, target_price }) {
+      return axiosInstance.post(`/products/${productId}/alerts`, { alert_type, target_price }).then(({ data }) => data.data);
+    },
+    removeAlert(productId, alertType) {
+      return axiosInstance.delete(`/products/${productId}/alerts/${alertType}`).then(() => {});
+    },
+    // CPO 6.37 — Précommandes
+    getPreordersMe(params = {}) {
+      return axiosInstance.get('/products/preorders/me', { params }).then(({ data }) => ({ preorders: data.data || [], pagination: data.pagination }));
+    },
+    createPreorder(productId, quantity = 1) {
+      return axiosInstance.post(`/products/${productId}/preorder`, { quantity }).then(({ data }) => data.data);
+    },
+    cancelPreorder(preorderId) {
+      return axiosInstance.delete(`/products/preorders/${preorderId}`).then(() => {});
+    },
+    // CPO 6.36 — Négociation de prix
+    createOffer(productId, offeredPrice) {
+      return axiosInstance.post(`/products/${productId}/offers`, { offered_price: offeredPrice }).then(({ data }) => data.data);
+    },
+    getMyOffer(productId) {
+      return axiosInstance.get(`/products/${productId}/offers/me`).then(({ data }) => data.data);
+    },
+    // CPO 6.35 — Enchères
+    getAuction(productId) {
+      return axiosInstance.get(`/products/${productId}/auction`).then(({ data }) => data.data);
+    },
+    createAuction(productId, { start_price, end_at }) {
+      return axiosInstance.post(`/products/${productId}/auction`, { start_price, end_at }).then(({ data }) => data.data);
+    },
+    placeBid(productId, amount) {
+      return axiosInstance.post(`/products/${productId}/auction/bid`, { amount }).then(({ data }) => data.data);
+    },
+    // CPO 9.25 — Groupes d'achat
+    getGroupBuys(productId) {
+      return axiosInstance.get(`/products/${productId}/group-buys`).then(({ data }) => data.data ?? []);
+    },
+    createGroupBuy(productId, { min_quantity } = {}) {
+      return axiosInstance.post(`/products/${productId}/group-buys`, { min_quantity }).then(({ data }) => data.data);
     },
   },
   cart: {
@@ -835,6 +1070,10 @@ export const api = {
     },
     async suspendCampaign(campaignId, body = {}) {
       const { data } = await axiosInstance.post(`/admin/crowdfunding/${campaignId}/suspend`, body);
+      return data.data;
+    },
+    async getAmlFlags(params = {}) {
+      const { data } = await axiosInstance.get('/admin/aml/flags', { params });
       return data.data;
     },
     async getHealth() {
@@ -1216,6 +1455,40 @@ export const api = {
       const res = await axiosInstance.get('/seller/analytics/export', { params, responseType: 'blob' });
       return res.data;
     },
+    // CPO 10.21 — Programme fidélité
+    getLoyalty() {
+      return axiosInstance.get('/seller/loyalty').then(({ data }) => data.data);
+    },
+    updateLoyalty(payload) {
+      return axiosInstance.put('/seller/loyalty', payload).then(({ data }) => data.data);
+    },
+    getOffers(params = {}) {
+      return axiosInstance.get('/seller/offers', { params }).then(({ data }) => ({ offers: data.data || [], pagination: data.pagination }));
+    },
+    respondToOffer(offerId, { status, seller_note }) {
+      return axiosInstance.patch(`/seller/offers/${offerId}`, { status, seller_note }).then(({ data }) => data.data);
+    },
+    // CPO 6.35 — Enchères du vendeur
+    getAuctions(params = {}) {
+      return axiosInstance.get('/seller/auctions', { params }).then(({ data }) => ({ auctions: data.data || [], pagination: data.pagination }));
+    },
+  },
+  loyalty: {
+    getMe() {
+      return axiosInstance.get('/loyalty/me').then(({ data }) => data.data || []);
+    },
+    getBySeller(sellerId) {
+      return axiosInstance.get(`/loyalty/seller/${sellerId}`).then(({ data }) => data.data);
+    },
+    getMyPointsWithSeller(sellerId) {
+      return axiosInstance.get(`/loyalty/me/seller/${sellerId}`).then(({ data }) => data.data);
+    },
+  },
+  creators: {
+    async getMe() {
+      const { data } = await axiosInstance.get('/creators/me');
+      return data.data;
+    },
   },
   events: {
     async list(params = {}) {
@@ -1562,9 +1835,72 @@ export const api = {
       await axiosInstance.put('/notifications/read-all');
     },
   },
+  stories: {
+    async list(userIds = null) {
+      const params = userIds ? { userIds: Array.isArray(userIds) ? userIds.join(',') : userIds } : {};
+      const { data } = await axiosInstance.get('/stories', { params });
+      return data.data ?? [];
+    },
+    async getByUser(userId) {
+      const { data } = await axiosInstance.get(`/stories/user/${userId}`);
+      return data.data ?? [];
+    },
+    async create({ mediaUrl, mediaType, expiresInHours, poll }) {
+      const { data } = await axiosInstance.post('/stories', { mediaUrl, mediaType, expiresInHours, poll });
+      return data.data;
+    },
+    async view(storyId) {
+      const { data } = await axiosInstance.post(`/stories/${storyId}/view`);
+      return data.data;
+    },
+    async delete(storyId) {
+      const { data } = await axiosInstance.delete(`/stories/${storyId}`);
+      return data.data;
+    },
+    async addReaction(storyId, emoji = '❤️') {
+      const { data } = await axiosInstance.post(`/stories/${storyId}/reactions`, { emoji });
+      return data.data;
+    },
+    async removeReaction(storyId) {
+      const { data } = await axiosInstance.delete(`/stories/${storyId}/reactions`);
+      return data.data;
+    },
+    async getReactions(storyId) {
+      const { data } = await axiosInstance.get(`/stories/${storyId}/reactions`);
+      return data.data ?? [];
+    },
+    async votePoll(pollId, optionIndex) {
+      const { data } = await axiosInstance.post(`/stories/polls/${pollId}/vote`, { optionIndex });
+      return data.data;
+    },
+    async getPollResults(pollId) {
+      const { data } = await axiosInstance.get(`/stories/polls/${pollId}/results`);
+      return data.data;
+    },
+  },
+  miniApps: {
+    async get(id) {
+      const { data } = await axiosInstance.get(`/mini-apps/${id}`);
+      return data.data;
+    },
+    async getReviews(id, page = 1, limit = 20) {
+      const { data } = await axiosInstance.get(`/mini-apps/${id}/reviews`, { params: { page, limit } });
+      return data.data;
+    },
+    async getMyReview(id) {
+      const { data } = await axiosInstance.get(`/mini-apps/${id}/reviews/me`);
+      return data.data;
+    },
+    async submitReview(id, rating, comment) {
+      const { data } = await axiosInstance.post(`/mini-apps/${id}/reviews`, { rating, comment });
+      return data.data;
+    },
+  },
   messages: {
-    async getConversations(page = 1, limit = 20) {
-      const { data } = await axiosInstance.get('/messages/conversations', { params: { page, limit } });
+    async getConversations(page = 1, limit = 20, includeArchived = false) {
+      const params = { page, limit };
+      if (includeArchived) params.includeArchived = 'true';
+      const { data } = await axiosInstance.get('/messages/conversations', { params });
       return data.data;
     },
     async getConversation(userId) {
@@ -1585,7 +1921,31 @@ export const api = {
         media_url: options.media_url,
         thumbnail_url: options.thumbnail_url,
         reply_to_message_id: options.reply_to_message_id,
+        scheduled_at: options.scheduled_at || undefined,
+        is_ephemeral: options.is_ephemeral || undefined,
+        expires_at: options.expires_at || undefined,
+        location_lat: options.location_lat,
+        location_lng: options.location_lng,
+        location_label: options.location_label,
+        contact_user_id: options.contact_user_id,
+        contact_name: options.contact_name,
       });
+      return data.data;
+    },
+    async getDraft(conversationId) {
+      const { data } = await axiosInstance.get(`/messages/conversations/${conversationId}/draft`);
+      return data.data;
+    },
+    async putDraft(conversationId, content) {
+      const { data } = await axiosInstance.put(`/messages/conversations/${conversationId}/draft`, { content: content ?? '' });
+      return data.data;
+    },
+    async archiveConversation(conversationId, archived) {
+      const { data } = await axiosInstance.patch(`/messages/conversations/${conversationId}/archive`, { archived: !!archived });
+      return data.data;
+    },
+    async exportConversations() {
+      const { data } = await axiosInstance.get('/messages/export');
       return data.data;
     },
     async markAsRead(conversationId) {
@@ -1604,6 +1964,21 @@ export const api = {
       const { data } = await axiosInstance.delete(`/messages/message/${messageId}`);
       return data.data;
     },
+    /** CPO 4.17 — Suppression pour tous (< 15 min, expéditeur uniquement) */
+    async deleteForAll(messageId) {
+      const { data } = await axiosInstance.post(`/messages/message/${messageId}/delete-for-all`);
+      return data.data;
+    },
+    /** CPO 4.23 — Épingler un message en tête de conversation */
+    async pinMessage(conversationId, messageId) {
+      const { data } = await axiosInstance.post(`/messages/conversations/${conversationId}/pin`, { messageId });
+      return data.data;
+    },
+    /** CPO 4.23 — Désépingler */
+    async unpinMessage(conversationId) {
+      const { data } = await axiosInstance.delete(`/messages/conversations/${conversationId}/pin`);
+      return data.data;
+    },
     async updateMessageMeta(messageId, payload = {}) {
       const { data } = await axiosInstance.patch(`/messages/message/${messageId}/meta`, payload);
       return data.data;
@@ -1614,6 +1989,11 @@ export const api = {
     },
     async clearReaction(messageId) {
       const { data } = await axiosInstance.delete(`/messages/message/${messageId}/reaction`);
+      return data.data;
+    },
+    /** Mute / unmute notifications pour une conversation (CPO 4.39) */
+    async setConversationNotifications(conversationId, { muted }) {
+      const { data } = await axiosInstance.patch(`/messages/conversations/${conversationId}/notifications`, { muted: !!muted });
       return data.data;
     },
     async block(userId) {

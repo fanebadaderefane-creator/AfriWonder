@@ -19,6 +19,18 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   }
 });
 
+// GET /api/users/username/:username — profil public par username (avant /:id)
+router.get('/username/:username', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const username = param(req, 'username');
+    const requesterId = req.user?.id;
+    const user = await userService.getByUsername(username, requesterId);
+    res.json({ success: true, data: user });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // GET /api/users/:id
 router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
   try {

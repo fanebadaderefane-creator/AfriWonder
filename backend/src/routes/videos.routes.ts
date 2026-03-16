@@ -4,20 +4,30 @@ import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import { videoService } from '../services/video.service.js';
 import { createJob } from '../services/transcoding.service.js';
+import * as subtitleService from '../services/subtitle.service.js';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
 const router = Router();
 
+const PAGE_MIN = 1;
+const LIMIT_MAX = 100;
+function parsePageLimit(query: Record<string, unknown>, defaultLimit: number): { page: number; limit: number } {
+  const page = Math.max(PAGE_MIN, parseInt(String(query.page || 1), 10) || PAGE_MIN);
+  const rawLimit = parseInt(String(query.limit || defaultLimit), 10) || defaultLimit;
+  const limit = Math.min(LIMIT_MAX, Math.max(1, rawLimit));
+  return { page, limit };
+}
+
 // GET /api/videos - Liste des vidéos
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
-    const { page = '1', limit, category, visibility = 'public', creator_id: creatorId, hashtag, search } = req.query;
+    const { category, visibility = 'public', creator_id: creatorId, hashtag, search } = req.query;
     const userId = req.user?.id;
-    const limitValue = limit ? parseInt(limit as string) : 0;
+    const { page, limit: limitValue } = parsePageLimit(req.query as Record<string, unknown>, 20);
 
     const videos = await videoService.list({
-      page: parseInt(page as string),
+      page,
       limit: limitValue,
       category: category as string,
       visibility: visibility as string,
@@ -40,12 +50,12 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
 router.get('/category/:id', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
     const categoryId = param(req, 'id');
-    const { page = '1', limit = '20' } = req.query;
     const userId = req.user?.id;
+    const { page, limit } = parsePageLimit(req.query as Record<string, unknown>, 20);
 
     const videos = await videoService.list({
-      page: parseInt(page as string),
-      limit: parseInt(limit as string),
+      page,
+      limit,
       category_id: categoryId,
       visibility: 'public',
       userId,
@@ -189,6 +199,19 @@ router.put('/:id', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
+// POST /api/videos/:id/trim - Montage léger (trim_start_sec, trim_end_sec)
+router.post('/:id/trim', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const userId = req.user!.id;
+    const { trim_start_sec, trim_end_sec } = req.body || {};
+    const video = await videoService.trim(id, userId, { trim_start_sec, trim_end_sec });
+    res.json({ success: true, data: video });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // DELETE /api/videos/:id - Supprimer une vidéo
 router.delete('/:id', authenticate, async (req: AuthRequest, res, next) => {
   try {
@@ -206,13 +229,39 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-// POST /api/videos/:id/like - Liker une vidéo
+// POST /api/videos/:id/reaction — Définir une réaction (body: { type: 'like'|'love'|'fire'|... })
+router.post('/:id/reaction', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const userId = req.user!.id;
+    const type = req.body?.type ?? 'like';
+    const result = await videoService.setReaction(id, userId, type);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/videos/:id/reaction — Retirer sa réaction
+router.delete('/:id/reaction', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const userId = req.user!.id;
+    const result = await videoService.setReaction(id, userId, null);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/videos/:id/like - Liker / réaction (body: { type?: 'like'|'love'|'fire'|'laugh'|'wow'|'sad'|'angry' })
 router.post('/:id/like', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const userId = req.user!.id;
+    const type = req.body?.type ?? 'like';
 
-    const result = await videoService.toggleLike(id, userId);
+    const result = await videoService.toggleLike(id, userId, type);
 
     res.json({
       success: true,
@@ -246,9 +295,9 @@ router.patch('/comments/:commentId', authenticate, async (req: AuthRequest, res,
   try {
     const commentId = param(req, 'commentId');
     const userId = req.user!.id;
-    const { content } = req.body || {};
+    const { content, is_pinned } = req.body || {};
 
-    const comment = await videoService.updateComment(commentId, userId, { content });
+    const comment = await videoService.updateComment(commentId, userId, { content, is_pinned });
 
     res.json({
       success: true,
@@ -453,6 +502,117 @@ router.get('/:id/transcode/status', optionalAuth, async (req: AuthRequest, res, 
     });
   } catch (error) {
     next(error);
+  }
+});
+
+// GET /api/videos/archived - Mes vidéos archivées
+router.get('/archived/list', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { page, limit } = parsePageLimit(req.query as Record<string, unknown>, 20);
+    const list = await videoService.list({ creator_id: req.user!.id, visibility: 'archived', page, limit });
+    res.json({ success: true, data: list });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PUT /api/videos/:id/archive - Archiver une vidéo (créateur)
+router.put('/:id/archive', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const video = await prisma.video.findFirst({
+      where: { id: param(req, 'id'), creator_id: req.user!.id },
+    });
+    if (!video) return res.status(404).json({ success: false, error: 'Vidéo introuvable' });
+    await prisma.video.update({
+      where: { id: video.id },
+      data: { visibility: 'archived' },
+    });
+    res.json({ success: true, message: 'Vidéo archivée' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/videos/:id/chapters - Chapitres VOD
+router.get('/:id/chapters', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const chapters = await prisma.videoChapter.findMany({
+      where: { video_id: param(req, 'id') },
+      orderBy: { start_time_sec: 'asc' },
+    });
+    res.json({ success: true, data: chapters });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/videos/:id/chapters - Ajouter un chapitre (créateur)
+router.post('/:id/chapters', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const videoId = param(req, 'id');
+    const video = await prisma.video.findFirst({ where: { id: videoId, creator_id: req.user!.id } });
+    if (!video) return res.status(404).json({ success: false, error: 'Vidéo introuvable' });
+    const { title, start_time_sec, end_time_sec } = req.body;
+    if (!title || start_time_sec == null) return res.status(400).json({ success: false, error: { message: 'title et start_time_sec requis' } });
+    const chapter = await prisma.videoChapter.create({
+      data: { video_id: videoId, title, start_time_sec: Number(start_time_sec), end_time_sec: end_time_sec != null ? Number(end_time_sec) : null },
+    });
+    res.status(201).json({ success: true, data: chapter });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/videos/:id/download - URL de téléchargement (si autorisé)
+router.get('/:id/download', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const video = await prisma.video.findFirst({
+      where: { id: param(req, 'id') },
+      select: { video_url: true, download_allowed: true, visibility: true, creator_id: true },
+    });
+    if (!video) return res.status(404).json({ success: false, error: 'Vidéo introuvable' });
+    if (!video.download_allowed) return res.status(403).json({ success: false, error: 'Téléchargement non autorisé par le créateur' });
+    if (video.visibility !== 'public' && video.creator_id !== req.user?.id) return res.status(403).json({ success: false, error: 'Accès non autorisé' });
+    res.json({ success: true, data: { download_url: video.video_url } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// CPO 3.9 — Sous-titres automatiques
+// GET /api/videos/:id/subtitles - Statut sous-titres + dernière génération
+router.get('/:id/subtitles', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const result = await subtitleService.getStatus(id, req.user!.id);
+    if (!result) return res.status(404).json({ success: false, error: 'Vidéo introuvable' });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+// POST /api/videos/:id/subtitles/generate - Lancer génération STT
+router.post('/:id/subtitles/generate', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const source = (req.body?.source === 'manual' ? 'manual' : 'auto') as 'auto' | 'manual';
+    const gen = await subtitleService.requestGeneration(id, req.user!.id, source);
+    res.status(202).json({ success: true, data: gen, message: 'Génération lancée' });
+  } catch (e: any) {
+    if (e?.statusCode) return res.status(e.statusCode).json({ success: false, error: { message: e.message } });
+    next(e);
+  }
+});
+// PATCH /api/videos/:id/subtitles - Définir URL sous-titres (manuel)
+router.patch('/:id/subtitles', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const subtitle_url = req.body?.subtitle_url != null ? String(req.body.subtitle_url) : null;
+    const video = await subtitleService.setSubtitleUrl(id, req.user!.id, subtitle_url);
+    res.json({ success: true, data: video });
+  } catch (e: any) {
+    if (e?.statusCode) return res.status(e.statusCode).json({ success: false, error: { message: e.message } });
+    next(e);
   }
 });
 

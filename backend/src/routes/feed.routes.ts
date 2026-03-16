@@ -14,12 +14,13 @@ const FEED_MAX_LIMIT = 100;
 const FEED_CACHE_TTL_MS = 45_000; // 45 s
 router.get('/', optionalAuth, responseCache('feed:', { ttlMs: FEED_CACHE_TTL_MS, byUser: true }), async (req: AuthRequest, res, next) => {
   try {
-    const { page = '1', limit = '50', category, hashtag } = req.query;
+    const { page = '1', limit = '50', category, hashtag, mediaType } = req.query;
     const userId = req.user?.id;
     const deviceId = (req.headers['x-device-id'] as string) || undefined;
     const country = (req.headers['x-country'] as string) || undefined;
     const rawLimit = parseInt(limit as string) || 50;
     const cappedLimit = Math.min(Math.max(1, rawLimit), FEED_MAX_LIMIT);
+    const mediaTypeFilter = mediaType === 'image' || mediaType === 'video' ? mediaType : undefined;
 
     const result = await feedService.getFeed({
       page: parseInt(page as string) || 1,
@@ -29,6 +30,7 @@ router.get('/', optionalAuth, responseCache('feed:', { ttlMs: FEED_CACHE_TTL_MS,
       country,
       category: category as string,
       hashtag: hashtag as string,
+      mediaType: mediaTypeFilter,
     });
 
     res.json({

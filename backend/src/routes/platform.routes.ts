@@ -45,16 +45,18 @@ router.get('/stats', async (_req, res, next) => {
   }
 });
 
-// GET /api/platform/feature-flags — Public, pour le frontend (menu, visibilité modules)
-router.get('/feature-flags', async (_req, res, next) => {
+// GET /api/platform/feature-flags — Public (ne jamais renvoyer 500 si DB indisponible)
+router.get('/feature-flags', async (_req, res) => {
   try {
     const flags: Record<string, boolean> = {};
     for (const key of LAUNCH_FEATURE_KEYS) {
       flags[key] = await featureFlagService.isEnabled(key);
     }
-    res.json({ success: true, data: flags });
-  } catch (error: any) {
-    next(error);
+    return res.json({ success: true, data: flags });
+  } catch (error: unknown) {
+    const fallback: Record<string, boolean> = {};
+    for (const key of LAUNCH_FEATURE_KEYS) fallback[key] = false;
+    return res.json({ success: true, data: fallback });
   }
 });
 

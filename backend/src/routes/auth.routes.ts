@@ -62,9 +62,16 @@ router.post('/login', async (req, res, next) => {
 
     // Si c'est une erreur connue avec statusCode, la passer au handler
     if (error.statusCode) {
+      const msg = error.message || '';
+      const isConfigError = msg.includes('JWT_SECRET') || msg.includes('JWT_REFRESH_SECRET');
       return res.status(error.statusCode).json({
         success: false,
-        error: { message: error.message, code: error.code },
+        error: {
+          message: isConfigError
+            ? 'Configuration serveur manquante (JWT). Vérifiez backend/.env avec JWT_SECRET et JWT_REFRESH_SECRET.'
+            : error.message,
+          code: error.code,
+        },
       });
     }
 

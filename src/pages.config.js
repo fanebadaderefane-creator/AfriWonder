@@ -55,6 +55,7 @@ import AdvertiserRegistration from './pages/AdvertiserRegistration';
 import BecomeSeller from './pages/BecomeSeller';
 import AddService from './pages/AddService';
 import Addresses from './pages/Addresses';
+import Activity from './pages/Activity';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminPage from './pages/AdminPage';
 import Analytics from './pages/Analytics';
@@ -62,7 +63,9 @@ import ArticleDetails from './pages/ArticleDetails';
 import BadgesProfile from './pages/BadgesProfile';
 import CampaignDetails from './pages/CampaignDetails';
 import Cart from './pages/Cart';
+import CompareProducts from './pages/CompareProducts';
 import Certificates from './pages/Certificates';
+import Childcare from './pages/Childcare';
 import Challenges from './pages/Challenges';
 import CandidateProfile from './pages/CandidateProfile';
 import CompanyProfile from './pages/CompanyProfile';
@@ -82,15 +85,19 @@ import CreateCourse from './pages/CreateCourse';
 import CreateEvent from './pages/CreateEvent';
 import CreatePetition from './pages/CreatePetition';
 import CreatorTools from './pages/CreatorTools';
+import CreatorContracts from './pages/CreatorContracts';
 import Crowdfunding from './pages/Crowdfunding';
+import Covoiturage from './pages/Covoiturage';
 import DirectCall from './pages/DirectCall';
 import DirectMessage from './pages/DirectMessage';
 import Discover from './pages/Discover';
 import DisputeCenter from './pages/DisputeCenter';
 import FAQ from './pages/FAQ';
 import Favorites from './pages/Favorites';
+import FeedPosts from './pages/FeedPosts';
 import Formations from './pages/Formations';
 import GroupChat from './pages/GroupChat';
+import GroupBuys from './pages/GroupBuys';
 import Health from './pages/Health';
 import Messages from './pages/MessagesMaliConnect';
 import Downloads from './pages/Downloads';
@@ -115,6 +122,7 @@ import Lives from './pages/Lives';
 import LoanDetails from './pages/LoanDetails';
 import Marketplace from './pages/Marketplace';
 import MatchingCenter from './pages/MatchingCenter';
+import LoyaltyPoints from './pages/LoyaltyPoints';
 import MarketplaceMap from './pages/MarketplaceMap';
 import Microcredit from './pages/Microcredit';
 import MobileMoneyPayment from './pages/MobileMoneyPayment';
@@ -163,6 +171,7 @@ import StartLive from './pages/StartLive';
 import Stories from './pages/Stories';
 import Support from './pages/Support';
 import UserVerification from './pages/UserVerification';
+import VehicleRental from './pages/VehicleRental';
 import VerifyCertificate from './pages/VerifyCertificate';
 import VideoView from './pages/VideoView';
 import Wallet from './pages/Wallet';
@@ -171,6 +180,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import DataProtection from './pages/DataProtection';
 import PrivacySettings from './pages/PrivacySettings';
 import TermsOfService from './pages/TermsOfService';
+import TravelAlerts from './pages/TravelAlerts';
 import Landing from './pages/Landing';
 import Transport from './pages/Transport';
 import FoodDelivery from './pages/FoodDelivery';
@@ -211,6 +221,7 @@ export const PAGES = {
     "BecomeSeller": BecomeSeller,
     "AddService": AddService,
     "Addresses": Addresses,
+    "Activity": Activity,
     "AdminDashboard": AdminDashboard,
     "AdminPage": AdminPage,
     "Analytics": Analytics,
@@ -218,7 +229,9 @@ export const PAGES = {
     "BadgesProfile": BadgesProfile,
     "CampaignDetails": CampaignDetails,
     "Cart": Cart,
+    "CompareProducts": CompareProducts,
     "Certificates": Certificates,
+    "Childcare": Childcare,
     "Challenges": Challenges,
     "CandidateProfile": CandidateProfile,
     "CompanyProfile": CompanyProfile,
@@ -238,15 +251,19 @@ export const PAGES = {
     "CreateEvent": CreateEvent,
     "CreatePetition": CreatePetition,
     "CreatorTools": CreatorTools,
+    "CreatorContracts": CreatorContracts,
     "Crowdfunding": Crowdfunding,
+    "Covoiturage": Covoiturage,
     "DirectCall": DirectCall,
     "DirectMessage": DirectMessage,
     "Discover": Discover,
     "DisputeCenter": DisputeCenter,
     "FAQ": FAQ,
     "Favorites": Favorites,
+    "FeedPosts": FeedPosts,
     "Formations": Formations,
     "GroupChat": GroupChat,
+    "GroupBuys": GroupBuys,
     "Health": Health,
     "Messages": Messages,
     "Downloads": Downloads,
@@ -271,6 +288,7 @@ export const PAGES = {
     "LoanDetails": LoanDetails,
     "Marketplace": Marketplace,
     "MatchingCenter": MatchingCenter,
+    "LoyaltyPoints": LoyaltyPoints,
     "MarketplaceMap": MarketplaceMap,
     "Microcredit": Microcredit,
     "MobileMoneyPayment": MobileMoneyPayment,
@@ -319,6 +337,7 @@ export const PAGES = {
     "Stories": Stories,
     "Support": Support,
     "UserVerification": UserVerification,
+    "VehicleRental": VehicleRental,
     "VerifyCertificate": VerifyCertificate,
     "VideoView": VideoView,
     "Wallet": Wallet,
@@ -327,6 +346,7 @@ export const PAGES = {
     "DataProtection": DataProtection,
     "PrivacySettings": PrivacySettings,
     "TermsOfService": TermsOfService,
+    "TravelAlerts": TravelAlerts,
     "Landing": Landing,
     "Transport": Transport,
     "FoodDelivery": FoodDelivery,

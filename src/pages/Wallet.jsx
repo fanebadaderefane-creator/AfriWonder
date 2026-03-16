@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, CreditCard, Clock, CheckCircle2, Loader2, Plus, ArrowLeft, Coins, History } from 'lucide-react';
+import { TrendingUp, CreditCard, Clock, CheckCircle2, Loader2, Plus, ArrowLeft, Coins, History, Send, Lock } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -24,7 +24,7 @@ const COIN_PACKAGES = [
 
 export default function WalletPage() {
   const navigate = useNavigate();
-  const [walletTab, setWalletTab] = useState('coins'); // 'coins' | 'history'
+  const [walletTab, setWalletTab] = useState('coins'); // 'coins' | 'history' | 'virtual-cards' | 'transfers'
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [withdrawData, setWithdrawData] = useState({
     amount: '',
@@ -173,20 +173,34 @@ export default function WalletPage() {
         </div>
 
         {/* Onglets Acheter des Coins | Historique */}
-        <div className="flex gap-2 mb-6">
+        <div className="flex gap-2 mb-6 flex-wrap">
           <button
             onClick={() => setWalletTab('coins')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all ${walletTab === 'coins' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white' : 'bg-gray-800 text-gray-400'}`}
+            className={`flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all ${walletTab === 'coins' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white' : 'bg-gray-800 text-gray-400'}`}
           >
             <Coins className="w-4 h-4" />
-            Acheter des Coins
+            Coins
           </button>
           <button
             onClick={() => setWalletTab('history')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all ${walletTab === 'history' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white' : 'bg-gray-800 text-gray-400'}`}
+            className={`flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all ${walletTab === 'history' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white' : 'bg-gray-800 text-gray-400'}`}
           >
             <History className="w-4 h-4" />
             Historique
+          </button>
+          <button
+            onClick={() => setWalletTab('virtual-cards')}
+            className={`flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all ${walletTab === 'virtual-cards' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white' : 'bg-gray-800 text-gray-400'}`}
+          >
+            <CreditCard className="w-4 h-4" />
+            Cartes
+          </button>
+          <button
+            onClick={() => setWalletTab('transfers')}
+            className={`flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all ${walletTab === 'transfers' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white' : 'bg-gray-800 text-gray-400'}`}
+          >
+            <Send className="w-4 h-4" />
+            Transferts
           </button>
         </div>
 
@@ -243,6 +257,16 @@ export default function WalletPage() {
               </div>
             ))}
           </div>
+        )}
+
+        {/* CPO 5.9 — Cartes virtuelles (complet) */}
+        {walletTab === 'virtual-cards' && (
+          <WalletVirtualCards />
+        )}
+
+        {/* CPO 5.23 + 5.39 — Transferts internationaux + Préautorisations */}
+        {walletTab === 'transfers' && (
+          <WalletTransfersAndPreauths />
         )}
 
         {wallet?.available_balance > 0 && (
@@ -381,5 +405,207 @@ export default function WalletPage() {
 
       </div>
     </motion.div>
+  );
+}
+
+// CPO 5.9 — Cartes virtuelles (liste, créer, révoquer)
+function WalletVirtualCards() {
+  const queryClient = useQueryClient();
+  const { data: cards = [], isLoading } = useQuery({
+    queryKey: ['me-virtual-cards'],
+    queryFn: () => api.me.getVirtualCards(),
+  });
+  const createMutation = useMutation({
+    mutationFn: (opts) => api.me.createVirtualCard(opts),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me-virtual-cards'] });
+      toast.success('Carte créée');
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+  });
+  const revokeMutation = useMutation({
+    mutationFn: (id) => api.me.revokeVirtualCard(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me-virtual-cards'] });
+      toast.success('Carte bloquée');
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+  });
+  const formatExpiry = (d) => (d ? new Date(d).toLocaleDateString('fr-FR', { month: '2-digit', year: '2-digit' }) : '');
+  return (
+    <div className="space-y-4 mb-6">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-white">Mes cartes virtuelles</h3>
+        <Button
+          size="sm"
+          className="bg-blue-600 hover:bg-blue-700 rounded-xl"
+          onClick={() => createMutation.mutate({})}
+          disabled={createMutation.isPending}
+        >
+          {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4 mr-1" />}
+          Nouvelle carte
+        </Button>
+      </div>
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-blue-400" /></div>
+      ) : cards.length === 0 ? (
+        <Card className="border-gray-700 bg-gray-800/80 text-white">
+          <CardContent className="p-6 text-center">
+            <CreditCard className="w-12 h-12 text-gray-500 mx-auto mb-2" />
+            <p className="text-gray-400">Aucune carte. Cliquez sur « Nouvelle carte » pour en générer une.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {cards.map((card) => (
+            <Card key={card.id} className="border-gray-700 bg-gray-800/80 text-white">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                    <CreditCard className="w-5 h-5 text-blue-300" />
+                  </div>
+                  <div>
+                    <p className="font-medium">•••• •••• •••• {card.last4}</p>
+                    <p className="text-xs text-gray-500">Expire {formatExpiry(card.expires_at)} · {card.status}</p>
+                  </div>
+                </div>
+                {card.status === 'active' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-red-500/50 text-red-400 hover:bg-red-500/10 rounded-lg"
+                    onClick={() => revokeMutation.mutate(card.id)}
+                    disabled={revokeMutation.isPending}
+                  >
+                    Bloquer
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// CPO 5.23 + 5.39 — Transferts internationaux + Préautorisations
+function WalletTransfersAndPreauths() {
+  const queryClient = useQueryClient();
+  const [showTransferForm, setShowTransferForm] = useState(false);
+  const { data: transfersData, isLoading: loadingTransfers } = useQuery({
+    queryKey: ['me-international-transfers'],
+    queryFn: () => api.me.getInternationalTransfers({ page: 1, limit: 20 }),
+  });
+  const { data: preauthsData, isLoading: loadingPreauths } = useQuery({
+    queryKey: ['me-preauths'],
+    queryFn: () => api.me.getPreauths({ page: 1, limit: 20 }),
+  });
+  const transfers = transfersData?.items ?? [];
+  const preauths = preauthsData?.items ?? [];
+  const createTransferMutation = useMutation({
+    mutationFn: (payload) => api.me.createInternationalTransfer(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me-international-transfers'] });
+      setShowTransferForm(false);
+      toast.success('Demande de transfert enregistrée');
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+  });
+  const capturePreauthMutation = useMutation({
+    mutationFn: (id) => api.me.capturePreauth(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me-preauths'] });
+      toast.success('Préautorisation capturée');
+    },
+  });
+  const cancelPreauthMutation = useMutation({
+    mutationFn: (id) => api.me.cancelPreauth(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me-preauths'] });
+      toast.success('Préautorisation annulée');
+    },
+  });
+  const [transferForm, setTransferForm] = useState({
+    recipient_name: '',
+    recipient_country: '',
+    recipient_iban: '',
+    amount: '',
+    currency: 'XOF',
+  });
+  const handleCreateTransfer = (e) => {
+    e.preventDefault();
+    const amount = parseFloat(transferForm.amount);
+    if (!transferForm.recipient_name?.trim() || !transferForm.recipient_country?.trim() || !amount || amount <= 0) {
+      toast.error('Nom, pays et montant requis');
+      return;
+    }
+    createTransferMutation.mutate({
+      recipient_name: transferForm.recipient_name.trim(),
+      recipient_country: transferForm.recipient_country.trim(),
+      recipient_iban: transferForm.recipient_iban?.trim() || undefined,
+      amount,
+      currency: transferForm.currency,
+    });
+  };
+  return (
+    <div className="space-y-6 mb-6">
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-semibold text-white">Transferts internationaux (CPO 5.23)</h3>
+          <Button size="sm" className="rounded-xl bg-blue-600 hover:bg-blue-700" onClick={() => setShowTransferForm(!showTransferForm)}>
+            {showTransferForm ? 'Fermer' : 'Nouveau transfert'}
+          </Button>
+        </div>
+        {showTransferForm && (
+          <Card className="mb-4 border-gray-700 bg-gray-800 text-white">
+            <CardContent className="p-4">
+              <form onSubmit={handleCreateTransfer} className="space-y-3">
+                <Input placeholder="Nom du bénéficiaire" value={transferForm.recipient_name} onChange={(e) => setTransferForm((p) => ({ ...p, recipient_name: e.target.value }))} className="rounded-lg bg-gray-900 border-gray-600" />
+                <Input placeholder="Pays (ex. Sénégal)" value={transferForm.recipient_country} onChange={(e) => setTransferForm((p) => ({ ...p, recipient_country: e.target.value }))} className="rounded-lg bg-gray-900 border-gray-600" />
+                <Input placeholder="IBAN (optionnel)" value={transferForm.recipient_iban} onChange={(e) => setTransferForm((p) => ({ ...p, recipient_iban: e.target.value }))} className="rounded-lg bg-gray-900 border-gray-600" />
+                <Input type="number" placeholder="Montant" value={transferForm.amount} onChange={(e) => setTransferForm((p) => ({ ...p, amount: e.target.value }))} className="rounded-lg bg-gray-900 border-gray-600" />
+                <Button type="submit" className="rounded-xl w-full" disabled={createTransferMutation.isPending}>
+                  {createTransferMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Envoyer la demande'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+        {loadingTransfers ? <div className="flex justify-center py-4"><Loader2 className="w-6 h-6 animate-spin text-blue-400" /></div> : transfers.length === 0 ? <p className="text-gray-500 text-sm">Aucun transfert.</p> : (
+          <div className="space-y-2">
+            {transfers.map((t) => (
+              <div key={t.id} className="flex justify-between items-center p-3 rounded-xl bg-gray-800/80 border border-gray-700">
+                <div>
+                  <p className="text-white font-medium">{t.recipient_name} · {t.recipient_country}</p>
+                  <p className="text-xs text-gray-500">{Number(t.amount).toLocaleString()} {t.currency} · {t.status}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div>
+        <h3 className="font-semibold text-white mb-2">Préautorisations (CPO 5.39)</h3>
+        {loadingPreauths ? <div className="flex justify-center py-4"><Loader2 className="w-6 h-6 animate-spin text-blue-400" /></div> : preauths.length === 0 ? <p className="text-gray-500 text-sm">Aucune préautorisation.</p> : (
+          <div className="space-y-2">
+            {preauths.map((p) => (
+              <div key={p.id} className="flex justify-between items-center p-3 rounded-xl bg-gray-800/80 border border-gray-700">
+                <div>
+                  <p className="text-white font-medium">{Number(p.amount).toLocaleString()} {p.currency}</p>
+                  <p className="text-xs text-gray-500">{p.status} · {p.reference || p.order_id || ''}</p>
+                </div>
+                {p.status === 'pending' && (
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" className="rounded-lg text-green-400 border-green-500/50" onClick={() => capturePreauthMutation.mutate(p.id)} disabled={capturePreauthMutation.isPending}>Capturer</Button>
+                    <Button size="sm" variant="outline" className="rounded-lg text-red-400 border-red-500/50" onClick={() => cancelPreauthMutation.mutate(p.id)} disabled={cancelPreauthMutation.isPending}>Annuler</Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

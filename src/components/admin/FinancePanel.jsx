@@ -4,7 +4,7 @@ import { api } from '@/api/expressClient';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { DollarSign, Wallet, AlertTriangle, Lock, Unlock, Radio, ChevronLeft, ChevronRight, Copy, Banknote, Check, TrendingUp } from 'lucide-react';
+import { DollarSign, Wallet, AlertTriangle, Lock, Unlock, Radio, ChevronLeft, ChevronRight, Copy, Banknote, Check, TrendingUp, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function FinancePanel() {
@@ -13,6 +13,7 @@ export default function FinancePanel() {
   const [liveRevenuePage, setLiveRevenuePage] = useState(1);
   const [withdrawalsPage, setWithdrawalsPage] = useState(1);
   const [processForm, setProcessForm] = useState({ id: null, transaction_reference: '', notes: '' });
+  const [amlPage, setAmlPage] = useState(1);
   const to = new Date();
   const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
   const [commissionForm, setCommissionForm] = useState({
@@ -44,6 +45,10 @@ export default function FinancePanel() {
   const { data: viralBonuses, isLoading: loadingViralBonuses } = useQuery({
     queryKey: ['admin-viral-bonuses'],
     queryFn: () => api.viralBonuses.getPending(),
+  });
+  const { data: amlFlags, isLoading: loadingAml } = useQuery({
+    queryKey: ['admin-aml-flags', amlPage],
+    queryFn: () => api.admin.getAmlFlags({ page: amlPage, limit: 20 }),
   });
 
   React.useEffect(() => {
@@ -147,6 +152,90 @@ export default function FinancePanel() {
 
   return (
     <div className="space-y-6">
+      <Card className="p-6 bg-white/10 backdrop-blur border-white/20 text-white">
+        <h3 className="font-bold mb-4 flex items-center gap-2">
+          <ShieldAlert className="w-5 h-5 text-amber-400" /> Conformité AML / CFT — transactions flaggées
+        </h3>
+        <p className="text-sm text-white/70 mb-4">
+          Seuil automatique&nbsp;: <span className="font-mono">{(Number(import.meta.env.VITE_AML_THRESHOLD_XOF) || 1_000_000).toLocaleString()} XOF</span>. Vérifiez les transactions marquées
+          comme suspectes (CPO 5.40, 11.22).
+        </p>
+        {loadingAml ? (
+          <p className="text-white/60 text-sm">Chargement des flags AML…</p>
+        ) : (
+          <>
+            <div className="space-y-2 max-h-72 overflow-y-auto mb-3">
+              {(!amlFlags || (amlFlags.items ?? []).length === 0) && (
+                <p className="text-white/60 text-sm">Aucune transaction flaggée en attente.</p>
+              )}
+              {(amlFlags?.items ?? []).map((f) => (
+                <div key={f.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-white/5 border border-white/15 text-sm gap-2">
+                  <div>
+                    <p className="font-semibold">
+                      Utilisateur&nbsp;
+                      <span className="font-mono">{f.user_id?.slice(0, 8)}…</span>
+                      <Badge variant="outline" className="ml-2 border-amber-400/50 text-amber-200 text-[10px] uppercase tracking-wide">
+                        {f.reference_type}
+                      </Badge>
+                    </p>
+                    <p className="text-white/80 mt-1">
+                      Montant&nbsp;: <span className="font-mono">{(f.amount ?? 0).toLocaleString()} {f.currency || 'XOF'}</span>
+                    </p>
+                    <p className="text-white/60 text-xs mt-1">
+                      Raison&nbsp;: {f.reason || 'amount_threshold'} • Créé le {new Date(f.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-white/30 text-white/80"
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(f.user_id || '');
+                        toast.success('ID utilisateur copié pour analyse AML');
+                      }}
+                    >
+                      <Copy className="w-3 h-3 mr-1" />
+                      Copier user_id
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {amlFlags && amlFlags.pagination && amlFlags.pagination.totalPages > 1 && (
+              <div className="flex items-center justify-between text-xs text-white/70">
+                <span>
+                  Page {amlFlags.pagination.page} / {amlFlags.pagination.totalPages} • {amlFlags.pagination.total} flags
+                </span>
+                <div className="flex gap-1">
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="border-white/30 text-white/80"
+                    disabled={amlFlags.pagination.page <= 1}
+                    onClick={() => setAmlPage((p) => Math.max(1, p - 1))}
+                    type="button"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="border-white/30 text-white/80"
+                    disabled={amlFlags.pagination.page >= amlFlags.pagination.totalPages}
+                    onClick={() => setAmlPage((p) => (amlFlags.pagination ? Math.min(amlFlags.pagination.totalPages, p + 1) : p + 1))}
+                    type="button"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+
       <Card className="p-6 bg-white/10 backdrop-blur border-white/20 text-white">
         <h3 className="font-bold mb-4 flex items-center gap-2"><DollarSign className="w-5 h-5" /> Controle financier</h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">

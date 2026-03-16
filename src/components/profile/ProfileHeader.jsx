@@ -2,7 +2,7 @@ import React from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { BadgeCheck, Share2, MapPin, Link as LinkIcon, Edit2, ShoppingBag, Wallet, Crown } from 'lucide-react';
+import { BadgeCheck, Share2, MapPin, Link as LinkIcon, Edit2, ShoppingBag, Wallet, Crown, Camera, UserPlus, UserMinus } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { api } from '@/api/expressClient';
 import { toast } from "sonner";
@@ -23,7 +23,10 @@ export default function ProfileHeader({
   onStatsClick,
   onFollowersClick,
   onFollowingClick,
-  onSubscriptionTiers
+  onSubscriptionTiers,
+  isCloseFriend = false,
+  onAddCloseFriend,
+  onRemoveCloseFriend,
 }) {
   const queryClient = useQueryClient();
   
@@ -31,6 +34,30 @@ export default function ProfileHeader({
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
     if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
     return num?.toString() || '0';
+  };
+
+  const coverUrl = user?.profile_cover_url;
+  const handleCoverClick = () => {
+    if (!isOwnProfile) return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = FILE_ACCEPT_IMAGES;
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const result = await api.upload.image(file);
+        const file_url = result?.file_url || result?.data?.file_url;
+        if (!file_url) throw new Error('Pas d\'URL reçue');
+        await api.auth.updateMe({ profile_cover_url: file_url });
+        queryClient.invalidateQueries({ queryKey: ['videos'] });
+        queryClient.invalidateQueries({ queryKey: ['profile-videos'] });
+        window.location.reload();
+      } catch (_err) {
+        console.error('Upload cover error', _err);
+      }
+    };
+    input.click();
   };
 
   const handleAvatarClick = () => {
@@ -68,8 +95,25 @@ export default function ProfileHeader({
 
   return (
     <div className="bg-white">
-      {/* Cover gradient — pas de bouton Settings ici : évite doublon avec le menu global (hamburger) en haut à droite */}
-      <div className="h-24 bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-600 relative" />
+      {/* Bannière de profil (CPO 1.6) — image ou gradient ; clic = upload si propre profil */}
+      <div
+        className={cn(
+          'h-24 relative bg-cover bg-center',
+          !coverUrl && 'bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-600'
+        )}
+        style={coverUrl ? { backgroundImage: `url(${coverUrl})` } : undefined}
+      >
+        {isOwnProfile && (
+          <button
+            type="button"
+            onClick={handleCoverClick}
+            className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 hover:opacity-100 transition-opacity rounded-b-lg"
+            aria-label="Changer la bannière"
+          >
+            <Camera className="w-6 h-6 text-white" />
+          </button>
+        )}
+      </div>
 
       <div className="px-4 pb-4">
         {/* Avatar */}
@@ -222,6 +266,18 @@ export default function ProfileHeader({
               >
                 Message
               </Button>
+              {(onAddCloseFriend || onRemoveCloseFriend) && (
+                <Button
+                  onClick={isCloseFriend ? onRemoveCloseFriend : onAddCloseFriend}
+                  variant="outline"
+                  size="icon"
+                  className="rounded-xl border-gray-200"
+                  aria-label={isCloseFriend ? 'Retirer des proches' : 'Ajouter aux proches'}
+                  title={isCloseFriend ? 'Retirer des proches' : 'Ajouter aux proches'}
+                >
+                  {isCloseFriend ? <UserMinus className="w-5 h-5 text-gray-600" /> : <UserPlus className="w-5 h-5 text-gray-600" />}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="icon"

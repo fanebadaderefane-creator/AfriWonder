@@ -5,25 +5,29 @@ export const useNetworkStatus = () => {
   const [isSlowConnection, setIsSlowConnection] = useState(false);
 
   useEffect(() => {
-    // Monitor online/offline
-    window.addEventListener('online', () => setIsOnline(true));
-    window.addEventListener('offline', () => setIsOnline(false));
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
 
-    // Detect slow connection
+    let connectionCleanup;
     if ('connection' in navigator) {
       const connection = navigator.connection;
       const isSlowType = ['slow-2g', '2g', '3g'].includes(connection.effectiveType);
       setIsSlowConnection(isSlowType || connection.saveData);
 
-      connection.addEventListener('change', () => {
-        const isSlowType = ['slow-2g', '2g', '3g'].includes(connection.effectiveType);
-        setIsSlowConnection(isSlowType || connection.saveData);
-      });
+      const onConnectionChange = () => {
+        const slow = ['slow-2g', '2g', '3g'].includes(connection.effectiveType) || connection.saveData;
+        setIsSlowConnection(slow);
+      };
+      connection.addEventListener('change', onConnectionChange);
+      connectionCleanup = () => connection.removeEventListener('change', onConnectionChange);
     }
 
     return () => {
-      window.removeEventListener('online', () => setIsOnline(true));
-      window.removeEventListener('offline', () => setIsOnline(false));
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+      if (connectionCleanup) connectionCleanup();
     };
   }, []);
 

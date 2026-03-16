@@ -44,6 +44,8 @@ import subscriptionsRoutes from './routes/subscriptions.routes.js';
 import marketplaceSubscriptionRoutes from './routes/marketplaceSubscription.routes.js';
 import microcreditRoutes from './routes/microcredit.routes.js';
 import crowdfundingRoutes from './routes/crowdfunding.routes.js';
+import groupBuyRoutes from './routes/groupBuy.routes.js';
+import rideShareRoutes from './routes/rideShare.routes.js';
 import coursesRoutes from './routes/courses.routes.js';
 import eventsRoutes from './routes/events.routes.js';
 import challengesRoutes from './routes/challenges.routes.js';
@@ -108,6 +110,18 @@ import storiesRoutes from './routes/stories.routes.js';
 import wishlistRoutes from './routes/wishlist.routes.js';
 import adsRoutes from './routes/ads.routes.js';
 import feedRoutes from './routes/feed.routes.js';
+import postsRoutes from './routes/posts.routes.js';
+import paymentRequestRoutes from './routes/paymentRequest.routes.js';
+import businessPageRoutes from './routes/businessPage.routes.js';
+import chatbotRoutes from './routes/chatbot.routes.js';
+import filtersRoutes from './routes/filters.routes.js';
+import stickersRoutes from './routes/stickers.routes.js';
+import groupCallsRoutes from './routes/groupCalls.routes.js';
+import meRoutes from './routes/me.routes.js';
+import loyaltyRoutes from './routes/loyalty.routes.js';
+import creatorsRoutes from './routes/creators.routes.js';
+import brandDealsRoutes from './routes/brandDeals.routes.js';
+import publicServicesRoutes from './routes/publicServices.routes.js';
 import creatorSupportRoutes from './routes/creatorSupport.routes.js';
 import creatorSubscriptionRoutes from './routes/creatorSubscription.routes.js';
 import sellerSubscriptionRoutes from './routes/sellerSubscription.routes.js';
@@ -139,7 +153,6 @@ import prisma from './config/database.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './swagger.js';
 import * as Sentry from '@sentry/node';
-import commissionSettingsService from './services/commissionSettings.service.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -170,7 +183,7 @@ const corsOptions: cors.CorsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'baggage', 'sentry-trace', 'X-Device-Id', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'baggage', 'sentry-trace', 'X-Device-Id', 'X-Requested-With', 'X-Webhook-Secret', 'X-Payment-Webhook-Secret', 'X-Cron-Secret', 'X-Live-Cleanup-Secret'],
 };
 app.options('*', cors(corsOptions));
 app.use(cors(corsOptions));
@@ -179,8 +192,7 @@ app.use(attachRequestId);
 app.use(httpMetricsMiddleware);
 app.use(apiRequestTimeoutMiddleware); // 30s timeout API (hors upload/webhooks) — stabilité
 
-// Charger les overrides de commissions au demarrage (sans bloquer le boot)
-commissionSettingsService.loadFromDb().catch(() => {});
+// Commissions : chargement différé après $connect() (voir index.ts) pour éviter erreurs DB au boot
 
 // Sentry (Express) — l’instrumentation HTTP/Tracing est configurée dans initSentry()
 
@@ -399,6 +411,20 @@ app.use('/api/stories', storiesRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/ads', adsRoutes);
 app.use('/api/feed', feedRoutes);
+app.use('/api/posts', postsRoutes);
+app.use('/api/payment-request', paymentRequestRoutes);
+app.use('/api/business-page', businessPageRoutes);
+app.use('/api/chatbot', chatbotRoutes);
+app.use('/api/filters', filtersRoutes);
+app.use('/api/stickers', stickersRoutes);
+app.use('/api/group-calls', groupCallsRoutes);
+app.use('/api/me', meRoutes);
+app.use('/api/group-buys', groupBuyRoutes);
+app.use('/api/ride-share', rideShareRoutes);
+app.use('/api/loyalty', loyaltyRoutes);
+app.use('/api/creators', creatorsRoutes);
+app.use('/api/brand-deals', brandDealsRoutes);
+app.use('/api/public-services', publicServicesRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/travel', travelRoutes);
 app.use('/api/cloud', cloudRoutes);

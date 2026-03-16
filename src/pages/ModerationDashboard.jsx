@@ -235,7 +235,7 @@ export default function ModerationDashboard() {
                               reviewMutation.mutate({
                                 reportId: report.id,
                                 action: "warn_user",
-                                moderatorId: user.id,
+                                moderatorId: user?.id,
                                 notes: "Avertissement automatique"
                               });
                             }}
@@ -250,7 +250,7 @@ export default function ModerationDashboard() {
                               reviewMutation.mutate({
                                 reportId: report.id,
                                 action: "ban_user",
-                                moderatorId: user.id,
+                                moderatorId: user?.id,
                                 notes: "Banni pour violation"
                               });
                             }}
@@ -265,7 +265,7 @@ export default function ModerationDashboard() {
                               reviewMutation.mutate({
                                 reportId: report.id,
                                 action: "reject",
-                                moderatorId: user.id,
+                                moderatorId: user?.id,
                                 notes: "Pas de violation détectée"
                               });
                             }}

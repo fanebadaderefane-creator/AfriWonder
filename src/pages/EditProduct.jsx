@@ -48,6 +48,8 @@ export default function EditProduct() {
     negotiable_price: false,
     valid_until: '',
     weight_kg: '',
+    is_preorder: false,
+    preorder_available_at: '',
   });
 
   useEffect(() => {
@@ -73,6 +75,8 @@ export default function EditProduct() {
         negotiable_price: !!product.negotiable_price,
         valid_until: product.valid_until ? new Date(product.valid_until).toISOString().split('T')[0] : '',
         weight_kg: product.weight_kg != null ? String(product.weight_kg) : '',
+        is_preorder: !!product.is_preorder,
+        preorder_available_at: product.preorder_available_at ? new Date(product.preorder_available_at).toISOString().split('T')[0] : '',
       });
       setImages(Array.isArray(product.images) ? [...product.images] : (product.image_url ? [product.image_url] : []));
     }
@@ -110,6 +114,8 @@ export default function EditProduct() {
       negotiable_price: formData.negotiable_price,
       valid_until: formData.valid_until ? new Date(formData.valid_until).toISOString() : undefined,
       weight_kg: formData.weight_kg ? parseFloat(formData.weight_kg) : undefined,
+      is_preorder: formData.is_preorder,
+      preorder_available_at: formData.is_preorder && formData.preorder_available_at ? new Date(formData.preorder_available_at).toISOString() : null,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product', productId] });
@@ -257,6 +263,17 @@ export default function EditProduct() {
           <Label>Validité annonce (optionnel)</Label>
           <Input type="date" value={formData.valid_until} onChange={(e) => setFormData({ ...formData, valid_until: e.target.value })} className="mt-1" />
         </div>
+
+        <label className="flex items-center gap-3 p-3 rounded-xl border cursor-pointer">
+          <input type="checkbox" checked={formData.is_preorder} onChange={(e) => setFormData({ ...formData, is_preorder: e.target.checked })} className="w-4 h-4" />
+          <span>Précommande (paiement à la sortie)</span>
+        </label>
+        {formData.is_preorder && (
+          <div>
+            <Label>Date de disponibilité prévue</Label>
+            <Input type="date" value={formData.preorder_available_at} onChange={(e) => setFormData({ ...formData, preorder_available_at: e.target.value })} className="mt-1" />
+          </div>
+        )}
 
         <div>
           <Label>Poids (kg, livraison)</Label>

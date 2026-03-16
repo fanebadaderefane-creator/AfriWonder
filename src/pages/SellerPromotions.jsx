@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Plus, Zap, Star, Eye } from 'lucide-react';
+import { ArrowLeft, Plus, Zap, Star, Eye, Gift } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from '@/lib/utils';
 import { toast } from "sonner";
@@ -39,14 +39,46 @@ export default function SellerPromotions() {
 
   const { data: products = [] } = useQuery({
     queryKey: ['seller-products', user?.id],
-    queryFn: () => api.products.list({ seller_id: user.id }),
+    queryFn: () => api.products.list({ seller_id: user?.id }),
     enabled: !!user?.id
   });
 
   const { data: promotions = [] } = useQuery({
     queryKey: ['seller-promotions', user?.id],
-    queryFn: () => api.entities.ProductPromotion.filter({ seller_id: user.id }, '-created_date', 50),
+    queryFn: () => api.entities.ProductPromotion.filter({ seller_id: user?.id }, '-created_date', 50),
     enabled: !!user?.id
+  });
+
+  const { data: loyaltyProgram } = useQuery({
+    queryKey: ['seller-loyalty', user?.id],
+    queryFn: () => api.seller.getLoyalty(),
+    enabled: !!user?.id,
+  });
+  const [loyaltyForm, setLoyaltyForm] = useState({
+    points_per_purchase: 1,
+    reward_threshold: 100,
+    reward_type: 'discount',
+    reward_value: 10,
+    is_active: true,
+  });
+  useEffect(() => {
+    if (loyaltyProgram) {
+      setLoyaltyForm({
+        points_per_purchase: loyaltyProgram.points_per_purchase ?? 1,
+        reward_threshold: loyaltyProgram.reward_threshold ?? 100,
+        reward_type: loyaltyProgram.reward_type ?? 'discount',
+        reward_value: loyaltyProgram.reward_value ?? 10,
+        is_active: !!loyaltyProgram.is_active,
+      });
+    }
+  }, [loyaltyProgram]);
+  const updateLoyaltyMutation = useMutation({
+    mutationFn: () => api.seller.updateLoyalty(loyaltyForm),
+    onSuccess: () => {
+      toast.success('Programme fidélité mis à jour');
+      queryClient.invalidateQueries({ queryKey: ['seller-loyalty'] });
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
   });
 
   const createPromoMutation = useMutation({
@@ -60,7 +92,7 @@ export default function SellerPromotions() {
 
       const data = {
         product_id: promoData.product_id,
-        seller_id: user.id,
+        seller_id: user?.id,
         type: promoData.type,
         starts_at: starts_at.toISOString(),
         ends_at: ends_at.toISOString(),
@@ -140,6 +172,36 @@ export default function SellerPromotions() {
             <p className="text-2xl font-bold">{stats.totalImpressions}</p>
           </Card>
         </div>
+
+        {/* CPO 10.21 — Programme fidélité */}
+        <Card className="p-4">
+          <h3 className="font-semibold flex items-center gap-2 mb-3">
+            <Gift className="w-4 h-4 text-amber-500" />
+            Programme fidélité
+          </h3>
+          <p className="text-sm text-gray-500 mb-3">Points par achat (ex: 1 point / 1000 FCFA), récompense au seuil.</p>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-gray-500">Points par 1000 FCFA d'achat</label>
+              <Input type="number" min="0" step="0.5" value={loyaltyForm.points_per_purchase} onChange={(e) => setLoyaltyForm((f) => ({ ...f, points_per_purchase: parseFloat(e.target.value) || 0 }))} className="mt-1" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Seuil pour récompense (points)</label>
+              <Input type="number" min="1" value={loyaltyForm.reward_threshold} onChange={(e) => setLoyaltyForm((f) => ({ ...f, reward_threshold: parseInt(e.target.value, 10) || 100 }))} className="mt-1" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Récompense : réduction (%)</label>
+              <Input type="number" min="0" max="100" value={loyaltyForm.reward_value} onChange={(e) => setLoyaltyForm((f) => ({ ...f, reward_value: parseFloat(e.target.value) || 0 }))} className="mt-1" />
+            </div>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={loyaltyForm.is_active} onChange={(e) => setLoyaltyForm((f) => ({ ...f, is_active: e.target.checked }))} />
+              <span className="text-sm">Programme actif</span>
+            </label>
+            <Button onClick={() => updateLoyaltyMutation.mutate()} disabled={updateLoyaltyMutation.isPending}>
+              Enregistrer
+            </Button>
+          </div>
+        </Card>
 
         {/* Promotions List */}
         <div className="space-y-3">

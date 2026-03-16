@@ -206,7 +206,7 @@ export default function RealEstate() {
       api.properties.list(params).then((r) => {
         setProperties(r?.properties ?? []);
         setPagination(r?.pagination ?? {});
-      });
+      }).catch((err) => toast.error(err?.response?.data?.message || err?.message || 'Erreur chargement annonces'));
     } catch (err) {
       toast.error(err?.response?.data?.message || err?.message || 'Erreur lors de l\'envoi');
     } finally {

@@ -2,6 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Self‑hosted font pour réduire la dépendance CDN et activer font-display: swap */
+@font-face {
+  font-family: 'AfriWonderSans';
+  src: url('/fonts/afriwonder-sans-regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'AfriWonderSans';
+  src: url('/fonts/afriwonder-sans-semibold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -38,7 +55,7 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'AfriWonderSans', system-ui, -apple-system, sans-serif;
     
     /* Improve scrolling performance */
     -webkit-font-smoothing: antialiased;
@@ -70,7 +87,7 @@ button, [role="button"], a {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Fix for iOS input zoom */
+/* Fix for iOS input zoom + enforce readable text colors on mobile/desktop PWA */
 input[type="text"],
 input[type="email"],
 input[type="number"],
@@ -80,6 +97,37 @@ textarea,
 select {
   font-size: 16px !important;
   -webkit-autofill: none;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827; /* override Safari/Chrome mobile */
+  background-color: #ffffff !important;
+  caret-color: #111827;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #6b7280 !important;
+  -webkit-text-fill-color: #6b7280;
+  opacity: 1;
+}
+
+/* Force light form controls even when l’OS est en mode sombre (PWA mobile) */
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #020617;
+    color: #e5e7eb;
+  }
+
+  input,
+  textarea,
+  select {
+    background-color: #ffffff;
+    color: #111827;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #9ca3af;
+  }
 }
 
 /* Responsive video container */

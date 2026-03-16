@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../config/database.js';
+import { authenticate, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -50,10 +51,10 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/music
+ * POST /api/music — création de piste (authentifié)
  * Body: title, artist, album?, duration, audio_url, cover_url?, genre?
  */
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { title, artist, album, duration, audio_url, cover_url, genre } = req.body;
     if (!title || !artist || duration == null || !audio_url) {

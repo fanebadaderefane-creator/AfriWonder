@@ -18,6 +18,8 @@ import * as amlService from '../services/aml.service.js';
 import featureFlagService from '../services/featureFlag.service.js';
 import commissionSettingsService from '../services/commissionSettings.service.js';
 import * as monetizationService from '../services/monetization.service.js';
+import { invalidateBannedWordsCache } from '../services/bannedWord.service.js';
+import experimentService from '../services/experiment.service.js';
 
 const router = Router();
 
@@ -842,6 +844,97 @@ router.post('/monetization-requests/:id/reject', authenticate, requireAnyAdmin, 
     await auditLog(req, 'monetization_reject', 'monetization_request', id, { reason });
     res.json({ success: result.success, message: result.message });
   } catch (error: any) {
+    next(error);
+  }
+});
+
+// ——— Mots interdits (CPO 2.43) ———
+// GET /api/admin/banned-words
+router.get('/banned-words', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const list = await prisma.bannedWord.findMany({
+      orderBy: { word: 'asc' },
+    });
+    res.json({ success: true, data: list });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/admin/banned-words — body: { word: string }
+router.post('/banned-words', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const word = String(req.body?.word ?? '').trim().toLowerCase();
+    if (!word || word.length < 2) {
+      return res.status(400).json({ success: false, error: { message: 'word requis (min 2 caractères)' } });
+    }
+    const created = await prisma.bannedWord.upsert({
+      where: { word },
+      create: { word, is_active: true },
+      update: { is_active: true },
+    });
+    await auditLog(req, 'banned_word_create', 'BannedWord', created.id, { word });
+    invalidateBannedWordsCache();
+    res.status(201).json({ success: true, data: created });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// DELETE /api/admin/banned-words/:id
+router.delete('/banned-words/:id', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    await prisma.bannedWord.delete({ where: { id } });
+    await auditLog(req, 'banned_word_delete', 'BannedWord', id);
+    invalidateBannedWordsCache();
+    res.json({ success: true, message: 'Mot retiré' });
+  } catch (error: any) {
+    if (error?.code === 'P2025') return res.status(404).json({ success: false, error: { message: 'Non trouvé' } });
+    next(error);
+  }
+});
+
+// PATCH /api/admin/banned-words/:id — body: { is_active: boolean }
+router.patch('/banned-words/:id', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const is_active = req.body?.is_active === true || req.body?.is_active === false ? req.body.is_active : undefined;
+    if (is_active === undefined) {
+      return res.status(400).json({ success: false, error: { message: 'is_active (boolean) requis' } });
+    }
+    const updated = await prisma.bannedWord.update({
+      where: { id },
+      data: { is_active },
+    });
+    await auditLog(req, 'banned_word_update', 'BannedWord', id, { is_active });
+    invalidateBannedWordsCache();
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    if (error?.code === 'P2025') return res.status(404).json({ success: false, error: { message: 'Non trouvé' } });
+    next(error);
+  }
+});
+
+// CPO 11.36 — A/B testing : liste des expériences
+router.get('/experiments', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const list = await experimentService.listAdmin();
+    res.json({ success: true, data: list });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/admin/experiments — créer une expérience (key, name, description, variants: [{ variant_key, traffic_pct, config? }])
+router.post('/experiments', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const { key, name, description, variants } = req.body;
+    const experiment = await experimentService.createAdmin({ key, name, description, variants: variants || [] });
+    await auditLog(req, 'experiment_create', 'Experiment', experiment.id, { key: experiment.key });
+    res.status(201).json({ success: true, data: experiment });
+  } catch (error: any) {
+    if (error?.statusCode === 400) return res.status(400).json({ success: false, error: { message: error.message } });
     next(error);
   }
 });

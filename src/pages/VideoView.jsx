@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Smartphone } from 'lucide-react';
+import { ArrowLeft, Smartphone, Download } from 'lucide-react';
+import { cacheVideoForOffline, isVideoCached } from '@/lib/offlineVideoCache';
 import { Button } from "@/components/ui/button";
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
@@ -23,6 +24,8 @@ export default function VideoView() {
   const [isLiked, setIsLiked] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [isOpeningApp, setIsOpeningApp] = useState(false);
+  const [offlineCached, setOfflineCached] = useState(false);
+  const [offlineDownloading, setOfflineDownloading] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -62,6 +65,10 @@ export default function VideoView() {
     },
     enabled: !!videoId
   });
+
+  useEffect(() => {
+    if (videoId) isVideoCached(videoId).then(setOfflineCached);
+  }, [videoId]);
 
   // Fetch comments
   const { data: comments = [] } = useQuery({
@@ -145,6 +152,33 @@ export default function VideoView() {
     toast.success(`Tip de ${amount} FCFA envoyé !`);
   };
 
+  const handleDownloadOffline = async () => {
+    if (!videoId || !video?.download_allowed) {
+      toast.error('Téléchargement non autorisé pour cette vidéo');
+      return;
+    }
+    setOfflineDownloading(true);
+    try {
+      const { data } = await api.videos.getById(videoId).then((r) => (typeof r?.data !== 'undefined' ? r : { data: r }));
+      const downloadUrl = data?.download_url || data?.video_url || video?.video_url || video?.hls_url;
+      if (!downloadUrl) {
+        toast.error('URL de téléchargement indisponible');
+        return;
+      }
+      const ok = await cacheVideoForOffline(videoId, downloadUrl);
+      if (ok) {
+        setOfflineCached(true);
+        toast.success('Vidéo téléchargée pour lecture hors ligne');
+      } else {
+        toast.error('Échec du téléchargement (connexion ou CORS)');
+      }
+    } catch (e) {
+      toast.error(e?.message || 'Erreur');
+    } finally {
+      setOfflineDownloading(false);
+    }
+  };
+
   const handleOpenInApp = () => {
     if (!videoId) return;
     const deepLink = `afriwonder://video/${videoId}`;
@@ -197,8 +231,19 @@ export default function VideoView() {
         }}
       />
 
-      {/* CTA ouvrir dans l'app */}
-      <div className="absolute bottom-4 left-0 right-0 flex justify-center px-4 z-50">
+      {/* CTA ouvrir dans l'app + CPO 3.32 Télécharger pour hors ligne */}
+      <div className="absolute bottom-4 left-0 right-0 flex flex-col items-center gap-2 px-4 z-50">
+        {video?.download_allowed && (
+          <button
+            type="button"
+            onClick={handleDownloadOffline}
+            disabled={offlineDownloading || offlineCached}
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-white/90 text-black text-xs font-semibold px-4 py-2 shadow-lg hover:bg-white transition-colors disabled:opacity-70"
+          >
+            <Download className="w-4 h-4" />
+            {offlineDownloading ? 'Téléchargement…' : offlineCached ? 'Disponible hors ligne' : 'Télécharger pour hors ligne'}
+          </button>
+        )}
         <button
           type="button"
           onClick={handleOpenInApp}

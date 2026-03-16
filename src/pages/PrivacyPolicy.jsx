@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Mail, Clock, CheckCircle } from 'lucide-react';
@@ -231,7 +232,7 @@ export default function PrivacyPolicy() {
           {/* Content — charte graphique : dégradé bleu pour titres et texte en gras */}
           <div 
             className="prose prose-sm max-w-none text-gray-700 legal-content"
-            dangerouslySetInnerHTML={{ __html: (document.content || '').replace(/AfriConnect/g, 'AfriWonder').replace(/africonnect\./g, 'afriwonder.') }}
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize((document.content || '').replace(/AfriConnect/g, 'AfriWonder').replace(/africonnect\./g, 'afriwonder.')) }}
           />
 
           {/* Contact */}

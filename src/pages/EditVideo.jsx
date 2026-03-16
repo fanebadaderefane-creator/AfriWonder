@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { useNavigate } from 'react-router-dom';
 
-import { ArrowLeft, Trash2, Save, Loader2 } from 'lucide-react';
+import { ArrowLeft, Trash2, Save, Loader2, FileText } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
 
@@ -500,6 +500,11 @@ export default function EditVideo() {
 
         </div>
 
+        {/* CPO 3.9 — Sous-titres automatiques */}
+        {videoId && (
+          <EditVideoSubtitles videoId={videoId} currentSubtitleUrl={video?.subtitle_url} onUpdated={() => queryClient.invalidateQueries({ queryKey: ['video', videoId] })} />
+        )}
+
 
 
         {/* Hashtags */}
@@ -700,4 +705,75 @@ export default function EditVideo() {
 
   );
 
+}
+
+// CPO 3.9 — Sous-titres (statut, génération, URL manuelle)
+function EditVideoSubtitles({ videoId, currentSubtitleUrl, onUpdated }) {
+  const [subtitleUrl, setSubtitleUrl] = useState(currentSubtitleUrl || '');
+  const { data: subtitleData, refetch } = useQuery({
+    queryKey: ['video-subtitles', videoId],
+    queryFn: () => api.videos.getSubtitles(videoId),
+    enabled: !!videoId,
+  });
+  const gen = subtitleData?.generation;
+  const generateMutation = useMutation({
+    mutationFn: () => api.videos.generateSubtitles(videoId),
+    onSuccess: () => {
+      refetch();
+      onUpdated?.();
+      toast.success('Génération lancée');
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+  });
+  const setUrlMutation = useMutation({
+    mutationFn: (url) => api.videos.setSubtitleUrl(videoId, url || null),
+    onSuccess: () => {
+      refetch();
+      onUpdated?.();
+      toast.success('Sous-titres mis à jour');
+    },
+    onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+  });
+  React.useEffect(() => setSubtitleUrl(currentSubtitleUrl || ''), [currentSubtitleUrl]);
+  return (
+    <div className="rounded-xl border border-gray-200 p-4 bg-gray-50">
+      <Label className="text-gray-600 text-sm flex items-center gap-2">
+        <FileText className="w-4 h-4" /> Sous-titres (CPO 3.9)
+      </Label>
+      <p className="text-xs text-gray-500 mt-1 mb-2">Génération automatique (STT) ou URL d&apos;un fichier VTT.</p>
+      <div className="flex flex-wrap gap-2 mb-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="rounded-lg"
+          onClick={() => generateMutation.mutate()}
+          disabled={generateMutation.isPending}
+        >
+          {generateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+          Générer automatiquement
+        </Button>
+        {gen?.status === 'processing' && <span className="text-sm text-amber-600">En cours…</span>}
+        {gen?.status === 'completed' && gen?.result_url && <span className="text-sm text-green-600">Généré</span>}
+        {gen?.status === 'failed' && <span className="text-sm text-red-600">{gen?.error_message || 'Échec'}</span>}
+      </div>
+      <div className="flex gap-2">
+        <Input
+          placeholder="URL du fichier VTT (optionnel)"
+          value={subtitleUrl}
+          onChange={(e) => setSubtitleUrl(e.target.value)}
+          className="rounded-lg flex-1"
+        />
+        <Button
+          type="button"
+          size="sm"
+          className="rounded-lg"
+          onClick={() => setUrlMutation.mutate(subtitleUrl || null)}
+          disabled={setUrlMutation.isPending}
+        >
+          {setUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enregistrer'}
+        </Button>
+      </div>
+    </div>
+  );
 }

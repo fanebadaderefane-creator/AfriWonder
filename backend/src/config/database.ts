@@ -8,47 +8,85 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+// Racine backend (src/config -> backend)
+const backendRoot = path.resolve(currentDir, '..', '..');
+const envPath = path.join(backendRoot, '.env');
+const envExamplePath = path.join(backendRoot, '.env.example');
+
 if (process.env.NODE_ENV === 'test') {
-  const currentDir = path.dirname(fileURLToPath(import.meta.url));
-  const envCandidates = [
+  const envTestCandidates = [
+    path.join(backendRoot, '.env.test'),
     path.resolve(process.cwd(), '.env.test'),
     path.resolve(process.cwd(), 'backend', '.env.test'),
-    path.resolve(currentDir, '..', '..', '.env.test'),
   ];
-  const resolvedEnvPath = envCandidates.find((p) => fs.existsSync(p));
+  const resolvedEnvPath = envTestCandidates.find((p) => fs.existsSync(p));
   if (resolvedEnvPath) {
-    // override: false pour préserver JWT_SECRET/JWT_REFRESH_SECRET du script test (ex. test:ads)
     dotenv.config({ path: resolvedEnvPath, override: false });
   } else {
     dotenv.config({ override: false });
   }
 } else {
-  dotenv.config();
+  // Toujours charger backend/.env en priorité (évite "credentials (not available)" si cwd = racine projet)
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+    if (process.env.NODE_ENV === 'development') {
+      logger.info('Env chargé depuis backend/.env (DATABASE_URL présente: ' + (process.env.DATABASE_URL ? 'oui' : 'non') + ')');
+    }
+  } else if (fs.existsSync(envExamplePath)) {
+    dotenv.config({ path: envExamplePath });
+    if (process.env.NODE_ENV === 'development') {
+      logger.warn('backend/.env absent, utilisation de .env.example — créez backend/.env avec DATABASE_URL, JWT_SECRET, etc.');
+    }
+  } else {
+    dotenv.config();
+  }
 }
 
 // Créer le pool de connexions PostgreSQL
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
+let connectionString = process.env.DATABASE_URL;
+if (!connectionString || !connectionString.trim()) {
+  logger.error('DATABASE_URL manquante. Fichier chargé: ' + (fs.existsSync(envPath) ? envPath : envExamplePath || 'aucun'));
   throw new Error('DATABASE_URL is not defined in environment variables');
 }
 
-// Pool size: avec Supabase/Supavisor en Session mode (port 5432), le pooler limite les connexions
-// (erreur MaxClientsInSessionMode). Garder un petit pool (2–5) pour ne pas saturer.
+// Bases cloud (Render, Supabase, Neon, etc.) exigent souvent SSL ; sans ça → "Authentication failed"
+const isCloudHost = /\.(render\.com|supabase\.co|supabase\.com|neon\.tech|neon\.xyz|aws\.amazon|pooler\.)/i.test(connectionString);
+const isDevCloud = process.env.NODE_ENV === 'development' && isCloudHost;
+if (isCloudHost && !isDevCloud && !/sslmode=/i.test(connectionString)) {
+  connectionString += connectionString.includes('?') ? '&sslmode=require' : '?sslmode=require';
+  logger.info('Connexion DB cloud : sslmode=require ajouté à l’URL');
+}
+// En dev + cloud : retirer sslmode de l’URL pour que le pool utilise notre ssl.rejectUnauthorized=false
+// (sinon pg-connection-string force verify-full et la connexion échoue → circuit breaker)
+if (isDevCloud && /sslmode=/i.test(connectionString)) {
+  connectionString = connectionString
+    .replace(/[?&]sslmode=[^&]*/gi, '')
+    .replace(/\?&/, '?')
+    .replace(/\?$/, '');
+  logger.info('Connexion DB cloud (dev) : ssl via pool (rejectUnauthorized=false), sslmode retiré de l’URL');
+}
+
+// Pool size: pooler Supabase/Supavisor limite les connexions → petit pool (3).
+// Connexion directe (db.xxx.supabase.co) → pool 5 en dev pour éviter circuit breaker au démarrage.
 const connectionStringLower = (connectionString || '').toLowerCase();
-const isPoolerSession = /pooler\.|supabase\.com|supavisor/i.test(connectionStringLower);
+const isPooler = /pooler\.|supavisor/i.test(connectionStringLower);
 
 const poolMaxEnv = parseInt(process.env.DATABASE_POOL_MAX || '', 10);
 const poolMax = Number.isFinite(poolMaxEnv) && poolMaxEnv > 0
   ? Math.min(poolMaxEnv, 100)
-  : isPoolerSession
+  : isPooler
     ? 3
     : (process.env.NODE_ENV === 'production' ? 20 : 10);
 
+// En dev avec hôte cloud (Supabase, Neon…), accepter le certificat sans vérification stricte
+// pour éviter "Circuit breaker open" après le premier $connect() (pg peut échouer en verify-full).
 const pool = new Pool({
   connectionString,
   max: poolMax,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 30000, // 30s pour éviter timeout lors de l'init (politiques de rétention, etc.)
+  ...(process.env.NODE_ENV === 'development' && isCloudHost && { ssl: { rejectUnauthorized: false } }),
 });
 const adapter = new PrismaPg(pool);
 
@@ -61,9 +99,11 @@ const prisma = new PrismaClient({
     : ['error'],
 });
 
-// Connect to database (only in non-test environment; never exit in test)
+// Connect to database (only in non-test environment; never exit in test).
+// Exécuter une requête réelle après $connect() pour valider le pool (évite "Circuit breaker open" après le premier vrai query).
 if (process.env.NODE_ENV !== 'test') {
   prisma.$connect()
+    .then(() => prisma.$queryRaw`SELECT 1`)
     .then(() => {
       logger.info('✅ Database connected');
     })

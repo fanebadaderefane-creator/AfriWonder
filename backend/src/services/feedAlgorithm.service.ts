@@ -11,6 +11,7 @@ export async function getAlgorithmFeed(options: {
   deviceId?: string;
   category?: string;
   hashtag?: string;
+  mediaType?: 'video' | 'image';
 }) {
   return getPersonalizedFeed({
     limit: options.limit,
@@ -19,5 +20,6 @@ export async function getAlgorithmFeed(options: {
     deviceId: options.deviceId,
     category: options.category,
     hashtag: options.hashtag,
+    mediaType: options.mediaType,
   });
 }

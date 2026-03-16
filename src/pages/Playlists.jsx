@@ -45,14 +45,17 @@ export default function PlaylistsPage() {
 
   // Create playlist mutation
   const createPlaylistMutation = useMutation({
-    mutationFn: (name) => api.entities.Playlist.create({
-      creator_id: user.id,
-      creator_name: user.full_name || user.email?.split('@')[0],
-      title: name,
-      visibility: 'private'
-    }),
+    mutationFn: (name) => {
+      if (!user?.id) return Promise.reject(new Error('Non connecté'));
+      return api.entities.Playlist.create({
+        creator_id: user.id,
+        creator_name: user.full_name || user.email?.split('@')[0],
+        title: name,
+        visibility: 'private'
+      });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['playlists', user.id] });
+      queryClient.invalidateQueries({ queryKey: ['playlists', user?.id] });
       setNewPlaylistName('');
       setIsCreating(false);
       toast.success('Playlist créée');

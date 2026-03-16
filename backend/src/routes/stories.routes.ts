@@ -62,5 +62,54 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
+// CPO 2.19 — Réactions
+router.post('/:id/reactions', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { emoji } = req.body;
+    const reaction = await storyService.addReaction(param(req, 'id'), req.user!.id, emoji ?? '❤️');
+    res.json({ success: true, data: reaction });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+router.delete('/:id/reactions', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    await storyService.removeReaction(param(req, 'id'), req.user!.id);
+    res.json({ success: true });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+router.get('/:id/reactions', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const reactions = await storyService.getReactions(param(req, 'id'));
+    res.json({ success: true, data: reactions });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// CPO 2.21 — Sondages
+router.post('/polls/:pollId/vote', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { optionIndex } = req.body;
+    const vote = await storyService.votePoll(param(req, 'pollId'), req.user!.id, Number(optionIndex));
+    res.json({ success: true, data: vote });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+router.get('/polls/:pollId/results', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const results = await storyService.getPollResults(param(req, 'pollId'));
+    res.json({ success: true, data: results });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 export default router;
 

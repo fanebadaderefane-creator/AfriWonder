@@ -19,6 +19,8 @@ import SlowConnectionBanner from '@/components/common/SlowConnectionBanner';
 import TranslationProvider from '@/components/common/TranslationProvider';
 import CookieBanner from '@/components/legal/CookieBanner';
 import PageLoader from '@/components/common/PageLoader';
+import PageErrorFallback from '@/components/common/PageErrorFallback';
+import { lazyPages } from '@/lazyPages';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -81,44 +83,62 @@ const AuthenticatedApp = () => {
 
     return (
       <Routes>
-        <Route path="/" element={LandingPage ? <LandingPage /> : <div>Page non trouvée</div>} />
-        <Route path="/Landing" element={LandingPage ? <LandingPage /> : <div>Page non trouvée</div>} />
-        <Route path="/PrivacyPolicy" element={PrivacyPolicyPage ? <PrivacyPolicyPage /> : <div>Page non trouvée</div>} />
-        <Route path="/DataProtection" element={DataProtectionPage ? <DataProtectionPage /> : <div>Page non trouvée</div>} />
-        <Route path="/Help" element={HelpPage ? <HelpPage /> : <div>Page non trouvée</div>} />
-        <Route path="/About" element={AboutPage ? <AboutPage /> : <div>Page non trouvée</div>} />
-        <Route path="/TermsOfService" element={TermsOfServicePage ? <TermsOfServicePage /> : <div>Page non trouvée</div>} />
-        <Route path="/VerifyCertificate" element={VerifyCertificatePage ? <VerifyCertificatePage /> : <div>Page non trouvée</div>} />
-        <Route path="/verify-certificate/:token" element={VerifyCertificatePage ? <VerifyCertificatePage /> : <div>Page non trouvée</div>} />
+        <Route path="/" element={LandingPage ? <LandingPage /> : <div>Page non trouvée</div>} errorElement={<PageErrorFallback />} />
+        <Route path="/Landing" element={LandingPage ? <LandingPage /> : <div>Page non trouvée</div>} errorElement={<PageErrorFallback />} />
+        <Route path="/PrivacyPolicy" element={PrivacyPolicyPage ? <PrivacyPolicyPage /> : <div>Page non trouvée</div>} errorElement={<PageErrorFallback />} />
+        <Route path="/DataProtection" element={DataProtectionPage ? <DataProtectionPage /> : <div>Page non trouvée</div>} errorElement={<PageErrorFallback />} />
+        <Route path="/Help" element={HelpPage ? <HelpPage /> : <div>Page non trouvée</div>} errorElement={<PageErrorFallback />} />
+        <Route path="/About" element={AboutPage ? <AboutPage /> : <div>Page non trouvée</div>} errorElement={<PageErrorFallback />} />
+        <Route path="/TermsOfService" element={TermsOfServicePage ? <TermsOfServicePage /> : <div>Page non trouvée</div>} errorElement={<PageErrorFallback />} />
+        <Route path="/VerifyCertificate" element={VerifyCertificatePage ? <VerifyCertificatePage /> : <div>Page non trouvée</div>} errorElement={<PageErrorFallback />} />
+        <Route path="/verify-certificate/:token" element={VerifyCertificatePage ? <VerifyCertificatePage /> : <div>Page non trouvée</div>} errorElement={<PageErrorFallback />} />
         <Route path="*" element={<Navigate to="/Landing" replace />} />
       </Routes>
     );
   }
 
-  // Render the main app
+  // Render the main app — errorElement par route pour isoler les erreurs et garder l'app navigable
   return (
     <Routes>
-      <Route path="/" element={
-        <LayoutWrapper currentPageName={mainPageKey}>
-          <MainPage />
-        </LayoutWrapper>
-      } />
+      <Route
+        path="/"
+        element={
+          <LayoutWrapper currentPageName={mainPageKey}>
+            <MainPage />
+          </LayoutWrapper>
+        }
+        errorElement={<PageErrorFallback />}
+      />
       <Route path="/Services" element={<Navigate to="/Marketplace" replace />} />
-      {Object.entries(Pages).map(([path, Page]) => (
-        <Route
-          key={path}
-          path={`/${path}`}
-          element={
-            <LayoutWrapper currentPageName={path}>
-              <Page />
-            </LayoutWrapper>
-          }
-        />
-      ))}
-      <Route path="/verify-certificate/:token" element={(() => {
-        const VerifyCertificatePage = Pages['VerifyCertificate'];
-        return VerifyCertificatePage ? <LayoutWrapper currentPageName="VerifyCertificate"><VerifyCertificatePage /></LayoutWrapper> : <PageNotFound />;
-      })()} />
+      {Object.entries(Pages).map(([path, Page]) => {
+        const LazyComp = lazyPages[path];
+        return (
+          <Route
+            key={path}
+            path={`/${path}`}
+            element={
+              <LayoutWrapper currentPageName={path}>
+                {LazyComp ? (
+                  <Suspense fallback={<PageLoader />}>
+                    <LazyComp />
+                  </Suspense>
+                ) : (
+                  <Page />
+                )}
+              </LayoutWrapper>
+            }
+            errorElement={<PageErrorFallback />}
+          />
+        );
+      })}
+      <Route
+        path="/verify-certificate/:token"
+        element={(() => {
+          const VerifyCertificatePage = Pages['VerifyCertificate'];
+          return VerifyCertificatePage ? <LayoutWrapper currentPageName="VerifyCertificate"><VerifyCertificatePage /></LayoutWrapper> : <PageNotFound />;
+        })()}
+        errorElement={<PageErrorFallback />}
+      />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

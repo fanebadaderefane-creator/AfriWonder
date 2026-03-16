@@ -110,8 +110,16 @@ export default function LiveStreamPage() {
       try {
         const u = await api.auth.me();
         setUser(u);
-      } catch (_e) {
-        navigate(createPageUrl('Home'));
+      } catch (e) {
+        const status = e?.response?.status;
+        // Ne renvoyer à l'accueil que si l'utilisateur n'est vraiment pas connecté.
+        if (status === 401) {
+          navigate(createPageUrl('Home'));
+        } else {
+          // Pour les erreurs 5xx ou réseau, on reste sur la page Live
+          // afin de ne pas "casser" le flux quand l'utilisateur est déjà loggé.
+          setUser(null);
+        }
       }
     };
     getUser();
@@ -595,7 +603,9 @@ export default function LiveStreamPage() {
     sendChatMutation.mutate();
   };
 
-  if (!user || loadingExisting) {
+  // Si on charge un live existant (depuis un lien avec id), afficher un loader.
+  // Ne bloque pas l'écran si /auth/me renvoie 500 : l'API live renverra 401 si l'utilisateur n'est vraiment pas connecté.
+  if (loadingExisting) {
     return (
       <div className="h-[100dvh] flex items-center justify-center bg-black">
         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />

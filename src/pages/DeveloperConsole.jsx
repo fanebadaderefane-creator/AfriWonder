@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { ArrowLeft, Plus, Code, BarChart3, DollarSign, Settings, FileCode, Upload, CheckCircle, Clock, XCircle, TrendingUp, Zap, Rocket } from 'lucide-react';
+import { ArrowLeft, Plus, Code, BarChart3, DollarSign, Settings, FileCode, Upload, CheckCircle, Clock, XCircle, TrendingUp, Zap, Rocket, Megaphone, GitBranch, LifeBuoy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -279,7 +279,7 @@ export default function DeveloperConsole() {
           </TabsContent>
 
           {/* Apps Tab */}
-          <TabsContent value="apps" className="space-y-3 mt-4">
+          <TabsContent value="apps" className="space-y-4 mt-4">
             {mockApps.map((app, index) => (
               <motion.div
                 key={app.id}
@@ -288,8 +288,8 @@ export default function DeveloperConsole() {
                 transition={{ delay: index * 0.1 }}
               >
                 <Card className="hover:shadow-md transition-shadow">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <h3 className="font-bold">{app.name}</h3>
@@ -299,7 +299,7 @@ export default function DeveloperConsole() {
                       </div>
                       {getStatusIcon(app.status)}
                     </div>
-                    <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div className="grid grid-cols-2 gap-3">
                       <div>
                         <p className="text-xs text-gray-600">Installations</p>
                         <p className="font-bold text-[#2563eb]">{app.installs.toLocaleString()}</p>
@@ -325,20 +325,100 @@ export default function DeveloperConsole() {
                         Paramètres
                       </Button>
                     </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="flex-1">
-                        <BarChart3 className="w-4 h-4 mr-1" />
-                        Analytics
-                      </Button>
-                      <Button variant="outline" size="sm" className="flex-1">
-                        <Settings className="w-4 h-4 mr-1" />
-                        Paramètres
-                      </Button>
-                    </div>
                   </CardContent>
                 </Card>
               </motion.div>
             ))}
+
+            {/* CPO 8.26 — Boost / visibilité */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Megaphone className="w-5 h-5 text-purple-500" />
+                  Boost visibilité
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-gray-600">
+                  Mettez en avant une mini-app dans le Store pendant une période donnée (home du MiniAppsStore, carrousel « En vedette »).
+                </p>
+                {mockApps.map((app) => (
+                  <div key={app.id} className="flex items-center justify-between border rounded-lg px-3 py-2">
+                    <div>
+                      <p className="font-medium text-sm">{app.name}</p>
+                      <p className="text-xs text-gray-500">
+                        Statut&nbsp;: {getStatusBadge(app.status)} • Version {app.version}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        alert(`Demande de boost envoyée pour ${app.name} (mock).`);
+                      }}
+                    >
+                      <Rocket className="w-4 h-4 mr-1" />
+                      Booster
+                    </Button>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* CPO 8.27–8.28 — Versions & mises à jour */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <GitBranch className="w-5 h-5 text-blue-500" />
+                  Versions & mises à jour
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-gray-600">
+                  Historique des versions publiées, en revue ou en brouillon pour chaque mini-app.
+                </p>
+                {mockApps.map((app) => (
+                  <div key={app.id} className="border rounded-lg px-3 py-2 space-y-1">
+                    <p className="font-medium text-sm">{app.name}</p>
+                    <p className="text-xs text-gray-500">
+                      Dernière version&nbsp;: {app.version} • Dernière mise à jour&nbsp;: {app.lastUpdate}
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => alert(`Ouverture du journal des versions pour ${app.name} (mock).`)}
+                    >
+                      <FileCode className="w-4 h-4 mr-1" />
+                      Voir le journal des versions
+                    </Button>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* CPO 8.30 — Support technique mini-apps */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <LifeBuoy className="w-5 h-5 text-emerald-500" />
+                  Support technique mini-apps
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-gray-600">
+                  Ouvrez un ticket dédié pour un bug, une question d’API ou une revue de sécurité sur vos mini-apps AfriWonder.
+                </p>
+                <Button
+                  className="w-full"
+                  variant="outline"
+                  onClick={() => {
+                    window.location.href = 'mailto:dev-support@afriwonder.com?subject=Support%20mini-app%20AfriWonder';
+                  }}
+                >
+                  Contacter le support développeur
+                </Button>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Settings Tab */}

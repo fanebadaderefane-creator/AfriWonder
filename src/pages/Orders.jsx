@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/api/expressClient';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Package, Truck, CheckCircle, Clock, Eye, MessageCircle, Star, WifiOff } from 'lucide-react';
+import { ArrowLeft, Package, Truck, CheckCircle, Clock, Eye, MessageCircle, Star, WifiOff, Calendar, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
@@ -74,10 +74,22 @@ export default function Orders() {
   const fromCache = ordersData?.fromCache === true || (!!cachedFallback?.orders?.length && !ordersData?.orders);
   const filteredOrders = orders.filter(order => {
     if (activeTab === 'all') return true;
+    if (activeTab === 'preorders') return false;
     if (activeTab === 'in_progress') return ['pending', 'pending_payment', 'paid', 'processing', 'preparing'].includes(order.status);
     if (activeTab === 'shipped') return ['in_transit'].includes(order.status);
     if (activeTab === 'delivered') return ['delivered', 'completed', 'refunded'].includes(order.status);
     return false;
+  });
+
+  const { data: preordersData, isLoading: preordersLoading } = useQuery({
+    queryKey: ['preorders-me', user?.id],
+    queryFn: () => api.products.getPreordersMe({ page: 1, limit: 50 }),
+    enabled: !!user?.id && activeTab === 'preorders',
+  });
+  const preorders = preordersData?.preorders ?? [];
+  const cancelPreorderMutation = useMutation({
+    mutationFn: (id) => api.products.cancelPreorder(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['preorders-me'] }),
   });
 
   return (
@@ -97,7 +109,7 @@ export default function Orders() {
           <h1 className="text-lg font-bold">Mes commandes</h1>
         </div>
         <div className="px-4 pb-3 flex gap-2 overflow-x-auto scrollbar-hide">
-          {[['all', 'Toutes'], ['in_progress', 'En cours'], ['shipped', 'Expédiées'], ['delivered', 'Livrées']].map(([key, label]) => (
+          {[['all', 'Toutes'], ['preorders', 'Précommandes'], ['in_progress', 'En cours'], ['shipped', 'Expédiées'], ['delivered', 'Livrées']].map(([key, label]) => (
             <button key={key} onClick={() => setActiveTab(key)}
               className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ${activeTab === key ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600'}`}>
               {label}
@@ -107,7 +119,68 @@ export default function Orders() {
       </div>
 
       <div className="p-4 space-y-3">
-        {isLoading ? (
+        {activeTab === 'preorders' ? (
+          preordersLoading ? (
+            <div className="flex justify-center py-16">
+              <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : preorders.length === 0 ? (
+            <div className="text-center py-16">
+              <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">Aucune précommande</h3>
+              <p className="text-gray-500 mb-6">Réservez un produit pas encore disponible ; paiement à la sortie.</p>
+              <Button onClick={() => navigate(createPageUrl('Marketplace'))} variant="outline">
+                Voir le marketplace
+              </Button>
+            </div>
+          ) : (
+            preorders.map((po) => {
+              const p = po.product;
+              const img = p?.images?.[0];
+              const availableAt = p?.preorder_available_at ? new Date(p.preorder_available_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+              return (
+                <Card key={po.id} className="p-4">
+                  <div className="flex gap-3 mb-3">
+                    <img
+                      src={getAbsoluteImageUrl(img) || MARKETPLACE_PLACEHOLDER_IMG}
+                      alt={p?.name}
+                      className="w-20 h-20 rounded-xl object-cover flex-shrink-0 bg-gray-100"
+                      onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-800 line-clamp-2">{p?.name}</h3>
+                      <p className="text-sm text-gray-500">Quantité: {po.quantity}</p>
+                      <p className="text-orange-500 font-bold mt-1">{p?.price != null ? `${(p.price * po.quantity).toLocaleString()} FCFA` : '—'}</p>
+                      {availableAt && (
+                        <p className="text-xs text-gray-500 mt-1">Disponible le {availableAt}</p>
+                      )}
+                      <Badge className="mt-2 bg-blue-100 text-blue-700">
+                        <Calendar className="w-3 h-3 mr-1" />
+                        Réservé — Paiement à la sortie
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => navigate(`${createPageUrl('Product')}?id=${p?.id}`)}>
+                      <Eye className="w-4 h-4 mr-1" />
+                      Voir le produit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => cancelPreorderMutation.mutate(po.id)}
+                      disabled={cancelPreorderMutation.isPending}
+                    >
+                      <X className="w-4 h-4 mr-1" />
+                      Annuler
+                    </Button>
+                  </div>
+                </Card>
+              );
+            })
+          )
+        ) : isLoading ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
           </div>

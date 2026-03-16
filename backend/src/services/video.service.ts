@@ -3,6 +3,8 @@ import { logger } from '../utils/logger.js';
 import * as qualifiedViewService from './qualifiedView.service.js';
 import { validateUrl } from '../utils/urlValidator.js';
 import GamificationEngine from './gamification.service.js';
+import { emit } from '../events/eventBus.js';
+import { containsBannedWord } from './bannedWord.service.js';
 
 interface ListOptions {
   page: number;
@@ -297,6 +299,11 @@ class VideoService {
       hashtags = (video.video_hashtags || []).map((h: any) => h.tag_name);
     }
 
+    const [reaction_counts, current_user_reaction] = await Promise.all([
+      this.getReactionCounts(video.id),
+      this.getCurrentUserReaction(video.id, userId ?? null),
+    ]);
+
     // Formater la réponse pour correspondre au format attendu par le frontend
     // IMPORTANT: Ne JAMAIS modifier les URLs ici - elles doivent être stables pour React
     const formattedVideo: any = {
@@ -307,10 +314,14 @@ class VideoService {
       creator_avatar: video.creator.profile_image,
       is_verified: false,
       is_liked: video.video_likes ? (Array.isArray(video.video_likes) && video.video_likes.length > 0) : false,
-      likes: video._count?.video_likes || 0,
+      likes: video.likes ?? video._count?.video_likes ?? 0,
+      reaction_counts,
+      current_user_reaction,
       comments_count: video._count?.video_comments || 0,
       hashtags: Array.isArray(hashtags) ? hashtags : [],
       music_title: video.music_title || null,
+      comment_visibility: video.comment_visibility || 'everyone',
+      hide_likes: video.hide_likes ?? false,
     };
 
     // Supprimer les champs internes
@@ -463,6 +474,16 @@ class VideoService {
     if (prevViews < 1000 && updated.views >= 1000) {
       dailyMissionsService.checkAndAwardReach1000Views(video.creator_id, videoId).catch(() => {});
     }
+    // Event-driven: emit for recommendation, analytics, future Kafka consumers
+    emit('video', 'video', 'viewed', {
+      videoId,
+      creatorId: video.creator_id,
+      userId,
+      deviceId,
+      watchSeconds,
+      watchPercent,
+      views: updated.views,
+    });
     return { recorded: true, views: updated.views };
   }
 
@@ -483,6 +504,14 @@ class VideoService {
     hashtags?: string[];
     music_title?: string;
     media_type?: 'video' | 'image';
+    remix_of_id?: string;
+    subtitle_url?: string;
+    download_allowed?: boolean;
+    is_premium?: boolean;
+    comments_disabled?: boolean;
+    comment_visibility?: string;
+    hide_likes?: boolean;
+    scheduled_at?: string | Date | null;
   }) {
     // Valider les données requises
     if (!data.title || !data.video_url) {
@@ -526,6 +555,14 @@ class VideoService {
         hashtags: hashtagsArray.length ? JSON.stringify(hashtagsArray) : undefined,
         music_title: data.music_title,
         media_type: data.media_type || 'video',
+        ...(data.remix_of_id && { remix_of_id: data.remix_of_id }),
+        ...(data.subtitle_url && { subtitle_url: data.subtitle_url }),
+        ...(data.download_allowed != null && { download_allowed: Boolean(data.download_allowed) }),
+        ...(data.is_premium != null && { is_premium: Boolean(data.is_premium) }),
+        ...(data.comments_disabled != null && { comments_disabled: Boolean(data.comments_disabled) }),
+        ...(data.comment_visibility != null && { comment_visibility: ['everyone', 'followers', 'mentioned_only'].includes(data.comment_visibility) ? data.comment_visibility : 'everyone' }),
+        ...(data.hide_likes != null && { hide_likes: Boolean(data.hide_likes) }),
+        ...(data.scheduled_at != null && { scheduled_at: data.scheduled_at ? new Date(data.scheduled_at) : null }),
       },
       include: {
         creator: {
@@ -570,6 +607,26 @@ class VideoService {
     return video;
   }
 
+  /** Montage léger : définir trim start/end (secondes). */
+  async trim(id: string, userId: string, payload: { trim_start_sec?: number; trim_end_sec?: number }) {
+    const video = await prisma.video.findUnique({
+      where: { id },
+      select: { creator_id: true, duration: true },
+    });
+    if (!video) throw new Error('Vidéo non trouvée');
+    if (video.creator_id !== userId) throw new Error('Non autorisé');
+    const start = payload.trim_start_sec != null ? Math.max(0, Math.floor(payload.trim_start_sec)) : undefined;
+    const end = payload.trim_end_sec != null ? Math.max(0, Math.floor(payload.trim_end_sec)) : undefined;
+    if (start != null && end != null && start >= end) throw new Error('trim_start_sec doit être inférieur à trim_end_sec');
+    if (video.duration != null && end != null && end > video.duration) throw new Error('trim_end_sec ne peut pas dépasser la durée de la vidéo');
+    const updated = await prisma.video.update({
+      where: { id },
+      data: { trim_start_sec: start ?? undefined, trim_end_sec: end ?? undefined },
+      include: { creator: { select: { id: true, username: true, full_name: true, profile_image: true } } },
+    });
+    return updated;
+  }
+
   async update(id: string, data: Partial<{
     title: string;
     description: string;
@@ -579,6 +636,10 @@ class VideoService {
     hashtags?: string[];
     music_title?: string;
     thumbnail_url?: string;
+    comments_disabled?: boolean;
+    comment_visibility?: string;
+    hide_likes?: boolean;
+    scheduled_at?: string | Date | null;
   }>, userId: string) {
     // Vérifier que l'utilisateur est le créateur
     const video = await prisma.video.findUnique({
@@ -599,6 +660,9 @@ class VideoService {
 
     if (hashtagsArray !== undefined) {
       updateData.hashtags = hashtagsArray.length ? JSON.stringify(hashtagsArray) : null;
+    }
+    if (data.scheduled_at !== undefined) {
+      updateData.scheduled_at = data.scheduled_at ? new Date(data.scheduled_at) : null;
     }
 
     const updated = await prisma.video.update({
@@ -654,7 +718,16 @@ class VideoService {
     logger.info('Vidéo supprimée', { videoId: id, userId });
   }
 
-  async toggleLike(videoId: string, userId: string) {
+  private static readonly REACTION_TYPES = new Set(['like', 'love', 'fire', 'laugh', 'wow', 'sad', 'angry']);
+
+  async toggleLike(videoId: string, userId: string, type: string = 'like') {
+    const reactionType = VideoService.REACTION_TYPES.has(type) ? type : 'like';
+    const result = await this.setReaction(videoId, userId, reactionType);
+    return { liked: result.reaction !== null, reaction: result.reaction };
+  }
+
+  /** Définir ou supprimer une réaction (CPO 2.44). type = null pour retirer. */
+  async setReaction(videoId: string, userId: string, type: string | null) {
     if (!videoId?.trim() || !userId?.trim()) {
       const err: any = new Error('Paramètres invalides');
       err.statusCode = 400;
@@ -671,47 +744,124 @@ class VideoService {
       throw err;
     }
 
-    const existingLike = await prisma.like.findFirst({
-      where: {
-        video_id: videoId,
-        user_id: userId,
-      },
+    const existing = await prisma.like.findFirst({
+      where: { video_id: videoId, user_id: userId },
     });
 
-    if (existingLike) {
-      await prisma.$transaction([
-        prisma.like.delete({ where: { id: existingLike.id } }),
-        prisma.video.update({
-          where: { id: videoId },
-          data: {
-            likes: Math.max(0, (video.likes ?? 0) - 1),
-          },
-        }),
-      ]);
-      return { liked: false };
-    } else {
-      await prisma.$transaction([
-        prisma.like.create({
-          data: {
-            video_id: videoId,
-            user_id: userId,
-          },
-        }),
-        prisma.video.update({
-          where: { id: videoId },
-          data: {
-            likes: { increment: 1 },
-          },
-        }),
-      ]);
-      return { liked: true };
+    if (type === null || type === '') {
+      if (existing) {
+        await prisma.$transaction([
+          prisma.like.delete({ where: { id: existing.id } }),
+          prisma.video.update({
+            where: { id: videoId },
+            data: { likes: Math.max(0, (video.likes ?? 0) - 1) },
+          }),
+        ]);
+      }
+      return { reaction: null, reaction_counts: await this.getReactionCounts(videoId) };
     }
+
+    const reactionType = VideoService.REACTION_TYPES.has(type) ? type : 'like';
+
+    if (existing) {
+      if (existing.type === reactionType) {
+        await prisma.like.delete({ where: { id: existing.id } });
+        await prisma.video.update({
+          where: { id: videoId },
+          data: { likes: Math.max(0, (video.likes ?? 0) - 1) },
+        });
+        return { reaction: null, reaction_counts: await this.getReactionCounts(videoId) };
+      }
+      await prisma.like.update({
+        where: { id: existing.id },
+        data: { type: reactionType },
+      });
+      return { reaction: reactionType, reaction_counts: await this.getReactionCounts(videoId) };
+    }
+
+    await prisma.$transaction([
+      prisma.like.create({
+        data: { video_id: videoId, user_id: userId, type: reactionType },
+      }),
+      prisma.video.update({
+        where: { id: videoId },
+        data: { likes: { increment: 1 } },
+      }),
+    ]);
+    return { reaction: reactionType, reaction_counts: await this.getReactionCounts(videoId) };
+  }
+
+  async getReactionCounts(videoId: string): Promise<Record<string, number>> {
+    const rows = await prisma.like.groupBy({
+      by: ['type'],
+      where: { video_id: videoId },
+      _count: { type: true },
+    });
+    const out: Record<string, number> = {};
+    for (const r of rows) {
+      const t = r.type || 'like';
+      out[t] = r._count.type;
+    }
+    return out;
+  }
+
+  async getCurrentUserReaction(videoId: string, userId: string | null): Promise<string | null> {
+    if (!userId) return null;
+    const like = await prisma.like.findFirst({
+      where: { video_id: videoId, user_id: userId },
+      select: { type: true },
+    });
+    return like?.type ?? null;
   }
 
   async addComment(videoId: string, userId: string, content: string, parentId?: string) {
     // Valider le contenu
     if (!content || content.trim().length === 0) {
       const error: any = new Error('Le contenu du commentaire ne peut pas être vide');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const video = await prisma.video.findUnique({
+      where: { id: videoId },
+      select: { creator_id: true, comments_disabled: true, comment_visibility: true, description: true },
+    });
+    if (!video) {
+      const error: any = new Error('Vidéo non trouvée');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (video.comments_disabled) {
+      const error: any = new Error('Les commentaires sont désactivés sur cette vidéo');
+      error.statusCode = 403;
+      throw error;
+    }
+    const visibility = (video.comment_visibility as string) || 'everyone';
+    if (visibility === 'followers') {
+      const isFollower = await prisma.follow.findFirst({
+        where: { follower_id: userId, following_id: video.creator_id },
+      });
+      if (!isFollower) {
+        const err: any = new Error('Seuls les abonnés du créateur peuvent commenter');
+        err.statusCode = 403;
+        throw err;
+      }
+    } else if (visibility === 'mentioned_only') {
+      const desc = (video.description || '') + ' ';
+      const mentionMatches = [...desc.matchAll(/@([a-zA-Z0-9_.]+)/g)];
+      const usernames = [...new Set(mentionMatches.map((m) => m[1].toLowerCase()))];
+      const allowed = usernames.length
+        ? await prisma.user.findMany({ where: { username: { in: usernames } }, select: { id: true } })
+        : [];
+      const allowedIds = new Set(allowed.map((u) => u.id));
+      if (!allowedIds.has(userId)) {
+        const err: any = new Error('Seules les personnes mentionnées dans la description peuvent commenter');
+        err.statusCode = 403;
+        throw err;
+      }
+    }
+    if (await containsBannedWord(content.trim())) {
+      const error: any = new Error('Votre commentaire contient un mot non autorisé');
       error.statusCode = 400;
       throw error;
     }
@@ -731,6 +881,17 @@ class VideoService {
       throw error;
     }
 
+    // Extraire les mentions @username et résoudre en user ids
+    const mentionUsernames = [...(content.match(/@([a-zA-Z0-9_.]+)/g) || [])].map((m) => m.slice(1).toLowerCase());
+    const uniqueUsernames = [...new Set(mentionUsernames)];
+    const mentionedUsers = uniqueUsernames.length
+      ? await prisma.user.findMany({
+          where: { username: { in: uniqueUsernames } },
+          select: { id: true },
+        })
+      : [];
+    const mentionIds = mentionedUsers.map((u) => u.id);
+
     const comment = await prisma.comment.create({
       data: {
         video_id: videoId,
@@ -739,6 +900,7 @@ class VideoService {
         parent_id: parentId,
         user_name: user.full_name || user.username,
         user_avatar: user.profile_image,
+        mention_ids: mentionIds,
       },
     });
 
@@ -752,11 +914,7 @@ class VideoService {
     });
 
     // Notifications : notifier le créateur de la vidéo (sauf si c'est lui qui commente)
-    const video = await prisma.video.findUnique({
-      where: { id: videoId },
-      select: { creator_id: true },
-    });
-    const creatorId = video?.creator_id;
+    const creatorId = video.creator_id;
     const authorName = user.full_name || user.username || 'Quelqu\'un';
     if (creatorId && creatorId !== userId) {
       await prisma.notification.create({
@@ -799,15 +957,35 @@ class VideoService {
     return comment;
   }
 
-  async updateComment(commentId: string, userId: string, data: { content?: string }) {
+  async updateComment(commentId: string, userId: string, data: { content?: string; is_pinned?: boolean }) {
     const comment = await prisma.comment.findUnique({
       where: { id: commentId },
-      select: { id: true, user_id: true },
+      select: { id: true, user_id: true, video_id: true },
+      include: { video: { select: { creator_id: true } } },
     });
     if (!comment) {
       const error: any = new Error('Commentaire non trouvé');
       error.statusCode = 404;
       throw error;
+    }
+    const isCreator = comment.video?.creator_id === userId;
+    if (data.is_pinned !== undefined) {
+      if (!isCreator) {
+        const error: any = new Error('Seul le créateur de la vidéo peut épingler un commentaire');
+        error.statusCode = 403;
+        throw error;
+      }
+      if (data.is_pinned) {
+        await prisma.comment.updateMany({
+          where: { video_id: comment.video_id },
+          data: { is_pinned: false },
+        });
+      }
+      return prisma.comment.update({
+        where: { id: commentId },
+        data: { is_pinned: data.is_pinned },
+        include: { user: { select: { id: true, username: true, full_name: true, profile_image: true } } },
+      });
     }
     if (comment.user_id !== userId) {
       const error: any = new Error('Vous ne pouvez modifier que vos propres commentaires');
@@ -894,9 +1072,10 @@ class VideoService {
             },
           },
         },
-        orderBy: {
-          created_at: 'desc',
-        },
+        orderBy: [
+          { is_pinned: 'desc' },
+          { created_at: 'desc' },
+        ],
         skip,
         take: limit,
       }),

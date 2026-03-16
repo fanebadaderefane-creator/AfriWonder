@@ -258,4 +258,51 @@ router.post('/:id/boost', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
+/**
+ * GET /api/mini-apps/:id/reviews/me — Mon avis (doit être avant /:id/reviews)
+ */
+router.get('/:id/reviews/me', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const id = typeof req.params.id === 'string' ? req.params.id : req.params.id?.[0];
+    if (!id) return res.status(400).json({ success: false, error: 'ID invalide' });
+    const review = await miniAppService.getMyReview(id, userId);
+    res.json({ success: true, data: review });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/mini-apps/:id/reviews — Liste des avis (CPO 8.25)
+ */
+router.get('/:id/reviews', async (req, res, next) => {
+  try {
+    const id = typeof req.params.id === 'string' ? req.params.id : req.params.id?.[0];
+    const page = parseInt(String(req.query.page || 1), 10);
+    const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit || 20), 10)));
+    if (!id) return res.status(400).json({ success: false, error: 'ID invalide' });
+    const result = await miniAppService.getReviews(id, page, limit);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/mini-apps/:id/reviews — Soumettre ou mettre à jour son avis (CPO 8.25)
+ */
+router.post('/:id/reviews', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const id = typeof req.params.id === 'string' ? req.params.id : req.params.id?.[0];
+    const { rating, comment } = req.body ?? {};
+    if (!id) return res.status(400).json({ success: false, error: 'ID invalide' });
+    const review = await miniAppService.submitReview(id, userId, Number(rating) || 5, comment);
+    res.json({ success: true, data: review });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 export default router;

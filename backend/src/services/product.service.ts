@@ -190,6 +190,7 @@ class ProductService {
             },
           },
         },
+        auction: true,
         reviews: {
           where: { status: 'approved' },
           include: {
@@ -573,6 +574,7 @@ class ProductService {
     weight_kg?: number;
     negotiable_price?: boolean;
     valid_until?: string | Date;
+    is_merchandising?: boolean;
     variants?: { name: string; value: string; price_diff?: number; stock?: number }[];
   }) {
     // Valider les donnÃ©es requises
@@ -658,6 +660,7 @@ class ProductService {
     if (PRODUCT_FIELD_NAMES.has('valid_until')) {
       createData.valid_until = data.valid_until ? new Date(data.valid_until) : undefined;
     }
+    if (data.is_merchandising !== undefined) createData.is_merchandising = !!data.is_merchandising;
 
     const product = await prisma.product.create({
       data: createData,
@@ -713,6 +716,9 @@ class ProductService {
     weight_kg: number;
     negotiable_price: boolean;
     valid_until: string | Date;
+    is_merchandising: boolean;
+    is_preorder: boolean;
+    preorder_available_at: string | Date | null;
   }>, sellerId: string) {
     // CDC: si images fournies à la mise à jour, conserver minimum 5 photos
     if (data.images !== undefined && data.images.length < 5) {
@@ -740,7 +746,7 @@ class ProductService {
     }
 
     const sanitizedData: any = { ...data };
-    const advancedFields = ['delivery_options', 'video_url', 'latitude', 'longitude', 'weight_kg', 'negotiable_price', 'valid_until'];
+    const advancedFields = ['delivery_options', 'video_url', 'latitude', 'longitude', 'weight_kg', 'negotiable_price', 'valid_until', 'is_merchandising'];
     for (const field of advancedFields) {
       if (!PRODUCT_FIELD_NAMES.has(field)) {
         delete sanitizedData[field];
@@ -1032,6 +1038,224 @@ class ProductService {
     });
 
     return transaction;
+  }
+
+  /** CPO 6.38 — Créer une alerte prix ou stock */
+  async addProductAlert(userId: string, productId: string, alertType: 'price' | 'stock', targetPrice?: number) {
+    const product = await prisma.product.findUnique({ where: { id: productId }, select: { id: true } });
+    if (!product) throw new Error('Produit introuvable');
+    const alert = await prisma.productAlert.upsert({
+      where: {
+        product_id_user_id_alert_type: { product_id: productId, user_id: userId, alert_type: alertType },
+      },
+      create: {
+        product_id: productId,
+        user_id: userId,
+        alert_type: alertType,
+        target_price: alertType === 'price' && targetPrice != null ? targetPrice : null,
+      },
+      update: {
+        target_price: alertType === 'price' && targetPrice != null ? targetPrice : undefined,
+        notified_at: null,
+      },
+    });
+    return alert;
+  }
+
+  /** CPO 6.38 — Supprimer une alerte */
+  async removeProductAlert(userId: string, productId: string, alertType: string) {
+    await prisma.productAlert.deleteMany({
+      where: { product_id: productId, user_id: userId, alert_type: alertType },
+    });
+    return { success: true };
+  }
+
+  /** CPO 6.38 — Alertes de l'utilisateur pour un produit donné */
+  async getProductAlertsForUser(userId: string, productId: string) {
+    const alerts = await prisma.productAlert.findMany({
+      where: { user_id: userId, product_id: productId },
+      select: { id: true, alert_type: true, target_price: true },
+    });
+    return alerts;
+  }
+
+  /** CPO 6.38 — Liste des alertes de l'utilisateur */
+  async listMyProductAlerts(userId: string, page = 1, limit = 50) {
+    const skip = (page - 1) * limit;
+    const [alerts, total] = await Promise.all([
+      prisma.productAlert.findMany({
+        where: { user_id: userId },
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              price: true,
+              stock: true,
+              images: true,
+              status: true,
+            },
+          },
+        },
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.productAlert.count({ where: { user_id: userId } }),
+    ]);
+    return {
+      alerts,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  /** CPO 6.37 — Créer une précommande */
+  async createPreorder(userId: string, productId: string, quantity: number) {
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true, is_preorder: true, seller_id: true },
+    });
+    if (!product) throw new Error('Produit introuvable');
+    if (!product.is_preorder) throw new Error('Ce produit n\'est pas en précommande');
+    if (quantity < 1) throw new Error('Quantité invalide');
+    const preorder = await prisma.preorder.create({
+      data: {
+        product_id: productId,
+        user_id: userId,
+        quantity: Math.min(quantity, 99),
+      },
+      include: {
+        product: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            images: true,
+            preorder_available_at: true,
+          },
+        },
+      },
+    });
+    return preorder;
+  }
+
+  /** CPO 6.37 — Annuler une précommande */
+  async cancelPreorder(userId: string, preorderId: string) {
+    const preorder = await prisma.preorder.findFirst({
+      where: { id: preorderId, user_id: userId },
+    });
+    if (!preorder) throw new Error('Précommande introuvable');
+    await prisma.preorder.update({
+      where: { id: preorderId },
+      data: { status: 'cancelled' },
+    });
+    return { success: true };
+  }
+
+  /** CPO 6.37 — Liste des précommandes de l'utilisateur */
+  async listMyPreorders(userId: string, page = 1, limit = 50) {
+    const skip = (page - 1) * limit;
+    const [items, total] = await Promise.all([
+      prisma.preorder.findMany({
+        where: { user_id: userId, status: 'reserved' },
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              price: true,
+              images: true,
+              preorder_available_at: true,
+              is_preorder: true,
+            },
+          },
+        },
+        orderBy: { reserved_at: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.preorder.count({ where: { user_id: userId, status: 'reserved' } }),
+    ]);
+    return {
+      preorders: items,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  /** CPO 6.36 — Créer une offre de prix (acheteur) */
+  async createOffer(buyerId: string, productId: string, offeredPrice: number) {
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true, seller_id: true, negotiable_price: true, price: true },
+    });
+    if (!product) throw new Error('Produit introuvable');
+    if (!product.negotiable_price) throw new Error('Ce produit ne permet pas la négociation');
+    if (product.seller_id === buyerId) throw new Error('Vous ne pouvez pas faire une offre sur votre propre produit');
+    if (offeredPrice <= 0) throw new Error('Montant invalide');
+    const offer = await prisma.productOffer.create({
+      data: { product_id: productId, buyer_id: buyerId, offered_price: offeredPrice },
+      include: { product: { select: { name: true, price: true } } },
+    });
+    return offer;
+  }
+
+  /** CPO 6.36 — Mon offre pour ce produit */
+  async getMyOfferForProduct(buyerId: string, productId: string) {
+    return prisma.productOffer.findFirst({
+      where: { product_id: productId, buyer_id: buyerId },
+      orderBy: { created_at: 'desc' },
+    });
+  }
+
+  /** CPO 6.36 — Liste des offres reçues (vendeur) */
+  async listOffersForSeller(sellerId: string, page = 1, limit = 50) {
+    const skip = (page - 1) * limit;
+    const [offers, total] = await Promise.all([
+      prisma.productOffer.findMany({
+        where: { product: { seller_id: sellerId } },
+        include: {
+          product: { select: { id: true, name: true, price: true, images: true } },
+          buyer: { select: { id: true, full_name: true, username: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.productOffer.count({ where: { product: { seller_id: sellerId } } }),
+    ]);
+    return { offers, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  }
+
+  /** CPO 6.36 — Accepter ou refuser une offre (vendeur) */
+  async respondToOffer(sellerId: string, offerId: string, status: 'accepted' | 'declined', sellerNote?: string) {
+    const offer = await prisma.productOffer.findUnique({
+      where: { id: offerId },
+      include: { product: { select: { seller_id: true } } },
+    });
+    if (!offer) throw new Error('Offre introuvable');
+    if (offer.product.seller_id !== sellerId) throw new Error('Non autorisé');
+    if (offer.status !== 'pending') throw new Error('Cette offre a déjà été traitée');
+    return prisma.productOffer.update({
+      where: { id: offerId },
+      data: { status, seller_note: sellerNote ?? null, responded_at: new Date() },
+      include: { product: true, buyer: { select: { full_name: true } } },
+    });
+  }
+
+  /** CPO 6.37 — Liste des précommandes pour un produit (vendeur) */
+  async listPreordersForProduct(productId: string, sellerId: string) {
+    const product = await prisma.product.findFirst({
+      where: { id: productId, seller_id: sellerId },
+      select: { id: true },
+    });
+    if (!product) throw new Error('Produit introuvable');
+    return prisma.preorder.findMany({
+      where: { product_id: productId, status: 'reserved' },
+      include: {
+        user: { select: { id: true, full_name: true, avatar_url: true } },
+      },
+      orderBy: { reserved_at: 'desc' },
+    });
   }
 }
 

@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
+import prisma from '../config/database.js';
 import productService from '../services/product.service.js';
 import productQuestionService from '../services/product-question.service.js';
+import auctionService from '../services/auction.service.js';
+import groupBuyService from '../services/groupBuy.service.js';
 import { responseCache } from '../middleware/responseCache.middleware.js';
 
 const router = Router();
@@ -141,6 +144,24 @@ router.get('/', responseCache('products:list', { ttlMs: 20_000 }), async (req, r
   }
 });
 
+// GET /api/products/compare - Comparateur de prix (ids=id1,id2,id3)
+router.get('/compare', responseCache('products:compare', { ttlMs: 30_000 }), async (req, res, next) => {
+  try {
+    const idsParam = req.query.ids as string;
+    if (!idsParam) return res.status(400).json({ success: false, error: { message: 'ids requis (ex: ids=id1,id2)' } });
+    const ids = idsParam.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 10);
+    if (ids.length === 0) return res.status(400).json({ success: false, error: { message: 'Au moins un id requis' } });
+    const products = await prisma.product.findMany({
+      where: { id: { in: ids }, status: 'active' },
+      include: { seller: { select: { id: true, username: true } } },
+    });
+    const byId = Object.fromEntries(products.map((p) => [p.id, p]));
+    res.json({ success: true, data: ids.map((id) => byId[id] || null).filter(Boolean) });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // POST /api/products/questions/:questionId/answer - Must be before /:id
 router.post('/questions/:questionId/answer', authenticate, async (req: AuthRequest, res, next) => {
   try {
@@ -243,12 +264,131 @@ router.get('/nearby', async (req, res, next) => {
   }
 });
 
-// GET /api/products/:id
+// CPO 6.38 — Mes alertes prix / stock
+router.get('/alerts/me', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
+    const result = await productService.listMyProductAlerts(userId, page, limit);
+    res.json({ success: true, data: result.alerts, pagination: result.pagination });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// CPO 6.37 — Mes précommandes
+router.get('/preorders/me', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
+    const result = await productService.listMyPreorders(userId, page, limit);
+    res.json({ success: true, data: result.preorders, pagination: result.pagination });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// CPO 6.37 — Annuler une précommande
+router.delete('/preorders/:preorderId', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const preorderId = param(req, 'preorderId');
+    const userId = req.user!.id;
+    await productService.cancelPreorder(userId, preorderId);
+    res.json({ success: true, message: 'Précommande annulée' });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// CPO 9.25 — Groupes d'achat : liste pour un produit
+router.get('/:id/group-buys', async (req, res, next) => {
+  try {
+    const productId = param(req, 'id');
+    const groups = await groupBuyService.listByProduct(productId);
+    res.json({ success: true, data: groups });
+  } catch (error: any) {
+    next(error);
+  }
+});
+router.post('/:id/group-buys', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const productId = param(req, 'id');
+    const userId = req.user!.id;
+    const minQuantity = Math.max(2, parseInt(String(req.body?.min_quantity), 10) || 2);
+    const group = await groupBuyService.create(productId, userId, minQuantity);
+    res.status(201).json({ success: true, data: group });
+  } catch (error: any) {
+    if (error?.statusCode) return res.status(error.statusCode).json({ success: false, error: { message: error.message } });
+    next(error);
+  }
+});
+
+// CPO 6.35 — Enchères : GET /api/products/:id/auction
+router.get('/:id/auction', async (req, res, next) => {
+  try {
+    const productId = param(req, 'id');
+    const auction = await auctionService.getByProductId(productId);
+    if (!auction) return res.status(404).json({ success: false, error: { message: 'Enchère non trouvée' } });
+    res.json({ success: true, data: auction });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// CPO 6.35 — Enchères : créer une enchère (vendeur)
+router.post('/:id/auction', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const productId = param(req, 'id');
+    const sellerId = req.user!.id;
+    const { start_price, end_at } = req.body;
+    const startPrice = start_price != null ? Number(start_price) : NaN;
+    const endAt = end_at ? new Date(end_at) : null;
+    if (!Number.isFinite(startPrice) || startPrice <= 0 || !endAt || isNaN(endAt.getTime())) {
+      return res.status(400).json({ success: false, error: { message: 'start_price (nombre > 0) et end_at (ISO date) requis' } });
+    }
+    const auction = await auctionService.create({ product_id: productId, seller_id: sellerId, start_price: startPrice, end_at: endAt });
+    res.status(201).json({ success: true, data: auction });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// CPO 6.35 — Enchères : placer une enchère
+router.post('/:id/auction/bid', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const productId = param(req, 'id');
+    const userId = req.user!.id;
+    const amount = req.body?.amount != null ? Number(req.body.amount) : NaN;
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ success: false, error: { message: 'amount (nombre > 0) requis' } });
+    }
+    const auction = await auctionService.placeBid({ product_id: productId, user_id: userId, amount });
+    res.json({ success: true, data: auction });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/products/:id — détail produit
 router.get('/:id', async (req, res, next) => {
   try {
     const id = param(req, 'id');
     const product = await productService.getById(id);
     res.json({ success: true, data: product });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// CPO 6.38 — Mes alertes pour ce produit
+router.get('/:id/alerts/me', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const productId = param(req, 'id');
+    const userId = req.user!.id;
+    const alerts = await productService.getProductAlertsForUser(userId, productId);
+    res.json({ success: true, data: alerts });
   } catch (error: any) {
     next(error);
   }
@@ -300,6 +440,82 @@ router.patch('/:id/stock', authenticate, async (req: AuthRequest, res, next) => 
     const { quantity } = req.body;
     const product = await productService.updateStock(id, quantity, sellerId);
     res.json({ success: true, data: product });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// CPO 6.38 — Ajouter alerte prix ou stock sur un produit
+router.post('/:id/alerts', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const productId = param(req, 'id');
+    const userId = req.user!.id;
+    const { alert_type, target_price } = req.body;
+    if (!alert_type || !['price', 'stock'].includes(alert_type)) {
+      return res.status(400).json({ success: false, error: { message: 'alert_type requis: price ou stock' } });
+    }
+    if (alert_type === 'price' && (target_price == null || typeof target_price !== 'number' || target_price <= 0)) {
+      return res.status(400).json({ success: false, error: { message: 'target_price requis pour une alerte prix (nombre > 0)' } });
+    }
+    const alert = await productService.addProductAlert(userId, productId, alert_type, alert_type === 'price' ? target_price : undefined);
+    res.status(201).json({ success: true, data: alert });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// CPO 6.38 — Supprimer une alerte
+router.delete('/:id/alerts/:type', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const productId = param(req, 'id');
+    const alertType = param(req, 'type');
+    const userId = req.user!.id;
+    if (!['price', 'stock'].includes(alertType)) {
+      return res.status(400).json({ success: false, error: { message: 'type invalide: price ou stock' } });
+    }
+    await productService.removeProductAlert(userId, productId, alertType);
+    res.json({ success: true, message: 'Alerte supprimée' });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// CPO 6.36 — Proposer un prix (négociation)
+router.post('/:id/offers', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const productId = param(req, 'id');
+    const userId = req.user!.id;
+    const offeredPrice = parseFloat(String(req.body?.offered_price ?? 0));
+    if (!offeredPrice || offeredPrice <= 0) {
+      return res.status(400).json({ success: false, error: { message: 'offered_price requis (nombre > 0)' } });
+    }
+    const offer = await productService.createOffer(userId, productId, offeredPrice);
+    res.status(201).json({ success: true, data: offer });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// CPO 6.36 — Mon offre pour ce produit
+router.get('/:id/offers/me', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const productId = param(req, 'id');
+    const userId = req.user!.id;
+    const offer = await productService.getMyOfferForProduct(userId, productId);
+    res.json({ success: true, data: offer });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// CPO 6.37 — Créer une précommande
+router.post('/:id/preorder', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const productId = param(req, 'id');
+    const userId = req.user!.id;
+    const quantity = Math.max(1, Math.min(99, parseInt(String(req.body?.quantity || 1), 10) || 1));
+    const preorder = await productService.createPreorder(userId, productId, quantity);
+    res.status(201).json({ success: true, data: preorder });
   } catch (error: any) {
     next(error);
   }

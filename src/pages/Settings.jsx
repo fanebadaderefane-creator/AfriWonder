@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/expressClient';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useTheme } from 'next-themes';
 import { 
   ArrowLeft, Camera, User, Bell, Shield, Globe, Moon, Sun, Monitor,
-  HelpCircle, LogOut, ChevronRight, Wifi, WifiOff, Smartphone, MapPin, ShieldCheck
+  HelpCircle, LogOut, ChevronRight, Wifi, WifiOff, Smartphone, MapPin, ShieldCheck,
+  Users, MonitorSmartphone, UserPlus, Activity, Gift, Plane, ShoppingBag, Lock
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from "sonner";
@@ -17,7 +19,6 @@ import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { useTranslation } from "@/components/common/TranslationProvider";
 import DataModeToggle from '../components/common/DataModeToggle';
-import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 
@@ -134,6 +135,54 @@ export default function Settings() {
       color: 'bg-blue-100 text-blue-600'
     },
     {
+      id: 'closeFriends',
+      icon: Users,
+      label: 'Liste proches',
+      color: 'bg-indigo-100 text-indigo-600'
+    },
+    {
+      id: 'followRequests',
+      icon: UserPlus,
+      label: 'Demandes de suivi',
+      color: 'bg-amber-100 text-amber-600'
+    },
+    {
+      id: 'sessions',
+      icon: MonitorSmartphone,
+      label: 'Sessions actives',
+      color: 'bg-gray-100 text-gray-600'
+    },
+    {
+      id: 'activity',
+      icon: Activity,
+      label: 'Historique d\'activité',
+      color: 'bg-emerald-100 text-emerald-600'
+    },
+    {
+      id: 'loyalty',
+      icon: Gift,
+      label: 'Points fidélité',
+      color: 'bg-amber-100 text-amber-600'
+    },
+    {
+      id: 'travelAlerts',
+      icon: Plane,
+      label: 'Alertes prix voyage',
+      color: 'bg-sky-100 text-sky-600'
+    },
+    {
+      id: 'messagingE2E',
+      icon: Lock,
+      label: 'Messagerie E2E (chiffrement)',
+      color: 'bg-slate-100 text-slate-600'
+    },
+    {
+      id: 'groupBuys',
+      icon: ShoppingBag,
+      label: 'Mes groupes d\'achat',
+      color: 'bg-violet-100 text-violet-600'
+    },
+    {
       id: 'language',
       icon: Globe,
       label: t('language'),
@@ -153,12 +202,12 @@ export default function Settings() {
     },
   ];
 
-  // Main settings screen
+  // Main settings screen — couleurs explicites pour PWA mobile (éviter texte blanc sur fond blanc)
   if (activeSection === 'main') {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gray-50 text-gray-900">
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-100 z-40">
+        <div className="sticky top-0 bg-white border-b border-gray-100 z-40 text-gray-900">
           <div className="flex items-center gap-4 px-4 py-3">
             <Button
               variant="ghost"
@@ -173,12 +222,12 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4 text-gray-900">
           {/* User Card */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-2xl p-4 flex items-center gap-4"
+            className="bg-white rounded-2xl p-4 flex items-center gap-4 text-gray-900"
           >
             <Avatar className="w-16 h-16">
               <AvatarImage src={user?.profile_image} />
@@ -186,15 +235,15 @@ export default function Settings() {
                 {user?.full_name?.[0]?.toUpperCase() || 'U'}
               </AvatarFallback>
             </Avatar>
-            <div className="flex-1">
-              <h2 className="font-bold text-lg">{user?.full_name || 'Utilisateur'}</h2>
+            <div className="flex-1 min-w-0">
+              <h2 className="font-bold text-lg text-gray-900">{user?.full_name || 'Utilisateur'}</h2>
               <p className="text-gray-500 text-sm">{user?.email}</p>
             </div>
-            <ChevronRight className="w-5 h-5 text-gray-400" />
+            <ChevronRight className="w-5 h-5 text-gray-400 shrink-0" />
           </motion.div>
 
           {/* Menu Items */}
-          <div className="bg-white rounded-2xl overflow-hidden">
+          <div className="bg-white rounded-2xl overflow-hidden text-gray-900">
             {menuItems.map((item, index) => {
               const Icon = item.icon;
               return (
@@ -212,17 +261,25 @@ export default function Settings() {
                       navigate(createPageUrl('NotificationSettings'));
                     } else if (item.id === 'addresses') {
                       navigate(createPageUrl('Addresses'));
+                    } else if (item.id === 'activity') {
+                      navigate(createPageUrl('Activity'));
+                    } else if (item.id === 'loyalty') {
+                      navigate(createPageUrl('LoyaltyPoints'));
+                    } else if (item.id === 'travelAlerts') {
+                      navigate(createPageUrl('TravelAlerts'));
+                    } else if (item.id === 'groupBuys') {
+                      navigate(createPageUrl('GroupBuys'));
                     } else {
                       setActiveSection(item.id);
                     }
                   }}
-                  className="w-full flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0"
+                  className="w-full flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0 text-gray-900"
                 >
-                  <div className={`w-10 h-10 rounded-full ${item.color} flex items-center justify-center`}>
+                  <div className={`w-10 h-10 rounded-full shrink-0 ${item.color} flex items-center justify-center`}>
                     <Icon className="w-5 h-5" />
                   </div>
-                  <span className="flex-1 text-left font-medium">{item.label}</span>
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                  <span className="flex-1 text-left font-medium text-gray-900">{item.label}</span>
+                  <ChevronRight className="w-5 h-5 text-gray-400 shrink-0" />
                 </motion.button>
               );
             })}
@@ -252,14 +309,14 @@ export default function Settings() {
             onClick={handleLogout}
             className="w-full flex items-center gap-4 p-4 bg-white rounded-2xl text-blue-600"
           >
-            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
               <LogOut className="w-5 h-5" />
             </div>
-            <span className="font-medium">{t('logout')}</span>
+            <span className="font-medium text-blue-600">{t('logout')}</span>
           </button>
 
           {/* App version */}
-          <p className="text-center text-gray-400 text-sm pt-4">
+          <p className="text-center text-gray-500 text-sm pt-4">
             Version 1.0.0 • Fabriqué en Afrique 🌍
           </p>
         </div>
@@ -267,16 +324,16 @@ export default function Settings() {
     );
   }
 
-  // Edit Profile
+  // Edit Profile — couleurs explicites pour PWA mobile
   if (activeSection === 'profile') {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="sticky top-0 bg-white border-b border-gray-100 z-40">
+      <div className="min-h-screen bg-gray-50 text-gray-900">
+        <div className="sticky top-0 bg-white border-b border-gray-100 z-40 text-gray-900">
           <div className="flex items-center justify-between px-4 py-3">
             <Button variant="ghost" size="icon" onClick={() => setActiveSection('main')}>
               <ArrowLeft className="w-6 h-6" />
             </Button>
-            <h1 className="text-lg font-bold">Modifier le profil</h1>
+            <h1 className="text-lg font-bold text-gray-900">Modifier le profil</h1>
             <Button 
               onClick={handleSaveProfile}
               disabled={isLoading}
@@ -287,7 +344,7 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="p-4 space-y-6">
+        <div className="p-4 space-y-6 text-gray-900">
           {/* Avatar */}
           <div className="flex flex-col items-center">
             <div className="relative">
@@ -342,40 +399,40 @@ export default function Settings() {
           </div>
 
           {/* Form */}
-          <div className="space-y-4 bg-white rounded-2xl p-4">
+          <div className="space-y-4 bg-white rounded-2xl p-4 text-gray-900">
             <div>
-              <Label>Nom complet</Label>
+              <Label className="text-gray-700">Nom complet</Label>
               <Input
                 value={profileData.full_name}
                 onChange={(e) => setProfileData({ ...profileData, full_name: e.target.value })}
-                className="mt-1 rounded-xl"
+                className="mt-1 rounded-xl bg-white text-gray-900 placeholder:text-gray-400 border border-gray-200"
               />
             </div>
             <div>
-              <Label>Bio</Label>
+              <Label className="text-gray-700">Bio</Label>
               <Textarea
                 value={profileData.bio}
                 onChange={(e) => setProfileData({ ...profileData, bio: e.target.value })}
                 placeholder="Parlez de vous..."
-                className="mt-1 rounded-xl h-24"
+                className="mt-1 rounded-xl h-24 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-200"
               />
             </div>
             <div>
-              <Label>Localisation</Label>
+              <Label className="text-gray-700">Localisation</Label>
               <Input
                 value={profileData.location}
                 onChange={(e) => setProfileData({ ...profileData, location: e.target.value })}
                 placeholder="Dakar, Sénégal"
-                className="mt-1 rounded-xl"
+                className="mt-1 rounded-xl bg-white text-gray-900 placeholder:text-gray-400 border border-gray-200"
               />
             </div>
             <div>
-              <Label>Site web</Label>
+              <Label className="text-gray-700">Site web</Label>
               <Input
                 value={profileData.website}
                 onChange={(e) => setProfileData({ ...profileData, website: e.target.value })}
                 placeholder="https://..."
-                className="mt-1 rounded-xl"
+                className="mt-1 rounded-xl bg-white text-gray-900 placeholder:text-gray-400 border border-gray-200"
               />
             </div>
           </div>
@@ -384,20 +441,20 @@ export default function Settings() {
     );
   }
 
-  // Appearance (CDC 5.1: Mode sombre optionnel)
+  // Appearance (CDC 5.1: Mode sombre optionnel) — couleurs explicites pour PWA mobile
   if (activeSection === 'appearance') {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
         <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 z-40">
           <div className="flex items-center gap-4 px-4 py-3">
             <Button variant="ghost" size="icon" onClick={() => setActiveSection('main')}>
               <ArrowLeft className="w-6 h-6" />
             </Button>
-            <h1 className="text-lg font-bold dark:text-white">{t('appearance')}</h1>
+            <h1 className="text-lg font-bold text-gray-900 dark:text-white">{t('appearance')}</h1>
           </div>
         </div>
 
-        <div className="p-4">
+        <div className="p-4 text-gray-900 dark:text-gray-100">
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 space-y-4">
             <p className="text-gray-600 dark:text-gray-400 text-sm">Choisir le thème de l&apos;application</p>
             <div className="flex gap-2">
@@ -432,20 +489,20 @@ export default function Settings() {
     );
   }
 
-  // Data Mode
+  // Data Mode — couleurs explicites pour PWA mobile
   if (activeSection === 'data') {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="sticky top-0 bg-white border-b border-gray-100 z-40">
+      <div className="min-h-screen bg-gray-50 text-gray-900">
+        <div className="sticky top-0 bg-white border-b border-gray-100 z-40 text-gray-900">
           <div className="flex items-center gap-4 px-4 py-3">
             <Button variant="ghost" size="icon" onClick={() => setActiveSection('main')}>
               <ArrowLeft className="w-6 h-6" />
             </Button>
-            <h1 className="text-lg font-bold">Mode données</h1>
+            <h1 className="text-lg font-bold text-gray-900">Mode données</h1>
           </div>
         </div>
 
-        <div className="p-4">
+        <div className="p-4 text-gray-900">
           <DataModeToggle
             mode={settings.data_mode}
             onChange={async (mode) => {
@@ -459,20 +516,20 @@ export default function Settings() {
             }}
           />
 
-          <div className="mt-6 bg-white rounded-2xl p-4 space-y-4">
-<div className="flex items-center justify-between">
+          <div className="mt-6 bg-white rounded-2xl p-4 space-y-4 text-gray-900">
+            <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <Smartphone className="w-5 h-5 text-gray-500" />
-                  <span className="font-medium">Télécharger en WiFi uniquement</span>
+                  <Smartphone className="w-5 h-5 text-gray-500 shrink-0" />
+                  <span className="font-medium text-gray-900">Télécharger en WiFi uniquement</span>
                 </div>
-                <Switch className="data-[state=checked]:bg-blue-600" />
+                <Switch className="data-[state=checked]:bg-blue-600 shrink-0" />
               </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <WifiOff className="w-5 h-5 text-gray-500" />
-                <span className="font-medium">Mode hors-ligne</span>
+                <WifiOff className="w-5 h-5 text-gray-500 shrink-0" />
+                <span className="font-medium text-gray-900">Mode hors-ligne</span>
               </div>
-              <Switch className="data-[state=checked]:bg-blue-600" />
+              <Switch className="data-[state=checked]:bg-blue-600 shrink-0" />
             </div>
           </div>
         </div>
@@ -480,9 +537,191 @@ export default function Settings() {
     );
   }
 
-  // Default fallback
+  // Liste proches (CPO 1.18)
+  if (activeSection === 'closeFriends') {
+    const { data: closeFriends = [], refetch: refetchClose } = useQuery({
+      queryKey: ['close-friends', user?.id],
+      queryFn: () => api.me.getCloseFriends(),
+      enabled: !!user?.id,
+    });
+    const removeCloseMutation = useMutation({
+      mutationFn: (friendId) => api.me.removeCloseFriend(friendId),
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['close-friends', user?.id] }); toast.success('Retiré de la liste'); },
+      onError: () => toast.error('Erreur'),
+    });
+    return (
+      <div className="min-h-screen bg-gray-50 text-gray-900">
+        <div className="sticky top-0 bg-white border-b border-gray-100 z-40">
+          <div className="flex items-center gap-4 px-4 py-3">
+            <Button variant="ghost" size="icon" onClick={() => setActiveSection('main')}><ArrowLeft className="w-6 h-6" /></Button>
+            <h1 className="text-lg font-bold">Liste proches</h1>
+          </div>
+        </div>
+        <div className="p-4">
+          <p className="text-gray-600 text-sm mb-4">Les publications « Proches uniquement » ne sont visibles que par les personnes de cette liste.</p>
+          <div className="bg-white rounded-2xl divide-y divide-gray-100">
+            {closeFriends.length === 0 ? (
+              <p className="p-4 text-gray-500 text-center">Aucun proche. Ajoutez des Wonderers depuis leur profil (menu → Ajouter aux proches).</p>
+            ) : (
+              closeFriends.map((friend) => (
+                <div key={friend.id} className="flex items-center gap-3 p-4">
+                  <Avatar className="w-10 h-10">
+                    <AvatarImage src={friend.profile_image} />
+                    <AvatarFallback className="bg-indigo-100 text-indigo-700">{(friend.full_name || friend.username || 'U')[0].toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900 truncate">{friend.full_name || friend.username}</p>
+                    <p className="text-xs text-gray-500">@{friend.username}</p>
+                  </div>
+                  <Button variant="ghost" size="sm" className="text-red-600" onClick={() => removeCloseMutation.mutate(friend.id)} disabled={removeCloseMutation.isPending}>Retirer</Button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Demandes de suivi (CPO 2.2)
+  if (activeSection === 'followRequests') {
+    const { data: requests = [], refetch: refetchReq } = useQuery({
+      queryKey: ['follow-requests', user?.id],
+      queryFn: () => api.me.getFollowRequests(),
+      enabled: !!user?.id,
+    });
+    const acceptMutation = useMutation({
+      mutationFn: (id) => api.me.acceptFollowRequest(id),
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['follow-requests', user?.id] }); toast.success('Demande acceptée'); },
+      onError: () => toast.error('Erreur'),
+    });
+    const rejectMutation = useMutation({
+      mutationFn: (id) => api.me.rejectFollowRequest(id),
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['follow-requests', user?.id] }); toast.success('Demande refusée'); },
+      onError: () => toast.error('Erreur'),
+    });
+    return (
+      <div className="min-h-screen bg-gray-50 text-gray-900">
+        <div className="sticky top-0 bg-white border-b border-gray-100 z-40">
+          <div className="flex items-center gap-4 px-4 py-3">
+            <Button variant="ghost" size="icon" onClick={() => setActiveSection('main')}><ArrowLeft className="w-6 h-6" /></Button>
+            <h1 className="text-lg font-bold">Demandes de suivi</h1>
+          </div>
+        </div>
+        <div className="p-4">
+          <div className="bg-white rounded-2xl divide-y divide-gray-100">
+            {requests.length === 0 ? (
+              <p className="p-4 text-gray-500 text-center">Aucune demande en attente.</p>
+            ) : (
+              requests.map((req) => (
+                <div key={req.id} className="flex items-center gap-3 p-4">
+                  <Avatar className="w-10 h-10">
+                    <AvatarImage src={req.requester?.profile_image} />
+                    <AvatarFallback className="bg-amber-100 text-amber-700">{(req.requester?.full_name || req.requester?.username || 'U')[0]?.toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900 truncate">{req.requester?.full_name || req.requester?.username}</p>
+                    <p className="text-xs text-gray-500">@{req.requester?.username}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => acceptMutation.mutate(req.id)} disabled={acceptMutation.isPending}>Accepter</Button>
+                    <Button size="sm" variant="outline" onClick={() => rejectMutation.mutate(req.id)} disabled={rejectMutation.isPending}>Refuser</Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Sessions actives (CPO 1.22)
+  if (activeSection === 'sessions') {
+    const { data: sessions = [], refetch: refetchSessions } = useQuery({
+      queryKey: ['me-sessions', user?.id],
+      queryFn: () => api.me.getSessions(),
+      enabled: !!user?.id,
+    });
+    const revokeMutation = useMutation({
+      mutationFn: (id) => api.me.revokeSession(id),
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['me-sessions', user?.id] }); toast.success('Session révoquée'); },
+      onError: () => toast.error('Erreur'),
+    });
+    return (
+      <div className="min-h-screen bg-gray-50 text-gray-900">
+        <div className="sticky top-0 bg-white border-b border-gray-100 z-40">
+          <div className="flex items-center gap-4 px-4 py-3">
+            <Button variant="ghost" size="icon" onClick={() => setActiveSection('main')}><ArrowLeft className="w-6 h-6" /></Button>
+            <h1 className="text-lg font-bold">Sessions actives</h1>
+          </div>
+        </div>
+        <div className="p-4">
+          <p className="text-gray-600 text-sm mb-4">Appareils connectés à votre compte. Révoquez une session pour déconnecter cet appareil.</p>
+          <div className="bg-white rounded-2xl divide-y divide-gray-100">
+            {sessions.length === 0 ? (
+              <p className="p-4 text-gray-500 text-center">Aucune session enregistrée.</p>
+            ) : (
+              sessions.map((s) => (
+                <div key={s.id} className="flex items-center gap-3 p-4">
+                  <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center"><MonitorSmartphone className="w-5 h-5 text-gray-600" /></div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900">{s.user_agent?.slice(0, 50) || 'Appareil'}</p>
+                    <p className="text-xs text-gray-500">{s.last_seen ? new Date(s.last_seen).toLocaleString() : s.created_at ? new Date(s.created_at).toLocaleString() : ''}</p>
+                  </div>
+                  <Button variant="ghost" size="sm" className="text-red-600" onClick={() => revokeMutation.mutate(s.id)} disabled={revokeMutation.isPending}>Révoquer</Button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // CPO 4.40 — Messagerie E2E (préférence ; chiffrement à venir)
+  if (activeSection === 'messagingE2E') {
+    const updateE2EMutation = useMutation({
+      mutationFn: (enabled) => api.auth.updateMe({ messaging_e2e_enabled: enabled }),
+      onSuccess: (_data, enabled) => {
+        setUser((u) => (u ? { ...u, messaging_e2e_enabled: enabled } : u));
+        toast.success(enabled ? 'E2E activé (préférence enregistrée)' : 'E2E désactivé');
+      },
+      onError: () => toast.error('Erreur'),
+    });
+    const e2eEnabled = !!user?.messaging_e2e_enabled;
+    return (
+      <div className="min-h-screen bg-gray-50 text-gray-900">
+        <div className="sticky top-0 bg-white border-b border-gray-100 z-40">
+          <div className="flex items-center gap-4 px-4 py-3">
+            <Button variant="ghost" size="icon" onClick={() => setActiveSection('main')}><ArrowLeft className="w-6 h-6" /></Button>
+            <h1 className="text-lg font-bold">Messagerie E2E</h1>
+          </div>
+        </div>
+        <div className="p-4">
+          <div className="bg-white rounded-2xl p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Lock className="w-6 h-6 text-slate-600" />
+              <div>
+                <p className="font-medium text-gray-900">Chiffrement de bout en bout</p>
+                <p className="text-sm text-gray-500">Active la préférence E2E. L&apos;implémentation complète du chiffrement sera disponible dans une prochaine version.</p>
+              </div>
+            </div>
+            <Switch
+              checked={e2eEnabled}
+              onCheckedChange={(v) => updateE2EMutation.mutate(v)}
+              disabled={updateE2EMutation.isPending}
+              className="data-[state=checked]:bg-blue-600 shrink-0"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Default fallback — couleurs explicites pour PWA mobile
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+    <div className="min-h-screen bg-gray-50 text-gray-900 flex items-center justify-center">
       <Button onClick={() => setActiveSection('main')}>
         Retour aux paramètres
       </Button>

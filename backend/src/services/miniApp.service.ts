@@ -620,6 +620,77 @@ export class MiniAppService {
       throw error;
     }
   }
+
+  /** CPO 8.25 — Soumettre ou mettre à jour un avis sur une mini-app */
+  async submitReview(miniAppId: string, userId: string, rating: number, comment?: string | null) {
+    const r = Math.min(5, Math.max(1, Math.round(rating)));
+    const app = await prisma.miniApp.findUnique({ where: { id: miniAppId } });
+    if (!app) throw new Error('Mini-app introuvable');
+    const review = await prisma.miniAppReview.upsert({
+      where: {
+        mini_app_id_user_id: { mini_app_id: miniAppId, user_id: userId },
+      },
+      create: { mini_app_id: miniAppId, user_id: userId, rating: r, comment: comment ?? null },
+      update: { rating: r, comment: comment ?? null },
+      include: {
+        user: { select: { id: true, username: true, profile_image: true } },
+      },
+    });
+    await this.updateMiniAppRating(miniAppId);
+    return review;
+  }
+
+  /** Recalculer rating et reviews_count d'une mini-app */
+  private async updateMiniAppRating(miniAppId: string) {
+    const agg = await prisma.miniAppReview.aggregate({
+      where: { mini_app_id: miniAppId },
+      _avg: { rating: true },
+      _count: { id: true },
+    });
+    await prisma.miniApp.update({
+      where: { id: miniAppId },
+      data: {
+        rating: agg._avg.rating ?? 0,
+        reviews_count: agg._count.id ?? 0,
+      },
+    });
+  }
+
+  /** CPO 8.25 — Liste des avis d'une mini-app */
+  async getReviews(miniAppId: string, page: number = 1, limit: number = 20) {
+    const skip = (page - 1) * limit;
+    const [reviews, total] = await Promise.all([
+      prisma.miniAppReview.findMany({
+        where: { mini_app_id: miniAppId },
+        include: {
+          user: { select: { id: true, username: true, profile_image: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.miniAppReview.count({ where: { mini_app_id: miniAppId } }),
+    ]);
+    return {
+      reviews,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /** Avis de l'utilisateur connecté pour une mini-app */
+  async getMyReview(miniAppId: string, userId: string) {
+    return prisma.miniAppReview.findUnique({
+      where: { mini_app_id_user_id: { mini_app_id: miniAppId, user_id: userId } },
+      include: {
+        user: { select: { id: true, username: true, profile_image: true } },
+      },
+    });
+  }
 }
 
 export const miniAppService = new MiniAppService();

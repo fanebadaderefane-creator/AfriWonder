@@ -299,11 +299,14 @@ class AuthService {
         is_verified: true,
         created_at: true,
         data_saver_mode: true,
+        messaging_e2e_enabled: true,
       },
     });
 
     if (!user) {
-      throw new Error('Utilisateur non trouvé');
+      const err: any = new Error('Utilisateur non trouvé');
+      err.statusCode = 401;
+      throw err;
     }
 
     return user;

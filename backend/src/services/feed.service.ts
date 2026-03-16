@@ -32,6 +32,7 @@ export interface FeedOptions {
   gender?: string;
   category?: string;
   hashtag?: string;
+  mediaType?: 'video' | 'image';
 }
 
 class FeedService {
@@ -50,6 +51,7 @@ class FeedService {
         deviceId: options.deviceId,
         category: options.category,
         hashtag: options.hashtag,
+        mediaType: options.mediaType,
       }),
       adsService.getActiveAdsForFeed(Math.ceil(limit / AD_FREQUENCY_MIN) + 5, {
         userId: options.userId,

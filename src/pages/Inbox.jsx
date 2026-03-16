@@ -5,53 +5,109 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Edit, MessageCircle, ArrowLeft, UserPlus, Bell, Filter, Users, Plus } from 'lucide-react';
+import { Search, Edit, MessageCircle, ArrowLeft, UserPlus, Bell, BellOff, Filter, Users, Plus, Archive, ArchiveRestore, MoreVertical, Download } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+import { useAuth } from '@/lib/AuthContext';
 import { isDeletedUser } from '@/lib/utils';
+import { usePageVisibility } from '@/hooks/usePageVisibility';
+import { toast } from 'sonner';
 import BottomNav from '../components/navigation/BottomNav';
 
 export default function Inbox() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [user, setUser] = useState(null);
+  const { user, isAuthenticated, isLoadingAuth } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
+  const [showArchived, setShowArchived] = useState(false);
   const [showAllSuggested, setShowAllSuggested] = useState(false);
   const [followStateMap, setFollowStateMap] = useState({});
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedMemberIds, setSelectedMemberIds] = useState([]);
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const [mutingConversationId, setMutingConversationId] = useState(null);
+  const [exportingConversations, setExportingConversations] = useState(false);
 
-  useEffect(() => {
-    const getUser = async () => {
-      try {
-        const u = await api.auth.me();
-        setUser(u);
-      } catch (_e) {
-        navigate('/');
-      }
-    };
-    getUser();
-  }, [navigate]);
+  const isPageVisible = usePageVisibility();
+
+  const handleExportConversations = async () => {
+    if (exportingConversations) return;
+    setExportingConversations(true);
+    try {
+      const result = await api.messages.exportConversations();
+      const data = result?.data ?? result;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `afriwonder-conversations-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Export téléchargé');
+    } catch (e) {
+      toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur lors de l\'export');
+    } finally {
+      setExportingConversations(false);
+    }
+  };
+
+  const muteConversationMutation = useMutation({
+    mutationFn: ({ conversationId, muted }) => api.messages.setConversationNotifications(conversationId, { muted }),
+    onSuccess: (_data, { conversationId }) => {
+      setMutingConversationId(null);
+      queryClient.invalidateQueries({ queryKey: ['messages-conversations', user?.id] });
+    },
+    onError: () => {
+      setMutingConversationId(null);
+      toast.error('Impossible de modifier les notifications');
+    },
+  });
+
+  const archiveConversationMutation = useMutation({
+    mutationFn: ({ conversationId, archived }) => api.messages.archiveConversation(conversationId, archived),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messages-conversations', user?.id] });
+      toast.success('Conversation mise à jour');
+    },
+    onError: () => toast.error('Impossible d\'archiver / désarchiver'),
+  });
+
+  // Si l'authentification est encore en cours, afficher un écran de chargement simple
+  if (isLoadingAuth) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
+        <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4" />
+        <p className="text-sm text-gray-600">Chargement de vos messages...</p>
+      </div>
+    );
+  }
+
+  // Si l'utilisateur n'est pas authentifié, laisser le garde global de l'app gérer la redirection
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  const refetchIntervalWhenVisible = isPageVisible ? 10000 : false;
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['messages-conversations', user?.id],
-    queryFn: () => api.messages.getConversations(1, 50),
+    queryFn: () => api.messages.getConversations(1, 50, true),
     enabled: !!user?.id,
-    refetchInterval: 10000,
+    refetchInterval: refetchIntervalWhenVisible,
   });
 
   const { data: groupsData } = useQuery({
     queryKey: ['messages-groups', user?.id],
     queryFn: () => api.messages.getGroups(1, 50),
     enabled: !!user?.id,
-    refetchInterval: 10000,
+    refetchInterval: refetchIntervalWhenVisible,
   });
   const groups = groupsData?.groups ?? [];
 
@@ -62,8 +118,16 @@ export default function Inbox() {
       return result?.notifications || result?.data?.notifications || result || [];
     },
     enabled: !!user?.id,
-    refetchInterval: 10000,
+    refetchInterval: refetchIntervalWhenVisible,
   });
+
+  useEffect(() => {
+    if (isError && user?.id) {
+      toast.error('Impossible de charger les conversations. Réessayez.', {
+        action: { label: 'Réessayer', onClick: () => refetch() },
+      });
+    }
+  }, [isError, user?.id, refetch]);
 
   const { data: userFollows = [] } = useQuery({
     queryKey: ['user-follows', user?.id],
@@ -120,13 +184,15 @@ export default function Inbox() {
   );
 
   const filteredConversations = useMemo(() => {
-    const source = activeFilter === 'unread' ? unreadConversations : conversations;
+    const archived = !!showArchived;
+    const byArchived = conversations.filter((c) => (c.is_archived ?? c.archived) === archived);
+    const source = activeFilter === 'unread' ? unreadConversations.filter((c) => (c.is_archived ?? c.archived) === archived) : byArchived;
     return source.filter((conv) => {
       const name = conv.other?.full_name || conv.other?.username || '';
       if (isDeletedUser(conv.other)) return false;
       return name.toLowerCase().includes(searchQuery.toLowerCase());
     });
-  }, [activeFilter, unreadConversations, conversations, searchQuery]);
+  }, [activeFilter, showArchived, unreadConversations, conversations, searchQuery]);
 
   const followNotifications = notificationsData.filter((n) => ['follow', 'new_follower', 'new_wonder'].includes(n.type) && !n.is_read);
   const activityNotifications = notificationsData.filter((n) => ['like', 'comment', 'mention'].includes(n.type) && !n.is_read);
@@ -187,11 +253,23 @@ export default function Inbox() {
             </Button>
             <h1 className="text-xl font-bold text-gray-900">Messages</h1>
           </div>
-          <Link to={createPageUrl('Search') + '?from=inbox&mode=messages'}>
-            <Button variant="ghost" size="icon">
-              <Edit className="w-5 h-5" />
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleExportConversations}
+              disabled={exportingConversations}
+              className="rounded-xl"
+              aria-label="Exporter mes conversations"
+            >
+              <Download className="w-5 h-5" />
             </Button>
-          </Link>
+            <Link to={createPageUrl('Search') + '?from=inbox&mode=messages'}>
+              <Button variant="ghost" size="icon">
+                <Edit className="w-5 h-5" />
+              </Button>
+            </Link>
+          </div>
         </div>
 
         <div className="px-4 pb-3">
@@ -222,6 +300,15 @@ export default function Inbox() {
               onClick={() => setActiveFilter('unread')}
             >
               Non lus ({unreadConversations.length})
+            </Button>
+            <Button
+              variant={showArchived ? 'default' : 'outline'}
+              size="sm"
+              className={showArchived ? 'bg-gray-700 text-white rounded-full' : 'rounded-full'}
+              onClick={() => setShowArchived((prev) => !prev)}
+            >
+              <Archive className="w-4 h-4 mr-1" />
+              Archivées
             </Button>
           </div>
         </div>
@@ -511,16 +598,20 @@ export default function Inbox() {
             const otherAvatar = other.profile_image;
             const otherUserId = other.id;
             const unreadCount = conv.unread_count ?? 0;
+            const isMuted = !!conv.muted;
+            const isMuting = mutingConversationId === conv.id;
+            const isArchived = !!(conv.is_archived ?? conv.archived);
 
             return (
-              <Link key={conv.id} to={`${createPageUrl('Chat')}?_userId=${otherUserId}`}>
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.02 }}
-                  className="flex items-center gap-3 px-4 py-3.5 hover:bg-white active:bg-gray-100 transition-colors rounded-xl mx-2 my-1"
-                >
-                  <Avatar className="w-14 h-14 ring-2 ring-white shadow-md">
+              <motion.div
+                key={conv.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.02 }}
+                className="flex items-center gap-2 px-4 py-3.5 hover:bg-white active:bg-gray-100 transition-colors rounded-xl mx-2 my-1"
+              >
+                <Link to={`${createPageUrl('Chat')}?_userId=${otherUserId}`} className="flex flex-1 items-center gap-3 min-w-0">
+                  <Avatar className="w-14 h-14 ring-2 ring-white shadow-md flex-shrink-0">
                     <AvatarImage src={otherAvatar} />
                     <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-semibold">
                       {otherName?.[0]?.toUpperCase() || 'U'}
@@ -544,8 +635,46 @@ export default function Inbox() {
                       )}
                     </div>
                   </div>
-                </motion.div>
-              </Link>
+                </Link>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="flex-shrink-0 rounded-full h-9 w-9"
+                  disabled={isMuting}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setMutingConversationId(conv.id);
+                    muteConversationMutation.mutate({ conversationId: conv.id, muted: !isMuted });
+                  }}
+                  aria-label={isMuted ? 'Activer les notifications' : 'Désactiver les notifications'}
+                  title={isMuted ? 'Activer les notifications' : 'Désactiver les notifications'}
+                >
+                  {isMuted ? (
+                    <BellOff className="w-4 h-4 text-amber-600" />
+                  ) : (
+                    <Bell className="w-4 h-4 text-gray-500" />
+                  )}
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="flex-shrink-0 rounded-full h-9 w-9" onClick={(e) => e.preventDefault()}>
+                      <MoreVertical className="w-4 h-4 text-gray-500" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.preventDefault();
+                        archiveConversationMutation.mutate({ conversationId: conv.id, archived: !isArchived });
+                      }}
+                    >
+                      {isArchived ? <ArchiveRestore className="w-4 h-4 mr-2" /> : <Archive className="w-4 h-4 mr-2" />}
+                      {isArchived ? 'Désarchiver' : 'Archiver'}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </motion.div>
             );
           })
         )}

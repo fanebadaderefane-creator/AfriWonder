@@ -4,14 +4,41 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
 
+// URL de base pour Socket.IO (prend en compte VITE_WS_URL, VITE_API_URL, puis fallback local dev)
 const getSocketBaseUrl = () => {
+  const ws = import.meta.env.VITE_WS_URL || '';
+  if (ws) {
+    try {
+      const url = new URL(ws);
+      if (url.protocol === 'ws:') url.protocol = 'http:';
+      if (url.protocol === 'wss:') url.protocol = 'https:';
+      return url.origin;
+    } catch {
+      // ignore et continuer sur VITE_API_URL
+    }
+  }
+
   const api = import.meta.env.VITE_API_URL || '';
-  if (api) return api.replace(/\/api\/?$/, '') || window.location.origin;
-  return window.location.origin;
+  if (api) {
+    return api.replace(/\/api\/?$/, '') || window.location.origin;
+  }
+
+  // Fallback dev: si on est sur localhost:5173, on bascule vers 3000 (backend par défaut)
+  try {
+    const current = new URL(window.location.origin);
+    if ((current.hostname === 'localhost' || current.hostname === '127.0.0.1') && current.port === '5173') {
+      current.port = '3000';
+      return current.origin;
+    }
+    return current.origin;
+  } catch {
+    return window.location.origin;
+  }
 };
 
 /**
  * Hook pour une conversation : join/leave room, typing, écoute new_message / message:read.
+ * Expose isConnected pour afficher un indicateur de reconnexion (socket.io gère la reconnexion automatique).
  */
 export function useConversationSocket(options) {
   const {
@@ -23,6 +50,7 @@ export function useConversationSocket(options) {
   } = options || {};
   const socketRef = useRef(null);
   const [typingUser, setTypingUser] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
   const typingTimeoutRef = useRef(null);
   const onNewMessageRef = useRef(onNewMessage);
   const onMessageReadRef = useRef(onMessageRead);
@@ -36,8 +64,13 @@ export function useConversationSocket(options) {
     socketRef.current = socket;
 
     socket.on('connect', () => {
+      setIsConnected(true);
       socket.emit('user:join', userId);
       socket.emit('message:join-conversation', conversationId);
+    });
+
+    socket.on('disconnect', () => {
+      setIsConnected(false);
     });
 
     socket.on('message:new', (payload) => {
@@ -59,6 +92,7 @@ export function useConversationSocket(options) {
     });
 
     return () => {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       socket.emit('message:leave-conversation', conversationId);
       socket.removeAllListeners();
       socket.disconnect();
@@ -77,5 +111,5 @@ export function useConversationSocket(options) {
     }
   }, [conversationId, userId]);
 
-  return { typingUser, emitTypingStart, emitTypingStop };
+  return { typingUser, emitTypingStart, emitTypingStop, isConnected };
 }

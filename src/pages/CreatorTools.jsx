@@ -3,7 +3,7 @@ import { api } from "@/api/expressClient";
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, BarChart3, Upload, Share2, Coins } from "lucide-react";
+import { ArrowLeft, BarChart3, Upload, Share2, Coins, FileText, ChevronRight } from "lucide-react";
 import { motion } from "framer-motion";
 import { useTranslation } from "@/components/common/useTranslation";
 import { createPageUrl } from "@/utils";
@@ -154,6 +154,21 @@ export default function CreatorTools() {
             Outils créateur
           </h1>
         </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto px-4 pb-4">
+        <Link to={createPageUrl("CreatorContracts")}>
+          <div className="flex items-center gap-3 p-4 rounded-xl bg-white border border-gray-200 hover:border-blue-300 shadow-sm">
+            <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center">
+              <FileText className="w-5 h-5 text-slate-600" />
+            </div>
+            <div className="flex-1">
+              <p className="font-medium text-gray-900">Contrats & droits musicaux (CPO 7.19)</p>
+              <p className="text-sm text-gray-500">Licences, accords de droits, partenariats</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-gray-400" />
+          </div>
+        </Link>
       </div>
 
       <div className="max-w-6xl mx-auto p-6">

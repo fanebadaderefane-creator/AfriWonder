@@ -5,6 +5,45 @@ import { logger } from '../utils/logger.js';
 
 const router = Router();
 
+// GET /api/notifications/preferences — préférences de notification (CPO 1.25)
+router.get('/preferences', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    let prefs = await prisma.notificationPreference.findUnique({ where: { user_id: userId } });
+    if (!prefs) {
+      prefs = await prisma.notificationPreference.create({
+        data: { user_id: userId },
+      });
+    }
+    res.json({ success: true, data: prefs });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PUT /api/notifications/preferences
+router.put('/preferences', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const body = req.body || {};
+    const upd: Record<string, boolean> = {};
+    const keys = [
+      'email_like', 'email_comment', 'email_follow', 'email_order', 'email_live',
+      'sms_like', 'sms_comment', 'sms_order',
+      'push_like', 'push_comment', 'push_follow', 'push_order', 'push_live',
+    ];
+    keys.forEach((k) => { if (typeof body[k] === 'boolean') upd[k] = body[k]; });
+    const prefs = await prisma.notificationPreference.upsert({
+      where: { user_id: userId },
+      create: { user_id: userId, ...upd },
+      update: upd,
+    });
+    res.json({ success: true, data: prefs });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /api/notifications - Get user notifications
 router.get('/', authenticate, async (req: AuthRequest, res, next) => {
   try {

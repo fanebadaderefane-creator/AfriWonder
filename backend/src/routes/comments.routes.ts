@@ -10,9 +10,9 @@ router.put('/:id', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const userId = req.user!.id;
-    const { content } = req.body;
+    const { content, is_pinned } = req.body || {};
 
-    const comment = await videoService.updateComment(id, userId, { content });
+    const comment = await videoService.updateComment(id, userId, { content, is_pinned });
 
     res.json({
       success: true,

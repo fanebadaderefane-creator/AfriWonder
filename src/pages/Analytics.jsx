@@ -38,16 +38,18 @@ export default function AnalyticsPage() {
   const { data: videosStats, _isLoading: videosLoading } = useQuery({
     queryKey: ['videosAnalytics', user?.id, dateRange],
     queryFn: async () => {
-      const videos = await api.videos.list({ creator_id: user.id });
-      const views = await api.entities.ViewHistory.filter({ user_id: user.id });
-      const likes = await api.saves.list({ user_id: user.id });
-      const comments = await api.videos.getComments({ author_id: user.id });
+      if (!user?.id) return { videosCount: 0, totalViews: 0, totalLikes: 0, totalComments: 0, avgViewsPerVideo: 0, videos: [] };
+      const [videos, views, likes, comments] = await Promise.all([
+        api.videos.list({ creator_id: user.id }),
+        api.entities.ViewHistory.filter({ user_id: user.id }),
+        api.saves.list({ user_id: user.id }),
+        api.videos.getComments({ author_id: user.id })
+      ]);
 
       const totalViews = views?.length || 0;
       const totalLikes = likes?.length || 0;
       const totalComments = comments?.length || 0;
       const avgViewsPerVideo = videos?.length > 0 ? Math.round(totalViews / videos.length) : 0;
-
       return {
         videosCount: videos?.length || 0,
         totalViews,
@@ -57,25 +59,25 @@ export default function AnalyticsPage() {
         videos: videos?.sort((a, b) => (b.views_count || 0) - (a.views_count || 0)).slice(0, 10) || []
       };
     },
-    enabled: !!user
+    enabled: !!user?.id
   });
 
-  // Fetch followers analytics
+  // Fetch followers analytics (personnes qui me suivent)
   const { data: followersStats } = useQuery({
     queryKey: ['followersAnalytics', user?.id],
     queryFn: async () => {
-      const followers = await api.users.getFollowing({ following_id: user.id });
+      if (!user?.id) return { totalFollowers: 0, newFollowersThisMonth: 0 };
+      const res = await api.users.getFollowers(user.id, { page: 1, limit: 500 });
+      const list = Array.isArray(res) ? res : res?.followers ?? [];
+      const monthAgo = new Date();
+      monthAgo.setMonth(monthAgo.getMonth() - 1);
+      const newThisMonth = list.filter(f => new Date(f.created_at || f.created_date || 0) > monthAgo).length;
       return {
-        totalFollowers: followers?.length || 0,
-        newFollowersThisMonth: followers?.filter(f => {
-          const created = new Date(f.created_date);
-          const monthAgo = new Date();
-          monthAgo.setMonth(monthAgo.getMonth() - 1);
-          return created > monthAgo;
-        }).length || 0
+        totalFollowers: list.length,
+        newFollowersThisMonth: newThisMonth
       };
     },
-    enabled: !!user
+    enabled: !!user?.id
   });
 
   // Engagement rate

@@ -17,10 +17,12 @@ import AfriWonderLogo from '../components/common/AfriWonderLogo';
 import { useAppMenu } from '@/contexts/AppMenuContext';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import NotificationService from '../components/notifications/NotificationService';
-import { Loader2, ChevronRight } from 'lucide-react';
+import Loader2 from 'lucide-react/icons/loader-2';
+import ChevronRight from 'lucide-react/icons/chevron-right';
 import { toast } from "sonner";
 import { useNetworkStatus, getCacheStrategy, scheduleTask } from '../components/common/PerformanceOptimizer';
 import { cn, isDeletedUser, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl } from "@/lib/utils";
+import { createVideoPool, releasePoolPlayer } from '@/lib/videoPool';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { getJSON, setJSON } from '@/utils/safeStorage';
 import { useWakeLock } from '@/hooks/useWakeLock';
@@ -54,7 +56,6 @@ export default function Home() {
   const [savedVideos, setSavedVideos] = useState(new Set());
   const [followingCount, setFollowingCount] = useState(0);
 
-  const [followingVideos, setFollowingVideos] = useState([]);
   const [showWonderersPanel, setShowWonderersPanel] = useState(false);
 
   const containerRef = useRef(null);
@@ -66,6 +67,16 @@ export default function Home() {
   const currentIndexRef = useRef(0);
   const observerRef = useRef(null);
   const [activePreviewId, setActivePreviewId] = useState(null);
+
+  // Video Pool type TikTok : 3 lecteurs réutilisés pour tout le feed (RAM, rebuffer, fluidité)
+  const videoPoolRef = useRef(null);
+  useEffect(() => {
+    videoPoolRef.current = createVideoPool(3);
+    return () => {
+      (videoPoolRef.current || []).forEach((player) => releasePoolPlayer(player));
+      videoPoolRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,25 +168,6 @@ export default function Home() {
   }, [feedItems]);
   const isLoading = activeTab === 'pourtoi' ? feedLoading : videosLoading;
 
-  // Préchargement des vignettes (current + 2 suivantes) pour éviter écran noir au scroll
-  useEffect(() => {
-    const list = activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map((v) => ({ type: 'video', video: v }));
-    const start = Math.max(0, currentIndex);
-    const slice = list.slice(start, start + 3);
-    slice.forEach((item) => {
-      const video = item?.video;
-      if (!video) return;
-      const posterUrl = isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? video.thumbnail_url : VIDEO_PLACEHOLDER_IMG;
-      if (!posterUrl || posterUrl.startsWith('data:')) return;
-      const url = getAbsoluteImageUrl(posterUrl);
-      if (url) {
-        const img = new Image();
-        img.src = url;
-      }
-    });
-  }, [currentIndex, activeTab, mainFeedItems, followingVideos]);
-  const refetch = activeTab === 'pourtoi' ? refetchFeed : refetchVideos;
-
   // Plus de refetch automatique ici : on se repose sur la stratégie de cache React Query
 
   const handleRefreshHome = useCallback(() => {
@@ -220,12 +212,13 @@ export default function Home() {
     touchStartYRef.current = 0;
   }, [refetchFeed, refetchVideos]);
 
+  // Invalider feed/videos uniquement au changement d'utilisateur (connexion), pas à chaque changement d'avatar
   useEffect(() => {
     if (user?.id) {
       queryClient.invalidateQueries({ queryKey: ['videos'] });
       queryClient.invalidateQueries({ queryKey: ['feed'] });
     }
-  }, [user?.profile_image, queryClient, user?.id]);
+  }, [queryClient, user?.id]);
 
   const { data: comments = [] } = useQuery({
     queryKey: ['comments', selectedVideo?.id],
@@ -247,50 +240,50 @@ export default function Home() {
   });
   const walletBalance = walletData?.available_balance ?? walletData?.balance ?? 0;
 
-   const { data: userFollows = [] } = useQuery({
-     queryKey: ['user-follows', user?.id],
-     ...cacheStrategy,
-     queryFn: async () => {
-       const result = await api.users.getFollowing(user.id);
-       return result.following || [];
-     },
-     enabled: !!user?.id
-   });
+  const { data: userFollows = [] } = useQuery({
+    queryKey: ['user-follows', user?.id],
+    ...cacheStrategy,
+    queryFn: async () => {
+      const result = await api.users.getFollowing(user.id);
+      return result.following || [];
+    },
+    enabled: !!user?.id
+  });
 
-   const { data: suggestedWonderers = [] } = useQuery({
-     queryKey: ['wonder-suggestions', user?.id, userFollows.length],
-     queryFn: async () => {
-       const result = await api.users.list({ page: 1, limit: 40 });
-       const followedSet = new Set(userFollows.map((f) => f.id));
-       return result
-         .filter((u) => u.id !== user?.id && !followedSet.has(u.id) && !isDeletedUser(u))
-         .slice(0, 18);
-     },
-     enabled: !!user?.id,
-   });
+  const { data: suggestedWonderers = [] } = useQuery({
+    queryKey: ['wonder-suggestions', user?.id, userFollows.length],
+    queryFn: async () => {
+      const result = await api.users.list({ page: 1, limit: 40 });
+      const followedSet = new Set(userFollows.map((f) => f.id));
+      return result
+        .filter((u) => u.id !== user?.id && !followedSet.has(u.id) && !isDeletedUser(u))
+        .slice(0, 18);
+    },
+    enabled: !!user?.id,
+  });
 
-   useEffect(() => {
-     if (user?.id) {
-       scheduleTask(async () => {
-         try {
-           const savesResult = await api.saves.list();
-           setSavedVideos(new Set((savesResult.videos || []).map(v => v.id)));
-         } catch (_e) {}
-       });
-       
-       scheduleTask(async () => {
-         try {
-           const likedVideosResult = await api.users.getLikedVideos(user.id, { limit: 0 });
-           const likedVideoIds = Array.isArray(likedVideosResult) 
-             ? likedVideosResult.map(v => v.id)
-             : (likedVideosResult?.videos || []).map(v => v.id);
-           setLikedVideos(new Set(likedVideoIds));
-         } catch (_e) {
-           console.error('Error loading liked videos:', _e);
-         }
-       });
-     }
-   }, [user?.id]);
+  useEffect(() => {
+    if (user?.id) {
+      scheduleTask(async () => {
+        try {
+          const savesResult = await api.saves.list();
+          setSavedVideos(new Set((savesResult.videos || []).map(v => v.id)));
+        } catch (_e) {}
+      });
+      
+      scheduleTask(async () => {
+        try {
+          const likedVideosResult = await api.users.getLikedVideos(user.id, { limit: 0 });
+          const likedVideoIds = Array.isArray(likedVideosResult) 
+            ? likedVideosResult.map(v => v.id)
+            : (likedVideosResult?.videos || []).map(v => v.id);
+          setLikedVideos(new Set(likedVideoIds));
+        } catch (_e) {
+          console.error('Error loading liked videos:', _e);
+        }
+      });
+    }
+  }, [user?.id]);
 
   const followingIds = useMemo(
     () => userFollows.filter((f) => !isDeletedUser(f)).map((f) => f.id),
@@ -302,50 +295,105 @@ export default function Home() {
     [videos]
   );
 
+  const followingCountMemo = useMemo(
+    () => userFollows.filter((f) => !isDeletedUser(f)).length,
+    [userFollows]
+  );
+
+  const followingVideos = useMemo(
+    () => videos.filter((v) => followingIds.includes(v.creator_id)),
+    [videos, followingIds, videoIdsString]
+  );
+
   useEffect(() => {
-    setFollowingCount(userFollows.filter((f) => !isDeletedUser(f)).length);
-    const filtered = videos.filter((v) => followingIds.includes(v.creator_id));
-    setFollowingVideos(filtered);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userFollows.length, followingIds.length, videoIdsString]);
+    setFollowingCount(followingCountMemo);
+  }, [followingCountMemo]);
+
+  // Préchargement des vignettes (current + 2 suivantes) pour éviter écran noir au scroll
+  useEffect(() => {
+    const list = activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map((v) => ({ type: 'video', video: v }));
+    const start = Math.max(0, currentIndex);
+    const slice = list.slice(start, start + 3);
+    slice.forEach((item) => {
+      const video = item?.video;
+      if (!video) return;
+      const posterUrl = isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? video.thumbnail_url : VIDEO_PLACEHOLDER_IMG;
+      if (!posterUrl || posterUrl.startsWith('data:')) return;
+      const url = getAbsoluteImageUrl(posterUrl);
+      if (url) {
+        const img = new Image();
+        img.src = url;
+      }
+    });
+  }, [currentIndex, activeTab, mainFeedItems, followingVideos]);
+
+  // Préchargement des 2 vidéos suivantes (buffer avant le scroll → 0 écran noir, scroll type TikTok)
+  const nextVideoPreloadRefs = useRef([]);
+  useEffect(() => {
+    const list = activeTab === 'pourtoi'
+      ? mainFeedItems
+      : followingVideos.map((v) => ({ type: 'video', video: v }));
+    const nextVideos = [list[currentIndex + 1], list[currentIndex + 2]];
+    while (nextVideoPreloadRefs.current.length < nextVideos.length) {
+      const el = document.createElement('video');
+      el.preload = 'auto';
+      nextVideoPreloadRefs.current.push(el);
+    }
+    nextVideos.forEach((item, i) => {
+      const url = item?.video?.video_url;
+      const el = nextVideoPreloadRefs.current[i];
+      if (el) el.src = url || '';
+    });
+    return () => {
+      nextVideoPreloadRefs.current.forEach((el) => { if (el) el.src = ''; });
+    };
+  }, [currentIndex, activeTab, mainFeedItems, followingVideos]);
+
+  const refetch = activeTab === 'pourtoi' ? refetchFeed : refetchVideos;
+
+  const [reactionByVideo, setReactionByVideo] = useState({});
 
   const likeMutation = useMutation({
-    mutationFn: async (video) => {
+    mutationFn: async ({ video, type = 'like' }) => {
       if (!user) {
-        toast.error('Connectez-vous pour aimer');
-        return { isLiked: false, video: null };
+        return { isLiked: false, reaction: null, video: null };
       }
-      
       const isLiked = likedVideos.has(video.id);
-      
       try {
-        const result = await api.videos.like(video.id);
-        const newLikedState = result?.liked ?? !isLiked;
-        if (!isLiked && newLikedState) {
-          NotificationService.notifyVideoLike(user.id, video.id, video.creator_id);
+        if (type === null) {
+          await api.videos.deleteReaction(video.id);
+          return { isLiked: false, reaction: null, video };
         }
-        
-        return { 
-          isLiked: newLikedState, 
-          video 
-        };
+        const result = await api.videos.like(video.id, type);
+        const reaction = result?.reaction ?? result?.data?.reaction ?? type;
+        const newLiked = result?.liked ?? result?.data?.liked ?? true;
+        return { isLiked: newLiked, reaction, video };
       } catch (error) {
-        console.error('Error toggling like:', error);
-        toast.error('Erreur lors du like');
-        return { isLiked, video };
+        const status = error.response?.status;
+        const body = error.response?.data;
+        const likedFromError = body?.data?.liked ?? body?.liked;
+        if (typeof likedFromError === 'boolean') {
+          return { isLiked: likedFromError, reaction: body?.data?.reaction ?? body?.reaction ?? null, video };
+        }
+        if (status === 401) toast.error('Connectez-vous pour aimer');
+        else toast.error('Erreur lors du like');
+        return { isLiked, reaction: null, video };
       }
     },
     onSuccess: (data) => {
       if (data?.video) {
         setLikedVideos(prev => {
           const next = new Set(prev);
-          if (data.isLiked) {
-            next.add(data.video.id);
-          } else {
-            next.delete(data.video.id);
-          }
+          if (data.isLiked) next.add(data.video.id);
+          else next.delete(data.video.id);
           return next;
         });
+        setReactionByVideo(prev => ({ ...prev, [data.video.id]: data.reaction }));
+        if (data.isLiked && user?.id && data.video?.creator_id) {
+          try {
+            NotificationService.notifyVideoLike(user.id, data.video.id, data.video.creator_id);
+          } catch (_) {}
+        }
       }
     }
   });
@@ -358,7 +406,18 @@ export default function Home() {
       if (!video) return;
       likeScrollLockUntilRef.current = Date.now() + 400;
       if (!likeMutation.isPending) {
-        likeMutation.mutate(video);
+        likeMutation.mutate({ video, type: 'like' });
+      }
+    },
+    [likeMutation]
+  );
+
+  const handleReaction = useCallback(
+    (video, type) => {
+      if (!video) return;
+      likeScrollLockUntilRef.current = Date.now() + 400;
+      if (!likeMutation.isPending) {
+        likeMutation.mutate({ video, type });
       }
     },
     [likeMutation]
@@ -421,16 +480,6 @@ export default function Home() {
             return v;
           });
         });
-        
-        setFollowingVideos(prev => prev.map(v => {
-          if (v.id === selectedVideo.id) {
-            return {
-              ...v,
-              comments_count: (v.comments_count || 0) + 1
-            };
-          }
-          return v;
-        }));
       }
       
       queryClient.invalidateQueries({ queryKey: ['comments', selectedVideo?.id] });
@@ -440,6 +489,34 @@ export default function Home() {
     }
   });
   const feedLength = activeTab === 'pourtoi' ? mainFeedItems.length : followingVideos.length;
+
+  // Pré-chargement du poster de la vidéo suivante pour un enchaînement plus fluide
+  useEffect(() => {
+    const items = activeTab === 'pourtoi' ? mainFeedItems : followingVideos;
+    if (!items || items.length === 0) return;
+    const nextIndex = Math.min(currentIndex + 1, items.length - 1);
+    if (nextIndex === currentIndex) return;
+    const nextItem = items[nextIndex];
+    const nextVideo = nextItem?.video || nextItem;
+    const rawThumb = nextVideo?.thumbnail_url || nextVideo?.video_url;
+    if (!rawThumb) return;
+    const href = isValidThumbnailUrl(nextVideo.thumbnail_url, nextVideo.video_url)
+      ? nextVideo.thumbnail_url
+      : getAbsoluteImageUrl(rawThumb) || rawThumb;
+    if (!href) return;
+
+    const link = document.createElement('link');
+    link.rel = 'preload';
+    link.as = 'image';
+    link.href = href;
+    document.head.appendChild(link);
+
+    return () => {
+      if (link && document.head.contains(link)) {
+        document.head.removeChild(link);
+      }
+    };
+  }, [activeTab, currentIndex, mainFeedItems, followingVideos]);
 
   const handleToggleWonder = useCallback(async (creatorId, creatorName = '') => {
     if (!user) {
@@ -490,7 +567,7 @@ export default function Home() {
     }
   };
 
-  const showHomeLoading = isLoading;
+  const showHomeLoading = isLoading && feedLength === 0;
 
   // Mise à jour de l'index actif en fonction du scroll (style TikTok)
   const updateIndexFromScroll = useCallback(() => {
@@ -502,18 +579,50 @@ export default function Home() {
     const rawIndex = Math.round(scrollTop / slideHeight);
     const index = Math.max(0, Math.min(rawIndex, feedLength - 1));
 
-    // Verrou après un like pour éviter un saut de carte parasite
-    if (Date.now() < likeScrollLockUntilRef.current) return;
+    // Verrou après un like (temps + requête en cours) pour éviter un saut de carte parasite
+    if (likeMutation.isPending || Date.now() < likeScrollLockUntilRef.current) return;
 
     if (index !== currentIndexRef.current) {
       currentIndexRef.current = index;
       setCurrentIndex(index);
     }
-  }, [feedLength]);
+  }, [feedLength, likeMutation.isPending]);
 
   const handleScroll = useCallback(() => {
     updateIndexFromScroll();
   }, [updateIndexFromScroll]);
+
+  // IntersectionObserver type TikTok : index actif quand une slide est visible à 60%
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || feedLength === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (likeMutation.isPending || Date.now() < likeScrollLockUntilRef.current) return;
+        let best = null;
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          const index = Number(entry.target.dataset.index);
+          if (!Number.isFinite(index)) return;
+          if (best === null || entry.intersectionRatio > best.ratio) {
+            best = { index, ratio: entry.intersectionRatio };
+          }
+        });
+        if (best != null && best.index !== currentIndexRef.current) {
+          currentIndexRef.current = best.index;
+          setCurrentIndex(best.index);
+        }
+      },
+      { threshold: [0, 0.25, 0.5, 0.6, 0.75, 1], root: container, rootMargin: '0px' }
+    );
+    observerRef.current = observer;
+    const slides = container.querySelectorAll('[data-index]');
+    slides.forEach((el) => observer.observe(el));
+    return () => {
+      observer.disconnect();
+      observerRef.current = null;
+    };
+  }, [feedLength, activeTab]);
 
   useEffect(() => {
     currentIndexRef.current = currentIndex;
@@ -593,11 +702,12 @@ export default function Home() {
           <div className="absolute top-16 left-0 right-0 z-40 px-3 pt-2 pointer-events-auto">
             <div className="rounded-2xl border border-white/15 bg-black/35 backdrop-blur-md px-3 py-2">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-white/90">Ton Wonder ({followingCount})</p>
+                <p className="text-xs font-semibold text-white/90">Ton Wonder ({followingCountMemo})</p>
                 <button
                   type="button"
                   onClick={() => setShowWonderersPanel(true)}
                   className="text-xs text-white/80 hover:text-white flex items-center gap-1"
+                  aria-label="Voir tous les createurs de ton Wonder"
                 >
                   Tout voir
                   <ChevronRight className="w-3.5 h-3.5" />
@@ -739,6 +849,8 @@ export default function Home() {
                   ? video.thumbnail_url
                   : VIDEO_PLACEHOLDER_IMG;
                 const slideBgUrl = posterUrl.startsWith('data:') ? posterUrl : (getAbsoluteImageUrl(posterUrl) || posterUrl);
+                // Virtualisation : on monte la slide actuelle + la suivante pour éviter écran noir au premier rendu (currentIndex=0 sans attendre l'IntersectionObserver)
+                const isInView = Math.abs(index - currentIndex) <= 2;
                 return (
                   <div
                     key={video.id}
@@ -746,6 +858,7 @@ export default function Home() {
                     className="relative w-full flex-shrink-0 overflow-hidden bg-gray-950 snap-start"
                     style={{
                       width: '100%',
+                      // Slide plein écran (on remonte plutôt le contenu interne)
                       height: '100dvh',
                       minHeight: '100dvh',
                       scrollSnapAlign: 'start',
@@ -758,34 +871,44 @@ export default function Home() {
                     }}
                     aria-hidden={index !== currentIndex}
                   >
-                    <VideoCard
-                      video={video}
-                      isActive={index === currentIndex}
-                      isLiked={likedVideos.has(video.id)}
-                      isSaved={savedVideos.has(video.id)}
-                      isMuted={isMuted}
-                      onMuteToggle={() => setMuted(!isMuted)}
-                      onLike={handleLike}
-                      onComment={() => {
-                        setSelectedVideo(video);
-                        setShowComments(true);
-                      }}
-                      onShare={() => {
-                        setSelectedVideo(video);
-                        setShowShare(true);
-                      }}
-                      onSave={() => saveMutation.mutate(video)}
-                      onTip={() => {
-                        setSelectedVideo(video);
-                        setShowTip(true);
-                      }}
-                      onSubscribe={() => handleToggleWonder(video.creator_id, video.creator_name)}
-                      isFollowing={userFollows.some((f) => f.id === video.creator_id)}
-                      onProfileClick={(creatorId) => {
-                        _navigate(`/Profile?_userId=${creatorId}`);
-                      }}
-                      hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
-                    />
+                    {isInView && (
+                      <VideoCard
+                        video={video}
+                        isActive={index === currentIndex}
+                        shouldPreload={index === currentIndex + 1}
+                        videoPoolRef={videoPoolRef}
+                        poolIndex={index === currentIndex ? 0 : index === currentIndex + 1 ? 1 : index === currentIndex - 1 ? 2 : undefined}
+                        isLiked={likedVideos.has(video.id)}
+                        isSaved={savedVideos.has(video.id)}
+                        isMuted={isMuted}
+                        onMuteToggle={() => setMuted(!isMuted)}
+                        onLike={handleLike}
+                        onReaction={handleReaction}
+                        currentUserReaction={reactionByVideo[video.id] ?? video.current_user_reaction}
+                        onComment={() => {
+                          setSelectedVideo(video);
+                          setShowComments(true);
+                        }}
+                        onShare={() => {
+                          setSelectedVideo(video);
+                          setShowShare(true);
+                        }}
+                        onSave={() => saveMutation.mutate(video)}
+                        onTip={() => {
+                          setSelectedVideo(video);
+                          setShowTip(true);
+                        }}
+                        onSubscribe={() => handleToggleWonder(video.creator_id, video.creator_name)}
+                        isFollowing={userFollows.some((f) => f.id === video.creator_id)}
+                        onProfileClick={(creatorId) => {
+                          _navigate(`/Profile?_userId=${creatorId}`);
+                        }}
+                        canLike
+                        onRequireAuth={() => toast.error('Connectez-vous pour aimer')}
+                        hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
+                        compact
+                      />
+                    )}
                   </div>
                 );
               })}
@@ -802,6 +925,7 @@ export default function Home() {
                   type="button"
                   onClick={() => setShowWonderersPanel(false)}
                   className="text-white/70 hover:text-white text-sm"
+                  aria-label="Fermer la liste de ton Wonder"
                 >
                   Fermer
                 </button>
@@ -911,15 +1035,6 @@ export default function Home() {
                   return v;
                 });
               });
-              setFollowingVideos(prev => prev.map(v => {
-                if (v.id === selectedVideo.id) {
-                  return {
-                    ...v,
-                    shares: (v.shares || 0) + 1
-                  };
-                }
-                return v;
-              }));
               queryClient.invalidateQueries({ queryKey: ['videos'] });
               queryClient.invalidateQueries({ queryKey: ['feed'] });
             } catch (_err) {}

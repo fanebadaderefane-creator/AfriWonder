@@ -1,5 +1,8 @@
 // AfriWonder full review PR - CodeRabbit
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { initSentry } from './config/sentry.js';
@@ -12,24 +15,41 @@ import { startAccountDeletionJobs } from './jobs/accountDeletion.job.js';
 import { startDataRetentionJob, initializeRetentionPolicies } from './jobs/dataRetention.job.js';
 import { startAdsExpirationJob } from './jobs/adsExpiration.job.js';
 import { startLiveScheduledReminderJob } from './jobs/liveScheduledReminder.job.js';
+import { startScheduledMessagesJob } from './jobs/scheduledMessages.job.js';
 import { startModerationTimeoutJob } from './jobs/moderationTimeout.job.js';
 import { initRedis } from './utils/cache.js';
 
 const socketToUserId = new Map<string, string>();
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 30000;
 
-dotenv.config();
+// Charger backend/.env en priorité (évite qu'un .env à la racine du projet n'écrase DATABASE_URL)
+const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const envPath = path.join(backendRoot, '.env');
+const envExamplePath = path.join(backendRoot, '.env.example');
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+} else if (fs.existsSync(envExamplePath)) {
+  dotenv.config({ path: envExamplePath });
+} else {
+  dotenv.config();
+}
 
 // Sentry doit être initialisé avant toute création d’app (handlers dans app.ts)
 initSentry();
 
+const requiredEnv = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'];
+const missingEnv = requiredEnv.filter((k) => !process.env[k]?.trim());
+
 if (process.env.NODE_ENV === 'production') {
-  const required = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'];
-  const missing = required.filter((k) => !process.env[k]?.trim());
-  if (missing.length) {
-    logger.error('Variables d’environnement manquantes en production: ' + missing.join(', '));
+  if (missingEnv.length) {
+    logger.error('Variables d’environnement manquantes en production: ' + missingEnv.join(', '));
     process.exit(1);
   }
+} else if (missingEnv.length) {
+  logger.warn(
+    'Variables manquantes (login renverra 500 tant qu’elles ne sont pas définies): ' + missingEnv.join(', ') +
+    '. Copiez backend/.env.example vers backend/.env et renseignez les valeurs.'
+  );
 }
 
 // Pays CEDEAO (optionnel) – APP_COUNTRY=ML|SN|CI|BF
@@ -72,6 +92,11 @@ const io = new Server(httpServer, {
 setMessageIo(io);
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
+
+// Attendre que la DB soit prête avant d’accepter du trafic et lancer les jobs (évite "credentials (not available)" / "Server has closed the connection")
+async function ensureDbConnected() {
+  await prisma.$connect();
+}
 
 // WebSocket connection
 io.on('connection', (socket) => {
@@ -191,8 +216,10 @@ function gracefulShutdown(signal: string) {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-// Start server — écouter sur 0.0.0.0 pour accepter les connexions externes (Railway, Docker, Render)
-httpServer.listen(PORT, '0.0.0.0', async () => {
+// Démarrer après connexion DB pour éviter erreurs "credentials (not available)" / "Server has closed the connection" (notamment sur Render)
+async function startServer() {
+  await ensureDbConnected();
+  httpServer.listen(PORT, '0.0.0.0', async () => {
   logger.info(`🚀 Server running on port ${PORT}`);
   logger.info(`📡 WebSocket server ready`);
   logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
@@ -227,17 +254,38 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
       logger.warn('⚠️ R2 non configuré: upload indisponible. Variables à définir sur l’hébergeur:', { missing });
     }
 
-    await initializeRetentionPolicies();
+    // Pooler Supabase : laisser le pool se stabiliser après $connect() avant transactions (évite circuit breaker)
+    const STARTUP_DELAY_MS = 2500;
+    setTimeout(async () => {
+      try {
+        try {
+          await initializeRetentionPolicies();
+        } catch (e) {
+          logger.warn('Init politiques de rétention reportée (circuit breaker / pool)', { error: (e as Error)?.message });
+        }
+        const commissionSettingsService = (await import('./services/commissionSettings.service.js')).default;
+        await commissionSettingsService.loadFromDb().catch(() => {});
 
-    startAccountDeletionJobs();
-    startDataRetentionJob();
-    startAdsExpirationJob();
-    startLiveScheduledReminderJob();
-    startModerationTimeoutJob();
+        startAccountDeletionJobs();
+        startDataRetentionJob();
+        startAdsExpirationJob();
+        startLiveScheduledReminderJob();
+        startScheduledMessagesJob();
+        startModerationTimeoutJob();
 
-    logger.info('✅ Jobs automatiques démarrés');
-    logger.info('🛡️ Sécurité: Rate limiting + Anti-bot + Chiffrement ACTIVÉS');
+        logger.info('✅ Jobs automatiques démarrés');
+        logger.info('🛡️ Sécurité: Rate limiting + Anti-bot + Chiffrement ACTIVÉS');
+      } catch (err) {
+        logger.error('Erreur post-démarrage (rétention / jobs):', { error: (err as Error)?.message });
+      }
+    }, STARTUP_DELAY_MS);
   } catch (err) {
     logger.error('Erreur post-démarrage (Redis / rétention / jobs):', { error: err });
   }
+  });
+}
+
+startServer().catch((err) => {
+  logger.error('Démarrage serveur échoué', { error: err });
+  process.exit(1);
 });

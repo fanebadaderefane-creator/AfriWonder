@@ -35,6 +35,106 @@ router.get('/rates', async (req, res, next) => {
   }
 });
 
+// ——— Livraison colis (standalone) ———
+// POST /api/shipping/parcel
+router.post('/parcel', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const {
+      recipient_name,
+      recipient_phone,
+      recipient_address,
+      destination_country,
+      weight_kg,
+      carrier,
+      tracking_number,
+      cost,
+      estimated_delivery,
+    } = req.body || {};
+    if (!recipient_name || !recipient_address || !destination_country || weight_kg == null || !carrier || cost == null) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Champs requis: recipient_name, recipient_address, destination_country, weight_kg, carrier, cost' },
+      });
+    }
+    const parcel = await shippingService.createParcel(userId, {
+      recipient_name,
+      recipient_phone,
+      recipient_address,
+      destination_country,
+      weight_kg: Number(weight_kg),
+      carrier,
+      tracking_number,
+      cost: Number(cost),
+      estimated_delivery: estimated_delivery ? new Date(estimated_delivery) : undefined,
+    });
+    res.status(201).json({ success: true, data: parcel });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/shipping/parcel — mes colis
+router.get('/parcel', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(String(req.query.page || 1), 10));
+    const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit || 20), 10)));
+    const result = await shippingService.listMyParcels(req.user!.id, page, limit);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/shipping/parcel/track/:trackingNumber — suivi public
+router.get('/parcel/track/:trackingNumber', async (req, res, next) => {
+  try {
+    const parcel = await shippingService.getParcelByTrackingNumber(param(req, 'trackingNumber'));
+    if (!parcel) return res.status(404).json({ success: false, error: { message: 'Colis non trouvé' } });
+    res.json({ success: true, data: parcel });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/shipping/parcel/:id
+router.get('/parcel/:id', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const parcel = await shippingService.getParcel(param(req, 'id'), req.user!.id);
+    res.json({ success: true, data: parcel });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// PUT /api/shipping/parcel/:id/status
+router.put('/parcel/:id/status', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { status } = req.body || {};
+    if (!status) return res.status(400).json({ success: false, error: { message: 'status requis' } });
+    const parcel = await shippingService.updateParcelStatus(param(req, 'id'), req.user!.id, status);
+    res.json({ success: true, data: parcel });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/shipping/parcel/:id/tracking
+router.post('/parcel/:id/tracking', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { event_type, location, description } = req.body || {};
+    if (!event_type) return res.status(400).json({ success: false, error: { message: 'event_type requis' } });
+    const event = await shippingService.addParcelTrackingEvent(param(req, 'id'), req.user!.id, {
+      event_type,
+      location,
+      description,
+    });
+    res.status(201).json({ success: true, data: event });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // GET /api/shipping/order/:orderId
 router.get('/order/:orderId', authenticate, async (req: AuthRequest, res, next) => {
   try {

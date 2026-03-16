@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { requireWebhookSecret } from '../middleware/webhookSecret.js';
 import { param } from '../utils/params.js';
 import certificateService from '../services/certificate.service.js';
 
@@ -72,8 +73,8 @@ router.post('/:id/verify', authenticate, async (req: AuthRequest, res, next) => 
   }
 });
 
-// POST /api/certificates/verifications/:id/confirm - Confirmer vérification (webhook)
-router.post('/verifications/:id/confirm', async (req, res, next) => {
+// POST /api/certificates/verifications/:id/confirm - Confirmer vérification (webhook; protéger par PAYMENT_WEBHOOK_SECRET en prod)
+router.post('/verifications/:id/confirm', requireWebhookSecret, async (req, res, next) => {
   try {
     const transactionId = param(req, 'id');
     const result = await certificateService.confirmVerificationPayment(transactionId);

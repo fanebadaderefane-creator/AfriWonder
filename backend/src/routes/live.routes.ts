@@ -2,6 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
+import prisma from '../config/database.js';
 import liveService from '../services/live.service.js';
 import { LIVE_CATEGORIES, LIVE_LANGUAGES, LIVE_AGE_RESTRICTIONS } from '../config/liveCategories.js';
 
@@ -538,22 +539,36 @@ router.patch('/:id/replay', authenticate, async (req: AuthRequest, res, next) =>
   }
 });
 
-// POST /api/live/:id/cleanup-viewers (cron ou appel périodique)
-router.post('/:id/cleanup-viewers', async (req, res, next) => {
+// POST /api/live/:id/cleanup-viewers (cron avec X-Cron-Secret ou créateur authentifié)
+const cronOrCreatorSecret = process.env.CRON_SECRET || process.env.LIVE_CLEANUP_SECRET;
+router.post('/:id/cleanup-viewers', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
-    const count = await liveService.cleanupInactiveViewers(param(req, 'id'));
+    const streamId = param(req, 'id');
+    const authHeader = req.headers['x-cron-secret'] || req.headers['x-live-cleanup-secret'];
+    const isCron = !!cronOrCreatorSecret && authHeader === cronOrCreatorSecret;
+    if (!isCron) {
+      if (!req.user?.id) return res.status(401).json({ success: false, error: { message: 'Authentification requise' } });
+      const stream = await liveService.getStream(streamId);
+      if (!stream || stream.creator_id !== req.user.id) return res.status(403).json({ success: false, error: { message: 'Non autorisé' } });
+    }
+    const count = await liveService.cleanupInactiveViewers(streamId);
     res.json({ success: true, data: { removed: count } });
   } catch (error: any) {
     next(error);
   }
 });
 
-// PUT /api/live/:id/viewers (legacy, pour compat)
-router.put('/:id/viewers', async (req, res, next) => {
+// PUT /api/live/:id/viewers (legacy, créateur uniquement)
+router.put('/:id/viewers', authenticate, async (req: AuthRequest, res, next) => {
   try {
+    const streamId = param(req, 'id');
+    const stream = await liveService.getStream(streamId);
+    if (!stream || stream.creator_id !== req.user!.id) {
+      return res.status(403).json({ success: false, error: { message: 'Non autorisé' } });
+    }
     const { count } = req.body;
-    const stream = await liveService.updateViewers(param(req, 'id'), count);
-    res.json({ success: true, data: stream });
+    const updated = await liveService.updateViewers(streamId, count);
+    res.json({ success: true, data: updated });
   } catch (error: any) {
     next(error);
   }
@@ -662,6 +677,62 @@ router.post('/:id/cohost/remove', authenticate, async (req: AuthRequest, res, ne
       return res.status(400).json({ success: false, error: { message: 'userId requis' } });
     }
     await liveService.removeCoHost(streamId, req.user!.id, userId);
+    res.json({ success: true });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/live/:id/products - Produits en vente pendant le live (live commerce)
+router.get('/:id/products', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const liveId = param(req, 'id');
+    const links = await prisma.liveStreamProduct.findMany({
+      where: { live_id: liveId },
+      orderBy: { position: 'asc' },
+      include: { product: true },
+    });
+    res.json({ success: true, data: links.map((l) => ({ ...l.product, position: l.position })) });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/:id/products - Ajouter un produit au live (créateur)
+router.post('/:id/products', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const liveId = param(req, 'id');
+    const { product_id, position } = req.body;
+    if (!product_id) return res.status(400).json({ success: false, error: { message: 'product_id requis' } });
+    const stream = await prisma.liveStream.findFirst({ where: { id: liveId, creator_id: req.user!.id } });
+    if (!stream) return res.status(404).json({ success: false, error: 'Live introuvable' });
+    const product = await prisma.product.findFirst({ where: { id: product_id, seller_id: req.user!.id } });
+    if (!product) return res.status(404).json({ success: false, error: 'Produit introuvable' });
+    const existing = await prisma.liveStreamProduct.findFirst({
+      where: { live_id: liveId, product_id: product_id },
+    });
+    const link = existing
+      ? await prisma.liveStreamProduct.update({
+          where: { id: existing.id },
+          data: { position: position ?? 0 },
+        })
+      : await prisma.liveStreamProduct.create({
+          data: { live_id: liveId, product_id: product_id, position: position ?? 0 },
+        });
+    res.status(201).json({ success: true, data: link });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// DELETE /api/live/:id/products/:productId - Retirer un produit du live
+router.delete('/:id/products/:productId', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const liveId = param(req, 'id');
+    const productId = param(req, 'productId');
+    const stream = await prisma.liveStream.findFirst({ where: { id: liveId, creator_id: req.user!.id } });
+    if (!stream) return res.status(404).json({ success: false, error: 'Live introuvable' });
+    await prisma.liveStreamProduct.deleteMany({ where: { live_id: liveId, product_id: productId } });
     res.json({ success: true });
   } catch (error: any) {
     next(error);

@@ -237,6 +237,95 @@ class ShippingService {
 
     return shipping;
   }
+
+  // ——— Livraison colis (standalone, hors commande) ———
+  async createParcel(userId: string, data: {
+    recipient_name: string;
+    recipient_phone?: string;
+    recipient_address: string;
+    destination_country: string;
+    weight_kg: number;
+    carrier: string;
+    tracking_number?: string;
+    cost: number;
+    estimated_delivery?: Date;
+  }) {
+    const trackingNumber = data.tracking_number || `PCL-${Date.now()}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+    const parcel = await prisma.parcelShipment.create({
+      data: {
+        user_id: userId,
+        recipient_name: data.recipient_name,
+        recipient_phone: data.recipient_phone,
+        recipient_address: data.recipient_address,
+        destination_country: data.destination_country,
+        weight_kg: data.weight_kg,
+        carrier: data.carrier,
+        tracking_number: trackingNumber,
+        cost: data.cost,
+        estimated_delivery: data.estimated_delivery,
+        status: 'pending',
+      },
+      include: { tracking_events: true },
+    });
+    logger.info('Parcel shipment created', { parcelId: parcel.id, userId });
+    return parcel;
+  }
+
+  async listMyParcels(userId: string, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const [parcels, total] = await Promise.all([
+      prisma.parcelShipment.findMany({
+        where: { user_id: userId },
+        include: { tracking_events: { orderBy: { timestamp: 'desc' }, take: 1 } },
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.parcelShipment.count({ where: { user_id: userId } }),
+    ]);
+    return { parcels, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  }
+
+  async getParcel(parcelId: string, userId: string) {
+    const parcel = await prisma.parcelShipment.findFirst({
+      where: { id: parcelId, user_id: userId },
+      include: { tracking_events: { orderBy: { timestamp: 'desc' } } },
+    });
+    if (!parcel) throw new Error('Colis non trouvé');
+    return parcel;
+  }
+
+  async getParcelByTrackingNumber(trackingNumber: string) {
+    const parcel = await prisma.parcelShipment.findUnique({
+      where: { tracking_number: trackingNumber },
+      include: { tracking_events: { orderBy: { timestamp: 'desc' } } },
+    });
+    return parcel;
+  }
+
+  async updateParcelStatus(parcelId: string, userId: string, status: string) {
+    const parcel = await prisma.parcelShipment.findFirst({
+      where: { id: parcelId, user_id: userId },
+    });
+    if (!parcel) throw new Error('Colis non trouvé');
+    const updated = await prisma.parcelShipment.update({
+      where: { id: parcelId },
+      data: { status, ...(status === 'delivered' ? { actual_delivery: new Date() } : {}) },
+      include: { tracking_events: true },
+    });
+    return updated;
+  }
+
+  async addParcelTrackingEvent(parcelId: string, userId: string, data: { event_type: string; location?: string; description?: string }) {
+    const parcel = await prisma.parcelShipment.findFirst({
+      where: { id: parcelId, user_id: userId },
+    });
+    if (!parcel) throw new Error('Colis non trouvé');
+    const event = await prisma.parcelTrackingEvent.create({
+      data: { parcel_id: parcelId, event_type: data.event_type, location: data.location, description: data.description },
+    });
+    return event;
+  }
 }
 
 export default new ShippingService();

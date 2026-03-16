@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 
 import { api } from '@/api/expressClient';
 
-import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -32,6 +32,7 @@ import FeaturedVideoSelector from '../components/video/FeaturedVideoSelector';
 import SubscriptionTiers from '../components/creator/SubscriptionTiers';
 
 import { useAppMenu } from '@/contexts/AppMenuContext';
+import { useAuth } from '@/lib/AuthContext';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 
@@ -42,8 +43,7 @@ export default function Profile() {
 
   const { openMenu } = useAppMenu();
 
-  const [user, setUser] = useState(null);
-
+  const { user, isLoadingAuth } = useAuth();
   const [isOwnProfile, setIsOwnProfile] = useState(true);
 
   const [profileUserId, setProfileUserId] = useState(null);
@@ -62,39 +62,26 @@ export default function Profile() {
 
   const [showSubscriptionTiers, setShowSubscriptionTiers] = useState(false);
   const [pendingDeleteVideo, setPendingDeleteVideo] = useState(null);
-
-
-
   const [searchParams] = useSearchParams();
 
-  // Determiner profileUserId depuis l'URL (userId ou _userId) puis charger l'utilisateur courant
+  // Determiner profileUserId depuis l'URL (userId ou _userId) + utilisateur courant du contexte
   useEffect(() => {
     const urlUserId = searchParams.get('userId') || searchParams.get('_userId');
 
-    const getUser = async () => {
-      try {
-        const u = await api.auth.me();
-        setUser(u);
-        // Ne jamais ecraser : si l'URL a un userId, c'est le profil a afficher
-        if (!urlUserId || urlUserId === u.id) {
-          setIsOwnProfile(true);
-          setProfileUserId(u.id);
-        } else {
-          setIsOwnProfile(false);
-          setProfileUserId(urlUserId);
-        }
-      } catch (e) {
-        if (!urlUserId) {
-          navigate('/');
-        } else {
-          setProfileUserId(urlUserId);
-          setIsOwnProfile(false);
-        }
-      }
-    };
+    if (urlUserId) {
+      setProfileUserId(urlUserId);
+      setIsOwnProfile(!user || urlUserId === user.id);
+      return;
+    }
 
-    getUser();
-  }, [searchParams, navigate]);
+    if (user?.id) {
+      setProfileUserId(user.id);
+      setIsOwnProfile(true);
+    } else {
+      setProfileUserId(null);
+      setIsOwnProfile(true);
+    }
+  }, [searchParams, user?.id]);
 
 
 
@@ -372,7 +359,30 @@ export default function Profile() {
 
   });
 
-
+  const { data: closeFriendsList = [] } = useQuery({
+    queryKey: ['close-friends', user?.id],
+    queryFn: () => api.me.getCloseFriends(),
+    enabled: !!user?.id && !!profileUserId && !isOwnProfile,
+  });
+  const isCloseFriend = Array.isArray(closeFriendsList) && !!profileUserId && closeFriendsList.some(
+    (f) => (typeof f === 'string' ? f === profileUserId : (f?.id ?? f?.friend_id) === profileUserId)
+  );
+  const addCloseFriendMutation = useMutation({
+    mutationFn: (friendId) => api.me.addCloseFriend(friendId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['close-friends', user?.id] });
+      toast.success('Ajouté aux proches');
+    },
+    onError: () => toast.error('Impossible d\'ajouter aux proches'),
+  });
+  const removeCloseFriendMutation = useMutation({
+    mutationFn: (friendId) => api.me.removeCloseFriend(friendId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['close-friends', user?.id] });
+      toast.success('Retiré des proches');
+    },
+    onError: () => toast.error('Impossible de retirer des proches'),
+  });
 
   // Sync isFollowing depuis profileUser ou getFollowing (Wonder = Follow synchronise)
   useEffect(() => {
@@ -607,25 +617,19 @@ export default function Profile() {
 
 
   if (!displayUser && !profileUserId) {
-
     return (
-
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-
-        <div className="text-center">
-
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
+        <div className="text-center px-6">
           <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-
-          <p className="text-gray-500">Chargement...</p>
-
+          <p className="text-gray-500">
+            {isLoadingAuth ? 'Chargement...' : 'Profil indisponible.'}
+          </p>
         </div>
-
-        <BottomNav />
-
+        <div className="mt-8 w-full">
+          <BottomNav />
+        </div>
       </div>
-
     );
-
   }
 
 
@@ -741,6 +745,12 @@ export default function Profile() {
         }}
 
         onSubscriptionTiers={() => setShowSubscriptionTiers(true)}
+
+        isCloseFriend={isCloseFriend}
+
+        onAddCloseFriend={!isOwnProfile && profileUserId ? () => addCloseFriendMutation.mutate(profileUserId) : undefined}
+
+        onRemoveCloseFriend={!isOwnProfile && profileUserId ? () => removeCloseFriendMutation.mutate(profileUserId) : undefined}
 
       />
 
