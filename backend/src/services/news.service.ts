@@ -290,7 +290,7 @@ export class NewsService {
       include: {
         author: { select: { id: true, full_name: true, profile_image: true } },
         verified_source: { select: { id: true, name: true, logo: true } },
-        trending: { take: 1, orderBy: { calculated_at: 'desc' } },
+        trending: true,
       },
     });
 
@@ -299,12 +299,12 @@ export class NewsService {
       if (a.category && categories.includes(a.category)) score += 3;
       if (country && a.country === country) score += 2;
       if (lang && a.language === lang) score += 1;
-      if (a.trending && a.trending.length > 0) score += 1;
+      if (a.trending) score += 1;
       return { ...a, _score: score };
     });
     scored.sort((a, b) => b._score - a._score);
     const skip = (page - 1) * limit;
-    const paginated = scored.slice(skip, skip + limit).map(({ _score, trending, ...a }) => a);
+    const paginated = scored.slice(skip, skip + limit).map(({ _score, trending: _trending, ...a }) => a);
     return {
       articles: paginated,
       pagination: { page, limit, total: scored.length, totalPages: Math.ceil(scored.length / limit) },

@@ -23,8 +23,15 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
     const visibility = req.query.visibility as string | undefined;
     const page = parseInt(String(req.query.page), 10) || 1;
     const limit = Math.min(50, parseInt(String(req.query.limit), 10) || 20);
-    const includeScheduled = req.query.includeScheduled === 'true' && req.user?.id && userId === req.user.id;
-    const result = await postService.listPosts({ userId, viewerId: req.user?.id, visibility, page, limit, includeScheduled });
+    const includeScheduled = req.query.includeScheduled === 'true' && !!req.user?.id && userId === req.user.id;
+    const result = await postService.listPosts({
+      userId,
+      viewerId: req.user?.id,
+      visibility,
+      page,
+      limit,
+      ...(includeScheduled ? { includeScheduled: true } : {}),
+    });
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);

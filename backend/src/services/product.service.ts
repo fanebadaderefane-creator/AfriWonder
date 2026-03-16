@@ -1252,7 +1252,7 @@ class ProductService {
     return prisma.preorder.findMany({
       where: { product_id: productId, status: 'reserved' },
       include: {
-        user: { select: { id: true, full_name: true, avatar_url: true } },
+        user: { select: { id: true, full_name: true, profile_image: true } },
       },
       orderBy: { reserved_at: 'desc' },
     });

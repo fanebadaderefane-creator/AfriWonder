@@ -10,7 +10,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const [videoCount, followerCount, subscriptionTier, productCount] = await Promise.all([
-      prisma.video.count({ where: { user_id: userId } }),
+      prisma.video.count({ where: { creator_id: userId } }),
       prisma.follow.count({ where: { following_id: userId } }),
       prisma.creatorSubscription.findFirst({
         where: { creator_id: userId, status: 'active', expires_at: { gte: new Date() } },

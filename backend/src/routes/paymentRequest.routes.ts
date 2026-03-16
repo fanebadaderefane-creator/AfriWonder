@@ -43,7 +43,9 @@ router.post('/pay', authenticate, async (req: AuthRequest, res, next) => {
 // GET /api/payment-request/:qrToken - Détail d'une demande (pour affichage avant paiement)
 router.get('/:qrToken', optionalAuth, async (req, res, next) => {
   try {
-    const request = await paymentRequestService.getPaymentRequestByToken(req.params.qrToken);
+    const qrToken = typeof req.params.qrToken === 'string' ? req.params.qrToken : req.params.qrToken?.[0];
+    if (!qrToken) return res.status(400).json({ success: false, error: { message: 'Token requis' } });
+    const request = await paymentRequestService.getPaymentRequestByToken(qrToken);
     if (!request) return res.status(404).json({ success: false, error: { message: 'Demande introuvable' } });
     res.json({ success: true, data: request });
   } catch (error) {

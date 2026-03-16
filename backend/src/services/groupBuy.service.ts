@@ -28,7 +28,7 @@ class GroupBuyService {
         status: 'open',
       },
       include: {
-        product: { select: { id: true, name: true, price: true, image: true } },
+        product: { select: { id: true, name: true, price: true, images: true } },
         creator: { select: { id: true, full_name: true } },
       },
     });
@@ -38,7 +38,7 @@ class GroupBuyService {
     return prisma.groupBuy.findMany({
       where: { product_id: productId, status: 'open' },
       include: {
-        product: { select: { id: true, name: true, price: true } },
+        product: { select: { id: true, name: true, price: true, images: true } },
         creator: { select: { id: true, full_name: true } },
         participants: { select: { user_id: true, quantity: true } },
       },
@@ -82,7 +82,7 @@ class GroupBuyService {
     return prisma.groupBuy.findUnique({
       where: { id: groupBuyId },
       include: {
-        product: { select: { id: true, name: true, price: true } },
+        product: { select: { id: true, name: true, price: true, images: true } },
         creator: { select: { id: true, full_name: true } },
         participants: { select: { user_id: true, quantity: true } },
       },
@@ -97,7 +97,7 @@ class GroupBuyService {
         include: {
           group_buy: {
             include: {
-              product: { select: { id: true, name: true, price: true, image: true } },
+              product: { select: { id: true, name: true, price: true, images: true } },
               creator: { select: { id: true, full_name: true } },
               participants: { select: { user_id: true, quantity: true } },
             },
@@ -109,7 +109,7 @@ class GroupBuyService {
       }),
       prisma.groupBuyParticipant.count({ where: { user_id: userId } }),
     ]);
-    const groups = participations.map((p) => ({ ...p.group_buy, my_quantity: p.quantity }));
+    const groups = participations.map((p) => ({ ...(p as { group_buy: Record<string, unknown> }).group_buy, my_quantity: p.quantity }));
     return {
       groups,
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
@@ -122,7 +122,7 @@ class GroupBuyService {
       prisma.groupBuy.findMany({
         where: { creator_id: userId },
         include: {
-          product: { select: { id: true, name: true, price: true } },
+          product: { select: { id: true, name: true, price: true, images: true } },
           participants: { select: { user_id: true, quantity: true } },
         },
         orderBy: { created_at: 'desc' },

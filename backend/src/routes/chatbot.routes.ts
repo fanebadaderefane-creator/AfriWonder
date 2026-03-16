@@ -20,8 +20,10 @@ router.get('/', async (_req, res, next) => {
 // GET /api/chatbot/:username - Infos d'un bot (pour démarrer une conversation)
 router.get('/:username', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
+    const username = typeof req.params.username === 'string' ? req.params.username : req.params.username?.[0];
+    if (!username) return res.status(400).json({ success: false, error: { message: 'Username requis' } });
     const bot = await prisma.chatBot.findFirst({
-      where: { username: req.params.username, is_active: true },
+      where: { username, is_active: true },
     });
     if (!bot) return res.status(404).json({ success: false, error: { message: 'Bot non trouvé' } });
     res.json({

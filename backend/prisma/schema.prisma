@@ -4339,6 +4339,22 @@ model VerifiedSource {
   @@index([name])
 }
 
+model MapPlace {
+  id          String   @id @default(uuid())
+  name        String
+  category    String
+  address     String?
+  latitude    Float
+  longitude   Float
+  description String?
+  image_url   String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@index([latitude, longitude])
+  @@index([category])
+}
+
 model NewsPremiumSubscription {
   id         String   @id @default(uuid())
   user_id    String

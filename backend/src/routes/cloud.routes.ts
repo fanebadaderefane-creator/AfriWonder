@@ -34,7 +34,8 @@ router.post('/upload', authenticate, upload.single('file'), async (req: AuthRequ
 router.delete('/:fileId', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
-    const fileId = req.params.fileId;
+    const fileId = typeof req.params.fileId === 'string' ? req.params.fileId : req.params.fileId?.[0];
+    if (!fileId) return res.status(400).json({ success: false, error: { message: 'fileId requis' } });
     await cloudService.delete(userId, fileId);
     res.json({ success: true });
   } catch (e) {

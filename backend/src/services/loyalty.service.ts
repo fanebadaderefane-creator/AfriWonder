@@ -58,7 +58,7 @@ class LoyaltyService {
   /** Points de l'utilisateur chez un vendeur */
   async getUserLoyalty(userId: string, sellerId: string) {
     return prisma.userLoyalty.findUnique({
-      where: { user_id: userId, seller_id: sellerId },
+      where: { user_id_seller_id: { user_id: userId, seller_id: sellerId } },
       include: {
         program: true,
       },

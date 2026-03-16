@@ -65,7 +65,7 @@ class AuctionService {
     const auction = await prisma.productAuction.findUnique({
       where: { product_id: productId },
       include: {
-        product: { select: { id: true, name: true, image: true } },
+        product: { select: { id: true, name: true, images: true } },
         seller: { select: { id: true, full_name: true, profile_image: true } },
         current_bidder: { select: { id: true, full_name: true } },
       },
@@ -128,7 +128,7 @@ class AuctionService {
       prisma.productAuction.findMany({
         where,
         include: {
-          product: { select: { id: true, name: true, image: true } },
+          product: { select: { id: true, name: true, images: true } },
           current_bidder: { select: { id: true, full_name: true } },
         },
         orderBy: { end_at: 'desc' },

@@ -105,8 +105,8 @@ class MessageService {
       OR: [
         { user1_id: userId, user2: NOT_DELETED_USER },
         { user2_id: userId, user1: NOT_DELETED_USER },
-      ],
-    } as const;
+      ] as const,
+    };
     const archiveFilter = includeArchived
       ? null
       : {
@@ -115,7 +115,9 @@ class MessageService {
             { user2_id: userId, is_archived_user2: false },
           ],
         };
-    const where = archiveFilter ? { AND: [baseWhere, archiveFilter] } : baseWhere;
+    const where = archiveFilter
+      ? { AND: [{ OR: [...baseWhere.OR] }, archiveFilter] }
+      : { OR: [...baseWhere.OR] };
 
     const [conversations, total] = await Promise.all([
       prisma.conversation.findMany({
@@ -193,8 +195,11 @@ class MessageService {
     });
 
     if (!conversation) {
-      conversation = await prisma.conversation.create({
+      const created = await prisma.conversation.create({
         data: { user1_id: id1, user2_id: id2 },
+      });
+      conversation = await prisma.conversation.findFirst({
+        where: { id: created.id },
         include: {
           user1: { select: { id: true, username: true, full_name: true, profile_image: true } },
           user2: { select: { id: true, username: true, full_name: true, profile_image: true } },
@@ -209,7 +214,7 @@ class MessageService {
             },
           },
         },
-      });
+      })!;
     }
 
     if ((conversation as any).pinned_message?.deleted_for_all_at) {
@@ -334,6 +339,7 @@ class MessageService {
     }
 
     const conversation = await this.getOrCreateConversation(senderId, recipientId);
+    if (!conversation) throw makeHttpError('Conversation introuvable', 404);
     const otherId = conversation.user1_id === senderId ? conversation.user2_id : conversation.user1_id;
 
     const isEphemeral = Boolean(options?.is_ephemeral);
@@ -596,7 +602,7 @@ class MessageService {
     else draft[userId] = content;
     await prisma.conversation.update({
       where: { id: conversationId },
-      data: { draft_content: Object.keys(draft).length ? draft : null },
+      data: { draft_content: Object.keys(draft).length ? draft : Prisma.JsonNull },
     });
     return { draft_content: content || null };
   }

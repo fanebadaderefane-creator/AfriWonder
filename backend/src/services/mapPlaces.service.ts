@@ -24,10 +24,11 @@ export const mapPlacesService = {
       take: limit * 2,
       orderBy: { created_at: 'desc' },
     });
+    type PlaceWithDist = (typeof places)[number] & { distance_km: number };
     const withDist = places
-      .map((p) => ({ ...p, distance_km: haversineKm(lat, lng, p.latitude, p.longitude) }))
-      .filter((p) => p.distance_km <= radiusKm)
-      .sort((a, b) => a.distance_km - b.distance_km)
+      .map((p: (typeof places)[number]) => ({ ...p, distance_km: haversineKm(lat, lng, p.latitude, p.longitude) }))
+      .filter((p: PlaceWithDist) => p.distance_km <= radiusKm)
+      .sort((a: PlaceWithDist, b: PlaceWithDist) => a.distance_km - b.distance_km)
       .slice(0, limit);
     return { items: withDist, total: withDist.length };
   },

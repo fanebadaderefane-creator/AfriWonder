@@ -135,6 +135,7 @@ router.post(
         return res.status(400).json({ success: false, message: 'Conversation non valide' });
       }
       const conversation = await messageService.getOrCreateConversation(req.user!.id, providerUserId);
+      if (!conversation) return res.status(500).json({ success: false, message: 'Impossible de créer la conversation' });
       res.json({
         success: true,
         data: {

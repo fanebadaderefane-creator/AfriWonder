@@ -960,8 +960,9 @@ class VideoService {
   async updateComment(commentId: string, userId: string, data: { content?: string; is_pinned?: boolean }) {
     const comment = await prisma.comment.findUnique({
       where: { id: commentId },
-      select: { id: true, user_id: true, video_id: true },
-      include: { video: { select: { creator_id: true } } },
+      include: {
+        video: { select: { creator_id: true } },
+      },
     });
     if (!comment) {
       const error: any = new Error('Commentaire non trouvé');
