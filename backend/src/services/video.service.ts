@@ -958,6 +958,7 @@ class VideoService {
   }
 
   async updateComment(commentId: string, userId: string, data: { content?: string; is_pinned?: boolean }) {
+    // Prisma: use either select OR include at top level, not both
     const comment = await prisma.comment.findUnique({
       where: { id: commentId },
       include: {
