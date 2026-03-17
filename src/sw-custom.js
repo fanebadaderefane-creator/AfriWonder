@@ -9,6 +9,9 @@ const IMAGE_CACHE = 'afriwonder-image-cache-v1';
 const PRECACHE = self.__WB_MANIFEST || [];
 const SW_VERSION = 'v4'; // Invalide l'ancien SW pour diffuser le correctif autoplay feed PWA
 
+// Share Target: rediriger les partages système vers une route interne lisible par React
+const SHARE_TARGET_PATH = '/share-target';
+
 // Ne pas appeler skipWaiting() ici : on laisse le nouveau worker en "waiting"
 // pour que l'app affiche "Mettre a jour" (PWAUpdateToast). skipWaiting() est
 // appele uniquement quand l'utilisateur clique sur "Mettre a jour" (message SKIP_WAITING).
@@ -61,8 +64,32 @@ self.addEventListener('unhandledrejection', (event) => {
 // 3) Reste : Network first, puis precache
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  if (request.method !== 'GET') return;
   const url = new URL(request.url);
+
+  // Web Share Target: interception du POST /share-target
+  if (request.method === 'POST' && url.pathname === SHARE_TARGET_PATH) {
+    event.respondWith((async () => {
+      try {
+        const formData = await request.formData();
+        const sharedUrl = formData.get('url') || formData.get('link') || '';
+        const sharedText = formData.get('text') || '';
+        const sharedTitle = formData.get('title') || '';
+
+        const params = new URLSearchParams();
+        if (sharedUrl) params.set('url', sharedUrl);
+        if (sharedText) params.set('text', sharedText);
+        if (sharedTitle) params.set('title', sharedTitle);
+
+        const redirectUrl = `/ShareOffline?${params.toString()}`;
+        return Response.redirect(redirectUrl, 303);
+      } catch {
+        return Response.redirect('/ShareOffline', 303);
+      }
+    })());
+    return;
+  }
+
+  if (request.method !== 'GET') return;
 
   // Videos same-origin + HLS (.m3u8, .ts) : CacheFirst pour relecture offline
   // Ne jamais intercepter /api/proxy/media : Chrome/mobile envoient des Range, ont besoin de 206 (streaming).

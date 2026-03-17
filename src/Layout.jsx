@@ -12,6 +12,7 @@ import PWAInstallBanner from "@/components/pwa/PWAInstallBanner";
 import PWAUpdateToast from "@/components/pwa/PWAUpdateToast";
 import MenuPlus from "@/components/navigation/MenuPlus";
 import PageTransition from "@/components/common/PageTransition";
+import { useSwipeBack } from '@/hooks/useSwipeBack';
 import { useNativeAppEnhancements } from '@/hooks/useNativeAppEnhancements';
 import IncomingCallListener from '@/components/call/IncomingCallListener';
 
@@ -30,6 +31,11 @@ function LayoutContent({ children, currentPageName }) {
 
   // Verrouillage orientation portrait sur mobile (Android/iOS) - fonctionne aussi dans le navigateur et PWA standalone
   useOrientationLock(true);
+
+  // Geste "swipe back" style iOS (désactivé sur Home/Create)
+  const disableSwipeBackPages = ['Home', 'Create'];
+  const swipeBackEnabled = !disableSwipeBackPages.includes(currentPageName);
+  useSwipeBack(swipeBackEnabled);
   
   // VÃ©rification supplÃ©mentaire en mode PWA standalone au chargement
   useEffect(() => {
@@ -61,6 +67,58 @@ function LayoutContent({ children, currentPageName }) {
       setTimeout(forceLock, 100);
       setTimeout(forceLock, 500);
     }
+  }, []);
+
+  // Gestion globale clavier mobile : garder le champ visible quand le clavier s'affiche
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+    const handleFocusIn = (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) {
+        return;
+      }
+      // Petit délai pour laisser le clavier s'ouvrir
+      setTimeout(() => {
+        try {
+          const rect = target.getBoundingClientRect();
+          const vh = window.innerHeight || document.documentElement.clientHeight;
+          if (rect.bottom > vh - 80) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        } catch {
+          // ignore
+        }
+      }, 150);
+    };
+
+    document.addEventListener('focusin', handleFocusIn);
+    return () => {
+      document.removeEventListener('focusin', handleFocusIn);
+    };
+  }, []);
+
+  // Pause vidéos / animations lourdes en arrière-plan (onglet masqué)
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        const players = document.querySelectorAll('video');
+        players.forEach((node) => {
+          try {
+            node.pause();
+          } catch {
+            // ignore
+          }
+        });
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, []);
 
   // Barre de dÃ©filement visible (Chrome/Safari) : injectÃ©e uniquement en WebKit pour Ã©viter "Jeu de rÃ¨gles ignorÃ©" sous Firefox

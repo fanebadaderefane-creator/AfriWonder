@@ -1,0 +1,74 @@
+{
+  "expo": {
+    "name": "mobile-afriwonder",
+    "slug": "mobile-afriwonder",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "associatedDomains": [
+        "applinks:app.afriwonder.com"
+      ]
+    },
+    "android": {
+      "usesCleartextTraffic": true,
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.abdoulaye_fane.mobileafriwonder",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "afriwonder",
+              "host": "video"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "https",
+              "host": "app.afriwonder.com",
+              "pathPrefix": "/video/"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-video",
+      "expo-secure-store","expo-image-picker"
+    ],
+    "scheme": "afriwonder",
+    "extra": {
+      "eas": {
+        "projectId": "ef42bf17-ffb0-4613-99ee-2ae18fa37196"
+      }
+    },
+    "owner": "abdoulaye_fane"
+  }
+}

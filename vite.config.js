@@ -72,6 +72,45 @@ export default defineConfig({
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
         ],
+        shortcuts: [
+          {
+            name: 'Créer une vidéo',
+            short_name: 'Créer',
+            description: 'Ouvrir directement l’écran de création',
+            url: '/Create',
+            icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }],
+          },
+          {
+            name: 'Messages',
+            short_name: 'Inbox',
+            description: 'Accéder rapidement aux messages',
+            url: '/Inbox',
+            icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }],
+          },
+          {
+            name: 'Mon profil',
+            short_name: 'Profil',
+            description: 'Ouvrir mon profil',
+            url: '/Profile',
+            icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }],
+          },
+        ],
+        share_target: {
+          action: '/share-target',
+          method: 'POST',
+          enctype: 'multipart/form-data',
+          params: {
+            title: 'title',
+            text: 'text',
+            url: 'url',
+            files: [
+              {
+                name: 'files',
+                accept: ['image/*', 'video/*'],
+              },
+            ],
+          },
+        },
         categories: ['social', 'entertainment', 'shopping'],
         lang: 'fr',
         dir: 'ltr',

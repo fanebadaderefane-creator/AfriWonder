@@ -309,6 +309,38 @@ export default function Home() {
     setFollowingCount(followingCountMemo);
   }, [followingCountMemo]);
 
+  // Sécurité PWA/mobile : s'assurer qu'aucune vidéo du feed ne continue à jouer
+  // quand on quitte la page Home (navigation vers une autre route/écran).
+  useEffect(() => {
+    return () => {
+      if (typeof document === 'undefined') return;
+      const players = document.querySelectorAll('video[data-afw-feed-video="1"]');
+      players.forEach((node) => {
+        try {
+          node.pause();
+          node.muted = true;
+          node.defaultMuted = true;
+          // Volume en lecture seule dans certains navigateurs, d'où le try/catch
+          node.volume = 0;
+        } catch (_) {}
+      });
+    };
+  }, []);
+
+  // Si un overlay plein écran (commentaires, partage, tip, menu, etc.) est ouvert,
+  // on force la pause de toutes les vidéos derrière pour éviter le son en arrière-plan.
+  useEffect(() => {
+    const anyOverlayOpen = showComments || showShare || showTip || showGift || isMenuOpen;
+    if (!anyOverlayOpen || typeof document === 'undefined') return;
+
+    const players = document.querySelectorAll('video[data-afw-feed-video="1"]');
+    players.forEach((node) => {
+      try {
+        node.pause();
+      } catch (_) {}
+    });
+  }, [showComments, showShare, showTip, showGift, isMenuOpen]);
+
   // Préchargement des vignettes (current + 2 suivantes) pour éviter écran noir au scroll
   useEffect(() => {
     const list = activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map((v) => ({ type: 'video', video: v }));

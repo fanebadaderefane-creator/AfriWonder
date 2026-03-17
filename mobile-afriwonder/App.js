@@ -80,6 +80,19 @@ import CreatorMonetizationDashboardScreen from './src/screens/CreatorMonetizatio
 import BulkUploadManagerScreen from './src/screens/BulkUploadManagerScreen';
 import RevenueSharingScreen from './src/screens/RevenueSharingScreen';
 import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
+import SellerDashboardScreen from './src/screens/SellerDashboardScreen';
+import SellerOrdersScreen from './src/screens/SellerOrdersScreen';
+import SellerWalletScreen from './src/screens/SellerWalletScreen';
+import SellerSubscriptionScreen from './src/screens/SellerSubscriptionScreen';
+import SellerPromotionsScreen from './src/screens/SellerPromotionsScreen';
+import CartScreen from './src/screens/CartScreen';
+import CheckoutScreen from './src/screens/CheckoutScreen';
+import OrdersScreen from './src/screens/OrdersScreen';
+import OrderTrackingScreen from './src/screens/OrderTrackingScreen';
+import OrderDisputeScreen from './src/screens/OrderDisputeScreen';
+import WishlistScreen from './src/screens/WishlistScreen';
+import FavoritesScreen from './src/screens/FavoritesScreen';
+import GroupBuysScreen from './src/screens/GroupBuysScreen';
 
 const linking = {
   prefixes: ['afriwonder://'],
@@ -207,6 +220,19 @@ function RootNavigator() {
           <Stack.Screen name="JobDashboard" component={JobDashboardScreen} />
           <Stack.Screen name="PostJob" component={PostJobScreen} />
           <Stack.Screen name="JobApply" component={JobApplyScreen} />
+          <Stack.Screen name="Cart" component={CartScreen} />
+          <Stack.Screen name="Checkout" component={CheckoutScreen} />
+          <Stack.Screen name="Orders" component={OrdersScreen} />
+          <Stack.Screen name="OrderTracking" component={OrderTrackingScreen} />
+          <Stack.Screen name="OrderDispute" component={OrderDisputeScreen} />
+          <Stack.Screen name="Wishlist" component={WishlistScreen} />
+          <Stack.Screen name="Favorites" component={FavoritesScreen} />
+          <Stack.Screen name="GroupBuys" component={GroupBuysScreen} />
+          <Stack.Screen name="SellerDashboard" component={SellerDashboardScreen} />
+          <Stack.Screen name="SellerOrders" component={SellerOrdersScreen} />
+          <Stack.Screen name="SellerWallet" component={SellerWalletScreen} />
+          <Stack.Screen name="SellerSubscription" component={SellerSubscriptionScreen} />
+          <Stack.Screen name="SellerPromotions" component={SellerPromotionsScreen} />
         </>
       ) : (
         <Stack.Screen name="Auth" component={AuthScreen} />

@@ -769,9 +769,130 @@ export const api = {
       const { data } = await axiosInstance.get('/payments/wallet');
       return data?.data ?? data;
     },
+    async addToWallet(amount, description) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.post('/payments/wallet/deposit', { amount, description });
+      return data?.data ?? data;
+    },
+    async withdrawFromWallet(amount, description, options = {}) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.post('/payments/wallet/withdraw', {
+        amount,
+        description,
+        pin: options.pin,
+      });
+      return data?.data ?? data;
+    },
+    async payOrderWithWallet(orderId, pin) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.post('/payments/wallet/pay-order', { orderId, pin });
+      return data?.data ?? data;
+    },
+    async getWalletSecurity() {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.get('/payments/wallet/security');
+      return data?.data ?? data;
+    },
+    async setWalletPin(pin) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.post('/payments/wallet/set-pin', { pin });
+      return data?.data ?? data;
+    },
+    async validateWalletPin(pin) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.post('/payments/wallet/validate-pin', { pin });
+      return data?.data ?? data;
+    },
     async getTransactions(params = {}) {
       if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
       const { data } = await axiosInstance.get('/payments/transactions', { params });
+      return data?.data ?? data;
+    },
+  },
+  withdrawals: {
+    async request(amount, phoneOrOrange, options = {}) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const isPayPal = options.payment_method === 'paypal';
+      const payload = {
+        amount,
+        orange_money_phone: isPayPal ? undefined : phoneOrOrange,
+        phone: isPayPal ? undefined : phoneOrOrange,
+        payment_method: options.payment_method || 'orange_money',
+        paypal_email: options.paypal_email,
+        pin: options.pin,
+      };
+      const { data } = await axiosInstance.post('/withdrawals/request', payload);
+      return data?.data ?? data;
+    },
+    async list(params = {}) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.get('/withdrawals', { params });
+      return data?.data ?? data;
+    },
+    async getPending(params = {}) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.get('/withdrawals/pending', { params });
+      return data?.data ?? data;
+    },
+    async process(id, payload = {}) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.post(`/withdrawals/${id}/process`, payload);
+      return data?.data ?? data;
+    },
+    async cancel(id) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.post(`/withdrawals/${id}/cancel`);
+      return data?.data ?? data;
+    },
+  },
+  me: {
+    async getVirtualCards() {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.get('/me/virtual-cards');
+      const out = data?.data ?? data;
+      return out ?? [];
+    },
+    async createVirtualCard(options = {}) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.post('/me/virtual-cards', options);
+      return data?.data ?? data;
+    },
+    async revokeVirtualCard(id) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.delete(`/me/virtual-cards/${id}`);
+      return data?.data ?? data;
+    },
+    async getInternationalTransfers(params = {}) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.get('/me/international-transfers', { params });
+      const out = data?.data ?? data;
+      return {
+        items: out?.items ?? out?.data ?? out ?? [],
+        pagination: out?.pagination ?? {},
+      };
+    },
+    async createInternationalTransfer(payload) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.post('/me/international-transfers', payload);
+      return data?.data ?? data;
+    },
+    async getInternationalTransfer(id) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.get(`/me/international-transfers/${id}`);
+      return data?.data ?? data;
+    },
+    async getPreauths(params = {}) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.get('/me/preauths', { params });
+      const out = data?.data ?? data;
+      return {
+        items: out?.items ?? out?.data ?? out ?? [],
+        pagination: out?.pagination ?? {},
+      };
+    },
+    async createPreauth(payload) {
+      if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL requis');
+      const { data } = await axiosInstance.post('/me/preauths', payload);
       return data?.data ?? data;
     },
   },
