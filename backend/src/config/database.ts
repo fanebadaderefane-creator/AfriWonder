@@ -52,19 +52,15 @@ if (!connectionString || !connectionString.trim()) {
 
 // Bases cloud (Render, Supabase, Neon, etc.) exigent souvent SSL ; sans ça → "Authentication failed"
 const isCloudHost = /\.(render\.com|supabase\.co|supabase\.com|neon\.tech|neon\.xyz|aws\.amazon|pooler\.)/i.test(connectionString);
-const isDevCloud = process.env.NODE_ENV === 'development' && isCloudHost;
-if (isCloudHost && !isDevCloud && !/sslmode=/i.test(connectionString)) {
-  connectionString += connectionString.includes('?') ? '&sslmode=require' : '?sslmode=require';
-  logger.info('Connexion DB cloud : sslmode=require ajouté à l’URL');
-}
-// En dev + cloud : retirer sslmode de l’URL pour que le pool utilise notre ssl.rejectUnauthorized=false
-// (sinon pg-connection-string force verify-full et la connexion échoue → circuit breaker)
-if (isDevCloud && /sslmode=/i.test(connectionString)) {
+// Avec le pool pg + ssl.rejectUnauthorized: false, ne jamais mettre sslmode dans l’URL :
+// pg-connection-string traite sslmode=require comme verify-full → "self-signed certificate in certificate chain" sur Render/Supabase pooler.
+// On garde SSL via le pool (rejectUnauthorized: false) pour dev et production.
+if (isCloudHost && /sslmode=/i.test(connectionString)) {
   connectionString = connectionString
     .replace(/[?&]sslmode=[^&]*/gi, '')
     .replace(/\?&/, '?')
     .replace(/\?$/, '');
-  logger.info('Connexion DB cloud (dev) : ssl via pool (rejectUnauthorized=false), sslmode retiré de l’URL');
+  logger.info('Connexion DB cloud : ssl via pool (rejectUnauthorized=false), sslmode retiré de l’URL');
 }
 
 // Pool size: pooler Supabase/Supavisor limite les connexions → petit pool (3).
