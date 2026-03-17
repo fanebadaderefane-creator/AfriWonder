@@ -50,6 +50,13 @@ if (!connectionString || !connectionString.trim()) {
   throw new Error('DATABASE_URL is not defined in environment variables');
 }
 
+// Corriger une URL mal formée : /dbname&params ou /dbname%26params → /dbname?params (sinon le driver prend "dbname&params" comme nom de base)
+const beforeFix = connectionString;
+connectionString = connectionString.replace(/\/([^/?#]+)&/, '/$1?').replace(/\/([^/?#]+)%26/i, '/$1?');
+if (connectionString !== beforeFix) {
+  logger.info("Connexion DB : & ou %26 après le nom de base corrigé en ? (paramètres en query string)");
+}
+
 // Bases cloud (Render, Supabase, Neon, etc.) exigent souvent SSL ; sans ça → "Authentication failed"
 const isCloudHost = /\.(render\.com|supabase\.co|supabase\.com|neon\.tech|neon\.xyz|aws\.amazon|pooler\.)/i.test(connectionString);
 // Avec le pool pg + ssl.rejectUnauthorized: false, ne jamais mettre sslmode dans l’URL :

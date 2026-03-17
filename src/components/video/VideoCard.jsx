@@ -770,6 +770,8 @@ function VideoCardContent({
     const tryPlay = () => {
       if (cancelled || !isActive || userPausedRef.current) return;
       if (hasAutoPlayedRef.current) return;
+      // Ne lancer play que si assez de données (HAVE_ENOUGH_DATA) pour éviter buffer → play → buffer
+      if (el.readyState < 4) return;
       autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true }).then((ok) => {
         if (!ok || cancelled || !isActive) {
           if (ok) {
@@ -783,23 +785,22 @@ function VideoCardContent({
 
     const playVideo = () => {
       if (!el || !isActive || userPausedRef.current) return;
-      if (el.readyState >= 2) {
-        tryPlay();
-      } else if (el.readyState >= 1) {
+      if (el.readyState >= 4) {
         tryPlay();
       }
       el.addEventListener('canplay', onCanPlay);
       el.addEventListener('loadeddata', onCanPlay);
+      el.addEventListener('canplaythrough', onCanPlay);
     };
 
     playVideo();
 
-    // Plusieurs retries (type TikTok) pour tous mobiles : autoplay fiable
+    // Plusieurs retries (type TikTok) : attendre readyState >= 4 pour un démarrage fiable
     const timers = [100, 400, 900, 1800, 3000, 4500].map((delay) =>
       window.setTimeout(() => {
         if (cancelled || !el || !isActive || userPausedRef.current) return;
         if (hasAutoPlayedRef.current) return;
-        if (el.paused && el.readyState >= 2) {
+        if (el.paused && el.readyState >= 4) {
           prepareForAutoplay(el, true);
           tryPlay();
         }
@@ -811,6 +812,7 @@ function VideoCardContent({
       timers.forEach((t) => window.clearTimeout(t));
       el.removeEventListener('canplay', onCanPlay);
       el.removeEventListener('loadeddata', onCanPlay);
+      el.removeEventListener('canplaythrough', onCanPlay);
       prepareForAutoplay(el, true);
       try { el.volume = 0; } catch (_) {}
       el.pause();
@@ -1091,8 +1093,8 @@ function VideoCardContent({
     const el = videoRef.current;
     if (!el || loadError || !isActive) return;
     setIsReadyToPlay(true);
-    // Démarrage immédiat type TikTok dès que le navigateur peut jouer (muted = autoplay autorisé)
-    if (!userPausedRef.current && el.paused && !hasAutoPlayedRef.current) {
+    // Ne lancer play que si assez de données (readyState >= 4) pour éviter buffer → play → buffer
+    if (!userPausedRef.current && el.paused && !hasAutoPlayedRef.current && el.readyState >= 4) {
       autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true }).then((ok) => {
         if (ok && videoRef.current && isActive && !userPausedRef.current) {
           setIsReadyToPlay(true);
@@ -1124,6 +1126,16 @@ function VideoCardContent({
     }
     hasPlayedOnceRef.current = true;
     setIsPlaying(true);
+    // Si l'autoplay a démarré en muet (fallback) alors que l'utilisateur préfère le son : activer le son dès que la lecture a commencé (évite un clic par vidéo).
+    const el = videoRef.current;
+    if (el && !isMutedRef.current) {
+      try {
+        el.muted = false;
+        el.defaultMuted = false;
+        el.volume = 1;
+        setAutoplayMutedFallback(false);
+      } catch (_) {}
+    }
   };
 
   const handlePause = () => {
@@ -1421,7 +1433,7 @@ function VideoCardContent({
             setIsReadyToPlay(true);
             setShowVideoFrame(true);
             const el = videoRef.current;
-            if (el && isActive && el.paused && !userPausedRef.current) {
+            if (el && isActive && el.paused && !userPausedRef.current && el.readyState >= 4) {
               autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true });
             }
           }}
@@ -1541,7 +1553,7 @@ function VideoCardContent({
 
       {/* ================= ACTIONS DROITE (style TikTok) ================= */}
       <div className={cn(
-        "absolute right-3 bottom-28 flex flex-col items-center gap-4 z-[90] transition-opacity duration-300",
+        "absolute right-3 bottom-28 flex flex-col items-center gap-4 z-[100] transition-opacity duration-300",
         hideActions ? "opacity-0 pointer-events-none" : "opacity-100"
       )}>
         {/* Avatar */}
@@ -1687,13 +1699,21 @@ function VideoCardContent({
 
         <div className="flex flex-col items-center">
           <button
-            onClick={handleMuteToggleClick}
-            className="flex items-center justify-center w-7 h-7"
+            type="button"
+            onClick={(e) => {
+              // Comportement identique aux autres icônes (partage, sauvegarde...) :
+              // laisser le navigateur gérer le tap/click et juste stopper la propagation vers la vidéo.
+              e.stopPropagation();
+              handleMuteToggleClick();
+            }}
+            style={{ touchAction: 'manipulation', minWidth: 44, minHeight: 44 }}
+            className="flex items-center justify-center w-7 h-7 rounded-lg touch-manipulation cursor-pointer"
+            aria-label={isMuted || autoplayMutedFallback ? 'Activer le son' : 'Couper le son'}
           >
             {isMuted || autoplayMutedFallback ? (
-              <VolumeX className="w-6 h-6 text-white" />
+              <VolumeX className="w-6 h-6 text-white pointer-events-none" />
             ) : (
-              <Volume2 className="w-6 h-6 text-white" />
+              <Volume2 className="w-6 h-6 text-white pointer-events-none" />
             )}
           </button>
           <span className="text-white text-xs font-semibold leading-tight min-h-[16px]"></span>
@@ -1728,11 +1748,12 @@ function VideoCardContent({
             <button
               type="button"
               onClick={(e) => {
-                e.preventDefault();
+                // Même pattern que les autres boutons d'action : click/tap standard + stopPropagation.
                 e.stopPropagation();
                 onTip();
               }}
-              className="flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11 touch-manipulation active:scale-95 transition-transform select-none"
+              style={{ touchAction: 'manipulation' }}
+              className="flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11 touch-manipulation active:scale-95 transition-transform select-none cursor-pointer"
               aria-label="Soutenir"
             >
               <DollarSign className="w-7 h-7 text-yellow-400 pointer-events-none" />

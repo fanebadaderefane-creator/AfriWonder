@@ -4,7 +4,6 @@
  */
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { loadPreferences, savePreferences } from '@/lib/preferences';
-import { isStrictAutoplayEnvironment } from '@/lib/utils';
 
 const PreferencesContext = createContext(null);
 
@@ -15,15 +14,8 @@ export function PreferencesProvider({ children }) {
     setPrefs(loadPreferences());
   }, []);
 
-  // PWA/mobile : par défaut démarrer en muet pour que l'autoplay fonctionne (comme TikTok)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const p = loadPreferences();
-    if (p.soundPreferenceSet) return;
-    if (!isStrictAutoplayEnvironment()) return;
-    if (p.isMuted) return;
-    updatePreferences({ isMuted: true, soundPreferenceSet: true });
-  }, []);
+  // Par défaut le son est activé à l'ouverture ; l'utilisateur peut le couper. Si l'autoplay avec son est bloqué, la vidéo démarre en muet puis se démut automatiquement au playing.
+  // (effet précédent qui forçait isMuted: true en PWA/mobile supprimé pour que le son soit automatique à l'ouverture)
 
   const updatePreferences = useCallback((patch) => {
     if (!patch || typeof patch !== 'object') return;
