@@ -63,7 +63,8 @@
     "stripe": "^17.4.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
-    "zod": "^3.24.2"
+    "zod": "^3.24.2",
+    "tsx": "^4.19.2"
   },
   "optionalDependencies": {
     "redis": "^4.7.1"
@@ -87,7 +88,6 @@
     "prisma": "^7.4.1",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.6",
-    "tsx": "^4.19.2",
     "typescript": "^5.8.2"
   }
 }

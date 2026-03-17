@@ -26,7 +26,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./
 COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/scripts/start-with-migrate.sh ./scripts/
+COPY --from=builder /app/scripts ./scripts
 
 RUN npm prune --production && chmod +x scripts/start-with-migrate.sh
 
