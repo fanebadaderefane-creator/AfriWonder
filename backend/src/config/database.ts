@@ -79,14 +79,14 @@ const poolMax = Number.isFinite(poolMaxEnv) && poolMaxEnv > 0
     ? 3
     : (process.env.NODE_ENV === 'production' ? 20 : 10);
 
-// En dev avec hôte cloud (Supabase, Neon…), accepter le certificat sans vérification stricte
-// pour éviter "Circuit breaker open" après le premier $connect() (pg peut échouer en verify-full).
+// Avec hôte cloud (Supabase pooler, Neon…), le certificat peut être rejeté ("self-signed certificate in certificate chain").
+// On accepte la connexion TLS sans vérification stricte pour que Render/production puisse se connecter au pooler Supabase.
 const pool = new Pool({
   connectionString,
   max: poolMax,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 30000, // 30s pour éviter timeout lors de l'init (politiques de rétention, etc.)
-  ...(process.env.NODE_ENV === 'development' && isCloudHost && { ssl: { rejectUnauthorized: false } }),
+  ...(isCloudHost && { ssl: { rejectUnauthorized: false } }),
 });
 const adapter = new PrismaPg(pool);
 
