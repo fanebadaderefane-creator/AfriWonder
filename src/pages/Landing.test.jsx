@@ -52,18 +52,18 @@ describe('Landing page (auth)', () => {
     vi.clearAllMocks();
   });
 
-  it('affiche les boutons S\'inscrire et Se connecter (mobile-first)', () => {
+  it('affiche les boutons Inscription et Se connecter (mobile-first)', () => {
     renderLanding();
-    const signupButtons = screen.getAllByRole('button', { name: /s'inscrire/i });
+    const signupTabButtons = screen.getAllByRole('button', { name: /^inscription$/i });
     const loginButtons = screen.getAllByRole('button', { name: /se connecter/i });
-    expect(signupButtons.length).toBeGreaterThanOrEqual(1);
+    expect(signupTabButtons.length).toBeGreaterThanOrEqual(1);
     expect(loginButtons.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('ouvre le formulaire d\'inscription au clic sur S\'inscrire', async () => {
+  it('ouvre le formulaire d\'inscription au clic sur Inscription', async () => {
     const user = userEvent.setup();
     renderLanding();
-    const signupBtn = screen.getAllByRole('button', { name: /s'inscrire/i })[0];
+    const signupBtn = screen.getAllByRole('button', { name: /^inscription$/i })[0];
     await user.click(signupBtn);
     expect(screen.getByRole('heading', { name: /créer un compte/i })).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/jean dupont/i)).toBeInTheDocument();
@@ -76,7 +76,7 @@ describe('Landing page (auth)', () => {
       const user = userEvent.setup();
       renderLanding();
 
-      await user.click(screen.getAllByRole('button', { name: /s'inscrire/i })[0]);
+      await user.click(screen.getAllByRole('button', { name: /^inscription$/i })[0]);
       await screen.findByPlaceholderText(/jean dupont/i, {}, { timeout: 3000 });
 
       await act(async () => {
@@ -88,7 +88,7 @@ describe('Landing page (auth)', () => {
       const registerHeading = screen.getByRole('heading', { name: /créer un compte/i });
       const registerCard = registerHeading.closest('div');
       expect(registerCard).not.toBeNull();
-      const submitButton = within(registerCard).getByRole('button', { name: /^s'inscrire$/i });
+      const submitButton = within(registerCard).getByRole('button', { name: /créer mon compte/i });
       expect(submitButton).toBeDisabled();
       await user.click(submitButton);
       expect(registerMock).not.toHaveBeenCalled();
@@ -102,7 +102,7 @@ describe('Landing page (auth)', () => {
 
     renderLanding();
 
-    await user.click(screen.getAllByRole('button', { name: /s'inscrire/i })[0]);
+    await user.click(screen.getAllByRole('button', { name: /^inscription$/i })[0]);
     await screen.findByPlaceholderText(/jean dupont/i, {}, { timeout: 3000 });
 
     await act(async () => {
@@ -113,7 +113,7 @@ describe('Landing page (auth)', () => {
       await user.type(within(regForm).getByPlaceholderText(/votre@email\.com/i), 'e2e@example.com');
       await user.type(within(regForm).getByPlaceholderText(/[\u2022.]{4,}/), 'Password123!');
       await user.click(within(regForm).getByRole('checkbox'));
-      await user.click(within(regForm).getByRole('button', { name: /^s'inscrire$/i }));
+      await user.click(within(regForm).getByRole('button', { name: /créer mon compte/i }));
     });
 
     await waitFor(() => {

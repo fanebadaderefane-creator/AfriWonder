@@ -3,14 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { 
   Shield, Calendar, Car, UtensilsCrossed, Stethoscope, Home, 
   Briefcase, GraduationCap, Heart, Users, Video, FileText,
-  Check, X, Eye, EyeOff, Ban, AlertTriangle, DollarSign,
-  Search, Filter, CheckCircle, XCircle, Clock, TrendingUp,
-  Menu, BarChart3, Settings, UserCheck, UserX
+  Check, X, EyeOff, Ban, AlertTriangle, DollarSign,
+  Search, CheckCircle, Clock, BarChart3, UserCheck
 } from "lucide-react";
 import { Card } from "@/components/ui/CardWrapper";
 import { Badge } from "@/components/ui/BadgeWrapper";
 import { Button } from "@/components/ui/ButtonWrapper";
-import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/Modal";
 import { useAdmin, SUBSCRIPTION_PLANS } from "@/lib/admin-context";
 import { api } from '@/api/expressClient';

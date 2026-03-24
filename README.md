@@ -433,6 +433,21 @@ npx prisma migrate deploy
 - Vérifier `VITE_API_URL` dans `.env.local` : `http://localhost:3000/api`
 - Vérifier que le backend tourne sur le port 3000
 
+**Console Firefox : plusieurs erreurs rouges** (`ECONNREFUSED`, `NS_ERROR_NET_RESET`, `GET /api/...` en échec) : le proxy Vite ne peut pas joindre `localhost:3000`. L’app React **s’affiche quand même** (header, bottom nav) ; le **feed peut rester noir** sans vidéos. Ce n’est **pas** que `#root` est vide : dans l’inspecteur, **développer** `#root` — le nœud replié ne montre pas les enfants.
+
+### Feed vidéo : zone noire / carte trop étroite (Firefox / WebView)
+
+- Cause typique : **bug de layout/compositing** sur le feed plein écran, pas un problème d’API ni de lecture vidéo.
+- Points à préserver :
+  - colonne feed dimensionnée depuis le viewport dans `src/pages/Home.jsx`
+  - conteneur scroll du feed en **flux normal** avec hauteur explicite, pas en `absolute inset-0`
+  - pas de couche UI fullscreen extrême au-dessus du player dans `src/components/video/VideoCard.jsx`
+- Si le bug revient, comparer d’abord la géométrie de `Home.jsx` et l’empilement des overlays avant de toucher à la logique de lecture.
+
+### WebSocket / Socket.IO (`ws://localhost:3000/socket.io` en erreur)
+
+En dev, les requêtes **`/api`** et **`/socket.io`** passent par le proxy Vite (`vite.config.js`) vers `http://localhost:3000`. Si la console affiche une erreur WebSocket ou des `GET /api/...` annulés sur `localhost:5173`, le **backend n’est en général pas démarré** : lancer `cd backend && npm run dev`. Redémarrer aussi `npm run dev` à la racine après modification de `vite.config.js`.
+
 ### Login renvoie 500 (POST /api/auth/login)
 
 En dev, le front (Vite sur 5173) envoie les requêtes `/api/*` au backend (proxy vers `localhost:3000`). Une erreur 500 signifie que le serveur Express a planté. Vérifier :
@@ -487,6 +502,8 @@ Si Redis n’est pas installé, le backend peut fonctionner sans (rate limit en 
 | [SECURITY.md](./docs/SECURITY.md) | Sécurité |
 | [AGORA_SETUP.md](./docs/AGORA_SETUP.md) | Configuration live streaming |
 | [WEBRTC_TURN_SETUP.md](./docs/WEBRTC_TURN_SETUP.md) | Configuration appels vocaux/video (TURN) |
+| [PERF_SEO_A11Y.md](./docs/PERF_SEO_A11Y.md) | Performance, SEO, accessibilité, PWA, Lighthouse CI |
+| [FEED_FULLSCREEN_STABILITY.md](./docs/FEED_FULLSCREEN_STABILITY.md) | Garde-fous feed vidéo fullscreen (Firefox, WebView, PWA) |
 
 ---
 

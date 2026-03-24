@@ -2,7 +2,7 @@ import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Users, Briefcase, Calendar, Car, UtensilsCrossed, Stethoscope,
-  Building2, Landmark, Newspaper, CreditCard, UserCheck, GraduationCap,
+  Building2, Landmark, Newspaper, CreditCard, GraduationCap,
   TrendingUp, AlertCircle
 } from "lucide-react";
 

@@ -10,8 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Briefcase, ArrowRight, ArrowLeft, Plus, X, Loader2,
+import { ArrowRight, ArrowLeft, Plus, X, Loader2,
   CheckCircle, Star, Crown, Zap, Upload
 } from "lucide-react";
 import { toast } from "sonner";

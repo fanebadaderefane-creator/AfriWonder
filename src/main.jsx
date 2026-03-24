@@ -1,29 +1,37 @@
-import * as Sentry from '@sentry/react'
 import React, { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from '@/App.jsx'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import '@/index.css'
 
-// Sentry — initialiser le plus tôt possible (désactivé en dev si bloqué par le navigateur)
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN
 const isDev = import.meta.env.DEV
+
 if (sentryDsn && !isDev) {
-  Sentry.init({
-    dsn: sentryDsn,
-    environment: import.meta.env.VITE_REACT_APP_ENV || import.meta.env.MODE,
-    sendDefaultPii: true,
-    integrations: [
-      Sentry.browserTracingIntegration(),
-      Sentry.replayIntegration(),
-    ],
-    tracesSampleRate: 1.0,
-    tracePropagationTargets: ['localhost', /^https?:\/\/[^/]+/],
-    replaysSessionSampleRate: import.meta.env.PROD ? 0.1 : 1.0,
-    replaysOnErrorSampleRate: 1.0,
-    enableLogs: true,
-  })
-  window.Sentry = Sentry
+  const initSentry = () => {
+    import('@sentry/react')
+      .then((Sentry) => {
+        Sentry.init({
+          dsn: sentryDsn,
+          environment: import.meta.env.VITE_REACT_APP_ENV || import.meta.env.MODE,
+          sendDefaultPii: true,
+          integrations: [
+            Sentry.browserTracingIntegration(),
+          ],
+          tracesSampleRate: 0.2,
+          tracePropagationTargets: ['localhost', /^https?:\/\/[^/]+/],
+          enableLogs: false,
+        })
+        window.Sentry = Sentry
+      })
+      .catch(() => {})
+  }
+
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(initSentry)
+  } else {
+    setTimeout(initSentry, 2000)
+  }
 }
 
 // Désenregistrer les service workers en développement pour éviter les conflits avec Vite
@@ -109,6 +117,9 @@ if (!rootElement) {
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   let registration = null;
   let updateCheckInterval = null;
+  const isStandaloneMobile = () =>
+    (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) &&
+    window.innerWidth < 1024;
 
   const registerSW = () => {
     navigator.serviceWorker.register('/sw-custom.js', { scope: '/' })
@@ -133,17 +144,13 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
               window.dispatchEvent(new CustomEvent('sw-update-available', { 
                 detail: { registration: reg, newWorker } 
               }));
-              // PWA mobile : appliquer la mise à jour automatiquement après 3s (évite ancienne version tenace)
-              const isPwaMobile = (window.matchMedia('(display-mode: standalone)').matches || (window.navigator.standalone === true)) && window.innerWidth < 1024;
-              if (isPwaMobile) {
-                setTimeout(() => {
-                  newWorker.postMessage({ type: 'SKIP_WAITING' });
-                }, 3000);
-              }
             } else if (newWorker.state === 'activated') {
-              // Nouveau worker activé, recharger la page
+              // En PWA mobile/WebView, un reload forcé en pleine session vidéo peut provoquer un flash noir
+              // ou couper le feed. On préfère laisser la nouvelle version prendre effet au prochain cycle.
               console.log('✅ Nouveau Service Worker activé');
-              window.location.reload();
+              if (!isStandaloneMobile() || document.visibilityState === 'hidden') {
+                window.location.reload();
+              }
             }
           });
         });
@@ -153,13 +160,6 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
           window.dispatchEvent(new CustomEvent('sw-update-available', { 
             detail: { registration: reg, newWorker: reg.waiting } 
           }));
-          // PWA mobile : appliquer automatiquement après 3s
-          const isPwaMobile = (window.matchMedia('(display-mode: standalone)').matches || (window.navigator.standalone === true)) && window.innerWidth < 1024;
-          if (isPwaMobile) {
-            setTimeout(() => {
-              reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-            }, 3000);
-          }
         }
 
         // Vérifier les mises à jour immédiatement
@@ -169,11 +169,16 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
         setTimeout(() => reg.update().catch(() => {}), 5000);
         setTimeout(() => reg.update().catch(() => {}), 15000);
 
-        // Sur mobile : revérifier à chaque retour sur l'app (visibilité)
-        const onVis = () => {
+        // Revérifier au retour sur l’app (onglet, PWA, retour arrière iOS / bfcache)
+        const checkSwUpdate = () => {
           if (document.visibilityState === 'visible') reg.update().catch(() => {});
         };
-        document.addEventListener('visibilitychange', onVis);
+        document.addEventListener('visibilitychange', checkSwUpdate);
+        window.addEventListener('focus', checkSwUpdate);
+        document.addEventListener('pageshow', (ev) => {
+          if (ev.persisted) checkSwUpdate();
+          else reg.update().catch(() => {});
+        });
       })
       .catch((err) => {
         console.warn('⚠️ Échec enregistrement Service Worker:', err);

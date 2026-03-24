@@ -1,12 +1,10 @@
+/* cspell:disable-file */
 // AfriWonder full review PR - CodeRabbit
 // @ts-nocheck
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import VideoCard from '../components/video/VideoCard';
-import AdCard from '../components/video/AdCard';
-import AdBannerCard from '../components/video/AdBannerCard';
 import CommentSheet from '../components/video/CommentSheet';
 import TipModal from '../components/video/TipModal';
 import ShareSheet from '../components/video/ShareSheet';
@@ -14,19 +12,31 @@ import GiftPurchaseModal from '../components/live/GiftPurchaseModal';
 import TopHeader from '../components/navigation/TopHeader';
 import BottomNav from '../components/navigation/BottomNav';
 import AfriWonderLogo from '../components/common/AfriWonderLogo';
+import FeedEmptyState from '@/features/feed/components/FeedEmptyState';
+import FeedFollowingStrip from '@/features/feed/components/FeedFollowingStrip';
+import FeedPullToRefresh from '@/features/feed/components/FeedPullToRefresh';
+import FeedStartupCurtain from '@/features/feed/components/FeedStartupCurtain';
+import FeedTopBannerRail from '@/features/feed/components/FeedTopBannerRail';
+import FeedVideoSlide from '@/features/feed/components/FeedVideoSlide';
+import {
+  extractMainFeedVideoItems,
+  getFeedPosterUrl,
+  getFeedSlideBackgroundUrl,
+  normalizeFeedVideo,
+} from '@/features/feed/feedUtils';
 import { useAppMenu } from '@/contexts/AppMenuContext';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import NotificationService from '../components/notifications/NotificationService';
-import Loader2 from 'lucide-react/icons/loader-2';
-import ChevronRight from 'lucide-react/icons/chevron-right';
+import Sparkles from 'lucide-react/icons/sparkles';
+import Users from 'lucide-react/icons/users';
+import WifiOff from 'lucide-react/icons/wifi-off';
 import { toast } from "sonner";
 import { useNetworkStatus, getCacheStrategy, scheduleTask } from '../components/common/PerformanceOptimizer';
-import { cn, isDeletedUser, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl } from "@/lib/utils";
-import { createVideoPool, releasePoolPlayer } from '@/lib/videoPool';
+import { cn, isDeletedUser, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, getVideoPlaybackUrl } from "@/lib/utils";
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { getJSON, setJSON } from '@/utils/safeStorage';
+import { impactLight } from '@/lib/haptics';
 import { useWakeLock } from '@/hooks/useWakeLock';
-import VideoPreviewCard from '../components/video/VideoPreviewCard';
 
 /** Initiales pour avatar sans photo (max 2 caractères). */
 function getAvatarInitials(user) {
@@ -36,6 +46,12 @@ function getAvatarInitials(user) {
   if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   return name.slice(0, 2).toUpperCase();
 }
+
+const FEED_FULLSCREEN_MAX_WIDTH_PX = 400;
+const FEED_FULLSCREEN_WIDTH = `min(100vw, ${FEED_FULLSCREEN_MAX_WIDTH_PX}px)`;
+const FEED_POSTER_PRELOAD_COUNT = 4;
+const FEED_VIDEO_PRELOAD_COUNT = 3;
+const FEED_STARTUP_CURTAIN_SESSION_KEY = 'afw_feed_startup_curtain_seen';
 
 export default function Home() {
   const _navigate = useNavigate();
@@ -52,9 +68,19 @@ export default function Home() {
   
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [user, setUser] = useState(null);
+  /** Évite 2× GET /feed : la clé ['feed', user?.id] passait de undefined → id au retour de /auth/me. */
+  const [userHydrated, setUserHydrated] = useState(false);
   const [likedVideos, setLikedVideos] = useState(new Set());
   const [savedVideos, setSavedVideos] = useState(new Set());
   const [followingCount, setFollowingCount] = useState(0);
+  const [initialFeedVisualReady, setInitialFeedVisualReady] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.sessionStorage.getItem(FEED_STARTUP_CURTAIN_SESSION_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
 
   const [showWonderersPanel, setShowWonderersPanel] = useState(false);
 
@@ -66,22 +92,23 @@ export default function Home() {
   const pullDistanceRef = useRef(0);
   const currentIndexRef = useRef(0);
   const observerRef = useRef(null);
-  const [activePreviewId, setActivePreviewId] = useState(null);
-
-  // Video Pool type TikTok : 3 lecteurs réutilisés pour tout le feed (RAM, rebuffer, fluidité)
-  const videoPoolRef = useRef(null);
-  useEffect(() => {
-    videoPoolRef.current = createVideoPool(3);
-    return () => {
-      (videoPoolRef.current || []).forEach((player) => releasePoolPlayer(player));
-      videoPoolRef.current = null;
-    };
-  }, []);
+  /** Évite double GET /feed : l’effet d’invalidation ne doit pas refetch au 1er `user.id` (la query vient de partir). */
+  const feedInvalidatePrevUserIdRef = useRef(undefined);
 
   useEffect(() => {
     let cancelled = false;
-    api.auth.me().then((u) => { if (!cancelled) setUser(u); }).catch(() => {});
-    return () => { cancelled = true; };
+    api.auth
+      .me()
+      .then((u) => {
+        if (!cancelled) setUser(u);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setUserHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const { isSlowConnection } = useNetworkStatus();
@@ -93,33 +120,37 @@ export default function Home() {
     refetchOnMount: false,
   };
 
-  const { data: earlyAccessConfig } = useQuery({
-    queryKey: ['early-access-config'],
-    queryFn: () => api.earlyAccess.getConfig(),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  });
-
-  const { data: feedData, isLoading: feedLoading, refetch: refetchFeed } = useQuery({
-    queryKey: ['feed', user?.id],
+  const { data: feedData, isLoading: feedLoading, isError: feedError, refetch: refetchFeed } = useQuery({
+    queryKey: ['feed', user?.id ?? 'guest'],
     ...homeCacheStrategy,
+    retry: 1,
     queryFn: async () => {
+      const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
       const result = await api.feed.list({ page: 1, limit: 25 });
+      if (import.meta.env.DEV) {
+        const items = result?.items;
+        const ms = typeof performance !== 'undefined' ? Math.round(performance.now() - t0) : 0;
+        console.log('[Feed query] réponse:', {
+          ms,
+          type: typeof result,
+          hasItems: !!items,
+          count: items?.length,
+          sample: items?.[0],
+        });
+      }
       return result?.items ?? [];
     },
-    enabled: activeTab === 'pourtoi',
+    enabled: activeTab === 'pourtoi' && userHydrated,
   });
 
   const { data: videos = [], isLoading: videosLoading, refetch: refetchVideos } = useQuery({
-    queryKey: ['videos', user?.id],
+    queryKey: ['videos', user?.id ?? 'guest'],
     ...homeCacheStrategy,
     queryFn: async () => {
       const result = await api.videos.list({ page: 1, limit: 25 });
       return result.videos || [];
     },
-    enabled: activeTab === 'abonnements',
+    enabled: activeTab === 'abonnements' && userHydrated,
   });
 
   const [hiddenAdIds, setHiddenAdIds] = useState(() => {
@@ -150,32 +181,18 @@ export default function Home() {
     () => feedItems.filter((i) => i.type === 'top_banner'),
     [feedItems]
   );
-  const mainFeedItems = useMemo(() => {
-    const seen = new Set();
-    const out = [];
-    for (const item of feedItems) {
-      if (item.type === 'top_banner') {
-        continue;
-      }
-      if (item.type === 'video' && item.video && item.video.id != null) {
-        const key = String(item.video.id);
-        if (seen.has(key)) continue;
-        seen.add(key);
-      }
-      out.push(item);
-    }
-    return out;
-  }, [feedItems]);
-  const isLoading = activeTab === 'pourtoi' ? feedLoading : videosLoading;
-
-  // Plus de refetch automatique ici : on se repose sur la stratégie de cache React Query
-
-  const handleRefreshHome = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['feed'] });
-    queryClient.invalidateQueries({ queryKey: ['videos'] });
-    refetchFeed().catch(() => {});
-    refetchVideos().catch(() => {});
-  }, [queryClient, refetchFeed, refetchVideos]);
+  const mainFeedItems = useMemo(
+    () =>
+      extractMainFeedVideoItems(feedItems, {
+        userHydrated,
+        log: import.meta.env.DEV,
+      }),
+    [feedItems, userHydrated]
+  );
+  const isLoading =
+    activeTab === 'pourtoi'
+      ? feedLoading || !userHydrated
+      : videosLoading || !userHydrated;
 
   const PULL_THRESHOLD = 55;
   const MAX_PULL = 80;
@@ -212,23 +229,35 @@ export default function Home() {
     touchStartYRef.current = 0;
   }, [refetchFeed, refetchVideos]);
 
-  // Invalider feed/videos uniquement au changement d'utilisateur (connexion), pas à chaque changement d'avatar
+  // Invalider feed/videos seulement si l’utilisateur **change** (A→B), pas au premier id après /me (sinon 2× fetch lourd).
   useEffect(() => {
-    if (user?.id) {
-      queryClient.invalidateQueries({ queryKey: ['videos'] });
-      queryClient.invalidateQueries({ queryKey: ['feed'] });
+    const id = user?.id ?? null;
+    if (!id) {
+      feedInvalidatePrevUserIdRef.current = undefined;
+      return;
     }
+    const prev = feedInvalidatePrevUserIdRef.current;
+    feedInvalidatePrevUserIdRef.current = id;
+    if (prev == null || prev === id) return;
+    queryClient.invalidateQueries({ queryKey: ['videos'] });
+    queryClient.invalidateQueries({ queryKey: ['feed'] });
   }, [queryClient, user?.id]);
 
-  const { data: comments = [] } = useQuery({
+  const { data: comments = [], isLoading: commentsLoading, isError: commentsError, refetch: refetchComments } = useQuery({
     queryKey: ['comments', selectedVideo?.id],
     ...homeCacheStrategy,
     queryFn: async () => {
       if (!selectedVideo?.id) return [];
-      const result = await api.videos.getComments(selectedVideo.id, { page: 1, limit: 50 });
-      return result.comments || [];
+      const result = await api.videos.getComments(
+        selectedVideo.id,
+        { page: 1, limit: 50 },
+        { timeoutMs: 12000 }
+      );
+      return Array.isArray(result) ? result : (result?.comments || []);
     },
     enabled: !!selectedVideo?.id && showComments,
+    // Evite les attentes de plusieurs minutes (axios retries + react-query retries cumulés).
+    retry: 1,
   });
 
   const { data: walletData } = useQuery({
@@ -304,6 +333,60 @@ export default function Home() {
     () => videos.filter((v) => followingIds.includes(v.creator_id)),
     [videos, followingIds, videoIdsString]
   );
+  const activeFeedVideos = useMemo(
+    () => (
+      activeTab === 'pourtoi'
+        ? mainFeedItems.map((item) => item?.video).filter(Boolean)
+        : followingVideos
+    ),
+    [activeTab, mainFeedItems, followingVideos]
+  );
+  const startupVideo = activeFeedVideos[0] ?? null;
+  const startupVideoId = startupVideo?.id ?? null;
+  const startupPosterUrl = useMemo(() => {
+    if (!startupVideo) return VIDEO_PLACEHOLDER_IMG;
+    if (!isValidThumbnailUrl(startupVideo.thumbnail_url, startupVideo.video_url)) {
+      return VIDEO_PLACEHOLDER_IMG;
+    }
+    return getAbsoluteImageUrl(startupVideo.thumbnail_url) || startupVideo.thumbnail_url || VIDEO_PLACEHOLDER_IMG;
+  }, [startupVideo?.id, startupVideo?.thumbnail_url, startupVideo?.video_url]);
+  const feedLength = activeTab === 'pourtoi' ? mainFeedItems.length : followingVideos.length;
+  const safeCurrentIndex = feedLength > 0
+    ? Math.max(0, Math.min(Number.isFinite(currentIndex) ? currentIndex : 0, feedLength - 1))
+    : 0;
+  const feedSlides = useMemo(() => {
+    const videosForActiveTab =
+      activeTab === 'pourtoi'
+        ? mainFeedItems.map((item) => item?.video).filter(Boolean)
+        : followingVideos;
+
+    return videosForActiveTab.map((video) => {
+      const normalizedVideo = normalizeFeedVideo(video);
+      return {
+        id: normalizedVideo.id,
+        video: normalizedVideo,
+        posterUrl: getFeedPosterUrl(video),
+        slideBackgroundUrl: getFeedSlideBackgroundUrl(video),
+      };
+    });
+  }, [activeTab, mainFeedItems, followingVideos]);
+
+  const handleInitialFeedVisualReady = useCallback((videoId) => {
+    if (startupVideoId == null) return;
+    if (String(videoId) !== String(startupVideoId)) return;
+    setInitialFeedVisualReady(true);
+    try {
+      window.sessionStorage.setItem(FEED_STARTUP_CURTAIN_SESSION_KEY, '1');
+    } catch {}
+  }, [startupVideoId]);
+
+  // IntersectionObserver s’attache après le 1er paint : éviter ref/index désynchronisés → aucune slide « active ».
+  useEffect(() => {
+    if (feedLength > 0 && currentIndexRef.current !== 0) {
+      currentIndexRef.current = 0;
+      setCurrentIndex(0);
+    }
+  }, [feedLength]);
 
   useEffect(() => {
     setFollowingCount(followingCountMemo);
@@ -327,10 +410,16 @@ export default function Home() {
     };
   }, []);
 
+  const isCommentOverlayOpen = showComments && !!selectedVideo?.id;
+  const isShareOverlayOpen = showShare && !!selectedVideo;
+  const isTipOverlayOpen = showTip && !!selectedVideo;
+  const isGiftOverlayOpen = showGift && !!selectedVideo?.creator_id;
+  const hideVideoHud = isCommentOverlayOpen || isShareOverlayOpen || isTipOverlayOpen || isGiftOverlayOpen;
+
   // Si un overlay plein écran (commentaires, partage, tip, menu, etc.) est ouvert,
   // on force la pause de toutes les vidéos derrière pour éviter le son en arrière-plan.
   useEffect(() => {
-    const anyOverlayOpen = showComments || showShare || showTip || showGift || isMenuOpen;
+    const anyOverlayOpen = hideVideoHud || isMenuOpen;
     if (!anyOverlayOpen || typeof document === 'undefined') return;
 
     const players = document.querySelectorAll('video[data-afw-feed-video="1"]');
@@ -339,14 +428,14 @@ export default function Home() {
         node.pause();
       } catch (_) {}
     });
-  }, [showComments, showShare, showTip, showGift, isMenuOpen]);
+  }, [hideVideoHud, isMenuOpen]);
 
-  // Préchargement des vignettes (current + 2 suivantes) pour éviter écran noir au scroll
+  // Précharger la slide active + les suivantes pour que le feed paraisse déjà prêt au swipe.
   useEffect(() => {
     const list = activeTab === 'pourtoi' ? mainFeedItems : followingVideos.map((v) => ({ type: 'video', video: v }));
-    const start = Math.max(0, currentIndex);
-    const slice = list.slice(start, start + 3);
-    slice.forEach((item) => {
+    const start = Math.max(0, safeCurrentIndex);
+    const slice = list.slice(start, start + FEED_POSTER_PRELOAD_COUNT);
+    slice.forEach((item, offset) => {
       const video = item?.video;
       if (!video) return;
       const posterUrl = isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? video.thumbnail_url : VIDEO_PLACEHOLDER_IMG;
@@ -354,36 +443,68 @@ export default function Home() {
       const url = getAbsoluteImageUrl(posterUrl);
       if (url) {
         const img = new Image();
+        img.decoding = 'async';
+        img.fetchPriority = offset === 0 ? 'high' : 'auto';
         img.src = url;
       }
     });
-  }, [currentIndex, activeTab, mainFeedItems, followingVideos]);
+  }, [safeCurrentIndex, activeTab, mainFeedItems, followingVideos]);
 
-  // Préchargement des 2 vidéos suivantes (buffer avant le scroll → 0 écran noir, scroll type TikTok)
+  // Préparer les vidéos voisines sans vider le buffer à chaque micro-navigation.
+  // Le voisin immédiat prend `auto`, les suivants restent en `metadata`.
   const nextVideoPreloadRefs = useRef([]);
   useEffect(() => {
     const list = activeTab === 'pourtoi'
       ? mainFeedItems
       : followingVideos.map((v) => ({ type: 'video', video: v }));
-    const nextVideos = [list[currentIndex + 1], list[currentIndex + 2]];
-    while (nextVideoPreloadRefs.current.length < nextVideos.length) {
+    const nextVideos = Array.from(
+      { length: FEED_VIDEO_PRELOAD_COUNT },
+      (_, offset) => list[safeCurrentIndex + offset + 1]
+    );
+
+    while (nextVideoPreloadRefs.current.length < FEED_VIDEO_PRELOAD_COUNT) {
       const el = document.createElement('video');
-      el.preload = 'auto';
+      el.preload = 'metadata';
+      el.muted = true;
+      el.defaultMuted = true;
+      el.playsInline = true;
+      el.setAttribute('playsinline', '');
+      el.setAttribute('webkit-playsinline', 'true');
       nextVideoPreloadRefs.current.push(el);
     }
+
     nextVideos.forEach((item, i) => {
-      const url = item?.video?.video_url;
+      const url = getVideoPlaybackUrl(
+        item?.video?.playback_url ||
+        item?.video?.video_url ||
+        item?.video?.hls_playback_url ||
+        item?.video?.hls_url
+      );
       const el = nextVideoPreloadRefs.current[i];
-      if (el) el.src = url || '';
+      if (!el) return;
+      el.preload = i === 0 ? 'auto' : 'metadata';
+      if ((el.getAttribute('src') || '') !== (url || '')) {
+        el.src = url || '';
+      }
     });
+
+    for (let i = nextVideos.length; i < nextVideoPreloadRefs.current.length; i += 1) {
+      const el = nextVideoPreloadRefs.current[i];
+      if (el && el.getAttribute('src')) {
+        el.removeAttribute('src');
+      }
+    }
+  }, [safeCurrentIndex, activeTab, mainFeedItems, followingVideos]);
+
+  useEffect(() => {
     return () => {
-      nextVideoPreloadRefs.current.forEach((el) => { if (el) el.src = ''; });
+      nextVideoPreloadRefs.current.forEach((el) => {
+        if (!el) return;
+        try { el.pause(); } catch (_) {}
+        el.removeAttribute('src');
+      });
     };
-  }, [currentIndex, activeTab, mainFeedItems, followingVideos]);
-
-  const refetch = activeTab === 'pourtoi' ? refetchFeed : refetchVideos;
-
-  const [reactionByVideo, setReactionByVideo] = useState({});
+  }, []);
 
   const likeMutation = useMutation({
     mutationFn: async ({ video, type = 'like' }) => {
@@ -420,7 +541,6 @@ export default function Home() {
           else next.delete(data.video.id);
           return next;
         });
-        setReactionByVideo(prev => ({ ...prev, [data.video.id]: data.reaction }));
         if (data.isLiked && user?.id && data.video?.creator_id) {
           try {
             NotificationService.notifyVideoLike(user.id, data.video.id, data.video.creator_id);
@@ -440,17 +560,7 @@ export default function Home() {
       if (!likeMutation.isPending) {
         likeMutation.mutate({ video, type: 'like' });
       }
-    },
-    [likeMutation]
-  );
-
-  const handleReaction = useCallback(
-    (video, type) => {
-      if (!video) return;
-      likeScrollLockUntilRef.current = Date.now() + 400;
-      if (!likeMutation.isPending) {
-        likeMutation.mutate({ video, type });
-      }
+      impactLight().catch(() => {});
     },
     [likeMutation]
   );
@@ -480,75 +590,42 @@ export default function Home() {
     }
   });
 
-  const commentMutation = useMutation({
-    mutationFn: async ({ content, parentId }) => {
-      if (!user || !selectedVideo) {
-        toast.error('Connectez-vous pour commenter');
-        return;
-      }
-      await api.videos.comment(selectedVideo.id, content, parentId);
-      
-      NotificationService.notifyVideoComment(user.id, selectedVideo.id, selectedVideo.creator_id, content);
-      
-      const mentions = NotificationService.extractMentions(content);
-      if (mentions.length > 0) {
-        const mentionedUserIds = await NotificationService.getUserIdsFromMentions(mentions);
-        mentionedUserIds.forEach(mentionedId => {
-          NotificationService.notifyMention(user.id, mentionedId, content, 'comment', selectedVideo.id);
-        });
-      }
-    },
-    onSuccess: () => {
-      if (selectedVideo) {
-        queryClient.setQueryData(['videos', activeTab, user?.id], (oldData) => {
-          if (!oldData) return oldData;
-          return oldData.map(v => {
-            if (v.id === selectedVideo.id) {
-              return {
-                ...v,
-                comments_count: (v.comments_count || 0) + 1
-              };
-            }
-            return v;
-          });
-        });
-      }
-      
-      queryClient.invalidateQueries({ queryKey: ['comments', selectedVideo?.id] });
-      queryClient.invalidateQueries({ queryKey: ['videos'] });
-      queryClient.invalidateQueries({ queryKey: ['feed'] });
-      toast.success('Commentaire ajoute');
-    }
-  });
-  const feedLength = activeTab === 'pourtoi' ? mainFeedItems.length : followingVideos.length;
-
-  // Pré-chargement du poster de la vidéo suivante pour un enchaînement plus fluide
+  // Posters courant + suivant dans `head` : le navigateur a souvent la miniature avant le 1er paint (style grandes apps).
   useEffect(() => {
     const items = activeTab === 'pourtoi' ? mainFeedItems : followingVideos;
     if (!items || items.length === 0) return;
-    const nextIndex = Math.min(currentIndex + 1, items.length - 1);
-    if (nextIndex === currentIndex) return;
-    const nextItem = items[nextIndex];
-    const nextVideo = nextItem?.video || nextItem;
-    const rawThumb = nextVideo?.thumbnail_url || nextVideo?.video_url;
-    if (!rawThumb) return;
-    const href = isValidThumbnailUrl(nextVideo.thumbnail_url, nextVideo.video_url)
-      ? nextVideo.thumbnail_url
-      : getAbsoluteImageUrl(rawThumb) || rawThumb;
-    if (!href) return;
+    const links = [];
+    const indices = [
+      safeCurrentIndex,
+      Math.min(safeCurrentIndex + 1, items.length - 1),
+    ].filter((idx, i, arr) => idx >= 0 && arr.indexOf(idx) === i);
 
-    const link = document.createElement('link');
-    link.rel = 'preload';
-    link.as = 'image';
-    link.href = href;
-    document.head.appendChild(link);
+    indices.forEach((idx) => {
+      const row = items[idx];
+      const v = row?.video || row;
+      const rawThumb = v?.thumbnail_url || v?.video_url;
+      if (!rawThumb) return;
+      const href = isValidThumbnailUrl(v.thumbnail_url, v.video_url)
+        ? getAbsoluteImageUrl(v.thumbnail_url) || v.thumbnail_url
+        : getAbsoluteImageUrl(rawThumb) || rawThumb;
+      if (!href || href.startsWith('data:')) return;
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'image';
+      link.href = href;
+      if (idx === safeCurrentIndex) link.setAttribute('fetchpriority', 'high');
+      document.head.appendChild(link);
+      links.push(link);
+    });
 
     return () => {
-      if (link && document.head.contains(link)) {
-        document.head.removeChild(link);
-      }
+      links.forEach((link) => {
+        if (link && document.head.contains(link)) {
+          document.head.removeChild(link);
+        }
+      });
     };
-  }, [activeTab, currentIndex, mainFeedItems, followingVideos]);
+  }, [activeTab, safeCurrentIndex, mainFeedItems, followingVideos]);
 
   const handleToggleWonder = useCallback(async (creatorId, creatorName = '') => {
     if (!user) {
@@ -600,15 +677,70 @@ export default function Home() {
   };
 
   const showHomeLoading = isLoading && feedLength === 0;
+  const showInitialFeedCurtain = showHomeLoading || (feedLength > 0 && !initialFeedVisualReady);
+  const startupCurtainBackground = startupPosterUrl
+    ? `url(${startupPosterUrl}), url(${VIDEO_PLACEHOLDER_IMG})`
+    : `url(${VIDEO_PLACEHOLDER_IMG})`;
+
+  useEffect(() => {
+    if (!startupVideoId) {
+      setInitialFeedVisualReady(false);
+      return;
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        if (window.sessionStorage.getItem(FEED_STARTUP_CURTAIN_SESSION_KEY) === '1') {
+          setInitialFeedVisualReady(true);
+          return;
+        }
+      } catch {}
+    }
+    setInitialFeedVisualReady(false);
+  }, [activeTab, startupVideoId]);
+
+  useEffect(() => {
+    if (!startupVideoId || showHomeLoading || initialFeedVisualReady) return;
+    const timeoutMs = isSlowConnection ? 2200 : 1200;
+    const timerId = window.setTimeout(() => {
+      setInitialFeedVisualReady(true);
+      try {
+        window.sessionStorage.setItem(FEED_STARTUP_CURTAIN_SESSION_KEY, '1');
+      } catch {}
+    }, timeoutMs);
+    return () => window.clearTimeout(timerId);
+  }, [startupVideoId, activeTab, initialFeedVisualReady, isSlowConnection, showHomeLoading]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || feedLength === 0) return;
+    if (container.scrollTop > 1) return;
+    container.scrollTop = 0;
+    if (currentIndexRef.current !== 0 || currentIndex !== 0) {
+      currentIndexRef.current = 0;
+      setCurrentIndex(0);
+    }
+  }, [feedLength, currentIndex, activeTab]);
+
+  useEffect(() => {
+    if (selectedVideo?.id) return;
+    setShowComments(false);
+    setShowShare(false);
+    setShowTip(false);
+    setShowGift(false);
+  }, [selectedVideo?.id]);
 
   // Mise à jour de l'index actif en fonction du scroll (style TikTok)
+  // Hauteur = vraie hauteur des slides (100dvh) + offset du bandeau pull, pas clientHeight seul (Firefox).
   const updateIndexFromScroll = useCallback(() => {
     const container = containerRef.current;
     if (!container || feedLength === 0) return;
-    const slideHeight = container.clientHeight;
-    if (slideHeight <= 0) return;
+    const firstSlide = container.querySelector('[data-index="0"]');
+    if (!firstSlide) return;
+    const h = firstSlide.offsetHeight;
+    if (h <= 0) return;
+    const start = firstSlide.offsetTop;
     const scrollTop = container.scrollTop;
-    const rawIndex = Math.round(scrollTop / slideHeight);
+    const rawIndex = Math.round((scrollTop - start) / h);
     const index = Math.max(0, Math.min(rawIndex, feedLength - 1));
 
     // Verrou après un like (temps + requête en cours) pour éviter un saut de carte parasite
@@ -633,7 +765,7 @@ export default function Home() {
         if (likeMutation.isPending || Date.now() < likeScrollLockUntilRef.current) return;
         let best = null;
         entries.forEach((entry) => {
-          if (!entry.isIntersecting) return;
+          if (!entry.isIntersecting || entry.intersectionRatio < 0.6) return;
           const index = Number(entry.target.dataset.index);
           if (!Number.isFinite(index)) return;
           if (best === null || entry.intersectionRatio > best.ratio) {
@@ -645,58 +777,29 @@ export default function Home() {
           setCurrentIndex(best.index);
         }
       },
-      { threshold: [0, 0.25, 0.5, 0.6, 0.75, 1], root: container, rootMargin: '0px' }
+      { threshold: 0.6, root: container, rootMargin: '0px' }
     );
     observerRef.current = observer;
     const slides = container.querySelectorAll('[data-index]');
     slides.forEach((el) => observer.observe(el));
+    // Après observe(), Firefox peut ne pas émettre tout de suite : aligner l’index sur scrollTop (slide 0).
+    const rafId = requestAnimationFrame(() => {
+      updateIndexFromScroll();
+    });
     return () => {
+      cancelAnimationFrame(rafId);
       observer.disconnect();
       observerRef.current = null;
     };
-  }, [feedLength, activeTab]);
+  }, [feedLength, activeTab, likeMutation.isPending, updateIndexFromScroll]);
 
   useEffect(() => {
     currentIndexRef.current = currentIndex;
   }, [currentIndex]);
-  if (showHomeLoading) {
-    return (
-      <div
-        className="w-full bg-gray-950 flex justify-center text-white"
-        style={{
-          height: '100dvh',
-          minHeight: 'calc(var(--app-vh, 1vh) * 100)',
-        }}
-        aria-busy="true"
-        aria-label="Chargement du fil"
-      >
-        <div className="w-full sm:max-w-[400px] h-full relative flex flex-col" role="status">
-          <div className="flex items-center justify-between px-4 pt-4 pb-3">
-            <div className="h-6 w-24 rounded-full bg-white/10 animate-pulse" />
-            <div className="flex items-center gap-2">
-              <div className="h-9 w-9 rounded-full bg-white/10 animate-pulse" />
-              <div className="h-9 w-9 rounded-full bg-white/10 animate-pulse" />
-              <div className="h-9 w-9 rounded-full bg-white/10 animate-pulse" />
-            </div>
-          </div>
-          <div className="flex-1 flex flex-col items-center justify-center gap-6 px-8">
-            <div className="w-full max-w-xs aspect-[9/16] rounded-3xl bg-white/5 overflow-hidden animate-pulse" />
-            <div className="space-y-3 w-full max-w-xs">
-              <div className="h-4 w-32 rounded-full bg-white/10 animate-pulse" />
-              <div className="h-3 w-full rounded-full bg-white/10 animate-pulse" />
-              <div className="h-3 w-4/5 rounded-full bg-white/10 animate-pulse" />
-            </div>
-            <Loader2 className="w-8 h-8 text-primary animate-spin" aria-hidden />
-          </div>
-          <div className="h-[80px] border-t border-white/10 bg-black/80" />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div
-      className="w-full bg-gray-950 overflow-hidden flex justify-center"
+      className="w-full min-h-0 overflow-hidden bg-[#050816]"
       style={{
         height: '100dvh',
         minHeight: 'calc(var(--app-vh, 1vh) * 100)',
@@ -706,18 +809,36 @@ export default function Home() {
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
-      <div className="w-full sm:max-w-[400px] h-full relative flex flex-col bg-gray-950">
+      {/* Garde-fou fullscreen : largeur pilotée par le viewport + colonne centrée.
+          Ne pas revenir à une largeur dépendante d'un parent flex ambigu, sinon Firefox/WebView
+          peut réduire la slide et donner l'impression d'un player "noir". */}
+      <div
+        className="relative mx-auto h-full min-h-[100dvh] bg-[#050816]"
+        style={{
+          width: FEED_FULLSCREEN_WIDTH,
+          minWidth: FEED_FULLSCREEN_WIDTH,
+          maxWidth: `${FEED_FULLSCREEN_MAX_WIDTH_PX}px`,
+        }}
+      >
         <button
+          type="button"
           onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
           className={cn(
-            "absolute top-4 left-4 z-50 pointer-events-auto group transition-opacity duration-300",
-            (showComments || showShare || showTip || showGift || isMenuOpen) ? "opacity-0 pointer-events-none" : "opacity-100"
+            // Logo seul, sans cadre type « pilule » (premium / type TikTok)
+            'absolute left-3 top-3 z-50 flex h-11 w-11 items-center justify-center rounded-full border-0 bg-transparent p-0 shadow-none backdrop-blur-none pointer-events-auto transition-all duration-300 active:scale-[0.96]',
+            hideVideoHud ? 'opacity-0 pointer-events-none' : 'opacity-100'
           )}
+          aria-label="Revenir en haut du fil"
         >
-          <AfriWonderLogo size="sm" className="shadow-lg group-hover:shadow-xl transition-shadow" />
+          <AfriWonderLogo size="xs" className="drop-shadow-[0_2px_12px_rgba(0,0,0,0.55)]" />
         </button>
 
-        <div className="absolute top-0 left-0 right-0 z-40 pl-28 sm:pl-32 pointer-events-none [&>*]:pointer-events-auto">
+        <div
+          className={cn(
+            'absolute inset-x-0 top-0 z-40 pointer-events-none transition-opacity duration-200 [&>*]:pointer-events-auto',
+            hideVideoHud ? 'opacity-0' : 'opacity-100'
+          )}
+        >
           <TopHeader 
             activeTab={activeTab}
             onTabChange={setActiveTab}
@@ -725,61 +846,33 @@ export default function Home() {
             showMenuButton={true}
             onMenuOpen={openMenu}
             followingCount={followingCount}
+            fixed={false}
+            feedMode={true}
             title={undefined}
             onToggleDarkMode={undefined}
           />
         </div>
 
-        {activeTab === 'abonnements' && followingCount > 0 && (
-          <div className="absolute top-16 left-0 right-0 z-40 px-3 pt-2 pointer-events-auto">
-            <div className="rounded-2xl border border-white/15 bg-black/35 backdrop-blur-md px-3 py-2">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-white/90">Ton Wonder ({followingCountMemo})</p>
-                <button
-                  type="button"
-                  onClick={() => setShowWonderersPanel(true)}
-                  className="text-xs text-white/80 hover:text-white flex items-center gap-1"
-                  aria-label="Voir tous les createurs de ton Wonder"
-                >
-                  Tout voir
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-                {userFollows.filter((u) => !isDeletedUser(u)).slice(0, 12).map((creator) => (
-                  <button
-                    key={creator.id}
-                    type="button"
-                    onClick={() => _navigate(`/Profile?_userId=${creator.id}`)}
-                    className="shrink-0"
-                    title={creator.full_name || creator.username}
-                  >
-                    <Avatar className="w-10 h-10 border border-white/30">
-                      <AvatarImage src={creator.profile_image} alt={creator.full_name || creator.username || 'wonderer'} />
-                      <AvatarFallback className="bg-white/20 text-white text-xs font-semibold">
-                        {getAvatarInitials(creator)}
-                      </AvatarFallback>
-                    </Avatar>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+        {activeTab === 'abonnements' && followingCount > 0 && !hideVideoHud && (
+          <FeedFollowingStrip
+            creators={userFollows.filter((u) => !isDeletedUser(u)).slice(0, 12)}
+            countLabel={`${followingCountMemo} createurs suivis`}
+            getAvatarInitials={getAvatarInitials}
+            onCreatorClick={(creatorId) => _navigate(`/Profile?_userId=${creatorId}`)}
+            onSeeAll={() => setShowWonderersPanel(true)}
+          />
         )}
 
-        {activeTab === 'pourtoi' && topBannerItems.length > 0 && currentIndex === 0 && (
-          <div className="absolute top-16 left-0 right-0 z-40 px-3 pt-2 pb-1 gap-2 flex overflow-x-auto overflow-y-hidden no-scrollbar snap-x snap-mandatory pointer-events-auto">
-            {topBannerItems.map((item, i) => (
-              <div key={`top-${item.ad?.campaign_id || i}`} className="flex-shrink-0 w-[85%] max-w-[320px]">
-                <AdBannerCard
-                  ad={item.ad}
-                  isActive={true}
-                  onHide={handleHideAd}
-                  hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
-                />
-              </div>
-            ))}
-          </div>
+        {activeTab === 'pourtoi' && topBannerItems.length > 0 && safeCurrentIndex === 0 && !hideVideoHud && (
+          <FeedTopBannerRail
+            items={topBannerItems}
+            hideActions={hideVideoHud}
+            onHide={handleHideAd}
+          />
+        )}
+
+        {showInitialFeedCurtain && (
+          <FeedStartupCurtain backgroundImage={startupCurtainBackground} />
         )}
 
 
@@ -799,151 +892,99 @@ export default function Home() {
           }}
           onTouchEnd={() => handlePullEnd()}
           onTouchCancel={() => handlePullEnd()}
-          className="w-full flex-1 min-h-0 flex flex-col overflow-y-auto overflow-x-hidden snap-y snap-mandatory"
+          className="afw-home-feed-scroll relative w-full h-full overflow-y-auto overflow-x-hidden snap-y snap-mandatory"
           style={{
+            // Garde-fou Firefox/WebView : conserver le feed en flux normal avec une hauteur explicite.
+            // Ne pas remettre `absolute inset-0` ici, sinon la géométrie de la slide peut se casser.
+            minHeight: '100dvh',
             scrollSnapType: 'y mandatory',
             WebkitOverflowScrolling: 'touch',
             scrollBehavior: 'auto',
             touchAction: 'pan-y',
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
             backgroundColor: 'rgb(3 7 18)',
+            zIndex: 1,
+            // isolate + <video> en calque GPU peut donner son OK / image noire (Firefox, Chrome Android, WebView).
+            isolation: 'auto',
           }}
         >
-        <div
-          className="flex items-center justify-center shrink-0 overflow-hidden transition-[height] duration-150 ease-out bg-gray-950"
-          style={{
-            height: isRefreshing ? 56 : pullDistance,
-            minHeight: isRefreshing ? 56 : 0,
-            scrollSnapAlign: 'none',
-          }}
-          aria-hidden
-        >
-          {(pullDistance > 0 || isRefreshing) && (
-            <div className="flex flex-col items-center gap-1">
-              {isRefreshing ? (
-                <Loader2 className="w-6 h-6 text-white animate-spin" aria-label="Chargement" />
-              ) : (
-                <Loader2
-                  className="w-6 h-6 text-white/80 transition-transform duration-150"
-                  style={{ transform: `rotate(${Math.min(pullDistance * 4, 360)}deg)` }}
-                  aria-hidden
-                />
-              )}
-              <span className="text-white/80 text-xs">
-                {isRefreshing ? 'Actualisation...' : pullDistance >= PULL_THRESHOLD ? 'Relachez' : 'Tirez pour actualiser'}
-              </span>
-            </div>
-          )}
-        </div>
-        {activeTab === 'abonnements' && followingVideos.length === 0 ? (
-          <div className="h-full w-full flex flex-col items-center justify-center text-white px-8 text-center">
-            <p className="text-xl font-semibold mb-2">Aucune video de vos abonnements</p>
-            <p className="text-gray-400 mb-4">Suivez des createurs pour voir leurs videos ici</p>
-            {!user && (
-              <button
-                onClick={() => _navigate('/Landing')}
-                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg font-bold hover:shadow-lg transition-all"
-              >
-                S'inscrire pour commencer
-              </button>
-            )}
-          </div>
-        ) : activeTab === 'pourtoi' && feedItems.length === 0 ? (
-          <div className="h-full w-full flex flex-col items-center justify-center text-white px-8 text-center">
-            <p className="text-xl font-semibold mb-2">Aucune video pour l'instant</p>
-            <p className="text-gray-400 mb-4">Soyez le premier a partager !</p>
-            {!user ? (
-              <button
-                onClick={() => _navigate('/Landing')}
-                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg font-bold hover:shadow-lg transition-all"
-              >
-                S'inscrire pour commencer
-              </button>
-            ) : (
-              <button
-                onClick={() => _navigate('/Create')}
-                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg font-bold hover:shadow-lg transition-all"
-              >
-                Creer votre premiere video
-              </button>
-            )}
-          </div>
+        <FeedPullToRefresh
+          isRefreshing={isRefreshing}
+          pullDistance={pullDistance}
+          threshold={PULL_THRESHOLD}
+        />
+        {activeTab === 'abonnements' && followingVideos.length === 0 && isLoading ? (
+          <div className="min-h-[100dvh] w-full shrink-0" aria-hidden />
+        ) : activeTab === 'abonnements' && followingVideos.length === 0 ? (
+          <FeedEmptyState
+            icon={Users}
+            title="Aucune video de vos abonnements"
+            description="Suivez des createurs pour construire un feed plus pertinent et retrouver leurs nouvelles videos ici."
+            actionLabel={!user ? "S'inscrire pour commencer" : undefined}
+            onAction={!user ? () => _navigate('/Landing') : undefined}
+          />
+        ) : activeTab === 'pourtoi' && mainFeedItems.length === 0 && isLoading ? (
+          <div className="min-h-[100dvh] w-full shrink-0" aria-hidden />
+        ) : activeTab === 'pourtoi' && mainFeedItems.length === 0 ? (
+          <FeedEmptyState
+            icon={feedError ? WifiOff : Sparkles}
+            title={feedError ? 'Connexion au serveur impossible' : "Aucune video pour l'instant"}
+            description={
+              feedError
+                ? 'Verifie ta connexion puis reessaie. Le feed restera en attente tant que le serveur ne repond pas.'
+                : 'Le feed est pret pour du nouveau contenu. Publie une premiere video pour lancer la dynamique.'
+            }
+            actionLabel={
+              feedError
+                ? 'Reessayer'
+                : !user
+                ? "S'inscrire pour commencer"
+                : 'Creer votre premiere video'
+            }
+            onAction={
+              feedError
+                ? () => refetchFeed()
+                : !user
+                ? () => _navigate('/Landing')
+                : () => _navigate('/Create')
+            }
+          />
         ) : (
           <>
-            {(activeTab === 'pourtoi'
-              ? mainFeedItems
-              : followingVideos.map(v => ({ type: 'video', video: v })))
-              .map((item, index) => {
-                if (item.type !== 'video' || !item.video) return null;
-                const video = item.video;
-                const posterUrl = isValidThumbnailUrl(video.thumbnail_url, video.video_url)
-                  ? video.thumbnail_url
-                  : VIDEO_PLACEHOLDER_IMG;
-                const slideBgUrl = posterUrl.startsWith('data:') ? posterUrl : (getAbsoluteImageUrl(posterUrl) || posterUrl);
-                // Virtualisation : on monte la slide actuelle + la suivante pour éviter écran noir au premier rendu (currentIndex=0 sans attendre l'IntersectionObserver)
-                const isInView = Math.abs(index - currentIndex) <= 2;
-                return (
-                  <div
-                    key={video.id}
-                    data-index={index}
-                    className="relative w-full flex-shrink-0 overflow-hidden bg-gray-950 snap-start"
-                    style={{
-                      width: '100%',
-                      // Slide plein écran (on remonte plutôt le contenu interne)
-                      height: '100dvh',
-                      minHeight: '100dvh',
-                      scrollSnapAlign: 'start',
-                      scrollSnapStop: 'always',
-                      touchAction: 'pan-y',
-                      contain: 'layout paint',
-                      backgroundImage: posterUrl ? `url(${slideBgUrl})` : undefined,
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center',
-                    }}
-                    aria-hidden={index !== currentIndex}
-                  >
-                    {isInView && (
-                      <VideoCard
-                        video={video}
-                        isActive={index === currentIndex}
-                        shouldPreload={index === currentIndex + 1}
-                        videoPoolRef={videoPoolRef}
-                        poolIndex={index === currentIndex ? 0 : index === currentIndex + 1 ? 1 : index === currentIndex - 1 ? 2 : undefined}
-                        isLiked={likedVideos.has(video.id)}
-                        isSaved={savedVideos.has(video.id)}
-                        isMuted={isMuted}
-                        onMuteToggle={() => setMuted(!isMuted)}
-                        onLike={handleLike}
-                        onReaction={handleReaction}
-                        currentUserReaction={reactionByVideo[video.id] ?? video.current_user_reaction}
-                        onComment={() => {
-                          setSelectedVideo(video);
-                          setShowComments(true);
-                        }}
-                        onShare={() => {
-                          setSelectedVideo(video);
-                          setShowShare(true);
-                        }}
-                        onSave={() => saveMutation.mutate(video)}
-                        onTip={() => {
-                          setSelectedVideo(video);
-                          setShowTip(true);
-                        }}
-                        onSubscribe={() => handleToggleWonder(video.creator_id, video.creator_name)}
-                        isFollowing={userFollows.some((f) => f.id === video.creator_id)}
-                        onProfileClick={(creatorId) => {
-                          _navigate(`/Profile?_userId=${creatorId}`);
-                        }}
-                        canLike
-                        onRequireAuth={() => toast.error('Connectez-vous pour aimer')}
-                        hideActions={showComments || showShare || showTip || showGift || isMenuOpen}
-                        compact
-                      />
-                    )}
-                  </div>
-                );
-              })}
+            {feedSlides.map((slide, index) => (
+              <FeedVideoSlide
+                key={slide.id}
+                index={index}
+                safeCurrentIndex={safeCurrentIndex}
+                hideVideoHud={hideVideoHud}
+                slide={slide}
+                isMuted={isMuted}
+                isLiked={likedVideos.has(slide.video.id)}
+                isSaved={savedVideos.has(slide.video.id)}
+                currentUser={user}
+                isFollowing={userFollows.some((followedUser) => followedUser.id === slide.video.creator_id)}
+                setMuted={setMuted}
+                onLike={handleLike}
+                onComment={() => {
+                  setSelectedVideo(slide.video);
+                  setShowComments(true);
+                }}
+                onShare={() => {
+                  setSelectedVideo(slide.video);
+                  setShowShare(true);
+                }}
+                onSave={() => saveMutation.mutate(slide.video)}
+                onTip={() => {
+                  setSelectedVideo(slide.video);
+                  setShowTip(true);
+                }}
+                onSubscribe={() => handleToggleWonder(slide.video.creator_id, slide.video.creator_name)}
+                onProfileClick={(creatorId) => {
+                  _navigate(`/Profile?_userId=${creatorId}`);
+                }}
+                onRequireAuth={() => toast.error('Connectez-vous pour aimer')}
+                onInitialVisualReady={handleInitialFeedVisualReady}
+              />
+            ))}
           </>
         )}
         </div>
@@ -1020,14 +1061,17 @@ export default function Home() {
           </div>
         )}
 
-        <BottomNav />
+        <BottomNav fixed={false} feedMode />
       </div>
 
       <CommentSheet
-        isOpen={showComments}
+        isOpen={isCommentOverlayOpen}
         onClose={() => setShowComments(false)}
         videoId={selectedVideo?.id}
         comments={comments}
+        isLoading={commentsLoading}
+        isError={commentsError}
+        onRetry={() => refetchComments()}
         onTip={() => {
           setShowComments(false);
           setShowTip(true);
@@ -1037,7 +1081,7 @@ export default function Home() {
       />
 
       <TipModal
-        isOpen={showTip}
+        isOpen={isTipOverlayOpen}
         onClose={() => setShowTip(false)}
         creator={{
           name: selectedVideo?.creator_name,
@@ -1048,7 +1092,7 @@ export default function Home() {
       />
 
       <ShareSheet
-        isOpen={showShare}
+        isOpen={isShareOverlayOpen}
         onClose={() => setShowShare(false)}
         video={selectedVideo}
         onShareSuccess={async () => {
@@ -1075,33 +1119,25 @@ export default function Home() {
       />
 
       <GiftPurchaseModal
-        isOpen={showGift}
+        isOpen={isGiftOverlayOpen}
         onClose={() => setShowGift(false)}
         receiverId={selectedVideo?.creator_id}
         liveId={null}
       />
 
       <style>{`
-        html, body {
-          width: 100%;
-          height: 100%;
-          margin: 0;
-          padding: 0;
-          overflow: hidden;
-        }
-
-        * {
-          box-sizing: border-box;
-        }
-
+        /* Ne pas toucher overflow sur html/body ici : sous Firefox ça peut masquer tout le contenu du #root. */
         .no-scrollbar {
           -ms-overflow-style: none;
           scrollbar-width: none;
         }
-
-        ::-webkit-scrollbar {
-          width: 0px;
-          height: 0px;
+        .afw-home-feed-scroll {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        .afw-home-feed-scroll::-webkit-scrollbar {
+          width: 0;
+          height: 0;
           display: none;
         }
       `}</style>

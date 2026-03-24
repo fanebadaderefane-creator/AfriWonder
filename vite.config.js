@@ -47,7 +47,8 @@ export default defineConfig({
       jsxRuntime: 'automatic',
     }),
     ...(VitePWA ? [VitePWA({
-      registerType: 'autoUpdate',
+      /** Aligné avec sw-custom.js : pas de skipWaiting tant que l’utilisateur n’a pas confirmé (PWAUpdateToast). */
+      registerType: 'prompt',
       injectRegister: null,
       strategies: 'injectManifest',
       srcDir: 'src',
@@ -126,6 +127,9 @@ export default defineConfig({
   ],
   // PWA Configuration
   build: {
+    // Windows: parfois dist/robots.txt est verrouillé pendant la build.
+    // On évite l'effacement automatique pour ne pas bloquer le pipeline.
+    emptyOutDir: false,
     rollupOptions: {
       output: {
         manualChunks: (id) => {
@@ -140,8 +144,12 @@ export default defineConfig({
             if (id.includes('@radix-ui')) return 'ui-vendor';
             if (id.includes('framer-motion')) return 'framer-vendor';
             if (id.includes('hls.js')) return 'video-vendor';
+            if (id.includes('agora-rtc-sdk')) return 'agora-vendor';
+            if (id.includes('/three/') || id.includes('node_modules/three')) return 'three-vendor';
             if (id.includes('@stripe')) return 'stripe-vendor';
             if (id.includes('axios')) return 'axios-vendor';
+            if (id.includes('jspdf') || id.includes('html2canvas')) return 'pdf-export-vendor';
+            if (id.includes('recharts')) return; // laisser dans le bundle principal (interop)
           }
         },
       },
@@ -172,6 +180,12 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
+      },
+      // Socket.IO : même origine que le front en dev (Firefox / réseaux stricts)
+      '/socket.io': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        ws: true,
       },
     },
   },

@@ -13,6 +13,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { usePageVisibility } from '@/hooks/usePageVisibility';
 
 const notificationIcons = {
   order: Package,
@@ -27,20 +28,23 @@ const notificationIcons = {
 };
 
 const notificationColors = {
-  order: 'bg-blue-100 text-blue-600',
-  order_status: 'bg-purple-100 text-purple-600',
-  rating: 'bg-yellow-100 text-yellow-600',
-  comment: 'bg-green-100 text-green-600',
-  mention: 'bg-blue-100 text-blue-600',
-  escrow: 'bg-emerald-100 text-emerald-600',
-  like: 'bg-red-100 text-red-600',
-  follow: 'bg-indigo-100 text-indigo-600',
-  tip: 'bg-pink-100 text-pink-600'
+  order: 'bg-blue-500/20 text-blue-300',
+  order_status: 'bg-purple-500/20 text-purple-300',
+  rating: 'bg-yellow-500/20 text-yellow-300',
+  comment: 'bg-green-500/20 text-green-300',
+  mention: 'bg-cyan-500/20 text-cyan-300',
+  escrow: 'bg-emerald-500/20 text-emerald-300',
+  like: 'bg-red-500/20 text-red-300',
+  follow: 'bg-indigo-500/20 text-indigo-300',
+  tip: 'bg-pink-500/20 text-pink-300'
 };
 
 export default function NotificationCenter({ isOpen, onClose, userId }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isPageVisible = usePageVisibility();
+
+  const sheetPollMs = 60000;
 
   const { data: notificationsData } = useQuery({
     queryKey: ['notifications', userId],
@@ -51,7 +55,12 @@ export default function NotificationCenter({ isOpen, onClose, userId }) {
       return Array.isArray(list) ? list : [];
     },
     enabled: !!userId && isOpen,
-    refetchInterval: isOpen ? 10000 : false,
+    staleTime: sheetPollMs,
+    refetchInterval: isOpen && isPageVisible ? sheetPollMs : false,
+    refetchIntervalInBackground: false,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   // Ensure notifications is always an array
@@ -112,14 +121,14 @@ export default function NotificationCenter({ isOpen, onClose, userId }) {
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col bg-white">
-        <SheetHeader className="px-4 pr-12 py-3 border-b shrink-0">
+      <SheetContent side="right" className="flex w-full flex-col border-l border-white/10 bg-[#060913] p-0 text-white sm:max-w-md">
+        <SheetHeader className="shrink-0 border-b border-white/8 px-4 py-3 pr-12">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Bell className="w-5 h-5 text-blue-500" />
-              <SheetTitle className="text-lg">Notifications</SheetTitle>
+              <Bell className="w-5 h-5 text-white/72" />
+              <SheetTitle className="text-lg text-white">Notifications</SheetTitle>
               {unreadCount > 0 && (
-                <Badge className="bg-orange-500 text-white">{unreadCount}</Badge>
+                <Badge className="border border-white/12 bg-white/[0.06] text-white">{unreadCount}</Badge>
               )}
             </div>
             {unreadCount > 0 && (
@@ -128,7 +137,7 @@ export default function NotificationCenter({ isOpen, onClose, userId }) {
                 size="sm"
                 onClick={() => markAllAsReadMutation.mutate()}
                 disabled={markAllAsReadMutation.isPending}
-                className="text-xs"
+                className="rounded-full border border-white/10 bg-white/[0.04] text-xs text-white/78 hover:bg-white/[0.08] hover:text-white"
               >
                 <CheckCheck className="w-4 h-4 mr-1" />
                 Tout lire
@@ -140,14 +149,14 @@ export default function NotificationCenter({ isOpen, onClose, userId }) {
         <div className="overflow-y-auto flex-1 min-h-0">
           {notifications.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-              <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mb-4">
-                <Bell className="w-8 h-8 text-blue-500" />
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/[0.04]">
+                <Bell className="w-8 h-8 text-white/72" />
               </div>
-              <p className="font-medium text-gray-800 mb-1">Aucune notification</p>
-              <p className="text-sm text-gray-500">Vous serez notifié des likes, commentaires et suivis</p>
+              <p className="font-medium text-white mb-1">Aucune notification</p>
+              <p className="text-sm text-white/60">Vous serez notifié des likes, commentaires et suivis</p>
             </div>
           ) : (
-            <div className="divide-y">
+            <div className="divide-y divide-white/10">
               <AnimatePresence>
                 {notifications.map((notif, index) => {
                   const Icon = notificationIcons[notif.type] || Bell;
@@ -158,27 +167,27 @@ export default function NotificationCenter({ isOpen, onClose, userId }) {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.02 }}
                       onClick={() => handleNotificationClick(notif)}
-                      className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
-                        !notif.is_read ? 'bg-blue-50/50' : ''
+                      className={`cursor-pointer p-4 transition-colors ${
+                        !notif.is_read ? 'bg-white/[0.06]' : 'bg-transparent'
                       }`}
                     >
                       <div className="flex gap-3">
-                        <div className={`w-10 h-10 rounded-full ${notificationColors[notif.type]} flex items-center justify-center flex-shrink-0`}>
+                        <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-white/10 ${notificationColors[notif.type]}`}>
                           <Icon className="w-5 h-5" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm ${!notif.is_read ? 'font-semibold' : ''}`}>
+                          <p className={`text-sm text-white ${!notif.is_read ? 'font-semibold' : ''}`}>
                             {notif.title}
                           </p>
-                          <p className="text-sm text-gray-600 line-clamp-2 mt-0.5">
+                          <p className="text-sm text-white/75 line-clamp-2 mt-0.5">
                             {notif.message || notif._message}
                           </p>
-                          <p className="text-xs text-gray-400 mt-1">
+                          <p className="text-xs text-white/50 mt-1">
                             {formatDate(notif)}
                           </p>
                         </div>
                         {!notif.is_read && (
-                          <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0 mt-2" />
+                          <div className="w-2 h-2 bg-[#ff2f6d] rounded-full flex-shrink-0 mt-2" />
                         )}
                       </div>
                     </motion.div>

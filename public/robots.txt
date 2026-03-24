@@ -1,0 +1,9 @@
+User-agent: *
+
+Allow: /
+
+Disallow: /api/
+Disallow: /admin/
+Disallow: /static/
+
+Sitemap: https://afriwonder.com/sitemap.xml

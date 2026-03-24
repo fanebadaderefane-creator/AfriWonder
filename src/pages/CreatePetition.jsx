@@ -235,7 +235,13 @@ export default function CreatePetition() {
             <div className="grid grid-cols-2 gap-2">
               {petitionData.images.map((img, i) => (
                 <div key={i} className="relative">
-                  <img src={img} alt={`${i + 1}`} className="w-full h-24 object-cover rounded" />
+                  <img
+                    src={img}
+                    alt={`${i + 1}`}
+                    className="w-full h-24 object-cover rounded"
+                    loading="lazy"
+                    decoding="async"
+                  />
                   <button
                     onClick={() => setPetitionData({
                       ...petitionData,

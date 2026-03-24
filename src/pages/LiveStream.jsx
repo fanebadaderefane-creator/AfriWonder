@@ -12,7 +12,6 @@ import { createPageUrl } from "@/utils";
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAgoraHost } from '@/hooks/useAgora';
 import { useLiveSocket } from '@/hooks/useLiveSocket';
-import AdvancedGiftAnimation from '@/components/live/AdvancedGiftAnimation';
 import LiveAnalytics from '@/components/live/LiveAnalytics';
 
 const categories = ['gaming', 'music', 'education', 'sports', 'art', 'other'];
@@ -213,7 +212,7 @@ export default function LiveStreamPage() {
         ...(goal != null && goal !== '' && !isNaN(Number(goal)) && { goalAmount: Number(goal) }),
       }));
     }
-  }, [streamIdFromUrl]); // eslint-disable-line react-hooks/exhaustive-deps -- run once when no stream id
+  }, [streamIdFromUrl]);  
 
   // Depuis StartLive : démarrer le live directement (pas d'écran "Aperçu caméra"), aller à l'interface streaming (capture 3)
   useEffect(() => {

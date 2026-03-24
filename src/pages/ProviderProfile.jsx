@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { MapPin, Star, User, CheckCircle, Heart, MessageCircle, Send, Phone, ArrowLeft, Check, Calendar } from "lucide-react";
+import { MapPin, Star, CheckCircle, Heart, MessageCircle, Send, Phone, ArrowLeft, Check, Calendar } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import BottomNav from "../components/navigation/BottomNav";

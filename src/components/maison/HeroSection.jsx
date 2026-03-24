@@ -1,7 +1,5 @@
 import React from "react";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
-import { Search, ArrowRight, Star, Users, Shield } from "lucide-react";
+import { Search, Star, Users, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { motion } from "framer-motion";

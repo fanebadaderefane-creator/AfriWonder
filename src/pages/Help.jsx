@@ -1,3 +1,4 @@
+/* cspell:disable-file */
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -86,6 +87,7 @@ export default function Help() {
               placeholder="Rechercher une question..." 
               value={searchQuery} 
               onChange={(e) => setSearchQuery(e.target.value)} 
+              aria-label="Rechercher une question"
               className="pl-10 rounded-xl bg-blue-50/50 border-blue-200 focus:border-blue-500 focus:ring-blue-500/20" 
             />
           </div>
@@ -124,7 +126,10 @@ export default function Help() {
                   open={openFaqs[index]}
                   onOpenChange={() => toggleFaq(index)}
                 >
-                  <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-blue-50/50 rounded-lg hover:bg-blue-100/80 transition-colors cursor-pointer border border-transparent hover:border-blue-200">
+                  <CollapsibleTrigger
+                    aria-label={faq.q}
+                    className="flex items-center justify-between w-full p-3 bg-blue-50/50 rounded-lg hover:bg-blue-100/80 transition-colors cursor-pointer border border-transparent hover:border-blue-200"
+                  >
                     <span className="text-sm font-medium text-left text-gray-800">{faq.q}</span>
                     <ChevronDown className={`w-4 h-4 text-blue-600 transition-transform ${openFaqs[index] ? 'rotate-180' : ''}`} />
                   </CollapsibleTrigger>

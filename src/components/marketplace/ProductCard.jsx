@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { cn, getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
 import { useMarketplaceCurrency } from '@/contexts/MarketplaceCurrencyContext';
 import { useNavigate } from 'react-router-dom';
+import OptimizedImage from '@/components/common/ImageOptimizer';
 
 const paymentIcons = {
   orange_money: '🟠',
@@ -42,13 +43,14 @@ export default function ProductCard({
       <Card className="overflow-hidden border-0 shadow-sm hover:shadow-md transition-shadow bg-white">
         {/* Image — fond visible sur PWA mobile pour éviter cadres vides */}
         <div className="relative aspect-square w-full min-h-[140px] bg-gray-100">
-          <img
+          <OptimizedImage
             src={src}
             alt={product.name || product.title || 'Produit'}
             className="w-full h-full object-cover"
-            loading="eager"
-            decoding="async"
+            priority={false}
             onError={() => setImgError(true)}
+            loading="lazy"
+            decoding="async"
           />
           
           {/* Video indicator */}
@@ -60,11 +62,14 @@ export default function ProductCard({
 
           {/* Like button */}
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onLike?.(product);
             }}
             className="absolute top-2 right-2 bg-white/90 backdrop-blur rounded-full p-2 shadow-sm"
+            aria-pressed={isLiked}
+            aria-label={isLiked ? 'Retirer des favoris' : 'Ajouter aux favoris'}
           >
             <Heart className={cn(
               "w-4 h-4 transition-colors",
@@ -154,6 +159,7 @@ export default function ProductCard({
 
           {/* Buy Button */}
           <button
+            type="button"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();

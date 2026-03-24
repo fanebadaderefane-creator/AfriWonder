@@ -21,8 +21,11 @@ export class PushNotificationService {
     }
 
     try {
-      // Enregistrer le service worker
-      const registration = await navigator.serviceWorker.register('/sw.js');
+      // Réutiliser le service worker principal de l'app pour éviter les conflits de scope en PWA/WebView.
+      let registration = await navigator.serviceWorker.getRegistration('/');
+      if (!registration) {
+        registration = await navigator.serviceWorker.register('/sw-custom.js', { scope: '/' });
+      }
       console.log('Service Worker enregistré');
 
       // Demander la permission
@@ -35,7 +38,7 @@ export class PushNotificationService {
           }
         });
       }
-    } catch (_error) {
+    } catch (error) {
       console.error('Erreur Service Worker:', error);
     }
   }
@@ -57,7 +60,7 @@ export class PushNotificationService {
       });
 
       console.log('Utilisateur abonné aux notifications');
-    } catch (_error) {
+    } catch (error) {
       console.error('Erreur subscription:', error);
     }
   }
@@ -80,7 +83,7 @@ export class PushNotificationService {
           requireInteraction: options.requireInteraction || false
         });
       }
-    } catch (_error) {
+    } catch (error) {
       console.error('Erreur envoi notification:', error);
     }
   }

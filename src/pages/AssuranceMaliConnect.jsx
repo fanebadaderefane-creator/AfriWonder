@@ -3,7 +3,6 @@ import { api } from "@/api/expressClient";
 import { useQuery } from "@tanstack/react-query";
 import { Landmark, MapPin, Phone, BadgeCheck, Loader2, Shield } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import ModuleHero from "@/components/common/ModuleHero";
 
 export default function AssuranceMaliConnect() {

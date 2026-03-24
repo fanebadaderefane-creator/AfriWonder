@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Send, ArrowLeft, MessageCircle, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
+import { FixedSizeList as VirtualList } from "react-window";
+import { cacheConversations, getCachedConversations, cacheMessages, getCachedMessages } from "@/services/offlineProfilesMessages.service";
+import { impactMedium } from "@/lib/haptics";
 
 const NEW_PREFIX = "new-";
 
@@ -32,9 +35,20 @@ export default function MessagesMaliConnect() {
 
   const { data: conversationsData, isLoading: loadingConvos } = useQuery({
     queryKey: ["conversations", user?.id],
-    queryFn: () => api.messages.getConversations(1, 50),
     enabled: !!user,
     refetchInterval: 5000,
+    queryFn: async () => {
+      const cached = await getCachedConversations(user.id);
+      let convos = cached?.conversations || [];
+      try {
+        const fresh = await api.messages.getConversations(1, 50);
+        convos = fresh?.conversations ?? (Array.isArray(fresh) ? fresh : []);
+        cacheConversations(user.id, convos).catch(() => {});
+      } catch {
+        // hors-ligne : rester sur le cache
+      }
+      return { conversations: convos };
+    },
   });
 
   const conversations = conversationsData?.conversations ?? (Array.isArray(conversationsData) ? conversationsData : []);
@@ -55,9 +69,20 @@ export default function MessagesMaliConnect() {
 
   const { data: messagesData, isLoading: loadingMessages } = useQuery({
     queryKey: ["messages", activeConvoId],
-    queryFn: () => api.messages.getMessages(activeConvoId),
     enabled: !!activeConvoId && !isNewConvo,
     refetchInterval: 3000,
+    queryFn: async () => {
+      const cached = await getCachedMessages(activeConvoId);
+      let msgs = cached?.messages || [];
+      try {
+        const fresh = await api.messages.getMessages(activeConvoId);
+        msgs = fresh?.messages ?? (Array.isArray(fresh) ? fresh : []);
+        cacheMessages(activeConvoId, msgs).catch(() => {});
+      } catch {
+        // hors-ligne
+      }
+      return { messages: msgs };
+    },
   });
 
   const messages = isNewConvo ? [] : (messagesData?.messages ?? (Array.isArray(messagesData) ? messagesData : []));
@@ -86,6 +111,7 @@ export default function MessagesMaliConnect() {
     setSending(true);
     try {
       await api.messages.send(recipientId, messageText.trim());
+      impactMedium().catch(() => {});
       setMessageText("");
       queryClient.invalidateQueries({ queryKey: ["conversations", user?.id] });
       if (!isNewConvo) queryClient.invalidateQueries({ queryKey: ["messages", activeConvoId] });
@@ -110,13 +136,18 @@ export default function MessagesMaliConnect() {
   if (!user) return null;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden" style={{ minHeight: "calc(100vh - 160px)", height: "calc(100vh - 160px)" }}>
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 min-h-screen bg-[#0b0b0f] text-white">
+      <div
+        className="bg-[#11131a] rounded-2xl border border-white/10 shadow-sm overflow-hidden"
+        style={{ minHeight: "calc(100vh - 160px)", height: "calc(100vh - 160px)" }}
+        role="main"
+        aria-label="Messagerie AfriWonder"
+      >
         <div className="grid md:grid-cols-[320px_1fr] h-full">
           {/* Panneau gauche : liste des conversations — comme sur la capture 2 */}
-          <div className={`border-r border-gray-200 flex flex-col bg-white ${activeConvoId ? "hidden md:flex" : "flex"}`}>
-            <div className="p-4 border-b border-gray-200">
-              <h2 className="font-bold text-foreground">Messages</h2>
+          <div className={`border-r border-white/10 flex flex-col bg-[#0f1016] ${activeConvoId ? "hidden md:flex" : "flex"}`}>
+            <div className="p-4 border-b border-white/10">
+              <h2 className="font-bold text-white" aria-label="Liste des conversations">Messages</h2>
             </div>
             <div className="flex-1 overflow-y-auto">
               {loadingConvos ? (
@@ -125,34 +156,44 @@ export default function MessagesMaliConnect() {
                 </div>
               ) : displayList.length === 0 ? (
                 <div className="text-center py-10 px-4">
-                  <MessageCircle className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-sm text-muted-foreground">Aucune conversation</p>
+                  <MessageCircle className="w-10 h-10 text-white/45 mx-auto mb-3" />
+                  <p className="text-sm text-white/60">Aucune conversation</p>
                 </div>
               ) : (
-                displayList.map((convo) => {
-                  const unread = getUnread(convo);
-                  const isActive = activeConvoId === convo.id;
-                  return (
-                    <button
-                      key={convo.id}
-                      onClick={() => setActiveConvoId(convo.id)}
-                      className={`w-full text-left p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors ${isActive ? "bg-amber-50/80" : ""}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white text-sm font-medium flex-shrink-0">
-                          {(getOtherName(convo) || "?")[0].toUpperCase()}
+                <VirtualList
+                  height={400}
+                  itemCount={displayList.length}
+                  itemSize={72}
+                  width="100%"
+                >
+                  {({ index, style }) => {
+                    const convo = displayList[index];
+                    const unread = getUnread(convo);
+                    const isActive = activeConvoId === convo.id;
+                    return (
+                      <button
+                        key={convo.id}
+                        onClick={() => setActiveConvoId(convo.id)}
+                        className={`w-full text-left border-b border-white/10 hover:bg-white/5 transition-colors ${isActive ? "bg-white/10" : ""}`}
+                        style={style}
+                        aria-label={`Ouvrir la conversation avec ${getOtherName(convo)}`}
+                      >
+                        <div className="flex items-center gap-3 px-4 py-3">
+                          <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white text-sm font-medium flex-shrink-0">
+                            {(getOtherName(convo) || "?")[0].toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm text-white truncate">{getOtherName(convo)}</p>
+                            <p className="text-xs text-white/60 truncate mt-0.5">{getSubtitle(convo)}</p>
+                          </div>
+                          {unread > 0 && (
+                            <span className="bg-[#ff2f6d] text-white text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0">{unread}</span>
+                          )}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm text-foreground truncate">{getOtherName(convo)}</p>
-                          <p className="text-xs text-muted-foreground truncate mt-0.5">{getSubtitle(convo)}</p>
-                        </div>
-                        {unread > 0 && (
-                          <span className="bg-amber-500 text-white text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0">{unread}</span>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })
+                      </button>
+                    );
+                  }}
+                </VirtualList>
               )}
             </div>
           </div>
@@ -161,24 +202,29 @@ export default function MessagesMaliConnect() {
           <div className={`flex flex-col ${!activeConvoId ? "hidden md:flex" : "flex"}`}>
             {activeConvo ? (
               <>
-                <div className="p-4 border-b border-gray-200 flex items-center gap-3 bg-white">
-                  <button type="button" onClick={() => setActiveConvoId(null)} className="md:hidden p-1 rounded-lg hover:bg-gray-100">
+                <div className="p-4 border-b border-white/10 flex items-center gap-3 bg-[#0f1016]">
+                  <button
+                    type="button"
+                    onClick={() => setActiveConvoId(null)}
+                    className="md:hidden p-1 rounded-lg hover:bg-white/10"
+                    aria-label="Revenir à la liste des conversations"
+                  >
                     <ArrowLeft className="w-5 h-5" />
                   </button>
                   <div className="w-9 h-9 rounded-full bg-green-500 flex items-center justify-center text-white text-sm font-medium flex-shrink-0">
                     {(getOtherName(activeConvo) || "?")[0].toUpperCase()}
                   </div>
-                  <p className="font-semibold text-foreground">{getOtherName(activeConvo)}</p>
+                  <p className="font-semibold text-white">{getOtherName(activeConvo)}</p>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 flex flex-col bg-gray-50/30">
+                <div className="flex-1 overflow-y-auto p-4 flex flex-col bg-[#0b0b0f]">
                   {loadingMessages && !isNewConvo ? (
                     <div className="flex justify-center py-10">
                       <Loader2 className="w-6 h-6 animate-spin text-amber-500" />
                     </div>
                   ) : messages.length === 0 ? (
                     <div className="flex-1 flex items-center justify-center">
-                      <p className="text-sm text-muted-foreground">Commencez la conversation</p>
+                      <p className="text-sm text-white/60">Commencez la conversation</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -191,7 +237,7 @@ export default function MessagesMaliConnect() {
                             animate={{ opacity: 1, y: 0 }}
                             className={`flex ${isMe ? "justify-end" : "justify-start"}`}
                           >
-                            <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm ${isMe ? "bg-amber-500 text-white rounded-br-md" : "bg-white border border-gray-200 rounded-bl-md"}`}>
+                            <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm ${isMe ? "bg-gradient-to-r from-[#ff2f6d] to-[#ff5f8f] text-white rounded-br-md" : "bg-[#191b23] border border-white/10 text-white rounded-bl-md"}`}>
                               {msg.content}
                             </div>
                           </motion.div>
@@ -202,25 +248,30 @@ export default function MessagesMaliConnect() {
                   <div ref={bottomRef} />
                 </div>
 
-                <div className="p-4 border-t border-gray-200 bg-white">
+                <div className="p-4 border-t border-white/10 bg-[#0f1016]">
                   <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex gap-2">
                     <Input
                       value={messageText}
                       onChange={(e) => setMessageText(e.target.value)}
                       placeholder="Écrivez votre message..."
-                      className="flex-1 rounded-xl border-gray-200"
+                      className="flex-1 rounded-xl bg-[#191b23] border-white/10 text-white placeholder:text-white/50"
                     />
-                    <Button type="submit" disabled={!messageText.trim() || sending} className="rounded-xl bg-orange-500 hover:bg-orange-600 text-white h-11 px-4">
+                    <Button
+                      type="submit"
+                      disabled={!messageText.trim() || sending}
+                      className="rounded-xl bg-[#ff2f6d] hover:bg-[#ff4b80] text-white h-11 px-4"
+                      aria-label="Envoyer le message"
+                    >
                       <Send className="w-4 h-4" />
                     </Button>
                   </form>
                 </div>
               </>
             ) : (
-              <div className="flex-1 flex items-center justify-center text-center bg-gray-50/30">
+              <div className="flex-1 flex items-center justify-center text-center bg-[#0b0b0f]">
                 <div>
-                  <MessageCircle className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-muted-foreground text-sm">Sélectionnez une conversation</p>
+                  <MessageCircle className="w-12 h-12 text-white/45 mx-auto mb-3" />
+                  <p className="text-white/60 text-sm">Sélectionnez une conversation</p>
                 </div>
               </div>
             )}

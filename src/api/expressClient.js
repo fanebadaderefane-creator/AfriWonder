@@ -1,6 +1,14 @@
 // AfriWonder full review PR - CodeRabbit
 import axios from 'axios';
-import { getItem, setItem, removeItem } from '@/utils/safeStorage';
+import { getItem } from '@/utils/safeStorage';
+import {
+  getAccessToken,
+  getRefreshToken,
+  setAccessToken,
+  setRefreshToken,
+  clearTokens,
+  setCachedAuthUser,
+} from '@/lib/secureTokenStorage';
 
 const raw = import.meta.env.VITE_API_URL;
 const API_URL = raw
@@ -10,7 +18,11 @@ const API_URL = raw
 export { API_URL };
 
 const DEFAULT_TIMEOUT_MS = 30000;
+/** Inscription : peut attendre PostgreSQL / réseau local — évite faux timeout à 30 s */
+const AUTH_REGISTER_TIMEOUT_MS = 90000;
 const UPLOAD_TIMEOUT_MS = 300000;
+/** E2EE : crypto WebCrypto + plusieurs allers-retours (register, prekeys) ; Supabase peut dépasser 30 s. */
+const E2EE_REQUEST_TIMEOUT_MS = 90000;
 const MAX_NETWORK_RETRIES = 2; // 2 retries = 3 attempts total (connexions difficiles Afrique)
 const RETRY_DELAYS_MS = [1000, 2000]; // backoff
 
@@ -23,8 +35,8 @@ const axiosInstance = axios.create({
   },
 });
 
-axiosInstance.interceptors.request.use((config) => {
-  const token = getItem('access_token');
+axiosInstance.interceptors.request.use(async (config) => {
+  const token = await getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -62,9 +74,8 @@ axiosInstance.interceptors.response.use(
       const hadToken = originalRequest.headers.Authorization?.startsWith('Bearer ');
       
       if (!hadToken) {
-        removeItem('access_token');
-        removeItem('refresh_token');
-        removeItem('afriwonder_auth_user');
+        await clearTokens();
+        await setCachedAuthUser(null);
         return Promise.reject(error);
       }
 
@@ -86,11 +97,10 @@ axiosInstance.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshToken = getItem('refresh_token');
+        const refreshToken = await getRefreshToken();
         if (!refreshToken) {
-          removeItem('access_token');
-          removeItem('refresh_token');
-          removeItem('afriwonder_auth_user');
+          await clearTokens();
+          await setCachedAuthUser(null);
           processQueue(error);
           isRefreshing = false;
           return Promise.reject(error);
@@ -98,8 +108,8 @@ axiosInstance.interceptors.response.use(
         
         const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
         const newToken = data.data.accessToken;
-        setItem('access_token', newToken);
-        setItem('refresh_token', data.data.refreshToken);
+        await setAccessToken(newToken);
+        await setRefreshToken(data.data.refreshToken);
         
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         processQueue(null, newToken);
@@ -107,9 +117,8 @@ axiosInstance.interceptors.response.use(
         
         return axiosInstance(originalRequest);
       } catch (_refreshError) {
-        removeItem('access_token');
-        removeItem('refresh_token');
-        removeItem('afriwonder_auth_user');
+        await clearTokens();
+        await setCachedAuthUser(null);
         processQueue(_refreshError);
         isRefreshing = false;
         
@@ -141,8 +150,23 @@ axiosInstance.interceptors.response.use(
       const raw = error.response?.data?.error ?? error.response?.data?.message;
       error.apiMessage = typeof raw === 'string' ? raw : (raw?.message ?? 'Trop de requêtes. Réessayez dans quelques secondes.');
     } else {
-      const raw = error.response?.data?.message ?? error.response?.data?.error ?? error.message;
-      error.apiMessage = typeof raw === 'string' ? raw : (raw && typeof raw === 'object' ? (raw.message || 'Une erreur est survenue') : 'Une erreur est survenue');
+      const d = error.response?.data;
+      /** API AfriWonder : { success: false, error: { message } } */
+      let extracted =
+        d && typeof d === 'object' && d.error && typeof d.error === 'object' && typeof d.error.message === 'string'
+          ? d.error.message
+          : null;
+      if (!extracted && typeof d?.message === 'string') extracted = d.message;
+      if (!extracted && typeof d === 'string') extracted = d;
+      const raw = extracted ?? d?.error ?? error.message;
+      let msg =
+        typeof raw === 'string' ? raw : raw && typeof raw === 'object' ? raw.message || 'Une erreur est survenue' : 'Une erreur est survenue';
+      // R2 / S3 : message anglais côté SDK si le backend ne mappe pas encore
+      if (typeof msg === 'string' && /access denied/i.test(msg) && !/stockage média|Cloudflare R2/i.test(msg)) {
+        msg =
+          'Stockage média : accès refusé (Cloudflare R2). Vérifiez R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY et les permissions d’écriture sur le bucket (backend/.env).';
+      }
+      error.apiMessage = msg;
     }
     return Promise.reject(error);
   }
@@ -221,20 +245,22 @@ export const api = {
   },
 
   auth: {
-    async login(email, password) {
-      const { data } = await axiosInstance.post('/auth/login', { email, password });
-      setItem('access_token', data.data.accessToken);
-      setItem('refresh_token', data.data.refreshToken);
+    async login(identifier, password) {
+      const { data } = await axiosInstance.post('/auth/login', { email: identifier, identifier, password });
+      await setAccessToken(data.data.accessToken);
+      await setRefreshToken(data.data.refreshToken);
       return data.data.user;
     },
     async register(userData) {
-      const { data } = await axiosInstance.post('/auth/register', userData);
-      setItem('access_token', data.data.accessToken);
-      setItem('refresh_token', data.data.refreshToken);
+      const { data } = await axiosInstance.post('/auth/register', userData, {
+        timeout: AUTH_REGISTER_TIMEOUT_MS,
+      });
+      await setAccessToken(data.data.accessToken);
+      await setRefreshToken(data.data.refreshToken);
       return data.data.user;
     },
     async me() {
-      const token = getItem('access_token');
+      const token = await getAccessToken();
       if (!token) {
         const error = Object.assign(new Error('No token available'), { response: { status: 401 } });
         throw error;
@@ -243,9 +269,8 @@ export const api = {
       return data.data;
     },
     async logout() {
-      removeItem('access_token');
-      removeItem('refresh_token');
-      removeItem('afriwonder_auth_user');
+      await clearTokens();
+      await setCachedAuthUser(null);
     },
     async updateMe(userData) {
       const { data } = await axiosInstance.put('/users/me', userData);
@@ -420,8 +445,9 @@ export const api = {
       const { data } = await axiosInstance.post(`/videos/${id}/comment`, { content, parentId });
       return data.data;
     },
-    async getComments(id, params = {}) {
-      const { data } = await axiosInstance.get(`/videos/${id}/comments`, { params });
+    async getComments(id, params = {}, options = {}) {
+      const timeoutMs = Number.isFinite(options?.timeoutMs) ? options.timeoutMs : 12000;
+      const { data } = await axiosInstance.get(`/videos/${id}/comments`, { params, timeout: timeoutMs });
       return data.data;
     },
     async share(id) {
@@ -991,6 +1017,10 @@ export const api = {
     },
     async updateTicketStatus(id, status) {
       const { data } = await axiosInstance.patch(`/support/tickets/${id}/status`, { status });
+      return data.data;
+    },
+    async submitE2eeDiagnostic(payload = {}) {
+      const { data } = await axiosInstance.post('/support/e2ee-diagnostic', payload);
       return data.data;
     },
     async listAllTickets(params = {}) {
@@ -1793,7 +1823,7 @@ export const api = {
         ? file
         : new File([file], 'audio.webm', { type: file.type || 'audio/webm' });
       formData.append('file', blob);
-      const { data } = await axiosInstance.post('/upload/video', formData, {
+      const { data } = await axiosInstance.post('/upload/audio', formData, {
         ...uploadConfig(),
         timeout: UPLOAD_TIMEOUT_MS,
         onUploadProgress: (progressEvent) => {
@@ -1805,6 +1835,25 @@ export const api = {
       const result = data?.data ?? data;
       const fileUrl = result?.file_url ?? result?.url;
       return fileUrl != null ? { file_url: fileUrl } : (result || {});
+    },
+    async document(input) {
+      const file = input?.file ?? input;
+      if (!(file instanceof File || file instanceof Blob)) {
+        throw new Error('Fichier document invalide');
+      }
+      const formData = new FormData();
+      const blob =
+        file instanceof File ? file : new File([file], 'document', { type: file.type || 'application/octet-stream' });
+      formData.append('file', blob);
+      const { data } = await axiosInstance.post('/upload/document', formData, {
+        ...uploadConfig(),
+        timeout: UPLOAD_TIMEOUT_MS,
+      });
+      const result = data?.data ?? data;
+      const fileUrl = result?.file_url ?? result?.url;
+      return fileUrl != null
+        ? { file_url: fileUrl, original_name: result?.original_name }
+        : (result || {});
     },
   },
   saves: {
@@ -1827,6 +1876,22 @@ export const api = {
     async list(params = {}) {
       const { data } = await axiosInstance.get('/notifications', { params });
       return data.data;
+    },
+    async getPreferences() {
+      const { data } = await axiosInstance.get('/notifications/preferences');
+      return data.data;
+    },
+    async updatePreferences(payload = {}) {
+      const { data } = await axiosInstance.put('/notifications/preferences', payload);
+      return data.data;
+    },
+    async subscribePush(payload = {}) {
+      const { data } = await axiosInstance.post('/notifications/push/subscribe', payload);
+      return data.data;
+    },
+    async unsubscribePush(endpoint) {
+      const { data } = await axiosInstance.delete('/notifications/push/unsubscribe', { data: { endpoint } });
+      return data?.data;
     },
     async markAsRead(id) {
       await axiosInstance.put(`/notifications/${id}/read`);
@@ -1922,13 +1987,16 @@ export const api = {
         thumbnail_url: options.thumbnail_url,
         reply_to_message_id: options.reply_to_message_id,
         scheduled_at: options.scheduled_at || undefined,
-        is_ephemeral: options.is_ephemeral || undefined,
+        // true explicite uniquement (évite toute coercition truthy/falsy ambiguë pour la vue unique)
+        is_ephemeral: options.is_ephemeral === true ? true : undefined,
         expires_at: options.expires_at || undefined,
         location_lat: options.location_lat,
         location_lng: options.location_lng,
         location_label: options.location_label,
         contact_user_id: options.contact_user_id,
         contact_name: options.contact_name,
+        sticker_url: options.sticker_url,
+        e2ee_envelope: options.e2ee_envelope || undefined,
       });
       return data.data;
     },
@@ -1946,6 +2014,10 @@ export const api = {
     },
     async exportConversations() {
       const { data } = await axiosInstance.get('/messages/export');
+      return data.data;
+    },
+    async markAsDelivered(conversationId) {
+      const { data } = await axiosInstance.put(`/messages/${conversationId}/delivered`);
       return data.data;
     },
     async markAsRead(conversationId) {
@@ -1983,6 +2055,10 @@ export const api = {
       const { data } = await axiosInstance.patch(`/messages/message/${messageId}/meta`, payload);
       return data.data;
     },
+    async editMessageContent(messageId, content) {
+      const { data } = await axiosInstance.patch(`/messages/message/${messageId}/content`, { content: content ?? '' });
+      return data.data;
+    },
     async setReaction(messageId, emoji) {
       const { data } = await axiosInstance.post(`/messages/message/${messageId}/reaction`, { emoji });
       return data.data;
@@ -1991,9 +2067,22 @@ export const api = {
       const { data } = await axiosInstance.delete(`/messages/message/${messageId}/reaction`);
       return data.data;
     },
+    async getMessageReactionsDetail(messageId) {
+      const { data } = await axiosInstance.get(`/messages/message/${messageId}/reactions-detail`);
+      return data.data;
+    },
+    async transcribeVoiceMessage(messageId) {
+      const { data } = await axiosInstance.post(`/messages/message/${messageId}/transcribe`);
+      return data.data;
+    },
     /** Mute / unmute notifications pour une conversation (CPO 4.39) */
     async setConversationNotifications(conversationId, { muted }) {
       const { data } = await axiosInstance.patch(`/messages/conversations/${conversationId}/notifications`, { muted: !!muted });
+      return data.data;
+    },
+    /** Effacer le contenu de la discussion pour l’utilisateur connecté (les messages restent chez l’autre). */
+    async clearConversationForMe(conversationId) {
+      const { data } = await axiosInstance.post(`/messages/conversations/${conversationId}/clear-me`);
       return data.data;
     },
     async block(userId) {
@@ -2017,10 +2106,38 @@ export const api = {
       const { data } = await axiosInstance.get(`/messages/group/${groupId}`);
       return data.data;
     },
+    async updateGroup(groupId, body = {}) {
+      const { data } = await axiosInstance.patch(`/messages/group/${groupId}`, body);
+      return data.data;
+    },
+    async setGroupNotificationsMuted(groupId, muted) {
+      const { data } = await axiosInstance.patch(`/messages/group/${groupId}/notifications`, {
+        muted: !!muted,
+      });
+      return data.data;
+    },
+    async setMyGroupDisplayTag(groupId, group_display_tag) {
+      const { data } = await axiosInstance.patch(`/messages/group/${groupId}/me/display-tag`, {
+        group_display_tag: group_display_tag == null || group_display_tag === '' ? null : String(group_display_tag),
+      });
+      return data.data;
+    },
     async getGroupMessages(groupId, cursor = null, limit = 30) {
       const params = { limit };
       if (cursor) params.cursor = cursor;
       const { data } = await axiosInstance.get(`/messages/group/${groupId}/messages`, { params });
+      return data.data;
+    },
+    async markGroupRead(groupId) {
+      const { data } = await axiosInstance.post(`/messages/group/${groupId}/read`);
+      return data.data;
+    },
+    async pinGroupMessage(groupId, messageId) {
+      const { data } = await axiosInstance.post(`/messages/group/${groupId}/pin`, { messageId });
+      return data.data;
+    },
+    async unpinGroupMessage(groupId) {
+      const { data } = await axiosInstance.delete(`/messages/group/${groupId}/pin`);
       return data.data;
     },
     async sendGroupMessage(groupId, content, options = {}) {
@@ -2029,7 +2146,44 @@ export const api = {
         type: options.type || 'text',
         media_url: options.media_url,
         thumbnail_url: options.thumbnail_url,
+        reply_to_id: options.reply_to_id,
+        poll_options: options.poll_options,
+        e2ee_envelope: options.e2ee_envelope || undefined,
+        e2ee_envelopes: options.e2ee_envelopes || undefined,
       });
+      return data.data;
+    },
+    async voteGroupPoll(groupId, messageId, optionIndex) {
+      const { data } = await axiosInstance.post(
+        `/messages/group/${groupId}/messages/${messageId}/poll-vote`,
+        { option_index: optionIndex }
+      );
+      return data.data;
+    },
+    async setGroupReaction(groupId, messageId, emoji) {
+      const { data } = await axiosInstance.post(`/messages/group/${groupId}/messages/${messageId}/reaction`, {
+        emoji,
+      });
+      return data.data;
+    },
+    async clearGroupReaction(groupId, messageId) {
+      const { data } = await axiosInstance.delete(`/messages/group/${groupId}/messages/${messageId}/reaction`);
+      return data.data;
+    },
+    async getGroupMessageReactionsDetail(groupId, messageId) {
+      const { data } = await axiosInstance.get(`/messages/group/${groupId}/messages/${messageId}/reactions-detail`);
+      return data.data;
+    },
+    async transcribeGroupVoiceMessage(groupId, messageId) {
+      const { data } = await axiosInstance.post(`/messages/group/${groupId}/messages/${messageId}/transcribe`);
+      return data.data;
+    },
+    async editGroupMessage(groupId, messageId, content) {
+      const { data } = await axiosInstance.patch(`/messages/group/${groupId}/messages/${messageId}`, { content });
+      return data.data;
+    },
+    async deleteGroupMessage(groupId, messageId) {
+      const { data } = await axiosInstance.delete(`/messages/group/${groupId}/messages/${messageId}`);
       return data.data;
     },
     async addGroupMembers(groupId, userIds) {
@@ -2042,9 +2196,111 @@ export const api = {
       const { data } = await axiosInstance.delete(`/messages/group/${groupId}/members/${userId}`);
       return data.data;
     },
+    async setGroupMemberRole(groupId, userId, role) {
+      const { data } = await axiosInstance.patch(`/messages/group/${groupId}/members/${userId}/role`, { role });
+      return data.data;
+    },
     async leaveGroup(groupId) {
       const { data } = await axiosInstance.post(`/messages/group/${groupId}/leave`);
       return data.data;
+    },
+    async generateGroupInviteLink(groupId) {
+      const { data } = await axiosInstance.post(`/messages/group/${groupId}/invite-link`);
+      return data.data;
+    },
+    async revokeGroupInviteLink(groupId) {
+      const { data } = await axiosInstance.delete(`/messages/group/${groupId}/invite-link`);
+      return data.data;
+    },
+    async joinGroupByInviteToken(token) {
+      const { data } = await axiosInstance.post('/messages/group-invite/join', { token });
+      return data.data;
+    },
+  },
+  e2ee: {
+    async registerDevice(payload) {
+      const { data } = await axiosInstance.post('/e2ee/devices/register', payload || {}, {
+        timeout: E2EE_REQUEST_TIMEOUT_MS,
+      });
+      return data.data;
+    },
+    async getMyDevices() {
+      const { data } = await axiosInstance.get('/e2ee/devices/my', { timeout: E2EE_REQUEST_TIMEOUT_MS });
+      return data.data ?? [];
+    },
+    async getUserPublicDevices(userId) {
+      const { data } = await axiosInstance.get(`/e2ee/devices/public/${userId}`, {
+        timeout: E2EE_REQUEST_TIMEOUT_MS,
+      });
+      return data.data ?? [];
+    },
+    async uploadPrekeys(deviceId, prekeys = []) {
+      const { data } = await axiosInstance.post(
+        '/e2ee/prekeys/upload',
+        { deviceId, prekeys },
+        { timeout: E2EE_REQUEST_TIMEOUT_MS }
+      );
+      return data.data;
+    },
+    async getPrekeyHealth(deviceId) {
+      const { data } = await axiosInstance.get('/e2ee/prekeys/health', {
+        params: { deviceId },
+        timeout: E2EE_REQUEST_TIMEOUT_MS,
+      });
+      return data?.data ?? data;
+    },
+    async rotateSignedPrekey(payload) {
+      const { data } = await axiosInstance.post('/e2ee/devices/rotate-signed-prekey', payload || {}, {
+        timeout: E2EE_REQUEST_TIMEOUT_MS,
+      });
+      return data.data;
+    },
+    async getBundle(userId) {
+      const { data } = await axiosInstance.get(`/e2ee/bundle/${userId}`, {
+        timeout: E2EE_REQUEST_TIMEOUT_MS,
+      });
+      return data.data;
+    },
+    async consumePrekey(prekeyRowId) {
+      const { data } = await axiosInstance.post(
+        '/e2ee/prekeys/consume',
+        { prekeyRowId },
+        { timeout: E2EE_REQUEST_TIMEOUT_MS }
+      );
+      return data.data;
+    },
+    async storeEnvelope(payload) {
+      const { data } = await axiosInstance.post('/e2ee/messages/envelope', payload || {}, {
+        timeout: E2EE_REQUEST_TIMEOUT_MS,
+      });
+      return data.data;
+    },
+    async syncEnvelopes({ deviceId, since = null, limit = 100, conversationId = null, groupId = null }) {
+      const params = { deviceId, limit };
+      if (since) params.since = since;
+      if (conversationId) params.conversationId = conversationId;
+      if (groupId) params.groupId = groupId;
+      const { data } = await axiosInstance.get('/e2ee/messages/sync', {
+        params,
+        timeout: E2EE_REQUEST_TIMEOUT_MS,
+      });
+      return data.data;
+    },
+  },
+  translate: {
+    /** Traduction de texte (auth). Cible fr ou en (bm → fr côté serveur). */
+    async text(text, options = {}) {
+      const { data } = await axiosInstance.post('/translate', {
+        text,
+        target: options.target || 'fr',
+        source: options.source || 'auto',
+      });
+      const payload = data?.data ?? data;
+      return {
+        translatedText: payload?.translatedText ?? '',
+        target: payload?.target,
+        detectedSource: payload?.detectedSource,
+      };
     },
   },
   leaderboard: {
@@ -2693,6 +2949,20 @@ export const api = {
         } catch (error) {
           // If endpoint doesn't exist, just resolve
           console.warn('Comment delete endpoint not available, using placeholder');
+        }
+      },
+    },
+    /** Liste créateurs / utilisateurs (GET /users — optionalAuth, pour Discover public) */
+    User: {
+      async list(_sort = '', limit = 20) {
+        try {
+          const params = { page: 1, limit: Math.min(Math.max(1, limit || 20), 50) };
+          const { data } = await axiosInstance.get('/users', { params });
+          const result = data.data;
+          return Array.isArray(result) ? result : (result?.users || []);
+        } catch (error) {
+          console.warn('entities.User.list', error);
+          return [];
         }
       },
     },

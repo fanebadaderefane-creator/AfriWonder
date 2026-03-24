@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { toast } from "sonner";
 import offlineCacheService from '@/services/offlineCache.service.js';
 import { API_URL } from '@/api/expressClient';
+import { getAbsoluteImageUrl } from '@/lib/utils';
 
 /** URL pour récupérer la vidéo via le proxy (évite CORS avec le CDN). */
 function getVideoFetchUrl(videoUrl) {
@@ -32,6 +33,7 @@ const offlineOptions = [
 export default function ShareSheet({ isOpen, onClose, video, onShareSuccess }) {
   const [downloading, setDownloading] = useState(false);
   const getVideoUrl = () => `${window.location.origin}/VideoView/?id=${video?.id}`;
+  const previewImage = getAbsoluteImageUrl(video?.thumbnail_url || video?.creator_avatar || '');
 
   /** Télécharger la vidéo sur l'appareil (Galerie / Téléchargements) */
   const saveVideoToDevice = async () => {
@@ -177,12 +179,46 @@ export default function ShareSheet({ isOpen, onClose, video, onShareSuccess }) {
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent side="bottom" className="rounded-t-3xl">
+      <SheetContent side="bottom" className="rounded-t-[32px] border border-white/10 bg-[#0b111d] text-white shadow-[0_-24px_80px_rgba(2,6,23,0.42)]">
         <SheetHeader className="pb-4">
-          <SheetTitle className="text-center font-bold">Partager</SheetTitle>
+          <SheetTitle className="text-center text-base font-semibold tracking-[-0.03em] text-white">Partager</SheetTitle>
         </SheetHeader>
 
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-4 mb-6">
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.22, ease: 'easeOut' }}
+          className="mb-6 rounded-[24px] border border-white/8 bg-white/[0.04] p-3 shadow-[0_18px_54px_rgba(2,6,23,0.22)]"
+        >
+          <div className="flex items-center gap-3">
+            <div className="h-16 w-16 overflow-hidden rounded-[18px] border border-white/10 bg-[linear-gradient(135deg,#172554_0%,#0b111d_100%)]">
+              {previewImage ? (
+                <img
+                  src={previewImage}
+                  alt={video?.title || 'Aperçu vidéo'}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(96,165,250,0.22),transparent_38%),linear-gradient(180deg,#1d4ed8_0%,#0b111d_100%)]" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-white">
+                {video?.title || 'Vidéo AfriWonder'}
+              </p>
+              <p className="mt-1 truncate text-xs text-white/48">
+                @{video?.creator_name || video?.creator?.username || 'afriwonder'}
+              </p>
+              <p className="mt-2 text-[11px] text-white/56">
+                Partage optimisé pour WhatsApp, Telegram, TikTok, Facebook et hors ligne.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+
+        <div className="mb-6 grid grid-cols-3 gap-4 sm:grid-cols-6">
           {shareOptions.map((option, index) => {
             const Icon = option.icon;
             const isDownload = option.id === 'download';
@@ -196,20 +232,21 @@ export default function ShareSheet({ isOpen, onClose, video, onShareSuccess }) {
                 onClick={() => handleShare(option.id)}
                 disabled={isLoading}
                 className="flex flex-col items-center gap-2 disabled:opacity-60"
+                whileTap={{ scale: 0.95 }}
               >
-                <div className={`w-14 h-14 ${option.color} rounded-full flex items-center justify-center`}>
+                <div className={`flex h-14 w-14 items-center justify-center rounded-full ${option.color} shadow-[0_14px_28px_rgba(2,6,23,0.22)]`}>
                   {isLoading ? <Loader2 className="w-6 h-6 text-white animate-spin" /> : <Icon className="w-6 h-6 text-white" />}
                 </div>
-                <span className="text-xs text-gray-600">{isLoading ? 'Chargement…' : option.name}</span>
+                <span className="text-xs text-white/62">{isLoading ? 'Chargement…' : option.name}</span>
               </motion.button>
             );
           })}
         </div>
 
-        <div className="border-t pt-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Users className="w-4 h-4 text-blue-500" />
-            <span className="text-sm font-medium text-gray-700">Partage sans internet</span>
+        <div className="border-t border-white/8 pt-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Users className="w-4 h-4 text-blue-300" />
+            <span className="text-sm font-medium text-white/78">Partage sans internet</span>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -222,14 +259,15 @@ export default function ShareSheet({ isOpen, onClose, video, onShareSuccess }) {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.2 + index * 0.1 }}
                   onClick={() => handleShare(option.id)}
-                  className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-all"
+                  className="flex items-center gap-3 rounded-[20px] border border-white/10 bg-white/[0.04] p-3 text-left transition-all hover:bg-white/[0.07]"
+                  whileTap={{ scale: 0.98 }}
                 >
-                  <div className={`w-10 h-10 ${option.color} rounded-full flex items-center justify-center`}>
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-full ${option.color}`}>
                     <Icon className="w-5 h-5 text-white" />
                   </div>
                   <div className="text-left">
-                    <p className="font-medium text-sm">{option.name}</p>
-                    <p className="text-xs text-gray-400">{option.description}</p>
+                    <p className="text-sm font-medium text-white">{option.name}</p>
+                    <p className="text-xs text-white/42">{option.description}</p>
                   </div>
                 </motion.button>
               );

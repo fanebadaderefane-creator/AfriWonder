@@ -93,141 +93,189 @@ export default function ProfileHeader({
     navigator.clipboard.writeText(url);
   };
 
+  const primaryActionClass =
+    'h-11 rounded-2xl bg-white text-slate-950 shadow-[0_14px_28px_rgba(255,255,255,0.12)] hover:bg-white/92';
+
+  const secondaryActionClass =
+    'h-11 rounded-2xl border border-white/12 bg-white/[0.04] text-white hover:bg-white/[0.08]';
+
+  const statItems = [
+    {
+      key: 'following',
+      label: 'Wonder',
+      value: formatCount(stats.following),
+      onClick: onFollowingClick,
+    },
+    {
+      key: 'followers',
+      label: 'Wonderers',
+      value: formatCount(stats.wonderers ?? stats.followers),
+      onClick: onFollowersClick,
+    },
+    {
+      key: 'likes',
+      label: 'J\'aime',
+      value: formatCount(stats.likes),
+      onClick: onStatsClick,
+    },
+    {
+      key: 'videos',
+      label: 'Videos',
+      value: formatCount(stats.videos || 0),
+      onClick: undefined,
+    },
+  ];
+
   return (
-    <div className="bg-white">
-      {/* Bannière de profil (CPO 1.6) — image ou gradient ; clic = upload si propre profil */}
+    <div className="relative overflow-hidden bg-[#060913] text-white">
       <div
         className={cn(
-          'h-24 relative bg-cover bg-center',
-          !coverUrl && 'bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-600'
+          'relative h-[172px] bg-cover bg-center',
+          !coverUrl && 'bg-[linear-gradient(135deg,#0f2747_0%,#143155_38%,#1a3b60_100%)]'
         )}
         style={coverUrl ? { backgroundImage: `url(${coverUrl})` } : undefined}
+        aria-label={isOwnProfile ? 'Bannière de profil' : undefined}
+        role={isOwnProfile ? 'img' : undefined}
       >
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,10,20,0.10)_0%,rgba(4,10,20,0.38)_54%,rgba(4,10,20,0.88)_100%)]" />
         {isOwnProfile && (
           <button
             type="button"
             onClick={handleCoverClick}
-            className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 hover:opacity-100 transition-opacity rounded-b-lg"
+            className="absolute inset-0 flex items-center justify-center bg-black/18 opacity-0 transition-opacity hover:opacity-100"
             aria-label="Changer la bannière"
           >
-            <Camera className="w-6 h-6 text-white" />
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/14 bg-black/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-md">
+              <Camera className="h-4 w-4" />
+              Changer la bannière
+            </span>
           </button>
         )}
       </div>
 
-      <div className="px-4 pb-4">
-        {/* Avatar */}
-        <div className="relative -mt-12 mb-3">
-          <button onClick={handleAvatarClick} className={isOwnProfile ? 'cursor-pointer' : ''}>
-            <Avatar className="w-24 h-24 border-4 border-white shadow-lg">
-              <AvatarImage src={user?.avatar || user?.profile_image} />
-              <AvatarFallback className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white text-2xl">
+      <div className="relative mx-auto -mt-16 max-w-5xl px-4 pb-6">
+        <div className="overflow-hidden rounded-[32px] border border-white/8 bg-[#0b111d]/92 shadow-[0_24px_80px_rgba(2,6,23,0.34)] backdrop-blur-2xl">
+        <div className="px-5 pb-6 pt-5 sm:px-6">
+        <div className="mb-5 flex items-start justify-between gap-4">
+        <div className="relative">
+          <button
+            onClick={handleAvatarClick}
+            className={isOwnProfile ? 'cursor-pointer' : ''}
+            aria-label={isOwnProfile ? 'Changer la photo de profil' : 'Photo de profil'}
+          >
+            <Avatar className="h-24 w-24 border-4 border-[#0b111d] shadow-[0_18px_44px_rgba(2,6,23,0.3)] sm:h-28 sm:w-28">
+              <AvatarImage
+                src={user?.avatar || user?.profile_image}
+                alt={user?.full_name || user?.username || 'Photo de profil'}
+                loading="lazy"
+                decoding="async"
+              />
+              <AvatarFallback className="bg-gradient-to-br from-slate-600 to-slate-800 text-2xl text-white">
                 {user?.full_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase()}
               </AvatarFallback>
             </Avatar>
           </button>
 
           {user?.is_verified && (
-            <div className="absolute bottom-1 right-0 bg-blue-500 rounded-full p-1">
-              <BadgeCheck className="w-4 h-4 text-white" />
+            <div className="absolute bottom-1 right-0 rounded-full border border-white/16 bg-[#1d8bff] p-1 shadow-lg">
+              <BadgeCheck className="h-4 w-4 text-white" />
             </div>
           )}
-        </div>
-
-        {/* Name & Username */}
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-gray-900">
-                {user?.full_name || 'Utilisateur'}
-              </h1>
-              {user?.is_verified && (
-                <BadgeCheck className="w-5 h-5 text-blue-500" />
-              )}
-            </div>
-            <p className="text-gray-500 text-sm">@{user?.username || user?.email?.split('@')[0]}</p>
           </div>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              navigator.clipboard.writeText(window.location.href);
-              toast.success('Lien du profil copié !');
-            }}
-            className="text-gray-400"
-          >
-            <Share2 className="w-5 h-5" />
-          </Button>
-        </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="truncate text-[28px] font-semibold tracking-[-0.04em] text-white">
+                    {user?.full_name || 'Utilisateur'}
+                  </h1>
+                  {user?.is_verified && (
+                    <BadgeCheck className="h-5 w-5 shrink-0 text-[#4da3ff]" />
+                  )}
+                </div>
+                <p className="mt-1 text-[14px] text-white/54">@{user?.username || user?.email?.split('@')[0]}</p>
+              </div>
 
-        {/* Bio */}
-        {user?.bio && (
-          <p className="text-gray-700 text-sm mb-3 whitespace-pre-line">
-            {user.bio}
-          </p>
-        )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.href);
+                  toast.success('Lien du profil copié !');
+                }}
+                className="h-10 w-10 rounded-full border border-white/10 bg-white/[0.04] text-white/72 hover:bg-white/[0.08] hover:text-white"
+              >
+                <Share2 className="h-5 w-5" />
+              </Button>
+            </div>
 
-        {/* Location & Link */}
-        <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500 mb-4">
-          {user?.location && (
-            <span className="flex items-center gap-1">
-              <MapPin className="w-4 h-4" />
-              {user.location}
-            </span>
-          )}
-          {user?.website && (
-            <a 
-              href={user.website}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-blue-600 hover:underline"
-            >
-              <LinkIcon className="w-4 h-4" />
-              {user.website.replace(/^https?:\/\//, '')}
-            </a>
-          )}
-        </div>
+            {user?.bio && (
+              <p className="max-w-2xl whitespace-pre-line text-[15px] leading-6 text-white/82">
+                {user.bio}
+              </p>
+            )}
 
-        {/* Stats */}
-        <div className="flex items-center gap-4 mb-4">
-          <button onClick={onFollowingClick} className="text-center hover:bg-gray-50 px-2 py-2 rounded-lg transition-colors">
-            <span className="block text-lg font-bold text-gray-900">{formatCount(stats.following)}</span>
-            <span className="text-xs text-gray-500">Dans leur Wonder</span>
-          </button>
-          <button onClick={onFollowersClick} className="text-center hover:bg-gray-50 px-2 py-2 rounded-lg transition-colors">
-            <span className="block text-lg font-bold text-gray-900">{formatCount(stats.wonderers ?? stats.followers)}</span>
-            <span className="text-xs text-gray-500">Wonderers</span>
-          </button>
-          <button onClick={onStatsClick} className="text-center hover:bg-gray-50 px-2 py-2 rounded-lg transition-colors">
-            <span className="block text-lg font-bold text-gray-900">{formatCount(stats.likes)}</span>
-            <span className="text-xs text-gray-500">J'aime</span>
-          </button>
-          <div className="text-center px-2 py-2">
-            <span className="block text-lg font-bold text-gray-900">{formatCount(stats.videos || 0)}</span>
-            <span className="text-xs text-gray-500">Vidéos</span>
+            {(user?.location || user?.website) && (
+              <div className="flex flex-wrap items-center gap-3 text-sm text-white/58">
+                {user?.location && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-white/[0.03] px-3 py-1.5">
+                    <MapPin className="h-4 w-4" />
+                    {user.location}
+                  </span>
+                )}
+                {user?.website && (
+                  <a
+                    href={user.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-white/[0.03] px-3 py-1.5 text-white/78 transition-colors hover:bg-white/[0.06] hover:text-white"
+                  >
+                    <LinkIcon className="h-4 w-4" />
+                    {user.website.replace(/^https?:\/\//, '')}
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Badges */}
+        <div className="grid grid-cols-4 gap-2 border-y border-white/8 py-4">
+          {statItems.map((item) => {
+            const Comp = item.onClick ? 'button' : 'div';
+            return (
+              <Comp
+                key={item.key}
+                onClick={item.onClick}
+                className={cn(
+                  'rounded-2xl px-3 py-3 text-left transition-colors',
+                  item.onClick ? 'hover:bg-white/[0.04]' : ''
+                )}
+              >
+                <span className="block text-[20px] font-semibold tracking-[-0.03em] text-white">{item.value}</span>
+                <span className="mt-1 block text-[12px] text-white/48">{item.label}</span>
+              </Comp>
+            );
+          })}
+        </div>
+
         {user?.badges?.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-4">
+          <div className="mt-4 flex flex-wrap gap-2">
             {user.badges.map((badge, i) => (
-              <Badge key={i} variant="secondary" className="bg-blue-50 text-blue-600 border-blue-200">
+              <Badge key={i} variant="secondary" className="border border-white/10 bg-white/[0.04] text-white/78">
                 {badge}
               </Badge>
             ))}
           </div>
         )}
 
-        {/* Action Buttons */}
-        <div className="flex gap-2">
+        <div className="mt-5 flex flex-wrap gap-2">
           {isOwnProfile ? (
             <>
               <Button
                 onClick={onEdit}
                 variant="outline"
-                className="flex-1 rounded-xl border-gray-200"
+                className={cn('min-w-[180px] flex-1', secondaryActionClass)}
               >
                 <Edit2 className="w-4 h-4 mr-2" />
                 Modifier profil
@@ -235,13 +283,13 @@ export default function ProfileHeader({
               <Button
                 onClick={onSubscriptionTiers}
                 variant="outline"
-                className="rounded-xl border-blue-200 text-blue-600"
+                className={secondaryActionClass}
               >
                 <Crown className="w-4 h-4" />
               </Button>
               <Button
                 onClick={onWallet}
-                className="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                className={primaryActionClass}
               >
                 <Wallet className="w-4 h-4" />
               </Button>
@@ -251,10 +299,10 @@ export default function ProfileHeader({
               <Button
                 onClick={onFollow}
                 className={cn(
-                  "flex-1 rounded-xl transition-all",
+                  "min-w-[140px] flex-1 rounded-2xl transition-all h-11",
                   isFollowing 
-                    ? "bg-gray-100 text-gray-700 hover:bg-gray-200 border border-blue-200" 
-                    : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-blue-500/30"
+                    ? secondaryActionClass
+                    : primaryActionClass
                 )}
               >
                 {isFollowing ? 'Dans son Wonder' : 'Wonder'}
@@ -262,7 +310,7 @@ export default function ProfileHeader({
               <Button
                 onClick={onMessage}
                 variant="outline"
-                className="flex-1 rounded-xl border-gray-200"
+                className={cn('min-w-[140px] flex-1', secondaryActionClass)}
               >
                 Message
               </Button>
@@ -271,22 +319,24 @@ export default function ProfileHeader({
                   onClick={isCloseFriend ? onRemoveCloseFriend : onAddCloseFriend}
                   variant="outline"
                   size="icon"
-                  className="rounded-xl border-gray-200"
+                  className={secondaryActionClass}
                   aria-label={isCloseFriend ? 'Retirer des proches' : 'Ajouter aux proches'}
                   title={isCloseFriend ? 'Retirer des proches' : 'Ajouter aux proches'}
                 >
-                  {isCloseFriend ? <UserMinus className="w-5 h-5 text-gray-600" /> : <UserPlus className="w-5 h-5 text-gray-600" />}
+                  {isCloseFriend ? <UserMinus className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
                 </Button>
               )}
               <Button
                 variant="outline"
                 size="icon"
-                className="rounded-xl border-gray-200"
+                className={secondaryActionClass}
               >
-                <ShoppingBag className="w-5 h-5 text-gray-600" />
+                <ShoppingBag className="w-5 h-5" />
               </Button>
             </>
           )}
+        </div>
+        </div>
         </div>
       </div>
     </div>

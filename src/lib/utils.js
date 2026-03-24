@@ -2,6 +2,41 @@ import { clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { API_URL } from "@/api/expressClient"
 
+function getResolvedApiBase() {
+  if (typeof window === 'undefined') return API_URL;
+  return API_URL.startsWith('/') ? `${window.location.origin}${API_URL}` : API_URL;
+}
+
+function getBackendOrigin() {
+  if (typeof window === 'undefined') {
+    return API_URL.replace(/\/api\/?$/, '');
+  }
+
+  if (API_URL.startsWith('/')) {
+    if (import.meta.env.DEV) {
+      return `${window.location.protocol}//${window.location.hostname}:3000`;
+    }
+    return window.location.origin;
+  }
+
+  try {
+    return new URL(API_URL).origin;
+  } catch {
+    return window.location.origin;
+  }
+}
+
+function toAbsoluteBackendUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+    return trimmed;
+  }
+  const origin = getBackendOrigin();
+  return trimmed.startsWith('/') ? `${origin}${trimmed}` : `${origin}/${trimmed}`;
+}
+
 /** Placeholder image pour produits marketplace (cadres vides PWA mobile) */
 export const MARKETPLACE_PLACEHOLDER_IMG = 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400';
 
@@ -11,11 +46,7 @@ export const MARKETPLACE_PLACEHOLDER_IMG = 'https://images.unsplash.com/photo-15
  */
 export function getAbsoluteImageUrl(url) {
   if (!url || typeof url !== 'string') return '';
-  const trimmed = url.trim();
-  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:')) return trimmed;
-  const base = API_URL.startsWith('/') ? window.location.origin + API_URL : API_URL;
-  const origin = base.replace(/\/api\/?$/, '');
-  return trimmed.startsWith('/') ? `${origin}${trimmed}` : `${origin}/${trimmed}`;
+  return toAbsoluteBackendUrl(url);
 }
 
 export function cn(...inputs) {
@@ -93,17 +124,17 @@ export function isValidThumbnailUrl(thumbnailUrl, videoUrl) {
  * backend pour éviter les erreurs CORS (Failed to open media).
  */
 export function getVideoPlaybackUrl(videoUrl) {
-  if (!videoUrl || typeof videoUrl !== 'string') return videoUrl || '';
+  if (!videoUrl || typeof videoUrl !== 'string') return '';
+  const absoluteUrl = toAbsoluteBackendUrl(videoUrl);
+  if (!absoluteUrl) return '';
+
+  const apiBase = getResolvedApiBase();
   try {
-    const u = new URL(videoUrl);
-    const apiUrl = new URL(API_URL.startsWith('/') ? window.location.origin + API_URL : API_URL);
-    const host = (u.hostname || '').toLowerCase();
-    const directHosts = ['cdn.afriwonder.com', 'cdn.afriwonder.com'];
-    if (directHosts.some((h) => host === h || host.endsWith('.' + h))) return videoUrl;
-    if (u.origin === apiUrl.origin) return videoUrl;
+    const u = new URL(absoluteUrl);
+    const apiUrl = new URL(apiBase);
+    if (u.origin === apiUrl.origin) return absoluteUrl;
   } catch {
-    return videoUrl;
+    return absoluteUrl;
   }
-  const base = API_URL.startsWith('/') ? window.location.origin + API_URL : API_URL;
-  return `${base.replace(/\/$/, '')}/proxy/media?url=${encodeURIComponent(videoUrl)}`;
+  return `${apiBase.replace(/\/$/, '')}/proxy/media?url=${encodeURIComponent(absoluteUrl)}`;
 }

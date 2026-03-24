@@ -1,17 +1,21 @@
 import React, { useEffect, useState } from 'react';
+import { Network } from '@capacitor/network';
 
 export const useNetworkStatus = () => {
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [isSlowConnection, setIsSlowConnection] = useState(false);
 
   useEffect(() => {
     const onOnline = () => setIsOnline(true);
     const onOffline = () => setIsOnline(false);
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', onOnline);
+      window.addEventListener('offline', onOffline);
+    }
 
     let connectionCleanup;
-    if ('connection' in navigator) {
+    if (typeof navigator !== 'undefined' && 'connection' in navigator) {
       const connection = navigator.connection;
       const isSlowType = ['slow-2g', '2g', '3g'].includes(connection.effectiveType);
       setIsSlowConnection(isSlowType || connection.saveData);
@@ -24,10 +28,27 @@ export const useNetworkStatus = () => {
       connectionCleanup = () => connection.removeEventListener('change', onConnectionChange);
     }
 
+    // Capacitor Network — prioritaire en contexte natif (Super App Mali)
+    let networkListener;
+    Network.getStatus().then((status) => {
+      setIsOnline(status.connected);
+    }).catch(() => {});
+
+    Network.addListener('networkStatusChange', (status) => {
+      setIsOnline(status.connected);
+    }).then((listener) => {
+      networkListener = listener;
+    }).catch(() => {});
+
     return () => {
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', onOnline);
+        window.removeEventListener('offline', onOffline);
+      }
       if (connectionCleanup) connectionCleanup();
+      if (networkListener) {
+        networkListener.remove();
+      }
     };
   }, []);
 
@@ -55,7 +76,9 @@ export const OptimizedImage = ({ src, alt, className = '', lowQuality = false })
 // Service Worker Registration
 export const initializeServiceWorker = () => {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.getRegistration('/')
+      .then((registration) => registration || navigator.serviceWorker.register('/sw-custom.js', { scope: '/' }))
+      .catch(() => {});
   }
 };
 

@@ -1,16 +1,292 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '@/api/expressClient';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Radio, Plus, Calendar, Eye, ArrowLeft, Play, Sparkles, Search, Wallet, Trophy } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Calendar, Eye, Play, Radio, Search, Sparkles, Trophy, Wallet } from 'lucide-react';
 import { createPageUrl } from "@/utils";
+import { cn } from '@/lib/utils';
 import BottomNav from '../components/navigation/BottomNav';
 import { toast } from "sonner";
+
+const LIVE_PAGE_BG = 'bg-[#070a12]';
+const LIVE_SECTION =
+  'rounded-[28px] bg-white/[0.035] shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl';
+const LIVE_SECTION_PAD = 'p-5 sm:p-6';
+const LIVE_SOFT_TILE = 'rounded-2xl bg-white/[0.05] transition-colors duration-200 hover:bg-white/[0.07]';
+const LIVE_STAT_CELL = 'rounded-2xl bg-white/[0.06] p-4 sm:p-5';
+/** Pastilles catégories / tri : cible tactile ≥44px, texte centré (descenders inclus). */
+const LIVE_CHIP_BASE =
+  'inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full px-3.5 text-[14px] font-medium leading-snug tracking-tight transition-colors touch-manipulation select-none active:scale-[0.98] sm:px-4';
+function liveChipClass(active) {
+  return cn(
+    LIVE_CHIP_BASE,
+    active
+      ? 'bg-white/[0.14] text-white shadow-[0_4px_20px_rgba(0,0,0,0.22)] ring-2 ring-white/25'
+      : 'bg-white/[0.07] text-white/78 hover:bg-white/[0.11] hover:text-white'
+  );
+}
+const FALLBACK_LIVE_IMAGE = 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=900';
+
+function formatCompactNumber(value) {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num)) return '0';
+  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+  if (num >= 1000) return `${Math.round(num / 1000)}K`;
+  return String(num);
+}
+
+function formatSchedule(date) {
+  if (!date) return '';
+  try {
+    return new Date(date).toLocaleString('fr-FR', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '';
+  }
+}
+
+function getCreatorName(live) {
+  return live?.creator?.username || live?.creator_name || 'Createur';
+}
+
+function getCreatorInitial(live) {
+  return getCreatorName(live)?.[0]?.toUpperCase() || 'C';
+}
+
+function getLiveCover(live) {
+  return live?.thumbnail_url || FALLBACK_LIVE_IMAGE;
+}
+
+function filterLiveCollection(items, searchTerm, regionFilter) {
+  const normalizedSearch = (searchTerm || '').trim().toLowerCase();
+  const normalizedRegion = (regionFilter || '').trim().toLowerCase();
+
+  return (Array.isArray(items) ? items : []).filter((live) => {
+    const haystack = [
+      live?.title,
+      live?.description,
+      live?.category,
+      live?.region,
+      live?.creator_name,
+      live?.creator?.username,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    const matchesSearch = !normalizedSearch || haystack.includes(normalizedSearch);
+    const matchesRegion = !normalizedRegion || String(live?.region || '').toLowerCase().includes(normalizedRegion);
+    return matchesSearch && matchesRegion;
+  });
+}
+
+function LiveSectionHeader({ icon: Icon, title, subtitle, action }) {
+  return (
+    <div className="mb-5 flex items-start justify-between gap-3">
+      <div>
+        <div className="flex items-center gap-2.5">
+          {Icon ? <Icon className="h-4 w-4 text-white/50" strokeWidth={1.75} /> : null}
+          <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-white">{title}</h2>
+        </div>
+        {subtitle ? <p className="mt-1.5 max-w-prose text-[13px] leading-relaxed text-white/42">{subtitle}</p> : null}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function LiveStatusPill({ type, viewers }) {
+  if (type === 'replay') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-black/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/95 backdrop-blur-md">
+        <Play className="h-3.5 w-3.5" />
+        Replay
+      </span>
+    );
+  }
+
+  if (type === 'scheduled') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-black/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/95 backdrop-blur-md">
+        <Calendar className="h-3.5 w-3.5" />
+        Programme
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-[#ef4444]/88 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white backdrop-blur-md">
+      <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+      Live
+      <span className="ml-1 text-white/90 normal-case tracking-normal">{formatCompactNumber(viewers)} spect.</span>
+    </span>
+  );
+}
+
+function LiveHeroCard({ live }) {
+  if (!live) return null;
+
+  return (
+    <Link to={`${createPageUrl('LiveView')}?id=${live.id}`}>
+      <motion.div
+        whileHover={{ scale: 1.01 }}
+        className="relative aspect-[1.45] overflow-hidden rounded-[28px] bg-black/25 shadow-[0_28px_80px_rgba(0,0,0,0.5)] ring-1 ring-inset ring-white/[0.08]"
+      >
+        <img
+          src={getLiveCover(live)}
+          className="h-full w-full object-cover"
+          alt={live.title || ''}
+          loading="lazy"
+          decoding="async"
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.08)_0%,rgba(2,6,23,0.16)_46%,rgba(2,6,23,0.86)_100%)]" />
+
+        <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+          <LiveStatusPill type="live" viewers={live.viewers_count || 0} />
+          {live.category ? (
+            <span className="rounded-full bg-black/45 px-3 py-1 text-xs font-medium text-white/88 backdrop-blur-md">
+              {live.category}
+            </span>
+          ) : null}
+        </div>
+
+        <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
+          <div className="flex items-end justify-between gap-4">
+            <div className="min-w-0">
+              <p className="mb-1 text-xs font-medium uppercase tracking-[0.14em] text-white/52">A la une</p>
+              <h2 className="line-clamp-2 text-xl font-semibold tracking-[-0.03em] text-white sm:text-2xl">{live.title || 'Live en cours'}</h2>
+              <div className="mt-3 flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.12] text-sm font-semibold text-white ring-1 ring-white/15 shadow-[0_12px_28px_rgba(0,0,0,0.35)]">
+                  {getCreatorInitial(live)}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-white">{getCreatorName(live)}</p>
+                  <p className="truncate text-sm text-white/58">{live.region || 'AfriWonder Live'}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="hidden shrink-0 sm:block">
+              <span className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950">
+                <Play className="h-4 w-4" />
+                Regarder
+              </span>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </Link>
+  );
+}
+
+function LiveStreamCard({ live, type = 'live' }) {
+  return (
+    <Link to={`${createPageUrl('LiveView')}?id=${live.id}`}>
+      <motion.div
+        whileHover={{ scale: 1.01 }}
+        className="overflow-hidden rounded-2xl bg-black/15 shadow-[0_20px_50px_rgba(0,0,0,0.35)] ring-1 ring-inset ring-white/[0.08]"
+      >
+        <div className="relative aspect-video overflow-hidden bg-black/20">
+          <img
+            src={getLiveCover(live)}
+            className={cn('h-full w-full object-cover', type === 'replay' ? 'opacity-82' : '')}
+            alt={live.title || ''}
+            loading="lazy"
+            decoding="async"
+          />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.04)_0%,rgba(2,6,23,0.10)_44%,rgba(2,6,23,0.78)_100%)]" />
+          <div className="absolute left-3 top-3">
+            <LiveStatusPill type={type} viewers={live.viewers_count || 0} />
+          </div>
+          {type === 'replay' ? (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/92 text-slate-900 shadow-[0_16px_40px_rgba(0,0,0,0.35)] ring-1 ring-white/30">
+                <Play className="ml-0.5 h-7 w-7" />
+              </div>
+            </div>
+          ) : (
+            <div className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-black/45 px-2.5 py-1 text-xs text-white/88 backdrop-blur-md">
+              <Eye className="h-3.5 w-3.5" />
+              {formatCompactNumber(live.viewers_count || 0)}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2 bg-white/[0.03] p-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-sm font-semibold text-white ring-1 ring-white/10">
+              {getCreatorInitial(live)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="line-clamp-2 font-semibold text-white">{live.title || 'Live AfriWonder'}</h3>
+              <p className="truncate text-sm text-white/54">{getCreatorName(live)}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-xs text-white/50">
+            {live.category ? <span className="rounded-full bg-white/[0.08] px-2.5 py-1">{live.category}</span> : null}
+            {live.region ? <span className="rounded-full bg-white/[0.08] px-2.5 py-1">{live.region}</span> : null}
+          </div>
+        </div>
+      </motion.div>
+    </Link>
+  );
+}
+
+function ScheduledLiveCard({ live, canStart, onStart }) {
+  return (
+    <div className={cn('p-4', LIVE_SOFT_TILE)}>
+      <div className="flex items-start gap-3">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-sm font-semibold text-white ring-1 ring-white/10">
+          {getCreatorInitial(live)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="truncate font-semibold text-white">{live.title || 'Live programme'}</h3>
+              <p className="truncate text-sm text-white/54">{getCreatorName(live)}</p>
+            </div>
+            <Badge className="border-0 bg-white/[0.08] text-white/78">Programme</Badge>
+          </div>
+          <p className="mt-2 text-sm text-white/52">{formatSchedule(live.scheduled_at || live.started_at)}</p>
+          {live.category ? <p className="mt-1 text-xs text-white/42">{live.category}</p> : null}
+        </div>
+      </div>
+
+      {canStart ? (
+        <div className="mt-4 flex justify-end">
+          <Button onClick={onStart} className="rounded-full bg-white text-slate-950 hover:bg-white/92">
+            <Radio className="mr-2 h-4 w-4" />
+            Demarrer
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function LiveEmptyState({ user }) {
+  return (
+    <div className="rounded-3xl bg-white/[0.03] px-6 py-14 text-center">
+      <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.06]">
+        <Radio className="h-7 w-7 text-white/45" strokeWidth={1.5} />
+      </div>
+      <h3 className="text-lg font-semibold text-white/95">Aucun live pour le moment</h3>
+      <p className="mt-2 text-sm leading-relaxed text-white/45">
+        {user ? 'Programmez un direct ou revenez dans quelques instants.' : 'Connectez-vous pour lancer ou suivre les prochains directs.'}
+      </p>
+    </div>
+  );
+}
 
 export default function Lives() {
   const navigate = useNavigate();
@@ -20,6 +296,7 @@ export default function Lives() {
   const [sortBy, setSortBy] = useState('viewers');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [regionFilter, setRegionFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [liveForm, setLiveForm] = useState({
     title: '',
     description: '',
@@ -48,7 +325,6 @@ export default function Lives() {
     refetchInterval: 10000
   });
 
-  // Récupérer les recommandations
   const { data: recommendations = [] } = useQuery({
     queryKey: ['live-recommendations', user?.id],
     queryFn: () => api.live.getRecommendations({ limit: 5 }),
@@ -95,7 +371,7 @@ export default function Lives() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['live-streams'] });
-      toast.success('Live programmé avec succès');
+      toast.success('Live programme avec succes');
       setShowCreateForm(false);
       setLiveForm({ title: '', description: '', scheduled_time: '' });
     },
@@ -104,406 +380,335 @@ export default function Lives() {
     }
   });
 
-  const activeLives = liveStreams.filter(l => l.status === 'live');
-  const scheduledLives = liveStreams.filter(l => l.status === 'scheduled');
-  const endedLivesWithReplay = liveStreams.filter(l => l.status === 'ended' && l.replay_url);
+  const activeLives = useMemo(() => liveStreams.filter((l) => l.status === 'live'), [liveStreams]);
+  const scheduledLives = useMemo(() => liveStreams.filter((l) => l.status === 'scheduled'), [liveStreams]);
+  const endedLivesWithReplay = useMemo(() => liveStreams.filter((l) => l.status === 'ended' && l.replay_url), [liveStreams]);
 
-  const featuredStream = (popularStreams.length > 0 ? popularStreams[0] : activeLives[0]);
+  const filteredRecommendations = useMemo(
+    () => filterLiveCollection(recommendations, searchQuery, regionFilter),
+    [recommendations, searchQuery, regionFilter]
+  );
+  const filteredFollowed = useMemo(
+    () => filterLiveCollection(followedStreams, searchQuery, regionFilter),
+    [followedStreams, searchQuery, regionFilter]
+  );
+  const filteredPopular = useMemo(
+    () => filterLiveCollection(popularStreams.length > 0 ? popularStreams : activeLives, searchQuery, regionFilter),
+    [popularStreams, activeLives, searchQuery, regionFilter]
+  );
+  const filteredScheduled = useMemo(
+    () => filterLiveCollection(scheduledLives, searchQuery, regionFilter),
+    [scheduledLives, searchQuery, regionFilter]
+  );
+  const filteredReplays = useMemo(
+    () => filterLiveCollection(endedLivesWithReplay, searchQuery, regionFilter),
+    [endedLivesWithReplay, searchQuery, regionFilter]
+  );
+  const filteredTrending = useMemo(
+    () => filterLiveCollection(trendingStreams, searchQuery, regionFilter),
+    [trendingStreams, searchQuery, regionFilter]
+  );
+
+  const featuredStream = filteredPopular[0] || filteredTrending[0];
+  const totalVisibleLives = filteredPopular.length + filteredScheduled.length + filteredReplays.length + filteredFollowed.length + filteredRecommendations.length;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white pb-24">
-      {/* Header: logo / back, search, GO LIVE, Portefeuille */}
-      <div className="sticky top-0 bg-gray-900/95 backdrop-blur border-b border-white/10 z-40">
-        <div className="flex items-center gap-2 px-3 py-2">
-          <button
-            onClick={() => (window.history.length > 1 ? navigate(-1) : navigate(createPageUrl('Home')))}
-            className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-all"
-            aria-label="Retour"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Rechercher un live..."
-              className="w-full pl-9 pr-4 py-2.5 rounded-full bg-gray-800 border border-gray-700 text-white placeholder:text-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+    <div className={`min-h-screen pb-24 text-white ${LIVE_PAGE_BG}`}>
+      <div className="sticky top-0 z-40 border-b border-white/[0.06] bg-[#070a12]/90 backdrop-blur-2xl">
+        <div className="mx-auto max-w-5xl px-4 py-3">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => (window.history.length > 1 ? navigate(-1) : navigate(createPageUrl('Home')))}
+                className="h-10 w-10 flex-shrink-0 rounded-full bg-white/[0.06] text-white/85 hover:bg-white/[0.10]"
+                aria-label="Retour"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <div className="min-w-0">
+                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/38">Live</p>
+                <h1 className="mt-1 text-[22px] font-semibold tracking-[-0.025em] text-white sm:text-[24px]">AfriWonder Live</h1>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-white/45">
+                  Directs, programmes et replays — une expérience fluide et lisible.
+                </p>
+              </div>
+            </div>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-white/55">
+              <Sparkles className="h-4 w-4" />
+            </div>
           </div>
-          {user && (
-            <>
-              <Button
-                onClick={() => navigate(createPageUrl('StartLive'))}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-full text-white font-semibold shrink-0"
-                size="sm"
-              >
-                <Radio className="w-4 h-4 mr-1" />
-                GO LIVE
-              </Button>
-              <Button
-                onClick={() => navigate(createPageUrl('Wallet'))}
-                variant="outline"
-                className="rounded-full border-blue-500/50 text-blue-400 hover:bg-blue-500/10 shrink-0"
-                size="sm"
-              >
-                <Wallet className="w-4 h-4 mr-1" />
-                Portefeuille
-              </Button>
-            </>
-          )}
+
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
+            <div className="relative min-w-0 flex-1">
+              <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-white/34" />
+              <Input
+                type="text"
+                placeholder="Rechercher un live, un createur, une categorie..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-14 rounded-[28px] border-0 bg-white/[0.06] pl-11 pr-4 text-white shadow-inner shadow-black/20 ring-1 ring-white/[0.08] placeholder:text-white/35"
+              />
+            </div>
+
+            {user ? (
+              <div className="flex shrink-0 flex-wrap gap-2 sm:flex-nowrap lg:max-w-none">
+                <Button
+                  onClick={() => navigate(createPageUrl('StartLive'))}
+                  className="h-12 min-w-0 flex-1 rounded-full bg-white px-4 text-sm font-semibold text-slate-950 hover:bg-white/92 sm:h-14 sm:flex-none sm:rounded-[24px] sm:px-5"
+                >
+                  <Radio className="mr-2 h-4 w-4 shrink-0" />
+                  <span className="truncate">Go live</span>
+                </Button>
+                <Button
+                  onClick={() => setShowCreateForm((value) => !value)}
+                  variant="outline"
+                  className="h-12 flex-1 rounded-full border-0 bg-white/[0.06] text-white/80 ring-1 ring-white/[0.08] hover:bg-white/[0.10] hover:text-white sm:h-14 sm:flex-1 sm:rounded-[24px] lg:min-w-[140px]"
+                >
+                  <Calendar className="mr-2 h-4 w-4 shrink-0" />
+                  Programmer
+                </Button>
+                <Button
+                  onClick={() => navigate(createPageUrl('Wallet'))}
+                  variant="outline"
+                  size="icon"
+                  className="h-12 w-12 shrink-0 rounded-full border-0 bg-white/[0.06] text-white/78 ring-1 ring-white/[0.08] hover:bg-white/[0.10] hover:text-white sm:h-14 sm:w-14 sm:rounded-[24px]"
+                  aria-label="Wallet"
+                >
+                  <Wallet className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {[
+              { label: 'En direct', value: formatCompactNumber(filteredPopular.length || activeLives.length), icon: Radio },
+              { label: 'Programmes', value: formatCompactNumber(filteredScheduled.length || scheduledLives.length), icon: Calendar },
+              { label: 'Replays', value: formatCompactNumber(filteredReplays.length || endedLivesWithReplay.length), icon: Play },
+            ].map(({ label, value, icon: Icon }) => (
+              <div key={label} className={LIVE_STAT_CELL}>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/[0.08]">
+                    <Icon className="h-[18px] w-[18px] text-white/55" strokeWidth={1.75} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xl font-semibold tracking-tight text-white">{value}</p>
+                    <p className="text-[13px] text-white/42">{label}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {categories.length > 0 ? (
+            <div className="scrollbar-hide -mx-1 mt-4 overflow-x-auto overscroll-x-contain px-1 pb-2 pt-0.5">
+              <div className="flex w-max items-center gap-2">
+                <button type="button" onClick={() => setCategoryFilter('')} className={liveChipClass(!categoryFilter)}>
+                  Tout
+                </button>
+                {categories.map((category) => (
+                  <button
+                    type="button"
+                    key={category.id}
+                    onClick={() => setCategoryFilter(categoryFilter === category.id ? '' : category.id)}
+                    className={liveChipClass(categoryFilter === category.id)}
+                    title={category.name}
+                  >
+                    <span className="min-w-0 max-w-[min(200px,72vw)] truncate sm:max-w-[240px]">{category.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-2 flex flex-wrap items-center gap-2 sm:mt-3">
+            {['viewers', 'recent', 'popularity', 'duration'].map((value) => (
+              <button key={value} type="button" onClick={() => setSortBy(value)} className={liveChipClass(sortBy === value)}>
+                {value === 'viewers' ? 'Spectateurs' : value === 'recent' ? 'Récent' : value === 'popularity' ? 'Populaire' : 'Durée'}
+              </button>
+            ))}
+
+            <div className="w-full min-w-0 sm:ml-auto sm:w-[min(100%,240px)] sm:max-w-[260px]">
+              <Input
+                type="text"
+                placeholder="Région"
+                value={regionFilter}
+                onChange={(e) => setRegionFilter(e.target.value)}
+                aria-label="Filtrer par région"
+                className="min-h-[44px] h-12 rounded-full border-0 bg-white/[0.07] px-4 text-[14px] font-medium leading-snug text-white shadow-none ring-1 ring-white/[0.12] placeholder:text-white/45 focus-visible:ring-2 focus-visible:ring-white/30"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="p-4 space-y-6">
-        {/* Hero: live à la une */}
-        {featuredStream && (
-          <Link to={`${createPageUrl('LiveView')}?id=${featuredStream.id}`}>
-            <motion.div className="relative rounded-2xl overflow-hidden bg-gray-800 aspect-video mb-4">
-              <img src={featuredStream.thumbnail_url || 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=600'} className="w-full h-full object-cover" alt="" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-              <div className="absolute top-3 left-3 flex items-center gap-2">
-                <span className="bg-red-500 text-white px-2 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> LIVE
-                </span>
-                <span className="bg-black/60 text-white px-2 py-1 rounded text-xs">{featuredStream.viewers_count ?? 0} spectateurs</span>
-              </div>
-              <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold">
-                    {(featuredStream.creator_name || featuredStream.creator?.username || '?')[0].toUpperCase()}
+      <div className="mx-auto max-w-5xl space-y-6 p-4">
+        {featuredStream ? <LiveHeroCard live={featuredStream} /> : null}
+
+        {popularStreams.length > 0 ? (
+          <section className={cn(LIVE_SECTION, LIVE_SECTION_PAD)}>
+            <LiveSectionHeader
+              icon={Trophy}
+              title="Top createurs"
+              subtitle="Les lives qui performent le mieux en ce moment."
+            />
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              {popularStreams.slice(0, 6).map((stream, index) => (
+                <div key={stream.id} className="flex items-center gap-3 rounded-full bg-white/[0.06] px-3 py-2 ring-1 ring-white/[0.08]">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.1] text-sm font-semibold text-white ring-1 ring-white/10">
+                    {getCreatorInitial(stream)}
                   </div>
-                  <div>
-                    <p className="font-semibold text-white">{featuredStream.creator_name || featuredStream.creator?.username || 'Créateur'}</p>
-                    <p className="text-xs text-blue-200">{featuredStream.title}</p>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-white">{getCreatorName(stream)}</p>
+                    <p className="text-xs text-white/46">#{index + 1} du moment</p>
                   </div>
                 </div>
-                <Button size="sm" className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full shrink-0">
-                  <Play className="w-4 h-4 mr-1" />
-                  Regarder
-                </Button>
-              </div>
-            </motion.div>
-          </Link>
-        )}
-
-        {/* Classement Top Créateurs */}
-        {popularStreams.length > 0 && (
-          <div className="flex items-center justify-between py-2 px-3 rounded-xl bg-gradient-to-r from-blue-600/20 to-indigo-600/20 border border-blue-500/30">
-            <div className="flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-amber-400" />
-              <div>
-                <p className="font-semibold text-white">Classement Top Créateurs</p>
-                <p className="text-xs text-gray-400">Découvrez les meilleurs de la semaine</p>
-              </div>
-            </div>
-            <div className="flex -space-x-2">
-              {popularStreams.slice(0, 3).map((s, i) => (
-                <div key={s.id} className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 border-2 border-gray-900 flex items-center justify-center text-xs font-bold text-white">
-                  {(s.creator_name || s.creator?.username || '?')[0].toUpperCase()}
-                </div>
               ))}
             </div>
-          </div>
-        )}
+          </section>
+        ) : null}
 
-        {/* Catégories */}
-        {categories.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-            <button
-              onClick={() => setCategoryFilter('')}
-              className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium ${!categoryFilter ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white' : 'bg-gray-800 text-gray-400 border border-gray-700'}`}
-            >
-              Tout
-            </button>
-            {categories.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setCategoryFilter(categoryFilter === c.id ? '' : c.id)}
-                className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 ${categoryFilter === c.id ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white' : 'bg-gray-800 text-gray-400 border border-gray-700'}`}
-              >
-                <span>{c.icon}</span>
-                {c.name}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Tri */}
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-sm text-gray-400">Trier:</span>
-          {['viewers', 'recent', 'popularity', 'duration'].map((s) => (
-            <button
-              key={s}
-              onClick={() => setSortBy(s)}
-              className={`px-3 py-1 rounded-full text-sm ${sortBy === s ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 border border-gray-700'}`}
-            >
-              {s === 'viewers' ? 'Spectateurs' : s === 'recent' ? 'Récent' : s === 'popularity' ? 'Populaire' : 'Durée'}
-            </button>
-          ))}
-        </div>
-
-        {/* Recommandations personnalisées */}
-        {recommendations.length > 0 && (
-          <div>
-            <h2 className="font-bold text-white mb-3 flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-blue-400" />
-              Recommandé pour vous
-            </h2>
-            <div className="space-y-3">
-              {recommendations.map((live) => (
-                <Link key={live.id} to={`${createPageUrl('LiveView')}?id=${live.id}`}>
-                  <motion.div whileHover={{ scale: 1.02 }} className="bg-gray-800 rounded-xl overflow-hidden border border-gray-700">
-                    <div className="relative aspect-video bg-gradient-to-br from-blue-600/30 to-indigo-600/30">
-                      <img src={live.thumbnail_url || 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=600'} className="w-full h-full object-cover" alt="" />
-                      <div className="absolute top-3 left-3 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold flex items-center gap-1 animate-pulse">
-                        <Radio className="w-3 h-3" /> LIVE
-                      </div>
-                      <div className="absolute bottom-3 left-3 bg-black/60 text-white px-2 py-1 rounded text-xs flex items-center gap-1">
-                        <Eye className="w-3 h-3" /> {live.viewers_count || 0}
-                      </div>
-                    </div>
-                    <div className="p-4">
-                      <h3 className="font-semibold text-white mb-1">{live.title}</h3>
-                      <div className="flex items-center gap-2 text-sm text-gray-400">
-                        <span>{live.creator?.username || live.creator_name || 'Créateur'}</span>
-                        {live.category && (
-                          <Badge className="text-xs bg-blue-500/20 text-blue-300 border-0">
-                            {live.category}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </motion.div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* CDC: Créateurs suivis en live */}
-        {followedStreams.length > 0 && (
-          <div>
-            <h2 className="font-bold text-white mb-3 flex items-center gap-2">Suivis en direct</h2>
-            <div className="space-y-3">
-              {followedStreams.map((live) => (
-                <Link key={live.id} to={`${createPageUrl('LiveView')}?id=${live.id}`}>
-                  <motion.div whileHover={{ scale: 1.02 }} className="bg-gray-800 rounded-xl overflow-hidden border border-gray-700">
-                    <div className="relative aspect-video bg-gradient-to-br from-blue-600/30 to-indigo-600/30">
-                      <img src={live.thumbnail_url || 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=600'} className="w-full h-full object-cover" alt="" />
-                      <div className="absolute top-3 left-3 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold flex items-center gap-1 animate-pulse">
-                        <Radio className="w-3 h-3" /> LIVE
-                      </div>
-                      <div className="absolute bottom-3 left-3 bg-black/60 text-white px-2 py-1 rounded text-xs flex items-center gap-1">
-                        <Eye className="w-3 h-3" /> {live.viewers_count}
-                      </div>
-                    </div>
-                    <div className="p-4">
-                      <h3 className="font-semibold text-white mb-1">{live.title}</h3>
-                      <p className="text-sm text-gray-400">{live.creator_name}</p>
-                    </div>
-                  </motion.div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Create Form */}
-        {showCreateForm && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
+        {showCreateForm ? (
+          <motion.section
+            initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-gray-800 rounded-2xl p-4 border border-gray-700"
+            className={cn(LIVE_SECTION, LIVE_SECTION_PAD)}
           >
-            <h3 className="font-semibold mb-3 text-white">Programmer un live</h3>
+            <LiveSectionHeader icon={Calendar} title="Programmer un live" subtitle="Planifiez proprement votre prochain direct." />
             <div className="space-y-3">
               <Input
                 placeholder="Titre du live"
                 value={liveForm.title}
                 onChange={(e) => setLiveForm({ ...liveForm, title: e.target.value })}
+                className="border-0 bg-white/[0.06] text-white ring-1 ring-white/[0.08] placeholder:text-white/35"
               />
               <Textarea
                 placeholder="Description"
                 value={liveForm.description}
                 onChange={(e) => setLiveForm({ ...liveForm, description: e.target.value })}
+                className="border-0 bg-white/[0.06] text-white ring-1 ring-white/[0.08] placeholder:text-white/35"
               />
               <Input
                 type="datetime-local"
                 value={liveForm.scheduled_time}
                 onChange={(e) => setLiveForm({ ...liveForm, scheduled_time: e.target.value })}
+                className="border-0 bg-white/[0.06] text-white ring-1 ring-white/[0.08]"
               />
               <div className="flex gap-2">
                 <Button
                   onClick={() => createLiveMutation.mutate(liveForm)}
-                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white"
+                  disabled={createLiveMutation.isPending || !liveForm.title.trim()}
+                  className="flex-1 rounded-full bg-white text-slate-950 hover:bg-white/92"
                 >
-                  Programmer
+                  {createLiveMutation.isPending ? 'Programmation...' : 'Programmer'}
                 </Button>
                 <Button
                   onClick={() => setShowCreateForm(false)}
                   variant="outline"
-                  className="flex-1"
+                  className="flex-1 rounded-full border-0 bg-white/[0.06] text-white/80 ring-1 ring-white/[0.08] hover:bg-white/[0.10] hover:text-white"
                 >
                   Annuler
                 </Button>
               </div>
             </div>
-          </motion.div>
-        )}
+          </motion.section>
+        ) : null}
 
-        {/* CDC: Trending / Popular - ordonné par spectateurs */}
-        {(popularStreams.length > 0 || activeLives.length > 0) && (
-          <div>
-            <h2 className="font-bold text-white mb-3 flex items-center gap-2">
-              <Radio className="w-5 h-5 text-blue-400 animate-pulse" />
-              En direct
-            </h2>
-            <div className="space-y-3">
-              {(popularStreams.length > 0 ? popularStreams : activeLives).map((live) => (
-                <Link
-                  key={live.id}
-                  to={`${createPageUrl('LiveView')}?id=${live.id}`}
-                >
-                  <motion.div
-                    whileHover={{ scale: 1.02 }}
-                    className="bg-gray-800 rounded-xl overflow-hidden border border-gray-700"
-                  >
-                    <div className="relative aspect-video bg-gradient-to-br from-blue-600/30 to-indigo-600/30">
-                      <img
-                        src={live.thumbnail_url || 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=600'}
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute top-3 left-3 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold flex items-center gap-1 animate-pulse">
-                        <Radio className="w-3 h-3" />
-                        LIVE
-                      </div>
-                      <div className="absolute bottom-3 left-3 bg-black/60 text-white px-2 py-1 rounded text-xs flex items-center gap-1">
-                        <Eye className="w-3 h-3" />
-                        {live.viewers_count}
-                      </div>
-                    </div>
-                    <div className="p-4">
-                      <h3 className="font-semibold text-white mb-1">{live.title}</h3>
-                      <p className="text-sm text-gray-400">{live.creator_name}</p>
-                    </div>
-                  </motion.div>
-                </Link>
+        {filteredRecommendations.length > 0 ? (
+          <section className={cn(LIVE_SECTION, LIVE_SECTION_PAD)}>
+            <LiveSectionHeader icon={Sparkles} title="Recommande pour vous" subtitle="Une selection plus claire de directs susceptibles de vous interesser." />
+            <div className="grid gap-3 sm:grid-cols-2">
+              {filteredRecommendations.map((live) => (
+                <LiveStreamCard key={live.id} live={live} type="live" />
               ))}
             </div>
-          </div>
-        )}
+          </section>
+        ) : null}
 
-        {/* Scheduled Lives */}
-        {scheduledLives.length > 0 && (
-          <div>
-            <h2 className="font-bold text-white mb-3 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-blue-400" />
-              Lives programmés
-            </h2>
-            <div className="space-y-3">
-              {scheduledLives.map((live) => (
-                <div
-                  key={live.id}
-                  className="bg-gray-800 rounded-xl p-4 border border-gray-700"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shrink-0">
-                      {live.creator_name?.[0]?.toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-white">{live.title}</h3>
-                      <p className="text-sm text-gray-400">{live.creator_name}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {new Date(live.scheduled_at || live.started_at).toLocaleString('fr-FR')}
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      <Badge className="bg-blue-500/20 text-blue-300 border-0">
-                        Programmé
-                      </Badge>
-                      {user?.id === live.creator_id && (
-                        <Button
-                          size="sm"
-                          onClick={async () => {
-                            try {
-                              await api.live.startScheduled(live.id);
-                              toast.success('Live démarré ! Redirection...');
-                              navigate(`${createPageUrl('LiveStream')}?id=${live.id}`);
-                            } catch (err) {
-                              toast.error(err?.apiMessage || err?.message || 'Erreur');
-                            }
-                          }}
-                          className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full text-xs"
-                        >
-                          <Radio className="w-3 h-3 mr-1" />
-                          Démarrer
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
+        {filteredFollowed.length > 0 ? (
+          <section className={cn(LIVE_SECTION, LIVE_SECTION_PAD)}>
+            <LiveSectionHeader icon={Radio} title="Suivis en direct" subtitle="Les createurs que vous suivez et qui sont actuellement en live." />
+            <div className="grid gap-3 sm:grid-cols-2">
+              {filteredFollowed.map((live) => (
+                <LiveStreamCard key={live.id} live={live} type="live" />
               ))}
             </div>
-          </div>
-        )}
+          </section>
+        ) : null}
 
-        {/* Replays (lives terminés avec replay) */}
-        {endedLivesWithReplay.length > 0 && (
-          <div>
-            <h2 className="font-bold text-white mb-3 flex items-center gap-2">
-              <Play className="w-5 h-5 text-gray-400" />
-              Replays
-            </h2>
-            <div className="space-y-3">
-              {endedLivesWithReplay.map((live) => (
-                <Link
-                  key={live.id}
-                  to={`${createPageUrl('LiveView')}?id=${live.id}`}
-                >
-                  <motion.div
-                    whileHover={{ scale: 1.02 }}
-                    className="bg-gray-800 rounded-xl overflow-hidden border border-gray-700"
-                  >
-                    <div className="relative aspect-video bg-gradient-to-br from-gray-600 to-gray-800">
-                      <img
-                        src={live.thumbnail_url || 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=600'}
-                        className="w-full h-full object-cover opacity-80"
-                        alt=""
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center">
-                          <Play className="w-7 h-7 text-gray-800 ml-1" />
-                        </div>
-                      </div>
-                      <div className="absolute top-3 left-3 bg-gray-700/90 text-white px-3 py-1 rounded-full text-sm font-medium">
-                        Replay
-                      </div>
-                    </div>
-                    <div className="p-4">
-                      <h3 className="font-semibold text-white mb-1">{live.title}</h3>
-                      <p className="text-sm text-gray-400">{live.creator_name}</p>
-                    </div>
-                  </motion.div>
-                </Link>
+        {filteredPopular.length > 0 ? (
+          <section className={cn(LIVE_SECTION, LIVE_SECTION_PAD)}>
+            <LiveSectionHeader
+              icon={Radio}
+              title="En direct"
+              subtitle="Les lives les plus regardes en ce moment."
+              action={
+                filteredTrending.length > 0 ? (
+                  <span className="text-sm text-white/54">{formatCompactNumber(filteredTrending.length)} tendances</span>
+                ) : null
+              }
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              {filteredPopular.map((live) => (
+                <LiveStreamCard key={live.id} live={live} type="live" />
               ))}
             </div>
-          </div>
-        )}
+          </section>
+        ) : null}
 
-        {activeLives.length === 0 && scheduledLives.length === 0 && endedLivesWithReplay.length === 0 && popularStreams.length === 0 && (
-          <div className="text-center py-16">
-            <Radio className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-white mb-2">
-              Aucun live pour le moment
-            </h3>
-            <p className="text-gray-400">
-              Soyez le premier à lancer un live !
-            </p>
-          </div>
-        )}
+        {filteredScheduled.length > 0 ? (
+          <section className={cn(LIVE_SECTION, LIVE_SECTION_PAD)}>
+            <LiveSectionHeader icon={Calendar} title="Lives programmes" subtitle="Les prochains directs deja planifies." />
+            <div className="space-y-2.5">
+              {filteredScheduled.map((live) => (
+                <ScheduledLiveCard
+                  key={live.id}
+                  live={live}
+                  canStart={user?.id === live.creator_id}
+                  onStart={async () => {
+                    try {
+                      await api.live.startScheduled(live.id);
+                      toast.success('Live demarre, redirection...');
+                      navigate(`${createPageUrl('LiveStream')}?id=${live.id}`);
+                    } catch (err) {
+                      toast.error(err?.apiMessage || err?.message || 'Erreur');
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {filteredReplays.length > 0 ? (
+          <section className={cn(LIVE_SECTION, LIVE_SECTION_PAD)}>
+            <LiveSectionHeader icon={Play} title="Replays" subtitle="Les meilleurs directs a revoir sans friction." />
+            <div className="grid gap-3 sm:grid-cols-2">
+              {filteredReplays.map((live) => (
+                <LiveStreamCard key={live.id} live={live} type="replay" />
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {totalVisibleLives === 0 ? <LiveEmptyState user={user} /> : null}
       </div>
 
       <BottomNav />
+
+      <style>{`
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        @supports selector(::-webkit-scrollbar) {
+          .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+          }
+        }
+      `}</style>
     </div>
   );
 }

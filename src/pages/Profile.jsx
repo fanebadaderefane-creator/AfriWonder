@@ -16,6 +16,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { cn, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
 import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
+import OptimizedImage from '@/components/common/ImageOptimizer';
 
 import { toast } from "sonner";
 
@@ -33,8 +34,40 @@ import SubscriptionTiers from '../components/creator/SubscriptionTiers';
 
 import { useAppMenu } from '@/contexts/AppMenuContext';
 import { useAuth } from '@/lib/AuthContext';
+import { getCachedProfile, cacheProfile } from '@/services/offlineProfilesMessages.service';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
+
+const PROFILE_PAGE_BG = 'bg-[#060913]';
+const PROFILE_SURFACE = 'rounded-[28px] border border-white/8 bg-[#0b111d]/92 shadow-[0_24px_80px_rgba(2,6,23,0.34)] backdrop-blur-2xl';
+const PROFILE_ICON_BUTTON = 'flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#0b111d]/82 text-white/86 shadow-[0_14px_30px_rgba(2,6,23,0.22)] backdrop-blur-xl transition-all hover:bg-white/[0.08] active:scale-95';
+
+function ProfileSectionCard({ className, children }) {
+  return <div className={cn(PROFILE_SURFACE, className)}>{children}</div>;
+}
+
+function ProfileEmptyState({ icon: Icon, title, description, action }) {
+  return (
+    <ProfileSectionCard className="p-8 text-center">
+      <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/[0.04]">
+        <Icon className="h-7 w-7 text-white/72" />
+      </div>
+      <h3 className="text-lg font-semibold text-white">{title}</h3>
+      <p className="mx-auto mt-2 max-w-[320px] text-sm leading-6 text-white/56">{description}</p>
+      {action ? <div className="mt-5">{action}</div> : null}
+    </ProfileSectionCard>
+  );
+}
+
+function ProfileGridSkeleton() {
+  return (
+    <div className="grid grid-cols-3 gap-1">
+      {Array.from({ length: 9 }).map((_, index) => (
+        <div key={index} className="aspect-[9/16] rounded-[18px] bg-white/[0.06] animate-pulse" />
+      ))}
+    </div>
+  );
+}
 
 
 export default function Profile() {
@@ -88,19 +121,22 @@ export default function Profile() {
   // Fetch profile user if viewing someone else's profile
 
   const { data: profileUser } = useQuery({
-
     queryKey: ['user', profileUserId],
-
     queryFn: async () => {
-
       if (isOwnProfile) return user;
-
-      return await api.users.getById(profileUserId);
-
+      const cached = await getCachedProfile(profileUserId);
+      let profile = cached?.profile || null;
+      try {
+        const fresh = await api.users.getById(profileUserId);
+        profile = fresh;
+        cacheProfile(profileUserId, fresh).catch(() => {});
+      } catch {
+        // hors-ligne : on reste sur le cache
+      }
+      return profile;
     },
-
-    enabled: !!profileUserId
-
+    enabled: !!profileUserId,
+    initialData: undefined,
   });
 
 
@@ -497,7 +533,7 @@ export default function Profile() {
 
   const VideoGrid = ({ videos, isOwnProfile, onDeleteVideo = (_video) => {}, likedByMeIds = new Set() }) => (
 
-    <div className="grid grid-cols-3 gap-0.5">
+    <div className="grid grid-cols-3 gap-1">
 
       {videos.map((video, index) => (
 
@@ -505,7 +541,7 @@ export default function Profile() {
 
           key={video.id}
 
-          className="relative aspect-[9/16] bg-gray-100 cursor-pointer group"
+          className="group relative aspect-[9/16] overflow-hidden rounded-[18px] border border-white/8 bg-white/[0.04] cursor-pointer"
 
         >
 
@@ -519,14 +555,15 @@ export default function Profile() {
 
               transition={{ delay: index * 0.03 }}
 
-              className="relative w-full h-full overflow-hidden bg-gray-200"
+              className="relative h-full w-full overflow-hidden bg-[#111827]"
 
             >
               {video.media_type === 'image' ? (
-                <img
+                <OptimizedImage
                   src={getAbsoluteImageUrl(video.thumbnail_url || video.video_url)}
                   alt={video.title}
                   className="w-full h-full object-cover absolute inset-0"
+                  priority={false}
                 />
               ) : video.video_url ? (
                 <div className="absolute inset-0 w-full h-full">
@@ -539,28 +576,30 @@ export default function Profile() {
                   />
                 </div>
               ) : isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
-                <img
+                <OptimizedImage
                   src={getAbsoluteImageUrl(video.thumbnail_url)}
                   alt={video.title}
                   className="w-full h-full object-cover absolute inset-0"
+                  priority={false}
                 />
               ) : (
-                <img
+                <OptimizedImage
                   src={VIDEO_PLACEHOLDER_IMG}
                   alt={video.title}
                   className="w-full h-full object-cover absolute inset-0"
+                  priority={false}
                 />
               )}
 
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+              <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-colors group-hover:bg-black/28 group-hover:opacity-100">
 
                 <Play className="w-8 h-8 text-white fill-white" />
 
               </div>
 
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/78 via-black/10 to-transparent" />
 
-              <div className="absolute bottom-1 left-1 right-1 flex items-center justify-between text-white text-xs drop-shadow">
+              <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-2 py-2 text-xs text-white drop-shadow">
 
                 <div className="flex items-center gap-1" title="Vues">
 
@@ -586,17 +625,17 @@ export default function Profile() {
 
           {isOwnProfile && (
 
-            <div className="absolute top-1 right-1 left-1 z-10 flex justify-between pointer-events-none">
+            <div className="pointer-events-none absolute left-1 right-1 top-1 z-10 flex justify-between">
               <div className="pointer-events-auto flex gap-1">
                 <Link to={`${createPageUrl('Create')}?edit=${video.id}`} onClick={(e) => e.stopPropagation()}>
-                  <button type="button" className="bg-black/60 hover:bg-black/80 text-white p-1.5 rounded-lg transition-all" title="Modifier">
+                  <button type="button" className="rounded-xl border border-white/12 bg-black/32 p-1.5 text-white transition-all hover:bg-black/56" title="Modifier">
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                 </Link>
                 <button
                   type="button"
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteVideo?.(video); }}
-                  className="bg-black/60 hover:bg-red-600/90 text-white p-1.5 rounded-lg transition-all"
+                  className="rounded-xl border border-white/12 bg-black/32 p-1.5 text-white transition-all hover:bg-red-600/90"
                   title="Supprimer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -618,10 +657,10 @@ export default function Profile() {
 
   if (!displayUser && !profileUserId) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
+      <div className={`w-full min-h-screen flex flex-col items-center justify-center ${PROFILE_PAGE_BG}`}>
         <div className="text-center px-6">
-          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-500">
+          <div className="mx-auto mb-4 h-16 w-16 rounded-full border-4 border-white/18 border-t-white/80 animate-spin" />
+          <p className="text-white/56">
             {isLoadingAuth ? 'Chargement...' : 'Profil indisponible.'}
           </p>
         </div>
@@ -636,11 +675,9 @@ export default function Profile() {
 
   return (
 
-    <div className="min-h-screen bg-gray-50 pb-32">
+    <div className={`w-full min-h-screen pb-32 ${PROFILE_PAGE_BG}`}>
 
-      {/* Back Button + Menu (Profil) */}
-
-      <div className="fixed top-4 left-4 z-50">
+      <div className="fixed top-4 left-4 z-50" aria-hidden={false}>
 
         <button
 
@@ -658,7 +695,9 @@ export default function Profile() {
 
           }}
 
-          className="w-10 h-10 bg-blue-600/90 backdrop-blur rounded-full flex items-center justify-center text-white hover:bg-blue-600 transition-all shadow-lg active:scale-95"
+          className={PROFILE_ICON_BUTTON}
+
+          aria-label="Retour"
 
         >
 
@@ -674,7 +713,7 @@ export default function Profile() {
 
           onClick={openMenu}
 
-          className="w-10 h-10 bg-blue-600/90 backdrop-blur rounded-full flex items-center justify-center text-white hover:bg-blue-600 transition-all shadow-lg active:scale-95"
+          className={PROFILE_ICON_BUTTON}
 
           aria-label="Ouvrir le menu"
 
@@ -754,38 +793,40 @@ export default function Profile() {
 
       />
 
+      <div className="mx-auto max-w-5xl px-4">
       {isOwnProfile && orderStats && (orderStats.order_count > 0 || orderStats.total_spent > 0) && (
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
+        <ProfileSectionCard className="mt-4 p-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <span className="text-sm font-medium text-gray-700">Mes achats</span>
+            <span className="text-sm font-medium text-white/84">Mes achats</span>
             {orderStats.is_loyal_client && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-medium">Client fidèle</span>
+              <span className="rounded-full border border-white/12 bg-white/[0.05] px-2 py-0.5 text-xs font-medium text-white/72">Client fidèle</span>
             )}
           </div>
-          <div className="flex gap-4 mt-2 text-sm text-gray-600">
+          <div className="mt-3 flex flex-wrap gap-4 text-sm text-white/62">
             <span>{orderStats.order_count} commande{orderStats.order_count !== 1 ? 's' : ''}</span>
             <span>{Number(orderStats.total_spent || 0).toLocaleString('fr-FR')} {orderStats.currency || 'FCFA'} dépensés</span>
             {orderStats.favorite_category && <span>Catégorie préférée : {orderStats.favorite_category}</span>}
           </div>
           {orderStats.yearly_history && Object.keys(orderStats.yearly_history).length > 0 && (
-            <p className="text-xs text-gray-500 mt-1">Historique : {Object.entries(orderStats.yearly_history).map(([y, total]) => `${y}: ${Number(total).toLocaleString('fr-FR')} FCFA`).join(' - ')}</p>
+            <p className="mt-2 text-xs text-white/42">Historique : {Object.entries(orderStats.yearly_history).map(([y, total]) => `${y}: ${Number(total).toLocaleString('fr-FR')} FCFA`).join(' - ')}</p>
           )}
-        </div>
+        </ProfileSectionCard>
       )}
 
-      <div className="sticky top-0 bg-white border-b border-gray-100 z-30">
+      <div className="sticky top-0 z-30 mt-4">
+        <ProfileSectionCard className="rounded-[24px] px-2 py-2">
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
 
           {/* @ts-expect-error - TabsList accepts children via forwardRef */}
-          <TabsList className="w-full bg-transparent h-12 p-0 justify-around">
+          <TabsList className="h-auto w-full justify-around bg-transparent p-0">
 
             {/* @ts-expect-error - TabsTrigger accepts children via forwardRef */}
             <TabsTrigger 
 
               value="videos"
 
-              className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
+              className="flex-1 rounded-2xl border border-transparent py-3 text-white/50 data-[state=active]:border-white/12 data-[state=active]:bg-white/[0.06] data-[state=active]:text-white data-[state=active]:shadow-none"
 
             >
 
@@ -800,7 +841,7 @@ export default function Profile() {
 
                   value="brouillons"
 
-                  className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
+                  className="flex-1 rounded-2xl border border-transparent py-3 text-white/50 data-[state=active]:border-white/12 data-[state=active]:bg-white/[0.06] data-[state=active]:text-white data-[state=active]:shadow-none"
 
                 >
 
@@ -812,7 +853,7 @@ export default function Profile() {
 
                   value="saved"
 
-                  className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
+                  className="flex-1 rounded-2xl border border-transparent py-3 text-white/50 data-[state=active]:border-white/12 data-[state=active]:bg-white/[0.06] data-[state=active]:text-white data-[state=active]:shadow-none"
 
                 >
 
@@ -828,7 +869,7 @@ export default function Profile() {
 
               value="liked"
 
-              className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
+              className="flex-1 rounded-2xl border border-transparent py-3 text-white/50 data-[state=active]:border-white/12 data-[state=active]:bg-white/[0.06] data-[state=active]:text-white data-[state=active]:shadow-none"
 
             >
 
@@ -843,7 +884,7 @@ export default function Profile() {
 
                   value="shop"
 
-                  className="flex-1 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
+                  className="flex-1 rounded-2xl border border-transparent py-3 text-white/50 data-[state=active]:border-white/12 data-[state=active]:bg-white/[0.06] data-[state=active]:text-white data-[state=active]:shadow-none"
 
                 >
 
@@ -858,6 +899,7 @@ export default function Profile() {
 
         </Tabs>
 
+        </ProfileSectionCard>
       </div>
 
 
@@ -866,11 +908,11 @@ export default function Profile() {
 
       {activeTab === 'videos' && publishedVideos.length === 0 && !videosLoading && isOwnProfile && (
 
-        <div className="p-4 pb-8">
+        <div className="py-4">
 
-          <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-6 text-center text-white shadow-lg">
+          <ProfileSectionCard className="p-6 text-center">
 
-            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/[0.05]">
 
               <Play className="w-8 h-8" />
 
@@ -878,7 +920,7 @@ export default function Profile() {
 
             <h3 className="text-xl font-bold mb-2">Publiez votre premiere video !</h3>
 
-            <p className="text-white/90 text-sm mb-6">
+            <p className="mb-6 text-sm text-white/68">
 
               Partagez vos talents et connectez-vous avec la communaute AfriWonder
 
@@ -886,7 +928,7 @@ export default function Profile() {
 
             <Link to={createPageUrl('Create')}>
 
-              <button className="bg-white text-primary px-8 py-3.5 rounded-full font-bold hover:bg-gray-50 transition-all transform hover:scale-105 shadow-md">
+              <button className="rounded-full bg-white px-8 py-3.5 font-bold text-slate-950 transition-all hover:bg-white/92">
 
                 Commencer maintenant
 
@@ -894,7 +936,7 @@ export default function Profile() {
 
             </Link>
 
-          </div>
+          </ProfileSectionCard>
 
         </div>
 
@@ -906,11 +948,11 @@ export default function Profile() {
 
       {activeTab === 'videos' && videos.length > 0 && (
 
-        <div className="p-4">
+        <div className="py-4">
 
-          <div className="flex items-center justify-between mb-2">
+          <div className="mb-3 flex items-center justify-between">
 
-            <h3 className="text-sm font-semibold text-gray-600">Video mise en avant</h3>
+            <h3 className="text-sm font-semibold text-white/72">Video mise en avant</h3>
 
             {isOwnProfile && (
 
@@ -918,7 +960,7 @@ export default function Profile() {
 
                 onClick={() => setShowFeaturedSelector(true)}
 
-                className="text-primary text-xs font-medium"
+                className="text-xs font-medium text-white/72 hover:text-white"
 
               >
 
@@ -936,13 +978,14 @@ export default function Profile() {
 
             <Link to={`${createPageUrl('VideoView')}?id=${featuredVideo.id}`}>
 
-              <div className="relative aspect-video bg-gray-200 rounded-2xl overflow-hidden">
-
+              <ProfileSectionCard className="relative aspect-video overflow-hidden rounded-[28px]">
+              
                 {featuredVideo.media_type === 'image' ? (
-                  <img
+                  <OptimizedImage
                     src={getAbsoluteImageUrl(featuredVideo.thumbnail_url || featuredVideo.video_url)}
                     alt={featuredVideo.title}
                     className="w-full h-full object-cover"
+                    priority={false}
                   />
                 ) : featuredVideo.video_url ? (
                   <VideoFrameThumbnail
@@ -953,36 +996,42 @@ export default function Profile() {
                     frameTime={2}
                   />
                 ) : isValidThumbnailUrl(featuredVideo.thumbnail_url, featuredVideo.video_url) ? (
-                  <img src={getAbsoluteImageUrl(featuredVideo.thumbnail_url)} alt={featuredVideo.title} className="w-full h-full object-cover" />
+                  <OptimizedImage
+                    src={getAbsoluteImageUrl(featuredVideo.thumbnail_url)}
+                    alt={featuredVideo.title}
+                    className="w-full h-full object-cover"
+                    priority={false}
+                  />
                 ) : (
-                  <img
+                  <OptimizedImage
                     src={VIDEO_PLACEHOLDER_IMG}
                     alt={featuredVideo.title}
                     className="w-full h-full object-cover"
+                    priority={false}
                   />
                 )}
 
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
+                <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/72 to-transparent p-4">
 
                   <div>
 
                     <p className="text-white font-semibold mb-1">{featuredVideo.title}</p>
 
-                    <p className="text-white/80 text-sm">{(featuredVideo.views || 0)} vues - {featuredVideo.likes || 0} likes</p>
+                    <p className="text-sm text-white/72">{(featuredVideo.views || 0)} vues - {featuredVideo.likes || 0} likes</p>
 
                   </div>
 
                 </div>
 
-              </div>
+              </ProfileSectionCard>
 
             </Link>
 
           ) : isOwnProfile ? (
 
-            <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-6 text-center text-white shadow-lg">
+            <ProfileSectionCard className="p-6 text-center">
 
-              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/[0.05]">
 
                 <Play className="w-8 h-8" />
 
@@ -990,7 +1039,7 @@ export default function Profile() {
 
               <h3 className="text-xl font-bold mb-2">Choisir une Video mise en avant</h3>
 
-              <p className="text-white/90 text-sm mb-6">
+              <p className="mb-6 text-sm text-white/68">
 
                 Elle sera affichee en grand sur votre profil
 
@@ -1000,7 +1049,7 @@ export default function Profile() {
 
                 onClick={() => setShowFeaturedSelector(true)}
 
-                className="bg-white text-primary px-8 py-3.5 rounded-full font-bold hover:bg-gray-50 transition-all transform hover:scale-105 shadow-md"
+                className="rounded-full bg-white px-8 py-3.5 font-bold text-slate-950 transition-all hover:bg-white/92"
 
               >
 
@@ -1008,7 +1057,7 @@ export default function Profile() {
 
               </button>
 
-            </div>
+            </ProfileSectionCard>
 
           ) : null}
 
@@ -1020,19 +1069,13 @@ export default function Profile() {
 
       {/* Content */}
 
-      <div>
+      <div className="space-y-4 pb-4">
 
         {activeTab === 'videos' && (
 
           videosLoading ? (
 
-            <div className="text-center py-16">
-
-              <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-
-              <p className="text-gray-500">Chargement des videos...</p>
-
-            </div>
+            <ProfileGridSkeleton />
 
           ) : publishedVideos.length > 0 ? (
 
@@ -1041,12 +1084,12 @@ export default function Profile() {
               <VideoGrid videos={publishedVideos} isOwnProfile={isOwnProfile} onDeleteVideo={handleDeleteVideo} likedByMeIds={likedByMeIds} />
 
               {hasNextPage && (
-                <div className="p-4 flex justify-center">
+                <div className="flex justify-center pt-4">
                   <button
                     type="button"
                     onClick={() => fetchNextPage()}
                     disabled={isFetchingNextPage}
-                    className="px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white font-medium rounded-full transition-colors"
+                    className="rounded-full bg-white px-6 py-2.5 font-medium text-slate-950 transition-colors hover:bg-white/92 disabled:opacity-60"
                   >
                     {isFetchingNextPage ? 'Chargement...' : 'Voir plus'}
                   </button>
@@ -1067,16 +1110,11 @@ export default function Profile() {
             <VideoGrid videos={draftVideos} isOwnProfile={true} onDeleteVideo={handleDeleteVideo} likedByMeIds={likedByMeIds} />
 
           ) : (
-
-            <div className="text-center py-16">
-
-              <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-
-              <p className="text-gray-500">Aucun brouillon</p>
-
-              <p className="text-gray-400 text-sm mt-1">Les videos en prive apparaissent ici</p>
-
-            </div>
+            <ProfileEmptyState
+              icon={FileText}
+              title="Aucun brouillon"
+              description="Les videos en prive apparaissent ici jusqu'a leur publication."
+            />
 
           )
 
@@ -1091,14 +1129,11 @@ export default function Profile() {
             <VideoGrid videos={savedVideos} isOwnProfile={false} likedByMeIds={likedByMeIds} />
 
           ) : (
-
-            <div className="text-center py-16">
-
-              <Bookmark className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-
-              <p className="text-gray-500">Aucune video sauvegardee</p>
-
-            </div>
+            <ProfileEmptyState
+              icon={Bookmark}
+              title="Aucune video sauvegardee"
+              description="Enregistrez du contenu pour le retrouver rapidement ici."
+            />
 
           )
 
@@ -1113,14 +1148,11 @@ export default function Profile() {
             <VideoGrid videos={likedVideos} isOwnProfile={false} likedByMeIds={likedByMeIds} />
 
           ) : (
-
-            <div className="text-center py-16">
-
-              <Heart className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-
-              <p className="text-gray-500">Aucun j'aime</p>
-
-            </div>
+            <ProfileEmptyState
+              icon={Heart}
+              title="Aucun j'aime"
+              description="Les videos appreciees apparaitront ici pour etre retrouvees plus vite."
+            />
 
           )
 
@@ -1130,7 +1162,7 @@ export default function Profile() {
 
         {activeTab === 'shop' && (
 
-          <div className="p-4 grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
 
             {products.map((product) => (
 
@@ -1140,24 +1172,24 @@ export default function Profile() {
 
                 to={`${createPageUrl('Product')}?id=${product.id}`}
 
-                className="bg-white rounded-xl overflow-hidden shadow-sm"
+                className="overflow-hidden rounded-[24px] border border-white/8 bg-[#0b111d]/92 shadow-[0_18px_54px_rgba(2,6,23,0.22)]"
 
               >
 
-                <div className="aspect-square min-h-[140px] bg-gray-100">
-                  <img
+                <div className="aspect-square min-h-[140px] bg-white/[0.04]">
+                  <OptimizedImage
                     src={getAbsoluteImageUrl(product.images?.[0]) || MARKETPLACE_PLACEHOLDER_IMG}
                     alt={product.name}
                     className="w-full h-full object-cover"
-                    onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
+                    priority={false}
                   />
                 </div>
 
                 <div className="p-3">
 
-                  <p className="font-medium text-sm truncate">{product.name}</p>
+                  <p className="truncate text-sm font-medium text-white">{product.name}</p>
 
-                  <p className="text-primary font-bold">{product.price?.toLocaleString()} FCFA</p>
+                  <p className="font-bold text-white/74">{product.price?.toLocaleString()} FCFA</p>
 
                 </div>
 
@@ -1169,6 +1201,7 @@ export default function Profile() {
 
         )}
 
+      </div>
       </div>
 
 

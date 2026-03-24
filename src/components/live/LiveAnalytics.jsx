@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, Eye, Heart, Gift, MessageSquare, Users, Clock, DollarSign, Download, FileText } from 'lucide-react';
+import { TrendingUp, Eye, Heart, MessageSquare, Clock, DollarSign, Download, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 

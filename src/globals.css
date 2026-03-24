@@ -231,10 +231,8 @@ img {
   display: block;
 }
 
-/* Optimize videos for performance */
+/* Vidéos : pas de content-visibility (risque d’écran vide avec lecture audio). */
 video {
-  content-visibility: auto;
-  will-change: transform;
   max-width: 100%;
   height: auto;
   display: block;

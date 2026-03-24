@@ -1,4 +1,4 @@
-const CACHE_NAME = 'africonnect-v1';
+const CACHE_NAME = 'afriwonder-shell-v2';
 
 const urlsToCache = ['/', '/index.html'];
 
@@ -24,18 +24,41 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Network-first pour HTML, cache-first pour le reste (shell PWA très léger)
 self.addEventListener('fetch', (event) => {
   if (!event.request.url.startsWith(self.location.origin)) return;
+
+  const acceptHeader = event.request.headers.get('accept') || '';
+  const isHtml = acceptHeader.includes('text/html');
+
+  if (isHtml) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
+          return response;
+        })
+        .catch(async () => {
+          const cached = await caches.match(event.request);
+          if (cached) return cached;
+          return caches.match('/index.html');
+        })
+    );
+    return;
+  }
+
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        const responseToCache = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
-        return response;
-      })
-      .catch(() => caches.match(event.request))
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached;
+      return fetch(event.request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
+          return response;
+        })
+        .catch(() => cached || fetch(event.request));
+    })
   );
 });
 

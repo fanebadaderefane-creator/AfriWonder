@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft, Star, Lock } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
-import { badgeDefinitions } from '@/components/common/GamificationService';
 import { motion } from 'framer-motion';
 import { MOCK_USER_BADGES, MOCK_USER_POINTS, MOCK_USER_STATS, MOCK_BADGES } from '@/data/gamificationMock';
 

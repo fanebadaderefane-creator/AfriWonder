@@ -31,6 +31,9 @@ export default function CommentSheet({
   videoId, 
 
   comments = [], 
+  isLoading = false,
+  isError = false,
+  onRetry,
 
   onTip,
 
@@ -297,40 +300,43 @@ export default function CommentSheet({
     return (
       <div
         key={comment.id}
-        className={cn('flex gap-3', isReply && 'ml-10 mt-3 pl-2 border-l-2 border-blue-100')}
+        className={cn(
+          'flex gap-3 rounded-[22px] border border-white/8 bg-white/[0.03] p-3 shadow-[0_14px_40px_rgba(2,6,23,0.16)] backdrop-blur-xl',
+          isReply && 'ml-10 mt-3 border-white/6 bg-white/[0.02]'
+        )}
       >
-        <Avatar className="w-8 h-8 flex-shrink-0">
+        <Avatar className="h-9 w-9 flex-shrink-0 border border-white/12">
           <AvatarImage src={comment.user_avatar ?? comment.user?.profile_image} />
-          <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white text-xs">
+          <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-xs text-white">
             {displayName?.[0]?.toUpperCase()}
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-sm">{displayName}</span>
+            <span className="text-sm font-semibold text-white">{displayName}</span>
             {comment.is_creator && (
-              <span className="bg-blue-500/10 text-blue-500 text-xs px-2 py-0.5 rounded-full font-medium">
+              <span className="rounded-full border border-blue-400/18 bg-blue-400/12 px-2 py-0.5 text-xs font-medium text-blue-200">
                 Créateur
               </span>
             )}
-            <span className="text-gray-400 text-xs">
+            <span className="text-xs text-white/38">
               {formatTime(comment.created_date ?? comment.created_at)}
             </span>
           </div>
-          <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap break-words">{displayText}</p>
+          <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-white/82">{displayText}</p>
           {isLong && (
             <button
               type="button"
               onClick={() => toggleCommentExpand(comment.id)}
-              className="text-xs text-blue-500 font-medium mt-0.5 hover:text-blue-600"
+              className="mt-1 text-xs font-medium text-blue-300 transition-colors hover:text-blue-200"
             >
               {isExpanded ? 'Voir moins' : 'Voir plus'}
             </button>
           )}
-          <div className="flex items-center gap-4 mt-2">
+          <div className="mt-2 flex items-center gap-4">
             <button
               onClick={() => handleLikeComment(comment)}
-              className="flex items-center gap-1 text-gray-400 hover:text-red-500 transition"
+              className="flex items-center gap-1 text-white/44 transition hover:text-red-400"
             >
               <Heart
                 className={cn(
@@ -341,7 +347,7 @@ export default function CommentSheet({
               <span
                 className={cn(
                   'text-xs',
-                  likedComments.has(comment.id) ? 'text-red-500' : ''
+                  likedComments.has(comment.id) ? 'text-red-400' : ''
                 )}
               >
                 {(comment.likes || 0) + (likedComments.has(comment.id) ? 1 : 0)}
@@ -349,7 +355,7 @@ export default function CommentSheet({
             </button>
             <button
               onClick={() => handleReply(comment)}
-              className="text-xs text-gray-400 hover:text-blue-500 font-medium transition"
+              className="text-xs font-medium text-white/46 transition hover:text-blue-300"
             >
               Répondre
             </button>
@@ -370,11 +376,11 @@ export default function CommentSheet({
 
     <Sheet open={isOpen} onOpenChange={onClose}>
 
-      <SheetContent side="bottom" className="h-[70vh] rounded-t-3xl px-0">
+      <SheetContent side="bottom" className="h-[78vh] rounded-t-[32px] border border-white/10 bg-[#0b111d] px-0 text-white shadow-[0_-24px_80px_rgba(2,6,23,0.42)]">
 
-        <SheetHeader className="px-4 pb-3 border-b">
+        <SheetHeader className="border-b border-white/8 px-4 pb-3">
 
-          <SheetTitle className="text-center font-bold">
+          <SheetTitle className="text-center text-base font-semibold tracking-[-0.03em] text-white">
 
             {(comments?.length || 0) + (comments?.reduce((acc, c) => acc + (c.replies?.length || 0), 0) || 0)} commentaires
 
@@ -384,9 +390,15 @@ export default function CommentSheet({
 
 
 
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.22, ease: 'easeOut' }}
+          className="flex h-[calc(78vh-72px)] flex-col"
+        >
         {/* Comments List */}
 
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 max-h-[calc(70vh-140px)]">
+        <div className="max-h-[calc(78vh-154px)] flex-1 space-y-4 overflow-y-auto px-4 py-4">
 
           <AnimatePresence>
             {comments?.map((comment, index) => (
@@ -407,9 +419,29 @@ export default function CommentSheet({
 
 
 
-          {(!comments || comments.length === 0) && (
+          {isLoading && (
+            <div className="py-12 text-center text-white/46">
+              <p>Chargement des commentaires...</p>
+            </div>
+          )}
 
-            <div className="text-center py-12 text-gray-400">
+          {!isLoading && isError && (
+            <div className="py-12 text-center text-white/46">
+              <p>Impossible de charger les commentaires.</p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onRetry?.()}
+                className="mt-3 rounded-full border-white/12 bg-white/[0.04] text-white/78 hover:bg-white/[0.08] hover:text-white"
+              >
+                Réessayer
+              </Button>
+            </div>
+          )}
+
+          {!isLoading && !isError && (!comments || comments.length === 0) && (
+
+            <div className="py-12 text-center text-white/46">
 
               <p>Soyez le premier à commenter !</p>
 
@@ -425,9 +457,9 @@ export default function CommentSheet({
 
         {(replyingTo || editingComment) && (
 
-          <div className="px-4 py-2 bg-gray-50 border-t flex items-center justify-between">
+          <div className="flex items-center justify-between border-t border-white/8 bg-white/[0.03] px-4 py-2">
 
-            <span className="text-sm text-gray-500">
+            <span className="text-sm text-white/58">
 
               {editingComment ? (
 
@@ -445,7 +477,7 @@ export default function CommentSheet({
 
               onClick={handleCancelEdit}
 
-              className="text-sm text-blue-500 font-medium"
+              className="text-sm font-medium text-blue-300"
 
             >
 
@@ -461,8 +493,15 @@ export default function CommentSheet({
 
         {/* Input */}
 
-        <form onSubmit={handleSubmit} className="px-4 py-3 border-t bg-white flex items-center gap-3">
+        <motion.form
+          onSubmit={handleSubmit}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2, ease: 'easeOut', delay: 0.04 }}
+          className="flex items-center gap-3 border-t border-white/8 bg-[#0b111d] px-4 py-3"
+        >
 
+          <motion.div whileTap={{ scale: 0.96 }}>
           <Button
 
             type="button"
@@ -473,13 +512,14 @@ export default function CommentSheet({
 
             onClick={(e) => { e?.stopPropagation?.(); onTip?.(); }}
 
-            className="flex-shrink-0 border-blue-200 text-blue-500 hover:bg-blue-50"
+            className="flex-shrink-0 rounded-full border-white/12 bg-white/[0.04] text-blue-300 hover:bg-white/[0.08] hover:text-blue-200"
 
           >
 
             <Coins className="w-5 h-5" />
 
           </Button>
+          </motion.div>
 
           
 
@@ -493,12 +533,13 @@ export default function CommentSheet({
 
             placeholder="Ajouter un commentaire..."
 
-            className="flex-1 border-gray-200 rounded-full bg-gray-50 focus:bg-white"
+            className="h-12 flex-1 rounded-full border-white/10 bg-white/[0.04] text-base text-white placeholder:text-white/30 caret-white focus:bg-white/[0.06] focus:text-white"
 
           />
 
           
 
+          <motion.div whileTap={{ scale: 0.96 }}>
           <Button
 
             type="submit"
@@ -507,15 +548,17 @@ export default function CommentSheet({
 
             disabled={!newComment.trim()}
 
-            className="flex-shrink-0 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 disabled:opacity-50"
+            className="flex-shrink-0 rounded-full bg-white text-slate-950 hover:bg-white/92 disabled:opacity-50"
 
           >
 
             <Send className="w-5 h-5" />
 
           </Button>
+          </motion.div>
 
-        </form>
+        </motion.form>
+        </motion.div>
 
       </SheetContent>
 

@@ -109,6 +109,7 @@ body {
 
 #root,
 #app {
+  min-height: 100dvh;
   height: calc(var(--app-vh) * 100);
   width: 100%;
   position: relative;
@@ -117,6 +118,10 @@ body {
 /* Single scrollable area per screen */
 .screen {
   height: calc(var(--app-vh) * 100);
+  min-height: calc(var(--app-vh, 1vh) * 100);
+  width: 100%;
+  max-width: none;
+  display: block;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   /* Masquer la scrollbar mais garder le scroll fonctionnel */
@@ -136,6 +141,11 @@ body {
   overflow-x: hidden;
 }
 
+/* Pages plein ecran (Home feed video) : un seul scroll interne, pas de scroll externe concurrent */
+.screen-fullscreen {
+  overflow: hidden !important;
+}
+
 /* Utilitaire global : masquer la scrollbar (Marketplace, VideoEditor, etc.) */
 .scrollbar-hide {
   -ms-overflow-style: none;
@@ -150,6 +160,26 @@ body {
 
 body {
   overscroll-behavior: none;
+}
+
+/* Feed Home : forcer le paint des lecteurs (évite écran vide si une feuille globale met content-visibility sur video) */
+video[data-afw-feed-video="1"] {
+  content-visibility: visible !important;
+}
+
+/* Même cause que la vidéo : img globales en content-visibility:auto peuvent laisser le poster non peint. */
+img[data-afw-feed-poster="1"] {
+  content-visibility: visible !important;
+}
+
+/*
+ * HTML au-dessus du plan <video> (Safari iOS / WebView / certains Chrome Android) :
+ * sans calque de composition dédié, la vidéo peut recouvrir likes / texte / header alors qu’elle reste visible.
+ */
+.afw-html-composite-layer,
+[data-afw-video-ui-layer="1"] {
+  content-visibility: visible !important;
+  /* Pas de transform ici : sous Firefox, translate3d + ancêtre Framer (opacity) peut masquer tout le feed. */
 }
 
 .scrollable {

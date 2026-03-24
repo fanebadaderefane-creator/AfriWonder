@@ -11,7 +11,7 @@ import {
   Heart, Share2, BadgeCheck, ChevronLeft, ChevronRight, Shield, HelpCircle, Send,
   Flag, MessageCircle, MessageCircleMore, Bell, BellOff, Calendar, Tag, Scale, Gavel, Users
 } from 'lucide-react';
-import { addToCompare, getCompareIds } from '@/pages/CompareProducts';
+import { addToCompare } from '@/pages/CompareProducts';
 
 /** Génère l'URL WhatsApp (Phase 1: contact direct, pas de paiement sur AfriWonder) */
 function getWhatsAppUrl(phoneOrWhatsapp, message = '') {
@@ -24,10 +24,12 @@ function getWhatsAppUrl(phoneOrWhatsapp, message = '') {
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from '@/lib/utils';
+import { applyPageMetaTags, upsertJsonLdScript, removeJsonLdScript } from '@/lib/seoUtils';
 import { toast } from "sonner";
 import BottomNav from '../components/navigation/BottomNav';
 import { useMarketplaceCurrency } from '@/contexts/MarketplaceCurrencyContext';
 import CurrencySelector from '../components/marketplace/CurrencySelector';
+import OptimizedImage from '@/components/common/ImageOptimizer';
 
 const paymentMethods = {
   orange_money: '🟠',
@@ -176,7 +178,53 @@ export default function Product() {
     onError: (e) => toast.error(e?.response?.data?.error?.message || e?.message || 'Erreur')
   });
 
-  const { formatPrice } = useMarketplaceCurrency();
+  const { formatPrice, currency } = useMarketplaceCurrency();
+
+  // SEO : titre, Open Graph, Twitter et JSON-LD Product quand les données sont chargées
+  useEffect(() => {
+    if (!product || isLoading) return;
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://afriwonder.com';
+    const title = `${product.name} | AfriWonder`;
+    const rawDesc = product.description || product.short_description || '';
+    const description =
+      typeof rawDesc === 'string'
+        ? rawDesc.replace(/<[^>]+>/g, '').slice(0, 160).trim() || `Achetez ${product.name} sur AfriWonder.`
+        : `Achetez ${product.name} sur AfriWonder.`;
+    const url = window.location.href;
+    const img = (product.images && product.images[0]) || product.image_url;
+    const imageAbs = img ? getAbsoluteImageUrl(img) : `${origin}/icon-512.png`;
+
+    applyPageMetaTags({
+      title,
+      description,
+      url,
+      ogType: 'website',
+      image: imageAbs,
+    });
+
+    const price = product.price;
+    const stock = product.stock ?? 0;
+    upsertJsonLdScript('afriwonder-product-jsonld', {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: product.name,
+      description,
+      image: imageAbs,
+      ...(price != null
+        ? {
+            offers: {
+              '@type': 'Offer',
+              price: String(price),
+              priceCurrency: currency || 'XOF',
+              availability: stock > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+              url,
+            },
+          }
+        : {}),
+    });
+
+    return () => removeJsonLdScript('afriwonder-product-jsonld');
+  }, [product, isLoading, currency]);
 
   const addToCartMutation = useMutation({
     mutationFn: () => api.cart.add(product.id, quantity),
@@ -281,7 +329,11 @@ export default function Product() {
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40">
         <div className="px-4 py-3 flex items-center justify-between">
-          <button onClick={() => navigate(-1)} className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
+          <button
+            onClick={() => navigate(-1)}
+            aria-label="Retour"
+            className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
+          >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <CurrencySelector />
@@ -298,10 +350,16 @@ export default function Product() {
             >
               <Scale className="w-5 h-5" />
             </button>
-            <button className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
+            <button
+              aria-label="Partager"
+              className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
+            >
               <Share2 className="w-5 h-5" />
             </button>
-            <button className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
+            <button
+              aria-label="Ajouter aux favoris"
+              className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
+            >
               <Heart className="w-5 h-5" />
             </button>
           </div>
@@ -311,25 +369,25 @@ export default function Product() {
       {/* Image Gallery — fond visible PWA mobile */}
       <div className="relative bg-white">
         <div className="relative aspect-square w-full min-h-[200px] bg-gray-100">
-          <img
+          <OptimizedImage
             src={images[selectedImage]}
             alt={product.name}
             className="w-full h-full object-cover"
-            loading="eager"
-            decoding="async"
-            onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }}
+            priority={false}
           />
           {images.length > 1 && (
             <>
               <button
                 onClick={() => setSelectedImage(prev => prev > 0 ? prev - 1 : images.length - 1)}
                 className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/90 rounded-full flex items-center justify-center shadow-lg"
+                aria-label="Image précédente"
               >
                 <ChevronLeft className="w-5 h-5" />
               </button>
               <button
                 onClick={() => setSelectedImage(prev => prev < images.length - 1 ? prev + 1 : 0)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/90 rounded-full flex items-center justify-center shadow-lg"
+                aria-label="Image suivante"
               >
                 <ChevronRight className="w-5 h-5" />
               </button>
@@ -340,6 +398,7 @@ export default function Product() {
               <button
                 key={index}
                 onClick={() => setSelectedImage(index)}
+                aria-label={`Ouvrir l'image ${index + 1}`}
                 className={`w-1.5 h-1.5 rounded-full transition-all ${
                   index === selectedImage ? 'bg-white w-4' : 'bg-white/50'
                 }`}
@@ -355,11 +414,12 @@ export default function Product() {
               <button
                 key={index}
                 onClick={() => setSelectedImage(index)}
+                aria-label={`Ouvrir la miniature ${index + 1}`}
                 className={`w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden border-2 bg-gray-100 ${
                   index === selectedImage ? 'border-blue-500' : 'border-gray-200'
                 }`}
               >
-                <img src={img} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.onerror = null; e.target.src = MARKETPLACE_PLACEHOLDER_IMG; }} />
+                <OptimizedImage src={img} alt="" className="w-full h-full object-cover" priority={false} />
               </button>
             ))}
           </div>

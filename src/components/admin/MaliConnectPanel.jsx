@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { 
   Shield, Calendar, Car, UtensilsCrossed, Stethoscope, Home, 
   Briefcase, GraduationCap, Heart, Users, Video, FileText,
-  Check, X, Eye, EyeOff, Ban, AlertTriangle, DollarSign,
+  Check, X, EyeOff, Ban, AlertTriangle, DollarSign,
   Search, CheckCircle, Clock, BarChart3, UserCheck, MapPin, Wrench, ShoppingCart
 } from "lucide-react";
 import { Card } from "@/components/ui/CardWrapper";

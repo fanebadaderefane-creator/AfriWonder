@@ -1,12 +1,11 @@
 // AfriWonder full review PR - CodeRabbit
 // @ts-nocheck
+/* cspell:disable-file */
 /**
  * VideoCard — full-screen feed player. Single active item, poster until first frame, HLS/MP4.
  */
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, memo } from 'react';
 import Heart from 'lucide-react/icons/heart';
-import HeartCrack from 'lucide-react/icons/heart-crack';
-import Flame from 'lucide-react/icons/flame';
 import MessageCircle from 'lucide-react/icons/message-circle';
 import Share2 from 'lucide-react/icons/share-2';
 import Bookmark from 'lucide-react/icons/bookmark';
@@ -14,6 +13,7 @@ import Play from 'lucide-react/icons/play';
 import Pause from 'lucide-react/icons/pause';
 import Volume2 from 'lucide-react/icons/volume-2';
 import VolumeX from 'lucide-react/icons/volume-x';
+import Loader2 from 'lucide-react/icons/loader-2';
 import BadgeCheck from 'lucide-react/icons/badge-check';
 import Music2 from 'lucide-react/icons/music-2';
 import DollarSign from 'lucide-react/icons/dollar-sign';
@@ -22,14 +22,13 @@ import UserCheck from 'lucide-react/icons/user-check';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, getVideoPlaybackUrl, getAbsoluteImageUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, isMobileOrPWA } from "@/lib/utils";
-import { releasePoolPlayer } from '@/lib/videoPool';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { useTranslation } from "@/components/common/useTranslation";
 import { api } from '@/api/expressClient';
 import { toast } from 'sonner';
 import Hls from 'hls.js';
-import AfriWonderLogo from '@/components/common/AfriWonderLogo';
+import { formatFeedCount, getCreatorInitial } from '@/features/feed/feedUtils';
 
 const extractHashtags = (description) => {
   if (!description) return [];
@@ -51,11 +50,67 @@ const cleanDescription = (description) => {
     .trim();
 };
 
+/** Si la 1re ligne du texte n’est que le @pseudo du créateur, on la retire (évite doublon avec la ligne identité). */
+const stripRedundantCreatorLine = (text, creatorSlug) => {
+  if (!text || !creatorSlug) return text;
+  const slug = String(creatorSlug).replace(/^@+/, '').trim();
+  if (!slug) return text;
+  const t = String(text).trim();
+  const nl = t.indexOf('\n');
+  const firstLine = (nl === -1 ? t : t.slice(0, nl)).trim();
+  const normalize = (s) => s.replace(/^@+/, '').toLowerCase();
+  const looksLikeSoloHandle = /^@?[\w._-]{1,64}$/.test(firstLine);
+  if (looksLikeSoloHandle && normalize(firstLine) === slug.toLowerCase()) {
+    return (nl === -1 ? '' : t.slice(nl + 1).trim());
+  }
+  return t;
+};
+
+const FEED_ACTION_BUTTON_CLASS =
+  'group relative flex h-10 w-10 items-center justify-center rounded-full border-0 bg-transparent shadow-none backdrop-blur-0 transition-all duration-200 ease-out hover:bg-white/12 active:scale-[0.93]';
+
+const FEED_ACTION_LABEL_CLASS =
+  'min-h-[13px] text-[10px] font-semibold leading-tight tabular-nums tracking-[-0.01em] text-white/82 drop-shadow-[0_1px_10px_rgba(0,0,0,0.55)]';
+
+function FeedActionButton({
+  children,
+  className,
+  onClick,
+  onTouchStart,
+  label,
+  pressed = false,
+  feedback = false,
+  ...props
+}) {
+  return (
+    <motion.button
+      type="button"
+      whileTap={{ scale: 0.94 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      onClick={onClick}
+      onTouchStart={onTouchStart}
+      className={cn(
+        FEED_ACTION_BUTTON_CLASS,
+        pressed && 'bg-white/16',
+        feedback && 'bg-white/14',
+        className
+      )}
+      aria-label={label}
+      {...props}
+    >
+      {children}
+    </motion.button>
+  );
+}
+
+function FeedActionLabel({ children }) {
+  return <span className={FEED_ACTION_LABEL_CLASS}>{children}</span>;
+}
+
 function VideoCardContent({
   video,
   isActive,
   onLike,
-  onReaction,
   onComment,
   onShare,
   onSave,
@@ -67,26 +122,27 @@ function VideoCardContent({
   isMuted,
   onMuteToggle,
   isFollowing,
-  currentUserReaction,
-  hideActions = false,
   compact = false,
-  preload = 'metadata',
   shouldPreload = false,
   videoPoolRef = null,
   poolIndex = undefined,
   canLike = true,
   onRequireAuth,
+  onInitialVisualReady,
+  currentUser: currentUserProp = null,
+  hideActions = false,
 }) {
-  const effectiveReaction = currentUserReaction ?? video.current_user_reaction ?? null;
   const videoRef = useRef(null);
   const poolContainerRef = useRef(null);
   const hlsRef = useRef(null);
   const progressBarRef = useRef(null);
   const viewRecordedRef = useRef(false);
   const userPausedRef = useRef(false);
-  const lastTimeUpdateRef = useRef(0);
   const navigate = useNavigate();
-  
+
+  /** `VITE_DEBUG_VIDEO_UI=1 npm run dev` — contour rouge + logs pour vérifier le DOM / l’empilement */
+  const debugVideoUi = import.meta.env.DEV && import.meta.env.VITE_DEBUG_VIDEO_UI === '1';
+
   let hashtags = video.hashtags;
   if (typeof hashtags === 'string') {
     try {
@@ -104,12 +160,11 @@ function VideoCardContent({
   const [isPlaying, setIsPlaying] = useState(false);
   const [showPlayIcon, setShowPlayIcon] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [userLang, setUserLang] = useState('fr');
   const [isDragging, setIsDragging] = useState(false);
   const [dragProgress, setDragProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(currentUserProp);
   const [following, setFollowing] = useState(isFollowing || false);
   const hasAutoPlayedRef = useRef(false);
   const hasPlayedOnceRef = useRef(false);
@@ -124,17 +179,14 @@ function VideoCardContent({
     isMutedRef.current = !!isMuted;
   }, [isMuted]);
 
-  const isIOS =
-    typeof navigator !== 'undefined' &&
-    /iP(ad|hone|od)/i.test(navigator.userAgent || '');
-  const isTouchDevice =
-    typeof window !== 'undefined' &&
-    ('ontouchstart' in window || navigator.maxTouchPoints > 0);
-  
   // Synchroniser avec les props (abonnement + likes)
   useEffect(() => {
     setFollowing(isFollowing || false);
   }, [isFollowing]);
+
+  useEffect(() => {
+    setCurrentUser(currentUserProp || null);
+  }, [currentUserProp]);
 
   // État local pour like (toggle immédiat, 1 like max par utilisateur)
   const [localIsLiked, setLocalIsLiked] = useState(!!isLiked);
@@ -144,7 +196,6 @@ function VideoCardContent({
     ? Object.values(reactionCounts).reduce((a, b) => a + (Number(b) || 0), 0)
     : (video.likes || 0);
   const [likeCount, setLikeCount] = useState(initialCount);
-  const [localReaction, setLocalReaction] = useState(effectiveReaction || null);
 
   // Quand on change de vidéo, on resynchronise sur l'état serveur
   useEffect(() => {
@@ -155,15 +206,99 @@ function VideoCardContent({
     } else {
       setLikeCount(video.likes || 0);
     }
-    setLocalReaction(effectiveReaction || null);
-  }, [video.id, isLiked, video.likes, effectiveReaction, video.reaction_counts]);
+  }, [video.id]);
   const [isAnimating, setIsAnimating] = useState(false);
   const [showParticles, setShowParticles] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
   const [floatingHearts, setFloatingHearts] = useState([]);
-  const [isActuallyPlaying, setIsActuallyPlaying] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState({});
   const [hasFirstFrameRendered, setHasFirstFrameRendered] = useState(false);
+  /** Pour timers de déblocage (évite closures périmées sur première frame / route). */
+  const hasFirstFrameRenderedRef = useRef(false);
+  const creatorInitial = useMemo(() => getCreatorInitial(video.creator_name), [video.creator_name]);
   const posterRef = useRef(null);
+  const firstFrameDetectionRef = useRef({
+    element: null,
+    videoFrameRequestId: null,
+    rafIds: [],
+  });
+
+  /* ⛔ ZONE LECTURE VERROUILLÉE — DÉBUT
+   * Ne pas modifier sans demande explicite utilisateur — cf. .cursor/rules/video-player-locked.mdc
+   * (1re frame, autoplay, HLS, pool, handlers média, progression/seek ; régressions buffer / swipe). */
+
+  const hasDecodedVideoFrame = useCallback((el) => {
+    if (!el) return false;
+    return Number(el.videoWidth || 0) > 0 && Number(el.videoHeight || 0) > 0;
+  }, []);
+  const canRevealVideoVisually = useCallback((el) => {
+    if (!el) return false;
+    if (hasDecodedVideoFrame(el)) return true;
+    return Number(el.currentTime || 0) > 0.05;
+  }, [hasDecodedVideoFrame]);
+  const markFirstFrameRendered = useCallback((el) => {
+    if (canRevealVideoVisually(el)) {
+      setHasFirstFrameRendered(true);
+    }
+  }, [canRevealVideoVisually]);
+  const cancelPendingFirstFrameDetection = useCallback(() => {
+    const current = firstFrameDetectionRef.current;
+    if (current.element && current.videoFrameRequestId != null && typeof current.element.cancelVideoFrameCallback === 'function') {
+      try {
+        current.element.cancelVideoFrameCallback(current.videoFrameRequestId);
+      } catch (_) {}
+    }
+    current.rafIds.forEach((id) => cancelAnimationFrame(id));
+    firstFrameDetectionRef.current = {
+      element: null,
+      videoFrameRequestId: null,
+      rafIds: [],
+    };
+  }, []);
+  const scheduleFirstFrameDetection = useCallback((el) => {
+    if (!el || hasFirstFrameRendered) return;
+    cancelPendingFirstFrameDetection();
+
+    if (typeof el.requestVideoFrameCallback === 'function') {
+      const requestId = el.requestVideoFrameCallback(() => {
+        firstFrameDetectionRef.current = {
+          element: null,
+          videoFrameRequestId: null,
+          rafIds: [],
+        };
+        markFirstFrameRendered(el);
+      });
+      firstFrameDetectionRef.current = {
+        element: el,
+        videoFrameRequestId: requestId,
+        rafIds: [],
+      };
+      return;
+    }
+
+    const rafIds = [];
+    const raf1 = requestAnimationFrame(() => {
+      const raf2 = requestAnimationFrame(() => {
+        firstFrameDetectionRef.current = {
+          element: null,
+          videoFrameRequestId: null,
+          rafIds: [],
+        };
+        markFirstFrameRendered(el);
+      });
+      firstFrameDetectionRef.current = {
+        element: null,
+        videoFrameRequestId: null,
+        rafIds: [raf2],
+      };
+    });
+    rafIds.push(raf1);
+    firstFrameDetectionRef.current = {
+      element: null,
+      videoFrameRequestId: null,
+      rafIds,
+    };
+  }, [cancelPendingFirstFrameDetection, hasFirstFrameRendered, markFirstFrameRendered]);
 
   const prepareForAutoplay = useCallback((el, useMuted = true) => {
     if (!el) return;
@@ -223,8 +358,18 @@ function VideoCardContent({
     const slow = ['slow-2g', '2g', '3g'].includes(conn.effectiveType) || !!conn.saveData;
     return slow;
   }, []);
+  const isFirefoxBrowser = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    return /firefox/i.test(navigator.userAgent || '');
+  }, []);
 
-  // Liste de sources de secours : si une source Ã©choue, on passe automatiquement Ã  la suivante.
+  /** Le wrapper ne doit pas forcer un calque GPU sur Firefox/mobile ; on stabilise plutôt la balise <video> elle-même. */
+  const gpuCompositingLayerStyle =
+    isFirefoxBrowser || isMobileOrPWA()
+      ? {}
+      : { transform: 'translateZ(0)', backfaceVisibility: 'hidden' };
+
+  // Liste de sources de secours : si une source échoue, on passe à la suivante.
   const playbackUrls = useMemo(() => {
     const out = [];
     const pushUrl = (raw) => {
@@ -232,18 +377,21 @@ function VideoCardContent({
       if (!u || typeof u !== 'string' || u.trim() === '') return;
       if (!out.includes(u)) out.push(u);
     };
-    if (video.hls_url) pushUrl(video.hls_url);
+    // Toujours préférer MP4/WebM **avant** HLS (tous navigateurs) : sur Chrome, WebView Android,
+    // Samsung Internet, etc., HLS via hls.js/MSE peut livrer le son sans peindre l’image (écran vide).
+    // Safari lit aussi très bien le progressif ; le HLS reste en repli si pas d’URL directe.
     if (slowConnection || isDataSaver) {
-      pushUrl(video.low_quality_url);
-      pushUrl(video.video_url || video.hd_url);
-      pushUrl(video.hd_url);
+      pushUrl(video.low_quality_playback_url || video.low_quality_url);
+      pushUrl(video.playback_url || video.video_url || video.hd_playback_url || video.hd_url);
+      pushUrl(video.hd_playback_url || video.hd_url);
     } else {
-      pushUrl(video.video_url || video.hd_url);
-      pushUrl(video.hd_url);
-      pushUrl(video.low_quality_url);
+      pushUrl(video.playback_url || video.video_url || video.hd_playback_url || video.hd_url);
+      pushUrl(video.hd_playback_url || video.hd_url);
+      pushUrl(video.low_quality_playback_url || video.low_quality_url);
     }
+    pushUrl(video.hls_playback_url || video.hls_url);
     return out;
-  }, [video.hls_url, video.video_url, video.low_quality_url, video.hd_url, slowConnection, isDataSaver]);
+  }, [video.hls_playback_url, video.hls_url, video.playback_url, video.video_url, video.low_quality_playback_url, video.low_quality_url, video.hd_playback_url, video.hd_url, slowConnection, isDataSaver]);
 
   const [sourceIndex, setSourceIndex] = useState(0);
   const videoUrl = playbackUrls[sourceIndex] || '';
@@ -264,13 +412,17 @@ function VideoCardContent({
   const isHls = useMemo(() => /\.m3u8(\?|$)/i.test(videoUrl || ''), [videoUrl]);
 
   // Source vidéo : toujours passer l'URL (évite écran noir pour HLS avant que Hls.js prenne le relais ; Safari lit le .m3u8 en natif)
-  const videoSrc = videoUrl || video.video_url || video.hls_url;
+  const videoSrc =
+    videoUrl ||
+    getVideoPlaybackUrl(video.playback_url) ||
+    getVideoPlaybackUrl(video.video_url) ||
+    getVideoPlaybackUrl(video.hls_playback_url) ||
+    getVideoPlaybackUrl(video.hls_url);
 
-  const hasWarnedEmptyUrlRef = useRef(false);
   const lastWarnedVideoIdRef = useRef(null);
   if (process.env.NODE_ENV === 'development' && (videoUrl === '' || videoUrl == null) && lastWarnedVideoIdRef.current !== video?.id) {
     lastWarnedVideoIdRef.current = video?.id ?? null;
-    // eslint-disable-next-line no-console
+     
     console.warn('VideoCard VIDEO URL vide ou undefined — vérifier le backend (video_url)', { videoId: video?.id });
   }
   if (videoUrl && videoUrl.trim() !== '') lastWarnedVideoIdRef.current = null;
@@ -288,16 +440,53 @@ function VideoCardContent({
     setPosterDisplayUrl(posterUrl);
   }, [posterUrl]);
 
-  const [loadError, setLoadError] = useState(false);
-  const [isReadyToPlay, setIsReadyToPlay] = useState(false);
-  const [showVideoFrame, setShowVideoFrame] = useState(false);
-  const errorRetriedRef = useRef(false);
+  useEffect(() => {
+    setDuration(0);
+  }, [video.id]);
 
-  const { t } = useTranslation();
+  const [loadError, setLoadError] = useState(false);
+  const loadErrorRef = useRef(false);
+  loadErrorRef.current = loadError;
+  hasFirstFrameRenderedRef.current = hasFirstFrameRendered;
+  const isActiveRef = useRef(!!isActive);
+  isActiveRef.current = !!isActive;
+  const [, setIsReadyToPlay] = useState(false);
+  const [, setShowVideoFrame] = useState(false);
+  const errorRetriedRef = useRef(false);
+  /** Après 2 appuis sur Réessayer sur la même URL, basculer vers playbackUrls suivante si dispo. */
+  const loadRetryPassRef = useRef(0);
+  const showPosterLoadingIndicator =
+    video.media_type !== 'image'
+    && !!videoUrl
+    && isActive
+    && !loadError
+    && !hasFirstFrameRendered;
+
+  /** Évite l’effet « noir + gros spinner » : laisser la miniature respirer comme TikTok/Reels (~400 ms). */
+  const [deferCenterSpinner, setDeferCenterSpinner] = useState(false);
+  useEffect(() => {
+    if (!showPosterLoadingIndicator) {
+      setDeferCenterSpinner(false);
+      return undefined;
+    }
+    const id = window.setTimeout(() => setDeferCenterSpinner(true), 420);
+    return () => window.clearTimeout(id);
+  }, [showPosterLoadingIndicator]);
+
+  useEffect(() => {
+    if (!isActive || !onInitialVisualReady) return;
+    if (video.media_type === 'image' || hasFirstFrameRendered || loadError) {
+      onInitialVisualReady(video.id);
+    }
+  }, [isActive, onInitialVisualReady, video.id, video.media_type, hasFirstFrameRendered, loadError]);
+
+  useTranslation();
   
-  // Affichage sÃ©parÃ©: titre et description sur des lignes distinctes
-  const titleText = (video.title || '').trim();
-  const descriptionText = (displayDescription || '').trim();
+  // Affichage séparé : titre et description — sans répéter le @ du créateur (ligne identité dédiée)
+  const creatorSlug = (video.creator_username || video.creator_name || '').trim();
+  const creatorAt = creatorSlug.replace(/^@+/, '');
+  const titleText = stripRedundantCreatorLine((video.title || '').trim(), creatorAt);
+  const descriptionText = stripRedundantCreatorLine((displayDescription || '').trim(), creatorAt);
   const combinedText = [titleText, descriptionText].filter(Boolean).join(' ');
   const MAX_DESCRIPTION_LENGTH = 100;
   const isDescriptionLong = descriptionText.length > MAX_DESCRIPTION_LENGTH;
@@ -385,9 +574,9 @@ function VideoCardContent({
     viewRecordedRef.current = false;
     hasPlayedOnceRef.current = false;
     setShowVideoFrame(false);
-    setIsActuallyPlaying(false);
     setHasFirstFrameRendered(false);
-    
+    loadRetryPassRef.current = 0;
+
     // Pause + reset time uniquement (pas de load() â€” cause Ã©cran noir)
     if (el) {
       el.pause();
@@ -401,14 +590,56 @@ function VideoCardContent({
     if (!isActive) setHasFirstFrameRendered(false);
   }, [isActive]);
 
-  // Video Pool type TikTok : réutilisation de 3 lecteurs pour tout le feed (RAM, fluidité)
+  useEffect(() => {
+    if (hasFirstFrameRendered) {
+      cancelPendingFirstFrameDetection();
+    }
+  }, [hasFirstFrameRendered, cancelPendingFirstFrameDetection]);
+
+  useEffect(() => {
+    return () => {
+      cancelPendingFirstFrameDetection();
+    };
+  }, [cancelPendingFirstFrameDetection]);
+
+  // Video Pool type TikTok : Home passe videoPoolRef={null} → toujours <video> ici (pas de pool sur le feed web).
   const usePool = videoPoolRef?.current && poolIndex != null && !isHls && videoSrc && videoUrl;
   const lastPoolSrcRef = useRef(null);
+
+  // Firefox / WebView : certains événements arrivent tard ou de façon incomplète.
+  // On ne retire jamais le poster sur un simple readyState/timeout fixe, seulement
+  // quand une vraie progression visuelle est probable (frame décodée ou currentTime > 0).
+  useEffect(() => {
+    if (usePool || !videoUrl?.trim() || !isActive) return;
+    const el = videoRef.current;
+    if (!el) return;
+
+    const forceFirstFrame = () => {
+      const v = videoRef.current;
+      if (!v) return;
+      if (canRevealVideoVisually(v)) {
+        markFirstFrameRendered(v);
+        return;
+      }
+      scheduleFirstFrameDetection(v);
+    };
+
+    const t1 = setTimeout(forceFirstFrame, 350);
+    const t2 = setTimeout(forceFirstFrame, 1000);
+    const t3 = setTimeout(forceFirstFrame, 2200);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [video.id, videoUrl, isActive, usePool, canRevealVideoVisually, markFirstFrameRendered, scheduleFirstFrameDetection]);
 
   // Effet 1 : assigner la source et attacher le lecteur (uniquement quand la vidéo change → limite le clignotement au scroll)
   // Premier frame : on attend playing ou timeupdate avec currentTime > 0 pour éviter d'enlever le poster avant que la vidéo peigne (écran noir).
   useEffect(() => {
     if (!usePool || !poolContainerRef.current) return;
+    const container = poolContainerRef.current;
     const pool = videoPoolRef.current;
     const player = pool[poolIndex];
     if (!player) return;
@@ -419,38 +650,54 @@ function VideoCardContent({
       setHasFirstFrameRendered(false);
     }
 
-    const onPlaying = () => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => setHasFirstFrameRendered(true));
-      });
-    };
+    const onPlaying = () => scheduleFirstFrameDetection(player);
+    const onLoadedData = () => scheduleFirstFrameDetection(player);
 
     const onTimeUpdate = (event) => {
-      updateProgressFromElement(event?.target || player);
+      const target = event?.target || player;
+      if (!hasFirstFrameRendered && target.currentTime > 0) {
+        markFirstFrameRendered(target);
+      }
+      updateProgressFromElement(target);
     };
 
-    const alreadyHere = player.parentNode === poolContainerRef.current && (player.src === videoSrc || player.currentSrc === videoSrc);
+    const alreadyHere = player.parentNode === container;
     if (!alreadyHere) {
-      releasePoolPlayer(player);
-      player.src = videoSrc;
-      player.loop = true;
-      player.playsInline = true;
-      player.preload = 'auto';
-      poolContainerRef.current.appendChild(player);
-      player.addEventListener('playing', onPlaying);
+      if (player.parentNode && player.parentNode !== container) {
+        try { player.parentNode.removeChild(player); } catch (_) {}
+      }
+      Array.from(container.children).forEach((node) => {
+        if (node !== player) {
+          try { container.removeChild(node); } catch (_) {}
+        }
+      });
+      container.appendChild(player);
+    } else {
+      Array.from(container.children).forEach((node) => {
+        if (node !== player) {
+          try { container.removeChild(node); } catch (_) {}
+        }
+      });
     }
+
+    if (!sameVideo || (player.src !== videoSrc && player.currentSrc !== videoSrc)) {
+      player.src = videoSrc;
+    }
+    player.loop = true;
+    player.playsInline = true;
+    player.preload = 'auto';
+    player.addEventListener('playing', onPlaying);
+    player.addEventListener('loadeddata', onLoadedData);
 
     player.addEventListener('timeupdate', onTimeUpdate);
 
     return () => {
       player.removeEventListener('playing', onPlaying);
+      player.removeEventListener('loadeddata', onLoadedData);
       player.removeEventListener('timeupdate', onTimeUpdate);
-      if (player.parentNode && poolContainerRef.current && player.parentNode === poolContainerRef.current) {
-        try { player.parentNode.removeChild(player); } catch (_) {}
-      }
       try { player.pause(); } catch (_) {}
     };
-  }, [usePool, poolIndex, videoSrc]);
+  }, [usePool, poolIndex, videoSrc, hasFirstFrameRendered, markFirstFrameRendered, scheduleFirstFrameDetection]);
 
   // Effet 2 : play/pause et mute uniquement (pas de détachement → évite le clignotement)
   useEffect(() => {
@@ -502,23 +749,13 @@ function VideoCardContent({
     onLike?.(video);
   };
 
-  /** Réaction multiple (love, fire) — toggle ou set (CPO 2.44) */
-  const handleReactionType = (type) => {
-    if (!onReaction) return;
-    const isCurrent = localReaction === type;
-    if (isCurrent) {
-      setLocalReaction(null);
-      setLocalIsLiked(false);
-      setLikeCount((prev) => Math.max(0, prev - 1));
-      onReaction(video, null);
-    } else {
-      const hadReaction = !!localReaction;
-      setLocalReaction(type);
-      setLocalIsLiked(true);
-      if (!hadReaction) setLikeCount((prev) => prev + 1);
-      onReaction(video, type);
-    }
-  };
+  const triggerActionFeedback = useCallback((actionName) => {
+    if (!actionName) return;
+    setActionFeedback((prev) => ({ ...prev, [actionName]: true }));
+    window.setTimeout(() => {
+      setActionFeedback((prev) => ({ ...prev, [actionName]: false }));
+    }, 220);
+  }, []);
 
   const handleDoubleTap = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -545,34 +782,6 @@ function VideoCardContent({
       }, 800);
     }
   };
-
-  /* ================= INIT ================= */
-
-  useEffect(() => {
-    api.auth.me()
-      .then(user => {
-        setUserLang(user.language || 'fr');
-        setCurrentUser(user);
-      })
-      .catch(() => {});
-  }, []);
-
-  // Check if already following
-  useEffect(() => {
-    if (!currentUser || !video.creator_id) return;
-    if (currentUser.id === video.creator_id) return;
-    
-    api.users.getFollowing(currentUser.id)
-      .then(result => {
-        // getFollowing retourne { following: [...], pagination: {...} }
-        const follows = result.following || result;
-        const isFollowingUser = Array.isArray(follows) 
-          ? follows.some(f => (f.id || f.following_id) === video.creator_id)
-          : false;
-        setFollowing(isFollowingUser);
-      })
-      .catch(() => {});
-  }, [currentUser, video.creator_id]);
 
   const handleFollow = async () => {
     if (!currentUser) {
@@ -770,8 +979,8 @@ function VideoCardContent({
     const tryPlay = () => {
       if (cancelled || !isActive || userPausedRef.current) return;
       if (hasAutoPlayedRef.current) return;
-      // Ne lancer play que si assez de données (HAVE_ENOUGH_DATA) pour éviter buffer → play → buffer
-      if (el.readyState < 4) return;
+      // HAVE_FUTURE_DATA (3) : aligné sur canplay / flux qui ne montent pas vite à 4
+      if (el.readyState < 3) return;
       autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true }).then((ok) => {
         if (!ok || cancelled || !isActive) {
           if (ok) {
@@ -785,7 +994,7 @@ function VideoCardContent({
 
     const playVideo = () => {
       if (!el || !isActive || userPausedRef.current) return;
-      if (el.readyState >= 4) {
+      if (el.readyState >= 3) {
         tryPlay();
       }
       el.addEventListener('canplay', onCanPlay);
@@ -800,7 +1009,7 @@ function VideoCardContent({
       window.setTimeout(() => {
         if (cancelled || !el || !isActive || userPausedRef.current) return;
         if (hasAutoPlayedRef.current) return;
-        if (el.paused && el.readyState >= 4) {
+        if (el.paused && el.readyState >= 3) {
           prepareForAutoplay(el, true);
           tryPlay();
         }
@@ -947,14 +1156,16 @@ function VideoCardContent({
     };
   }, []);
 
-  // Tracking vue 3s (monétisation / analytics)
+  // Tracking vue 3s (monétisation / analytics) — backend exige video_id + creator_id
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive || video.id == null || video.creator_id == null) return;
     const timer = setTimeout(() => {
-      api.analytics.recordVideo({ video_id: video.id }).catch(() => {});
+      api.analytics
+        .recordVideo({ video_id: video.id, creator_id: video.creator_id })
+        .catch(() => {});
     }, 3000);
     return () => clearTimeout(timer);
-  }, [isActive, video.id]);
+  }, [isActive, video.id, video.creator_id]);
 
   /* ================= VIDEO =================
    * Une source de play (useEffect isActive). DÃ©marrage dÃ¨s readyState >= 2 (loadeddata). */
@@ -1014,24 +1225,69 @@ function VideoCardContent({
   const handleRetryLoad = () => {
     const el = videoRef.current;
     if (!el || !videoUrl) return;
+
+    loadRetryPassRef.current += 1;
+    if (loadRetryPassRef.current >= 2 && hasFallbackSource) {
+      loadRetryPassRef.current = 0;
+      moveToNextSource();
+      return;
+    }
+
+    cancelPendingFirstFrameDetection();
     setLoadError(false);
     setIsReadyToPlay(false);
     setIsPlaying(false);
+    setShowVideoFrame(false);
+    setHasFirstFrameRendered(false);
     hasAutoPlayedRef.current = false;
     userPausedRef.current = false;
-    el.pause();
-    el.currentTime = 0;
-    // Recharge explicite seulement au clic utilisateur "RÃ©essayer".
-    el.load();
-    if (isActive) {
-      const retryPlay = () => {
-        autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true }).then((ok) => {
-          if (ok) setIsReadyToPlay(true);
-        });
-      };
-      if (el.readyState >= 2) retryPlay();
-      else el.addEventListener('canplay', retryPlay, { once: true });
+    errorRetriedRef.current = true;
+
+    try { el.pause(); } catch (_) {}
+    try { el.currentTime = 0; } catch (_) {}
+    try {
+      const currentSrc = el.getAttribute('src') || '';
+      if (videoSrc && currentSrc !== videoSrc) {
+        el.src = videoSrc;
+      }
+    } catch (_) {}
+
+    let didRecover = false;
+    const finishSoftRetry = () => {
+      if (didRecover) return;
+      didRecover = true;
+      setLoadError(false);
+      setIsReadyToPlay(true);
+      scheduleFirstFrameDetection(el);
+      if (!isActive) return;
+      autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true }).then((ok) => {
+        if (ok) setIsReadyToPlay(true);
+      });
+    };
+
+    const handleRetryReady = () => {
+      finishSoftRetry();
+    };
+
+    el.addEventListener('loadeddata', handleRetryReady, { once: true });
+    el.addEventListener('canplay', handleRetryReady, { once: true });
+
+    if (el.readyState >= 2) {
+      finishSoftRetry();
+      return;
     }
+
+    // Dernier recours seulement si la relance douce n'a rien débloqué.
+    window.setTimeout(() => {
+      if (didRecover || !isActive || !videoRef.current) return;
+      if (el.readyState >= 2) {
+        finishSoftRetry();
+        return;
+      }
+      try {
+        el.load();
+      } catch (_) {}
+    }, 900);
   };
 
   const updateProgressFromElement = (el) => {
@@ -1054,6 +1310,10 @@ function VideoCardContent({
     setCurrentTime(el.currentTime);
     setDragProgress(pct);
 
+    if (Number.isFinite(el.duration) && el.duration > 0) {
+      setDuration((d) => (d > 0 ? d : el.duration));
+    }
+
     const clampedTime = Math.max(startTime, Math.min(endTime, el.currentTime));
     if (isActive && !viewRecordedRef.current && (clampedTime - startTime >= 3 || pct >= 25)) {
       viewRecordedRef.current = true;
@@ -1075,6 +1335,9 @@ function VideoCardContent({
 
   const handleTimeUpdate = (event) => {
     const el = event?.target || videoRef.current;
+    if (el && !hasFirstFrameRendered && el.currentTime > 0) {
+      markFirstFrameRendered(el);
+    }
     updateProgressFromElement(el);
   };
 
@@ -1093,8 +1356,11 @@ function VideoCardContent({
     const el = videoRef.current;
     if (!el || loadError || !isActive) return;
     setIsReadyToPlay(true);
-    // Ne lancer play que si assez de données (readyState >= 4) pour éviter buffer → play → buffer
-    if (!userPausedRef.current && el.paused && !hasAutoPlayedRef.current && el.readyState >= 4) {
+    if (!hasFirstFrameRendered && hasDecodedVideoFrame(el)) {
+      markFirstFrameRendered(el);
+    }
+    // HAVE_FUTURE_DATA (3) suffit pour tenter play ; exiger 4 bloquait certains flux (canplay arrive souvent à 3).
+    if (!userPausedRef.current && el.paused && !hasAutoPlayedRef.current && el.readyState >= 3) {
       autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true }).then((ok) => {
         if (ok && videoRef.current && isActive && !userPausedRef.current) {
           setIsReadyToPlay(true);
@@ -1140,13 +1406,6 @@ function VideoCardContent({
 
   const handlePause = () => {
     setIsPlaying(false);
-  };
-
-  // canplaythrough supprimÃ© : on dÃ©marre sur loadeddata (readyState >= 2) pour lecture immÃ©diate, pas dâ€™attente full buffer.
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   /** Sur mobile: quand la vidéo principale a seeked pendant le drag, currentTime reste déjà synchronisé */
@@ -1303,67 +1562,151 @@ function VideoCardContent({
     }
   };
 
-  /* ================= RENDER ================= */
+  /**
+   * Déblocage « spinner infini » : retente play() quand un minimum de données est disponible (readyState >= 2).
+   * Avant d’afficher l’erreur : si une autre URL existe (CDN / MP4 de secours), on bascule automatiquement.
+   * Délais plus longs en 2G/3G/save-data pour éviter les faux « vidéo indisponible ».
+   */
+  useEffect(() => {
+    if (!isActive || loadError || hasFirstFrameRendered || video.media_type === 'image' || !videoUrl?.trim()) {
+      return undefined;
+    }
 
-  const posterBgUrl = posterUrl.startsWith('data:') ? posterUrl : getAbsoluteImageUrl(posterUrl) || posterUrl;
+    const recoverMs = slowConnection ? 9000 : 6500;
+    const earlyFallbackMs = slowConnection ? 18000 : 12000;
+    const fatalMs = slowConnection ? 48000 : 32000;
+
+    const earlyFallbackId = window.setTimeout(() => {
+      if (!isActiveRef.current || userPausedRef.current) return;
+      if (hasFirstFrameRenderedRef.current || loadErrorRef.current) return;
+      if (!hasFallbackSource) return;
+      const el = videoRef.current;
+      if (!el) return;
+      // Source primaire ne fournit encore aucune frame exploitable : tenter l’URL suivante (souvent plus fiable).
+      if (el.readyState < 2) {
+        moveToNextSource();
+      }
+    }, earlyFallbackMs);
+
+    const recoverId = window.setTimeout(() => {
+      if (!isActiveRef.current || userPausedRef.current) return;
+      if (hasFirstFrameRenderedRef.current || loadErrorRef.current) return;
+      const el = videoRef.current;
+      if (!el || !el.paused) return;
+      // HAVE_CURRENT_DATA (2) ou HAVE_FUTURE_DATA (3) : tenter lecture sans exiger HAVE_ENOUGH_DATA (4)
+      if (el.readyState < 2) return;
+      prepareForAutoplay(el, isMutedRef.current);
+      autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true }).catch(() => {});
+    }, recoverMs);
+
+    const fatalId = window.setTimeout(() => {
+      if (!isActiveRef.current || userPausedRef.current) return;
+      if (hasFirstFrameRenderedRef.current || loadErrorRef.current) return;
+      const el = videoRef.current;
+      if (!el) return;
+      if (!el.paused || hasFirstFrameRenderedRef.current) return;
+      if (hasFallbackSource) {
+        moveToNextSource();
+        return;
+      }
+      setLoadError(true);
+    }, fatalMs);
+
+    return () => {
+      window.clearTimeout(earlyFallbackId);
+      window.clearTimeout(recoverId);
+      window.clearTimeout(fatalId);
+    };
+  }, [
+    isActive,
+    video.id,
+    videoUrl,
+    loadError,
+    hasFirstFrameRendered,
+    video.media_type,
+    prepareForAutoplay,
+    autoplayWithPolicy,
+    slowConnection,
+    hasFallbackSource,
+    moveToNextSource,
+  ]);
+
+  /* ⛔ ZONE LECTURE VERROUILLÉE — FIN
+   * Ci-dessous : affichage timer uniquement (ne pas y mettre de play/pause/src). */
+
+  // canplaythrough supprimÃ© : on dÃ©marre sur loadeddata (readyState >= 2) pour lecture immÃ©diate, pas dâ€™attente full buffer.
+  const formatTime = (seconds) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const backendDuration = Number(video.duration);
+  const effectiveTotalSec =
+    Number.isFinite(duration) && duration > 0
+      ? duration
+      : Number.isFinite(backendDuration) && backendDuration > 0
+        ? backendDuration
+        : 0;
+  const timeLabel =
+    effectiveTotalSec > 0
+      ? `${formatTime(currentTime || 0)}/${formatTime(effectiveTotalSec)}`
+      : formatTime(currentTime || 0);
+
+  /* ================= RENDER ================= */
 
   return (
     <div
-      className="relative w-full bg-gray-950 overflow-hidden"
+      data-afw-videocard-root="1"
+      data-afw-videocard-id={String(video?.id ?? '')}
+      className="relative z-0 w-full bg-gray-950 overflow-hidden"
       style={{
         touchAction: 'pan-y',
-        height: '100dvh',
+        ...(compact
+          ? { height: '100dvh', minHeight: '100dvh' }
+          : { height: '100%', minHeight: '100%' }),
         backgroundColor: '#020617',
       }}
     >
-      <div className="absolute inset-0 overflow-hidden">
+      <div className="absolute inset-0 z-[1] overflow-hidden">
       {/* ================= IMAGE (photo) ou VIDEO ================= */}
       {video.media_type === 'image' ? (
         <img
+          data-afw-feed-poster="1"
           src={getVideoPlaybackUrl(video.video_url) || video.video_url}
           alt={video.title || ''}
           className="absolute top-0 left-0 w-full h-full object-cover bg-gray-950"
+          style={{ contentVisibility: 'visible' }}
         />
       ) : videoUrl ? (
       <>
-      {/* Poster : au-dessus de tout, visible tant qu'aucun frame vidéo n'est rendu (évite l'écran noir) */}
-      {!hasFirstFrameRendered && (
-        <img
-          ref={posterRef}
-          src={posterDisplayUrl}
-          className="absolute inset-0 w-full h-full object-cover z-[25]"
-          style={{
-            backgroundColor: '#374151',
-            backgroundImage: `url(${VIDEO_PLACEHOLDER_IMG})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            transform: 'translateZ(0)',
-          }}
-          alt=""
-          onError={() => setPosterDisplayUrl(VIDEO_PLACEHOLDER_IMG)}
-        />
-      )}
-      {/* Zone principale player — poster en fond CSS (placeholder dès le 1er paint → plus de noir au démarrage) */}
+      {/* Zone principale player — le poster actif est AU-DESSUS du <video> (z-25) : sinon WebView/mobile peignent souvent un rectangle noir même avec opacity:0 sur la vidéo. */}
       <div
-        className="absolute inset-0 overflow-hidden"
+        className="absolute inset-0 z-20 overflow-hidden"
         style={{
-          backgroundColor: '#374151',
+          // Fond noir : si la vidéo ne peint pas encore, on évite le gris (#374151) perçu comme « écran vide ».
+          backgroundColor: '#000000',
           backgroundImage: !hasFirstFrameRendered
             ? `url(${VIDEO_PLACEHOLDER_IMG}), url(${posterDisplayUrl})`
             : undefined,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          transform: 'translateZ(0)',
-          backfaceVisibility: 'hidden',
+          ...gpuCompositingLayerStyle,
         }}
         onDoubleClick={handleDoubleTap}
       >
-        {/* Vidéo : pool réutilisable (TikTok) ou balise <video> classique — couche GPU pour limiter le clignotement au scroll */}
+        {/* Vidéo : pool réutilisable (TikTok) ou balise <video> classique. */}
         {usePool ? (
           <div
             ref={poolContainerRef}
-            className={`absolute top-0 left-0 w-full h-full object-cover z-20 transition-opacity duration-300 ${hasFirstFrameRendered ? 'opacity-100' : 'opacity-0'}`}
-            style={{ touchAction: 'pan-y', transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}
+            className="absolute top-0 left-0 w-full h-full object-cover z-20"
+            style={{
+              touchAction: 'pan-y',
+              backfaceVisibility: 'hidden',
+              willChange: 'transform',
+              ...gpuCompositingLayerStyle,
+            }}
             onClick={handlePlayPause}
             aria-label="Vidéo"
           />
@@ -1373,12 +1716,11 @@ function VideoCardContent({
           ref={videoRef}
           data-afw-feed-video="1"
           src={videoSrc}
-          className={`absolute top-0 left-0 w-full h-full object-cover z-20 transition-opacity duration-300 ${hasFirstFrameRendered ? 'opacity-100' : 'opacity-0'}`}
+          className="absolute top-0 left-0 w-full h-full object-cover z-20"
           autoPlay={false}
           preload="auto"
           loop
           playsInline
-          crossOrigin="anonymous"
           disablePictureInPicture
           muted={isMuted}
           onClick={handlePlayPause}
@@ -1432,28 +1774,68 @@ function VideoCardContent({
             errorRetriedRef.current = false;
             setIsReadyToPlay(true);
             setShowVideoFrame(true);
+            scheduleFirstFrameDetection(videoRef.current);
             const el = videoRef.current;
-            if (el && isActive && el.paused && !userPausedRef.current && el.readyState >= 4) {
+            // >= 3 (HAVE_FUTURE_DATA) : certains encodages ne passent pas vite à 4 ; sinon spinner infini sans play().
+            if (
+              el &&
+              isActive &&
+              el.paused &&
+              !userPausedRef.current &&
+              !hasAutoPlayedRef.current &&
+              el.readyState >= 3
+            ) {
               autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true });
             }
           }}
           onSeeked={handleMainVideoSeeked}
-          style={{ 
+          style={{
             touchAction: 'pan-y',
-            filter: video.filter === 'Normal' || !video.filter ? 'none' :
-                    video.filter === 'Noir & Blanc' ? 'grayscale(100%)' :
-                    video.filter === 'Sépia' ? 'sepia(100%)' :
-                    video.filter === 'Vibrant' ? 'saturate(200%)' :
-                    video.filter === 'Foncé' ? 'brightness(0.75)' :
-                    video.filter === 'Lumineux' ? 'brightness(1.25)' : 'none'
+            backfaceVisibility: 'hidden',
+            willChange: 'transform',
+            opacity: hasFirstFrameRendered ? 1 : 0,
+            transition: 'opacity 180ms ease-out',
+            ...(isFirefoxBrowser || isMobileOrPWA() ? {} : { transform: 'translateZ(0)' }),
+            // Evite le cas "audio OK / image noire" observé sur certains GPU navigateurs
+            // quand un filter CSS est appliqué en permanence sur <video>.
+            ...(video.filter === 'Noir & Blanc'
+              ? { filter: 'grayscale(100%)' }
+              : video.filter === 'Sépia'
+              ? { filter: 'sepia(100%)' }
+              : video.filter === 'Vibrant'
+              ? { filter: 'saturate(200%)' }
+              : video.filter === 'Foncé'
+              ? { filter: 'brightness(0.75)' }
+              : video.filter === 'Lumineux'
+              ? { filter: 'brightness(1.25)' }
+              : {})
           }}
           onPlaying={() => {
             handlePlaying();
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => setHasFirstFrameRendered(true));
-            });
+            scheduleFirstFrameDetection(videoRef.current);
           }}
         />
+        )}
+        {/* Calque miniature « TikTok » : couvre la vidéo jusqu’à la 1re frame réelle (évite écran noir). */}
+        {!hasFirstFrameRendered && !loadError && (
+          <img
+            data-afw-feed-poster="1"
+            ref={posterRef}
+            src={posterDisplayUrl}
+            className="pointer-events-none absolute inset-0 z-[25] h-full w-full object-cover"
+            style={{
+              backgroundColor: '#050508',
+              backgroundImage: `url(${VIDEO_PLACEHOLDER_IMG})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              contentVisibility: 'visible',
+              ...(isFirefoxBrowser ? {} : { transform: 'translateZ(0)' }),
+            }}
+            alt=""
+            decoding="async"
+            fetchpriority={isActive ? 'high' : 'low'}
+            onError={() => setPosterDisplayUrl(VIDEO_PLACEHOLDER_IMG)}
+          />
         )}
 
         {/* Cœurs flottants animés au double-tap */}
@@ -1492,7 +1874,18 @@ function VideoCardContent({
       ) }
       </div>
 
-      {/* Pas d'indicateur de buffer - lecture fluide comme TikTok */}
+      {showPosterLoadingIndicator && deferCenterSpinner && (
+        <div className="absolute inset-0 z-[35] flex items-center justify-center pointer-events-none">
+          <div className="flex flex-col items-center gap-3 rounded-2xl bg-black/25 px-4 py-3 ring-1 ring-white/10">
+            <Loader2 className="h-7 w-7 text-white/75 animate-spin sm:h-8 sm:w-8" aria-hidden />
+            {slowConnection && (
+              <p className="text-[12px] leading-tight text-white/80 text-center max-w-[180px]">
+                Connexion lente — chargement pour une lecture fluide...
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ================= ERREUR DE CHARGEMENT ================= */}
       {loadError && !isPlaying && !hasFirstFrameRendered && (
@@ -1514,12 +1907,12 @@ function VideoCardContent({
         </div>
       )}
 
-      {/* ================= GRADIENT ================= */}
+      {/* ================= GRADIENT (léger : le bandeau UI apporte déjà le fondu — évite double assombrissement) ================= */}
       <div
         className="
-          absolute inset-x-0 bottom-0 h-[140px]
+          absolute inset-x-0 bottom-0 h-[120px]
           bg-gradient-to-t
-          from-black/60
+          from-black/42
           via-transparent
           to-transparent
           pointer-events-none
@@ -1538,12 +1931,11 @@ function VideoCardContent({
             exit={{ opacity: 0, scale: 0.6 }}
             className="absolute inset-0 flex items-center justify-center pointer-events-none z-[60]"
           >
-            {/* Taille réduite sur mobile/Android pour une meilleure UX */}
-            <div className="bg-black/40 p-3 rounded-full sm:p-6">
+            <div className="flex items-center justify-center">
               {isPlaying ? (
-                <Pause className="w-8 h-8 sm:w-12 sm:h-12 text-white fill-white" />
+                <Pause className="h-10 w-10 text-white drop-shadow-[0_4px_28px_rgba(0,0,0,0.85)] fill-white sm:h-14 sm:w-14" />
               ) : (
-                <Play className="w-8 h-8 sm:w-12 sm:h-12 text-white fill-white" />
+                <Play className="h-10 w-10 text-white drop-shadow-[0_4px_28px_rgba(0,0,0,0.85)] fill-white sm:h-14 sm:w-14" />
               )}
             </div>
           </motion.div>
@@ -1551,232 +1943,318 @@ function VideoCardContent({
       </AnimatePresence>
       )}
 
-      {/* ================= ACTIONS DROITE (style TikTok) ================= */}
-      <div className={cn(
-        "absolute right-3 bottom-28 flex flex-col items-center gap-4 z-[100] transition-opacity duration-300",
-        hideActions ? "opacity-0 pointer-events-none" : "opacity-100"
-      )}>
-        {/* Avatar */}
-        <div className="flex flex-col items-center gap-1">
-          <button onClick={() => onProfileClick(video.creator_id)} className="flex flex-col items-center">
-            <Avatar className="w-12 h-12 border-2 border-white shadow-lg ring-2 ring-white/20">
-              <AvatarImage 
-                src={video.creator_avatar || video.creator?.profile_image} 
-                alt={video.creator_name}
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                }}
-              />
-              <AvatarFallback className="bg-gradient-to-br from-blue-500 to-blue-600 text-white font-bold">
-                {video.creator_name?.[0]?.toUpperCase() || 'U'}
-              </AvatarFallback>
-            </Avatar>
-          </button>
-        </div>
+      <div
+        data-afw-video-ui-layer="1"
+        data-afw-videocard-mounted="1"
+        className="absolute inset-0 z-[30] pointer-events-none text-white"
+        style={
+          debugVideoUi
+            ? {
+                backgroundColor: 'rgba(255,0,0,0.22)',
+                boxShadow: 'inset 0 0 0 3px rgba(255,0,0,0.9)',
+              }
+            : undefined
+        }
+      >
 
-        <div className="flex flex-col items-center gap-0.5 relative">
-          <button
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/56 via-black/18 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-black/68 via-black/28 to-transparent" />
+
+      {/* ================= ACTIONS DROITE (style TikTok) ================= */}
+      <motion.div
+        data-afw-video-actions="1"
+        className={cn(
+          'absolute right-3 flex flex-col items-center gap-3 transition-opacity duration-200 ease-out sm:right-4 sm:gap-3.5',
+          hideActions ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100'
+        )}
+        initial={false}
+        animate={hideActions ? { opacity: 0, y: 8 } : { opacity: 1, y: 0 }}
+        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        style={{
+          zIndex: 220,
+          // Au-dessus du bloc infos + marge : évite chevauchement avec barre du bas / HUD
+          bottom: 'calc(8rem + env(safe-area-inset-bottom, 0px))',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => onProfileClick(video.creator_id)}
+          aria-label={video.creator_name ? `Voir le profil de ${video.creator_name}` : 'Voir le profil'}
+          className="relative flex flex-col items-center gap-1 rounded-full transition-transform duration-200 active:scale-[0.97]"
+        >
+          <Avatar className="h-11 w-11 border border-white/18 shadow-[0_8px_24px_rgba(0,0,0,0.35)] ring-0 sm:h-12 sm:w-12">
+            <AvatarImage
+              src={video.creator_avatar || video.creator?.profile_image}
+              alt={video.creator_name}
+              onError={(e) => {
+                e.target.style.display = 'none';
+              }}
+            />
+            <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-700 text-[13px] font-bold text-white">
+              {creatorInitial}
+            </AvatarFallback>
+          </Avatar>
+          {currentUser && currentUser.id !== video.creator_id && !isFollowing && !following ? (
+            <span className="absolute -bottom-0.5 left-1/2 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full border border-[#0b1220] bg-[#facc15] text-[12px] font-black text-slate-950 shadow-[0_10px_18px_rgba(250,204,21,0.28)]">
+              +
+            </span>
+          ) : null}
+        </button>
+
+        <div className="relative flex flex-col items-center gap-1">
+          <FeedActionButton
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               handleLike();
             }}
             onTouchStart={(e) => {
-              // Empêche qu'un léger mouvement de doigt déclenche un scroll + snap vers la vidéo suivante
               e.preventDefault();
               e.stopPropagation();
             }}
-            className="flex items-center justify-center w-7 h-7 relative z-10 touch-manipulation"
             style={{ touchAction: 'none' }}
+            label={localIsLiked ? 'Retirer le like' : 'Aimer'}
+            aria-pressed={!!localIsLiked}
+            pressed={localIsLiked}
+            feedback={isAnimating}
           >
             <motion.div
-              animate={isAnimating ? {
-                scale: [1, 1.3, 1],
-                rotate: [0, -10, 10, -10, 10, 0]
-              } : {}}
-              transition={{
-                duration: 0.6,
-                ease: "easeOut"
-              }}
+              animate={
+                isAnimating
+                  ? {
+                      scale: [1, 1.22, 1],
+                      rotate: [0, -8, 8, 0],
+                    }
+                  : {}
+              }
+              transition={{ duration: 0.3, ease: 'easeOut' }}
             >
               <Heart
                 className={cn(
-                  "w-7 h-7 transition-colors",
-                  localIsLiked ? "text-red-500 fill-red-500" : "text-white"
+                  'h-6 w-6 transition-colors duration-200 drop-shadow-[0_2px_14px_rgba(0,0,0,0.65)]',
+                  localIsLiked ? 'fill-red-500 text-red-500' : 'text-white'
                 )}
               />
             </motion.div>
-          </button>
-          
-          {/* Particules animÃ©es */}
+          </FeedActionButton>
+
           <AnimatePresence>
-            {showParticles && (
-              <>
-                {[...Array(6)].map((_, i) => (
-                  <motion.div
-                    key={`particle-${i}`}
-                    initial={{ 
-                      opacity: 1, 
-                      scale: 0,
-                      x: 0,
-                      y: 0
-                    }}
-                    animate={{
-                      opacity: [1, 1, 0],
-                      scale: [0, 1, 0.5],
-                      x: Math.cos((i * 60) * Math.PI / 180) * 30,
-                      y: Math.sin((i * 60) * Math.PI / 180) * 30,
-                    }}
-                    exit={{ opacity: 0 }}
-                    transition={{
-                      duration: 0.8,
-                      delay: i * 0.05,
-                      ease: "easeOut"
-                    }}
-                    className="absolute top-0 left-1/2 -translate-x-1/2 pointer-events-none z-0"
-                  >
-                    <Heart className="w-4 h-4 text-red-500 fill-red-500" />
-                  </motion.div>
-                ))}
-              </>
-            )}
+            {showParticles &&
+              [...Array(6)].map((_, i) => (
+                <motion.div
+                  key={`particle-${i}`}
+                  initial={{ opacity: 1, scale: 0, x: 0, y: 0 }}
+                  animate={{
+                    opacity: [1, 1, 0],
+                    scale: [0, 1, 0.5],
+                    x: Math.cos((i * 60) * Math.PI / 180) * 26,
+                    y: Math.sin((i * 60) * Math.PI / 180) * 26,
+                  }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.28, delay: i * 0.018, ease: 'easeOut' }}
+                  className="pointer-events-none absolute left-1/2 top-2 z-0 -translate-x-1/2"
+                >
+                  <Heart className="h-4 w-4 fill-red-500 text-red-500" />
+                </motion.div>
+              ))}
           </AnimatePresence>
-          
-          <motion.span 
-            className="text-white text-xs font-semibold leading-tight min-h-[16px] flex items-center justify-center"
-            animate={isAnimating ? {
-              scale: [1, 1.2, 1]
-            } : {}}
-            transition={{
-              duration: 0.4,
-              ease: "easeOut"
-            }}
+
+          <motion.div
+            animate={isAnimating ? { scale: [1, 1.08, 1] } : {}}
+            transition={{ duration: 0.24, ease: 'easeOut' }}
           >
-            {(() => {
-              const safeLikes = Number.isFinite(likeCount) ? likeCount : 0;
-              if (safeLikes >= 1000) return `${(safeLikes / 1000).toFixed(1)}K`;
-              return safeLikes.toLocaleString();
-            })()}
-          </motion.span>
+            <FeedActionLabel>{formatFeedCount(likeCount)}</FeedActionLabel>
+          </motion.div>
         </div>
 
-        <div className="flex flex-col items-center gap-0.5">
-          <button onClick={onComment} className="flex items-center justify-center w-7 h-7">
-            <MessageCircle className="w-7 h-7 text-white" />
-          </button>
-          <span className="text-white text-xs font-semibold leading-tight min-h-[16px] flex items-center justify-center">
-            {(() => {
-              const raw = video.comments_count ?? 0;
-              const safe = Number.isFinite(raw) ? raw : 0;
-              if (safe >= 1000) return `${(safe / 1000).toFixed(1)}K`;
-              return safe.toLocaleString();
-            })()}
-          </span>
-        </div>
-
-        <div className="flex flex-col items-center gap-0.5">
-          <button onClick={onShare} className="flex items-center justify-center w-8 h-8" aria-label="Partager">
-            <Share2 className="w-7 h-7 text-white" />
-          </button>
-          {!compact && (
-            <span className="text-white text-[11px] font-medium leading-tight min-h-[14px] flex items-center justify-center">
-              Partager
-            </span>
-          )}
-        </div>
-
-        <div className="flex flex-col items-center">
-          <button onClick={onSave} className="flex items-center justify-center w-7 h-7">
-            <Bookmark
-              className={cn(
-                "w-7 h-7",
-                isSaved ? "text-yellow-400 fill-yellow-400" : "text-white"
-              )}
-            />
-          </button>
-          <span className="text-white text-xs font-semibold leading-tight min-h-[16px]"></span>
-        </div>
-
-        <div className="flex flex-col items-center">
-          <button
-            type="button"
+        <div className="flex flex-col items-center gap-1">
+          <FeedActionButton
             onClick={(e) => {
-              // Comportement identique aux autres icônes (partage, sauvegarde...) :
-              // laisser le navigateur gérer le tap/click et juste stopper la propagation vers la vidéo.
               e.stopPropagation();
+              triggerActionFeedback('comment');
+              onComment?.();
+            }}
+            label="Commenter"
+            feedback={!!actionFeedback.comment}
+          >
+            <motion.div
+              animate={actionFeedback.comment ? { scale: [1, 1.14, 1], y: [0, -1, 0] } : {}}
+              transition={{ duration: 0.24, ease: 'easeOut' }}
+            >
+              <MessageCircle className="h-6 w-6 text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.65)]" />
+            </motion.div>
+          </FeedActionButton>
+          <motion.div
+            animate={actionFeedback.comment ? { scale: [1, 1.08, 1] } : {}}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+          >
+            <FeedActionLabel>{formatFeedCount(video.comments_count)}</FeedActionLabel>
+          </motion.div>
+        </div>
+
+        <div className="flex flex-col items-center gap-1">
+          <FeedActionButton
+            onClick={(e) => {
+              e.stopPropagation();
+              triggerActionFeedback('share');
+              onShare?.();
+            }}
+            label="Partager"
+            feedback={!!actionFeedback.share}
+          >
+            <motion.div
+              animate={actionFeedback.share ? { scale: [1, 1.12, 1], rotate: [0, -6, 0] } : {}}
+              transition={{ duration: 0.24, ease: 'easeOut' }}
+            >
+              <Share2 className="h-6 w-6 text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.65)]" />
+            </motion.div>
+          </FeedActionButton>
+          <motion.div
+            animate={actionFeedback.share ? { scale: [1, 1.08, 1] } : {}}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+          >
+            <FeedActionLabel>{compact ? formatFeedCount(video.shares) : 'Partager'}</FeedActionLabel>
+          </motion.div>
+        </div>
+
+        <div className="flex flex-col items-center gap-1">
+          <FeedActionButton
+            onClick={(e) => {
+              e.stopPropagation();
+              triggerActionFeedback('save');
+              onSave?.();
+            }}
+            label="Sauvegarder"
+            pressed={isSaved}
+            feedback={!!actionFeedback.save}
+          >
+            <motion.div
+              animate={actionFeedback.save ? { scale: [1, 1.12, 1], y: [0, -1, 0] } : {}}
+              transition={{ duration: 0.24, ease: 'easeOut' }}
+            >
+              <Bookmark
+                className={cn(
+                  'h-6 w-6 transition-colors duration-200 drop-shadow-[0_2px_14px_rgba(0,0,0,0.65)]',
+                  isSaved ? 'fill-yellow-400 text-yellow-400' : 'text-white'
+                )}
+              />
+            </motion.div>
+          </FeedActionButton>
+          {isSaved ? (
+            <motion.div
+              animate={actionFeedback.save ? { scale: [1, 1.08, 1] } : {}}
+              transition={{ duration: 0.22, ease: 'easeOut' }}
+            >
+              <FeedActionLabel>Sauve</FeedActionLabel>
+            </motion.div>
+          ) : null}
+        </div>
+
+        <div className="flex flex-col items-center gap-1">
+          <FeedActionButton
+            onClick={(e) => {
+              e.stopPropagation();
+              triggerActionFeedback('audio');
               handleMuteToggleClick();
             }}
-            style={{ touchAction: 'manipulation', minWidth: 44, minHeight: 44 }}
-            className="flex items-center justify-center w-7 h-7 rounded-lg touch-manipulation cursor-pointer"
-            aria-label={isMuted || autoplayMutedFallback ? 'Activer le son' : 'Couper le son'}
+            style={{ touchAction: 'manipulation' }}
+            label={isMuted || autoplayMutedFallback ? 'Activer le son' : 'Couper le son'}
+            pressed={!isMuted && !autoplayMutedFallback}
+            feedback={!!actionFeedback.audio}
           >
-            {isMuted || autoplayMutedFallback ? (
-              <VolumeX className="w-6 h-6 text-white pointer-events-none" />
-            ) : (
-              <Volume2 className="w-6 h-6 text-white pointer-events-none" />
-            )}
-          </button>
-          <span className="text-white text-xs font-semibold leading-tight min-h-[16px]"></span>
+            <motion.div
+              animate={actionFeedback.audio ? { scale: [1, 1.12, 1], rotate: [0, -8, 0] } : {}}
+              transition={{ duration: 0.24, ease: 'easeOut' }}
+            >
+              {isMuted || autoplayMutedFallback ? (
+                <VolumeX className="pointer-events-none h-6 w-6 text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.65)]" />
+              ) : (
+                <Volume2 className="pointer-events-none h-6 w-6 text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.65)]" />
+              )}
+            </motion.div>
+          </FeedActionButton>
+          <motion.div
+            animate={actionFeedback.audio ? { scale: [1, 1.08, 1] } : {}}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+          >
+            <FeedActionLabel>{isMuted || autoplayMutedFallback ? 'Muet' : 'Son'}</FeedActionLabel>
+          </motion.div>
         </div>
 
         {!compact && (
-          <div className="flex flex-col items-center gap-0.5">
+          <div className="flex flex-col items-center gap-1">
             <button
               type="button"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 setIsDataSaver((prev) => !prev);
+                triggerActionFeedback('dataSaver');
               }}
               className={cn(
-                "px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-colors",
+                'rounded-full border px-3 py-1.5 text-[10px] font-semibold shadow-[0_10px_24px_rgba(2,6,23,0.24)] backdrop-blur-md transition-all duration-200 active:scale-[0.97]',
                 isDataSaver
-                  ? "bg-white text-black border-white"
-                  : "bg-black/50 text-white border-white/40"
+                  ? 'border-white bg-white text-black'
+                  : 'border-white/35 bg-black/40 text-white'
               )}
             >
-              Mode économie
+              Mode economie
             </button>
-            <span className="text-white text-[10px] leading-tight min-h-[14px] opacity-80">
-              {isDataSaver ? "Données réduites" : "Qualité normale"}
+            <span className="min-h-[14px] text-[10px] leading-tight text-white/78">
+              {isDataSaver ? 'Données réduites' : 'Qualité normale'}
             </span>
           </div>
         )}
 
         {onTip && (
-          <div className="flex flex-col items-center">
-            <button
-              type="button"
+          <div className="flex flex-col items-center gap-1">
+            <FeedActionButton
               onClick={(e) => {
-                // Même pattern que les autres boutons d'action : click/tap standard + stopPropagation.
                 e.stopPropagation();
+                triggerActionFeedback('tip');
                 onTip();
               }}
               style={{ touchAction: 'manipulation' }}
-              className="flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11 touch-manipulation active:scale-95 transition-transform select-none cursor-pointer"
-              aria-label="Soutenir"
+              label="Soutenir"
+              feedback={!!actionFeedback.tip}
             >
-              <DollarSign className="w-7 h-7 text-yellow-400 pointer-events-none" />
-            </button>
-            {!compact && <span className="text-white text-xs font-semibold leading-tight min-h-[16px]">Soutenir</span>}
+              <motion.div
+                animate={actionFeedback.tip ? { scale: [1, 1.12, 1], y: [0, -1, 0] } : {}}
+                transition={{ duration: 0.24, ease: 'easeOut' }}
+              >
+                <DollarSign className="pointer-events-none h-6 w-6 text-yellow-400" />
+              </motion.div>
+            </FeedActionButton>
+            {!compact && (
+              <motion.div
+                animate={actionFeedback.tip ? { scale: [1, 1.08, 1] } : {}}
+                transition={{ duration: 0.22, ease: 'easeOut' }}
+              >
+                <FeedActionLabel>Soutenir</FeedActionLabel>
+              </motion.div>
+            )}
           </div>
         )}
-      </div>
+      </motion.div>
 
       {/* ================= TEXT OVERLAY ================= */}
       {video.text_overlay && (
         <div 
-          className="absolute pointer-events-none z-[30]"
+          data-afw-video-text-overlay="1"
+          className="absolute pointer-events-none max-w-[min(92vw,18rem)]"
           style={{ 
+            zIndex: 160,
             left: `${video.text_x || 50}%`, 
             top: `${video.text_y || 50}%`, 
             transform: 'translate(-50%, -50%)' 
           }}
         >
-          <p className="text-white text-4xl font-black text-center px-6 drop-shadow-2xl stroke-black stroke-2"
+          <p
+            className="break-words text-center text-2xl font-black leading-tight text-white drop-shadow-2xl sm:text-3xl"
              style={{ 
                textShadow: '3px 3px 6px rgba(0,0,0,0.9), -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000' 
-             }}>
+             }}
+          >
             {video.text_overlay}
           </p>
         </div>
@@ -1784,7 +2262,11 @@ function VideoCardContent({
 
       {/* ================= STICKERS ================= */}
       {video.stickers?.length > 0 && (
-        <div className="absolute inset-0 pointer-events-none z-[35]">
+        <div
+          data-afw-video-stickers="1"
+          className="absolute inset-0 pointer-events-none"
+          style={{ zIndex: 165 }}
+        >
           {video.stickers.map((sticker, index) => (
             <div
               key={sticker?.id ?? `sticker-${index}-${sticker?.emoji ?? index}`}
@@ -1801,213 +2283,183 @@ function VideoCardContent({
         </div>
       )}
 
-      {/* ================= BRAND USERNAME WATERMARK (style TikTok) ================= */}
-      {!hideActions && video.media_type !== 'image' && isActive && (
-        <AnimatePresence>
-          <motion.div
-            className="absolute left-3 bottom-72 z-[70] flex items-center gap-2"
-            initial={{ opacity: 0, x: -24, rotate: -10 }}
-            animate={{
-              opacity: [0, 1, 1, 1, 0],
-              x: [-24, 0, 0, 0, 0],
-              rotate: [-10, 5, 0, 0, 0],
-            }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{
-              duration: 3.2,
-              ease: 'easeInOut',
-              times: [0, 0.25, 0.6, 0.85, 1],
-            }}
-          >
-            <div className="w-6 h-6 rounded-full overflow-hidden bg-white/90 flex items-center justify-center">
-              <AfriWonderLogo size="xs" />
-            </div>
-            <div className="flex flex-col leading-tight">
-              <span className="text-[10px] font-semibold text-white/80 tracking-wide">
-                AfriWonder
-              </span>
-              <span className="text-xs font-bold text-white">
-                @{video.creator_name}
-              </span>
-            </div>
-          </motion.div>
-        </AnimatePresence>
-      )}
-
       {/* ================= INFOS BAS ================= */}
-      <div 
+      <motion.div 
+        data-afw-video-info="1"
         className={cn(
-          "absolute left-0 right-0 bottom-20 px-4 pb-4 z-[90] transition-opacity duration-300",
-          hideActions ? "opacity-0 pointer-events-none" : "opacity-100"
+          'absolute left-0 right-0 overflow-x-hidden px-4 pb-3 transition-opacity duration-200 ease-out',
+          hideActions ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100'
         )}
-        style={{ touchAction: 'pan-y' }}
+        initial={false}
+        animate={hideActions ? { opacity: 0, y: 12 } : { opacity: 1, y: 0 }}
+        transition={{ duration: 0.22, ease: 'easeOut' }}
+        style={{
+          touchAction: 'pan-y',
+          zIndex: 210,
+          // Nav feed ~74px + offset 16px + marge 8px + safe area (BottomNav)
+          bottom: 'calc(6.5rem + env(safe-area-inset-bottom, 0px))',
+        }}
       >
-        <div className="flex items-center gap-2 mb-2">
-          {onSubscribe && currentUser && currentUser.id !== video.creator_id && (
+        {/* Style TikTok / Reels : texte directement sur la vidéo + vignette globale — pas de gros cadre glass (trop « prototype ») */}
+        <div className="max-w-[calc(100%-94px)] min-w-0 space-y-3 bg-transparent px-0 py-0">
+          <div className="flex min-w-0 items-start justify-between gap-3">
             <button
-              onClick={() => {
-                if (onSubscribe) {
-                  onSubscribe();
-                } else {
-                  handleFollow();
-                }
-              }}
-              className={cn(
-                "px-3 py-1 rounded-full text-xs font-semibold transition-colors",
-                following || isFollowing
-                  ? "bg-white/20 text-white border border-white/30"
-                  : "bg-white text-black"
-              )}
+              type="button"
+              onClick={() => onProfileClick(video.creator_id)}
+              className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
             >
-              {following || isFollowing ? (
-                <>
-                  <UserCheck className="w-3 h-3 inline mr-1" />
-                  Dans son Wonder
-                </>
-              ) : (
-                <>
-                  <UserPlus className="w-3 h-3 inline mr-1" />
-                  Wonder
-                </>
+              <span className="truncate text-[15px] font-bold tracking-[-0.02em] text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.64)]">
+                @{creatorAt || video.creator_name}
+              </span>
+              {video.is_verified && (
+                <BadgeCheck className="h-4 w-4 shrink-0 fill-blue-400 text-blue-400" />
               )}
             </button>
-          )}
-          <button
-            onClick={() => onProfileClick(video.creator_id)}
-            className="flex items-center gap-2"
-          >
-            <span className="text-white font-extrabold text-lg">
-              @{video.creator_name}
-            </span>
-            {video.is_verified && (
-              <BadgeCheck className="w-5 h-5 text-blue-400 fill-blue-400" />
-            )}
-          </button>
-        </div>
 
-        {/* Titre + description (sÃ©parÃ©s) avec hashtags cliquables */}
-        {(titleText || descriptionText) && (
-          <div className="mb-2">
-            {titleText && (
-              <p className="text-white font-semibold text-[17px] leading-snug break-words mb-1">
-                {renderTextWithHashtags(titleText)}
-              </p>
-            )}
-            {descriptionText && (
-              <>
-                <p className="text-white/95 text-sm leading-relaxed break-words">
-                  {showFullDescription || !isDescriptionLong ? (
-                    renderTextWithHashtags(descriptionText)
-                  ) : (
-                    <>
-                      {renderTextWithHashtags(displayText)}
-                      <button
-                        onClick={() => setShowFullDescription(true)}
-                        className="text-white/80 text-sm font-medium ml-1 hover:text-white transition-colors"
-                      >
-                        ...plus
-                      </button>
-                    </>
-                  )}
-                </p>
-                {isDescriptionLong && showFullDescription && (
-                  <button
-                    onClick={() => setShowFullDescription(false)}
-                    className="text-white/80 text-sm font-medium mt-1 hover:text-white transition-colors"
-                  >
-                    Moins
-                  </button>
+            {onSubscribe && currentUser && currentUser.id !== video.creator_id && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (onSubscribe) {
+                    onSubscribe();
+                  } else {
+                    handleFollow();
+                  }
+                }}
+                className={cn(
+                  'shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition-all duration-200 active:scale-[0.98]',
+                  following || isFollowing
+                    ? 'border-0 bg-white/14 text-white shadow-[0_8px_20px_rgba(0,0,0,0.2)] ring-1 ring-white/18 backdrop-blur-md'
+                    : 'border-0 bg-white text-slate-950 shadow-[0_10px_28px_rgba(255,255,255,0.2)]'
                 )}
+              >
+                {following || isFollowing ? (
+                  <>
+                    <UserCheck className="mr-1 inline h-3 w-3" />
+                    Wonder
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="mr-1 inline h-3 w-3" />
+                    Suivre
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+
+          {(titleText || descriptionText) && (
+            <div className="min-w-0 space-y-1.5 break-words">
+              {titleText && (
+                <p className="break-words text-[17px] font-semibold leading-snug tracking-[-0.02em] text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.58)]">
+                  {renderTextWithHashtags(titleText)}
+                </p>
+              )}
+              {descriptionText && (
+                <>
+                  <p className="break-words text-[13px] leading-[1.5] text-white/88 drop-shadow-[0_2px_10px_rgba(0,0,0,0.54)]">
+                    {showFullDescription || !isDescriptionLong ? (
+                      renderTextWithHashtags(descriptionText)
+                    ) : (
+                      <>
+                        {renderTextWithHashtags(displayText)}
+                        <button
+                          onClick={() => setShowFullDescription(true)}
+                          className="ml-1 text-[12px] font-medium text-white/72 transition-colors hover:text-white"
+                        >
+                          ...plus
+                        </button>
+                      </>
+                    )}
+                  </p>
+                  {isDescriptionLong && showFullDescription && (
+                    <button
+                      onClick={() => setShowFullDescription(false)}
+                      className="mt-1 text-[12px] font-medium text-white/72 transition-colors hover:text-white"
+                    >
+                      Moins
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {video.media_type !== 'image' && (
+            <div
+              className="mt-2 flex items-center gap-2.5 pt-1"
+              style={{ touchAction: 'none' }}
+            >
+              <div
+                ref={progressBarRef}
+                className="relative h-1.5 flex-1 cursor-pointer overflow-hidden rounded-full bg-white/14"
+                onMouseDown={handleProgressMouseDown}
+                onTouchStart={handleProgressTouchStart}
+                onClick={handleProgressClick}
+              >
+                <div
+                  className="absolute inset-y-0 left-0 rounded-full bg-white/95"
+                  style={{ width: `${Math.max(0, Math.min(100, isDragging ? dragProgress : progress))}%` }}
+                />
+              </div>
+              <span className="min-w-[44px] text-right text-[10px] font-medium tabular-nums text-white/74">
+                {timeLabel}
+              </span>
+            </div>
+          )}
+
+          {hashtags.length > 0 && (!combinedText || !combinedText.match(/#\w+/g)) && (
+            <div className="mb-1 mt-1 flex flex-wrap gap-1.5">
+              {hashtags.slice(0, 3).map((tag, index) => (
+                <button
+                  key={`${tag}-${index}`}
+                  onClick={() =>
+                    navigate(createPageUrl('Search') + `?q=${encodeURIComponent(tag)}`)
+                  }
+                  className="rounded-full border border-white/10 bg-black/18 px-2.5 py-1 text-[11px] font-semibold text-white/88 backdrop-blur-md transition-colors hover:border-blue-300/40 hover:bg-white/12 hover:text-blue-300"
+                >
+                  #{tag}
+                </button>
+              ))}
+            </div>
+          )}
+
+        {musicTitle && (
+          <div
+            className="mb-0.5 mt-1.5 flex min-w-0 items-center gap-2 text-[12px] leading-tight"
+            style={{ touchAction: 'manipulation' }}
+          >
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <Music2 className="h-3.5 w-3.5 shrink-0 text-white/70" aria-hidden />
+              <span
+                className="min-w-0 truncate font-medium tracking-[-0.01em] text-white/88 drop-shadow-[0_1px_10px_rgba(0,0,0,0.5)]"
+                title={musicTitle}
+              >
+                {musicTitle}
+              </span>
+            </div>
+            {currentUser && currentUser.id !== video.creator_id && (
+              <>
+                <span className="shrink-0 text-white/35" aria-hidden>
+                  ·
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(createPageUrl('Create') + `?music=${encodeURIComponent(musicTitle)}`)
+                  }
+                  className="shrink-0 rounded-sm px-0.5 text-[11px] font-semibold text-white/55 underline-offset-2 transition-colors hover:text-white hover:underline"
+                  aria-label={`Utiliser le son : ${musicTitle}`}
+                >
+                  Utiliser
+                </button>
               </>
             )}
           </div>
         )}
-
-        {/* Signal social compact : on montre toujours les compteurs, mÃªme faibles */}
-        <div className="flex flex-wrap items-center gap-3 mb-2 text-white/70 text-[11px]">
-          <span>
-            {(() => {
-              const raw = video.views ?? video.views_count ?? 0;
-              const safe = Number.isFinite(raw) ? raw : 0;
-              return `${safe.toLocaleString()} vues`;
-            })()}
-          </span>
-          <span>
-            {(() => {
-              const raw = video.comments_count ?? 0;
-              const safe = Number.isFinite(raw) ? raw : 0;
-              return `${safe.toLocaleString()} commentaires`;
-            })()}
-          </span>
-          <span>
-            {(() => {
-              const raw = video.shares ?? 0;
-              const safe = Number.isFinite(raw) ? raw : 0;
-              return `${safe.toLocaleString()} partages`;
-            })()}
-          </span>
         </div>
-
-        {/* ================= BARRE DE PROGRESSION (sous les vues/commentaires/partages) ================= */}
-        {video.media_type !== 'image' && (
-          <div 
-            className="mt-1 flex items-center gap-3"
-            style={{ touchAction: 'none' }}
-          >
-            <div
-              ref={progressBarRef}
-              className="relative flex-1 h-1.5 rounded-full bg-white/20 overflow-hidden cursor-pointer"
-              onMouseDown={handleProgressMouseDown}
-              onTouchStart={handleProgressTouchStart}
-              onClick={handleProgressClick}
-            >
-              <div
-                className="absolute inset-y-0 left-0 bg-white rounded-full"
-                style={{ width: `${Math.max(0, Math.min(100, isDragging ? dragProgress : progress))}%` }}
-              />
-            </div>
-            <span className="text-white text-[11px] font-medium min-w-[44px] text-right">
-              {formatTime(currentTime || 0)}/{formatTime(duration || video.duration || 0)}
-            </span>
-          </div>
-        )}
-
-        {/* Hashtags - afficher quand prÃ©sents et non dÃ©jÃ  dans le texte */}
-        {hashtags.length > 0 && (!combinedText || !combinedText.match(/#\w+/g)) && (
-          <div className="flex flex-wrap gap-2 mb-2">
-            {hashtags.slice(0, 3).map((tag, index) => (
-              <button
-                key={`${tag}-${index}`}
-                onClick={() =>
-                  navigate(createPageUrl('Search') + `?q=${encodeURIComponent(tag)}`)
-                }
-                className="text-white font-bold hover:text-blue-400 transition-colors"
-              >
-                #{tag}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {musicTitle && (
-          <div className="flex items-center gap-2 mb-2">
-            <span className="flex items-center gap-2 bg-white/15 px-3 py-2 rounded-full w-fit">
-              <Music2 className="w-4 h-4 text-white" />
-              <span className="text-white text-sm">{musicTitle}</span>
-            </span>
-            {currentUser && currentUser.id !== video.creator_id && (
-              <button
-                onClick={() =>
-                  navigate(createPageUrl('Create') + `?music=${encodeURIComponent(musicTitle)}`)
-                }
-                className="text-blue-300 hover:text-blue-200 text-xs font-medium"
-              >
-                Utiliser
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+      </motion.div>
+    </div>
     </div>
   );
 }

@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, Loader2, SlidersHorizontal, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { createPageUrl } from "@/utils";
 import BottomNav from '../components/navigation/BottomNav';
 import ProviderCard from '@/components/common/ProviderCard';
 import { FICTITIOUS_FEATURED_PROVIDERS } from '@/data/marketplaceFictitiousProviders';

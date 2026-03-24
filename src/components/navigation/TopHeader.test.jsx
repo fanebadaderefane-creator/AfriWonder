@@ -6,18 +6,35 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TopHeader from './TopHeader';
 
-const authMeMock = vi.fn();
 const notificationsListMock = vi.fn();
+const unreadCountMock = vi.fn();
 
 vi.mock('@/api/expressClient', () => ({
   api: {
-    auth: {
-      me: (...args) => authMeMock(...args),
-    },
     notifications: {
       list: (...args) => notificationsListMock(...args),
     },
+    messages: {
+      getUnreadCount: (...args) => unreadCountMock(...args),
+    },
   },
+}));
+
+vi.mock('@/lib/AuthContext', () => ({
+  useAuth: () => ({
+    user: { id: 'u1', language: 'fr' },
+    isAuthenticated: true,
+    isLoadingAuth: false,
+    authError: null,
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+    checkAuth: vi.fn(),
+  }),
+}));
+
+vi.mock('@/hooks/usePageVisibility', () => ({
+  usePageVisibility: () => true,
 }));
 
 vi.mock('@/components/common/useTranslation', () => ({
@@ -49,10 +66,10 @@ function renderTopHeader(props = {}) {
 describe('TopHeader', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authMeMock.mockResolvedValue({ id: 'u1', language: 'fr' });
     notificationsListMock.mockResolvedValue({
       notifications: [{ id: 'n1', is_read: false }, { id: 'n2', is_read: true }],
     });
+    unreadCountMock.mockResolvedValue({ count: 2 });
   });
 
   it(
@@ -80,13 +97,9 @@ describe('TopHeader', () => {
     renderTopHeader({ showMenuButton: true, onMenuOpen });
 
     await waitFor(() => {
-      expect(authMeMock).toHaveBeenCalled();
-    });
-    await waitFor(() => {
       expect(notificationsListMock).toHaveBeenCalled();
     });
-
-    const unreadBadge = screen.getByText('1');
+    const unreadBadge = await screen.findByText('1', {}, { timeout: 5000 });
     expect(unreadBadge).toBeInTheDocument();
     const notificationsButton = unreadBadge.closest('button');
     expect(notificationsButton).not.toBeNull();

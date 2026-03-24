@@ -9,6 +9,7 @@ import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import OrangeMoneyIntegration from '../payment/OrangeMoneyIntegration';
 import MobileMoneySelector from '../payment/MobileMoneySelector';
+import { Textarea } from "@/components/ui/textarea";
 
 export default function GiftPurchaseModal({ 
   isOpen, 
@@ -94,18 +95,20 @@ export default function GiftPurchaseModal({
 
   if (!isOpen) return null;
 
+  const totalAmount = selectedGift ? selectedGift.price * quantity : 0;
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-md max-h-screen overflow-y-auto">
+      <DialogContent className="max-h-screen max-w-md overflow-y-auto rounded-[32px] border border-white/10 bg-[#0b111d] text-white shadow-[0_30px_100px_rgba(2,6,23,0.44)]">
         {step === 'selection' && (
           <>
             <DialogHeader>
-              <DialogTitle>Sélectionner un cadeau</DialogTitle>
+              <DialogTitle className="tracking-[-0.03em] text-white">Selectionner un cadeau</DialogTitle>
             </DialogHeader>
             
             <div className="space-y-4">
               {giftsLoading ? (
-                <div className="text-center py-8">Chargement des cadeaux...</div>
+                <div className="rounded-[24px] border border-white/8 bg-white/[0.04] py-8 text-center text-white/56">Chargement des cadeaux...</div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
                   {gifts?.map((gift) => (
@@ -113,15 +116,15 @@ export default function GiftPurchaseModal({
                       key={gift.id}
                       whileHover={{ y: -5 }}
                       onClick={() => setSelectedGift(gift)}
-                      className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                      className={`cursor-pointer rounded-[24px] border p-4 transition-all ${
                         selectedGift?.id === gift.id
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-blue-300'
+                          ? 'border-white/20 bg-white/[0.08]'
+                          : 'border-white/8 bg-white/[0.03] hover:bg-white/[0.05]'
                       }`}
                     >
                       <div className="text-3xl text-center mb-2">{gift.icon}</div>
-                      <p className="font-semibold text-sm text-center">{gift.name}</p>
-                      <p className="text-blue-600 font-bold text-center">
+                      <p className="text-center text-sm font-semibold text-white">{gift.name}</p>
+                      <p className="text-center font-bold text-white/72">
                         {gift.price.toLocaleString()} XOF
                       </p>
                     </motion.div>
@@ -136,22 +139,23 @@ export default function GiftPurchaseModal({
                   className="space-y-3"
                 >
                   <div>
-                    <label className="text-sm font-semibold block mb-2">Quantité</label>
+                    <label className="mb-2 block text-sm font-semibold text-white/72">Quantite</label>
                     <Input
                       type="number"
                       min="1"
                       max="100"
                       value={quantity}
-                      onChange={(e) => setQuantity(parseInt(e.target.value))}
+                      onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                      className="rounded-2xl border-white/10 bg-white/[0.04] text-white"
                     />
-                    <p className="text-sm text-blue-600 mt-1">
-                      Total: {(selectedGift.price * quantity).toLocaleString()} XOF
+                    <p className="mt-1 text-sm text-white/56">
+                      Total: {totalAmount.toLocaleString()} XOF
                     </p>
                   </div>
 
                   <Button
                     onClick={() => setStep('message')}
-                    className="w-full bg-blue-600 hover:bg-blue-700"
+                    className="h-12 w-full rounded-2xl bg-white text-slate-950 hover:bg-white/92"
                   >
                     Continuer
                   </Button>
@@ -164,33 +168,33 @@ export default function GiftPurchaseModal({
         {step === 'message' && (
           <>
             <DialogHeader>
-              <DialogTitle>Ajouter un message</DialogTitle>
+              <DialogTitle className="tracking-[-0.03em] text-white">Ajouter un message</DialogTitle>
             </DialogHeader>
 
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-semibold block mb-2">Message (optionnel)</label>
-                <textarea
+                <label className="mb-2 block text-sm font-semibold text-white/72">Message (optionnel)</label>
+                <Textarea
                   placeholder="Laissez un message..."
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  className="w-full border rounded-lg p-2 min-h-20"
+                  className="min-h-[112px] rounded-2xl border-white/10 bg-white/[0.04] text-white placeholder:text-white/34"
                   maxLength={100}
                 />
-                <p className="text-xs text-gray-500 mt-1">{message.length}/100</p>
+                <p className="mt-1 text-xs text-white/40">{message.length}/100</p>
               </div>
 
               <div className="flex gap-2">
                 <Button
                   onClick={() => setStep('selection')}
                   variant="outline"
-                  className="flex-1"
+                  className="h-12 flex-1 rounded-2xl border-white/10 bg-transparent text-white/78 hover:bg-white/[0.05] hover:text-white"
                 >
                   Retour
                 </Button>
                 <Button
                   onClick={() => setStep('payment')}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  className="h-12 flex-1 rounded-2xl bg-white text-slate-950 hover:bg-white/92"
                 >
                   Paiement
                 </Button>
@@ -202,19 +206,19 @@ export default function GiftPurchaseModal({
         {step === 'payment' && (
           <>
             <DialogHeader>
-              <DialogTitle>Paiement</DialogTitle>
+              <DialogTitle className="tracking-[-0.03em] text-white">Paiement</DialogTitle>
             </DialogHeader>
 
             <div className="space-y-4">
-              <div className="bg-blue-50 p-3 rounded-lg">
-                <p className="text-sm text-gray-700">Montant à payer</p>
-                <p className="text-2xl font-bold text-blue-600">
-                  {(selectedGift.price * quantity).toLocaleString()} XOF
+              <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-4">
+                <p className="text-sm text-white/56">Montant a payer</p>
+                <p className="text-2xl font-bold text-white">
+                  {totalAmount.toLocaleString()} XOF
                 </p>
               </div>
 
               <div>
-                <label className="text-sm font-semibold block mb-2">Méthode de paiement</label>
+                <label className="mb-2 block text-sm font-semibold text-white/72">Methode de paiement</label>
                 <MobileMoneySelector
                   selectedMethod={selectedPayment}
                   onMethodChange={setSelectedPayment}
@@ -223,11 +227,12 @@ export default function GiftPurchaseModal({
 
               {selectedPayment === 'orange_money' && (
                 <div>
-                  <label className="text-sm font-semibold block mb-2">Numéro de _téléphone</label>
+                  <label className="mb-2 block text-sm font-semibold text-white/72">Numero de telephone</label>
                   <Input
                     placeholder="78 123 45 67"
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
+                    className="rounded-2xl border-white/10 bg-white/[0.04] text-white placeholder:text-white/34"
                   />
                 </div>
               )}
@@ -236,7 +241,7 @@ export default function GiftPurchaseModal({
                 <Button
                   onClick={() => setStep('message')}
                   variant="outline"
-                  className="flex-1"
+                  className="h-12 flex-1 rounded-2xl border-white/10 bg-transparent text-white/78 hover:bg-white/[0.05] hover:text-white"
                 >
                   Retour
                 </Button>
@@ -246,7 +251,7 @@ export default function GiftPurchaseModal({
                     sendGiftMutation.isPending ||
                     (selectedPayment === 'orange_money' && !phoneNumber)
                   }
-                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  className="h-12 flex-1 rounded-2xl bg-white text-slate-950 hover:bg-white/92"
                 >
                   {sendGiftMutation.isPending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />

@@ -10,7 +10,6 @@ import {
   Wifi,
   CheckCircle2,
   RotateCw,
-  X,
   ChevronUp,
   ChevronDown,
   ArrowLeft,

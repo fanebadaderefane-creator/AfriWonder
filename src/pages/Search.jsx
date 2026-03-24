@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/button';
 
 const SUGGEST_DEBOUNCE_MS = 300;
 const MIN_CHARS_FOR_SUGGESTIONS = 2;
+const SEARCH_PAGE_BG = 'bg-[#060913]';
+const SEARCH_SURFACE = 'border border-white/8 bg-[#0b111d]/92 shadow-[0_22px_70px_rgba(2,6,23,0.30)] backdrop-blur-2xl';
 
 /** Affiche la miniature (image valide), sinon image de secours — évite cadre noir sur Chrome/mobile */
 function VideoThumbnail({ video }) {
@@ -48,7 +50,13 @@ function VideoThumbnail({ video }) {
           onError={onThumbError}
         />
       ) : (
-        <img src={VIDEO_PLACEHOLDER_IMG} alt={video.title} className="w-full h-full object-cover absolute inset-0" />
+        <img
+          src={VIDEO_PLACEHOLDER_IMG}
+          alt={video.title}
+          className="w-full h-full object-cover absolute inset-0"
+          loading="lazy"
+          decoding="async"
+        />
       )}
     </div>
   );
@@ -157,24 +165,24 @@ export default function SearchPage() {
   const shouldShowProducts = !isMessagesContext && (filters.type === 'all' || filters.type === 'products');
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className={`min-h-screen text-white pb-24 ${SEARCH_PAGE_BG}`}>
       {/* Search Header */}
-      <div className="sticky top-0 bg-white border-b z-10">
-        <div className="p-4 space-y-3">
+      <div className="sticky top-0 z-10 border-b border-white/8 bg-[#060913]/88 backdrop-blur-2xl">
+        <div className="mx-auto max-w-4xl space-y-3 p-4">
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0 rounded-xl" aria-label="Retour">
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="h-10 w-10 flex-shrink-0 rounded-full border border-white/10 bg-white/[0.04] text-white/82 hover:bg-white/[0.08]" aria-label="Retour">
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div className="flex-1 relative min-w-0" ref={searchWrapperRef}>
               <form
-                className="flex items-center gap-2 bg-gray-100 rounded-full px-4 py-2 min-w-0"
+                className={`flex min-w-0 items-center gap-2 rounded-[28px] px-4 py-3 ${SEARCH_SURFACE}`}
                 onSubmit={(e) => {
                   e.preventDefault();
                   setSearchFocused(false);
                   handleSearch(localQuery);
                 }}
               >
-                <Search className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                <Search className="w-5 h-5 text-white/52 flex-shrink-0" />
                 <input
                   type="text"
                   placeholder={
@@ -191,17 +199,17 @@ export default function SearchPage() {
                   value={localQuery}
                   onChange={(e) => setLocalQuery(e.target.value)}
                   onFocus={() => setSearchFocused(true)}
-                  className="flex-1 bg-transparent outline-none text-gray-900 min-w-0"
+                  className="flex-1 min-w-0 bg-transparent text-white outline-none placeholder:text-white/38 caret-white"
                   autoFocus
                 />
                 {localQuery ? (
-                  <button type="button" onClick={() => { setLocalQuery(''); setSearchParams({}); setSearchFocused(false); }} className="p-1 hover:bg-gray-200 rounded-full">
-                    <X className="w-5 h-5 text-gray-400" />
+                  <button type="button" onClick={() => { setLocalQuery(''); setSearchParams({}); setSearchFocused(false); }} className="rounded-full p-1 hover:bg-white/[0.06]">
+                    <X className="w-5 h-5 text-white/70" />
                   </button>
                 ) : null}
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-full font-medium text-sm flex-shrink-0"
+                  className="flex-shrink-0 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 focus-visible:outline-none hover:bg-white/90"
                 >
                   {t("search_button")}
                 </button>
@@ -209,10 +217,10 @@ export default function SearchPage() {
 
               {/* Suggestions à la frappe : utilisateurs et vidéos (même principe que pour les noms) */}
               {showSuggestions && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 max-h-[70vh] overflow-y-auto">
+                <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-[70vh] overflow-y-auto rounded-[24px] border border-white/10 bg-[#0b111d]/98 shadow-[0_24px_80px_rgba(2,6,23,0.36)] backdrop-blur-2xl">
                   {suggestionsLoading ? (
-                    <div className="flex items-center justify-center gap-2 py-6 text-gray-500">
-                      <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                    <div className="flex items-center justify-center gap-2 py-6 text-white/70">
+                      <Loader2 className="w-5 h-5 animate-spin text-white" />
                       <span className="text-sm">Chargement des propositions...</span>
                     </div>
                   ) : hasSuggestions ? (
@@ -220,7 +228,7 @@ export default function SearchPage() {
                       {/* Vidéos en premier si onglet Vidéos, sinon après Utilisateurs */}
                       {filters.type === 'videos' && suggestionVideos && suggestionVideos.length > 0 && (
                         <div className="px-2 pb-2">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-2 py-1">Vidéos</p>
+                          <p className="text-xs font-semibold text-white/60 uppercase tracking-wide px-2 py-1">Vidéos</p>
                           {suggestionVideos.map((v) => (
                             <button
                               key={v.id}
@@ -230,26 +238,32 @@ export default function SearchPage() {
                                 setSearchFocused(false);
                                 navigate(createPageUrl('VideoView') + `?id=${v.id}`);
                               }}
-                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-blue-50 text-left"
+                              className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-white/[0.05]"
                             >
-                              <div className="w-14 h-10 rounded-lg bg-gray-200 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                              <div className="w-14 h-10 rounded-lg bg-white/10 flex-shrink-0 overflow-hidden flex items-center justify-center">
                                 {v.thumbnail_url ? (
-                                  <img src={v.thumbnail_url} alt="" className="w-full h-full object-cover" />
+                                  <img
+                                    src={v.thumbnail_url}
+                                    alt={v.title || ''}
+                                    className="w-full h-full object-cover"
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
                                 ) : (
-                                  <Video className="w-5 h-5 text-gray-400" />
+                                  <Video className="w-5 h-5 text-white/50" />
                                 )}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="font-medium text-gray-900 text-sm truncate">{v.title || 'Sans titre'}</p>
-                                <p className="text-xs text-gray-500 truncate">{v.creator_name || 'Créateur'}</p>
+                                <p className="font-medium text-white text-sm truncate">{v.title || 'Sans titre'}</p>
+                                <p className="text-xs text-white/60 truncate">{v.creator_name || 'Créateur'}</p>
                               </div>
                             </button>
                           ))}
                         </div>
                       )}
                       {suggestionUsers && suggestionUsers.filter((u) => !isDeletedUser(u)).length > 0 && (
-                        <div className={filters.type === 'videos' && suggestionVideos?.length ? 'px-2 pt-2 border-t border-gray-100' : 'px-2 pb-2'}>
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-2 py-1">Utilisateurs</p>
+                        <div className={filters.type === 'videos' && suggestionVideos?.length ? 'px-2 pt-2 border-t border-white/10' : 'px-2 pb-2'}>
+                          <p className="text-xs font-semibold text-white/60 uppercase tracking-wide px-2 py-1">Utilisateurs</p>
                           {suggestionUsers.filter((u) => !isDeletedUser(u)).map((u) => (
                             <button
                               key={u.id}
@@ -263,17 +277,17 @@ export default function SearchPage() {
                                   navigate(createPageUrl('Profile') + `?_userId=${u.id}`);
                                 }
                               }}
-                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-blue-50 text-left"
+                              className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-white/[0.05]"
                             >
-                              <Avatar className="w-10 h-10 flex-shrink-0 ring-2 ring-white shadow">
+                              <Avatar className="w-10 h-10 flex-shrink-0 border border-white/12 shadow-[0_10px_22px_rgba(2,6,23,0.14)]">
                                 <AvatarImage src={u.profile_image} />
-                                <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white font-semibold text-sm">
+                                <AvatarFallback className="bg-gradient-to-br from-slate-600 to-slate-800 text-white font-semibold text-sm">
                                   {(u.full_name || u.username || u.email || 'U')?.[0]?.toUpperCase()}
                                 </AvatarFallback>
                               </Avatar>
                               <div className="flex-1 min-w-0">
-                                <p className="font-medium text-gray-900 truncate">{u.full_name || u.username || 'Utilisateur'}</p>
-                                <p className="text-xs text-gray-500 truncate">@{u.username || u.email?.split('@')[0] || 'user'}</p>
+                                <p className="font-medium text-white truncate">{u.full_name || u.username || 'Utilisateur'}</p>
+                                <p className="text-xs text-white/60 truncate">@{u.username || u.email?.split('@')[0] || 'user'}</p>
                               </div>
                             </button>
                           ))}
@@ -281,8 +295,8 @@ export default function SearchPage() {
                       )}
                       {/* Vidéos après Utilisateurs quand onglet Tous ou Utilisateurs */}
                       {filters.type !== 'videos' && suggestionVideos && suggestionVideos.length > 0 && (
-                        <div className="px-2 pt-2 border-t border-gray-100">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-2 py-1">Vidéos</p>
+                        <div className="px-2 pt-2 border-t border-white/10">
+                          <p className="text-xs font-semibold text-white/60 uppercase tracking-wide px-2 py-1">Vidéos</p>
                           {suggestionVideos.map((v) => (
                             <button
                               key={v.id}
@@ -292,18 +306,24 @@ export default function SearchPage() {
                                 setSearchFocused(false);
                                 navigate(createPageUrl('VideoView') + `?id=${v.id}`);
                               }}
-                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-blue-50 text-left"
+                              className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-white/[0.05]"
                             >
-                              <div className="w-14 h-10 rounded-lg bg-gray-200 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                              <div className="w-14 h-10 rounded-lg bg-white/10 flex-shrink-0 overflow-hidden flex items-center justify-center">
                                 {v.thumbnail_url ? (
-                                  <img src={v.thumbnail_url} alt="" className="w-full h-full object-cover" />
+                                  <img
+                                    src={v.thumbnail_url}
+                                    alt={v.title || ''}
+                                    className="w-full h-full object-cover"
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
                                 ) : (
-                                  <Video className="w-5 h-5 text-gray-400" />
+                                  <Video className="w-5 h-5 text-white/50" />
                                 )}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="font-medium text-gray-900 text-sm truncate">{v.title || 'Sans titre'}</p>
-                                <p className="text-xs text-gray-500 truncate">{v.creator_name || 'Créateur'}</p>
+                                <p className="font-medium text-white text-sm truncate">{v.title || 'Sans titre'}</p>
+                                <p className="text-xs text-white/60 truncate">{v.creator_name || 'Créateur'}</p>
                               </div>
                             </button>
                           ))}
@@ -311,7 +331,7 @@ export default function SearchPage() {
                       )}
                     </div>
                   ) : (
-                    <div className="py-4 px-4 text-center text-sm text-gray-500">
+                    <div className="py-4 px-4 text-center text-sm text-white/65">
                       Aucune proposition pour « {localQuery.trim()} ». Appuyez sur Entrée pour lancer la recherche.
                     </div>
                   )}
@@ -322,20 +342,20 @@ export default function SearchPage() {
 
           {/* Filter tabs — déclenchent le rafraîchissement des résultats */}
           {isMessagesContext ? (
-            <div className="text-sm text-gray-600 text-center py-2">
+            <div className="py-2 text-center text-sm text-white/62">
               Recherchez un utilisateur pour démarrer une conversation
             </div>
           ) : (
             <Tabs value={filters.type} onValueChange={(v) => setFilters((prev) => ({ ...prev, type: v }))}>
-              <TabsList className="grid w-full grid-cols-4 bg-gray-100 p-1 rounded-xl">
-                <TabsTrigger value="all" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">Tous</TabsTrigger>
-                <TabsTrigger value="videos" className="flex gap-1 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
+              <TabsList className={`grid w-full grid-cols-4 rounded-[24px] p-1 ${SEARCH_SURFACE}`}>
+                <TabsTrigger value="all" className="rounded-2xl text-white/70 data-[state=active]:bg-white/[0.08] data-[state=active]:text-white data-[state=active]:shadow-none">Tous</TabsTrigger>
+                <TabsTrigger value="videos" className="flex gap-1 rounded-2xl text-white/70 data-[state=active]:bg-white/[0.08] data-[state=active]:text-white data-[state=active]:shadow-none">
                   <Video className="w-4 h-4" /> Vidéos
                 </TabsTrigger>
-                <TabsTrigger value="users" className="flex gap-1 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                <TabsTrigger value="users" className="flex gap-1 rounded-2xl text-white/70 data-[state=active]:bg-white/[0.08] data-[state=active]:text-white data-[state=active]:shadow-none">
                   <User className="w-4 h-4" /> Utilisateurs
                 </TabsTrigger>
-                <TabsTrigger value="products" className="flex gap-1 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                <TabsTrigger value="products" className="flex gap-1 rounded-2xl text-white/70 data-[state=active]:bg-white/[0.08] data-[state=active]:text-white data-[state=active]:shadow-none">
                   <Package className="w-4 h-4" /> Produits
                 </TabsTrigger>
               </TabsList>
@@ -344,14 +364,14 @@ export default function SearchPage() {
         </div>
       </div>
 
-      <div className="p-4 space-y-6">
+      <div className="mx-auto max-w-4xl space-y-6 p-4">
         {!query ? (
-          <div className="text-center py-10 max-w-sm mx-auto">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center mx-auto mb-5">
-              <Search className="w-8 h-8 text-blue-500" />
+          <div className={`mx-auto max-w-sm rounded-[30px] p-8 text-center ${SEARCH_SURFACE}`}>
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/[0.04]">
+              <Search className="w-8 h-8 text-white/72" />
             </div>
-            <h2 className="text-lg font-semibold text-gray-800 mb-1">Que recherchez-vous ?</h2>
-            <p className="text-sm text-gray-500 mb-6">Vidéos, créateurs, produits — tapez un mot-clé ou choisissez une catégorie ci-dessous.</p>
+            <h2 className="text-lg font-semibold text-white mb-1">Que recherchez-vous ?</h2>
+            <p className="text-sm text-white/65 mb-6">Vidéos, créateurs, produits — tapez un mot-clé ou choisissez une catégorie ci-dessous.</p>
             {!isMessagesContext && (
               <div className="flex flex-wrap justify-center gap-2">
                 {[
@@ -366,7 +386,11 @@ export default function SearchPage() {
                       setFilters((prev) => ({ ...prev, type }));
                       document.querySelector('input[type="text"]')?.focus();
                     }}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-white border border-gray-200 text-gray-700 text-sm font-medium hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-colors shadow-sm"
+                    className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-colors shadow-sm ${
+                      filters.type === type
+                        ? 'border border-white/25 bg-white/[0.10] text-white'
+                        : 'border border-white/12 bg-white/[0.03] text-white/72 hover:border-white/24 hover:bg-white/[0.06] hover:text-white'
+                    }`}
                   >
                     <Icon className="w-4 h-4" />
                     {label}
@@ -375,48 +399,48 @@ export default function SearchPage() {
               </div>
             )}
             {isMessagesContext && (
-              <p className="text-sm text-gray-400">Tapez le nom ou l'email d'un utilisateur pour démarrer une conversation</p>
+              <p className="text-sm text-white/60">Tapez le nom ou l'email d'un utilisateur pour démarrer une conversation</p>
             )}
           </div>
         ) : hasError ? (
-          <div className="text-center py-12 text-red-500">
+          <div className={`rounded-[30px] p-10 text-center ${SEARCH_SURFACE}`}>
             <p className="font-semibold mb-2">Erreur de connexion</p>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-white/70">
               {hasError?.response?.status === 404 || hasError?.message?.includes('Network')
                 ? 'Vérifiez que le backend est lancé sur http://localhost:3000'
                 : hasError?.apiMessage || hasError?.message || 'Impossible de charger les résultats'}
             </p>
-            <p className="text-xs text-gray-400 mt-2">Ouvrez la console (F12) pour plus de détails</p>
+            <p className="text-xs text-white/50 mt-2">Ouvrez la console (F12) pour plus de détails</p>
           </div>
         ) : isLoading ? (
-          <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-3" />
+          <div className={`flex flex-col items-center justify-center rounded-[30px] py-12 text-white/70 ${SEARCH_SURFACE}`}>
+            <Loader2 className="mb-3 h-8 w-8 animate-spin text-white" />
             <p className="text-sm">Recherche en cours...</p>
           </div>
         ) : totalResults === 0 ? (
-          <div className="text-center py-10 max-w-sm mx-auto">
-            <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-              <Search className="w-7 h-7 text-gray-400" />
+          <div className={`mx-auto max-w-sm rounded-[30px] p-8 text-center ${SEARCH_SURFACE}`}>
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.04]">
+              <Search className="w-7 h-7 text-white/60" />
             </div>
-            <p className="font-semibold text-gray-800 mb-1">{t("search_no_results")} « {query} »</p>
-            <p className="text-sm text-gray-500 mb-4">
+            <p className="font-semibold text-white mb-1">{t("search_no_results")} « {query} »</p>
+            <p className="text-sm text-white/65 mb-4">
               {isMessagesContext ? t("search_try_other_users") : t("search_try_other")}
             </p>
             {!isMessagesContext && (
-              <p className="text-xs text-gray-400">{t("search_try_other")}</p>
+              <p className="text-xs text-white/50">{t("search_try_other")}</p>
             )}
           </div>
         ) : (
           <>
-            <p className="text-sm text-gray-500 mb-2">
+            <p className="text-sm text-white/65 mb-2">
               {totalResults} {t("search_results_count")} « {query} »
             </p>
             {/* Videos — affiché pour Tous ou Vidéos */}
             {shouldShowVideos && videos && videos.length > 0 && (
               <div className="space-y-3">
-                <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                  <Video className="w-5 h-5 text-blue-500" />
-                  Vidéos <span className="text-sm font-normal text-gray-500">({videos.length})</span>
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Video className="w-5 h-5 text-[#ff2f6d]" />
+                  Vidéos <span className="text-sm font-normal text-white/60">({videos.length})</span>
                 </h2>
                 <div className="space-y-2">
                   <AnimatePresence>
@@ -426,13 +450,13 @@ export default function SearchPage() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         onClick={() => navigate(createPageUrl('VideoView') + `?id=${video.id}`)}
-                        className="bg-white rounded-lg p-3 flex gap-3 cursor-pointer hover:bg-gray-50"
+                        className={`flex cursor-pointer gap-3 rounded-[24px] p-3 ${SEARCH_SURFACE}`}
                       >
                         <VideoThumbnail video={video} />
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-gray-900 truncate">{video.title}</h3>
-                          <p className="text-xs text-gray-500">{video.creator_name}</p>
-                          <p className="text-xs text-gray-400 mt-1">{video.views ?? video.views_count ?? 0} vues</p>
+                          <h3 className="font-semibold text-white truncate">{video.title}</h3>
+                          <p className="text-xs text-white/65">{video.creator_name}</p>
+                          <p className="text-xs text-white/50 mt-1">{video.views ?? video.views_count ?? 0} vues</p>
                         </div>
                       </motion.div>
                     ))}
@@ -444,9 +468,9 @@ export default function SearchPage() {
             {/* Users — affiché pour Tous ou Users (ou toujours en mode messages) */}
             {shouldShowUsers && users && users.length > 0 && (
               <div className="space-y-3">
-                <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                  <User className="w-5 h-5 text-blue-500" />
-                  Utilisateurs <span className="text-sm font-normal text-gray-500">({users.length})</span>
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <User className="w-5 h-5 text-[#ff2f6d]" />
+                  Utilisateurs <span className="text-sm font-normal text-white/60">({users.length})</span>
                 </h2>
                 <div className="grid grid-cols-2 gap-3">
                   <AnimatePresence>
@@ -463,16 +487,16 @@ export default function SearchPage() {
                             navigate(createPageUrl('Profile') + `?_userId=${u.id}`);
                           }
                         }}
-                        className="bg-white rounded-lg p-3 text-center cursor-pointer hover:bg-gray-50"
+                        className={`cursor-pointer rounded-[24px] p-3 text-center ${SEARCH_SURFACE}`}
                       >
-                        <Avatar className="w-12 h-12 mx-auto mb-2 ring-2 ring-white shadow-md">
+                        <Avatar className="mx-auto mb-2 h-12 w-12 border border-white/12 shadow-[0_10px_24px_rgba(2,6,23,0.16)]">
                           <AvatarImage src={u.profile_image} />
-                          <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white font-semibold">
+                          <AvatarFallback className="bg-gradient-to-br from-slate-600 to-slate-800 text-white font-semibold">
                             {(u.full_name || u.username || u.email || 'U')?.[0]?.toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
-                        <p className="font-semibold text-sm text-gray-900 truncate">{u.full_name || u.username || 'Utilisateur'}</p>
-                        <p className="text-xs text-gray-500 truncate">@{u.username || u.email?.split('@')[0] || 'user'}</p>
+                        <p className="font-semibold text-sm text-white truncate">{u.full_name || u.username || 'Utilisateur'}</p>
+                        <p className="text-xs text-white/60 truncate">@{u.username || u.email?.split('@')[0] || 'user'}</p>
                       </motion.div>
                     ))}
                   </AnimatePresence>
@@ -483,9 +507,9 @@ export default function SearchPage() {
             {/* Products — affiché pour Tous ou Produits */}
             {shouldShowProducts && products && products.length > 0 && (
               <div className="space-y-3">
-                <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                  <Package className="w-5 h-5 text-blue-500" />
-                  Produits <span className="text-sm font-normal text-gray-500">({products.length})</span>
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Package className="w-5 h-5 text-[#ff2f6d]" />
+                  Produits <span className="text-sm font-normal text-white/60">({products.length})</span>
                 </h2>
                 <div className="space-y-2">
                   <AnimatePresence>
@@ -495,9 +519,9 @@ export default function SearchPage() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         onClick={() => navigate(createPageUrl('Product') + `?id=${product.id}`)}
-                        className="bg-white rounded-lg p-3 flex gap-3 cursor-pointer hover:bg-gray-50"
+                        className={`flex cursor-pointer gap-3 rounded-[24px] p-3 ${SEARCH_SURFACE}`}
                       >
-                        <div className="w-16 h-16 min-h-[64px] rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden">
+                        <div className="w-16 h-16 min-h-[64px] rounded-lg bg-white/10 flex-shrink-0 overflow-hidden">
                           <img
                             src={getAbsoluteImageUrl(product.images?.[0]) || MARKETPLACE_PLACEHOLDER_IMG}
                             alt={product.name || product.title}
@@ -506,8 +530,8 @@ export default function SearchPage() {
                           />
                         </div>
                         <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 truncate">{product.name || product.title}</h3>
-                          <p className="text-sm font-bold text-blue-600">{product.price?.toLocaleString()} FCFA</p>
+                          <h3 className="font-semibold text-white truncate">{product.name || product.title}</h3>
+                          <p className="text-sm font-bold text-[#ff5f8f]">{product.price?.toLocaleString()} FCFA</p>
                         </div>
                       </motion.div>
                     ))}

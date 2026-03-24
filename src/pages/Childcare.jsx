@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery } from '@tanstack/react-query';
-import { Baby, Loader2, ArrowLeft, MapPin, Star, BadgeCheck, Calendar } from 'lucide-react';
+import { Baby, Loader2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';

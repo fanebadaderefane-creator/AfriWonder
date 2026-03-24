@@ -5,6 +5,7 @@ export default function AfriWonderLogo({ size = 'md', className = '' }) {
   const [imageError, setImageError] = useState(false);
   
   const sizeClasses = {
+    xs: 'w-10 h-10',
     sm: 'w-12 h-12',
     md: 'w-16 h-16',
     lg: 'w-24 h-24',

@@ -12,7 +12,6 @@ import {
   CreditCard,
   Mic,
   DollarSign,
-  Settings,
   Eye,
   FileText,
   Zap,

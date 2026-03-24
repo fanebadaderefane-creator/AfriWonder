@@ -215,6 +215,8 @@ export default function ArticleDetails() {
           alt={article.title}
           className="w-full h-64 object-cover"
           loading="eager"
+          decoding="async"
+          fetchPriority="high"
         />
       )}
 
@@ -249,6 +251,8 @@ export default function ArticleDetails() {
             src={article.author?.profile_image || article.author_avatar || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100'}
             alt={article.author_name}
             className="w-10 h-10 rounded-full object-cover"
+            loading="lazy"
+            decoding="async"
           />
           <div className="flex-1">
             <p className="font-medium text-sm text-slate-900">{article.author?.full_name || article.author_name}</p>
@@ -268,6 +272,8 @@ export default function ArticleDetails() {
             className="flex items-center gap-1 hover:text-blue-600"
             onClick={() => (user || isMock) && likeMutation.mutate()}
             disabled={likeMutation.isPending}
+            aria-label={likeStatus?.liked ? 'Retirer le like' : 'Aimer l’article'}
+            aria-pressed={!!likeStatus?.liked}
           >
             <Heart className={`w-4 h-4 ${likeStatus.liked ? 'fill-blue-500 text-blue-500' : ''}`} />
             {article.likes_count ?? 0} j&apos;aime
@@ -332,6 +338,7 @@ export default function ArticleDetails() {
                 onClick={() => commentMutation.mutate()}
                 disabled={commentMutation.isPending || !newComment.trim()}
                 size="icon"
+                aria-label="Envoyer le commentaire"
               >
                 {commentMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               </Button>
@@ -362,6 +369,8 @@ export default function ArticleDetails() {
                   src={comment.user?.profile_image || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100'}
                   alt=""
                   className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                    loading="lazy"
+                    decoding="async"
                 />
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-xs text-slate-900">{comment.user?.full_name}</p>
@@ -387,6 +396,8 @@ export default function ArticleDetails() {
                             src={reply.user?.profile_image || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100'}
                             alt=""
                             className="w-6 h-6 rounded-full object-cover flex-shrink-0"
+                            loading="lazy"
+                            decoding="async"
                           />
                           <div>
                             <p className="font-medium text-xs text-slate-900">{reply.user?.full_name}</p>

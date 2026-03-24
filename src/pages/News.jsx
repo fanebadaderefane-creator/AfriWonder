@@ -1,10 +1,10 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import {
-  Search, TrendingUp, Eye, Heart, MessageCircle, Bookmark, Share2,
+  Search, TrendingUp, Eye, Bookmark, Share2,
   AlertCircle, Globe, BookOpen, Settings, ArrowLeft, PenSquare
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,7 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from '@/components/common/useTranslation';
+import { upsertJsonLdScript, removeJsonLdScript } from '@/lib/seoUtils';
 
 // Catégories alignées avec le mockup (couleurs AfriWonder)
 const CATEGORIES = [
@@ -259,6 +260,11 @@ export default function News() {
     api.auth.me().then(setUser).catch(() => setUser(null));
   }, []);
 
+  /** Fil « Pour vous » nécessite un compte — éviter état incohérent pour visiteurs */
+  React.useEffect(() => {
+    if (!user && useFeed) setUseFeed(false);
+  }, [user, useFeed]);
+
   const { data: prefs } = useQuery({
     queryKey: ['news-preferences'],
     queryFn: () => api.news.getPreferences(),
@@ -349,6 +355,32 @@ export default function News() {
 
   const trendingToShow = useMock ? MOCK_TRENDING : apiTrending.slice(0, 5);
 
+  useEffect(() => {
+    if (typeof document === 'undefined' || useMock || !apiArticles.length) {
+      removeJsonLdScript('afriwonder-news-itemlist');
+      return undefined;
+    }
+    const origin = window.location.origin;
+    const items = apiArticles.slice(0, 15).map((a, idx) => {
+      const id = a.id ?? a.slug ?? idx;
+      const q = a.slug ? `slug=${encodeURIComponent(a.slug)}` : `id=${encodeURIComponent(String(id))}`;
+      return {
+        '@type': 'ListItem',
+        position: idx + 1,
+        url: `${origin}/ArticleDetails?${q}`,
+        name: a.title || a.seo_title || 'Article',
+      };
+    });
+    upsertJsonLdScript('afriwonder-news-itemlist', {
+      '@context': 'https://schema.org',
+      '@type': 'ItemList',
+      name: 'Actualités AfriWonder',
+      numberOfItems: items.length,
+      itemListElement: items,
+    });
+    return () => removeJsonLdScript('afriwonder-news-itemlist');
+  }, [apiArticles, useMock]);
+
   const loadMoreRef = useRef(null);
   const loadMoreObserver = useCallback(
     (node) => {
@@ -392,9 +424,9 @@ export default function News() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-32">
+    <div className="min-h-screen bg-[#0b0b0f] text-white pb-32">
       {/* Header compact — comme capture 2, bandeau réduit */}
-      <div className="sticky top-0 bg-white border-b border-slate-200 z-40 shadow-sm">
+      <div className="sticky top-0 bg-[#0b0b0f]/95 border-b border-white/10 z-40 shadow-sm backdrop-blur">
         <div className="max-w-4xl mx-auto px-4 py-2">
           <div className="flex items-center justify-between gap-2 mb-2">
             <div className="flex items-center gap-3">
@@ -402,15 +434,15 @@ export default function News() {
                 <ArrowLeft className="w-5 h-5" />
               </Button>
               <div>
-                <h1 className="text-xl font-bold text-slate-900">{t('news_title')}</h1>
-                <p className="text-xs text-slate-500 mt-0.5">{t('news_subtitle')}</p>
+                <h1 className="text-xl font-bold text-white">{t('news_title')}</h1>
+                <p className="text-xs text-white/60 mt-0.5">{t('news_subtitle')}</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
               {user && (
                 <Link
                   to={createPageUrl('PublishNews')}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-[#ff2f6d] hover:bg-[#ff4b80] text-white text-sm font-medium"
                 >
                   <PenSquare className="w-4 h-4" />
                   <span className="hidden sm:inline">Publier</span>
@@ -419,18 +451,18 @@ export default function News() {
               <Dialog open={prefsOpen} onOpenChange={setPrefsOpen}>
                 <DialogTrigger asChild>
                   <button
-                    className="p-2 rounded-full hover:bg-slate-100 text-slate-600"
+                    className="p-2 rounded-full hover:bg-white/10 text-white/70"
                     aria-label="Préférences"
                   >
                     <Settings className="w-5 h-5" />
                   </button>
                 </DialogTrigger>
-              <DialogContent className="max-w-sm">
-<DialogHeader>
-                <DialogTitle>{t('news_preferences')}</DialogTitle>
-              </DialogHeader>
+              <DialogContent className="max-w-sm bg-[#11131a] border border-white/15 text-white">
+                <DialogHeader>
+                  <DialogTitle className="text-white">{t('news_preferences')}</DialogTitle>
+                </DialogHeader>
                 <div className="space-y-4 py-2">
-                  <p className="text-sm text-slate-600">Catégories préférées (fil &quot;Pour vous&quot;)</p>
+                  <p className="text-sm text-white/70">Catégories préférées (fil &quot;Pour vous&quot;)</p>
                   <div className="flex flex-wrap gap-2">
                     {categoryOptions.map((cat) => (
                       <button
@@ -440,8 +472,8 @@ export default function News() {
                         className={cn(
                           'px-3 py-1.5 rounded-full text-sm font-medium',
                           prefCategories.includes(cat.id)
-                            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white'
-                            : 'bg-slate-100 text-slate-700'
+                            ? 'bg-gradient-to-r from-[#ff2f6d] to-[#ff5f8f] text-white'
+                            : 'bg-white/10 text-white/80 hover:bg-white/15'
                         )}
                       >
                         {cat.label}
@@ -449,29 +481,35 @@ export default function News() {
                     ))}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Pays</label>
+                    <label htmlFor="news-pref-country" className="block text-sm font-medium text-white/85 mb-1">Pays</label>
                     <Input
+                      id="news-pref-country"
                       placeholder="Ex: ML, SN, CI"
                       value={prefCountry}
                       onChange={(e) => setPrefCountry(e.target.value)}
-                      className="rounded-lg"
+                      className="rounded-lg bg-[#191b23] border-white/20 text-white placeholder:text-white/50"
+                      aria-label="Pays des préférences actualités"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Langue</label>
+                    <label htmlFor="news-pref-language" className="block text-sm font-medium text-white/85 mb-1">Langue</label>
                     <select
+                      id="news-pref-language"
                       value={prefLanguage}
                       onChange={(e) => setPrefLanguage(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                      className="w-full rounded-lg border border-white/20 bg-[#191b23] px-3 py-2 text-sm text-white"
+                      aria-label="Langue des préférences actualités"
                     >
                       <option value="">Toutes</option>
                       {LANG_OPTIONS.filter((l) => l.id != null && l.id !== '').map((l) => (
-                        <option key={l.id} value={l.id}>{l.label ?? (l.labelKey ? t(l.labelKey) : l.id)}</option>
+                        <option key={l.id} value={l.id} className="bg-[#191b23] text-white">
+                          {l.label ?? (l.labelKey ? t(l.labelKey) : l.id)}
+                        </option>
                       ))}
                     </select>
                   </div>
                   <Button
-                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-0"
+                    className="w-full bg-gradient-to-r from-[#ff2f6d] to-[#ff5f8f] hover:from-[#ff4b80] hover:to-[#ff7aa4] text-white border-0"
                     onClick={() => {
                       savePrefsMutation.mutate();
                       setPrefsOpen(false);
@@ -488,12 +526,13 @@ export default function News() {
 
           {/* Search */}
           <div className="relative mb-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/55" />
             <Input
               placeholder={t('news_search_placeholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 rounded-xl border-slate-200 bg-slate-50/50"
+              className="pl-10 rounded-xl border-white/10 bg-white/10 text-white placeholder:text-white/55"
+              aria-label={t('news_search_placeholder')}
             />
           </div>
 
@@ -504,20 +543,30 @@ export default function News() {
               className={cn(
                 'px-4 py-1.5 rounded-full text-sm font-medium transition-colors',
                 !useFeed
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'bg-[#ff2f6d] hover:bg-[#ff4b80] text-white'
+                  : 'bg-white/10 text-white/75 hover:bg-white/15'
               )}
             >
               {t('news_all')}
             </button>
             <button
-              onClick={() => setUseFeed(true)}
+              type="button"
+              onClick={() => {
+                if (!user) {
+                  toast.info('Connectez-vous pour un fil personnalisé selon vos préférences.');
+                  return;
+                }
+                setUseFeed(true);
+              }}
               className={cn(
                 'px-4 py-1.5 rounded-full text-sm font-medium flex items-center gap-1.5 transition-colors',
                 useFeed
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'bg-[#ff2f6d] hover:bg-[#ff4b80] text-white'
+                  : 'bg-white/10 text-white/75 hover:bg-white/15',
+                !user && !useFeed && 'opacity-80'
               )}
+              aria-label={user ? t('news_for_you') : `${t('news_for_you')} — connexion requise`}
+              title={user ? undefined : 'Connexion requise'}
             >
               <BookOpen className="w-4 h-4" /> {t('news_for_you')}
             </button>
@@ -532,8 +581,8 @@ export default function News() {
                 className={cn(
                   'flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all',
                   selectedCategory === cat.id
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
-                    : 'bg-white border border-slate-200 text-slate-700 hover:border-blue-200 hover:text-blue-700'
+                    ? 'bg-gradient-to-r from-[#ff2f6d] to-[#ff5f8f] text-white shadow-md'
+                    : 'bg-white/5 border border-white/10 text-white/80 hover:border-white/30 hover:text-white'
                 )}
               >
                 {cat.label}
@@ -543,7 +592,7 @@ export default function News() {
 
           {/* Langue — relié à la traduction globale (changeLanguage) */}
           <div className="flex items-center gap-2 overflow-x-auto pt-0.5 scrollbar-hide">
-            <Globe className="w-4 h-4 text-slate-500 flex-shrink-0" />
+            <Globe className="w-4 h-4 text-white/55 flex-shrink-0" />
             {LANG_OPTIONS.map((lang) => {
               const isSelected = lang.code ? appLanguage === lang.code : (language === '' && appLanguage === 'fr');
               const label = lang.labelKey ? t(lang.labelKey) : (lang.label || lang.id);
@@ -560,7 +609,7 @@ export default function News() {
                   }}
                   className={cn(
                     'flex-shrink-0 px-3 py-1 rounded-full text-xs whitespace-nowrap transition-colors',
-                    isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    isSelected ? 'bg-[#ff2f6d] text-white' : 'bg-white/10 text-white/75 hover:bg-white/15'
                   )}
                 >
                   {label}
@@ -573,17 +622,17 @@ export default function News() {
 
       {/* Breaking News — AfriWonder accent */}
       {breaking.length > 0 && (
-        <div className="px-4 py-3 bg-blue-50 border-b border-blue-100">
+        <div className="px-4 py-3 bg-[#171923] border-b border-white/10">
           <div className="flex items-center gap-2 mb-2">
-            <AlertCircle className="w-5 h-5 text-blue-600" />
-            <span className="font-bold text-blue-700">{t('news_urgent')}</span>
+            <AlertCircle className="w-5 h-5 text-[#ff5f8f]" />
+            <span className="font-bold text-[#ff7aa4]">{t('news_urgent')}</span>
           </div>
           <div className="space-y-2">
             {breaking.map((article) => (
               <Link key={article.id} to={articleUrl(article)}>
-                <div className="bg-white rounded-xl p-3 shadow-sm border border-blue-100">
-                  <h3 className="font-bold text-sm text-slate-900">{article.title}</h3>
-                  <p className="text-xs text-slate-500 mt-1">
+                <div className="bg-white/5 rounded-xl p-3 shadow-sm border border-white/10">
+                  <h3 className="font-bold text-sm text-white">{article.title}</h3>
+                  <p className="text-xs text-white/60 mt-1">
                     {formatDate(article.published_at)}
                   </p>
                 </div>
@@ -596,14 +645,14 @@ export default function News() {
       <div className="max-w-4xl mx-auto px-4 py-6">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-16">
-            <div className="w-10 h-10 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin" />
-            <p className="text-slate-500 mt-3">{t('loading')}</p>
+            <div className="w-10 h-10 border-2 border-white/20 border-t-[#ff2f6d] rounded-full animate-spin" />
+            <p className="text-white/60 mt-3">{t('loading')}</p>
           </div>
         ) : (
           <>
             {/* Message exemples si mock */}
             {useMock && (
-              <p className="text-sm text-slate-500 mb-4 text-center">
+              <p className="text-sm text-white/60 mb-4 text-center">
                 {t('news_example_message')}
               </p>
             )}
@@ -616,7 +665,7 @@ export default function News() {
                   tabIndex={0}
                   onClick={() => handleArticleClick(featuredArticle)}
                   onKeyDown={(e) => e.key === 'Enter' && handleArticleClick(featuredArticle)}
-                  className="rounded-2xl overflow-hidden bg-white border border-slate-200 shadow-md hover:shadow-lg transition-shadow block text-left"
+                  className="rounded-2xl overflow-hidden bg-white/5 border border-white/10 shadow-md hover:shadow-lg transition-shadow block text-left"
                 >
                   <div className="relative aspect-[16/9] bg-slate-200">
                     {(featuredArticle.featured_image || featuredArticle.cover_image) && (
@@ -655,8 +704,8 @@ export default function News() {
             {trendingToShow.length > 0 && !searchQuery && (
               <div className="mb-8">
                 <div className="flex items-center gap-2 mb-4">
-                  <TrendingUp className="w-5 h-5 text-blue-500" />
-                  <h3 className="text-lg font-bold text-slate-900">{t('news_trends')}</h3>
+                  <TrendingUp className="w-5 h-5 text-[#ff5f8f]" />
+                  <h3 className="text-lg font-bold text-white">{t('news_trends')}</h3>
                 </div>
                 <div className="space-y-4">
                   {trendingToShow.map((article, index) => (
@@ -669,7 +718,7 @@ export default function News() {
                       role="button"
                       tabIndex={0}
                       onKeyDown={(e) => e.key === 'Enter' && handleArticleClick(article)}
-                      className="flex gap-4 p-4 rounded-xl bg-white border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-100 transition-all cursor-pointer"
+                      className="flex gap-4 p-4 rounded-xl bg-white/5 border border-white/10 shadow-sm hover:shadow-md hover:border-white/25 transition-all cursor-pointer"
                     >
                       <div className="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-slate-200">
                         {(article.featured_image || article.cover_image) ? (
@@ -680,20 +729,20 @@ export default function News() {
                             loading="lazy"
                           />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center text-slate-400 text-2xl">📰</div>
+                          <div className="w-full h-full flex items-center justify-center text-white/45 text-2xl">📰</div>
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <span className="inline-block px-2 py-0.5 rounded-md text-xs font-medium bg-blue-100 text-blue-800 mb-1">
                           {getCategoryLabel(article.category)}
                         </span>
-                        <h4 className="font-bold text-slate-900 line-clamp-2">{article.title}</h4>
+                        <h4 className="font-bold text-white line-clamp-2">{article.title}</h4>
                         {(article.excerpt || article.subtitle) && (
-                          <p className="text-sm text-slate-600 line-clamp-2 mt-0.5">
+                          <p className="text-sm text-white/70 line-clamp-2 mt-0.5">
                             {article.excerpt || article.subtitle}
                           </p>
                         )}
-                        <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
+                        <div className="flex items-center gap-3 mt-2 text-xs text-white/55">
                           <span>{formatDate(article.published_at)}</span>
                           <span className="flex items-center gap-1">
                             <Eye className="w-3.5 h-3.5" />
@@ -705,7 +754,7 @@ export default function News() {
                         <button
                           type="button"
                           onClick={handleBookmark}
-                          className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"
+                          className="p-2 rounded-lg hover:bg-white/10 text-white/65"
                           aria-label="Enregistrer"
                         >
                           <Bookmark className="w-5 h-5" />
@@ -713,7 +762,7 @@ export default function News() {
                         <button
                           type="button"
                           onClick={(e) => handleShare(e, article)}
-                          className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"
+                          className="p-2 rounded-lg hover:bg-white/10 text-white/65"
                           aria-label="Partager"
                         >
                           <Share2 className="w-5 h-5" />
@@ -738,7 +787,7 @@ export default function News() {
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => e.key === 'Enter' && handleArticleClick(article)}
-                    className="flex gap-4 p-4 rounded-xl bg-white border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-100 transition-all cursor-pointer"
+                    className="flex gap-4 p-4 rounded-xl bg-white/5 border border-white/10 shadow-sm hover:shadow-md hover:border-white/25 transition-all cursor-pointer"
                   >
                     <div className="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-slate-200">
                       {(article.featured_image || article.cover_image) ? (
@@ -749,20 +798,20 @@ export default function News() {
                           loading="lazy"
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-slate-400 text-2xl">📰</div>
+                        <div className="w-full h-full flex items-center justify-center text-white/45 text-2xl">📰</div>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <span className="inline-block px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-700 mb-1">
+                      <span className="inline-block px-2 py-0.5 rounded-md text-xs font-medium bg-white/10 text-white/80 mb-1">
                         {getCategoryLabel(article.category)}
                       </span>
-                      <h4 className="font-bold text-slate-900 line-clamp-2">{article.title}</h4>
+                      <h4 className="font-bold text-white line-clamp-2">{article.title}</h4>
                       {(article.excerpt || article.subtitle) && (
-                        <p className="text-sm text-slate-600 line-clamp-2 mt-0.5">
+                        <p className="text-sm text-white/70 line-clamp-2 mt-0.5">
                           {article.excerpt || article.subtitle}
                         </p>
                       )}
-                      <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
+                      <div className="flex items-center gap-3 mt-2 text-xs text-white/55">
                         <span>{formatDate(article.published_at)}</span>
                         <span className="flex items-center gap-1">
                           <Eye className="w-3.5 h-3.5" />
@@ -774,7 +823,7 @@ export default function News() {
                       <button
                         type="button"
                         onClick={handleBookmark}
-                        className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"
+                        className="p-2 rounded-lg hover:bg-white/10 text-white/65"
                         aria-label="Enregistrer"
                       >
                         <Bookmark className="w-5 h-5" />
@@ -782,7 +831,7 @@ export default function News() {
                       <button
                         type="button"
                         onClick={(e) => handleShare(e, article)}
-                        className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"
+                        className="p-2 rounded-lg hover:bg-white/10 text-white/65"
                         aria-label="Partager"
                       >
                         <Share2 className="w-5 h-5" />
@@ -796,13 +845,13 @@ export default function News() {
             {/* État vide (sans mock) */}
             {!useMock && apiArticles.length === 0 && (
               <div className="text-center py-16">
-                <TrendingUp className="w-16 h-16 text-slate-300 mx-auto mb-3" />
-                <p className="text-slate-500">{t('news_no_articles')}</p>
+                <TrendingUp className="w-16 h-16 text-white/35 mx-auto mb-3" />
+                <p className="text-white/60">{t('news_no_articles')}</p>
                 {useFeed && !user && (
-                  <p className="text-sm text-slate-400 mt-1">Connectez-vous pour voir votre fil personnalisé</p>
+                  <p className="text-sm text-white/50 mt-1">Connectez-vous pour voir votre fil personnalisé</p>
                 )}
                 {useFeed && user && (
-                  <p className="text-sm text-slate-400 mt-1">Remplissez vos préférences pour un fil personnalisé</p>
+                  <p className="text-sm text-white/50 mt-1">Remplissez vos préférences pour un fil personnalisé</p>
                 )}
               </div>
             )}
@@ -811,7 +860,7 @@ export default function News() {
             {!useMock && hasNextPage && (
               <div ref={loadMoreObserver} className="py-8 flex justify-center">
                 {isFetchingNextPage ? (
-                  <div className="w-8 h-8 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin" />
+                  <div className="w-8 h-8 border-2 border-white/20 border-t-[#ff2f6d] rounded-full animate-spin" />
                 ) : (
                   <Button
                     variant="outline"

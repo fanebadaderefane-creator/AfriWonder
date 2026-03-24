@@ -2,7 +2,15 @@ import { createContext, useState, useContext, useEffect, useCallback, useRef } f
 import { api, API_URL } from '@/api/expressClient';
 import { logger } from '@/lib/logger';
 import axios from 'axios';
-import { getItem, setItem, removeItem, getJSON } from '@/utils/safeStorage';
+import {
+  getAccessToken,
+  getRefreshToken,
+  setAccessToken,
+  setRefreshToken,
+  clearTokens,
+  getCachedAuthUser,
+  setCachedAuthUser,
+} from '@/lib/secureTokenStorage';
 
 const AuthContext = createContext({
   user: null,
@@ -16,20 +24,9 @@ const AuthContext = createContext({
 });
 const AUTH_USER_KEY = 'afriwonder_auth_user';
 
-function getCachedUser() {
-  const tok = getItem('access_token') || getItem('refresh_token');
-  const cached = getJSON(AUTH_USER_KEY);
-  return tok && cached ? cached : null;
-}
-
-function setCachedUser(user) {
-  if (user) setItem(AUTH_USER_KEY, JSON.stringify(user));
-  else removeItem(AUTH_USER_KEY);
-}
-
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(getCachedUser);
-  const [isAuthenticated, setIsAuthenticated] = useState(() => !!getCachedUser());
+  const [user, setUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState(null);
   const isCheckingAuthRef = useRef(false);
@@ -40,29 +37,28 @@ export const AuthProvider = ({ children }) => {
       isCheckingAuthRef.current = true;
       setAuthError(null);
 
-      const token = getItem('access_token');
-      const refreshToken = getItem('refresh_token');
+      const token = await getAccessToken();
+      const refreshToken = await getRefreshToken();
 
       if (!token && !refreshToken) {
         setUser(null);
         setIsAuthenticated(false);
-        setCachedUser(null);
+        await setCachedAuthUser(null);
         return;
       }
 
       if (!token && refreshToken) {
         try {
           const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
-          setItem('access_token', data.data.accessToken);
-          setItem('refresh_token', data.data.refreshToken);
+          await setAccessToken(data.data.accessToken);
+          await setRefreshToken(data.data.refreshToken);
           const currentUser = await api.auth.me();
           setUser(currentUser);
           setIsAuthenticated(true);
-          setCachedUser(currentUser);
+          await setCachedAuthUser(currentUser);
         } catch {
-          removeItem('access_token');
-          removeItem('refresh_token');
-          setCachedUser(null);
+          await clearTokens();
+          await setCachedAuthUser(null);
           setUser(null);
           setIsAuthenticated(false);
         }
@@ -73,35 +69,34 @@ export const AuthProvider = ({ children }) => {
         const currentUser = await api.auth.me();
         setUser(currentUser);
         setIsAuthenticated(true);
-        setCachedUser(currentUser);
+        await setCachedAuthUser(currentUser);
       } catch (meError) {
         if (meError.response?.status === 401 && refreshToken) {
           try {
             const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
-            setItem('access_token', data.data.accessToken);
-            setItem('refresh_token', data.data.refreshToken);
+            await setAccessToken(data.data.accessToken);
+            await setRefreshToken(data.data.refreshToken);
             const currentUser = await api.auth.me();
             setUser(currentUser);
             setIsAuthenticated(true);
-            setCachedUser(currentUser);
+            await setCachedAuthUser(currentUser);
           } catch {
-            removeItem('access_token');
-            removeItem('refresh_token');
-            setCachedUser(null);
+            await clearTokens();
+            await setCachedAuthUser(null);
             setUser(null);
             setIsAuthenticated(false);
           }
         } else {
           setUser(null);
           setIsAuthenticated(false);
-          setCachedUser(null);
+          await setCachedAuthUser(null);
         }
       }
     } catch (_error) {
       logger.error('User auth check failed', _error, { context: 'checkAuth' });
       setUser(null);
       setIsAuthenticated(false);
-      setCachedUser(null);
+      await setCachedAuthUser(null);
     } finally {
       setIsLoadingAuth(false);
       isCheckingAuthRef.current = false;
@@ -122,7 +117,15 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    checkAuth();
+    // Hydrater depuis le cache sécurisé (IndexedDB/Preferences ou localStorage)
+    (async () => {
+      const cachedUser = await getCachedAuthUser();
+      if (cachedUser) {
+        setUser(cachedUser);
+        setIsAuthenticated(true);
+      }
+      await checkAuth();
+    })();
     
     // Écouter les changements de localStorage pour détecter les tokens OAuth
     const handleStorageChange = (e) => {
@@ -159,7 +162,7 @@ export const AuthProvider = ({ children }) => {
       setUser(userData);
       setIsAuthenticated(true);
       setAuthError(null);
-      setCachedUser(userData);
+      await setCachedAuthUser(userData);
       return userData;
     } catch (_error) {
       let message = _error.apiMessage || _error.response?.data?.error?.message || _error.response?.data?.message || 'Email ou mot de passe incorrect';
@@ -192,10 +195,17 @@ export const AuthProvider = ({ children }) => {
       setUser(newUser);
       setIsAuthenticated(true);
       setAuthError(null);
-      setCachedUser(newUser);
+      await setCachedAuthUser(newUser);
       return newUser;
     } catch (_error) {
-      let message = _error.apiMessage || _error.response?.data?.error?.message || _error.response?.data?.message || 'Inscription impossible';
+      let message =
+        _error.apiMessage ||
+        _error.response?.data?.error?.message ||
+        _error.response?.data?.message ||
+        (_error.code === 'ECONNABORTED' || String(_error.message || '').includes('timeout')
+          ? 'La requête a pris trop de temps. Vérifiez que l’API et PostgreSQL tournent (backend) et réessayez.'
+          : null) ||
+        'Inscription impossible. Vérifiez la console du backend et DATABASE_URL / JWT dans backend/.env.';
       if (/Circuit breaker|upstream database|temporairement indisponible/i.test(message)) {
         message = 'Service temporairement indisponible. Réessayez dans quelques instants.';
       }
@@ -207,7 +217,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     api.auth.logout();
-    setCachedUser(null);
+    setCachedAuthUser(null);
     setUser(null);
     setIsAuthenticated(false);
     setAuthError(null);

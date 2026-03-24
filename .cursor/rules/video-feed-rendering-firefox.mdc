@@ -1,0 +1,28 @@
+---
+description: Feed vidéo fullscreen — préserver le rendu Firefox/WebView
+alwaysApply: true
+---
+
+# Feed vidéo fullscreen — Rendu Firefox / WebView
+
+Le feed plein écran peut revenir en **audio OK mais image absente** si on modifie la géométrie du conteneur ou l’empilement des couches.
+
+## À préserver
+
+- Dans `src/pages/Home.jsx`, garder la colonne feed dimensionnée depuis le viewport :
+  `width/minWidth: min(100vw, 400px)` et `maxWidth: 400px`.
+- Garder le conteneur scroll du feed en **flux normal** avec hauteur explicite :
+  `className="... relative w-full h-full ..."` et `minHeight: '100dvh'`.
+- Ne pas remettre le conteneur scroll du feed en `absolute inset-0`.
+- Garder le préchauffage du feed : posters proches préchargés et vidéos voisines préparées sans vider tout le buffer à chaque swipe.
+- Dans `src/components/video/VideoCard.jsx`, ne pas remettre une couche UI fullscreen avec un `z-index` extrême (`z-[9999]`).
+- Éviter d’ajouter `transform`, `backdrop-filter`, `isolation:isolate` ou autres couches GPU agressives sur les parents directs du player fullscreen.
+- Ne pas forcer une mise à jour service worker ou un reload auto en pleine session PWA/WebView sur le feed.
+
+## Symptôme de régression
+
+- Le feed charge, l’audio et les analytics partent, mais la vidéo est noire ou la carte devient trop étroite sur Firefox / WebView.
+
+## Méthode
+
+- Si le bug revient, vérifier d’abord **layout + largeur + couches CSS** avant de modifier la logique de lecture vidéo.

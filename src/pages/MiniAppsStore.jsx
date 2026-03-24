@@ -152,7 +152,13 @@ export default function MiniAppsStore() {
                   <Card className="overflow-hidden hover:shadow-lg transition-shadow">
                     <div className="h-32 bg-gradient-to-br from-[#2563EB] to-[#1E3A8A] flex items-center justify-center overflow-hidden">
                       {app.icon.startsWith('http') ? (
-                        <img src={app.icon} alt={app.name} className="w-full h-full object-cover" />
+                        <img
+                          src={app.icon}
+                          alt={app.name}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                          decoding="async"
+                        />
                       ) : (
                         <span className="text-6xl">{app.icon}</span>
                       )}
@@ -189,7 +195,13 @@ export default function MiniAppsStore() {
                   <Card className="overflow-hidden hover:shadow-md transition-shadow">
                     <div className="h-24 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center overflow-hidden">
                       {app.icon.startsWith('http') ? (
-                        <img src={app.icon} alt={app.name} className="w-full h-full object-cover" />
+                        <img
+                          src={app.icon}
+                          alt={app.name}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                          decoding="async"
+                        />
                       ) : (
                         <span className="text-4xl">{app.icon}</span>
                       )}
@@ -233,7 +245,13 @@ export default function MiniAppsStore() {
                           {/* Icon */}
                           <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[#2563EB] to-[#1E3A8A] flex items-center justify-center flex-shrink-0 overflow-hidden">
                             {app.icon.startsWith('http') ? (
-                              <img src={app.icon} alt={app.name} className="w-full h-full object-cover" />
+                              <img
+                                src={app.icon}
+                                alt={app.name}
+                                className="w-full h-full object-cover"
+                                loading="lazy"
+                                decoding="async"
+                              />
                             ) : (
                               <span className="text-3xl">{app.icon}</span>
                             )}

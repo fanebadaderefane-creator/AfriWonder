@@ -111,6 +111,9 @@ const translations = {
     // Wonder
     wonder: "Wonder",
     my_wonder: "Mon Wonder",
+    /** Feed — éviter les clés brutes type forYou / discover à l’écran */
+    forYou: "Pour vous",
+    discover: "Découvrir",
     wonderers: "Wonderers",
     in_his_wonder: "Dans son Wonder",
     // News
@@ -231,6 +234,8 @@ const translations = {
     // Wonder
     wonder: "Wonder",
     my_wonder: "My Wonder",
+    forYou: "For You",
+    discover: "Discover",
     wonderers: "Wonderers",
     in_his_wonder: "In their Wonder",
     // News
@@ -348,6 +353,8 @@ const translations = {
     following: "يتابع",
     wonder: "Wonder",
     my_wonder: "عجائبي",
+    forYou: "لك",
+    discover: "استكشف",
     wonderers: "Wonderers",
     in_his_wonder: "في عجائبه",
     follow: "متابعة",
@@ -373,6 +380,9 @@ const translations = {
     home: "Início",
     create: "Criar",
     search: "Pesquisar",
+    forYou: "Para si",
+    discover: "Descobrir",
+    live: "Direto",
     profile: "Perfil",
     settings: "Definições",
     language: "Idioma",
@@ -412,6 +422,7 @@ const translations = {
     profile: "Mɔgɔ",
     live: "Dɔnni",
     marketplace: "Sɔrɔ",
+    forYou: "I ye",
     discover: "Yira",
     cart: "Panier",
     product: "Fɛn",

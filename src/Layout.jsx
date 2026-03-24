@@ -33,7 +33,7 @@ function LayoutContent({ children, currentPageName }) {
   useOrientationLock(true);
 
   // Geste "swipe back" style iOS (désactivé sur Home/Create)
-  const disableSwipeBackPages = ['Home', 'Create'];
+  const disableSwipeBackPages = ['Home', 'Create', 'Chat', 'GroupChat', 'DirectCall'];
   const swipeBackEnabled = !disableSwipeBackPages.includes(currentPageName);
   useSwipeBack(swipeBackEnabled);
   
@@ -140,7 +140,7 @@ function LayoutContent({ children, currentPageName }) {
   }, []);
 
   // Pages that should have no padding and full screen
-  const fullScreenPages = ['Home', 'Create'];
+  const fullScreenPages = ['Home', 'Create', 'Chat', 'GroupChat', 'DirectCall'];
   const isFullScreen = fullScreenPages.includes(currentPageName);
   const { user } = useAuth();
   const { isOpen: isMenuOpen, closeMenu, openMenu, reopenMenuOnPath, clearReopenMenuOnPath, scheduleReopenWhenReturn } = useAppMenu();
@@ -162,7 +162,7 @@ function LayoutContent({ children, currentPageName }) {
 
   return (
     <div
-      className="min-h-screen bg-background"
+      className="min-h-screen w-full bg-background"
       style={{
         paddingTop: 'env(safe-area-inset-top)',
         paddingLeft: 'env(safe-area-inset-left)',
@@ -206,10 +206,8 @@ function LayoutContent({ children, currentPageName }) {
           display: none !important;
         }
         
-        video {
-          -webkit-mask-image: -webkit-radial-gradient(white, black);
-          mask-image: radial-gradient(white, black);
-        }
+        /* Pas de mask global sur <video> : sur Chrome/Edge le dégradé radial peut masquer
+           toute la surface (écran vide alors que l'audio joue). Arrondir le player via border-radius sur le conteneur si besoin. */
         
         /* Gradient text */
         .gradient-text {
@@ -293,10 +291,7 @@ function LayoutContent({ children, currentPageName }) {
           content-visibility: auto;
         }
 
-        /* Video â€” Ã©viter will-change (trop de layers = saccades) */
-        video {
-          content-visibility: auto;
-        }
+        /* Pas de content-visibility sur <video> : le son peut jouer sans paint des frames (feed plein écran). */
 
         /* Reduce motion for accessibility */
         @media (prefers-reduced-motion: reduce) {
@@ -367,7 +362,7 @@ function LayoutContent({ children, currentPageName }) {
 
       <TranslationProvider>
         <MarketplaceCurrencyProvider>
-          <main id="main-content" className={`screen ${isFullScreen ? '' : ''}`} tabIndex={-1}>
+          <main id="main-content" className={`screen w-full max-w-none ${isFullScreen ? 'screen-fullscreen' : ''}`} tabIndex={-1}>
             <AnimatePresence mode="wait">
               <PageTransition pageKey={currentPageName}>
                 {children}

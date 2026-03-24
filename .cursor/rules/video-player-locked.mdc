@@ -5,27 +5,41 @@ alwaysApply: true
 
 # ⛔ Player vidéo AfriWonder — VERROUILLÉ
 
-La logique de lecture vidéo a **cassé 3 fois** (buffer infini). L'utilisateur a demandé que cette correction ne se casse plus **accidentellement**.
+La logique de lecture vidéo a **cassé 3 fois** (buffer infini). L'utilisateur exige que cette zone ne soit **plus modifiée accidentellement** (verrouillage explicite mars 2026).
 
 ## Règle stricte
 
-- **Ne jamais modifier** la logique de lecture dans `src/components/video/VideoCard.jsx` (section commentée "VIDEO (⛔ VERROUILLÉ)") **sauf si l'utilisateur demande explicitement** un changement sur le player vidéo.
-- Ne pas refactorer, "améliorer", "nettoyer" ou toucher à : autoplay, `handlePause`, `handleCanPlayThrough`, `handleWaiting`, `handlePlaying`, les `useEffect` liés à `isActive`/`isReadyToPlay`, `preload`, ni la gestion du `src` (sauf `handleRetryLoad`).
-- Tout le reste du composant (UI, likes, description, etc.) peut être modifié normalement.
+- **Ne jamais modifier** la logique de lecture dans `src/components/video/VideoCard.jsx` **sauf demande explicite** de l'utilisateur sur le player / la lecture.
+- Repères dans le fichier : **`⛔ ZONE LECTURE VERROUILLÉE — DÉBUT`** (vers la détection 1re frame) et **`⛔ ZONE LECTURE VERROUILLÉE — FIN`** (après seek bar + `handleMuteToggleClick`). Entre les deux, le fichier mêle aussi du **code UI** (titres, description, etc.) : tu peux faire évoluer **uniquement** ce qui est clairement UI (texte, classes CSS, layout HUD) **sans** toucher aux effets, callbacks et handlers listés ci-dessous.
+- Après le marqueur **FIN** : `formatTime`, libellé durée — pure affichage, OK sans toucher à `play`/`pause`/`src`.
+- Ne pas refactorer, « améliorer », « nettoyer » ni « simplifier » la partie lecture (symboles listés).
 
-## Corrections à ne jamais supprimer (priorité AfriWonder — connexions lentes / première vidéo)
+## Périmètre verrouillé (repères dans le fichier)
 
-Ces éléments évitent le cycle **buffer → joue → buffer**. Ne pas les enlever ni les "simplifier" :
+À traiter comme **sacrés** sauf ordre utilisateur :
 
-- **Buffer minimum** : `minBufferSec` = 5 s tant qu’aucun play réussi OU connexion lente ; 2 s seulement après premier play réussi ET connexion rapide.
-- **`hasPlayedOnceRef`** : rester à `false` jusqu’au premier `handlePlaying` réussi ; dans `handlePlaying`, faire `hasPlayedOnceRef.current = true`. Sans ça, la **première vidéo** repart en buffer→joue→buffer.
-- **`useNetworkStatus()`** : garder `isSlowConnection` et l’utiliser pour `minBufferSec` (5 s si lent).
-- **`readyState >= 4`** : ne lancer play (useEffect actif, visibilitychange) que si `el.readyState >= 4` (HAVE_ENOUGH_DATA).
-- **`handleCanPlayThrough` / `handleProgress`** : exiger au moins `minBufferSec` secondes en buffer (vérifier `buffered.end(0)` vs `currentTime`) avant d’appeler `play()`.
-- **Message connexion lente** : afficher "Connexion lente — chargement pour une lecture fluide…" quand `isSlowConnection && isLoadingOrBuffering`.
-- **preload** : `preload={isActive ? 'auto' : 'metadata'}` pour la vidéo active.
-- **visibilitychange** : ne reprendre la lecture au retour d’onglet que si `el.readyState >= 4`.
+- **`prepareForAutoplay`**, **`autoplayWithPolicy`**, **`markAutoPlaySuccess`**
+- Choix URL / qualité lié à **`slowConnection`** / **`isDataSaver`** (ordre des sources vidéo)
+- **`scheduleFirstFrameDetection`**, **`cancelPendingFirstFrameDetection`**, **`markFirstFrameRendered`** quand utilisés pour révéler la vidéo / éviter écran noir
+- **`useEffect` / `useLayoutEffect`** qui : réinitialisent l'état lecteur au changement de vidéo, gèrent **pool** vidéo, **HLS** (`hls.js`), **MP4** (`el.src`), **`isActive`**, **visibility / focus**, pause des autres `<video>`, sync mute
+- **`handlePlayPause`**, **`handleRetryLoad`**
+- **`updateProgressFromElement`** (boucle `start_time`/`end_time`, **recordView**, barre — ne pas changer le comportement temporel)
+- **`handleTimeUpdate`**, **`handleLoadedMetadata`**, **`handleProgress`**, **`handleCanPlay`**, **`handleWaiting`**, **`handlePlaying`**, **`handlePause`**
+- Handlers **seek** (souris/touch) qui modifient **`currentTime`**
+- Balise **`<video>`** et conteneur **pool** : attributs **`preload`**, **`muted`**, **`src`**, événements liés au média (sauf texte d'erreur purement cosmétique sans effet sur le chargement)
+
+## Invariants produit (ne pas supprimer sans raison majeure)
+
+Objectif : éviter **buffer → joue → buffer** et **audio / mauvaise carte** après swipe.
+
+- **`hasPlayedOnceRef`** : mis à `true` dans **`handlePlaying`** après une lecture réelle ; reset au changement de vidéo.
+- **`readyState >= 4`** : conditions dans les effets MP4 / **`handleCanPlay`** qui **ne lancent `play()`** que lorsque le média a assez de données (HAVE_ENOUGH_DATA).
+- **Feed type TikTok** : éviter **`load()`** / vider la source au scroll quand ça provoque écran noir ; préférer **pause** et garder le buffer quand le code actuel le fait ainsi.
+- **Connexion lente** : conserver l'indicateur / choix qualité basse liés à **`slowConnection`** (objectif Afrique).
+- **Une seule vidéo active** : pauses synchrones des autres nœuds `video[data-afw-feed-video="1"]` où le code le fait déjà.
+
+Si cette doc et le code divergent, **ne pas « corriger » le player pour aligner la doc** sans demande explicite.
 
 ## Si l'utilisateur demande explicitement un changement sur le player
 
-Alors tu peux modifier cette section en restant cohérent avec le comportement actuel (pas de reprise forcée en pause, play seulement quand prêt, buffer minimum respecté, première vidéo et connexions lentes prioritaires).
+Modifier en conservant : pas de reprise forcée contre une pause utilisateur, respect des garde-fous buffer / première vidéo / connexions lentes, pas de régression écran noir Firefox/WebView (voir aussi `video-feed-rendering-firefox.mdc`).

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/expressClient';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Activity, Users, CreditCard, AlertTriangle, Zap } from 'lucide-react';
+import { Activity, Users, CreditCard, AlertTriangle, Zap, Shield } from 'lucide-react';
 
 const STATUS_COLORS = {
   stable: 'bg-emerald-500/20 border-emerald-500 text-emerald-200',
@@ -48,8 +48,19 @@ export default function PlatformHealth() {
           <span><CreditCard className="w-4 h-4 inline mr-1" />{health.transactions_last_minute ?? 0} tx/min</span>
           <span><AlertTriangle className="w-4 h-4 inline mr-1" />{health.failed_payments_last_hour ?? 0} echecs/h</span>
           <span><Zap className="w-4 h-4 inline mr-1" />{(health.error_rate_5m ?? 0) * 100}% erreurs</span>
+          <span><Shield className="w-4 h-4 inline mr-1" />E2EE {health.e2ee?.healthy ? 'ok' : 'alerte'}</span>
+          <span><Shield className="w-4 h-4 inline mr-1" />Prekeys {health.e2ee?.prekeys_available ?? 0}</span>
         </div>
       </div>
+      {Array.isArray(health.e2ee?.alerts) && health.e2ee.alerts.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {health.e2ee.alerts.map((a) => (
+            <Badge key={a} variant="outline" className="border-white/25 text-white/90">
+              E2EE: {a}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
     </Card>
   );
 }

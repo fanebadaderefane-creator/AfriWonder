@@ -3,19 +3,29 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/expressClient';
-import { motion } from 'framer-motion';
+import { motion, MotionConfig } from 'framer-motion';
 import { useAuth } from '@/lib/AuthContext';
 import {
+  ArrowRight,
+  CheckCircle2,
   Download,
+  Globe2,
   Heart,
   MessageCircle,
+  Radio,
+  ShieldCheck,
   Share2,
+  Sparkles,
+  Store,
+  Video,
   Users,
   ChevronDown,
   Smartphone,
   ExternalLink,
 } from 'lucide-react';
 import AfriWonderLogo from '@/components/common/AfriWonderLogo';
+import { ALL_COUNTRIES, getCountryDialCodeByName } from '@/constants/countries';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 // URL de l'application AfriWonder (site séparé)
@@ -32,25 +42,86 @@ function isIOS() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
-const EARLY_ACCESS_MESSAGE = "AfriWonder est en version Beta / Early Access. Nous construisons ensemble. Vos retours sont précieux et certains bugs peuvent exister. Merci de votre soutien !";
+function normalizeUsernameValue(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 30);
+}
+
+function normalizeDialCode(value) {
+  const cleaned = String(value || '').replace(/[^\d+]/g, '');
+  if (!cleaned) return '';
+  return cleaned.startsWith('+') ? cleaned : `+${cleaned.replace(/\+/g, '')}`;
+}
+
+function buildInternationalPhone(dialCode, phone) {
+  const normalizedDialCode = normalizeDialCode(dialCode);
+  const localDigits = String(phone || '').replace(/\D/g, '');
+  if (!normalizedDialCode || !localDigits) return '';
+  return `${normalizedDialCode}${localDigits}`;
+}
+
+/** Message court hero — le détail vit dans le footer / support */
+const EARLY_ACCESS_MESSAGE =
+  "AfriWonder est en accès anticipé : nous livrons souvent, et quelques imperfections peuvent encore apparaître. Vos retours via Feedback nous aident à prioriser.";
+/** Même famille que Discover : fond + sections « verre » sans cadre blanc agressif */
+const LANDING_PAGE_BG = 'bg-[#070a12]';
+const LANDING_SECTION =
+  'rounded-[28px] bg-white/[0.035] shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl';
+const LANDING_SOFT_TILE =
+  'rounded-2xl bg-white/[0.05] ring-1 ring-inset ring-white/[0.06] transition-colors duration-200 hover:bg-white/[0.07]';
+const LANDING_STAT_CELL = 'rounded-2xl bg-white/[0.06] p-4 ring-1 ring-inset ring-white/[0.06] sm:p-5';
+/** Encadrement type aperçu Discover (mockups, médias) */
+const LANDING_MEDIA_FRAME =
+  'relative overflow-hidden rounded-[22px] bg-black/25 ring-1 ring-inset ring-white/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.35)]';
+const LANDING_INPUT =
+  'w-full rounded-2xl border-0 bg-white/[0.06] px-4 py-3 text-white placeholder:text-white/34 outline-none ring-1 ring-inset ring-white/[0.08] transition-[background-color,box-shadow] duration-200 focus:bg-white/[0.08] focus:ring-white/16';
+const LANDING_LABEL = 'mb-1 block text-sm text-white/56';
+const LANDING_LIST_ROW =
+  'flex items-start gap-3 rounded-2xl bg-white/[0.04] p-4 ring-1 ring-inset ring-white/[0.06]';
+
+function LandingSectionHeader({ kicker, title, subtitle, right }) {
+  return (
+    <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0">
+        {kicker ? (
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/40">{kicker}</p>
+        ) : null}
+        <h2 className="mt-1.5 text-[24px] font-semibold tracking-[-0.03em] text-white sm:text-[30px]">{title}</h2>
+        {subtitle ? <p className="mt-2 max-w-prose text-[13px] leading-relaxed text-white/48 sm:text-[14px]">{subtitle}</p> : null}
+      </div>
+      {right ? <div className="shrink-0">{right}</div> : null}
+    </div>
+  );
+}
 
 export default function Landing() {
   const navigate = useNavigate();
   const { login, register, authError } = useAuth();
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
-  const [loginEmail, setLoginEmail] = useState('');
+  const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [regFullName, setRegFullName] = useState('');
   const [regUsername, setRegUsername] = useState('');
+  const [registerMethod, setRegisterMethod] = useState('email');
   const [regEmail, setRegEmail] = useState('');
+  const [regCountry, setRegCountry] = useState('Mali');
+  const [regDialCode, setRegDialCode] = useState('+223');
+  const [regPhone, setRegPhone] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regAcceptTerms, setRegAcceptTerms] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
+  const [earlyAccessEnabled, setEarlyAccessEnabled] = useState(false);
 
   const { data: earlyAccessConfig, isLoading: loadingConfig } = useQuery({
     queryKey: ['early-access-config'],
     queryFn: () => api.earlyAccess.getConfig(),
     staleTime: 30 * 1000,
+    enabled: earlyAccessEnabled,
   });
 
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -92,9 +163,17 @@ export default function Landing() {
       e.preventDefault();
       setDeferredPrompt(e);
     };
+    setEarlyAccessEnabled(true);
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
   }, []);
+
+  useEffect(() => {
+    const suggestedDialCode = getCountryDialCodeByName(regCountry);
+    if (suggestedDialCode) {
+      setRegDialCode(suggestedDialCode);
+    }
+  }, [regCountry]);
 
   const handleInstallPWA = () => {
     if (deferredPrompt) {
@@ -216,8 +295,9 @@ export default function Landing() {
   };
 
   return (
-    <div
-      className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-black text-white"
+    <MotionConfig reducedMotion="user">
+      <div
+        className={`min-h-screen text-white ${LANDING_PAGE_BG}`}
       style={{
         position: 'fixed',
         inset: 0,
@@ -228,161 +308,433 @@ export default function Landing() {
         touchAction: 'pan-y',
       }}
     >
-      {/* Navigation */}
-      <nav className="fixed top-0 w-full z-50 bg-transparent backdrop-blur-none">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <AfriWonderLogo size="sm" />
-            <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
-              AfriWonder
-            </span>
-          </div>
-          <a
-            href="#auth"
-            className="absolute right-4 sm:right-6 lg:right-8 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 font-medium text-sm flex items-center gap-2"
-          >
-            <ExternalLink className="w-4 h-4" />
-            Accéder à l'app
-          </a>
-        </div>
-      </nav>
-
-      {/* Hero Section - Early Access */}
-      <section className="min-h-screen flex items-center justify-center pt-24 px-4 relative overflow-hidden">
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-20 right-10 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
-          <div className="absolute -bottom-8 left-20 w-72 h-72 bg-red-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.11),_transparent_32%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.28),_transparent_38%),linear-gradient(180deg,_#08101f_0%,_#070a12_42%,_#050913_100%)]" />
+          <div className="absolute inset-0 opacity-[0.055] [background-image:linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px)] [background-size:24px_24px]" />
+          <div className="absolute left-[-12%] top-[6%] h-[min(420px,55vw)] w-[min(420px,55vw)] rounded-full bg-blue-500/12 blur-3xl" />
+          <div className="absolute right-[-10%] top-[14%] h-[min(400px,50vw)] w-[min(400px,50vw)] rounded-full bg-indigo-500/10 blur-3xl" />
+          <div className="absolute bottom-[6%] left-[14%] h-[min(340px,45vw)] w-[min(340px,45vw)] rounded-full bg-emerald-500/08 blur-3xl" />
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="relative z-10 text-center max-w-4xl"
-        >
-          <div className="mb-6 flex justify-center">
-            <AfriWonderLogo size="3xl" />
-          </div>
-          <h1 className="text-5xl sm:text-6xl font-black mb-4 bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-500 bg-clip-text text-transparent">
-            AfriWonder
-          </h1>
+        <nav className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#070a12]/88 backdrop-blur-2xl">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3.5 sm:px-6 lg:px-8">
+            <div className="flex min-w-0 items-center gap-3">
+              <AfriWonderLogo size="sm" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold tracking-[-0.02em] text-white">AfriWonder</p>
+                <p className="truncate text-[11px] text-white/42 sm:text-xs">Where Africa Wows the World</p>
+              </div>
+            </div>
 
-          {/* Message Early Access */}
-          <div className="mb-6 px-4 py-3 rounded-xl bg-blue-500/20 border border-blue-500/40 text-blue-100 text-sm sm:text-base max-w-2xl mx-auto">
-            {EARLY_ACCESS_MESSAGE}
-          </div>
+            <div className="hidden items-center gap-8 lg:flex">
+              <a href="#auth" className="text-[13px] font-medium text-white/52 transition-colors hover:text-white">
+                Accès
+              </a>
+              <a href="#support" className="text-[13px] font-medium text-white/52 transition-colors hover:text-white">
+                Soutien
+              </a>
+              <a href="#feedback" className="text-[13px] font-medium text-white/52 transition-colors hover:text-white">
+                Feedback
+              </a>
+            </div>
 
-          <p className="text-gray-400 mb-6 italic">Where Africa Wows the World</p>
-          <p className="text-sm text-blue-200/90 mb-6 px-4">
-            Seuls les prestataires vérifiés par AfriWonder — AfriWonder Abonnement pour nos prestataires.
-          </p>
+            <div className="hidden items-center gap-2 md:flex">
+              <a
+                href="#auth"
+                className="rounded-full px-4 py-2 text-[13px] font-medium text-white/65 transition-colors hover:text-white"
+              >
+                Se connecter
+              </a>
+              <button
+                type="button"
+                onClick={handleInstallPWA}
+                className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[13px] font-semibold text-slate-950 shadow-[0_8px_30px_rgba(255,255,255,0.12)] transition-transform hover:bg-white/95 active:scale-[0.98]"
+              >
+                <Download className="h-4 w-4" />
+                Installer
+              </button>
+            </div>
 
-          {/* Compteur utilisateurs */}
-          <div className="flex items-center justify-center gap-2 mb-8">
-            <Users className="w-5 h-5 text-blue-400" />
-            <span className="text-lg font-semibold">
-              {loadingConfig ? '...' : (
-                <>
-                  <span className="text-blue-400">{formatStat(totalUsers)}</span>
-                  <span className="text-gray-400"> / </span>
-                  <span>{formatStat(maxUsers)}</span>
-                  <span className="text-gray-500 ml-1">utilisateurs</span>
-                </>
-              )}
-            </span>
-          </div>
-
-          {/* Boutons Téléchargement — liens vers l'app AfriWonder (site séparé) */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
-            <motion.button
-              type="button"
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={handleInstallPWA}
-              className="px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl font-bold text-lg hover:shadow-2xl transition-all flex items-center justify-center gap-2"
-            >
-              <Download className="w-5 h-5" />
-              Télécharger PWA
-            </motion.button>
-            <motion.a
+            <a
               href="#auth"
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              className="px-8 py-4 bg-gray-700 hover:bg-gray-600 rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-2"
+              className="inline-flex items-center gap-2 rounded-full bg-white/[0.06] px-3.5 py-2 text-[13px] font-medium text-white/85 ring-1 ring-inset ring-white/[0.08] transition-colors hover:bg-white/[0.09] md:hidden"
             >
-              <Smartphone className="w-5 h-5" />
-              Ouvrir l'application
-            </motion.a>
+              <ExternalLink className="h-4 w-4 opacity-80" />
+              Ouvrir
+            </a>
           </div>
-          {isIOS() && (
-            <p className="text-xs text-gray-500 mb-4">
-              iOS : Safari → Partager → « Ajouter à l'écran d'accueil »
-            </p>
-          )}
+        </nav>
 
-          {/* Early Access complet : liste d'attente */}
-          {isFull ? (
+        <main className="relative">
+          <section className="px-4 pb-14 pt-8 sm:px-6 lg:px-8 lg:pb-20 lg:pt-12">
+            <div className="mx-auto grid max-w-7xl items-start gap-10 lg:grid-cols-[minmax(0,1.08fr)_minmax(340px,0.92fr)] lg:gap-12">
+              <motion.div
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                className="space-y-8"
+              >
+                <div className="inline-flex items-center gap-2 rounded-full bg-white/[0.06] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/72 ring-1 ring-inset ring-white/[0.08]">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-300/90" strokeWidth={2} />
+                  Accès anticipé
+                </div>
+
+                <div className="space-y-6">
+                  <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-6">
+                    <div className="flex h-[104px] w-[104px] shrink-0 items-center justify-center overflow-hidden rounded-[28px] bg-white/[0.06] shadow-[0_20px_50px_rgba(0,0,0,0.4)] ring-1 ring-inset ring-white/[0.1] sm:h-[118px] sm:w-[118px]">
+                      <img
+                        src="/icon-192.png"
+                        alt="AfriWonder"
+                        className="h-full w-full scale-[1.18] object-cover"
+                        loading="eager"
+                        decoding="async"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/38">Vidéo · commerce · communauté</p>
+                      <h1 className="mt-2 text-[clamp(2.5rem,6vw,4.25rem)] font-semibold leading-[0.98] tracking-[-0.045em] text-white">
+                        AfriWonder
+                      </h1>
+                      <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-white/52 sm:text-base">
+                        La super-app pensée pour créer, vendre et rassembler — avec un feed vidéo au centre, comme vous l’utilisez déjà au quotidien.
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="max-w-2xl text-[17px] leading-[1.65] text-white/72 sm:text-[18px] lg:max-w-[34rem]">
+                    Publiez, achetez, réservez un service, lancez un live et gardez le contact avec votre audience, dans une seule app rapide et soignée.
+                  </p>
+
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { t: 'Feed mobile-first', icon: Video },
+                      { t: 'Live intégré', icon: Radio },
+                      { t: 'Marketplace', icon: Store },
+                      { t: 'Communauté & paiements', icon: Users },
+                    ].map(({ t, icon: Icon }) => (
+                      <span
+                        key={t}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.05] px-3 py-1.5 text-[11px] font-medium text-white/70 ring-1 ring-inset ring-white/[0.07] transition-colors hover:bg-white/[0.08] hover:text-white/85"
+                      >
+                        <Icon className="h-3.5 w-3.5 text-white/45" strokeWidth={2} />
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+
+                  <p className="max-w-xl text-[13px] leading-relaxed text-white/45">
+                    <span className="mr-1.5 inline-flex align-middle text-[10px] font-bold uppercase tracking-wider text-white/55">Bêta</span>
+                    {EARLY_ACCESS_MESSAGE}
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {[
+                    { label: 'Membres', value: loadingConfig ? '…' : formatStat(totalUsers), icon: Users },
+                    { label: 'Capacité', value: loadingConfig ? '…' : formatStat(maxUsers), icon: Globe2 },
+                    { label: 'Confiance', value: 'Prestataires vérifiés', icon: ShieldCheck },
+                  ].map(({ label, value, icon: Icon }) => (
+                    <div key={label} className={LANDING_STAT_CELL}>
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/[0.06] ring-1 ring-inset ring-white/[0.08]">
+                          <Icon className="h-4 w-4 text-white/55" strokeWidth={1.75} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-base font-semibold tracking-tight text-white">{value}</p>
+                          <p className="text-[12px] text-white/42">{label}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleInstallPWA}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-6 py-3.5 text-[15px] font-semibold text-slate-950 shadow-[0_12px_40px_rgba(255,255,255,0.14)] transition-colors hover:bg-white/95"
+                  >
+                    <Download className="h-5 w-5" />
+                    Installer l’app
+                  </motion.button>
+                  <motion.a
+                    href="#auth"
+                    whileTap={{ scale: 0.98 }}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/[0.06] px-6 py-3.5 text-[15px] font-semibold text-white ring-1 ring-inset ring-white/[0.1] transition-colors hover:bg-white/[0.09]"
+                  >
+                    <Smartphone className="h-5 w-5 text-white/75" />
+                    Ouvrir / se connecter
+                  </motion.a>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/Discover')}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl px-6 py-3.5 text-[15px] font-medium text-white/55 transition-colors hover:text-white"
+                  >
+                    Parcourir sans compte
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {isIOS() ? (
+                  <p className="text-[12px] leading-relaxed text-white/38">
+                    iPhone / iPad : ouvrez dans <strong className="font-medium text-white/55">Safari</strong>, touchez{' '}
+                    <strong className="font-medium text-white/55">Partager</strong> puis{' '}
+                    <strong className="font-medium text-white/55">Sur l’écran d’accueil</strong>.
+                  </p>
+                ) : null}
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.55, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
+                className={cn('relative overflow-hidden p-5 sm:p-6 lg:p-7', LANDING_SECTION)}
+              >
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-[linear-gradient(180deg,rgba(59,130,246,0.14)_0%,transparent_100%)]" />
+                <div className="pointer-events-none absolute -right-16 top-24 h-44 w-44 rounded-full bg-cyan-400/08 blur-3xl" />
+                <div className="pointer-events-none absolute -left-12 bottom-20 h-36 w-36 rounded-full bg-blue-500/08 blur-3xl" />
+
+                <div className="relative">
+                  <LandingSectionHeader
+                    kicker="Aperçu produit"
+                    title="Conçu pour l’usage réel"
+                    subtitle="Un aperçu fidèle de l’expérience dans l’application : feed, live et boutique au même endroit."
+                    right={
+                      <span className="rounded-full bg-white/[0.08] px-3 py-1 text-[11px] font-semibold text-white/75 ring-1 ring-inset ring-white/[0.1]">
+                        Bêta
+                      </span>
+                    }
+                  />
+
+                  <div className="grid gap-4">
+                    <div className={cn(LANDING_SOFT_TILE, 'overflow-hidden p-4')}>
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/[0.06] ring-1 ring-inset ring-white/[0.08]">
+                            <Video className="h-4 w-4 text-white/55" strokeWidth={1.75} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-semibold tracking-tight text-white">Feed vidéo</p>
+                            <p className="text-[13px] text-white/45">Pour vous, abonnements, découverte</p>
+                          </div>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-950">Pour vous</span>
+                      </div>
+
+                      <div className="rounded-[20px] bg-black/30 p-2 ring-1 ring-inset ring-white/[0.06]">
+                        <div className={LANDING_MEDIA_FRAME}>
+                          <img
+                            src="/landing-feed-ui.png"
+                            alt="Aperçu du feed vidéo AfriWonder"
+                            className="h-[min(420px,58dvh)] w-full object-cover object-[78%_center] sm:h-[440px]"
+                            loading="eager"
+                            decoding="async"
+                          />
+                          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0)_0%,rgba(2,6,23,0.06)_55%,rgba(2,6,23,0.22)_100%)]" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className={cn(LANDING_SOFT_TILE, 'p-4')}>
+                        <div className="mb-3 flex items-center gap-2.5">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.06] ring-1 ring-inset ring-white/[0.08]">
+                            <Radio className="h-4 w-4 text-white/55" strokeWidth={1.75} />
+                          </div>
+                          <div>
+                            <p className="font-semibold tracking-tight text-white">Live</p>
+                            <p className="text-[13px] text-white/45">Directs & replays</p>
+                          </div>
+                        </div>
+                        <div className={LANDING_MEDIA_FRAME}>
+                          <img
+                            src="/landing-live-ui.png"
+                            alt="Aperçu live AfriWonder"
+                            className="h-48 w-full object-cover object-top"
+                            loading="eager"
+                            decoding="async"
+                          />
+                        </div>
+                      </div>
+
+                      <div className={cn(LANDING_SOFT_TILE, 'p-4')}>
+                        <div className="mb-3 flex items-center gap-2.5">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.06] ring-1 ring-inset ring-white/[0.08]">
+                            <Store className="h-4 w-4 text-white/55" strokeWidth={1.75} />
+                          </div>
+                          <div>
+                            <p className="font-semibold tracking-tight text-white">Marketplace</p>
+                            <p className="text-[13px] text-white/45">Achat & réservation</p>
+                          </div>
+                        </div>
+                        <div className={LANDING_MEDIA_FRAME}>
+                          <img
+                            src="/landing-market-ui.png"
+                            alt="Aperçu marketplace AfriWonder"
+                            className="h-48 w-full object-cover object-top"
+                            loading="eager"
+                            decoding="async"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+
             <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="max-w-md mx-auto bg-gray-800/60 backdrop-blur-md border border-blue-500/40 rounded-2xl p-6"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.25 }}
+              className="mt-12 flex justify-center text-white/30"
             >
-              <h3 className="text-xl font-bold text-blue-400 mb-2">Early Access complet pour le moment</h3>
-              <p className="text-gray-400 text-sm mb-4">Rejoignez la liste d'attente pour la prochaine vague.</p>
-              <form onSubmit={handleJoinWaitlist} className="space-y-3">
+              <ChevronDown className="h-7 w-7 animate-bounce text-white/35" strokeWidth={1.5} />
+            </motion.div>
+          </section>
+
+          <section className="px-4 pb-8 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-7xl">
+              <div className={cn(LANDING_SECTION, 'mx-auto mb-8 max-w-3xl px-5 py-8 text-center sm:px-8 sm:py-10')}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/38">Pourquoi AfriWonder</p>
+                <h2 className="mt-3 text-[26px] font-semibold tracking-[-0.035em] text-white sm:text-[32px]">
+                  Une app, plusieurs façons d’avancer
+                </h2>
+                <p className="mx-auto mt-3 max-w-xl text-[14px] leading-relaxed text-white/48">
+                  Le feed attire l’attention ; le reste du produit transforme cette attention en ventes, réservations et relations durables.
+                </p>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-3">
+                {[
+                  {
+                    icon: Video,
+                    title: 'Découverte fluide',
+                    description:
+                      'Scroll vertical, sons, likes et partages : un feed pensé mobile, lisible et agréable sur petit écran comme sur grand.',
+                  },
+                  {
+                    icon: Store,
+                    title: 'Commerce intégré',
+                    description:
+                      'Boutique, services et créateurs côte à côte. Moins de friction entre « j’ai vu » et « j’achète » ou « je réserve ».',
+                  },
+                  {
+                    icon: Globe2,
+                    title: 'Pensé pour l’Afrique',
+                    description:
+                      'Usages locaux, talents et indépendance tech au centre — sans copier une app californienne et espérer que ça colle.',
+                  },
+                ].map(({ icon: Icon, title, description }) => (
+                  <div key={title} className={cn(LANDING_SOFT_TILE, 'p-5 sm:p-6')}>
+                    <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-white/[0.06] ring-1 ring-inset ring-white/[0.08]">
+                      <Icon className="h-5 w-5 text-white/55" strokeWidth={1.75} />
+                    </div>
+                    <h3 className="text-[17px] font-semibold tracking-tight text-white">{title}</h3>
+                    <p className="mt-2 text-[13px] leading-relaxed text-white/48 sm:text-[14px]">{description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section id="auth" className="scroll-mt-24 px-4 py-14 sm:px-6 lg:px-8">
+            <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+              <div className="space-y-6">
+                <div className={`${LANDING_SECTION} p-6`}>
+                  <p className="text-[12px] font-medium uppercase tracking-[0.16em] text-white/40">Accès</p>
+                  <h2 className="mt-2 text-[34px] font-black tracking-[-0.04em] text-white">Entrer dans l’app</h2>
+                  <p className="mt-3 text-white/58">
+                    Connectez-vous pour retrouver votre compte, ou créez-en un pour rejoindre dès maintenant l’écosystème AfriWonder.
+                  </p>
+
+                  <div className="mt-6 grid gap-3">
+                    {[
+                      'Créateurs, prestataires et utilisateurs dans une seule expérience.',
+                      'Authentification simple, rapide et pensée pour le mobile.',
+                      'Paiements, live, commerce et communauté dans la même app.',
+                    ].map((item) => (
+                      <div key={item} className={LANDING_LIST_ROW}>
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 text-white/72" />
+                        <p className="text-sm text-white/62">{item}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {isFull ? (
+                  <div className={`${LANDING_SECTION} p-6`}>
+                    <p className="text-[12px] font-medium uppercase tracking-[0.16em] text-white/40">Liste d’attente</p>
+                    <h3 className="mt-2 text-2xl font-semibold text-white">Early Access momentanément complet</h3>
+                    <p className="mt-2 text-sm text-white/56">Rejoignez la prochaine vague d’accès en laissant votre contact.</p>
+
+                    <form onSubmit={handleJoinWaitlist} className="mt-5 space-y-3">
                 <input
                   type="email"
                   placeholder="Votre email"
+                  aria-label="Votre email"
                   value={waitlistEmail}
                   onChange={(e) => setWaitlistEmail(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                        className={LANDING_INPUT}
                   required
                 />
                 <input
                   type="text"
                   placeholder="Nom (optionnel)"
+                  aria-label="Nom (optionnel)"
                   value={waitlistName}
                   onChange={(e) => setWaitlistName(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                        className={LANDING_INPUT}
                 />
                 <button
                   type="submit"
                   disabled={waitlistLoading}
-                  className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-bold disabled:opacity-50"
+                        className="w-full rounded-2xl bg-white px-6 py-3 font-semibold text-slate-950 transition-colors hover:bg-white/92 disabled:opacity-50"
                 >
-                  {waitlistLoading ? 'Envoi...' : 'Rejoindre la liste d\'attente'}
+                        {waitlistLoading ? 'Envoi...' : 'Rejoindre la liste d’attente'}
                 </button>
               </form>
-            </motion.div>
-          ) : (
-            <p className="text-gray-400 text-sm">
-              Cliquez ci-dessus pour télécharger ou accéder à l'application AfriWonder.
-            </p>
-          )}
+                  </div>
+                ) : (
+                  <div className={`${LANDING_SOFT_TILE} p-5`}>
+                    <p className="text-sm text-white/60">
+                      L’accès n’est pas encore saturé. Vous pouvez télécharger la PWA, créer votre compte et démarrer immédiatement.
+                    </p>
+                  </div>
+                )}
+              </div>
 
-          <motion.div animate={{ y: [0, 10, 0] }} transition={{ duration: 2, repeat: Infinity }} className="text-gray-400 mt-8">
-            <ChevronDown className="w-8 h-8 mx-auto" />
-          </motion.div>
-        </motion.div>
-      </section>
+              <div className={`${LANDING_SECTION} p-6`}>
+                <div className="mb-6 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[12px] font-medium uppercase tracking-[0.16em] text-white/40">Authentification</p>
+                    <h3 className="mt-2 text-2xl font-semibold text-white">{authMode === 'login' ? 'Se connecter' : 'Créer un compte'}</h3>
+                  </div>
 
-      {/* Section Authentification — Connexion / Inscription */}
-      <section id="auth" className="py-20 px-4 relative scroll-mt-20">
-        <div className="max-w-md mx-auto">
-          <motion.h2
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="text-3xl font-black text-center mb-6 bg-gradient-to-r from-blue-500 to-blue-600 bg-clip-text text-transparent"
-          >
-            {authMode === 'login' ? 'Se connecter' : 'Créer un compte'}
-          </motion.h2>
+                  <div className="inline-flex rounded-full bg-white/[0.05] p-1 ring-1 ring-inset ring-white/[0.08]">
+                    <button
+                      type="button"
+                      onClick={() => setAuthMode('login')}
+                      className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${authMode === 'login' ? 'bg-white text-slate-950' : 'text-white/64 hover:text-white'}`}
+                    >
+                      Connexion
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAuthMode('register')}
+                      className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${authMode === 'register' ? 'bg-white text-slate-950' : 'text-white/64 hover:text-white'}`}
+                    >
+                      Inscription
+                    </button>
+                  </div>
+                </div>
 
-          {authError?.message && (
-            <div className="mb-4 p-3 rounded-lg bg-red-500/20 border border-red-500/40 text-red-200 text-sm">
+                {authError?.message ? (
+                  <div className="mb-4 rounded-2xl border border-red-400/30 bg-red-500/12 p-3 text-sm text-red-100">
               {authError.message}
             </div>
-          )}
+                ) : null}
 
           {authMode === 'login' ? (
             <motion.form
@@ -390,58 +742,53 @@ export default function Landing() {
               animate={{ opacity: 1, y: 0 }}
               onSubmit={async (e) => {
                 e.preventDefault();
-                if (!loginEmail?.trim() || !loginPassword) {
-                  toast.error('Email et mot de passe requis');
+                      if (!loginIdentifier?.trim() || !loginPassword) {
+                        toast.error('Email, nom d’utilisateur ou numéro requis');
                   return;
                 }
                 setAuthLoading(true);
                 try {
-                  await login(loginEmail.trim(), loginPassword);
+                        await login(loginIdentifier.trim(), loginPassword);
                   toast.success('Connexion réussie !');
                   navigate('/', { replace: true });
                 } catch {
-                  // authError already set by AuthContext
                 } finally {
                   setAuthLoading(false);
                 }
               }}
-              className="bg-gray-800/50 border border-gray-700 rounded-2xl p-6 space-y-4"
+                    className="space-y-4"
             >
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Email</label>
+                      <label className={LANDING_LABEL}>Email, nom d’utilisateur ou numéro</label>
                 <input
-                  type="email"
-                  placeholder="votre@email.com"
-                  value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                        type="text"
+                        placeholder="votre@email.com ou +22370123456"
+                        aria-label="Email, nom d’utilisateur ou numéro"
+                        value={loginIdentifier}
+                        onChange={(e) => setLoginIdentifier(e.target.value)}
+                        className={LANDING_INPUT}
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Mot de passe</label>
+                      <label className={LANDING_LABEL}>Mot de passe</label>
                 <input
                   type="password"
                   placeholder="••••••••"
+                  aria-label="Mot de passe"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                        className={LANDING_INPUT}
                   required
                 />
               </div>
               <button
                 type="submit"
                 disabled={authLoading}
-                className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-bold disabled:opacity-50"
+                      className="w-full rounded-2xl bg-white px-6 py-3 font-semibold text-slate-950 transition-colors hover:bg-white/92 disabled:opacity-50"
               >
                 {authLoading ? 'Connexion...' : 'Se connecter'}
               </button>
-              <p className="text-center text-sm text-gray-400">
-                Pas encore de compte ?{' '}
-                <button type="button" onClick={() => setAuthMode('register')} className="text-blue-400 hover:underline font-medium">
-                  S'inscrire
-                </button>
-              </p>
             </motion.form>
           ) : (
             <motion.form
@@ -449,17 +796,25 @@ export default function Landing() {
               animate={{ opacity: 1, y: 0 }}
               onSubmit={async (e) => {
                 e.preventDefault();
-                if (!regFullName?.trim() || !regUsername?.trim() || !regEmail?.trim() || !regPassword) {
+                      if (!regFullName?.trim() || !regUsername?.trim() || !regPassword) {
                   toast.error('Tous les champs sont requis');
                   return;
                 }
-                const usernameTrimmed = regUsername.trim();
+                      if (registerMethod === 'email' && !regEmail?.trim()) {
+                        toast.error('Email requis');
+                        return;
+                      }
+                      if (registerMethod === 'phone' && (!regCountry || !regDialCode || !regPhone?.trim())) {
+                        toast.error('Pays, indicatif et numéro requis');
+                        return;
+                      }
+                      const usernameTrimmed = normalizeUsernameValue(regUsername.trim());
                 if (usernameTrimmed.length < 3 || usernameTrimmed.length > 30) {
-                  toast.error('Le nom d\'utilisateur doit faire entre 3 et 30 caractères');
+                        toast.error('Le nom d’utilisateur doit faire entre 3 et 30 caractères');
                   return;
                 }
                 if (!/^[a-zA-Z0-9_]+$/.test(usernameTrimmed)) {
-                  toast.error('Le nom d\'utilisateur ne peut contenir que lettres, chiffres et underscore');
+                        toast.error('Le nom d’utilisateur ne peut contenir que lettres, chiffres et underscore');
                   return;
                 }
                 if (regPassword.length < 8) {
@@ -475,286 +830,301 @@ export default function Landing() {
                   return;
                 }
                 if (!regAcceptTerms) {
-                  toast.error('Veuillez accepter les conditions d\'utilisation');
+                        toast.error('Veuillez accepter les conditions d’utilisation');
+                        return;
+                      }
+                      const intlPhone = registerMethod === 'phone'
+                        ? buildInternationalPhone(regDialCode, regPhone)
+                        : '';
+                      if (registerMethod === 'phone' && !/^\+\d{6,15}$/.test(intlPhone)) {
+                        toast.error('Le numéro doit inclure un indicatif international valide');
                   return;
                 }
                 setAuthLoading(true);
                 try {
                   await register({
                     full_name: regFullName.trim(),
-                    username: regUsername.trim(),
-                    email: regEmail.trim(),
+                          username: usernameTrimmed,
+                          email: registerMethod === 'email' ? regEmail.trim() : undefined,
+                          phone: registerMethod === 'phone' ? intlPhone : undefined,
                     password: regPassword,
                   });
                   toast.success('Compte créé ! Bienvenue sur AfriWonder.');
                   navigate('/', { replace: true });
                 } catch {
-                  // authError already set
                 } finally {
                   setAuthLoading(false);
                 }
               }}
-              className="bg-gray-800/50 border border-gray-700 rounded-2xl p-6 space-y-4"
-            >
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Nom complet</label>
+                    className="space-y-4"
+                  >
+                    <div className="inline-flex rounded-full bg-white/[0.05] p-1 ring-1 ring-inset ring-white/[0.08]">
+                      <button
+                        type="button"
+                        onClick={() => setRegisterMethod('email')}
+                        className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${registerMethod === 'email' ? 'bg-white text-slate-950' : 'text-white/64 hover:text-white'}`}
+                      >
+                        Avec email
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRegisterMethod('phone')}
+                        className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${registerMethod === 'phone' ? 'bg-white text-slate-950' : 'text-white/64 hover:text-white'}`}
+                      >
+                        Avec téléphone
+                      </button>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="sm:col-span-2">
+                        <label className={LANDING_LABEL}>Nom complet</label>
                 <input
                   type="text"
                   placeholder="Jean Dupont"
+                  aria-label="Nom complet"
                   value={regFullName}
                   onChange={(e) => setRegFullName(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                          className={LANDING_INPUT}
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Nom d'utilisateur</label>
+                        <label className={LANDING_LABEL}>Nom d’utilisateur</label>
                 <input
                   type="text"
                   placeholder="jeandupont"
+                          aria-label="Nom d’utilisateur"
                   value={regUsername}
-                  onChange={(e) => setRegUsername(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                          onChange={(e) => setRegUsername(normalizeUsernameValue(e.target.value))}
+                          className={LANDING_INPUT}
                   required
                 />
+                        <p className="mt-1 text-xs text-white/38">Les accents et espaces sont convertis automatiquement pour éviter le blocage de création.</p>
               </div>
+                      {registerMethod === 'email' ? (
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Email</label>
+                          <label className={LANDING_LABEL}>Email</label>
                 <input
                   type="email"
                   placeholder="votre@email.com"
+                  aria-label="Email"
                   value={regEmail}
                   onChange={(e) => setRegEmail(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                            className={LANDING_INPUT}
                   required
                 />
               </div>
+                      ) : (
+                        <>
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Mot de passe</label>
+                            <label className={LANDING_LABEL}>Pays</label>
+                            <select
+                              aria-label="Pays"
+                              value={regCountry}
+                              onChange={(e) => setRegCountry(e.target.value)}
+                              className={LANDING_INPUT}
+                              required
+                            >
+                              {ALL_COUNTRIES.map((country) => (
+                                <option key={country} value={country} className="bg-slate-950 text-white">
+                                  {country}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LANDING_LABEL}>Indicatif</label>
+                            <input
+                              type="tel"
+                              placeholder="+223"
+                              aria-label="Indicatif pays"
+                              value={regDialCode}
+                              onChange={(e) => setRegDialCode(normalizeDialCode(e.target.value))}
+                              className={LANDING_INPUT}
+                              required
+                            />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <label className={LANDING_LABEL}>Numéro de téléphone</label>
+                            <input
+                              type="tel"
+                              placeholder="70 12 34 56"
+                              aria-label="Numéro de téléphone"
+                              value={regPhone}
+                              onChange={(e) => setRegPhone(e.target.value)}
+                              className={LANDING_INPUT}
+                              required
+                            />
+                            <p className="mt-1 text-xs text-white/38">Aucun code de vérification pour l’instant. Le numéro sera enregistré directement au format international.</p>
+                          </div>
+                        </>
+                      )}
+                      <div className="sm:col-span-2">
+                        <label className={LANDING_LABEL}>Mot de passe</label>
                 <input
                   type="password"
                   placeholder="••••••••"
+                  aria-label="Mot de passe"
                   value={regPassword}
                   onChange={(e) => setRegPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                          className={LANDING_INPUT}
                   required
                 />
               </div>
-              <label className="flex items-start gap-3 cursor-pointer">
+                    </div>
+
+                    <label className={LANDING_LIST_ROW}>
                 <input
                   type="checkbox"
                   checked={regAcceptTerms}
                   onChange={(e) => setRegAcceptTerms(e.target.checked)}
-                  className="rounded mt-1"
-                />
-                <span className="text-sm text-gray-300">
-                  J'accepte les{' '}
-                  <Link to="/TermsOfService" className="text-blue-400 hover:underline">conditions d'utilisation</Link>
+                        className="mt-1 rounded"
+                      />
+                      <span className="text-sm leading-6 text-white/62">
+                        J’accepte les{' '}
+                        <Link to="/TermsOfService" className="text-white underline-offset-4 hover:underline">conditions d’utilisation</Link>
                   {' '}et la{' '}
-                  <Link to="/PrivacyPolicy" className="text-blue-400 hover:underline">politique de confidentialité</Link>
+                        <Link to="/PrivacyPolicy" className="text-white underline-offset-4 hover:underline">politique de confidentialité</Link>.
                 </span>
               </label>
+
               <button
                 type="submit"
                 disabled={authLoading || !regAcceptTerms}
-                className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-bold disabled:opacity-50"
+                      className="w-full rounded-2xl bg-white px-6 py-3 font-semibold text-slate-950 transition-colors hover:bg-white/92 disabled:opacity-50"
               >
-                {authLoading ? 'Inscription...' : "S'inscrire"}
+                      {authLoading ? 'Inscription...' : 'Créer mon compte'}
               </button>
-              <p className="text-center text-sm text-gray-400">
-                Déjà un compte ?{' '}
-                <button type="button" onClick={() => setAuthMode('login')} className="text-blue-400 hover:underline font-medium">
-                  Se connecter
-                </button>
-              </p>
             </motion.form>
           )}
+              </div>
         </div>
       </section>
 
-      {/* Soutien financier / Donations */}
-      <section className="py-20 px-4 relative">
-        <div className="max-w-2xl mx-auto">
-          <motion.h2
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="text-4xl font-black text-center mb-4 bg-gradient-to-r from-blue-500 to-blue-600 bg-clip-text text-transparent"
-          >
-            Soutenez AfriWonder
-          </motion.h2>
+          <section id="support" className="px-4 py-14 sm:px-6 lg:px-8">
+            <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+              <div className="space-y-6">
+                <div className={`${LANDING_SECTION} p-6`}>
+                  <p className="text-[12px] font-medium uppercase tracking-[0.16em] text-white/40">Soutien</p>
+                  <h2 className="mt-2 text-[34px] font-black tracking-[-0.04em] text-white">Construisons l’avenir numérique africain</h2>
+                  <p className="mt-3 text-white/58">
+                    Chaque contribution aide à améliorer la plateforme, renforcer l’équipe et soutenir durablement les créateurs et prestataires.
+                  </p>
 
-          {/* Message motivant et patriotique */}
+                  <div className="mt-6 space-y-3">
+                    {[
+                      'Vous investissez dans un produit africain conçu pour des usages réels.',
+                      'Vous soutenez l’emploi, l’ingénierie locale et la montée en compétence.',
+                      'Vous contribuez à une plateforme indépendante, ambitieuse et durable.',
+                    ].map((item) => (
+                      <div key={item} className={LANDING_LIST_ROW}>
+                        <Heart className="mt-0.5 h-4 w-4 text-white/72" />
+                        <p className="text-sm text-white/62">{item}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
           <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="mb-8 p-6 rounded-2xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 border border-blue-500/40"
-          >
-            <h3 className="text-xl font-bold text-blue-100 mb-4 text-center">
-              Soutenez AfriWonder – Construisons l'avenir numérique de l'Afrique ensemble !
-            </h3>
-            <p className="text-gray-300 text-sm mb-4">
-              Chaque contribution, même la plus petite, compte. En soutenant AfriWonder :
-            </p>
-            <ul className="space-y-2 text-gray-300 text-sm mb-4 list-disc list-inside">
-              <li>Vous investissez dans le futur de l'Afrique numérique.</li>
-              <li>Vous créez des emplois pour nos ingénieurs, développeurs et créateurs locaux.</li>
-              <li>Vous accompagnez la croissance de nos talents et la formation de la nouvelle génération.</li>
-              <li>Vous renforcez une plateforme africaine, conçue par et pour nous, qui continuera à évoluer grâce à vous.</li>
-            </ul>
-            <p className="text-gray-300 text-sm mb-4">
-              Votre soutien n'est pas seulement un don, c'est un acte pour :
-            </p>
-            <ul className="space-y-2 text-gray-300 text-sm mb-4 list-disc list-inside">
-              <li>Offrir des opportunités réelles à nos talents africains.</li>
-              <li>Construire une communauté solide et indépendante.</li>
-              <li>Permettre à AfriWonder de rester 100% au service de l'Afrique, et non des intérêts extérieurs.</li>
-            </ul>
-            <p className="text-blue-200/90 text-sm mb-2">
-              💡 Chaque franc investi revient directement à renforcer nos équipes, améliorer la plateforme et soutenir nos créateurs. Ensemble, nous faisons plus qu'une plateforme : nous bâtissons l'avenir numérique de notre continent.
-            </p>
-            <p className="text-blue-200 font-semibold text-sm text-center">
-              🎯 Faites partie des premiers à soutenir et transformer l'Afrique numérique dès aujourd'hui.
-            </p>
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="bg-gray-800/50 border border-gray-700 rounded-2xl p-8"
-          >
-            <p className="text-blue-200/90 text-sm text-center mb-6 px-2">
-              Chaque paiement sera libellé « Soutien AfriWonder » pour faciliter la traçabilité.
-            </p>
-            <div className="flex flex-wrap gap-3 justify-center mb-6">
+                className={`${LANDING_SECTION} p-6`}
+              >
+                <div className="mb-5">
+                  <p className="text-[12px] font-medium uppercase tracking-[0.16em] text-white/40">Contribution</p>
+                  <h3 className="mt-2 text-2xl font-semibold text-white">Soutenir AfriWonder</h3>
+                  <p className="mt-2 text-sm text-white/56">
+                    Chaque paiement sera libellé « Soutien AfriWonder » pour simplifier la traçabilité.
+                  </p>
+                </div>
+
+                <div className="mb-5 flex flex-wrap gap-2">
               {[100, 500, 1000, 5000].map((amt) => (
                 <button
                   key={amt}
                   type="button"
                   onClick={() => { setDonationAmount(amt); setDonationCustom(''); }}
-                  className={`px-6 py-3 rounded-xl font-bold transition-all ${donationAmount === amt ? 'bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}
+                      className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${donationAmount === amt ? 'bg-white text-slate-950' : 'border border-white/10 bg-white/[0.04] text-white/74 hover:bg-white/[0.08] hover:text-white'}`}
                 >
                   {amt.toLocaleString()} FCFA
                 </button>
               ))}
             </div>
+
             <form onSubmit={handleDonate} className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Montant libre (min 100 FCFA)</label>
+                    <label className={LANDING_LABEL}>Montant libre (min 100 FCFA)</label>
                 <input
                   type="number"
                   min={100}
                   placeholder="Ex: 2500"
+                  aria-label="Montant libre"
                   value={donationCustom}
                   onChange={(e) => { setDonationCustom(e.target.value); setDonationAmount(null); }}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                      className={LANDING_INPUT}
                 />
               </div>
+
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Numéro Orange Money / Mobile Money <span className="text-blue-400">*</span></label>
+                    <label className={LANDING_LABEL}>Numéro Orange Money / Mobile Money</label>
                 <input
                   type="tel"
                   placeholder="Ex: +223 70 12 34 56"
+                  aria-label="Numéro Orange Money / Mobile Money"
                   value={donationPhone}
                   onChange={(e) => setDonationPhone(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                      className={LANDING_INPUT}
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">Obligatoire pour recevoir la demande de paiement.</p>
+                    <p className="mt-1 text-xs text-white/38">Obligatoire pour recevoir la demande de paiement.</p>
               </div>
 
-              {/* Option : apparaître dans la liste des contributeurs */}
-              <div className="border-t border-gray-700 pt-4 mt-4">
-                <label className="flex items-start gap-3 cursor-pointer mb-4">
+                  <label className={LANDING_LIST_ROW}>
                   <input
                     type="checkbox"
                     checked={donationShowInContributors}
                     onChange={(e) => setDonationShowInContributors(e.target.checked)}
-                    className="rounded mt-1"
-                  />
-                  <span className="text-sm text-gray-300">
-                    <span className="font-medium text-blue-200">Souhaitez-vous apparaître dans la liste des contributeurs ?</span>
-                    <br />
-                    <span className="text-gray-500">Rejoignez les noms de ceux qui bâtissent l'Afrique numérique. Votre soutien sera honoré publiquement. (optionnel)</span>
+                    aria-label="Souhaitez-vous apparaître dans la liste des contributeurs"
+                      className="mt-1 rounded"
+                    />
+                    <span className="text-sm leading-6 text-white/62">
+                      Apparaître dans la liste des contributeurs et être associé publiquement aux premiers soutiens du projet.
                   </span>
                 </label>
-              </div>
 
-              {/* Section optionnelle : infos pour remerciement */}
-              <div className="border-t border-gray-700 pt-4 mt-4">
-                <label className="flex items-center gap-2 cursor-pointer mb-3">
+                  <label className={LANDING_LIST_ROW}>
                   <input
                     type="checkbox"
                     checked={donationWantsThanks}
                     onChange={(e) => setDonationWantsThanks(e.target.checked)}
-                    className="rounded"
+                      aria-label="Laisser vos coordonnées pour être remercié personnellement"
+                      className="mt-1 rounded"
                   />
-                  <span className="text-sm text-gray-300">Laisser vos coordonnées pour être remercié(e) personnellement ? (optionnel)</span>
+                    <span className="text-sm leading-6 text-white/62">
+                      Laisser vos coordonnées pour être remercié(e) personnellement.
+                    </span>
                 </label>
-                {donationWantsThanks && (
-                  <div className="space-y-3 pl-6 border-l-2 border-blue-500/30">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <input
-                        type="text"
-                        placeholder="Nom (optionnel)"
-                        value={donationName}
-                        onChange={(e) => setDonationName(e.target.value)}
-                        className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Prénom (optionnel)"
-                        value={donationFirstName}
-                        onChange={(e) => setDonationFirstName(e.target.value)}
-                        className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <input
-                        type="number"
-                        min={1}
-                        max={120}
-                        placeholder="Age (optionnel)"
-                        value={donationAge}
-                        onChange={(e) => setDonationAge(e.target.value)}
-                        className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Pays (optionnel)"
-                        value={donationCountry}
-                        onChange={(e) => setDonationCountry(e.target.value)}
-                        className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="Ville (optionnel)"
-                      value={donationCity}
-                      onChange={(e) => setDonationCity(e.target.value)}
-                      className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                    />
-                    <input
-                      type="email"
-                      placeholder="Email (optionnel)"
-                      value={donationEmail}
-                      onChange={(e) => setDonationEmail(e.target.value)}
-                      className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                    />
-                    <textarea
-                      placeholder="Un message pour nous ? (optionnel)"
-                      value={donationMessage}
-                      onChange={(e) => setDonationMessage(e.target.value)}
-                      rows={2}
-                      className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                )}
-              </div>
 
-              <button type="submit" disabled={donationLoading} className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-bold disabled:opacity-50 flex items-center justify-center gap-2">
-                <Heart className="w-5 h-5" />
+                  {donationWantsThanks ? (
+                    <div className="grid gap-3 rounded-2xl bg-white/[0.04] p-4 ring-1 ring-inset ring-white/[0.06] sm:grid-cols-2">
+                      <input type="text" placeholder="Nom (optionnel)" aria-label="Nom (optionnel)" value={donationName} onChange={(e) => setDonationName(e.target.value)} className={LANDING_INPUT} />
+                      <input type="text" placeholder="Prénom (optionnel)" aria-label="Prénom (optionnel)" value={donationFirstName} onChange={(e) => setDonationFirstName(e.target.value)} className={LANDING_INPUT} />
+                      <input type="number" min={1} max={120} placeholder="Age (optionnel)" aria-label="Age (optionnel)" value={donationAge} onChange={(e) => setDonationAge(e.target.value)} className={LANDING_INPUT} />
+                      <input type="text" placeholder="Pays (optionnel)" aria-label="Pays (optionnel)" value={donationCountry} onChange={(e) => setDonationCountry(e.target.value)} className={LANDING_INPUT} />
+                      <input type="text" placeholder="Ville (optionnel)" aria-label="Ville (optionnel)" value={donationCity} onChange={(e) => setDonationCity(e.target.value)} className={`${LANDING_INPUT} sm:col-span-2`} />
+                      <input type="email" placeholder="Email (optionnel)" aria-label="Email (optionnel)" value={donationEmail} onChange={(e) => setDonationEmail(e.target.value)} className={`${LANDING_INPUT} sm:col-span-2`} />
+                      <textarea placeholder="Un message pour nous ? (optionnel)" aria-label="Un message pour nous ? (optionnel)" value={donationMessage} onChange={(e) => setDonationMessage(e.target.value)} rows={3} className={`${LANDING_INPUT} min-h-[96px] sm:col-span-2`} />
+                    </div>
+                  ) : null}
+
+                  <button
+                    type="submit"
+                    disabled={donationLoading}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-6 py-3 font-semibold text-slate-950 transition-colors hover:bg-white/92 disabled:opacity-50"
+                  >
+                    <Heart className="h-5 w-5" />
                 {donationLoading ? 'Envoi...' : 'Contribuer'}
               </button>
             </form>
@@ -762,101 +1132,128 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Feedback */}
-      <section className="py-20 px-4 relative">
-        <div className="max-w-2xl mx-auto">
-          <motion.h2
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="text-4xl font-black text-center mb-4 bg-gradient-to-r from-blue-500 to-blue-600 bg-clip-text text-transparent"
-          >
-            Votre avis compte
-          </motion.h2>
-          <motion.p
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="text-gray-400 text-center mb-8"
-          >
-            Bug, suggestion ou commentaire — nous lisons tout.
-          </motion.p>
+          <section id="feedback" className="px-4 py-14 sm:px-6 lg:px-8">
+            <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+              <div className={`${LANDING_SECTION} p-6`}>
+                <p className="text-[12px] font-medium uppercase tracking-[0.16em] text-white/40">Feedback</p>
+                <h2 className="mt-2 text-[34px] font-black tracking-[-0.04em] text-white">Votre avis compte vraiment</h2>
+                <p className="mt-3 text-white/58">
+                  Bug, suggestion, idée produit ou retour de terrain : nous lisons tout pour faire évoluer AfriWonder avec davantage d’intention et de qualité.
+                </p>
+
+                <div className="mt-6 space-y-3">
+                  {[
+                    'Les suggestions influencent la roadmap produit.',
+                    'Les bugs signalés accélèrent la stabilisation de l’app.',
+                    'Les retours utilisateurs nous aident à mieux prioriser.',
+                  ].map((item) => (
+                    <div key={item} className={LANDING_LIST_ROW}>
+                      <MessageCircle className="mt-0.5 h-4 w-4 text-white/72" />
+                      <p className="text-sm text-white/62">{item}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
           <motion.form
-            initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             onSubmit={handleFeedback}
-            className="bg-gray-800/50 border border-gray-700 rounded-2xl p-8 space-y-4"
+                className={`${LANDING_SECTION} space-y-4 p-6`}
           >
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Type</label>
-              <select value={feedbackType} onChange={(e) => setFeedbackType(e.target.value)} className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500">
+                  <label className={LANDING_LABEL}>Type</label>
+              <select
+                value={feedbackType}
+                onChange={(e) => setFeedbackType(e.target.value)}
+                    className={LANDING_INPUT}
+                aria-label="Type de retour"
+              >
                 <option value="bug">Bug</option>
                 <option value="suggestion">Suggestion</option>
                 <option value="comment">Commentaire</option>
               </select>
             </div>
-            <textarea placeholder="Votre message..." value={feedbackContent} onChange={(e) => setFeedbackContent(e.target.value)} rows={4} className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" required />
-            <input type="email" placeholder="Email (optionnel)" value={feedbackEmail} onChange={(e) => setFeedbackEmail(e.target.value)} className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" />
-            <div className="flex flex-wrap gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={feedbackJoinWhatsapp} onChange={(e) => setFeedbackJoinWhatsapp(e.target.checked)} className="rounded" />
-                <span className="text-sm">Rejoindre le groupe WhatsApp</span>
+
+                <div>
+                  <label className={LANDING_LABEL}>Votre message</label>
+            <textarea
+                    placeholder="Décrivez votre retour..."
+              aria-label="Votre message"
+              value={feedbackContent}
+              onChange={(e) => setFeedbackContent(e.target.value)}
+                    rows={5}
+                    className={`${LANDING_INPUT} min-h-[128px]`}
+              required
+            />
+                </div>
+
+                <div>
+                  <label className={LANDING_LABEL}>Email (optionnel)</label>
+            <input
+              type="email"
+                    placeholder="votre@email.com"
+              aria-label="Email (optionnel)"
+              value={feedbackEmail}
+              onChange={(e) => setFeedbackEmail(e.target.value)}
+                    className={LANDING_INPUT}
+                  />
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className={LANDING_LIST_ROW}>
+                    <input type="checkbox" checked={feedbackJoinWhatsapp} onChange={(e) => setFeedbackJoinWhatsapp(e.target.checked)} aria-label="Rejoindre le groupe WhatsApp" className="mt-1 rounded" />
+                    <span className="text-sm text-white/62">Rejoindre le groupe WhatsApp</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={feedbackJoinMailing} onChange={(e) => setFeedbackJoinMailing(e.target.checked)} className="rounded" />
-                <span className="text-sm">Rejoindre la mailing list</span>
+                  <label className={LANDING_LIST_ROW}>
+                    <input type="checkbox" checked={feedbackJoinMailing} onChange={(e) => setFeedbackJoinMailing(e.target.checked)} aria-label="Rejoindre la mailing list" className="mt-1 rounded" />
+                    <span className="text-sm text-white/62">Rejoindre la mailing list</span>
               </label>
             </div>
-            <button type="submit" disabled={feedbackLoading} className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-bold disabled:opacity-50 flex items-center justify-center gap-2">
-              <MessageCircle className="w-5 h-5" />
-              {feedbackLoading ? 'Envoi...' : 'Envoyer'}
+
+                <button
+                  type="submit"
+                  disabled={feedbackLoading}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-6 py-3 font-semibold text-slate-950 transition-colors hover:bg-white/92 disabled:opacity-50"
+                >
+                  <MessageCircle className="h-5 w-5" />
+                  {feedbackLoading ? 'Envoi...' : 'Envoyer mon retour'}
             </button>
           </motion.form>
         </div>
       </section>
 
-      {/* Partage social */}
-      <section className="py-12 px-4">
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          className="text-center"
-        >
-          <p className="text-gray-400 mb-4">Invitez vos amis à rejoindre AfriWonder</p>
+          <section className="px-4 py-10 sm:px-6 lg:px-8">
+            <div className={`mx-auto flex max-w-5xl flex-col items-center gap-4 p-6 text-center ${LANDING_SECTION}`}>
+              <p className="text-[12px] font-medium uppercase tracking-[0.16em] text-white/40">Partager</p>
+              <h3 className="text-2xl font-semibold text-white">Invitez vos proches à découvrir AfriWonder</h3>
+              <p className="max-w-2xl text-white/56">
+                Plus tôt la communauté rejoint la plateforme, plus vite nous pouvons l’améliorer et l’ancrer dans des usages réels.
+              </p>
           <button
             onClick={handleShare}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-xl font-semibold transition-all"
+                className="inline-flex items-center gap-2 rounded-full bg-white/[0.06] px-6 py-3 font-semibold text-white ring-1 ring-inset ring-white/[0.1] transition-colors hover:bg-white/[0.09]"
           >
-            <Share2 className="w-5 h-5" />
-            Partager
+                <Share2 className="h-5 w-5" />
+                Partager AfriWonder
           </button>
-        </motion.div>
+            </div>
       </section>
+        </main>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-800 py-12 px-4 text-center text-gray-400">
-        <div className="max-w-7xl mx-auto">
-          <p className="mb-4">© 2026 AfriWonder. Fabriqué en Afrique 🌍</p>
-          <div className="flex justify-center gap-6 flex-wrap">
-            <Link to="/PrivacyPolicy" onClick={() => window.scrollTo(0, 0)} className="hover:text-white transition-colors underline">Confidentialité</Link>
-            <Link to="/DataProtection" onClick={() => window.scrollTo(0, 0)} className="hover:text-white transition-colors underline">Sécurité</Link>
-            <Link to="/Help" onClick={() => window.scrollTo(0, 0)} className="hover:text-white transition-colors underline">Support</Link>
-            <Link to="/About" onClick={() => window.scrollTo(0, 0)} className="hover:text-white transition-colors underline">À propos</Link>
+        <footer className="border-t border-white/[0.06] px-4 py-12 text-center text-white/46 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl">
+            <p className="mb-4">© 2026 AfriWonder. Fabriqué en Afrique.</p>
+            <div className="flex flex-wrap justify-center gap-6">
+              <Link to="/PrivacyPolicy" onClick={() => window.scrollTo(0, 0)} className="transition-colors hover:text-white">Confidentialité</Link>
+              <Link to="/DataProtection" onClick={() => window.scrollTo(0, 0)} className="transition-colors hover:text-white">Sécurité</Link>
+              <Link to="/Help" onClick={() => window.scrollTo(0, 0)} className="transition-colors hover:text-white">Support</Link>
+              <Link to="/About" onClick={() => window.scrollTo(0, 0)} className="transition-colors hover:text-white">À propos</Link>
           </div>
         </div>
       </footer>
-
-      <style>{`
-        @keyframes blob {
-          0%, 100% { transform: translate(0, 0) scale(1); }
-          33% { transform: translate(30px, -50px) scale(1.1); }
-          66% { transform: translate(-20px, 20px) scale(0.9); }
-        }
-        .animate-blob { animation: blob 7s infinite; }
-        .animation-delay-2000 { animation-delay: 2s; }
-      `}</style>
     </div>
+    </MotionConfig>
   );
 }

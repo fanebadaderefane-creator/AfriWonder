@@ -6,7 +6,6 @@ import { ArrowLeft, FileText, Plus, Loader2, Pencil, Trash2 } from 'lucide-react
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useNavigate } from 'react-router-dom';
-import { createPageUrl } from '@/utils';
 import {
   Dialog,
   DialogContent,

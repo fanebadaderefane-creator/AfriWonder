@@ -181,7 +181,13 @@ export default function CreateCampaign() {
           <div className="grid grid-cols-3 gap-2 mt-2">
             {images.map((url, i) => (
               <div key={i} className="relative aspect-square">
-                <img src={url} alt="" className="w-full h-full object-cover rounded-lg" />
+                <img
+                  src={url}
+                  alt=""
+                  className="w-full h-full object-cover rounded-lg"
+                  loading="lazy"
+                  decoding="async"
+                />
                 <button
                   onClick={() => setImages(images.filter((_, idx) => idx !== i))}
                   className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center"

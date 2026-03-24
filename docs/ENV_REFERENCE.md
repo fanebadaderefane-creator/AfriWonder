@@ -95,6 +95,9 @@ Document unique listant **toutes** les clés utilisées dans le projet (backend 
 | `R2_SECRET_ACCESS_KEY` | |
 | `R2_BUCKET_NAME` | Défaut `afriwonder` |
 | `R2_PUBLIC_URL` | URL publique du bucket (ex. `https://pub-xxx.r2.dev`) |
+
+**Si l’upload renvoie « Access Denied »** : le token API R2 doit avoir **lecture + écriture** sur le bucket cible (permissions « Object Read & Write » ou équivalent). Recréez une clé R2 avec les bons droits et mettez à jour `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`.
+
 | **AWS S3** (alternatif) | |
 | `AWS_ACCESS_KEY_ID` | |
 | `AWS_SECRET_ACCESS_KEY` | |
@@ -140,6 +143,15 @@ Document unique listant **toutes** les clés utilisées dans le projet (backend 
 |----------|-------------|
 | `SENDGRID_API_KEY` | Envoi d’emails |
 | `SENDGRID_FROM_EMAIL` | Ex. `noreply@afriwonder.app` |
+
+### Traduction (chat / messages)
+
+| Variable | Utilisation | Défaut |
+|----------|-------------|--------|
+| `LIBRETRANSLATE_URL` | URL de base d’une instance [LibreTranslate](https://github.com/LibreTranslate/LibreTranslate) (sans `/` final) | `https://libretranslate.de` |
+| `LIBRETRANSLATE_API_KEY` | Clé API si votre instance l’exige | (vide) |
+
+Sans instance joignable, le backend tente un repli limité (MyMemory). En production, héberger ou souscrire à une instance LibreTranslate fiable est recommandé.
 
 ### Fraude & limites
 
@@ -209,6 +221,12 @@ Toutes les variables exposées au client doivent être préfixées par **`VITE_`
 | `REACT_APP_ORANGE_API_KEY` | Legacy |
 | `REACT_APP_API_URL` | Fallback API (MobileMoneyPayment, etc.) |
 | `REACT_APP_ENV` / `VITE_REACT_APP_ENV` | Mode (development / production) |
+
+### Développement — diagnostic feed vidéo
+
+| Variable | Utilisation |
+|----------|-------------|
+| `VITE_DEBUG_VIDEO_UI=1` | Surcouche rouge sur la zone UI du player (`VideoCard`) pour vérifier l’empilement CSS |
 
 ---
 

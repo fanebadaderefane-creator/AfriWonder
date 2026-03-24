@@ -29,16 +29,17 @@ const TABS = [
   { id: 'maliconnect', label: 'AfriWonder', icon: Shield },
   { id: 'ai-engine', label: 'AI Engine', icon: Zap },
   { id: 'business-intelligence', label: 'Business Intelligence', icon: TrendingUp },
+  { id: 'support-tickets', label: 'Support tickets', icon: AlertCircle },
   { id: 'settings', label: 'Paramètres', icon: Settings },
 ];
 
 const ROLE_ACCESS = {
   super_admin: new Set(TABS.map((t) => t.id)),
-  admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'verifications', 'campagnes', 'reports', 'disputes', 'returns', 'finance', 'monetization', 'logistics', 'analytics', 'audit', 'earlyaccess', 'maliconnect', 'ai-engine', 'business-intelligence', 'settings']),
-  finance_admin: new Set(['overview', 'finance', 'monetization', 'orders', 'audit', 'logistics', 'campagnes', 'verifications', 'earlyaccess', 'maliconnect', 'business-intelligence']),
-  moderation_admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'campagnes', 'reports', 'disputes', 'returns', 'logistics', 'verifications', 'maliconnect', 'ai-engine']),
-  support_admin: new Set(['overview', 'users', 'disputes', 'returns', 'reports', 'logistics', 'maliconnect']),
-  data_admin: new Set(['overview', 'analytics', 'audit', 'orders', 'users', 'logistics', 'maliconnect', 'ai-engine', 'business-intelligence']),
+  admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'verifications', 'campagnes', 'reports', 'disputes', 'returns', 'finance', 'monetization', 'logistics', 'analytics', 'audit', 'earlyaccess', 'maliconnect', 'ai-engine', 'business-intelligence', 'support-tickets', 'settings']),
+  finance_admin: new Set(['overview', 'finance', 'monetization', 'orders', 'audit', 'logistics', 'campagnes', 'verifications', 'earlyaccess', 'maliconnect', 'business-intelligence', 'support-tickets']),
+  moderation_admin: new Set(['overview', 'users', 'videos', 'orders', 'sellers', 'campagnes', 'reports', 'disputes', 'returns', 'logistics', 'verifications', 'maliconnect', 'ai-engine', 'support-tickets']),
+  support_admin: new Set(['overview', 'users', 'disputes', 'returns', 'reports', 'logistics', 'maliconnect', 'support-tickets']),
+  data_admin: new Set(['overview', 'analytics', 'audit', 'orders', 'users', 'logistics', 'maliconnect', 'ai-engine', 'business-intelligence', 'support-tickets']),
 };
 
 function canAccess(role, tabId) {

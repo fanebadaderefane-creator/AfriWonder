@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { api } from "@/api/expressClient";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Users, Target, Calendar, MapPin, Loader2, Plus, TrendingUp } from "lucide-react";
+import { Users, Calendar, MapPin, Loader2, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";

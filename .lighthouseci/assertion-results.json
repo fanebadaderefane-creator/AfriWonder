@@ -1,0 +1,324 @@
+[
+  {
+    "name": "minScore",
+    "expected": 0.55,
+    "actual": 0.28,
+    "values": [
+      0.28
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "performance",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.55,
+    "actual": 0.28,
+    "values": [
+      0.28
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "performance",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/Landing"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.55,
+    "actual": 0.27,
+    "values": [
+      0.27
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "performance",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/News"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.88,
+    "actual": 0.86,
+    "values": [
+      0.86
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "accessibility",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/News"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.55,
+    "actual": 0.28,
+    "values": [
+      0.28
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "performance",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/Discover"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.88,
+    "actual": 0.81,
+    "values": [
+      0.81
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "accessibility",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/Discover"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.55,
+    "actual": 0.28,
+    "values": [
+      0.28
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "performance",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/Marketplace"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.55,
+    "actual": 0.29,
+    "values": [
+      0.29
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "performance",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/FAQ"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.88,
+    "actual": 0.85,
+    "values": [
+      0.85
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "accessibility",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/FAQ"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.55,
+    "actual": 0.28,
+    "values": [
+      0.28
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "performance",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/Help"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.88,
+    "actual": 0.83,
+    "values": [
+      0.83
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "accessibility",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/Help"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.55,
+    "actual": 0.28,
+    "values": [
+      0.28
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "performance",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/About"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.88,
+    "actual": 0.85,
+    "values": [
+      0.85
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "accessibility",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/About"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.55,
+    "actual": 0.27,
+    "values": [
+      0.27
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "performance",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/blog"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.88,
+    "actual": 0.86,
+    "values": [
+      0.86
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "accessibility",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/blog"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.55,
+    "actual": 0.28,
+    "values": [
+      0.28
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "performance",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/articles"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.88,
+    "actual": 0.86,
+    "values": [
+      0.86
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "accessibility",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/articles"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.55,
+    "actual": 0.29,
+    "values": [
+      0.29
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "performance",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/dashboard"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.55,
+    "actual": 0.28,
+    "values": [
+      0.28
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "performance",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/features"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.88,
+    "actual": 0.81,
+    "values": [
+      0.81
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "accessibility",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/features"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.55,
+    "actual": 0.29,
+    "values": [
+      0.29
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "performance",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/Search"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.55,
+    "actual": 0.29,
+    "values": [
+      0.29
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "performance",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/ArticleDetails"
+  },
+  {
+    "name": "minScore",
+    "expected": 0.88,
+    "actual": 0.79,
+    "values": [
+      0.79
+    ],
+    "operator": ">=",
+    "passed": false,
+    "auditProperty": "accessibility",
+    "auditId": "categories",
+    "level": "warn",
+    "url": "http://localhost:4173/ArticleDetails"
+  }
+]

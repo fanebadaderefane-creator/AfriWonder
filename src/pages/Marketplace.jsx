@@ -67,7 +67,8 @@ export default function MarketplacePage() {
         if (!src) return;
         const img = new Image();
         img.decoding = "async";
-        img.loading = "eager";
+        img.loading = "lazy";
+        img.fetchPriority = "low";
         img.src = src;
       });
     };
@@ -80,24 +81,24 @@ export default function MarketplacePage() {
   }, [heroProviders]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+    <div className="min-h-screen bg-[#060913] text-white">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <div className="flex items-center gap-3 mb-6">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="rounded-full" aria-label="Retour">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="h-10 w-10 rounded-full border border-white/10 bg-white/[0.04] text-white/82 hover:bg-white/[0.08]" aria-label="Retour">
             <ArrowLeft className="w-5 h-5" />
           </Button>
-          <span className="font-medium text-foreground">Retour</span>
+          <span className="font-medium text-white/72">Retour</span>
         </div>
 
         <section className="mb-16">
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
             <div>
-              <h2 className="text-3xl font-bold text-foreground">Prestataires en Vedette</h2>
-              <p className="text-muted-foreground mt-1">Les professionnels les mieux notes</p>
+              <h2 className="text-3xl font-bold text-white">Prestataires en Vedette</h2>
+              <p className="mt-1 text-white/56">Les professionnels les mieux notes</p>
             </div>
             <Link
               to={createPageUrl("Providers")}
-              className="inline-flex items-center text-blue-700 hover:text-blue-800 font-medium"
+              className="inline-flex items-center font-medium text-white/72 hover:text-white"
             >
               Voir tout <ChevronRight className="w-4 h-4 ml-0.5 inline" />
             </Link>
@@ -120,21 +121,21 @@ export default function MarketplacePage() {
           </div>
         </section>
 
-        <section className="relative rounded-3xl bg-[#1f2937] to-gray-900 p-8 md:p-12 overflow-hidden">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 left-0 w-60 h-60 bg-green-500/10 rounded-full blur-3xl" />
+        <section className="relative overflow-hidden rounded-[32px] border border-white/8 bg-[#0b111d]/92 p-8 shadow-[0_24px_80px_rgba(2,6,23,0.34)] backdrop-blur-2xl md:p-12">
+          <div className="absolute right-0 top-0 h-80 w-80 rounded-full bg-blue-500/8 blur-3xl" />
+          <div className="absolute bottom-0 left-0 h-60 w-60 rounded-full bg-slate-500/8 blur-3xl" />
           <div className="relative grid md:grid-cols-2 gap-8 md:gap-10 items-center">
             <div>
               <h2 className="text-2xl md:text-3xl font-bold text-white leading-tight">
                 Vous etes un professionnel ?<br />
-                <span className="text-primary">Rejoignez AfriWonder !</span>
+                <span className="text-white/72">Rejoignez AfriWonder</span>
               </h2>
-              <p className="mt-4 text-white/80 text-base md:text-lg">
+              <p className="mt-4 text-base text-white/68 md:text-lg">
                 Augmentez votre visibilite et trouvez de nouveaux clients.
               </p>
               <Button
                 onClick={() => navigate(createPageUrl("BecomeProvider"))}
-                className="mt-6 h-12 px-6 rounded-xl bg-primary hover:bg-primary/90 text-white font-medium"
+                className="mt-6 h-12 rounded-2xl bg-white px-6 font-medium text-slate-950 hover:bg-white/92"
               >
                 <Building2 className="w-5 h-5 mr-2" />
                 Devenir Prestataire
@@ -143,9 +144,9 @@ export default function MarketplacePage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               {marketplaceStats.map((s, i) => (
-                <div key={i} className="bg-gray-800 rounded-2xl p-4 text-center border border-gray-700/50">
-                  <div className="text-2xl font-bold text-primary">{s.v}</div>
-                  <div className="text-white text-sm mt-1">{s.l}</div>
+                <div key={i} className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4 text-center">
+                  <div className="text-2xl font-bold text-white">{s.v}</div>
+                  <div className="mt-1 text-sm text-white/68">{s.l}</div>
                 </div>
               ))}
             </div>

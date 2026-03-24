@@ -14,7 +14,6 @@ import {
   Search,
   Clock,
   QrCode,
-  CheckCircle2,
   ArrowLeft
 } from 'lucide-react';
 import { motion } from 'framer-motion';

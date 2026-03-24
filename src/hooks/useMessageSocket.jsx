@@ -3,41 +3,10 @@
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
-
-// URL de base pour Socket.IO (prend en compte VITE_WS_URL, VITE_API_URL, puis fallback local dev)
-const getSocketBaseUrl = () => {
-  const ws = import.meta.env.VITE_WS_URL || '';
-  if (ws) {
-    try {
-      const url = new URL(ws);
-      if (url.protocol === 'ws:') url.protocol = 'http:';
-      if (url.protocol === 'wss:') url.protocol = 'https:';
-      return url.origin;
-    } catch {
-      // ignore et continuer sur VITE_API_URL
-    }
-  }
-
-  const api = import.meta.env.VITE_API_URL || '';
-  if (api) {
-    return api.replace(/\/api\/?$/, '') || window.location.origin;
-  }
-
-  // Fallback dev: si on est sur localhost:5173, on bascule vers 3000 (backend par défaut)
-  try {
-    const current = new URL(window.location.origin);
-    if ((current.hostname === 'localhost' || current.hostname === '127.0.0.1') && current.port === '5173') {
-      current.port = '3000';
-      return current.origin;
-    }
-    return current.origin;
-  } catch {
-    return window.location.origin;
-  }
-};
+import { getSocketBaseUrl, getSocketIoTransports } from '@/lib/getSocketBaseUrl';
 
 /**
- * Hook pour une conversation : join/leave room, typing, écoute new_message / message:read.
+ * Hook pour une conversation : join/leave room, typing, écoute new_message / message:read / message:delivered.
  * Expose isConnected pour afficher un indicateur de reconnexion (socket.io gère la reconnexion automatique).
  */
 export function useConversationSocket(options) {
@@ -47,23 +16,36 @@ export function useConversationSocket(options) {
     userName,
     onNewMessage,
     onMessageRead,
+    onMessageDelivered,
   } = options || {};
   const socketRef = useRef(null);
+  const socketEverConnectedRef = useRef(false);
   const [typingUser, setTypingUser] = useState(null);
+  const [recordingUser, setRecordingUser] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+  /** Évite le bandeau « Reconnexion » sur les micro-coupures Socket.io (reconnexion auto). */
+  const [showReconnectBanner, setShowReconnectBanner] = useState(false);
   const typingTimeoutRef = useRef(null);
+  const recordingTimeoutRef = useRef(null);
   const onNewMessageRef = useRef(onNewMessage);
   const onMessageReadRef = useRef(onMessageRead);
+  const onMessageDeliveredRef = useRef(onMessageDelivered);
   onNewMessageRef.current = onNewMessage;
   onMessageReadRef.current = onMessageRead;
+  onMessageDeliveredRef.current = onMessageDelivered;
 
   useEffect(() => {
     if (!userId || !conversationId) return;
     const base = getSocketBaseUrl();
-    const socket = io(base, { path: '/socket.io', transports: ['websocket', 'polling'], withCredentials: true });
+    const socket = io(base, {
+      path: '/socket.io',
+      transports: getSocketIoTransports(),
+      withCredentials: true,
+    });
     socketRef.current = socket;
 
     socket.on('connect', () => {
+      socketEverConnectedRef.current = true;
       setIsConnected(true);
       socket.emit('user:join', userId);
       socket.emit('message:join-conversation', conversationId);
@@ -82,6 +64,9 @@ export function useConversationSocket(options) {
     socket.on('message:read', (payload) => {
       if (onMessageReadRef.current) onMessageReadRef.current(payload);
     });
+    socket.on('message:delivered', (payload) => {
+      if (onMessageDeliveredRef.current) onMessageDeliveredRef.current(payload);
+    });
     socket.on('message:typing', (payload) => {
       if (payload.userId === userId) return;
       setTypingUser(payload.typing ? { userId: payload.userId, name: payload.name || 'Quelqu\'un' } : null);
@@ -91,13 +76,37 @@ export function useConversationSocket(options) {
       }
     });
 
+    socket.on('message:recording', (payload) => {
+      if (payload.userId === userId) return;
+      if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
+      if (payload.recording) {
+        setRecordingUser({ userId: payload.userId, name: payload.name || 'Quelqu\'un' });
+        // Sécurité : si le pair ferme l’onglet sans envoyer recording-stop
+        recordingTimeoutRef.current = setTimeout(() => setRecordingUser(null), 120_000);
+      } else {
+        setRecordingUser(null);
+      }
+    });
+
     return () => {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
       socket.emit('message:leave-conversation', conversationId);
       socket.removeAllListeners();
       socket.disconnect();
     };
   }, [userId, conversationId]);
+
+  useEffect(() => {
+    if (isConnected) {
+      setShowReconnectBanner(false);
+      return undefined;
+    }
+    /** Délai plus long au 1er jet (backend / proxy Vite parfois lent en dev). */
+    const delayMs = socketEverConnectedRef.current ? 2800 : 12_000;
+    const id = window.setTimeout(() => setShowReconnectBanner(true), delayMs);
+    return () => window.clearTimeout(id);
+  }, [isConnected]);
 
   const emitTypingStart = useCallback(() => {
     if (socketRef.current?.connected && conversationId && userId && userName) {
@@ -111,5 +120,26 @@ export function useConversationSocket(options) {
     }
   }, [conversationId, userId]);
 
-  return { typingUser, emitTypingStart, emitTypingStop, isConnected };
+  const emitRecordingStart = useCallback(() => {
+    if (socketRef.current?.connected && conversationId && userId && userName) {
+      socketRef.current.emit('message:recording-start', { conversationId, userId, name: userName });
+    }
+  }, [conversationId, userId, userName]);
+
+  const emitRecordingStop = useCallback(() => {
+    if (socketRef.current?.connected && conversationId && userId) {
+      socketRef.current.emit('message:recording-stop', { conversationId, userId });
+    }
+  }, [conversationId, userId]);
+
+  return {
+    typingUser,
+    recordingUser,
+    emitTypingStart,
+    emitTypingStop,
+    emitRecordingStart,
+    emitRecordingStop,
+    isConnected,
+    showReconnectBanner,
+  };
 }

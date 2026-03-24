@@ -13,12 +13,28 @@ const Avatar = React.forwardRef(({ className, ...props }, ref) => (
 ))
 Avatar.displayName = AvatarPrimitive.Root.displayName
 
-const AvatarImage = React.forwardRef(({ className, ...props }, ref) => (
-  <AvatarPrimitive.Image
-    ref={ref}
-    className={cn("aspect-square h-full w-full", className)}
-    {...props} />
-))
+const AvatarImage = React.forwardRef(
+  (
+    {
+      className,
+      // Defaults: lazy + async decoding to reduce main-thread work and CLS.
+      loading,
+      decoding,
+      fetchPriority,
+      ...props
+    },
+    ref
+  ) => (
+    <AvatarPrimitive.Image
+      ref={ref}
+      className={cn("aspect-square h-full w-full", className)}
+      loading={loading ?? "lazy"}
+      decoding={decoding ?? "async"}
+      fetchpriority={fetchPriority ?? "auto"}
+      {...props}
+    />
+  )
+)
 AvatarImage.displayName = AvatarPrimitive.Image.displayName
 
 const AvatarFallback = React.forwardRef(({ className, ...props }, ref) => (

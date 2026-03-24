@@ -70,13 +70,84 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/icon-192.png" />
     
     <title>AfriWonder - Super App Africaine</title>
+
+    <!-- Données structurées JSON-LD (@graph : WebApplication + WebSite + SearchAction) -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://afriwonder.com/#organization",
+            "name": "AfriWonder",
+            "url": "https://afriwonder.com/",
+            "logo": "https://afriwonder.com/icon-512.png"
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://afriwonder.com/#website",
+            "name": "AfriWonder",
+            "url": "https://afriwonder.com/",
+            "publisher": { "@id": "https://afriwonder.com/#organization" },
+            "inLanguage": "fr",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": {
+                "@type": "EntryPoint",
+                "urlTemplate": "https://afriwonder.com/Search?q={search_term_string}"
+              },
+              "query-input": "required name=search_term_string"
+            }
+          },
+          {
+            "@type": "WebApplication",
+            "name": "AfriWonder",
+            "alternateName": "AfriWonder - Super App Africaine",
+            "url": "https://afriwonder.com/",
+            "applicationCategory": "SocialNetworkingApplication",
+            "operatingSystem": "Android,iOS,Web",
+            "inLanguage": "fr",
+            "description": "La première Super-app vidéo africaine connectant créateurs, commerçants et communauté, optimisée pour les faibles débits, disponible dans toutes les langues locales avec paiements mobiles intégrés.",
+            "image": "https://afriwonder.com/icon-512.png",
+            "publisher": { "@id": "https://afriwonder.com/#organization" }
+          }
+        ]
+      }
+    </script>
+    <!-- CSS critique minimal pour le shell PWA (évite flash de fond blanc) -->
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background-color: #020617;
+        color: #ffffff;
+      }
+      #root {
+        min-height: 100%;
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+        background-color: #020617;
+      }
+      img {
+        max-width: 100%;
+        height: auto;
+      }
+    </style>
   </head>
   <body>
     <!-- Viewport mobile/PWA : même hauteur qu’écran dès le premier paint (qualité = Chrome) -->
     <script>
+      /* Même logique que useNativeAppEnhancements : Firefox + DevTools peuvent donner visualViewport.height quasi nul au 1er paint → #root écrasé, feed “vide”. */
       (function() {
-        var h = (window.visualViewport && window.visualViewport.height) || window.innerHeight || 0;
-        document.documentElement.style.setProperty('--app-vh', (h * 0.01) + 'px');
+        var vv = window.visualViewport;
+        var inner = typeof window.innerHeight === 'number' ? window.innerHeight : 0;
+        var vvH = vv && typeof vv.height === 'number' ? vv.height : 0;
+        var height = vvH > 32 ? vvH : inner;
+        if (height < 48) height = Math.max(inner, 400);
+        var appVh = Math.max(height * 0.01, 0.5);
+        document.documentElement.style.setProperty('--app-vh', appVh + 'px');
       })();
     </script>
     <div id="root"></div>
@@ -90,6 +161,6 @@
         });
       }
     </script>
-    <script type="module" src="/src/main.jsx"></script>
+    <script type="module" src="/src/main.jsx" defer></script>
   </body>
 </html>

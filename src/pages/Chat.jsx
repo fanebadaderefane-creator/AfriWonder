@@ -1,25 +1,41 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
+import { FILE_ACCEPT_MEDIA } from '@/lib/fileAccept';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, Send, Image as ImageIcon, Loader2, Mic, Square, MoreVertical, ShieldBan, Flag, Trash2, Reply, Copy, Forward, Pin, Star, CheckSquare, Plus, Search, X, Phone, Video, Clock, Download, MapPin, UserPlus, Timer } from 'lucide-react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { ArrowLeft, Send, Paperclip, Camera, Loader2, Mic, Square, Play, Pause, MoreVertical, ShieldBan, Flag, Trash2, Reply, Copy, Forward, Pin, Star, CheckSquare, Plus, Search, X, Phone, Video, MapPin, UserPlus, Timer, TimerOff, MessageCircle, Sticker, Languages, Users, UserCircle, Image as ImageIcon, BellOff, Bell, Sparkles, Link2, ListPlus, MoreHorizontal, Pencil, UserMinus, FileText } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format, isToday, isYesterday } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import BottomNav from '../components/navigation/BottomNav';
 import { useConversationSocket } from '@/hooks/useMessageSocket';
 import { usePageVisibility } from '@/hooks/usePageVisibility';
 import { useTranslation } from '@/components/common/useTranslation';
 import { useAuth } from '@/lib/AuthContext';
+import { cn } from '@/lib/utils';
+import { ChatVoiceMessage } from '@/components/chat/ChatVoiceMessage';
+import { ChatFormattedText, stripChatMarkupForPreview } from '@/components/chat/ChatFormattedText';
+import { MessageReceiptTicks } from '@/components/chat/MessageReceiptTicks';
+import { ChatAttachmentSheet, ChatStickerComposerSheet } from '@/components/chat/ChatPremiumSheets';
+import { ChatCameraSheet } from '@/components/chat/ChatCameraSheet';
+import { ChatCameraPreviewSheet } from '@/components/chat/ChatCameraPreviewSheet';
+import {
+  ensureE2eeBootstrap,
+  buildE2eeEnvelopeForRecipient,
+  syncAndDecryptDmEnvelopes,
+  getCurrentE2eeDeviceId,
+  getLocalE2eeDeviceHealth,
+  repairLocalE2eeDevice,
+  E2EE_STRICT_MODE,
+} from '@/lib/e2eeClient';
 
 const MESSAGES_LIMIT = 30;
 const TYPING_DEBOUNCE_MS = 400;
@@ -30,12 +46,21 @@ const chatI18n = {
     sendSuccess: 'Message envoye',
     sendError: "Erreur lors de l'envoi",
     selectImage: 'Veuillez selectionner une image',
-    uploadError: 'Erreur upload image',
+    selectMedia: 'Veuillez selectionner une photo ou une video',
+    imageMessage: 'Photo',
+    videoMessage: 'Video',
+    attachMedia: 'Photo ou video',
+    composerEmoji: 'Emoji',
+    composerMoreOptions: "Plus d'options",
+    composerRecordVoice: 'Enregistrer un message vocal',
+    composerSend: 'Envoyer le message',
+    uploadError: "Erreur d'envoi du media",
     selectConversation: 'Selectionnez une conversation depuis Messages.',
     backToMessages: 'Retour aux messages',
     online: 'En ligne',
     offline: 'Hors ligne',
-    typingSuffix: 'est en train d ecrire...',
+    typingSuffix: 'est en train d’écrire…',
+    recordingSuffix: 'enregistre un message vocal…',
     orderConversation: 'Conversation concernant la commande #',
     viewOrder: 'Voir la commande',
     loadOlder: 'Charger les anciens messages',
@@ -47,6 +72,16 @@ const chatI18n = {
     voiceStartError: 'Impossible de demarrer le micro',
     voiceStopError: "Impossible d'envoyer le vocal",
     recording: 'Enregistrement...',
+    voiceTooShort: 'Enregistrement trop court.',
+    voiceEmptyError: 'Aucun son enregistre — verifiez le micro.',
+    voiceUnsupported: 'Vocal indisponible sur ce navigateur.',
+    discardVoice: 'Supprimer le vocal',
+    stopRecording: 'Terminer lenregistrement',
+    sendVoice: 'Envoyer le vocal',
+    playPreview: 'Ecouter',
+    pausePreview: 'Pause',
+    voiceSkipBack: 'Reculer de 10 secondes',
+    voiceSkipForward: 'Avancer de 10 secondes',
     voiceMessage: 'Message vocal',
     actions: 'Actions',
     blockUser: 'Bloquer cet utilisateur',
@@ -74,6 +109,22 @@ const chatI18n = {
     noTextToCopy: 'Ce message ne contient pas de texte',
     replyTo: 'Repondre a',
     replyingTo: 'Reponse a',
+    repliedToYou: 'Vous a répondu',
+    replyInThread: 'En réponse à',
+    replyToSelf: 'Réponse à votre message',
+    superReactionHint: 'Appuyez longuement pour envoyer une super réaction',
+    addSticker: 'Ajouter un sticker',
+    translate: 'Traduire',
+    translateTitle: 'Traduction',
+    translateNoText: 'Ce message ne contient pas de texte a traduire.',
+    translateFailed: 'Traduction impossible pour le moment.',
+    translateOriginalLabel: 'Message original',
+    translateResultLabel: 'Traduction',
+    translateCopy: 'Copier la traduction',
+    translateClose: 'Fermer',
+    translateLoading: 'Traduction en cours...',
+    translateDetected: 'Langue du message',
+    messageMenuMore: 'Fermer',
     cancelReply: 'Annuler la reponse',
     transfer: 'Transferer',
     pinMessage: 'Epingler',
@@ -86,6 +137,7 @@ const chatI18n = {
     reactionsRecent: 'Reactions recentes',
     emojiAndPeople: 'Emojis et personnes',
     actionUnavailable: 'Fonction disponible bientot',
+    comingSoonPremium: 'Fonction prévue dans une prochaine mise à jour.',
     selectModeOn: 'Mode selection active',
     reactionAdded: 'Reaction ajoutee',
     copy: 'Copier',
@@ -94,14 +146,29 @@ const chatI18n = {
     transferNoUser: 'Aucun utilisateur trouve',
     transferSuccess: 'Message transfere',
     transferError: 'Impossible de transferer',
+    forwardOneRecipientHint:
+      'Choisissez un destinataire à la fois (comme WhatsApp). Répétez l’opération pour envoyer à d’autres personnes.',
+    cancelScheduledSend: 'Annuler l’envoi programmé',
+    confirmCancelScheduledTitle: 'Annuler ce message programmé ?',
+    confirmCancelScheduledDesc: 'Il ne sera pas envoyé à l’heure prévue.',
+    cancelScheduledSuccess: 'Envoi programmé annulé',
     pinned: 'Epingle',
     unpinned: 'Desepingle',
     deleteForAll: 'Supprimer pour tous',
     deleteForAllConfirm: 'Supprimer ce message pour tout le monde ? (possible uniquement dans les 15 min)',
     deleteForAllSuccess: 'Message supprimé pour tous',
     deleteForAllError: 'Impossible (délai dépassé ou message inexistant)',
+    reactionsDetailTitle: 'Réactions',
+    reactionsDetailEmpty: 'Aucune réaction',
+    reactionsDetailYou: 'Vous',
+    transcribeVoice: 'Transcrire',
+    transcribingVoice: 'Transcription…',
+    transcribeVoiceError: 'Transcription impossible pour le moment.',
     pinnedMessage: 'Message épinglé',
     ephemeralMode: 'Disparaît après lecture',
+    viewOnceTapToOpen: 'Appuyer pour ouvrir',
+    viewOnceOpenedHint: 'Vue unique — média déjà ouvert',
+    viewOnceClose: 'Fermer',
     shareLocation: 'Partager ma position',
     shareContact: 'Partager un contact',
     locationMessage: 'Position',
@@ -111,18 +178,117 @@ const chatI18n = {
     voiceCall: 'Appel vocal',
     videoCall: 'Appel video',
     openingCall: 'Ouverture de l appel...',
+    attachmentSheetTitle: 'Partager un contenu',
+    attachGallery: 'Galerie',
+    attachCameraPhoto: 'Photo',
+    attachCameraVideo: 'Video',
+    attachDocument: 'Document',
+    attachLocation: 'Localisation',
+    attachContact: 'Contact',
+    attachAudio: 'Audio',
+    attachSchedule: 'Programmer',
+    attachEphemeral: 'Temporaire',
+    attachPoll: 'Sondage',
+    attachEvent: 'Evenement',
+    attachAiImages: 'Images IA',
+    attachAudioHint: 'Utilisez le micro vert a droite pour un message vocal.',
+    documentComingSoon: 'Envoi de documents bientot disponible.',
+    documentSendError: 'Envoi du document impossible.',
+    ephemeralOn: 'Mode temporaire active',
+    ephemeralOff: 'Mode temporaire desactive',
+    stickerSheetTitle: 'Stickers et emoji',
+    tabSearch: 'Rechercher',
+    tabEmoji: 'Emoji',
+    tabGif: 'GIF',
+    tabSticker: 'Stickers',
+    stickerSearchPlaceholder: 'Rechercher un emoji...',
+    gifSearchPlaceholder: 'Rechercher un GIF…',
+    gifLoadError: 'Impossible de charger les GIF. Vérifiez la clé API ou réessayez.',
+    gifComingSoon: 'Les GIF arrivent bientot.',
+    stickerCreate: 'Creer',
+    stickerCreateSoon: 'Creation de stickers personnalises bientot disponible.',
+    composerStickers: 'Stickers et emoji',
+    /** Bouton caméra dans la barre (comme WhatsApp) — ouvre l’appareil ; galerie / reste via le trombone */
+    composerCamera: 'Caméra',
+    menuNewGroup: 'Nouveau groupe',
+    menuViewContact: 'Afficher le contact',
+    menuSearch: 'Rechercher',
+    menuMediaLinksDocs: 'Médias, liens et documents',
+    menuMute: 'Mode silencieux',
+    menuUnmute: 'Réactiver les notifications',
+    menuEphemeralOn: 'Messages éphémères (activé par défaut)',
+    menuEphemeralOff: 'Messages éphémères (désactivé)',
+    menuEphemeralTitle: 'Messages éphémères',
+    ephemeralDurationOff: 'Désactivé',
+    ephemeral24h: '24 heures',
+    ephemeral7d: '7 jours',
+    ephemeral90d: '90 jours',
+    messageEditedTag: 'modifié',
+    messageEditedSuccess: 'Message modifié',
+    editMessage: 'Modifier',
+    editMessageTitle: 'Modifier le message',
+    editMessageSave: 'Enregistrer',
+    editMessagePlaceholder: 'Votre message…',
+    menuChatTheme: 'Thème de la discussion',
+    menuMore: 'Plus',
+    menuReport: 'Signaler',
+    menuBlock: 'Bloquer',
+    menuClearChat: 'Effacer le contenu',
+    menuAddShortcut: 'Ajouter un raccourci',
+    menuAddToList: 'Ajouter à la liste',
+    menuThemeDefault: 'AfriWonder (par défaut)',
+    menuThemePattern: 'Motif discret',
+    menuThemeMidnight: 'Minuit bleu',
+    confirmClearChatTitle: 'Effacer le contenu ?',
+    confirmClearChatDesc: 'Les messages disparaîtront de cet appareil pour vous. L’autre personne conserve son historique.',
+    clearChatSuccess: 'Contenu effacé',
+    clearChatError: 'Impossible d’effacer le contenu',
+    muteChatSuccess: 'Conversation en mode silencieux',
+    unmuteChatSuccess: 'Notifications réactivées',
+    muteChatError: 'Impossible de modifier les notifications',
+    shortcutCopied: 'Lien copié — ajoutez-le à l’écran d’accueil depuis le menu du navigateur',
+    addedToFavorites: 'Ajouté à votre liste',
+    alreadyInFavorites: 'Déjà dans votre liste',
+    searchInChatPlaceholder: 'Rechercher dans la conversation…',
+    mediaLinksDocsTitle: 'Médias, liens et documents',
+    tabMedia: 'Médias',
+    tabLinks: 'Liens',
+    tabDocs: 'Documents',
+    noMediaYet: 'Aucun média dans cette discussion',
+    noLinksYet: 'Aucun lien détecté',
+    noDocsYet: 'Aucun document dans cette discussion',
+    noSearchResults: 'Aucun message ne correspond à votre recherche.',
+    chatHeaderMenuAria: 'Options de la discussion',
+    spoilerTapReveal: 'Texte masqué — appuyer pour afficher',
+    scheduledMessageShort: 'Envoi programmé',
+    formattingComposerHint: 'Astuce : *gras* _italique_ ~barré~ ~~barré~~ `code` ||spoiler||',
+    draftComposerLabel: 'Brouillon',
+    sending: 'Envoi en cours',
+    sendFailed: 'Échec de l’envoi — réessayez',
+    retrySend: 'Réessayer',
+    messageStatusSent: 'Envoyé au serveur',
+    messageStatusDelivered: 'Délivré sur l’appareil du destinataire',
   },
   bm: {
     loadOlderError: 'Se ka mesaji koro korow soro te',
     sendSuccess: 'Mesaji ci',
     sendError: 'Mesaji ci ye te se',
     selectImage: 'I ka ja beenin do sugandi',
-    uploadError: 'Ja upload ye te se',
+    selectMedia: 'I ka ja walima videyo sugandi',
+    imageMessage: 'Ja',
+    videoMessage: 'Videyo',
+    attachMedia: 'Ja walima videyo',
+    composerEmoji: 'Emoji',
+    composerMoreOptions: 'Wɛrɛw',
+    composerRecordVoice: 'Vocal ta',
+    composerSend: 'Mesaji ci',
+    uploadError: 'Ja ci ye te se',
     selectConversation: 'I ka barokan do sugandi Messages kono.',
     backToMessages: 'Segin ka taa mesajiw ma',
     online: 'A be yan',
     offline: 'A te yan',
-    typingSuffix: 'be sebenni ke...',
+    typingSuffix: 'be sɛbɛnni na...',
+    recordingSuffix: 'bɛ vocal ta...',
     orderConversation: 'Barokan min be taara commande #',
     viewOrder: 'Commande laje',
     loadOlder: 'Mesaji koro korow ye',
@@ -134,6 +300,16 @@ const chatI18n = {
     voiceStartError: 'Mikro damine te se',
     voiceStopError: 'Vocal ci te se',
     recording: 'A b enregistrement la',
+    voiceTooShort: 'A surun surun.',
+    voiceEmptyError: 'Kan si — aw mikro lajɛ.',
+    voiceUnsupported: 'Vocal ina nin browser in na.',
+    discardVoice: 'Vocal bila',
+    stopRecording: 'Dan ban',
+    sendVoice: 'Vocal ci',
+    playPreview: 'Mɛn',
+    pausePreview: 'Dalan',
+    voiceSkipBack: 'Segin ka taa 10 s',
+    voiceSkipForward: 'Taa ɲɛ 10 s',
     voiceMessage: 'Vocal',
     actions: 'Baro',
     blockUser: 'Mogo nin da',
@@ -161,6 +337,22 @@ const chatI18n = {
     noTextToCopy: 'Sebenni te mesaji nin kono',
     replyTo: 'Jaabi',
     replyingTo: 'Jaabi la',
+    repliedToYou: 'I y jaabi aw ma',
+    replyInThread: 'Jaabi',
+    replyToSelf: 'I ka mesaji jaabi',
+    superReactionHint: 'A digi ka super reaction ci',
+    addSticker: 'Sticker fara',
+    translate: 'Ka bayɛlɛma',
+    translateTitle: 'Bayɛlɛma',
+    translateNoText: 'Sɛbɛn si te nin mesaji in na ka bayɛlɛma.',
+    translateFailed: 'A ma se ka bayɛlɛma sisan.',
+    translateOriginalLabel: 'Jɔyɔrɔ sɛbɛn',
+    translateResultLabel: 'Bayɛlɛmalen',
+    translateCopy: 'Bayɛlɛmalen copy',
+    translateClose: 'Da',
+    translateLoading: 'Bayɛlɛma bɛ sen...',
+    translateDetected: 'Mesaji kan',
+    messageMenuMore: 'Da',
     cancelReply: 'Jaabi bila',
     transfer: 'Kafoli',
     pinMessage: 'Mesaji sinsin',
@@ -173,6 +365,7 @@ const chatI18n = {
     reactionsRecent: 'Reaction kora',
     emojiAndPeople: 'Emojis ni mogow',
     actionUnavailable: 'Fonction bena na sisan koro',
+    comingSoonPremium: 'Nata fɛn bɛ na waati dɔ la.',
     selectModeOn: 'Sugandi mode dafalen',
     reactionAdded: 'Reaction fara',
     copy: 'Copier',
@@ -181,14 +374,28 @@ const chatI18n = {
     transferNoUser: 'Mogo si te soro',
     transferSuccess: 'Mesaji kafi',
     transferError: 'A ma se ka kafi',
+    forwardOneRecipientHint: 'Mɔgɔ kelen sugandi ten ten (WhatsApp cogo). Wɛrɛw ye ka segin ka kɛ.',
+    cancelScheduledSend: 'Waati min na ka ci — ka bɔ',
+    confirmCancelScheduledTitle: 'Waati min na ka ci — ka bɔ wa ?',
+    confirmCancelScheduledDesc: 'A tɛna ci waati min na.',
+    cancelScheduledSuccess: 'Waati min na ka ci bannen',
     pinned: 'Sinsinnen',
     unpinned: 'Sinsinbali',
     deleteForAll: 'Ka bo bɛɛ ma',
     deleteForAllConfirm: 'Ka mesaji nin bo bɛɛ ma? (15 min kono doro)',
     deleteForAllSuccess: 'Mesaji bora bɛɛ ma',
     deleteForAllError: 'A ma se (waati tigi wala mesaji te)',
+    reactionsDetailTitle: 'Reactions',
+    reactionsDetailEmpty: 'Reaction si te',
+    reactionsDetailYou: 'Aw',
+    transcribeVoice: 'Ka sɛbɛn',
+    transcribingVoice: 'Sɛbɛnni bɛ sen...',
+    transcribeVoiceError: 'Sɛbɛnni ma se sisan.',
     pinnedMessage: 'Mesaji sinsin',
     ephemeralMode: 'Ka bila kalanden',
+    viewOnceTapToOpen: 'Ka digi ka yɛlɛn',
+    viewOnceOpenedHint: 'Kalan kelen — ja in yɛrɛ tɛ yen tuguni',
+    viewOnceClose: 'Da',
     shareLocation: 'N so sigida ci',
     shareContact: 'Mogo ci',
     locationMessage: 'Sigida',
@@ -198,11 +405,276 @@ const chatI18n = {
     voiceCall: 'Vocal call',
     videoCall: 'Video call',
     openingCall: 'Appel b i na...',
+    attachmentSheetTitle: 'Fɛn ci',
+    attachGallery: 'Galerie',
+    attachCameraPhoto: 'Ja',
+    attachCameraVideo: 'Videyo',
+    attachDocument: 'Dokumɛnti',
+    attachLocation: 'Sigida',
+    attachContact: 'Mogo',
+    attachAudio: 'Kan',
+    attachSchedule: 'Waati sigi',
+    attachEphemeral: 'Tɛmɛnnen',
+    attachPoll: 'Ɲininkali',
+    attachEvent: 'Ko',
+    attachAiImages: 'AI ja',
+    attachAudioHint: 'I ka mikro jɔlen taama fo vocal la.',
+    documentComingSoon: 'Dokumɛnti ci bɛ na.',
+    documentSendError: 'Dokumɛnti ci ma se.',
+    ephemeralOn: 'Tɛmɛnnen mode dafalen',
+    ephemeralOff: 'Tɛmɛnnen mode bannen',
+    stickerSheetTitle: 'Sticker ni emoji',
+    tabSearch: 'Yiriwa',
+    tabEmoji: 'Emoji',
+    tabGif: 'GIF',
+    tabSticker: 'Sticker',
+    stickerSearchPlaceholder: 'Emoji yiriwa...',
+    gifSearchPlaceholder: 'GIF yiriwa…',
+    gifLoadError: 'GIFw ma se ka doni.',
+    gifComingSoon: 'GIFw bɛ na.',
+    stickerCreate: 'Da',
+    stickerCreateSoon: 'I yɛrɛ sticker dafalen bɛ na.',
+    composerStickers: 'Sticker ni emoji',
+    composerCamera: 'Kamera',
+    menuNewGroup: 'Kulu kura',
+    menuViewContact: 'Mogo lajɛ',
+    menuSearch: 'Yiriwa',
+    menuMediaLinksDocs: 'Ja, ɛnterɛnɛti, dokumɛnti',
+    menuMute: 'Kan tɛmɛnnen',
+    menuUnmute: 'Ladilikan segin',
+    menuEphemeralOn: 'Mesaji tɛmɛnnen (dafalen)',
+    menuEphemeralOff: 'Mesaji tɛmɛnnen (bannen)',
+    menuEphemeralTitle: 'Mesaji tɛmɛnnen',
+    ephemeralDurationOff: 'Bannen',
+    ephemeral24h: '24 h',
+    ephemeral7d: '7 don',
+    ephemeral90d: '90 don',
+    messageEditedTag: 'yɛlɛmana',
+    messageEditedSuccess: 'Mesaji yɛlɛmana',
+    editMessage: 'Yɛlɛma',
+    editMessageTitle: 'Mesaji yɛlɛma',
+    editMessageSave: 'Marisa',
+    editMessagePlaceholder: 'Aw ka mesaji…',
+    menuChatTheme: 'Barokan jɛmɛ',
+    menuMore: 'Wɛrɛw',
+    menuReport: 'Laben',
+    menuBlock: 'Da',
+    menuClearChat: 'Kunnafoni bila',
+    menuAddShortcut: 'Sira surun fara',
+    menuAddToList: 'Liste fara',
+    menuThemeDefault: 'AfriWonder',
+    menuThemePattern: 'Jɛmɛ surun',
+    menuThemeMidnight: 'Sufɛ bulu',
+    confirmClearChatTitle: 'Kunnafoni bila wa?',
+    confirmClearChatDesc: 'Aw yɛrɛ ye aw ka mesaji ninnu tɛ ye tuguni nin jago in na.',
+    clearChatSuccess: 'Kunnafoni bila',
+    clearChatError: 'A ma se ka bila',
+    muteChatSuccess: 'Kan tɛmɛnnen',
+    unmuteChatSuccess: 'Ladilikan seginna',
+    muteChatError: 'A ma se ka ladilikan waleya',
+    shortcutCopied: 'Lien copy — aw ka browser menu la aw ka home screen fara',
+    addedToFavorites: 'Liste la fara',
+    alreadyInFavorites: 'A bɛ liste la kaban',
+    searchInChatPlaceholder: 'Barokan kono yiriwa…',
+    mediaLinksDocsTitle: 'Ja, ɛnterɛnɛti, dokumɛnti',
+    tabMedia: 'Ja',
+    tabLinks: 'Lienw',
+    tabDocs: 'Dokumɛnti',
+    noMediaYet: 'Ja si te barokan in na',
+    noLinksYet: 'Lien si te',
+    noDocsYet: 'Dokumɛnti si nin barokan in na',
+    noSearchResults: 'Mesaji si te bɛ i ka yiriwali ma.',
+    chatHeaderMenuAria: 'Barokan ɲɛnajɛw',
+    spoilerTapReveal: 'Dogolen — a digi ka yira',
+    scheduledMessageShort: 'Waati min na ka ci',
+    formattingComposerHint: '*fanga* _slanted_ ~bɔ~ ~~bɔ~~ `kɔd` ||dogolen||',
+    draftComposerLabel: 'Draft',
+    sending: 'A bɛ ci',
+    sendFailed: 'Ci ma se',
+    retrySend: 'Segin ka ci',
+    messageStatusSent: 'Ci ka taa serveur ma',
+    messageStatusDelivered: 'Sɔrɔla jɔyɔrɔ min na',
   },
 };
 
-const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"')]+/gi;
+const CHAT_WALLPAPER_STORAGE = 'aw-chat-wallpaper-theme';
+const CHAT_FAVORITES_STORAGE = 'aw-inbox-favorite-user-ids';
+
+function extractUrls(text) {
+  if (!text || typeof text !== 'string') return [];
+  const m = text.match(URL_IN_TEXT_RE);
+  return m ? [...new Set(m)] : [];
+}
+
+/** Ordre proche d’Instagram DM */
+const QUICK_REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 const EMOJI_LIBRARY = ['😀', '😃', '😄', '😁', '😆', '🥲', '😂', '🤣', '😊', '😉', '😍', '😘', '😎', '🤩', '🥳', '🤔', '🤗', '😴', '😡', '😭', '👍', '👎', '👏', '🙌', '🙏', '💪', '🔥', '✨', '💙', '❤️', '💯', '🎉', '🌍', '🇲🇱', '🇸🇳', '🇨🇮'];
+/** Réactions avec animation renforcée (style « confettis » léger côté UI). */
+const REACTION_BURST_EMOJIS = new Set(['🎉', '🎊', '✨', '🥳', '❤️', '🔥', '💖', '💯']);
+const EPHEMERAL_TTL_SECONDS = {
+  H24: 86400,
+  D7: 604800,
+  D90: 7776000,
+};
+
+function canEditTextMessage(msg, currentUserId) {
+  if (!msg || !currentUserId || msg._localPending) return false;
+  if (msg.sender_id !== currentUserId) return false;
+  if (String(msg.type || 'text').toLowerCase() !== 'text') return false;
+  if (msg.is_deleted) return false;
+  const c = String(msg.content || '');
+  if (c === 'Ce message a été supprimé') return false;
+  if (!msg.created_at) return false;
+  return Date.now() - new Date(msg.created_at).getTime() < 15 * 60 * 1000;
+}
+
+function formatMessageActionsTimestamp(iso, loc = fr) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  if (isToday(d)) return `Aujourd'hui ${format(d, 'HH:mm', { locale: loc })}`;
+  if (isYesterday(d)) return `Hier ${format(d, 'HH:mm', { locale: loc })}`;
+  return format(d, 'd MMM yyyy · HH:mm', { locale: loc });
+}
+
+/** Libellé au-dessus du message cité (style fil Instagram). */
+function getReplyThreadLabel(msg, isOwn, currentUserId, otherUser, labels) {
+  const rt = msg?.reply_to;
+  if (!rt) return '';
+  const parentFromMe = String(rt.sender_id) === String(currentUserId);
+  if (!isOwn && parentFromMe) return labels.repliedToYou;
+  if (isOwn && parentFromMe) return labels.replyToSelf;
+  const n = rt.sender?.full_name || rt.sender?.username || otherUser?.full_name || otherUser?.username || '';
+  return `${labels.replyInThread} ${n || '…'}`.trim();
+}
+
+/** Aperçu texte d’un message cité (photo, vidéo, vocal, etc.). */
+function getReplySnippet(rt, labels) {
+  if (!rt) return '';
+  const t = String(rt.type || 'text').toLowerCase();
+  if (t === 'voice' || t === 'audio') return labels.voiceMessage;
+  if (t === 'video') return labels.videoMessage;
+  if (t === 'image') return labels.imageMessage;
+  if (t === 'sticker') return labels.addSticker;
+  if (t === 'location') return labels.locationMessage;
+  if (t === 'contact') return rt.contact_name || labels.contactMessage;
+  if (t === 'file') return labels.attachDocument;
+  const c = rt.content;
+  if (typeof c === 'string' && c.trim()) return stripChatMarkupForPreview(c.trim());
+  return '…';
+}
+
+const CHAT_PAGE_BG = 'bg-[#070a12]';
+const CHAT_SECTION = 'rounded-[28px] bg-white/[0.035] shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl';
+/** Cartes / modales (même famille que Messagerie) */
+const CHAT_SURFACE = CHAT_SECTION;
+
+/** Composer fixe : zone pouce + encoches (viewport-fit=cover). */
+const COMPOSER_BAR_STYLE = {
+  bottom: 0,
+  paddingBottom: 'max(1.75rem, calc(env(safe-area-inset-bottom, 0px) + 28px))',
+  paddingLeft: 'max(0.75rem, env(safe-area-inset-left, 0px))',
+  paddingRight: 'max(0.75rem, env(safe-area-inset-right, 0px))',
+};
+const CHAT_ICON_BUTTON = 'rounded-full bg-white/[0.06] text-white/85 hover:bg-white/[0.10] hover:text-white';
+
+function pickAudioRecorderMimeType() {
+  if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
+    return '';
+  }
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/mp4',
+    'audio/aac',
+  ];
+  for (const t of candidates) {
+    try {
+      if (MediaRecorder.isTypeSupported(t)) return t;
+    } catch {
+      /* ignore */
+    }
+  }
+  return '';
+}
+
+function extensionForVoiceBlob(mime) {
+  const m = (mime || '').toLowerCase();
+  if (m.includes('ogg')) return 'ogg';
+  if (m.includes('mp4') || m.includes('m4a') || m.includes('aac')) return 'm4a';
+  if (m.includes('mpeg') || m.includes('mp3')) return 'mp3';
+  return 'webm';
+}
+
+function formatRecordingClock(totalSeconds) {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, '0')}`;
+}
+
+function ChatLoadingState({ label = 'Chargement...' }) {
+  return (
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-3 px-4">
+      <div className={cn('rounded-[28px] p-4', CHAT_SECTION)}>
+        <div className="mb-4 flex items-center gap-3">
+          <div className="h-12 w-12 rounded-full bg-white/10 animate-pulse" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="h-4 w-32 rounded-full bg-white/12 animate-pulse" />
+            <div className="h-3 w-20 rounded-full bg-white/8 animate-pulse" />
+          </div>
+        </div>
+        <div className="space-y-3">
+          <div className="ml-auto h-16 w-[72%] rounded-[24px] bg-white/10 animate-pulse" />
+          <div className="h-16 w-[62%] rounded-[24px] bg-white/8 animate-pulse" />
+          <div className="ml-auto h-20 w-[78%] rounded-[24px] bg-white/10 animate-pulse" />
+        </div>
+      </div>
+      <p className="text-center text-sm text-white/54">{label}</p>
+    </div>
+  );
+}
+
+function ChatScreenShell({ children, centered = false, wallpaper = 'default' }) {
+  return (
+    <div className={cn('relative flex h-[100dvh] w-full flex-col overflow-hidden text-white', CHAT_PAGE_BG)}>
+      <div className="pointer-events-none absolute inset-0">
+        {wallpaper === 'midnight' ? (
+          <div className="absolute inset-0 bg-gradient-to-b from-[#020617] via-[#0a1628] to-[#020617]" />
+        ) : wallpaper === 'pattern' ? (
+          <>
+            <div className="absolute inset-0 bg-[#dfe8e0]" />
+            <div
+              className="absolute inset-0 opacity-[0.35]"
+              style={{
+                backgroundImage:
+                  'repeating-linear-gradient(0deg,transparent,transparent 11px,rgba(15,118,110,0.08) 11px,rgba(15,118,110,0.08) 12px),repeating-linear-gradient(90deg,transparent,transparent 11px,rgba(15,118,110,0.06) 11px,rgba(15,118,110,0.06) 12px)',
+              }}
+            />
+            <div
+              className="absolute inset-0 opacity-[0.12]"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M8 10h6v6H8zm20 4h4v4h-4zm16-6h5v5h-5zM12 38h5v5h-5zm24 2h6v6h-6z' fill='%23059669'/%3E%3C/svg%3E")`,
+              }}
+            />
+            {/* Voile sombre pour garder le contraste des bulles blanches / texte clair */}
+            <div className="absolute inset-0 bg-[#070a12]/86" />
+          </>
+        ) : (
+          <>
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_30%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.26),_transparent_34%),linear-gradient(180deg,_#08101f_0%,_#070d18_36%,_#050913_100%)]" />
+            <div className="absolute inset-0 opacity-[0.06] [background-image:linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px)] [background-size:24px_24px]" />
+          </>
+        )}
+      </div>
+      <div className={`relative z-10 flex-1 ${centered ? 'flex items-center justify-center p-4' : ''}`}>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export default function Chat() {
   const { language } = useTranslation();
@@ -214,16 +686,42 @@ export default function Chat() {
   const messageEndRef = useRef(null);
   const typingDebounceRef = useRef(null);
   const fileInputRef = useRef(null);
+  const documentInputRef = useRef(null);
+  const cameraPhotoInputRef = useRef(null);
+  const cameraVideoInputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const recordingStreamRef = useRef(null);
+  const discardRecordingRef = useRef(false);
+  const recordingStartedAtRef = useRef(0);
+  const latestVoicePreviewUrlRef = useRef(null);
+  const previewAudioRef = useRef(null);
+  const longPressTimerRef = useRef(null);
+  /** 'scheduled' → toast dédié après DELETE message (annulation envoi programmé). */
+  const deleteToastModeRef = useRef('default');
 
   const { user: currentUser, isAuthenticated, isLoadingAuth } = useAuth();
+  /** CDC : sans accusés de lecture, masquer les tics bleus sur ses propres messages. */
+  const effectiveOwnReceiptStatus = useCallback(
+    (msg) => {
+      if (!msg || String(msg.sender_id) !== String(currentUser?.id)) return msg?.status;
+      if (currentUser?.messaging_read_receipts_enabled === false && String(msg.status) === 'read') {
+        return 'delivered';
+      }
+      return msg.status;
+    },
+    [currentUser?.id, currentUser?.messaging_read_receipts_enabled]
+  );
   const [messageContent, setMessageContent] = useState('');
   const [conversation, setConversation] = useState(null);
   const [olderMessages, setOlderMessages] = useState([]);
   const [cursorForOlder, setCursorForOlder] = useState(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [voiceDraft, setVoiceDraft] = useState(null);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
+  const [voiceUploading, setVoiceUploading] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
   const [activeMessage, setActiveMessage] = useState(null);
   const [messageActionsOpen, setMessageActionsOpen] = useState(false);
@@ -236,44 +734,196 @@ export default function Chat() {
   const [transferSearch, setTransferSearch] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [showSchedule, setShowSchedule] = useState(false);
+  /** Bulles locales pendant l’envoi réseau (horloge ⏳ style WhatsApp). */
+  const [outgoingPending, setOutgoingPending] = useState([]);
+  const [attachmentSheetOpen, setAttachmentSheetOpen] = useState(false);
+  const [cameraSheetOpen, setCameraSheetOpen] = useState(false);
+  const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
+  const [cameraSending, setCameraSending] = useState(false);
+  const [documentSending, setDocumentSending] = useState(false);
+  const [cameraDraft, setCameraDraft] = useState(null);
+  const [composerStickerOpen, setComposerStickerOpen] = useState(false);
+  const [composerStickerSearch, setComposerStickerSearch] = useState('');
   const [ephemeralMode, setEphemeralMode] = useState(false);
+  const [ephemeralTtlSec, setEphemeralTtlSec] = useState(EPHEMERAL_TTL_SECONDS.H24);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editText, setEditText] = useState('');
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [reactionBurstMessageId, setReactionBurstMessageId] = useState(null);
+  const [reactionsDialogOpen, setReactionsDialogOpen] = useState(false);
+  const [reactionsDialogMessageId, setReactionsDialogMessageId] = useState(null);
+  /** Médias éphémères reçus : après fermeture du plein écran, on n’affiche plus le média (vue unique côté destinataire). */
+  const [viewOnceModal, setViewOnceModal] = useState(null); // { id, url, kind: 'image' | 'video' }
+  const [viewOnceUiTick, setViewOnceUiTick] = useState(0);
+  const viewOnceOpenedSetRef = useRef(new Set());
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [contactSearchQuery, setContactSearchQuery] = useState('');
   const [locationLoading, setLocationLoading] = useState(false);
+  const [translateOpen, setTranslateOpen] = useState(false);
+  const [translateLoading, setTranslateLoading] = useState(false);
+  const [translateOriginal, setTranslateOriginal] = useState('');
+  const [translateResult, setTranslateResult] = useState('');
+  const [translateDetectedCode, setTranslateDetectedCode] = useState('');
+  const [decryptedContentByMessageId, setDecryptedContentByMessageId] = useState({});
+  const [e2eeHealth, setE2eeHealth] = useState(null);
+  const [e2eeRepairing, setE2eeRepairing] = useState(false);
+  const e2eeSyncCursorRef = useRef(null);
+  const runDmE2eeSyncRef = useRef(async () => {});
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    ensureE2eeBootstrap(currentUser.id).catch(() => {});
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    // userId est dispo dès l’URL ; conversationId est défini plus bas (TDZ si on l’utilise ici).
+    if (!currentUser?.id || !userId) return undefined;
+    let disposed = false;
+    let timer = null;
+
+    const check = async () => {
+      try {
+        const health = await getLocalE2eeDeviceHealth(currentUser.id);
+        if (!disposed) setE2eeHealth(health);
+      } catch {
+        if (!disposed) setE2eeHealth((prev) => prev);
+      }
+      if (!disposed) timer = window.setTimeout(check, 45_000);
+    };
+
+    check();
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [currentUser?.id, userId]);
+
+  const handleE2eeRepair = useCallback(async () => {
+    if (!currentUser?.id || e2eeRepairing) return;
+    setE2eeRepairing(true);
+    try {
+      const nextHealth = await repairLocalE2eeDevice(currentUser.id);
+      setE2eeHealth(nextHealth);
+      if (nextHealth?.healthy) {
+        toast.success('Messagerie chiffrée réparée');
+      } else {
+        toast.warning('Clés E2EE encore faibles, nouvelle tentative bientôt');
+      }
+      runDmE2eeSyncRef.current?.();
+    } catch {
+      toast.error('Impossible de réparer le chiffrement pour le moment');
+    } finally {
+      setE2eeRepairing(false);
+    }
+  }, [currentUser?.id, e2eeRepairing]);
+  const e2eeStatusText = !e2eeHealth
+    ? 'Vérification de la protection des messages…'
+    : 'Protection des messages à rétablir';
+
+  const [translateError, setTranslateError] = useState(null);
+  const [chatSearchOpen, setChatSearchOpen] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const [mediaGalleryOpen, setMediaGalleryOpen] = useState(false);
+  const [mediaGalleryTab, setMediaGalleryTab] = useState('media');
+  const [wallpaperTheme, setWallpaperTheme] = useState(() => {
+    try {
+      return localStorage.getItem(CHAT_WALLPAPER_STORAGE) || 'default';
+    } catch {
+      return 'default';
+    }
+  });
   const draftSavedRef = useRef(false);
 
   const queryClient = useQueryClient();
-
-  // Laisser le garde global gérer les non-authentifiés
-  if (isLoadingAuth) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated || !currentUser) {
-    return null;
-  }
 
   const { data: conversationData, isLoading: loadingConv, isError: isErrorConv, refetch: refetchConv } = useQuery({
     queryKey: ['conversation', currentUser?.id, userId],
     queryFn: () => api.messages.getConversation(userId),
     enabled: !!currentUser?.id && !!userId,
+    staleTime: 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    /** Depuis la liste Messages : affichage immédiat + id conversation pour charger les messages sans écran bloquant. */
+    placeholderData: () => {
+      const raw = queryClient.getQueryData(['messages-conversations', currentUser?.id]);
+      const list = raw?.conversations ?? [];
+      return list.find((c) => String(c?.other?.id ?? '') === String(userId)) ?? undefined;
+    },
   });
 
   useEffect(() => {
     if (conversationData) setConversation(conversationData);
   }, [conversationData]);
 
-  const otherUser = conversation
-    ? conversation.user1_id === currentUser?.id
-      ? conversation.user2
-      : conversation.user1
-    : null;
+  const { data: peerProfile } = useQuery({
+    queryKey: ['chat-peer-profile', userId],
+    queryFn: () => api.users.getById(userId),
+    enabled: !!userId && !!currentUser?.id,
+    staleTime: 10 * 60 * 1000,
+  });
 
-  const conversationId = conversation?.id;
+  const activeConversation = conversationData ?? conversation;
+  const conversationId = activeConversation?.id;
+
+  useEffect(() => {
+    if (!currentUser?.id || !conversationId) return undefined;
+    let disposed = false;
+    let timer = null;
+    let idleBackoffMs = 900;
+    const run = async () => {
+      try {
+        const result = await syncAndDecryptDmEnvelopes({
+          currentUserId: currentUser.id,
+          deviceId: getCurrentE2eeDeviceId(),
+          since: e2eeSyncCursorRef.current,
+          limit: 150,
+          conversationId,
+        });
+        if (disposed) return;
+        if (result?.nextSince) e2eeSyncCursorRef.current = result.nextSince;
+        if (result?.byMessageId && Object.keys(result.byMessageId).length) {
+          setDecryptedContentByMessageId((prev) => ({ ...prev, ...result.byMessageId }));
+          idleBackoffMs = 900;
+        }
+      } catch {
+        // ignore sync errors
+      }
+      if (disposed) return;
+      const isHidden = typeof document !== 'undefined' && document.hidden === true;
+      const nextDelay = isHidden ? Math.min(8000, Math.max(2500, idleBackoffMs * 1.6)) : idleBackoffMs;
+      idleBackoffMs = Math.min(8000, Math.round(nextDelay));
+      timer = window.setTimeout(run, nextDelay);
+    };
+    runDmE2eeSyncRef.current = run;
+    run();
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [currentUser?.id, conversationId]);
+
+  const otherUser = useMemo(() => {
+    const c = conversationData ?? conversation;
+    let u = null;
+    if (c) {
+      u =
+        c.other
+        || (c.user1_id === currentUser?.id ? c.user2 : c.user1)
+        || c.user2
+        || c.user1
+        || null;
+    }
+    if (u && (u.id || u.username || u.full_name)) return u;
+    if (peerProfile?.id) {
+      return {
+        id: peerProfile.id,
+        full_name: peerProfile.full_name,
+        username: peerProfile.username,
+        profile_image: peerProfile.profile_image || peerProfile.avatar,
+      };
+    }
+    if (userId) return { id: userId, full_name: null, username: null, profile_image: null };
+    return null;
+  }, [conversationData, conversation, currentUser?.id, peerProfile, userId]);
 
   const { data: draftData } = useQuery({
     queryKey: ['conversation-draft', conversationId, currentUser?.id],
@@ -281,39 +931,56 @@ export default function Chat() {
     enabled: !!conversationId && !!currentUser?.id,
   });
   useEffect(() => {
-    if (!conversationId || !draftData) return;
-    const content = draftData?.draft_content ?? draftData?.content ?? '';
-    if (typeof content === 'string' && !draftSavedRef.current) {
+    if (!conversationId || draftData === undefined) return;
+    const content = String(draftData?.draft_content ?? draftData?.content ?? '');
+    if (draftSavedRef.current) return;
+    draftSavedRef.current = true;
+    /** Ne remplir que si le serveur a du texte — évite de réinjecter après effacement local non sync. */
+    if (content.length > 0) {
       setMessageContent(content);
-      draftSavedRef.current = true;
     }
   }, [conversationId, draftData]);
+
+  /** Nouvel interlocuteur : champ vide + réhydratation du brouillon depuis le serveur. */
   useEffect(() => {
-    if (!conversationId) draftSavedRef.current = false;
-  }, [conversationId]);
+    draftSavedRef.current = false;
+    setMessageContent('');
+  }, [userId]);
 
   const putDraftMutation = useMutation({
-    mutationFn: ({ cId, content }) => api.messages.putDraft(cId, content),
+    mutationFn: ({ cId, content }) => api.messages.putDraft(cId, content ?? ''),
+    onSuccess: (_data, variables) => {
+      const { cId, content } = variables;
+      queryClient.setQueryData(['conversation-draft', cId, currentUser?.id], {
+        draft_content: content,
+        content,
+      });
+    },
   });
-  const saveDraft = useCallback(() => {
-    if (!conversationId || !messageContent.trim()) return;
-    putDraftMutation.mutate({ cId: conversationId, content: messageContent });
+
+  /** Persiste le brouillon y compris chaîne vide (sinon le serveur garde l’ancien texte au prochain chargement). */
+  const persistDraft = useCallback(() => {
+    if (!conversationId) return;
+    putDraftMutation.mutate({ cId: conversationId, content: messageContent.trim() });
   }, [conversationId, messageContent]);
 
-  const { data: messagesData, isLoading: loadingMessages, isError: isErrorMessages, refetch: refetchMessages } = useQuery({
+  const { data: messagesData, isPending: messagesPending, isError: isErrorMessages, refetch: refetchMessages } = useQuery({
     queryKey: ['messages-list', conversationId],
     queryFn: () => api.messages.getMessages(conversationId, null, MESSAGES_LIMIT),
     enabled: !!conversationId,
+    staleTime: 20 * 1000,
   });
 
   const isPageVisible = usePageVisibility();
 
   const onNewMessage = useCallback(() => {
     refetchMessages();
+    runDmE2eeSyncRef.current?.();
     queryClient.invalidateQueries({ queryKey: ['messages-unread-count'] });
     queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser?.id] });
   }, [refetchMessages, queryClient, currentUser?.id]);
   const onMessageRead = useCallback(() => refetchMessages(), [refetchMessages]);
+  const onMessageDelivered = useCallback(() => refetchMessages(), [refetchMessages]);
 
   useEffect(() => {
     if (isErrorConv && userId) {
@@ -334,13 +1001,38 @@ export default function Chat() {
     refetchInterval: isPageVisible ? 15000 : false,
   });
 
-  const { typingUser, emitTypingStart, emitTypingStop, isConnected } = useConversationSocket({
+  const {
+    typingUser,
+    recordingUser,
+    emitTypingStart,
+    emitTypingStop,
+    emitRecordingStart,
+    emitRecordingStop,
+    isConnected,
+    showReconnectBanner,
+  } = useConversationSocket({
     userId: currentUser?.id,
     conversationId,
     userName: currentUser?.full_name || currentUser?.username,
     onNewMessage,
     onMessageRead,
+    onMessageDelivered,
   });
+
+  useEffect(() => {
+    if (!isRecording || !conversationId || !currentUser?.id) return undefined;
+    emitTypingStop();
+    emitRecordingStart();
+    return () => {
+      emitRecordingStop();
+    };
+  }, [isRecording, conversationId, currentUser?.id, emitRecordingStart, emitRecordingStop, emitTypingStop]);
+
+  useEffect(() => {
+    if (isConnected && userId) {
+      queryClient.invalidateQueries({ queryKey: ['presence', userId] });
+    }
+  }, [isConnected, userId, queryClient]);
 
   const firstPageMessages = messagesData?.messages ?? [];
   const hasMore = messagesData?.hasMore ?? false;
@@ -355,6 +1047,122 @@ export default function Chat() {
   }, [conversationId]);
 
   const messages = [...olderMessages, ...firstPageMessages];
+
+  const conversationMuted = useMemo(() => {
+    const c = activeConversation;
+    if (!c || !currentUser?.id) return false;
+    if (c.user1_id === currentUser.id) return !!c.muted_user1;
+    if (c.user2_id === currentUser.id) return !!c.muted_user2;
+    return false;
+  }, [activeConversation, currentUser?.id]);
+
+  useEffect(() => {
+    if (!currentUser?.id || !userId) return;
+    try {
+      const v = localStorage.getItem(`aw-chat-ephemeral-${currentUser.id}-${userId}`);
+      const t = localStorage.getItem(`aw-chat-ephemeral-ttl-${currentUser.id}-${userId}`);
+      const parsed = parseInt(String(t || EPHEMERAL_TTL_SECONDS.H24), 10);
+      const ttl =
+        parsed === EPHEMERAL_TTL_SECONDS.D7 || parsed === EPHEMERAL_TTL_SECONDS.D90
+          ? parsed
+          : EPHEMERAL_TTL_SECONDS.H24;
+      setEphemeralTtlSec(ttl);
+      if (v === '1') setEphemeralMode(true);
+      else if (v === '0') setEphemeralMode(false);
+    } catch {
+      /* ignore */
+    }
+  }, [currentUser?.id, userId]);
+
+  const ephemeralExpiresIso = useCallback(() => {
+    if (!ephemeralMode) return undefined;
+    const sec =
+      ephemeralTtlSec === EPHEMERAL_TTL_SECONDS.D7 || ephemeralTtlSec === EPHEMERAL_TTL_SECONDS.D90
+        ? ephemeralTtlSec
+        : EPHEMERAL_TTL_SECONDS.H24;
+    return new Date(Date.now() + sec * 1000).toISOString();
+  }, [ephemeralMode, ephemeralTtlSec]);
+
+  useEffect(() => {
+    setOutgoingPending([]);
+  }, [userId]);
+
+  useEffect(() => {
+    setDecryptedContentByMessageId({});
+    e2eeSyncCursorRef.current = null;
+  }, [conversationId]);
+
+  const messagesFilteredBySearch = useMemo(() => {
+    const q = chatSearchQuery.trim().toLowerCase();
+    if (!chatSearchOpen || !q) return messages;
+    return messages.filter((m) => {
+      if (m.is_deleted) return false;
+      const c = (m.content || '').toLowerCase();
+      if (c.includes(q)) return true;
+      const sn = (m.sender?.full_name || m.sender?.username || '').toLowerCase();
+      return sn.includes(q);
+    });
+  }, [messages, chatSearchOpen, chatSearchQuery]);
+
+  const outgoingPendingAsMessages = useMemo(() => {
+    if (!currentUser?.id) return [];
+    const q = chatSearchQuery.trim();
+    if (chatSearchOpen && q) return [];
+    return outgoingPending.map((p) => ({
+      id: p.tempId,
+      sender_id: currentUser.id,
+      content: p.content,
+      type: 'text',
+      status: p.status,
+      created_at: p.created_at,
+      reply_to_message_id: p.reply_to_message_id || null,
+      reply_to: p.reply_to || null,
+      is_deleted: false,
+      _localPending: true,
+    }));
+  }, [outgoingPending, currentUser?.id, chatSearchOpen, chatSearchQuery]);
+
+  const displayedMessages = useMemo(
+    () => [...messagesFilteredBySearch, ...outgoingPendingAsMessages],
+    [messagesFilteredBySearch, outgoingPendingAsMessages]
+  );
+
+  const mediaGalleryItems = useMemo(() => {
+    const media = [];
+    const links = [];
+    const docs = [];
+    for (const m of messages) {
+      if (m.is_deleted) continue;
+      const t = String(m.type || 'text').toLowerCase();
+      const msgEphemeral = m.is_ephemeral === true || m.isEphemeral === true;
+      const skipConsumedViewOnce =
+        currentUser?.id
+        && m.sender_id !== currentUser.id
+        && msgEphemeral
+        && (t === 'image' || t === 'video')
+        && (() => {
+          try {
+            return localStorage.getItem(`aw-chat-viewonce-${currentUser.id}-${m.id}`) === '1';
+          } catch {
+            return false;
+          }
+        })();
+      if (skipConsumedViewOnce) continue;
+      if (t === 'sticker' && m.sticker_url) {
+        media.push({ id: m.id, type: 'sticker', url: m.sticker_url, thumb: null, created_at: m.created_at });
+      } else if (['image', 'video', 'audio', 'voice'].includes(t) && m.media_url) {
+        media.push({ id: m.id, type: t, url: m.media_url, thumb: m.thumbnail_url, created_at: m.created_at });
+      } else if (t === 'file' && m.media_url) {
+        const name = typeof m.content === 'string' && m.content.trim() ? m.content.trim() : 'Document';
+        docs.push({ id: m.id, label: name, url: m.media_url, created_at: m.created_at });
+      }
+      const urls = extractUrls(m.content);
+      for (const u of urls) {
+        links.push({ id: `${m.id}-${u}`, url: u, created_at: m.created_at });
+      }
+    }
+    return { media, links, docs };
+  }, [messages, currentUser?.id, viewOnceUiTick]);
 
   const loadOlder = useCallback(async () => {
     if (!conversationId || cursorForOlder == null || loadingOlder) return;
@@ -372,15 +1180,19 @@ export default function Chat() {
 
   useEffect(() => {
     if (!conversationId || !currentUser?.id) return;
-    api.messages.markAsRead(conversationId).then(() => {
-      queryClient.invalidateQueries({ queryKey: ['messages-unread-count'] });
-      queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser?.id] });
-    }).catch(() => {});
+    api.messages
+      .markAsDelivered(conversationId)
+      .then(() => api.messages.markAsRead(conversationId))
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ['messages-unread-count'] });
+        queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser?.id] });
+      })
+      .catch(() => {});
   }, [conversationId, currentUser?.id, queryClient]);
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [displayedMessages]);
 
   const handleInputChange = (e) => {
     setMessageContent(e.target.value);
@@ -390,26 +1202,14 @@ export default function Chat() {
   };
 
   useEffect(() => {
-    if (!conversationId || !messageContent.trim()) return;
-    const t = setTimeout(() => saveDraft(), 1500);
+    if (!conversationId) return;
+    const trimmed = messageContent.trim();
+    const delay = trimmed.length > 0 ? 1500 : 450;
+    const t = setTimeout(() => {
+      putDraftMutation.mutate({ cId: conversationId, content: trimmed });
+    }, delay);
     return () => clearTimeout(t);
-  }, [messageContent, conversationId, saveDraft]);
-
-  const handleExportConversations = async () => {
-    try {
-      const data = await api.messages.exportConversations();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `afriwonder-messages-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('Export téléchargé');
-    } catch (err) {
-      toast.error(err?.response?.data?.message || err?.message || 'Export impossible');
-    }
-  };
+  }, [messageContent, conversationId]);
 
   const handleStartCall = (type = 'audio') => {
     if (!otherUser?.id) return;
@@ -421,7 +1221,8 @@ export default function Chat() {
   };
 
   const sendMessageMutation = useMutation({
-    mutationFn: ({
+    mutationFn: async ({
+      _clientTempId: _omitTemp,
       content,
       type = 'text',
       media_url,
@@ -435,22 +1236,43 @@ export default function Chat() {
       location_label,
       contact_user_id,
       contact_name,
-    } = {}) =>
-      api.messages.send(userId, content ?? '', {
+      sticker_url,
+    } = {}) => {
+      let e2ee_envelope;
+      try {
+        const normalizedType = String(type || 'text').toLowerCase();
+        if (normalizedType === 'text' && typeof content === 'string' && content.trim() && currentUser?.id && userId) {
+          e2ee_envelope = await buildE2eeEnvelopeForRecipient(userId, content, {
+            senderUserId: currentUser.id,
+            messageType: 'text',
+            clientMessageId: _omitTemp || null,
+          });
+        }
+      } catch {
+        e2ee_envelope = undefined;
+      }
+
+      return api.messages.send(userId, content ?? '', {
         type,
         media_url,
         thumbnail_url,
         reply_to_message_id,
         scheduled_at: scheduled_at || undefined,
-        is_ephemeral: is_ephemeral || undefined,
+        is_ephemeral: is_ephemeral === true ? true : undefined,
         expires_at: expires_at || undefined,
         location_lat,
         location_lng,
         location_label,
         contact_user_id,
         contact_name,
-      }),
+        sticker_url,
+        e2ee_envelope,
+      });
+    },
     onSuccess: (_data, variables) => {
+      if (variables?._clientTempId) {
+        setOutgoingPending((prev) => prev.filter((p) => p.tempId !== variables._clientTempId));
+      }
       emitTypingStop();
       refetchMessages();
       queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser?.id] });
@@ -459,13 +1281,17 @@ export default function Chat() {
       setReplyTarget(null);
       setScheduledAt('');
       setShowSchedule(false);
-      setEphemeralMode(false);
       if (conversationId && !variables?.scheduled_at) {
         api.messages.putDraft(conversationId, '').catch(() => {});
       }
       toast.success(variables?.scheduled_at ? 'Message programmé' : labels.sendSuccess);
     },
-    onError: (err) => {
+    onError: (err, variables) => {
+      if (variables?._clientTempId) {
+        setOutgoingPending((prev) =>
+          prev.map((p) => (p.tempId === variables._clientTempId ? { ...p, status: 'failed' } : p))
+        );
+      }
       toast.error(
         err?.response?.data?.error?.message
         || err?.response?.data?.message
@@ -475,6 +1301,80 @@ export default function Chat() {
       );
     },
   });
+
+  const clearVoiceDraft = useCallback(() => {
+    setVoiceDraft((prev) => {
+      if (prev?.objectUrl) URL.revokeObjectURL(prev.objectUrl);
+      latestVoicePreviewUrlRef.current = null;
+      return null;
+    });
+    setPreviewPlaying(false);
+    const el = previewAudioRef.current;
+    if (el) {
+      el.pause();
+      el.removeAttribute('src');
+      el.load();
+    }
+  }, []);
+
+  useEffect(() => () => {
+    if (latestVoicePreviewUrlRef.current) {
+      URL.revokeObjectURL(latestVoicePreviewUrlRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isRecording) return undefined;
+    const id = setInterval(() => {
+      setRecordingSeconds(Math.floor((Date.now() - recordingStartedAtRef.current) / 1000));
+    }, 200);
+    return () => clearInterval(id);
+  }, [isRecording]);
+
+  const sendVoiceDraft = useCallback(async () => {
+    if (!voiceDraft?.blob) return;
+    setVoiceUploading(true);
+    try {
+      const ext = extensionForVoiceBlob(voiceDraft.mimeType);
+      const audioFile = new File([voiceDraft.blob], `voice-${Date.now()}.${ext}`, {
+        type: voiceDraft.mimeType || 'audio/webm',
+      });
+      const { file_url } = await api.upload.audio(audioFile);
+      if (!file_url) {
+        toast.error(labels.voiceStopError);
+        return;
+      }
+      sendMessageMutation.mutate(
+        {
+          content: '',
+          type: 'voice',
+          media_url: file_url,
+          reply_to_message_id: replyTarget?.id || undefined,
+          is_ephemeral: ephemeralMode === true ? true : undefined,
+          expires_at: ephemeralMode ? ephemeralExpiresIso() : undefined,
+        },
+        {
+          onSettled: () => setVoiceUploading(false),
+          onSuccess: () => {
+            clearVoiceDraft();
+          },
+        }
+      );
+    } catch (_e) {
+      setVoiceUploading(false);
+      toast.error(labels.voiceStopError);
+    }
+  }, [voiceDraft, clearVoiceDraft, sendMessageMutation, labels.voiceStopError, replyTarget?.id, ephemeralMode, ephemeralExpiresIso]);
+
+  const togglePreviewPlayback = useCallback(() => {
+    const el = previewAudioRef.current;
+    if (!el) return;
+    if (previewPlaying) {
+      el.pause();
+    } else {
+      el.play().catch(() => toast.error(labels.voiceStopError));
+    }
+  }, [previewPlaying, labels.voiceStopError]);
 
   const blockMutation = useMutation({
     mutationFn: () => api.messages.block(userId),
@@ -496,7 +1396,9 @@ export default function Chat() {
   const deleteMessageMutation = useMutation({
     mutationFn: (messageId) => api.messages.deleteMessage(messageId),
     onSuccess: () => {
-      toast.success(labels.deleteSuccess);
+      const mode = deleteToastModeRef.current;
+      deleteToastModeRef.current = 'default';
+      toast.success(mode === 'scheduled' ? labels.cancelScheduledSuccess : labels.deleteSuccess);
       queryClient.invalidateQueries({ queryKey: ['messages-list', conversationId] });
       queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, userId] });
       refetchMessages();
@@ -514,19 +1416,92 @@ export default function Chat() {
     onError: (err) => toast.error(err?.response?.data?.error || err?.response?.data?.message || labels.deleteForAllError),
   });
 
+  const muteConversationMutation = useMutation({
+    mutationFn: (muted) => api.messages.setConversationNotifications(conversationId, { muted }),
+    onSuccess: (_d, muted) => {
+      toast.success(muted ? labels.muteChatSuccess : labels.unmuteChatSuccess);
+      queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, userId] });
+      queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser?.id] });
+    },
+    onError: () => toast.error(labels.muteChatError),
+  });
+
+  const clearHistoryMutation = useMutation({
+    mutationFn: () => api.messages.clearConversationForMe(conversationId),
+    onSuccess: () => {
+      toast.success(labels.clearChatSuccess);
+      setOlderMessages([]);
+      setCursorForOlder(null);
+      refetchMessages();
+      queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, userId] });
+    },
+    onError: (err) => toast.error(err?.response?.data?.message || err?.apiMessage || labels.clearChatError),
+  });
+
   const updateMetaMutation = useMutation({
     mutationFn: ({ messageId, payload }) => api.messages.updateMessageMeta(messageId, payload),
     onSuccess: () => refetchMessages(),
     onError: (err) => toast.error(err?.response?.data?.message || err?.apiMessage || labels.sendError),
   });
 
-  const reactionMutation = useMutation({
-    mutationFn: ({ messageId, emoji }) => api.messages.setReaction(messageId, emoji),
+  const editMessageMutation = useMutation({
+    mutationFn: ({ messageId, content }) => api.messages.editMessageContent(messageId, content),
     onSuccess: () => {
       refetchMessages();
-      toast.success(labels.reactionAdded);
+      queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser?.id] });
+      setEditDialogOpen(false);
+      setEditingMessageId(null);
+      setEditText('');
+      toast.success(labels.messageEditedSuccess);
+    },
+    onError: (err) =>
+      toast.error(
+        err?.response?.data?.error?.message
+          || err?.response?.data?.message
+          || err?.apiMessage
+          || err?.message
+          || labels.sendError
+      ),
+  });
+
+  const { data: reactionsDetailData, isFetching: reactionsDetailLoading } = useQuery({
+    queryKey: ['message-reactions-detail', reactionsDialogMessageId],
+    queryFn: () => api.messages.getMessageReactionsDetail(reactionsDialogMessageId),
+    enabled: !!reactionsDialogMessageId && reactionsDialogOpen,
+  });
+  const reactionsDetailList = reactionsDetailData?.reactors ?? [];
+
+  const openReactionsDetail = useCallback((messageId) => {
+    if (!messageId) return;
+    setReactionsDialogMessageId(messageId);
+    setReactionsDialogOpen(true);
+  }, []);
+
+  const reactionMutation = useMutation({
+    mutationFn: ({ messageId, emoji }) => api.messages.setReaction(messageId, emoji),
+    onSuccess: (_d, vars) => {
+      refetchMessages();
+      if (vars?.messageId) {
+        queryClient.invalidateQueries({ queryKey: ['message-reactions-detail', vars.messageId] });
+      }
+      if (vars?.emoji && REACTION_BURST_EMOJIS.has(String(vars.emoji))) {
+        const mid = vars.messageId;
+        setReactionBurstMessageId(mid);
+        window.setTimeout(() => {
+          setReactionBurstMessageId((cur) => (cur === mid ? null : cur));
+        }, 900);
+      }
     },
     onError: (err) => toast.error(err?.response?.data?.message || err?.apiMessage || labels.sendError),
+  });
+
+  const transcribeVoiceMutation = useMutation({
+    mutationFn: (messageId) => api.messages.transcribeVoiceMessage(messageId),
+    onSuccess: () => {
+      refetchMessages();
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.message || err?.apiMessage || labels.transcribeVoiceError),
   });
 
   const handleBlockUser = () => setConfirmAction({ type: 'block' });
@@ -549,6 +1524,116 @@ export default function Chat() {
     setConfirmAction({ type: 'delete', messageId: lastOwn.id });
   };
 
+  const handleHeaderNewGroup = useCallback(() => {
+    navigate(`${createPageUrl('Inbox')}?newGroup=1`);
+  }, [navigate]);
+
+  const handleHeaderViewContact = useCallback(() => {
+    if (!otherUser?.id) return;
+    navigate(`${createPageUrl('Profile')}?_userId=${otherUser.id}`);
+  }, [navigate, otherUser?.id]);
+
+  const handleToggleMute = useCallback(() => {
+    if (!conversationId) {
+      toast.error(labels.selectConversation);
+      return;
+    }
+    muteConversationMutation.mutate(!conversationMuted);
+  }, [conversationId, conversationMuted, muteConversationMutation, labels.selectConversation]);
+
+  const handleSetEphemeralDuration = useCallback(
+    (sec) => {
+      if (!currentUser?.id || !userId) return;
+      const on = sec > 0;
+      setEphemeralMode(on);
+      if (on) setEphemeralTtlSec(sec);
+      try {
+        localStorage.setItem(`aw-chat-ephemeral-${currentUser.id}-${userId}`, on ? '1' : '0');
+        if (on) localStorage.setItem(`aw-chat-ephemeral-ttl-${currentUser.id}-${userId}`, String(sec));
+      } catch {
+        /* ignore */
+      }
+      toast.success(on ? labels.ephemeralOn : labels.ephemeralOff);
+    },
+    [currentUser?.id, userId, labels.ephemeralOn, labels.ephemeralOff]
+  );
+
+  const isViewOnceConsumed = useCallback(
+    (messageId) => {
+      if (!messageId || !currentUser?.id) return false;
+      if (viewOnceOpenedSetRef.current.has(messageId)) return true;
+      try {
+        const k = `aw-chat-viewonce-${currentUser.id}-${messageId}`;
+        if (typeof localStorage !== 'undefined' && localStorage.getItem(k) === '1') {
+          viewOnceOpenedSetRef.current.add(messageId);
+          return true;
+        }
+      } catch {
+        /* ignore */
+      }
+      return false;
+    },
+    [currentUser?.id]
+  );
+
+  const markViewOnceConsumed = useCallback((messageId) => {
+    if (!messageId || !currentUser?.id) return;
+    viewOnceOpenedSetRef.current.add(messageId);
+    try {
+      localStorage.setItem(`aw-chat-viewonce-${currentUser.id}-${messageId}`, '1');
+    } catch {
+      /* ignore */
+    }
+    setViewOnceUiTick((t) => t + 1);
+  }, [currentUser?.id]);
+
+  const handlePersistWallpaper = useCallback((theme) => {
+    const t = ['default', 'pattern', 'midnight'].includes(theme) ? theme : 'default';
+    setWallpaperTheme(t);
+    try {
+      localStorage.setItem(CHAT_WALLPAPER_STORAGE, t);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const handleCopyShortcutLink = useCallback(async () => {
+    if (!userId) return;
+    const url = `${window.location.origin}${window.location.pathname}${window.location.search}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success(labels.shortcutCopied);
+    } catch {
+      toast.error(labels.sendError);
+    }
+  }, [userId, labels.shortcutCopied, labels.sendError]);
+
+  const handleAddContactToList = useCallback(() => {
+    if (!userId) return;
+    try {
+      const raw = localStorage.getItem(CHAT_FAVORITES_STORAGE);
+      const arr = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(arr)) return;
+      if (arr.includes(userId)) {
+        toast.info(labels.alreadyInFavorites);
+        return;
+      }
+      arr.push(userId);
+      localStorage.setItem(CHAT_FAVORITES_STORAGE, JSON.stringify(arr));
+      toast.success(labels.addedToFavorites);
+    } catch {
+      toast.error(labels.sendError);
+    }
+  }, [userId, labels.alreadyInFavorites, labels.addedToFavorites, labels.sendError]);
+
+  const handleClearChatContent = useCallback(() => {
+    if (!conversationId) {
+      toast.error(labels.selectConversation);
+      return;
+    }
+    setConfirmAction({ type: 'clear_history' });
+  }, [conversationId, labels.selectConversation]);
+
   const handleConfirmAction = () => {
     if (!confirmAction?.type) return;
     const targetId = confirmAction.messageId || activeMessage?.id;
@@ -557,9 +1642,15 @@ export default function Chat() {
     } else if (confirmAction.type === 'report' && targetId) {
       reportMutation.mutate(targetId);
     } else if (confirmAction.type === 'delete' && targetId) {
+      deleteToastModeRef.current = 'default';
+      deleteMessageMutation.mutate(targetId);
+    } else if (confirmAction.type === 'cancel_scheduled' && targetId) {
+      deleteToastModeRef.current = 'scheduled';
       deleteMessageMutation.mutate(targetId);
     } else if (confirmAction.type === 'delete_for_all' && targetId) {
       deleteForAllMutation.mutate(targetId);
+    } else if (confirmAction.type === 'clear_history' && conversationId) {
+      clearHistoryMutation.mutate();
     }
     setMessageActionsOpen(false);
     setConfirmAction(null);
@@ -578,10 +1669,26 @@ export default function Chat() {
     if (confirmAction?.type === 'report') {
       return { title: labels.confirmTitleReport, description: labels.confirmDescReport };
     }
+    if (confirmAction?.type === 'clear_history') {
+      return { title: labels.confirmClearChatTitle, description: labels.confirmClearChatDesc };
+    }
+    if (confirmAction?.type === 'cancel_scheduled') {
+      return { title: labels.confirmCancelScheduledTitle, description: labels.confirmCancelScheduledDesc };
+    }
     return { title: labels.actions, description: '' };
   })();
 
   const filteredEmojis = EMOJI_LIBRARY.filter((e) => e.includes(emojiSearch) || emojiSearch.trim().length === 0);
+
+  const presenceLabel = recordingUser
+    ? `${recordingUser.name} ${labels.recordingSuffix}`
+    : typingUser
+      ? `${typingUser.name} ${labels.typingSuffix}`
+      : presence?.is_online
+        ? labels.online
+        : presence?.last_seen
+          ? `Vu ${formatDistanceToNow(new Date(presence.last_seen), { addSuffix: true, locale: fr })}`
+          : labels.offline;
 
   useEffect(() => {
     if (!transferOpen) setTransferSearch('');
@@ -590,6 +1697,35 @@ export default function Chat() {
   const openMessageActions = (msg) => {
     setActiveMessage(msg);
     setMessageActionsOpen(true);
+  };
+
+  const scheduleMessageActionsClose = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const bindMessageLongPress = (msg) => {
+    if (msg?._localPending) {
+      return {};
+    }
+    return {
+    onContextMenu: (event) => {
+      event.preventDefault();
+      openMessageActions(msg);
+    },
+    onTouchStart: () => {
+      scheduleMessageActionsClose();
+      longPressTimerRef.current = setTimeout(() => {
+        openMessageActions(msg);
+        longPressTimerRef.current = null;
+      }, 420);
+    },
+    onTouchEnd: scheduleMessageActionsClose,
+    onTouchMove: scheduleMessageActionsClose,
+    onTouchCancel: scheduleMessageActionsClose,
+  };
   };
 
   const handleCopyMessage = async (msg) => {
@@ -610,6 +1746,45 @@ export default function Chat() {
     setReplyTarget(msg);
     setMessageActionsOpen(false);
   };
+
+  const handleStickerFromMenu = () => {
+    setMessageActionsOpen(false);
+    setEmojiPickerOpen(true);
+  };
+
+  const handleOpenTranslate = useCallback(async () => {
+    const msg = activeMessage;
+    setMessageActionsOpen(false);
+    if (!msg?.content || typeof msg.content !== 'string' || !msg.content.trim()) {
+      toast.error(labels.translateNoText);
+      return;
+    }
+    const trimmed = msg.content.trim();
+    setTranslateOpen(true);
+    setTranslateLoading(true);
+    setTranslateOriginal(trimmed);
+    setTranslateResult('');
+    setTranslateDetectedCode('');
+    setTranslateError(null);
+    const targetLang = language === 'en' ? 'en' : 'fr';
+    try {
+      const { translatedText, detectedSource } = await api.translate.text(trimmed, { target: targetLang });
+      if (!translatedText?.trim()) {
+        setTranslateError(labels.translateFailed);
+      } else {
+        setTranslateResult(translatedText.trim());
+        if (typeof detectedSource === 'string' && detectedSource.trim()) {
+          setTranslateDetectedCode(detectedSource.trim());
+        }
+      }
+    } catch (err) {
+      const apiErr = err?.response?.data?.error;
+      const msgErr = typeof apiErr === 'string' ? apiErr : err?.response?.data?.message;
+      setTranslateError(msgErr || err?.message || labels.translateFailed);
+    } finally {
+      setTranslateLoading(false);
+    }
+  }, [activeMessage, language, labels.translateNoText, labels.translateFailed]);
 
   const handleSelectMessageMode = (msg) => {
     setSelectionMode(true);
@@ -652,6 +1827,12 @@ export default function Chat() {
         type: msgType,
         media_url: activeMessage.media_url || undefined,
         thumbnail_url: activeMessage.thumbnail_url || undefined,
+        sticker_url: activeMessage.sticker_url || undefined,
+        location_lat: activeMessage.location_lat ?? undefined,
+        location_lng: activeMessage.location_lng ?? undefined,
+        location_label: activeMessage.location_label || undefined,
+        contact_user_id: activeMessage.contact_user_id || undefined,
+        contact_name: activeMessage.contact_name || undefined,
       });
     },
     onSuccess: () => {
@@ -668,7 +1849,7 @@ export default function Chat() {
     setTransferOpen(true);
   };
 
-  const pinnedMessageId = conversation?.pinned_message_id ?? conversation?.pinned_message?.id;
+  const pinnedMessageId = activeConversation?.pinned_message_id ?? activeConversation?.pinned_message?.id;
 
   const handlePinMessage = (msg) => {
     if (!msg?.id || !conversationId) return;
@@ -697,21 +1878,89 @@ export default function Chat() {
     setMessageActionsOpen(false);
   };
 
+  const openEditMessage = useCallback(
+    (msg) => {
+      if (!canEditTextMessage(msg, currentUser?.id)) return;
+      setEditingMessageId(msg.id);
+      setEditText(msg.content || '');
+      setEditDialogOpen(true);
+      setMessageActionsOpen(false);
+    },
+    [currentUser?.id]
+  );
+
+  const submitEditMessage = useCallback(
+    (e) => {
+      e?.preventDefault?.();
+      const t = editText.trim();
+      if (!t || !editingMessageId) return;
+      editMessageMutation.mutate({ messageId: editingMessageId, content: t });
+    },
+    [editText, editingMessageId, editMessageMutation]
+  );
+
   const handleSendMessage = (e) => {
     e.preventDefault();
     const text = messageContent.trim();
     if (!text) return;
     const scheduled_at = showSchedule && scheduledAt ? new Date(scheduledAt).toISOString() : undefined;
-    const is_ephemeral = ephemeralMode;
-    const expires_at = is_ephemeral ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : undefined;
+    const is_ephemeral = ephemeralMode === true;
+    const expires_at = is_ephemeral ? ephemeralExpiresIso() : undefined;
+    const tempId =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    if (!scheduled_at) {
+      setOutgoingPending((prev) => [
+        ...prev,
+        {
+          tempId,
+          content: text,
+          reply_to_message_id: replyTarget?.id || undefined,
+          reply_to: replyTarget || null,
+          status: 'sending',
+          created_at: new Date().toISOString(),
+        },
+      ]);
+    }
     sendMessageMutation.mutate({
+      _clientTempId: scheduled_at ? undefined : tempId,
       content: text,
       reply_to_message_id: replyTarget?.id || undefined,
       scheduled_at,
-      is_ephemeral: is_ephemeral || undefined,
+      is_ephemeral: is_ephemeral ? true : undefined,
       expires_at,
     });
   };
+
+  const retryFailedPending = useCallback(
+    (msg) => {
+      if (!msg?._localPending || msg.status !== 'failed') return;
+      const row = outgoingPending.find((p) => p.tempId === msg.id && p.status === 'failed');
+      if (!row?.content?.trim()) return;
+      const newTempId =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      setOutgoingPending((prev) => [
+        ...prev.filter((p) => p.tempId !== msg.id),
+        {
+          tempId: newTempId,
+          content: row.content,
+          reply_to_message_id: row.reply_to_message_id,
+          reply_to: row.reply_to,
+          status: 'sending',
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      sendMessageMutation.mutate({
+        _clientTempId: newTempId,
+        content: row.content,
+        reply_to_message_id: row.reply_to_message_id || undefined,
+      });
+    },
+    [outgoingPending, sendMessageMutation]
+  );
 
   const handleShareLocation = () => {
     if (!navigator.geolocation) {
@@ -754,113 +2003,403 @@ export default function Chat() {
     setContactSearchQuery('');
   };
 
-  const handleImageSelect = async (e) => {
+  useEffect(() => () => scheduleMessageActionsClose(), []);
+
+  useEffect(
+    () => () => {
+      if (cameraDraft?.previewUrl) {
+        try { URL.revokeObjectURL(cameraDraft.previewUrl); } catch (_) {}
+      }
+    },
+    [cameraDraft?.previewUrl]
+  );
+
+  const handleCameraCapture = async (blob, mimeType, isVideo) => {
+    const previewUrl = URL.createObjectURL(blob);
+    setCameraDraft({
+      blob,
+      mimeType,
+      isVideo: !!isVideo,
+      caption: '',
+      previewUrl,
+    });
+    setCameraPreviewOpen(true);
+  };
+
+  const clearCameraDraft = useCallback(() => {
+    setCameraPreviewOpen(false);
+    setCameraDraft((prev) => {
+      if (prev?.previewUrl) {
+        try { URL.revokeObjectURL(prev.previewUrl); } catch (_) {}
+      }
+      return null;
+    });
+  }, []);
+
+  const handleSendCameraDraft = async (payload) => {
+    if (!payload?.blob) return;
+    const { blob, mimeType, isVideo, caption, is_ephemeral: viewOnceEphemeral } = payload;
+    const ext = isVideo
+      ? mimeType.includes('mp4')
+        ? '.mp4'
+        : '.webm'
+      : mimeType.includes('png')
+        ? '.png'
+        : '.jpg';
+    const file = new File([blob], `${isVideo ? 'video' : 'photo'}_${Date.now()}${ext}`, { type: mimeType });
+    const content = String(caption || '').trim();
+    const sendEphemeral = viewOnceEphemeral === true || ephemeralMode === true;
+    const ephemeralExpiresAt = sendEphemeral ? ephemeralExpiresIso() : undefined;
+    setCameraSending(true);
+    try {
+      if (isVideo) {
+        const videoResult = await api.upload.video({ file });
+        const file_url = videoResult?.file_url ?? videoResult?.url;
+        if (!file_url) {
+          toast.error(labels.uploadError);
+          return;
+        }
+        sendMessageMutation.mutate({
+          content,
+          type: 'video',
+          media_url: file_url,
+          reply_to_message_id: replyTarget?.id || undefined,
+          is_ephemeral: sendEphemeral ? true : undefined,
+          expires_at: ephemeralExpiresAt,
+        });
+      } else {
+        const { file_url } = await api.upload.image(file);
+        if (!file_url) {
+          toast.error(labels.uploadError);
+          return;
+        }
+        sendMessageMutation.mutate({
+          content,
+          type: 'image',
+          media_url: file_url,
+          reply_to_message_id: replyTarget?.id || undefined,
+          is_ephemeral: sendEphemeral ? true : undefined,
+          expires_at: ephemeralExpiresAt,
+        });
+      }
+      clearCameraDraft();
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || err?.response?.data?.message || err?.apiMessage || labels.uploadError);
+    } finally {
+      setCameraSending(false);
+    }
+  };
+
+  const handleMediaSelect = async (e) => {
     const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith('image/')) {
-      toast.error(labels.selectImage);
+    e.target.value = '';
+    if (!file) return;
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+    if (!isImage && !isVideo) {
+      toast.error(labels.selectMedia);
       return;
     }
-    e.target.value = '';
     try {
-      const { file_url } = await api.upload.image(file);
-      sendMessageMutation.mutate({ content: '', type: 'image', media_url: file_url, reply_to_message_id: replyTarget?.id || undefined });
+      if (isImage) {
+        const previewUrl = URL.createObjectURL(file);
+        setCameraDraft({
+          blob: file,
+          mimeType: file.type || 'image/jpeg',
+          isVideo: false,
+          caption: '',
+          previewUrl,
+        });
+        setCameraPreviewOpen(true);
+        return;
+      }
+      const videoResult = await api.upload.video({ file });
+      const file_url = videoResult?.file_url ?? videoResult?.url;
+      if (!file_url) {
+        toast.error(labels.uploadError);
+        return;
+      }
+      sendMessageMutation.mutate({
+        content: '',
+        type: 'video',
+        media_url: file_url,
+        reply_to_message_id: replyTarget?.id || undefined,
+        is_ephemeral: ephemeralMode === true ? true : undefined,
+        expires_at: ephemeralMode ? ephemeralExpiresIso() : undefined,
+      });
     } catch (err) {
       toast.error(err?.response?.data?.error?.message || err?.response?.data?.message || err?.apiMessage || labels.uploadError);
     }
   };
 
-  const startRecording = async () => {
+  const handleDocumentSelect = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !userId) return;
+    setDocumentSending(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      const up = await api.upload.document(file);
+      const url = up?.file_url;
+      if (!url) {
+        toast.error(labels.uploadError);
+        return;
+      }
+      await sendMessageMutation.mutateAsync({
+        content: file.name,
+        type: 'file',
+        media_url: url,
+        reply_to_message_id: replyTarget?.id || undefined,
+        is_ephemeral: ephemeralMode === true ? true : undefined,
+        expires_at: ephemeralMode ? ephemeralExpiresIso() : undefined,
+      });
+    } catch (err) {
+      const apiMsg = err?.response?.data?.error?.message || err?.response?.data?.message || err?.apiMessage;
+      toast.error(apiMsg || labels.documentSendError || labels.uploadError);
+    } finally {
+      setDocumentSending(false);
+    }
+  };
+
+  const cancelRecording = useCallback(() => {
+    discardRecordingRef.current = true;
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state !== 'inactive') {
+      try {
+        rec.stop();
+      } catch {
+        /* ignore */
+      }
+    } else {
+      recordingStreamRef.current?.getTracks().forEach((t) => t.stop());
+      recordingStreamRef.current = null;
+      mediaRecorderRef.current = null;
+    }
+    setIsRecording(false);
+  }, []);
+
+  const startRecording = async () => {
+    if (typeof MediaRecorder === 'undefined') {
+      toast.error(labels.voiceUnsupported);
+      return;
+    }
+    try {
+      clearVoiceDraft();
+      discardRecordingRef.current = false;
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      recordingStreamRef.current = stream;
+
+      const preferredMime = pickAudioRecorderMimeType();
+      let recorder;
+      try {
+        recorder = preferredMime ? new MediaRecorder(stream, { mimeType: preferredMime }) : new MediaRecorder(stream);
+      } catch {
+        recorder = new MediaRecorder(stream);
+      }
+
       audioChunksRef.current = [];
       recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) audioChunksRef.current.push(event.data);
       };
-      recorder.onstop = async () => {
+
+      recorder.onerror = () => {
+        toast.error(labels.voiceStartError);
+        discardRecordingRef.current = true;
         try {
-          const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-          if (audioBlob.size === 0) return;
-          const ext = audioBlob.type.includes('ogg') ? 'ogg' : 'webm';
-          const audioFile = new File([audioBlob], `voice-${Date.now()}.${ext}`, { type: audioBlob.type || 'audio/webm' });
-          const { file_url } = await api.upload.audio(audioFile);
-          sendMessageMutation.mutate({ content: '', type: 'voice', media_url: file_url, reply_to_message_id: replyTarget?.id || undefined });
+          if (recorder.state !== 'inactive') recorder.stop();
+        } catch {
+          /* ignore */
+        }
+        recordingStreamRef.current?.getTracks().forEach((t) => t.stop());
+        recordingStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        setIsRecording(false);
+      };
+
+      recorder.onstop = () => {
+        try {
+          recordingStreamRef.current?.getTracks().forEach((t) => t.stop());
+          recordingStreamRef.current = null;
+          mediaRecorderRef.current = null;
+
+          if (discardRecordingRef.current) {
+            discardRecordingRef.current = false;
+            return;
+          }
+
+          const mime = (recorder.mimeType && String(recorder.mimeType)) || preferredMime || 'audio/webm';
+          const audioBlob = new Blob(audioChunksRef.current, { type: mime });
+          if (audioBlob.size === 0) {
+            toast.error(labels.voiceEmptyError);
+            return;
+          }
+
+          const durationSec = Math.max(0, (Date.now() - recordingStartedAtRef.current) / 1000);
+          if (durationSec < 0.45 && audioBlob.size < 2000) {
+            toast.info(labels.voiceTooShort);
+            return;
+          }
+
+          const url = URL.createObjectURL(audioBlob);
+          latestVoicePreviewUrlRef.current = url;
+          setVoiceDraft({
+            blob: audioBlob,
+            objectUrl: url,
+            mimeType: audioBlob.type || mime,
+            durationSec: Math.max(1, Math.round(durationSec)),
+          });
         } catch (_err) {
           toast.error(labels.voiceStopError);
-        } finally {
-          stream.getTracks().forEach((track) => track.stop());
         }
       };
-      recorder.start();
+
+      recordingStartedAtRef.current = Date.now();
+      setRecordingSeconds(0);
       mediaRecorderRef.current = recorder;
+      try {
+        recorder.start(250);
+      } catch {
+        recorder.start();
+      }
       setIsRecording(true);
-    } catch (_err) {
-      toast.error(labels.voiceStartError);
+    } catch (err) {
+      const name = err?.name || '';
+      const msg = String(err?.message || '');
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || /permission/i.test(msg)) {
+        toast.info('Autorisez le micro dans votre navigateur pour envoyer des messages vocaux.', { duration: 4500 });
+      } else if (name === 'NotFoundError' || /not found|no device/i.test(msg)) {
+        toast.error('Aucun microphone détecté.');
+      } else {
+        toast.error(labels.voiceStartError);
+      }
     }
   };
 
   const stopRecording = () => {
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state !== 'inactive') {
-      recorder.stop();
+      try {
+        recorder.stop();
+      } catch {
+        /* ignore */
+      }
     }
     setIsRecording(false);
   };
 
-  if (!currentUser) {
+  if (isLoadingAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-      </div>
+      <ChatScreenShell centered>
+        <ChatLoadingState label="Chargement de vos messages..." />
+      </ChatScreenShell>
     );
   }
+
+  if (!isAuthenticated || !currentUser) return null;
 
   if (!userId) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4">
-        <p className="text-gray-500 mb-4">{labels.selectConversation}</p>
-        <Button onClick={() => navigate(createPageUrl('Inbox'))}>{labels.backToMessages}</Button>
-        <BottomNav />
-      </div>
+      <ChatScreenShell centered>
+        <div className={`w-full max-w-md rounded-[28px] p-8 text-center ${CHAT_SURFACE}`}>
+          <p className="mb-4 text-white/70">{labels.selectConversation}</p>
+          <Button onClick={() => navigate(createPageUrl('Inbox'))} className="rounded-full bg-white text-slate-950 hover:bg-white/90">{labels.backToMessages}</Button>
+        </div>
+      </ChatScreenShell>
     );
   }
 
-  if (loadingConv || !otherUser) {
+  const waitingForConversation = !!userId && !conversationId && !!loadingConv && !isErrorConv;
+
+  if (isErrorConv && !conversationData) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-      </div>
+      <ChatScreenShell centered>
+        <div className={`w-full max-w-md rounded-[28px] p-8 text-center ${CHAT_SURFACE}`}>
+          <p className="mb-4 text-white/75">Impossible de charger cette conversation.</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <Button onClick={() => refetchConv()} className="rounded-full bg-white text-slate-950 hover:bg-white/90">
+              Réessayer
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => navigate(createPageUrl('Inbox'))}
+              className="rounded-full border-white/20 bg-transparent text-white hover:bg-white/10"
+            >
+              {labels.backToMessages}
+            </Button>
+          </div>
+        </div>
+      </ChatScreenShell>
     );
   }
 
   return (
-    <div className="h-[100dvh] bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white flex flex-col overflow-hidden">
-      {!isConnected && (
-        <div className="shrink-0 px-3 py-1.5 bg-amber-500/20 text-amber-200 text-xs text-center border-b border-amber-500/30" role="status">
+    <ChatScreenShell wallpaper={wallpaperTheme}>
+      {showReconnectBanner && (
+        <div className="relative z-10 shrink-0 border-b border-amber-500/20 bg-amber-500/12 px-3 py-1.5 text-center text-xs text-amber-100/88" role="status">
           Reconnexion en cours…
         </div>
       )}
-      <div className="flex items-center gap-3 px-3 py-3 border-b border-blue-900/40 shrink-0 bg-slate-950/85 backdrop-blur">
-        <button onClick={() => navigate(-1)} className="p-2 hover:bg-white/10 rounded-lg transition-colors" aria-label="Retour">
+      {e2eeHealth && !e2eeHealth.healthy && (
+        <div className="relative z-10 flex shrink-0 items-center justify-between gap-3 border-b border-orange-500/30 bg-orange-500/12 px-3 py-2 text-xs text-orange-100">
+          <span>
+            Les messages ne sont pas entièrement protégés sur cet appareil. Appuyez sur Réparer pour corriger.
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleE2eeRepair}
+            disabled={e2eeRepairing}
+            className="h-7 rounded-full border-orange-300/45 bg-transparent px-3 text-[11px] text-orange-50 hover:bg-orange-500/20"
+          >
+            {e2eeRepairing ? 'Réparation…' : 'Réparer'}
+          </Button>
+        </div>
+      )}
+      <div className="relative z-10 flex shrink-0 items-center gap-3 border-b border-white/[0.06] bg-[#070a12]/88 px-[max(0.75rem,env(safe-area-inset-left,0px))] pr-[max(0.75rem,env(safe-area-inset-right,0px))] pb-3 pt-[calc(0.65rem+env(safe-area-inset-top,0px))] backdrop-blur-2xl">
+        <button onClick={() => navigate(-1)} className={`p-2 transition-colors ${CHAT_ICON_BUTTON}`} aria-label="Retour">
           <ArrowLeft className="w-5 h-5 text-white" />
         </button>
-        <Avatar className="w-10 h-10">
-          <AvatarImage src={otherUser?.profile_image} />
-          <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
-            {otherUser?.full_name?.[0]?.toUpperCase() || 'U'}
-          </AvatarFallback>
-        </Avatar>
+        <div className="relative shrink-0">
+          <Avatar className="h-11 w-11 ring-1 ring-white/12 shadow-[0_12px_28px_rgba(0,0,0,0.35)]">
+            <AvatarImage src={otherUser?.profile_image} />
+            <AvatarFallback className="bg-gradient-to-br from-slate-600 to-slate-800 text-white">
+              {(otherUser?.full_name?.[0] || otherUser?.username?.[0] || '?').toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          {(recordingUser || typingUser || presence?.is_online) && (
+            <span
+              className={cn(
+                'absolute bottom-0 right-0 h-3 w-3 rounded-full ring-2 ring-[#070a12]',
+                recordingUser ? 'bg-amber-400' : typingUser ? 'bg-sky-400' : 'bg-emerald-500'
+              )}
+              title={
+                recordingUser
+                  ? labels.recordingSuffix
+                  : typingUser
+                    ? labels.typingSuffix
+                    : labels.online
+              }
+              aria-hidden
+            />
+          )}
+        </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-white truncate">{otherUser?.full_name || otherUser?.username || 'Utilisateur'}</p>
-          <p className="text-xs text-blue-100/70 truncate">
-            {typingUser
-              ? `${typingUser.name} ${labels.typingSuffix}`
-              : presence?.is_online
-                ? labels.online
-                : presence?.last_seen
-                  ? `Vu ${formatDistanceToNow(new Date(presence.last_seen), { addSuffix: true, locale: fr })}`
-                  : labels.offline}
+          <p className="truncate text-[15px] font-semibold tracking-[-0.02em] text-white">
+            {otherUser?.full_name || otherUser?.username || 'Discussion'}
           </p>
+          <p className="truncate text-xs text-white/58">{presenceLabel}</p>
+          {(!e2eeHealth || !e2eeHealth.healthy) && (
+            <p className={cn('truncate text-[11px]', !e2eeHealth ? 'text-white/45' : 'text-orange-200/90')}>
+              {e2eeStatusText}
+            </p>
+          )}
         </div>
         {selectionMode && (
           <button
@@ -877,7 +2416,7 @@ export default function Chat() {
         <Button
           variant="ghost"
           size="icon"
-          className="text-blue-200 hover:text-white hover:bg-blue-500/30 rounded-full"
+          className={cn('h-10 w-10', CHAT_ICON_BUTTON)}
           aria-label={labels.voiceCall}
           onClick={() => handleStartCall('audio')}
         >
@@ -886,7 +2425,7 @@ export default function Chat() {
         <Button
           variant="ghost"
           size="icon"
-          className="text-blue-200 hover:text-white hover:bg-blue-500/30 rounded-full"
+          className={cn('h-10 w-10', CHAT_ICON_BUTTON)}
           aria-label={labels.videoCall}
           onClick={() => handleStartCall('video')}
         >
@@ -894,135 +2433,439 @@ export default function Chat() {
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="text-blue-200 hover:text-white hover:bg-blue-500/30 rounded-full">
+            <Button variant="ghost" size="icon" className={cn('h-10 w-10', CHAT_ICON_BUTTON)} aria-label={labels.chatHeaderMenuAria}>
               <MoreVertical className="w-5 h-5" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuContent
+            align="end"
+            className="z-[200] max-h-[min(72dvh,520px)] w-[min(100vw-2rem,288px)] overflow-y-auto border border-white/12 bg-[#0b1019] p-1 text-white shadow-[0_24px_60px_rgba(2,6,23,0.35)]"
+          >
             <DropdownMenuItem
-              className="cursor-pointer"
-              onClick={handleBlockUser}
-              disabled={blockMutation.isPending}
+              className="cursor-pointer focus:bg-white/[0.06] focus:text-white"
+              onClick={handleHeaderNewGroup}
             >
-              <ShieldBan className="w-4 h-4 mr-2 text-blue-600" />
-              {labels.blockUser}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="cursor-pointer"
-              onClick={handleReportLastMessage}
-              disabled={reportMutation.isPending}
-            >
-              <Flag className="w-4 h-4 mr-2 text-blue-600" />
-              {labels.reportLast}
+              <Users className="w-4 h-4 text-white/72" />
+              {labels.menuNewGroup}
             </DropdownMenuItem>
             <DropdownMenuItem
-              className="cursor-pointer text-red-600 focus:text-red-600"
-              onClick={handleDeleteMyLastMessage}
-              disabled={deleteMessageMutation.isPending}
+              className="cursor-pointer focus:bg-white/[0.06] focus:text-white"
+              onClick={handleHeaderViewContact}
+              disabled={!otherUser?.id}
             >
-              <Trash2 className="w-4 h-4 mr-2" />
-              {labels.deleteMyLast}
+              <UserCircle className="w-4 h-4 text-white/72" />
+              {labels.menuViewContact}
             </DropdownMenuItem>
-            <DropdownMenuItem className="cursor-pointer" onClick={handleExportConversations}>
-              <Download className="w-4 h-4 mr-2" />
-              Exporter la conversation
+            <DropdownMenuSeparator className="bg-white/10" />
+            <DropdownMenuItem
+              className="cursor-pointer focus:bg-white/[0.06] focus:text-white"
+              onClick={() => {
+                setChatSearchOpen((o) => {
+                  if (o) setChatSearchQuery('');
+                  return !o;
+                });
+              }}
+            >
+              <Search className="w-4 h-4 text-white/72" />
+              {labels.menuSearch}
             </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer focus:bg-white/[0.06] focus:text-white"
+              onClick={() => {
+                setMediaGalleryTab('media');
+                setMediaGalleryOpen(true);
+              }}
+            >
+              <ImageIcon className="w-4 h-4 text-white/72" />
+              {labels.menuMediaLinksDocs}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer focus:bg-white/[0.06] focus:text-white"
+              onClick={handleToggleMute}
+              disabled={!conversationId || muteConversationMutation.isPending}
+            >
+              {conversationMuted ? <Bell className="w-4 h-4 text-white/72" /> : <BellOff className="w-4 h-4 text-white/72" />}
+              {conversationMuted ? labels.menuUnmute : labels.menuMute}
+            </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="cursor-pointer rounded-sm focus:bg-white/[0.06] focus:text-white data-[state=open]:bg-white/[0.06]">
+                <Timer className="w-4 h-4 text-white/72" />
+                {labels.menuEphemeralTitle}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent
+                sideOffset={6}
+                className="z-[220] min-w-[200px] border border-white/12 bg-[#0b1019] p-1 text-white shadow-[0_24px_60px_rgba(2,6,23,0.35)]"
+              >
+                <DropdownMenuItem
+                  className="focus:bg-white/[0.06] focus:text-white"
+                  onClick={() => handleSetEphemeralDuration(0)}
+                >
+                  {labels.ephemeralDurationOff}
+                  {!ephemeralMode ? ' ✓' : ''}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="focus:bg-white/[0.06] focus:text-white"
+                  onClick={() => handleSetEphemeralDuration(EPHEMERAL_TTL_SECONDS.H24)}
+                >
+                  {labels.ephemeral24h}
+                  {ephemeralMode && ephemeralTtlSec === EPHEMERAL_TTL_SECONDS.H24 ? ' ✓' : ''}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="focus:bg-white/[0.06] focus:text-white"
+                  onClick={() => handleSetEphemeralDuration(EPHEMERAL_TTL_SECONDS.D7)}
+                >
+                  {labels.ephemeral7d}
+                  {ephemeralMode && ephemeralTtlSec === EPHEMERAL_TTL_SECONDS.D7 ? ' ✓' : ''}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="focus:bg-white/[0.06] focus:text-white"
+                  onClick={() => handleSetEphemeralDuration(EPHEMERAL_TTL_SECONDS.D90)}
+                >
+                  {labels.ephemeral90d}
+                  {ephemeralMode && ephemeralTtlSec === EPHEMERAL_TTL_SECONDS.D90 ? ' ✓' : ''}
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="cursor-pointer rounded-sm focus:bg-white/[0.06] focus:text-white data-[state=open]:bg-white/[0.06]">
+                <Sparkles className="w-4 h-4 text-white/72" />
+                {labels.menuChatTheme}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent
+                sideOffset={6}
+                className="z-[220] w-56 border border-white/12 bg-[#0b1019] p-1 text-white shadow-[0_24px_60px_rgba(2,6,23,0.35)]"
+              >
+                <DropdownMenuItem className="focus:bg-white/[0.06] focus:text-white" onClick={() => handlePersistWallpaper('default')}>
+                  {labels.menuThemeDefault}
+                </DropdownMenuItem>
+                <DropdownMenuItem className="focus:bg-white/[0.06] focus:text-white" onClick={() => handlePersistWallpaper('pattern')}>
+                  {labels.menuThemePattern}
+                </DropdownMenuItem>
+                <DropdownMenuItem className="focus:bg-white/[0.06] focus:text-white" onClick={() => handlePersistWallpaper('midnight')}>
+                  {labels.menuThemeMidnight}
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSeparator className="bg-white/10" />
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="cursor-pointer rounded-sm focus:bg-white/[0.06] focus:text-white data-[state=open]:bg-white/[0.06]">
+                <MoreHorizontal className="w-4 h-4 text-white/72" />
+                {labels.menuMore}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent
+                sideOffset={6}
+                className="z-[220] w-[min(100vw-2rem,260px)] border border-white/12 bg-[#0b1019] p-1 text-white shadow-[0_24px_60px_rgba(2,6,23,0.35)]"
+              >
+                <DropdownMenuItem
+                  className="cursor-pointer focus:bg-white/[0.06] focus:text-white"
+                  onClick={handleReportLastMessage}
+                  disabled={reportMutation.isPending}
+                >
+                  <Flag className="w-4 h-4 text-white/72" />
+                  {labels.menuReport}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer focus:bg-white/[0.06] focus:text-white"
+                  onClick={handleBlockUser}
+                  disabled={blockMutation.isPending}
+                >
+                  <ShieldBan className="w-4 h-4 text-white/72" />
+                  {labels.menuBlock}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer text-amber-200 focus:bg-white/[0.06] focus:text-amber-100"
+                  onClick={handleClearChatContent}
+                  disabled={!conversationId || clearHistoryMutation.isPending}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {labels.menuClearChat}
+                </DropdownMenuItem>
+                <DropdownMenuItem className="cursor-pointer focus:bg-white/[0.06] focus:text-white" onClick={handleCopyShortcutLink}>
+                  <Link2 className="w-4 h-4 text-white/72" />
+                  {labels.menuAddShortcut}
+                </DropdownMenuItem>
+                <DropdownMenuItem className="cursor-pointer focus:bg-white/[0.06] focus:text-white" onClick={handleAddContactToList}>
+                  <ListPlus className="w-4 h-4 text-white/72" />
+                  {labels.menuAddToList}
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
 
+      {chatSearchOpen && (
+        <div className="relative z-10 flex shrink-0 items-center gap-2 border-b border-white/8 bg-black/25 px-3 py-2 backdrop-blur-md">
+          <Search className="h-4 w-4 shrink-0 text-white/45" aria-hidden />
+          <Input
+            value={chatSearchQuery}
+            onChange={(e) => setChatSearchQuery(e.target.value)}
+            placeholder={labels.searchInChatPlaceholder}
+            className="h-9 flex-1 border-white/12 bg-white/[0.06] text-sm text-white placeholder:text-white/35"
+            autoFocus
+          />
+          <Button type="button" variant="ghost" size="icon" className={CHAT_ICON_BUTTON} onClick={() => { setChatSearchOpen(false); setChatSearchQuery(''); }} aria-label={labels.cancel}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
       {orderId && (
-        <div className="px-4 py-2 bg-blue-500/10 border-b border-blue-400/20 flex items-center justify-between gap-2">
-          <span className="text-sm text-amber-200">{labels.orderConversation}{orderId.slice(0, 8)}</span>
-          <Button variant="outline" size="sm" className="border-amber-300/60 text-amber-100 bg-transparent shrink-0" onClick={() => navigate(`${createPageUrl('OrderTracking')}?id=${orderId}`)}>
+        <div className="relative z-10 flex items-center justify-between gap-2 border-b border-white/8 bg-white/[0.03] px-4 py-2">
+          <span className="text-sm text-white/78">{labels.orderConversation}{orderId.slice(0, 8)}</span>
+          <Button variant="outline" size="sm" className="shrink-0 border-white/20 bg-transparent text-white hover:bg-white/10" onClick={() => navigate(`${createPageUrl('OrderTracking')}?id=${orderId}`)}>
             {labels.viewOrder}
           </Button>
         </div>
       )}
 
-      {conversation?.pinned_message && (
-        <div className="shrink-0 px-3 py-2 bg-blue-500/15 border-b border-blue-400/20 flex items-center gap-2">
-          <Pin className="w-4 h-4 text-blue-300 shrink-0" />
+      {activeConversation?.pinned_message && (
+        <div className="relative z-10 flex shrink-0 items-center gap-2 border-b border-white/8 bg-white/[0.03] px-3 py-2">
+          <Pin className="w-4 h-4 shrink-0 text-white/70" />
           <div className="min-w-0 flex-1">
-            <p className="text-xs text-blue-200/80">{labels.pinnedMessage ?? 'Message épinglé'}</p>
-            <p className="text-sm text-blue-50 truncate">{conversation.pinned_message.content || '—'}</p>
+            <p className="text-xs text-white/60">{labels.pinnedMessage ?? 'Message épinglé'}</p>
+            <p className="truncate text-sm text-white">{stripChatMarkupForPreview(activeConversation.pinned_message.content || '') || '—'}</p>
           </div>
         </div>
       )}
 
       <div
-        className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3"
-        style={{ paddingBottom: 'calc(190px + env(safe-area-inset-bottom, 0px))' }}
+        className="relative z-10 flex-1 min-h-0 overflow-y-auto pl-[max(0.75rem,env(safe-area-inset-left,0px))] pr-[max(0.75rem,env(safe-area-inset-right,0px))] pt-4"
+        data-view-once-rev={viewOnceUiTick}
+        style={{
+          paddingBottom: `calc(${
+            attachmentSheetOpen || composerStickerOpen
+              ? Math.max(showSchedule ? 286 : replyTarget ? 214 : 158, 360)
+              : showSchedule
+                ? 286
+                : replyTarget
+                  ? 214
+                  : 158
+          }px + env(safe-area-inset-bottom, 0px))`,
+        }}
       >
-        {hasMore && (
+        <div className="mx-auto flex w-full max-w-3xl flex-col space-y-2.5">
+        {hasMore && !waitingForConversation && (
           <div className="flex justify-center py-2">
-            <Button variant="ghost" size="sm" onClick={loadOlder} disabled={loadingOlder}>
+            <Button variant="ghost" size="sm" onClick={loadOlder} disabled={loadingOlder} className="rounded-full border border-white/10 bg-white/[0.03] text-white/80 hover:bg-white/[0.06]">
               {loadingOlder ? <Loader2 className="w-4 h-4 animate-spin" /> : labels.loadOlder}
             </Button>
           </div>
         )}
-        {loadingMessages ? (
-          <div className="flex justify-center h-24">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        {waitingForConversation ? (
+          <div className="flex flex-col items-center justify-center py-10" role="status" aria-live="polite">
+            <Loader2 className="h-7 w-7 animate-spin text-white/35" aria-hidden />
+            <p className="mt-3 text-sm text-white/45">Ouverture de la conversation…</p>
           </div>
-        ) : messages.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-center min-h-[200px]">
-            <div>
-              <p className="text-blue-100/70">{labels.noMessage}</p>
-              <p className="text-sm text-blue-100/50">{labels.startConversation}</p>
+        ) : messagesPending ? (
+          <div className="flex flex-col items-center justify-center py-10" role="status" aria-live="polite">
+            <Loader2 className="h-7 w-7 animate-spin text-white/35" aria-hidden />
+            <p className="mt-3 text-sm text-white/45">Chargement des messages…</p>
+          </div>
+        ) : messages.length === 0 && outgoingPending.length === 0 ? (
+          <div className="flex min-h-[min(280px,48dvh)] flex-col items-center justify-center px-6 py-10 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.06]">
+              <MessageCircle className="h-8 w-8 text-white/40" strokeWidth={1.5} aria-hidden />
             </div>
+            <p className="text-[15px] font-medium text-white/92">{labels.noMessage}</p>
+            <p className="mt-2 max-w-[280px] text-sm leading-relaxed text-white/42">{labels.startConversation}</p>
+          </div>
+        ) : displayedMessages.length === 0 ? (
+          <div className="flex min-h-[min(200px,36dvh)] flex-col items-center justify-center px-6 py-10 text-center">
+            <Search className="mb-3 h-10 w-10 text-white/30" aria-hidden />
+            <p className="text-sm text-white/65">{labels.noSearchResults}</p>
           </div>
         ) : (
-          messages.map((msg) => {
+          displayedMessages.map((msg, index) => {
             if (msg.is_deleted) {
               return (
                 <div key={msg.id} className="flex justify-center">
-                  <span className="text-xs text-gray-400">{labels.deletedMessage}</span>
+                  <span className="rounded-full border border-white/8 bg-white/[0.03] px-3 py-1 text-xs text-white/42">{labels.deletedMessage}</span>
                 </div>
               );
             }
             const isOwn = msg.sender_id === currentUser?.id;
             const isImage = msg.type === 'image' && msg.media_url;
+            const isVideo = msg.type === 'video' && msg.media_url;
             const isAudio = (msg.type === 'audio' || msg.type === 'voice') && msg.media_url;
+            const isSticker = msg.type === 'sticker' && msg.sticker_url;
             const isLocation = msg.type === 'location' && (msg.location_lat != null && msg.location_lng != null);
             const isContact = msg.type === 'contact' && (msg.contact_user_id || msg.contact_name);
+            const isFile = msg.type === 'file' && msg.media_url;
+            const displayContent = decryptedContentByMessageId[msg.id] ?? msg.content;
+            const strictE2eeBlocked =
+              E2EE_STRICT_MODE &&
+              !isOwn &&
+              String(msg.type || 'text').toLowerCase() === 'text' &&
+              !decryptedContentByMessageId[msg.id];
+            const msgIsEphemeral = msg.is_ephemeral === true || msg.isEphemeral === true;
             const reactionsMap = (msg.reactions && typeof msg.reactions === 'object') ? msg.reactions : {};
             const myReaction = currentUser?.id ? reactionsMap[currentUser.id] : null;
             const reactionToShow = myReaction || Object.values(reactionsMap)[0];
+            const reactionUserCount = Object.keys(reactionsMap).length;
+            const previousMessage = displayedMessages[index - 1];
+            const showIncomingAvatar = !isOwn && (!previousMessage || previousMessage.sender_id !== msg.sender_id);
             return (
               <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex items-end gap-2 ${isOwn ? 'justify-end' : 'justify-start'}`}>
                 {selectionMode && (
                   <button
                     type="button"
-                    className={`w-5 h-5 rounded border ${selectedMessageIds.includes(msg.id) ? 'bg-blue-600 border-blue-600' : 'border-blue-200/40 bg-transparent'}`}
+                    className={`w-5 h-5 rounded border ${selectedMessageIds.includes(msg.id) ? 'bg-white border-white' : 'border-white/25 bg-transparent'}`}
                     onClick={() => toggleSelectMessage(msg.id)}
                     aria-label={labels.select}
                   />
                 )}
-                <div className={`relative max-w-[76%] sm:max-w-[68%] ${isOwn ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white' : 'bg-slate-800 text-blue-50'} rounded-2xl px-4 py-2 shadow-sm`}>
-                  <button
-                    type="button"
-                    className={`absolute top-1 right-1 p-1 rounded-full ${isOwn ? 'hover:bg-white/15' : 'hover:bg-black/5'}`}
-                    onClick={() => openMessageActions(msg)}
-                    aria-label={labels.actions}
-                  >
-                    <MoreVertical className={`w-3.5 h-3.5 ${isOwn ? 'text-white/80' : 'text-blue-100/70'}`} />
-                  </button>
+                {!isOwn && !isAudio && (
+                  showIncomingAvatar ? (
+                    <Avatar className="h-7 w-7 self-end border border-white/20">
+                      <AvatarImage src={msg.sender?.profile_image || otherUser?.profile_image} />
+                      <AvatarFallback className="bg-white/30 text-[10px] text-white">
+                        {(msg.sender?.full_name || msg.sender?.username || otherUser?.full_name || 'U')[0]?.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  ) : (
+                    <div className="w-7 shrink-0" />
+                  )
+                )}
+                <div
+                  {...bindMessageLongPress(msg)}
+                  className={cn(
+                    'relative max-w-[85%] rounded-[26px] px-4 py-2.5 shadow-[0_14px_32px_rgba(2,6,23,0.18)] sm:max-w-[72%]',
+                    isOwn && isAudio
+                      ? 'max-w-[min(92%,300px)] rounded-lg rounded-br-sm border-0 bg-white px-2.5 py-2 shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] text-[#111b21]'
+                      : isOwn
+                        ? 'rounded-br-md border border-white/12 bg-[#1a2332] text-white'
+                        : isAudio
+                          ? 'max-w-[min(92%,300px)] rounded-lg rounded-bl-sm border-0 bg-white px-2.5 py-2 shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] text-[#111b21]'
+                          : 'rounded-bl-md border border-white/10 bg-[#161d2b] text-white/95',
+                    msg._localPending && msg.status === 'sending' && isOwn && !isAudio && 'opacity-[0.92]'
+                  )}
+                >
                   {msg.reply_to && (
-                    <div className={`mb-2 rounded-lg px-2 py-1 border-l-2 ${isOwn ? 'bg-white/15 border-white/60 text-white/90' : 'bg-slate-700 border-blue-200 text-blue-100/80'}`}>
-                      <p className="text-[10px] font-semibold">{labels.replyingTo}</p>
-                      <p className="text-xs truncate">{msg.reply_to.content || labels.voiceMessage}</p>
+                    <div className="mb-2.5 space-y-1">
+                      <p
+                        className={cn(
+                          'text-[11px] font-medium leading-tight',
+                          isAudio ? 'text-[#667781]' : 'text-white/42'
+                        )}
+                      >
+                        {getReplyThreadLabel(msg, isOwn, currentUser?.id, otherUser, labels)}
+                      </p>
+                      <div
+                        className={cn(
+                          'rounded-2xl border-l-[3px] px-3 py-2',
+                          isAudio
+                            ? isOwn
+                              ? 'border-l-[#1f8f54] bg-[#111b21]/[0.05]'
+                              : 'border-l-[#25D366] bg-[#111b21]/[0.04]'
+                            : isOwn
+                              ? 'border-l-white/80 bg-black/28'
+                              : 'border-l-emerald-400/75 bg-black/32'
+                        )}
+                      >
+                        <p
+                          className={cn(
+                            'line-clamp-3 text-[13px] leading-snug',
+                            isAudio ? 'text-[#111b21]/85' : 'text-white/78'
+                          )}
+                        >
+                          {getReplySnippet(msg.reply_to, labels)}
+                        </p>
+                      </div>
                     </div>
                   )}
                   {isImage && (
-                    <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden max-w-[260px] my-1">
-                      <img src={msg.media_url} alt="" className="w-full h-auto object-cover" />
-                    </a>
+                    isOwn || !msgIsEphemeral ? (
+                      <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="my-1 block max-w-[260px] overflow-hidden rounded-lg">
+                        <img src={msg.media_url} alt="" className="h-auto w-full object-cover" />
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        className={cn(
+                          'my-1 flex max-w-[260px] items-center gap-2 rounded-2xl border px-3 py-2 text-left transition',
+                          isViewOnceConsumed(msg.id)
+                            ? 'cursor-default border-white/12 bg-white/[0.04] text-white/65'
+                            : 'border-emerald-400/35 bg-emerald-500/10 text-white hover:bg-emerald-500/16'
+                        )}
+                        onClick={() => {
+                          if (isViewOnceConsumed(msg.id)) return;
+                          setViewOnceModal({ id: msg.id, url: msg.media_url, kind: 'image' });
+                        }}
+                        aria-label={labels.viewOnceTapToOpen}
+                      >
+                        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-current/50 text-xs font-semibold">
+                          1
+                        </span>
+                        <span className="truncate text-[14px] font-medium">{labels.imageMessage || 'Photo'}</span>
+                      </button>
+                    )
+                  )}
+                  {isVideo && (
+                    isOwn || !msgIsEphemeral ? (
+                      <div className="my-1 max-w-[260px] overflow-hidden rounded-lg">
+                        <video src={msg.media_url} controls playsInline className="max-h-[min(360px,50dvh)] w-full bg-black object-contain" preload="metadata" />
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className={cn(
+                          'my-1 flex max-w-[260px] items-center gap-2 rounded-2xl border px-3 py-2 text-left transition',
+                          isViewOnceConsumed(msg.id)
+                            ? 'cursor-default border-white/12 bg-white/[0.04] text-white/65'
+                            : 'border-emerald-400/35 bg-emerald-500/10 text-white hover:bg-emerald-500/16'
+                        )}
+                        onClick={() => {
+                          if (isViewOnceConsumed(msg.id)) return;
+                          setViewOnceModal({ id: msg.id, url: msg.media_url, kind: 'video' });
+                        }}
+                        aria-label={labels.viewOnceTapToOpen}
+                      >
+                        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-current/50 text-xs font-semibold">
+                          1
+                        </span>
+                        <span className="truncate text-[14px] font-medium">{labels.videoMessage || 'Video'}</span>
+                      </button>
+                    )
+                  )}
+                  {isSticker && (
+                    <div className="my-1 max-w-[200px]">
+                      <img src={msg.sticker_url} alt="" className="h-32 w-32 object-contain sm:h-36 sm:w-36" loading="lazy" decoding="async" />
+                    </div>
                   )}
                   {isAudio && (
-                    <div className="my-1">
-                      <audio controls src={msg.media_url} className="max-w-[240px]" />
-                      {!msg.content && <p className={`text-xs mt-1 ${isOwn ? 'text-white/80' : 'text-blue-100/70'}`}>{labels.voiceMessage}</p>}
+                    <div className={cn('my-0.5', isOwn && '-mx-0.5')}>
+                      <ChatVoiceMessage
+                        src={msg.media_url}
+                        isOwn={isOwn}
+                        avatarUrl={
+                          isOwn
+                            ? currentUser?.profile_image || currentUser?.avatar
+                            : msg.sender?.profile_image || otherUser?.profile_image
+                        }
+                        avatarFallback={
+                          isOwn
+                            ? (currentUser?.full_name || currentUser?.username || 'M')[0]?.toUpperCase() || 'M'
+                            : (msg.sender?.full_name || msg.sender?.username || otherUser?.full_name || 'U')[0]?.toUpperCase() || 'U'
+                        }
+                        messageId={msg.id}
+                        createdAt={msg.created_at}
+                        receiptStatus={isOwn ? effectiveOwnReceiptStatus(msg) : null}
+                        labels={labels}
+                      />
+                      {msg.transcription_text ? (
+                        <p className="mt-2 text-[12px] leading-snug text-[#3b4a54]">{msg.transcription_text}</p>
+                      ) : null}
+                      {isOwn && !msg.transcription_text ? (
+                        <button
+                          type="button"
+                          disabled={transcribeVoiceMutation.isPending}
+                          onClick={() => transcribeVoiceMutation.mutate(msg.id)}
+                          className="mt-1.5 text-[11px] font-semibold text-[#027eb5] hover:underline disabled:opacity-50"
+                        >
+                          {transcribeVoiceMutation.isPending ? labels.transcribingVoice : labels.transcribeVoice}
+                        </button>
+                      ) : null}
                     </div>
                   )}
                   {isLocation && (
@@ -1030,33 +2873,106 @@ export default function Chat() {
                       href={`https://www.google.com/maps?q=${msg.location_lat},${msg.location_lng}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className={`inline-flex items-center gap-2 my-1 px-2 py-1.5 rounded-lg ${isOwn ? 'bg-white/15 text-white' : 'bg-slate-700 text-blue-100'}`}
+                      className={`my-1 inline-flex items-center gap-2 rounded-2xl px-2.5 py-2 ${isOwn ? 'bg-white/14 text-white' : 'bg-white/[0.05] text-white/86'}`}
                     >
                       <MapPin className="w-4 h-4 shrink-0" />
-                      <span className="text-sm">{msg.location_label || msg.content || labels.locationMessage}</span>
+                      <span className="text-sm">{msg.location_label || displayContent || labels.locationMessage}</span>
                     </a>
                   )}
                   {isContact && (
-                    <div className={`inline-flex items-center gap-2 my-1 px-2 py-1.5 rounded-lg ${isOwn ? 'bg-white/15 text-white' : 'bg-slate-700 text-blue-100'}`}>
+                    <div className={`my-1 inline-flex items-center gap-2 rounded-2xl px-2.5 py-2 ${isOwn ? 'bg-white/14 text-white' : 'bg-white/[0.05] text-white/86'}`}>
                       <UserPlus className="w-4 h-4 shrink-0" />
-                      <span className="text-sm">{msg.contact_name || msg.content || labels.contactMessage}</span>
+                      <span className="text-sm">{msg.contact_name || displayContent || labels.contactMessage}</span>
                     </div>
                   )}
-                  {msg.content && typeof msg.content === 'string' && msg.content.trim() && !isLocation && !isContact && (
-                    <p className="break-words whitespace-pre-wrap">{msg.content}</p>
+                  {isFile && (
+                    <a
+                      href={msg.media_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`my-1 inline-flex max-w-full items-center gap-2 rounded-2xl border px-3 py-2 text-left text-sm transition ${isOwn ? 'border-white/20 bg-white/10 text-white hover:bg-white/14' : 'border-white/12 bg-black/25 text-white/90 hover:bg-black/35'}`}
+                    >
+                      <FileText className="h-4 w-4 shrink-0 text-emerald-300/90" />
+                      <span className="min-w-0 truncate underline-offset-2 hover:underline">{displayContent?.trim() || labels.attachDocument}</span>
+                    </a>
                   )}
-                  {!isImage && !isAudio && !isLocation && !isContact && !(msg.content && msg.content.trim()) && <p className="opacity-70">-</p>}
-                  <p className={`text-xs mt-1 flex items-center gap-1 flex-wrap ${isOwn ? 'text-white/70' : 'text-blue-100/65'}`}>
-                    {(msg.id === pinnedMessageId) && <Pin className="w-3 h-3" />}
-                    {msg.is_important && <Star className="w-3 h-3" />}
-                    {msg.is_ephemeral && <Timer className="w-3 h-3" title={labels.ephemeralMode} />}
-                    {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true, locale: fr })}
-                    {isOwn && msg.status === 'read' && ` · ${labels.read}`}
-                  </p>
+                  {((displayContent && typeof displayContent === 'string' && displayContent.trim()) || strictE2eeBlocked) && !isLocation && !isContact && !isSticker && !isFile && (
+                    <div className="text-[15px] leading-[1.35]">
+                      {strictE2eeBlocked ? (
+                        <span className="text-white/60">Message chiffre indisponible sur cet appareil</span>
+                      ) : (
+                        <ChatFormattedText
+                          text={displayContent}
+                          isOnLightBubble={isAudio}
+                          spoilerTapLabel={labels.spoilerTapReveal}
+                          className="text-[15px] leading-[1.35]"
+                        />
+                      )}
+                      {msg.is_edited === true && (
+                        <span className="mt-1 block text-[10px] font-medium text-white/36">{labels.messageEditedTag}</span>
+                      )}
+                    </div>
+                  )}
+                  {!isImage && !isVideo && !isFile && !isAudio && !isSticker && !isLocation && !isContact && !(displayContent && displayContent.trim()) && !strictE2eeBlocked && <p className="opacity-70">-</p>}
+                  {(msg.id === pinnedMessageId || msg.is_important || msgIsEphemeral || (!isAudio && !isSticker)) && (
+                    <p className={`mt-1.5 flex flex-wrap items-center gap-1 text-[11px] ${isOwn ? 'text-white/65' : 'text-white/46'}`}>
+                      {(msg.id === pinnedMessageId) && <Pin className="w-3 h-3" />}
+                      {msg.is_important && <Star className="w-3 h-3" />}
+                      {msgIsEphemeral && <Timer className="w-3 h-3" title={labels.ephemeralMode} />}
+                      {!isAudio && (
+                        <>
+                          {msg.status === 'scheduled' && isOwn && msg.scheduled_at ? (
+                            <>
+                              <Timer className="mr-0.5 inline h-3 w-3 align-middle" aria-hidden />
+                              {labels.scheduledMessageShort} · {format(new Date(msg.scheduled_at), "d MMM yyyy 'à' HH:mm", { locale: fr })}
+                            </>
+                          ) : (
+                            <>
+                              {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true, locale: fr })}
+                              {isOwn &&
+                                ['sent', 'delivered', 'read', 'sending', 'failed'].includes(effectiveOwnReceiptStatus(msg)) && (
+                                <span className="ml-1 inline-flex items-center gap-1 align-middle">
+                                  <MessageReceiptTicks status={effectiveOwnReceiptStatus(msg)} labels={labels} />
+                                  {msg._localPending && msg.status === 'failed' && (
+                                    <button
+                                      type="button"
+                                      className="rounded-md px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-amber-300/95 hover:bg-white/10"
+                                      onClick={() => retryFailedPending(msg)}
+                                    >
+                                      {labels.retrySend}
+                                    </button>
+                                  )}
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </>
+                      )}
+                    </p>
+                  )}
                   {reactionToShow && (
-                    <div className={`absolute -bottom-3 ${isOwn ? 'left-2' : 'right-2'} bg-white border border-gray-200 rounded-full px-2 py-0.5 text-xs shadow-sm text-black`}>
-                      {String(reactionToShow)}
-                    </div>
+                    <motion.button
+                      type="button"
+                      className={`absolute -bottom-3 ${isOwn ? 'left-3' : 'right-3'} flex items-center gap-0.5 rounded-full border border-white/12 bg-white px-2 py-0.5 text-xs text-black shadow-sm [touch-action:manipulation]`}
+                      animate={
+                        reactionBurstMessageId === msg.id
+                          ? { scale: [1, 1.38, 1], rotate: [0, -7, 7, 0] }
+                          : {}
+                      }
+                      transition={{ duration: 0.55, ease: 'easeOut' }}
+                      aria-label={labels.reactionsDetailTitle}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openReactionsDetail(msg.id);
+                      }}
+                    >
+                      <span className="leading-none">{String(reactionToShow)}</span>
+                      {reactionUserCount > 1 && (
+                        <span className="min-w-[1rem] rounded-full bg-black/10 px-1 text-[10px] font-semibold tabular-nums text-black/80">
+                          {reactionUserCount}
+                        </span>
+                      )}
+                    </motion.button>
                   )}
                 </div>
               </motion.div>
@@ -1064,126 +2980,272 @@ export default function Chat() {
           })
         )}
         <div ref={messageEndRef} />
+        </div>
       </div>
 
-      <input ref={fileInputRef} type="file" accept={FILE_ACCEPT_IMAGES} className="hidden" onChange={handleImageSelect} />
+      <input ref={fileInputRef} type="file" accept={FILE_ACCEPT_MEDIA} className="hidden" onChange={handleMediaSelect} />
+      <input
+        ref={documentInputRef}
+        type="file"
+        className="hidden"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,application/*"
+        onChange={handleDocumentSelect}
+      />
+      <input ref={cameraPhotoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleMediaSelect} />
+      <input ref={cameraVideoInputRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={handleMediaSelect} />
       {replyTarget && (
         <div
-          className="fixed left-0 right-0 z-40 bg-slate-900/95 border-t border-blue-500/20 px-4 py-2 flex items-center justify-between gap-3"
-          style={{ bottom: 'calc(164px + env(safe-area-inset-bottom, 0px))' }}
+          className="fixed z-40 flex items-center justify-between gap-3 rounded-[22px] border border-white/10 bg-[#0c121c]/95 px-3 py-2.5 text-white shadow-[0_18px_40px_rgba(2,6,23,0.26)] backdrop-blur-xl left-[max(0.75rem,env(safe-area-inset-left,0px))] right-[max(0.75rem,env(safe-area-inset-right,0px))]"
+          style={{
+            bottom: `calc(${(attachmentSheetOpen || composerStickerOpen ? 240 : 134)}px + env(safe-area-inset-bottom, 0px))`,
+          }}
         >
-          <div className="min-w-0">
-            <p className="text-xs font-semibold text-blue-300">{labels.replyTo} {replyTarget.sender?.full_name || replyTarget.sender?.username || 'Utilisateur'}</p>
-            <p className="text-xs text-blue-100/70 truncate">{replyTarget.content || labels.voiceMessage}</p>
+          <div className="min-w-0 flex-1 rounded-xl border-l-[3px] border-l-white/50 bg-black/25 py-2 pl-3 pr-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-white/38">{labels.replyingTo}</p>
+            <p className="truncate text-[13px] text-white/75">{getReplySnippet(replyTarget, labels)}</p>
           </div>
-          <button type="button" className="text-blue-300 hover:text-blue-100" onClick={() => setReplyTarget(null)} aria-label={labels.cancelReply}>
+          <button type="button" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/72 hover:bg-white/[0.06] hover:text-white" onClick={() => setReplyTarget(null)} aria-label={labels.cancelReply}>
             <X className="w-4 h-4" />
           </button>
         </div>
       )}
       <div
-        className="fixed left-0 right-0 z-40 bg-slate-950/95 backdrop-blur supports-[backdrop-filter]:bg-slate-950/85 border-t border-blue-500/20 p-3 flex gap-2"
-        style={{ bottom: 'calc(92px + env(safe-area-inset-bottom, 0px))' }}
+        className="fixed left-0 right-0 z-40 border-t border-white/[0.06] bg-[#070a12]/96 pt-2.5 backdrop-blur-xl shadow-[0_-12px_40px_rgba(0,0,0,0.35)] [touch-action:manipulation]"
+        style={COMPOSER_BAR_STYLE}
       >
-        <Button type="button" variant="ghost" size="icon" className="text-blue-200 hover:text-white hover:bg-blue-500/20" onClick={() => fileInputRef.current?.click()} disabled={sendMessageMutation.isPending}>
-          <ImageIcon className="w-5 h-5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={isRecording ? "text-red-400 hover:bg-red-500/20" : "text-blue-200 hover:text-white hover:bg-blue-500/20"}
-          onClick={() => (isRecording ? stopRecording() : startRecording())}
-          disabled={sendMessageMutation.isPending}
-          aria-label={isRecording ? 'Stop recording' : 'Start recording'}
-        >
-          {isRecording ? <Square className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={ephemeralMode ? 'text-amber-300 hover:bg-amber-500/20' : 'text-blue-200 hover:text-white hover:bg-blue-500/20'}
-          onClick={() => setEphemeralMode((prev) => !prev)}
-          aria-label={labels.ephemeralMode}
-          title={labels.ephemeralMode}
-        >
-          <Timer className="w-5 h-5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="text-blue-200 hover:text-white hover:bg-blue-500/20"
-          onClick={handleShareLocation}
-          disabled={sendMessageMutation.isPending || locationLoading}
-          aria-label={labels.shareLocation}
-          title={labels.shareLocation}
-        >
-          {locationLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <MapPin className="w-5 h-5" />}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="text-blue-200 hover:text-white hover:bg-blue-500/20"
-          onClick={() => setContactDialogOpen(true)}
-          disabled={sendMessageMutation.isPending}
-          aria-label={labels.shareContact}
-          title={labels.shareContact}
-        >
-          <UserPlus className="w-5 h-5" />
-        </Button>
-        <form onSubmit={handleSendMessage} className="flex-1 flex flex-col gap-2">
+        <form onSubmit={handleSendMessage} className="mx-auto flex w-full max-w-[560px] flex-col gap-2 px-1 sm:px-0">
+          <p id="chat-composer-format-hint" className="sr-only">
+            {labels.formattingComposerHint}
+          </p>
+          {messageContent.trim() && !voiceDraft && !isRecording && (
+            <p className="px-2 text-[11px] font-medium tracking-wide text-amber-300/85" role="status">
+              {labels.draftComposerLabel}
+            </p>
+          )}
           {showSchedule && (
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex flex-wrap items-center gap-2 rounded-[22px] border border-white/10 bg-[#0b1019]/96 px-3 py-2 text-white shadow-[0_10px_28px_rgba(2,6,23,0.18)]">
               <Input
                 type="datetime-local"
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
                 min={new Date().toISOString().slice(0, 16)}
-                className="rounded-lg bg-slate-800 border-blue-500/30 text-blue-50 text-sm"
+                className="rounded-xl border-white/12 bg-white/[0.04] text-sm text-white"
               />
-              <button type="button" className="text-blue-200 hover:text-white text-sm" onClick={() => { setShowSchedule(false); setScheduledAt(''); }}>
+              <button type="button" className="text-sm text-white/60 hover:text-white" onClick={() => { setShowSchedule(false); setScheduledAt(''); }}>
                 <X className="w-4 h-4" />
               </button>
             </div>
           )}
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setShowSchedule((prev) => !prev)}
-              className="text-blue-200 hover:text-white hover:bg-blue-500/20 rounded-full p-2"
-              title="Programmer l'envoi"
-              aria-label="Programmer l'envoi"
-            >
-              <Clock className="w-5 h-5" />
-            </button>
-            <Input
-              placeholder={isRecording ? labels.recording : labels.placeholder}
-              value={messageContent}
-              onChange={handleInputChange}
-              onBlur={saveDraft}
-              disabled={sendMessageMutation.isPending || isRecording}
-              className="rounded-full bg-slate-900 border-blue-500/30 text-blue-50 placeholder:text-blue-100/40 flex-1"
+          {voiceDraft && (
+            <audio
+              ref={previewAudioRef}
+              src={voiceDraft.objectUrl}
+              className="hidden"
+              preload="metadata"
+              playsInline
+              onPlay={() => setPreviewPlaying(true)}
+              onPause={() => setPreviewPlaying(false)}
+              onEnded={() => setPreviewPlaying(false)}
             />
-            <Button type="submit" disabled={!messageContent.trim() || sendMessageMutation.isPending || isRecording} size="icon" className="bg-blue-600 hover:bg-blue-700 rounded-full">
-              {sendMessageMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            </Button>
-          </div>
+          )}
+          {isRecording ? (
+            <div className="flex flex-col gap-1.5 rounded-[30px] border border-white/10 bg-[#0a1220]/94 px-3 py-2.5 shadow-[0_18px_40px_rgba(2,6,23,0.22)] backdrop-blur-xl">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/80 hover:bg-white/[0.08]"
+                  onClick={cancelRecording}
+                  aria-label={labels.discardVoice}
+                >
+                  <Trash2 className="h-5 w-5" />
+                </button>
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <span className="shrink-0 font-mono text-sm tabular-nums text-emerald-400">{formatRecordingClock(recordingSeconds)}</span>
+                  <div className="flex h-4 min-w-0 flex-1 items-center gap-0.5 overflow-hidden opacity-80">
+                    {Array.from({ length: 28 }).map((_, i) => (
+                      <span key={`rd-${i}`} className="h-1 w-1 shrink-0 rounded-full bg-white/28" />
+                    ))}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-500/25 text-red-200 hover:bg-red-500/35"
+                  onClick={stopRecording}
+                  aria-label={labels.stopRecording}
+                >
+                  <Square className="h-5 w-5 fill-current" />
+                </button>
+              </div>
+              <p className="px-1 text-center text-[11px] text-white/40">{labels.recording}</p>
+            </div>
+          ) : voiceDraft ? (
+            <div className="flex items-center gap-2 rounded-[30px] border border-white/10 bg-[#0a1220]/94 px-2.5 py-2 shadow-[0_18px_40px_rgba(2,6,23,0.22)] backdrop-blur-xl">
+              <button
+                type="button"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white hover:bg-white/[0.08]"
+                onClick={togglePreviewPlayback}
+                aria-label={previewPlaying ? labels.pausePreview : labels.playPreview}
+              >
+                {previewPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 pl-0.5" />}
+              </button>
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <div className="flex h-4 min-w-0 flex-1 items-center gap-0.5 overflow-hidden opacity-80">
+                  {Array.from({ length: 28 }).map((_, i) => (
+                    <span key={`pv-${i}`} className="h-1 w-1 shrink-0 rounded-full bg-white/28" />
+                  ))}
+                </div>
+                <span className="shrink-0 font-mono text-sm tabular-nums text-white/88">{formatRecordingClock(voiceDraft.durationSec)}</span>
+              </div>
+              {ephemeralMode && (
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/15 text-xs font-semibold text-white/70" title={labels.ephemeralMode}>
+                  1
+                </span>
+              )}
+              <button
+                type="button"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/80 hover:bg-white/[0.08]"
+                onClick={clearVoiceDraft}
+                aria-label={labels.discardVoice}
+              >
+                <Trash2 className="h-5 w-5" />
+              </button>
+              <Button
+                type="button"
+                disabled={voiceUploading || sendMessageMutation.isPending}
+                size="icon"
+                className="h-11 w-11 shrink-0 rounded-full bg-emerald-500 text-white hover:bg-emerald-600"
+                onClick={() => sendVoiceDraft()}
+                aria-label={labels.sendVoice}
+              >
+                {voiceUploading || sendMessageMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-end gap-1.5 sm:gap-2">
+              {/* Structure proche WhatsApp : emoji à gauche hors champ, micro / envoi à droite en pastille */}
+              <button
+                type="button"
+                className="mb-0.5 flex h-12 w-12 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-white/72 hover:bg-white/[0.08] hover:text-white active:bg-white/[0.1]"
+                onClick={() => setComposerStickerOpen(true)}
+                disabled={sendMessageMutation.isPending || !conversationId}
+                aria-label={labels.composerStickers}
+              >
+                <Sticker className="h-6 w-6" strokeWidth={1.75} />
+              </button>
+              <div className="flex min-w-0 flex-1 items-center gap-0.5 rounded-[26px] border border-white/12 bg-[#0f1724]/98 px-1.5 py-1 shadow-[0_18px_40px_rgba(2,6,23,0.22)] backdrop-blur-xl">
+                <Input
+                  placeholder={labels.placeholder}
+                  value={messageContent}
+                  onChange={handleInputChange}
+                  onBlur={persistDraft}
+                  disabled={sendMessageMutation.isPending || !conversationId}
+                  enterKeyHint="send"
+                  inputMode="text"
+                  autoComplete="off"
+                  autoCorrect="on"
+                  aria-describedby="chat-composer-format-hint"
+                  className="min-h-[44px] h-12 min-w-0 flex-1 border-transparent bg-transparent px-2.5 text-[16px] text-white placeholder:text-white/34 shadow-none focus-visible:ring-0 sm:text-[15px]"
+                />
+                <button
+                  type="button"
+                  className="flex h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-white/65 hover:bg-white/[0.07] hover:text-white active:bg-white/[0.1]"
+                  onClick={() => setAttachmentSheetOpen(true)}
+                  disabled={sendMessageMutation.isPending || !conversationId}
+                  aria-label={labels.attachmentSheetTitle}
+                >
+                  <Paperclip className="h-5 w-5" strokeWidth={2} />
+                </button>
+                <button
+                  type="button"
+                  className="flex h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-white/65 hover:bg-white/[0.07] hover:text-white active:bg-white/[0.1]"
+                  onClick={() => setCameraSheetOpen(true)}
+                  disabled={sendMessageMutation.isPending || !conversationId}
+                  aria-label={labels.composerCamera}
+                >
+                  <Camera className="h-5 w-5" strokeWidth={2} />
+                </button>
+              </div>
+              {messageContent.trim() ? (
+                <Button
+                  type="submit"
+                  disabled={sendMessageMutation.isPending || !conversationId}
+                  size="icon"
+                  className="mb-0.5 h-12 w-12 min-h-[44px] min-w-[44px] shrink-0 rounded-full bg-emerald-500 text-white shadow-[0_8px_24px_rgba(16,185,129,0.35)] hover:bg-emerald-600"
+                  aria-label={labels.composerSend}
+                >
+                  {sendMessageMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+                </Button>
+              ) : (
+                <button
+                  type="button"
+                  className="mb-0.5 flex h-12 w-12 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_8px_24px_rgba(16,185,129,0.35)] hover:bg-emerald-600 active:scale-[0.97]"
+                  onClick={() => startRecording()}
+                  disabled={sendMessageMutation.isPending || !conversationId}
+                  aria-label={labels.composerRecordVoice}
+                >
+                  <Mic className="h-6 w-6" />
+                </button>
+              )}
+            </div>
+          )}
         </form>
       </div>
-      <BottomNav />
+
+      <Dialog
+        open={!!viewOnceModal}
+        onOpenChange={(open) => {
+          if (!open) {
+            if (viewOnceModal?.id) markViewOnceConsumed(viewOnceModal.id);
+            setViewOnceModal(null);
+          }
+        }}
+      >
+        <DialogContent
+          className="max-h-[min(92dvh,900px)] w-[min(96vw,520px)] overflow-hidden rounded-2xl border border-white/12 bg-[#0b1019] p-0 text-white"
+          aria-describedby={undefined}
+        >
+          <DialogHeader className="border-b border-white/10 px-4 py-3">
+            <DialogTitle className="text-base font-semibold text-white/92">{labels.ephemeralMode}</DialogTitle>
+          </DialogHeader>
+          <div className="flex max-h-[min(78dvh,720px)] flex-col items-center justify-center bg-black p-2">
+            {viewOnceModal?.kind === 'image' && viewOnceModal.url ? (
+              <img src={viewOnceModal.url} alt="" className="max-h-[min(72dvh,680px)] w-auto max-w-full object-contain" />
+            ) : null}
+            {viewOnceModal?.kind === 'video' && viewOnceModal.url ? (
+              <video
+                src={viewOnceModal.url}
+                controls
+                playsInline
+                className="max-h-[min(72dvh,680px)] w-full max-w-full bg-black object-contain"
+                preload="metadata"
+              />
+            ) : null}
+          </div>
+          <div className="border-t border-white/10 px-4 py-3">
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full rounded-xl bg-white/10 text-white hover:bg-white/16"
+              onClick={() => {
+                if (viewOnceModal?.id) markViewOnceConsumed(viewOnceModal.id);
+                setViewOnceModal(null);
+              }}
+            >
+              {labels.viewOnceClose}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={contactDialogOpen} onOpenChange={setContactDialogOpen}>
-        <DialogContent className="sm:max-w-md rounded-2xl">
+        <DialogContent className="sm:max-w-md rounded-[28px] border border-white/12 bg-[#0b1019] text-white">
           <DialogHeader>
             <DialogTitle>{labels.shareContact}</DialogTitle>
           </DialogHeader>
           <div className="relative mt-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/36" />
             <Input
-              className="pl-9 rounded-full"
+              className="pl-9 rounded-full border-white/12 bg-white/[0.04] text-white placeholder:text-white/36"
               placeholder={labels.transferSearchPlaceholder ?? 'Rechercher un utilisateur...'}
               value={contactSearchQuery}
               onChange={(e) => setContactSearchQuery(e.target.value)}
@@ -1192,14 +3254,14 @@ export default function Chat() {
           <div className="mt-3 max-h-64 overflow-y-auto space-y-1">
             {contactSearchLoading && (
               <div className="flex justify-center py-4">
-                <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                <Loader2 className="w-6 h-6 animate-spin text-white/70" />
               </div>
             )}
             {!contactSearchLoading && contactSearchQuery.trim().length < 1 && (
-              <p className="text-sm text-gray-500 text-center py-4">{labels.transferSearchPlaceholder ?? 'Tapez pour rechercher'}</p>
+              <p className="py-4 text-center text-sm text-white/42">{labels.transferSearchPlaceholder ?? 'Tapez pour rechercher'}</p>
             )}
             {!contactSearchLoading && contactSearchQuery.trim().length >= 1 && contactSearchUsers.length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-4">{labels.transferNoUser}</p>
+              <p className="py-4 text-center text-sm text-white/42">{labels.transferNoUser}</p>
             )}
             {!contactSearchLoading &&
               contactSearchUsers
@@ -1208,7 +3270,7 @@ export default function Chat() {
                   <button
                     key={u.id}
                     type="button"
-                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left"
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/[0.05]"
                     onClick={() => handleShareContact(u)}
                   >
                     <Avatar className="w-9 h-9">
@@ -1216,8 +3278,8 @@ export default function Chat() {
                       <AvatarFallback>{(u.full_name || u.username || '?')[0]}</AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-sm truncate">{u.full_name || u.username || u.id}</p>
-                      {u.username && u.full_name && <p className="text-xs text-gray-500 truncate">@{u.username}</p>}
+                      <p className="truncate text-sm font-medium text-white">{u.full_name || u.username || u.id}</p>
+                      {u.username && u.full_name && <p className="truncate text-xs text-white/46">@{u.username}</p>}
                     </div>
                   </button>
                 ))}
@@ -1225,18 +3287,197 @@ export default function Chat() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={messageActionsOpen} onOpenChange={setMessageActionsOpen}>
-        <DialogContent className="sm:max-w-md p-0 rounded-2xl overflow-hidden">
-          <DialogHeader className="px-4 pt-3 pb-2 border-b">
-            <DialogTitle className="text-base">{labels.actions}</DialogTitle>
+      <ChatCameraSheet
+        open={cameraSheetOpen}
+        onOpenChange={setCameraSheetOpen}
+        labels={{
+          cameraTitle: labels.composerCamera,
+          close: labels.cancel,
+          gallery: labels.attachGallery,
+          takePhoto: labels.attachCameraPhoto,
+          recordVideo: labels.attachCameraVideo,
+          stopRecording: labels.stopRecording,
+          switchCamera: labels.cameraSwitch ?? 'Changer de caméra',
+          flashOn: 'Flash activé',
+          flashOff: 'Flash désactivé',
+          videoNoteHint: 'Max 60 s',
+          cameraUnsupported: 'Caméra non supportée',
+          cameraPermissionDenied: 'Autorisez l’accès à la caméra.',
+          cameraNotFound: 'Aucune caméra détectée.',
+          cameraError: 'Impossible d’accéder à la caméra.',
+        }}
+        onCapture={handleCameraCapture}
+        onGallery={() => {
+          setCameraSheetOpen(false);
+          requestAnimationFrame(() => fileInputRef.current?.click());
+        }}
+      />
+      <ChatCameraPreviewSheet
+        open={cameraPreviewOpen}
+        draft={cameraDraft}
+        sending={cameraSending}
+        ephemeralActive={ephemeralMode}
+        onClose={clearCameraDraft}
+        onCaptionChange={(value) => setCameraDraft((prev) => (prev ? { ...prev, caption: value } : prev))}
+        onSend={handleSendCameraDraft}
+        recipientName={otherUser?.full_name || otherUser?.username || ''}
+        onAddMoreMedia={() => {
+          clearCameraDraft();
+          requestAnimationFrame(() => fileInputRef.current?.click());
+        }}
+        labels={{
+          close: labels.cancel,
+          send: labels.composerSend,
+          captionPlaceholder: 'Ajouter une légende...',
+          previewTitle: labels.attachMedia,
+          viewOnce: labels.ephemeralMode,
+          cancel: labels.cancel,
+        }}
+      />
+
+      <ChatAttachmentSheet
+        open={attachmentSheetOpen}
+        onOpenChange={setAttachmentSheetOpen}
+        labels={labels}
+        ephemeralActive={ephemeralMode}
+        onGallery={() => {
+          setAttachmentSheetOpen(false);
+          requestAnimationFrame(() => fileInputRef.current?.click());
+        }}
+        onCameraPhoto={() => {
+          setAttachmentSheetOpen(false);
+          requestAnimationFrame(() => cameraPhotoInputRef.current?.click());
+        }}
+        onCameraVideo={() => {
+          setAttachmentSheetOpen(false);
+          requestAnimationFrame(() => cameraVideoInputRef.current?.click());
+        }}
+        onDocument={() => {
+          setAttachmentSheetOpen(false);
+          if (documentSending || sendMessageMutation.isPending) return;
+          requestAnimationFrame(() => documentInputRef.current?.click());
+        }}
+        onLocation={() => {
+          setAttachmentSheetOpen(false);
+          handleShareLocation();
+        }}
+        onContact={() => {
+          setAttachmentSheetOpen(false);
+          setContactDialogOpen(true);
+        }}
+        onSchedule={() => {
+          setAttachmentSheetOpen(false);
+          setShowSchedule(true);
+        }}
+        onToggleEphemeral={() => {
+          setAttachmentSheetOpen(false);
+          if (ephemeralMode) handleSetEphemeralDuration(0);
+          else handleSetEphemeralDuration(ephemeralTtlSec || EPHEMERAL_TTL_SECONDS.H24);
+        }}
+        onAudioHint={() => {
+          setAttachmentSheetOpen(false);
+          toast.info(labels.attachAudioHint);
+        }}
+        onPollSoon={() => toast.info(labels.comingSoonPremium)}
+        onEventSoon={() => toast.info(labels.comingSoonPremium)}
+        onAiImagesSoon={() => toast.info(labels.comingSoonPremium)}
+      />
+
+      <ChatStickerComposerSheet
+        open={composerStickerOpen}
+        onOpenChange={setComposerStickerOpen}
+        labels={labels}
+        emojiSearch={composerStickerSearch}
+        setEmojiSearch={setComposerStickerSearch}
+        onPickEmoji={(emoji) => {
+          setMessageContent((p) => p + emoji);
+          setComposerStickerOpen(false);
+        }}
+        onPickStickerUrl={(url) => {
+          sendMessageMutation.mutate({
+            content: '',
+            type: 'sticker',
+            sticker_url: url,
+            reply_to_message_id: replyTarget?.id || undefined,
+            is_ephemeral: ephemeralMode === true ? true : undefined,
+            expires_at: ephemeralMode ? ephemeralExpiresIso() : undefined,
+          });
+          setComposerStickerOpen(false);
+        }}
+        giphyApiKey={typeof import.meta !== 'undefined' ? import.meta.env?.VITE_GIPHY_API_KEY : ''}
+        onPickGifUrl={(url) => {
+          if (!url) return;
+          sendMessageMutation.mutate({
+            content: 'GIF',
+            type: 'image',
+            media_url: url,
+            reply_to_message_id: replyTarget?.id || undefined,
+            is_ephemeral: ephemeralMode === true ? true : undefined,
+            expires_at: ephemeralMode ? ephemeralExpiresIso() : undefined,
+          });
+          setComposerStickerOpen(false);
+        }}
+        onStickerCreateSoon={() => toast.info(labels.stickerCreateSoon)}
+      />
+
+      <Dialog
+        open={reactionsDialogOpen}
+        onOpenChange={(v) => {
+          setReactionsDialogOpen(v);
+          if (!v) setReactionsDialogMessageId(null);
+        }}
+      >
+        <DialogContent className="max-h-[min(72dvh,440px)] rounded-[28px] border border-white/12 bg-[#0b1019] text-white sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{labels.reactionsDetailTitle}</DialogTitle>
           </DialogHeader>
-          <div className="px-4 py-3 border-b">
-            <div className="flex items-center gap-3">
+          <div className="max-h-[min(52dvh,380px)] overflow-y-auto py-1">
+            {reactionsDetailLoading ? (
+              <div className="flex justify-center py-12" role="status" aria-live="polite">
+                <Loader2 className="h-8 w-8 animate-spin text-white/35" />
+              </div>
+            ) : reactionsDetailList.length === 0 ? (
+              <p className="py-8 text-center text-sm text-white/45">{labels.reactionsDetailEmpty}</p>
+            ) : (
+              <ul className="space-y-0.5">
+                {reactionsDetailList.map((r) => (
+                  <li key={r.user_id} className="flex items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-white/[0.04]">
+                    <Avatar className="h-10 w-10 border border-white/10">
+                      <AvatarImage src={r.profile_image || undefined} />
+                      <AvatarFallback className="bg-white/12 text-sm text-white">
+                        {(r.full_name || r.username || '?')[0]?.toUpperCase() || '?'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="min-w-0 flex-1 truncate text-[15px] text-white/88">
+                      {r.user_id === currentUser?.id
+                        ? labels.reactionsDetailYou
+                        : r.full_name || r.username || r.user_id.slice(0, 8)}
+                    </span>
+                    <span className="text-2xl leading-none">{r.emoji}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={messageActionsOpen} onOpenChange={setMessageActionsOpen}>
+        <DialogContent className="max-h-[min(90dvh,640px)] w-[min(100vw-1.5rem,360px)] gap-0 overflow-hidden rounded-[28px] border border-white/12 bg-[#0a0f18] p-0 text-white shadow-[0_24px_80px_rgba(0,0,0,0.55)] sm:max-w-[360px]">
+          <DialogHeader className="sr-only">
+            <DialogTitle>{labels.actions}</DialogTitle>
+          </DialogHeader>
+          <div className="px-4 pt-4 pb-1">
+            <p className="text-center text-[13px] text-white/45">{formatMessageActionsTimestamp(activeMessage?.created_at)}</p>
+          </div>
+          <div className="mx-3 mb-3 rounded-full border border-white/12 bg-white/[0.06] px-3 py-2.5 backdrop-blur-md">
+            <p className="mb-2 text-center text-[11px] leading-tight text-white/38">{labels.superReactionHint}</p>
+            <div className="flex items-center justify-between gap-1">
               {QUICK_REACTIONS.map((emoji) => (
                 <button
                   key={emoji}
                   type="button"
-                  className="text-2xl leading-none hover:scale-110 transition-transform"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-2xl leading-none transition-transform active:scale-90 hover:bg-white/[0.08] hover:scale-110"
                   onClick={() => handleReactToMessage(emoji)}
                 >
                   {emoji}
@@ -1244,73 +3485,121 @@ export default function Chat() {
               ))}
               <button
                 type="button"
-                className="ml-auto w-9 h-9 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 flex items-center justify-center"
-                onClick={() => setEmojiPickerOpen(true)}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-white/85 hover:bg-white/[0.12]"
+                onClick={() => { setMessageActionsOpen(false); setEmojiPickerOpen(true); }}
+                aria-label={labels.chooseReaction}
               >
-                <Plus className="w-5 h-5" />
+                <Plus className="h-5 w-5" />
               </button>
             </div>
           </div>
-          <div className="px-2 py-2">
-            <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left" onClick={() => handleReplyMessage(activeMessage)}>
-              <Reply className="w-5 h-5 text-gray-500" />
+          <div className="mx-2 mb-3 max-h-[min(48dvh,420px)] overflow-y-auto rounded-[22px] border border-white/10 bg-[#0e141f] py-1">
+            <button type="button" className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3.5 text-left text-[15px] hover:bg-white/[0.05]" onClick={() => handleReplyMessage(activeMessage)}>
+              <Reply className="h-5 w-5 shrink-0 text-white/55" />
               <span>{labels.replyTo}</span>
             </button>
-            <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left" onClick={() => handleCopyMessage(activeMessage)}>
-              <Copy className="w-5 h-5 text-gray-500" />
-              <span>{labels.copy}</span>
+            <button type="button" className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3.5 text-left text-[15px] hover:bg-white/[0.05]" onClick={handleStickerFromMenu}>
+              <Sticker className="h-5 w-5 shrink-0 text-white/55" />
+              <span>{labels.addSticker}</span>
             </button>
-            <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left" onClick={handleTransferOpen}>
-              <Forward className="w-5 h-5 text-gray-500" />
+            <button type="button" className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3.5 text-left text-[15px] hover:bg-white/[0.05]" onClick={handleTransferOpen}>
+              <Forward className="h-5 w-5 shrink-0 text-white/55" />
               <span>{labels.transfer}</span>
             </button>
-            <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left" onClick={() => handlePinMessage(activeMessage)}>
-              <Pin className="w-5 h-5 text-gray-500" />
+            <button type="button" className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3.5 text-left text-[15px] hover:bg-white/[0.05]" onClick={() => handleCopyMessage(activeMessage)}>
+              <Copy className="h-5 w-5 shrink-0 text-white/55" />
+              <span>{labels.copy}</span>
+            </button>
+            {canEditTextMessage(activeMessage, currentUser?.id) && (
+              <button
+                type="button"
+                className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3.5 text-left text-[15px] hover:bg-white/[0.05]"
+                onClick={() => openEditMessage(activeMessage)}
+              >
+                <Pencil className="h-5 w-5 shrink-0 text-white/55" />
+                <span>{labels.editMessage}</span>
+              </button>
+            )}
+            <button type="button" className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3.5 text-left text-[15px] hover:bg-white/[0.05]" onClick={() => handleOpenTranslate()}>
+              <Languages className="h-5 w-5 shrink-0 text-white/55" />
+              <span>{labels.translate}</span>
+            </button>
+            <button type="button" className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3.5 text-left text-[15px] hover:bg-white/[0.05]" onClick={() => handlePinMessage(activeMessage)}>
+              <Pin className="h-5 w-5 shrink-0 text-white/55" />
               <span>{activeMessage?.id === pinnedMessageId ? labels.unpinned : labels.pinMessage}</span>
             </button>
-            <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left" onClick={() => handleMarkImportant(activeMessage)}>
-              <Star className="w-5 h-5 text-gray-500" />
+            <button type="button" className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3.5 text-left text-[15px] hover:bg-white/[0.05]" onClick={() => handleMarkImportant(activeMessage)}>
+              <Star className="h-5 w-5 shrink-0 text-white/55" />
               <span>{labels.markImportant}</span>
             </button>
-            <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left" onClick={() => handleSelectMessageMode(activeMessage)}>
-              <CheckSquare className="w-5 h-5 text-gray-500" />
+            <button type="button" className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3.5 text-left text-[15px] hover:bg-white/[0.05]" onClick={() => handleSelectMessageMode(activeMessage)}>
+              <CheckSquare className="h-5 w-5 shrink-0 text-white/55" />
               <span>{labels.select}</span>
             </button>
-            <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-left" onClick={() => { setMessageActionsOpen(false); setConfirmAction({ type: 'report', messageId: activeMessage?.id }); }}>
-              <Flag className="w-5 h-5 text-gray-500" />
+            <button
+              type="button"
+              className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3.5 text-left text-[15px] text-red-400 hover:bg-red-500/10"
+              onClick={() => { setMessageActionsOpen(false); setConfirmAction({ type: 'report', messageId: activeMessage?.id }); }}
+            >
+              <Flag className="h-5 w-5 shrink-0 text-red-400" />
               <span>{labels.report}</span>
             </button>
             {(activeMessage?.sender_id === currentUser?.id) && (
               <>
-                <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-red-50 text-red-600 text-left" onClick={() => { setMessageActionsOpen(false); setConfirmAction({ type: 'delete', messageId: activeMessage?.id }); }}>
-                  <Trash2 className="w-5 h-5" />
-                  <span>{labels.delete}</span>
-                </button>
+                {activeMessage?.status === 'scheduled' && (
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3.5 text-left text-[15px] text-amber-200/95 hover:bg-amber-500/12"
+                    onClick={() => {
+                      setMessageActionsOpen(false);
+                      setConfirmAction({ type: 'cancel_scheduled', messageId: activeMessage?.id });
+                    }}
+                  >
+                    <TimerOff className="h-5 w-5 shrink-0 text-amber-300/90" />
+                    <span>{labels.cancelScheduledSend}</span>
+                  </button>
+                )}
                 {activeMessage?.created_at && (Date.now() - new Date(activeMessage.created_at).getTime() < 15 * 60 * 1000) && (
-                  <button type="button" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-red-50 text-red-600 text-left" onClick={() => { setMessageActionsOpen(false); setConfirmAction({ type: 'delete_for_all', messageId: activeMessage?.id }); }} disabled={deleteForAllMutation.isPending}>
-                    <Trash2 className="w-5 h-5" />
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-3.5 rounded-xl border border-red-500/25 bg-red-500/[0.12] px-4 py-3.5 text-left text-[15px] font-medium text-red-200 hover:bg-red-500/18"
+                    onClick={() => { setMessageActionsOpen(false); setConfirmAction({ type: 'delete_for_all', messageId: activeMessage?.id }); }}
+                    disabled={deleteForAllMutation.isPending}
+                  >
+                    <UserMinus className="h-5 w-5 shrink-0 text-red-300" />
                     <span>{labels.deleteForAll ?? 'Supprimer pour tous'}</span>
                   </button>
                 )}
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3.5 text-left text-[15px] text-red-400 hover:bg-red-500/10"
+                  onClick={() => { setMessageActionsOpen(false); setConfirmAction({ type: 'delete', messageId: activeMessage?.id }); }}
+                >
+                  <Trash2 className="h-5 w-5 shrink-0" />
+                  <span>{labels.delete}</span>
+                </button>
               </>
             )}
+            <button type="button" className="flex w-full items-center justify-center py-3 text-[14px] text-white/38 hover:bg-white/[0.03]" onClick={() => setMessageActionsOpen(false)}>
+              {labels.messageMenuMore}
+            </button>
           </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
-        <DialogContent className="sm:max-w-md p-0 rounded-2xl overflow-hidden">
-          <DialogHeader className="px-4 pt-3 pb-2 border-b">
+        <DialogContent className="sm:max-w-md p-0 rounded-2xl overflow-hidden border border-white/12 bg-[#0b1019] text-white">
+          <DialogHeader className="px-4 pt-3 pb-2 border-b border-white/10">
             <DialogTitle className="text-base">{labels.chooseReaction}</DialogTitle>
           </DialogHeader>
-          <div className="px-4 py-3 border-b">
+          <div className="px-4 py-3 border-b border-white/10">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <Input className="pl-9 rounded-full" placeholder={labels.searchReaction} value={emojiSearch} onChange={(e) => setEmojiSearch(e.target.value)} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/36" />
+              <Input className="pl-9 rounded-full border-white/12 bg-white/[0.04] text-white placeholder:text-white/36" placeholder={labels.searchReaction} value={emojiSearch} onChange={(e) => setEmojiSearch(e.target.value)} />
             </div>
           </div>
           <div className="px-4 py-3">
-            <p className="text-sm text-gray-500 mb-2">{labels.reactionsRecent}</p>
+            <p className="text-sm text-white/46 mb-2">{labels.reactionsRecent}</p>
             <div className="flex gap-3 mb-4">
               {QUICK_REACTIONS.slice(0, 2).map((emoji) => (
                 <button key={`recent-${emoji}`} type="button" className="text-3xl leading-none" onClick={() => handleReactToMessage(emoji)}>
@@ -1318,7 +3607,7 @@ export default function Chat() {
                 </button>
               ))}
             </div>
-            <p className="text-sm text-gray-500 mb-2">{labels.emojiAndPeople}</p>
+            <p className="text-sm text-white/46 mb-2">{labels.emojiAndPeople}</p>
             <div className="grid grid-cols-8 gap-2 max-h-56 overflow-y-auto">
               {filteredEmojis.map((emoji) => (
                 <button key={`emoji-${emoji}`} type="button" className="text-2xl leading-none hover:scale-110 transition-transform" onClick={() => handleReactToMessage(emoji)}>
@@ -1331,15 +3620,16 @@ export default function Chat() {
       </Dialog>
 
       <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
-        <DialogContent className="sm:max-w-md p-0 rounded-2xl overflow-hidden">
-          <DialogHeader className="px-4 pt-3 pb-2 border-b">
+        <DialogContent className="sm:max-w-md p-0 rounded-2xl overflow-hidden border border-white/12 bg-[#0b1019] text-white">
+          <DialogHeader className="px-4 pt-3 pb-2 border-b border-white/10">
             <DialogTitle className="text-base">{labels.transferTo}</DialogTitle>
           </DialogHeader>
-          <div className="px-4 py-3 border-b">
+          <p className="px-4 pt-2 text-[12px] leading-snug text-white/42">{labels.forwardOneRecipientHint}</p>
+          <div className="px-4 py-3 border-b border-white/10">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/36" />
               <Input
-                className="pl-9 rounded-full"
+                className="pl-9 rounded-full border-white/12 bg-white/[0.04] text-white placeholder:text-white/36"
                 placeholder={labels.transferSearchPlaceholder}
                 value={transferSearch}
                 onChange={(e) => setTransferSearch(e.target.value)}
@@ -1348,7 +3638,7 @@ export default function Chat() {
           </div>
           <div className="max-h-72 overflow-y-auto p-2">
             {transferLoading ? (
-              <div className="py-6 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-blue-600" /></div>
+              <div className="py-6 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-white/70" /></div>
             ) : transferUsers.length > 0 ? (
               transferUsers
                 .filter((u) => u.id !== currentUser?.id)
@@ -1356,43 +3646,268 @@ export default function Chat() {
                   <button
                     key={u.id}
                     type="button"
-                    className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 text-left"
+                    className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-white/[0.05] text-left"
                     onClick={() => transferMutation.mutate(u)}
                     disabled={transferMutation.isPending}
                   >
                     <Avatar className="w-9 h-9">
                       <AvatarImage src={u.profile_image} />
-                      <AvatarFallback className="bg-blue-600 text-white">
+                      <AvatarFallback className="bg-slate-700 text-white">
                         {(u.full_name || u.username || 'U')?.[0]?.toUpperCase() || 'U'}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{u.full_name || u.username}</p>
-                      <p className="text-xs text-gray-500 truncate">@{u.username}</p>
+                      <p className="text-sm font-medium text-white truncate">{u.full_name || u.username}</p>
+                      <p className="text-xs text-white/46 truncate">@{u.username}</p>
                     </div>
                   </button>
                 ))
             ) : (
-              <p className="text-sm text-gray-500 px-2 py-6 text-center">{labels.transferNoUser}</p>
+              <p className="text-sm text-white/42 px-2 py-6 text-center">{labels.transferNoUser}</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editDialogOpen}
+        onOpenChange={(open) => {
+          setEditDialogOpen(open);
+          if (!open) {
+            setEditingMessageId(null);
+            setEditText('');
+          }
+        }}
+      >
+        <DialogContent className="rounded-[28px] border border-white/12 bg-[#0b1019] text-white sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{labels.editMessageTitle}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={submitEditMessage} className="space-y-4 py-1">
+            <Textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              placeholder={labels.editMessagePlaceholder}
+              className="min-h-[120px] rounded-2xl border-white/12 bg-white/[0.06] text-white placeholder:text-white/35"
+              maxLength={2000}
+              aria-describedby="chat-composer-format-hint"
+            />
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full border-white/18 bg-transparent text-white hover:bg-white/[0.06]"
+                onClick={() => {
+                  setEditDialogOpen(false);
+                  setEditingMessageId(null);
+                  setEditText('');
+                }}
+              >
+                {labels.cancel}
+              </Button>
+              <Button
+                type="submit"
+                className="rounded-full bg-white text-slate-950 hover:bg-white/90"
+                disabled={!editText.trim() || editMessageMutation.isPending}
+              >
+                {editMessageMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : labels.editMessageSave}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={translateOpen}
+        onOpenChange={(open) => {
+          setTranslateOpen(open);
+          if (!open) {
+            setTranslateError(null);
+            setTranslateResult('');
+            setTranslateOriginal('');
+            setTranslateDetectedCode('');
+          }
+        }}
+      >
+        <DialogContent className="max-h-[min(90dvh,560px)] overflow-y-auto rounded-[28px] border border-white/12 bg-[#0b1019] text-white sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{labels.translateTitle}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            {translateLoading && (
+              <div className="flex flex-col items-center justify-center gap-3 py-10" role="status" aria-live="polite">
+                <Loader2 className="h-9 w-9 animate-spin text-white/45" />
+                <p className="text-sm text-white/45">{labels.translateLoading}</p>
+              </div>
+            )}
+            {!translateLoading && translateError && (
+              <>
+                <p className="text-sm leading-relaxed text-red-400">{translateError}</p>
+                <Button type="button" className="w-full rounded-full bg-white text-slate-950 hover:bg-white/90" onClick={() => setTranslateOpen(false)}>
+                  {labels.translateClose}
+                </Button>
+              </>
+            )}
+            {!translateLoading && !translateError && translateResult && (
+              <>
+                <div>
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-white/38">{labels.translateOriginalLabel}</p>
+                  <p className="max-h-28 overflow-y-auto whitespace-pre-wrap rounded-2xl border border-white/10 bg-black/22 px-3 py-2.5 text-[14px] leading-snug text-white/75">
+                    {translateOriginal}
+                  </p>
+                  {translateDetectedCode ? (
+                    <p className="mt-2 text-xs text-white/46">
+                      {labels.translateDetected}
+                      {': '}
+                      {(() => {
+                        try {
+                          const loc = language === 'en' ? 'en' : 'fr';
+                          const code = translateDetectedCode.split('-')[0];
+                          return new Intl.DisplayNames([loc], { type: 'language' }).of(code) || translateDetectedCode;
+                        } catch {
+                          return translateDetectedCode;
+                        }
+                      })()}
+                    </p>
+                  ) : null}
+                </div>
+                <div>
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-white/38">{labels.translateResultLabel}</p>
+                  <p className="max-h-36 overflow-y-auto whitespace-pre-wrap rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.07] px-3 py-2.5 text-[14px] leading-snug text-white">
+                    {translateResult}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 pt-1 sm:flex-row">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1 rounded-full border-white/18 bg-transparent text-white hover:bg-white/[0.06]"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(translateResult);
+                        toast.success(labels.copied);
+                      } catch {
+                        toast.error(labels.sendError);
+                      }
+                    }}
+                  >
+                    {labels.translateCopy}
+                  </Button>
+                  <Button type="button" className="flex-1 rounded-full bg-white text-slate-950 hover:bg-white/90" onClick={() => setTranslateOpen(false)}>
+                    {labels.translateClose}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={mediaGalleryOpen} onOpenChange={setMediaGalleryOpen}>
+        <DialogContent className="max-h-[min(85dvh,560px)] w-[min(100vw-1.5rem,400px)] gap-0 overflow-hidden rounded-[28px] border border-white/12 bg-[#0b1019] p-0 text-white shadow-[0_24px_80px_rgba(0,0,0,0.55)] sm:max-w-[400px]">
+          <DialogHeader className="border-b border-white/10 px-4 py-3 text-left">
+            <DialogTitle className="text-base">{labels.mediaLinksDocsTitle}</DialogTitle>
+          </DialogHeader>
+          <div className="flex border-b border-white/10 px-2">
+            {(['media', 'links', 'docs']).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                className={cn(
+                  'flex-1 py-2.5 text-sm font-medium transition-colors',
+                  mediaGalleryTab === tab ? 'border-b-2 border-emerald-400 text-white' : 'text-white/45 hover:text-white/70'
+                )}
+                onClick={() => setMediaGalleryTab(tab)}
+              >
+                {tab === 'media' ? labels.tabMedia : tab === 'links' ? labels.tabLinks : labels.tabDocs}
+              </button>
+            ))}
+          </div>
+          <div className="max-h-[min(52dvh,420px)] overflow-y-auto p-3">
+            {mediaGalleryTab === 'media' && (
+              mediaGalleryItems.media.length === 0 ? (
+                <p className="py-8 text-center text-sm text-white/45">{labels.noMediaYet}</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {mediaGalleryItems.media.map((item) => (
+                    <a
+                      key={item.id}
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/30"
+                    >
+                      {item.type === 'video' ? (
+                        <video src={item.url} className="h-full w-full object-cover" muted playsInline />
+                      ) : item.type === 'audio' || item.type === 'voice' ? (
+                        <Mic className="h-9 w-9 text-white/55" aria-hidden />
+                      ) : (
+                        <img src={item.thumb || item.url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                      )}
+                    </a>
+                  ))}
+                </div>
+              )
+            )}
+            {mediaGalleryTab === 'links' && (
+              mediaGalleryItems.links.length === 0 ? (
+                <p className="py-8 text-center text-sm text-white/45">{labels.noLinksYet}</p>
+              ) : (
+                <ul className="space-y-2">
+                  {mediaGalleryItems.links.map((item) => (
+                    <li key={item.id}>
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block truncate rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-emerald-300/95 hover:bg-white/[0.08]"
+                      >
+                        {item.url}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )
+            )}
+            {mediaGalleryTab === 'docs' && (
+              mediaGalleryItems.docs.length === 0 ? (
+                <p className="py-8 text-center text-sm text-white/45">{labels.noDocsYet}</p>
+              ) : (
+                <ul className="space-y-2">
+                  {mediaGalleryItems.docs.map((item) => (
+                    <li key={item.id}>
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 truncate rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-white/88 hover:bg-white/[0.08]"
+                      >
+                        <FileText className="h-4 w-4 shrink-0 text-emerald-300/90" aria-hidden />
+                        <span className="min-w-0 truncate">{item.label}</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )
             )}
           </div>
         </DialogContent>
       </Dialog>
 
       <AlertDialog open={!!confirmAction} onOpenChange={(open) => !open && setConfirmAction(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="border border-white/12 bg-[#0b1019] text-white">
           <AlertDialogHeader>
             <AlertDialogTitle>{confirmDialogMeta.title}</AlertDialogTitle>
-            <AlertDialogDescription>{confirmDialogMeta.description}</AlertDialogDescription>
+            <AlertDialogDescription className="text-white/58">{confirmDialogMeta.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{labels.cancel}</AlertDialogCancel>
-            <AlertDialogAction className="bg-blue-600 hover:bg-blue-700 text-white" onClick={handleConfirmAction}>
+            <AlertDialogCancel className="border-white/12 bg-transparent text-white hover:bg-white/[0.05] hover:text-white">{labels.cancel}</AlertDialogCancel>
+            <AlertDialogAction className="bg-white text-slate-950 hover:bg-white/90" onClick={handleConfirmAction}>
               {labels.confirm}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </ChatScreenShell>
   );
 }

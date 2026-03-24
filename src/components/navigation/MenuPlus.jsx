@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils.js";
 import { api } from '@/api/expressClient';
 import { useQuery } from '@tanstack/react-query';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { preloadPageByName, preloadPages } from '@/pages.config.glob';
 
 // Sections du menu (structure Super App AfriWonder)
 const MENU_SECTIONS = [
@@ -104,9 +105,18 @@ const SUPER_ADMIN_EMAIL = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'fanebadade
 
 const isSuperAdmin = (user) => user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
 
+const MENU_PAGE_NAMES = Array.from(
+  new Set(MENU_SECTIONS.flatMap((section) => section.items.map((item) => item.page)).filter(Boolean))
+);
+
 export default function MenuPlus({ isOpen, onClose, onNavigateFromMenu, user }) {
   const location = useLocation();
   const pathname = location.pathname;
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    preloadPages(MENU_PAGE_NAMES).catch(() => {});
+  }, [isOpen]);
 
   // Charger les statistiques utilisateur
   const { data: userStats } = useQuery({
@@ -245,6 +255,8 @@ export default function MenuPlus({ isOpen, onClose, onNavigateFromMenu, user }) 
                         <Link
                           key={`${section.title}-${item.label}`}
                           to={url}
+                          onMouseEnter={() => preloadPageByName(item.page)}
+                          onTouchStart={() => preloadPageByName(item.page)}
                           onClick={() => {
                             onNavigateFromMenu?.(pathname);
                             onClose();

@@ -46,6 +46,28 @@ export default function OptimizedImage({
       // Fallback: garder l'URL d'origine si navigator.connection n'est pas dispo
     }
 
+    // N’ajoute ?format=webp que pour des chemins connus pour accepter ce paramètre
+    // (évite de casser /public/*.jpg, data:, ou domaines tiers).
+    try {
+      const url = new URL(optimizedUrl, window.location.origin);
+      const path = url.pathname || '';
+      if (/\.(webp|avif|svg)(\?|$)/i.test(path)) {
+        optimizedUrl = url.toString();
+      } else {
+        const host = url.hostname || '';
+        const shouldHintWebp =
+          path.startsWith('/api/') ||
+          host.includes('cloudinary.com') ||
+          host.includes('imgix.net');
+        if (shouldHintWebp && !url.searchParams.has('format') && !url.searchParams.has('f')) {
+          url.searchParams.set('format', 'webp');
+        }
+        optimizedUrl = url.toString();
+      }
+    } catch {
+      // garder optimizedUrl tel quel si URL invalide
+    }
+
     setSrc(optimizedUrl);
   }, [src]);
 
@@ -59,6 +81,8 @@ export default function OptimizedImage({
       onError={() => setError(true)}
       fetchPriority={priority ? 'high' : 'auto'}
       decoding="async"
+      // Réduit l'impact CLS sur le layout
+      style={{ contentVisibility: 'auto' }}
       {...props}
     />
   );

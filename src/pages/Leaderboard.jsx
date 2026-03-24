@@ -9,7 +9,6 @@ import { useTranslation } from "@/components/common/useTranslation";
 import { createPageUrl } from "@/utils";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "@/api/expressClient";
-import { MOCK_LEADERBOARD } from "@/data/gamificationMock";
 
 const COUNTRY_OPTIONS = [
   { value: '', label: 'Tous les pays' },

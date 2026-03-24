@@ -17,6 +17,7 @@ import MonetizationRequestsPanel from '@/components/admin/MonetizationRequestsPa
 import MaliConnectPanel from '@/components/admin/MaliConnectPanel';
 import AIEnginePanel from '@/components/admin/AIEnginePanel';
 import BusinessIntelligencePanel from '@/components/admin/BusinessIntelligencePanel';
+import SupportTicketsPanel from '@/components/admin/SupportTicketsPanel';
 
 const SUPER_ADMIN_EMAIL = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com').toLowerCase();
 const ADMIN_ROLES = ['super_admin', 'admin', 'finance_admin', 'moderation_admin', 'support_admin', 'data_admin'];
@@ -62,6 +63,8 @@ function ActivePanel({ activeTab, user, onTabChange }) {
       return <AIEnginePanel />;
     case 'business-intelligence':
       return <BusinessIntelligencePanel />;
+    case 'support-tickets':
+      return <SupportTicketsPanel />;
     case 'settings':
       return <SettingsPanel userRole={user?.role} />;
     default:

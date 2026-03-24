@@ -11,7 +11,7 @@ import { useTheme } from 'next-themes';
 import { 
   ArrowLeft, Camera, User, Bell, Shield, Globe, Moon, Sun, Monitor,
   HelpCircle, LogOut, ChevronRight, Wifi, WifiOff, Smartphone, MapPin, ShieldCheck,
-  Users, MonitorSmartphone, UserPlus, Activity, Gift, Plane, ShoppingBag, Lock
+  Users, MonitorSmartphone, UserPlus, Activity, Gift, Plane, ShoppingBag, Lock, CheckCheck
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from "sonner";
@@ -21,6 +21,7 @@ import { useTranslation } from "@/components/common/TranslationProvider";
 import DataModeToggle from '../components/common/DataModeToggle';
 import { useAuth } from '@/lib/AuthContext';
 import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
+import { getLocalE2eeDeviceHealth, getLocalE2eeEventLog, repairLocalE2eeDevice } from '@/lib/e2eeClient';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -48,6 +49,9 @@ export default function Settings() {
     website: '',
     profile_image: ''
   });
+  const [e2eeDeviceHealth, setE2eeDeviceHealth] = useState(null);
+  const [e2eeEventLog, setE2eeEventLog] = useState([]);
+  const [e2eeDiagBusy, setE2eeDiagBusy] = useState(false);
 
   useEffect(() => {
     const getUser = async () => {
@@ -201,6 +205,167 @@ export default function Settings() {
       color: 'bg-yellow-100 text-yellow-600'
     },
   ];
+
+  // Hooks "section" : à déclarer AVANT tout `return` conditionnel pour respecter
+  // les règles des hooks (linter react-hooks/rules-of-hooks).
+  const closeFriendsEnabled = activeSection === 'closeFriends';
+  const followRequestsEnabled = activeSection === 'followRequests';
+  const sessionsEnabled = activeSection === 'sessions';
+  const messagingE2EEnabled = activeSection === 'messagingE2E';
+
+  const { data: closeFriends = [] } = useQuery({
+    queryKey: ['close-friends', user?.id],
+    queryFn: () => api.me.getCloseFriends(),
+    enabled: !!user?.id && closeFriendsEnabled,
+  });
+
+  const removeCloseMutation = useMutation({
+    mutationFn: (friendId) => api.me.removeCloseFriend(friendId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['close-friends', user?.id] });
+      toast.success('Retiré de la liste');
+    },
+    onError: () => toast.error('Erreur'),
+  });
+
+  const { data: requests = [] } = useQuery({
+    queryKey: ['follow-requests', user?.id],
+    queryFn: () => api.me.getFollowRequests(),
+    enabled: !!user?.id && followRequestsEnabled,
+  });
+
+  const acceptMutation = useMutation({
+    mutationFn: (id) => api.me.acceptFollowRequest(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['follow-requests', user?.id] });
+      toast.success('Demande acceptée');
+    },
+    onError: () => toast.error('Erreur'),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: (id) => api.me.rejectFollowRequest(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['follow-requests', user?.id] });
+      toast.success('Demande refusée');
+    },
+    onError: () => toast.error('Erreur'),
+  });
+
+  const { data: sessions = [] } = useQuery({
+    queryKey: ['me-sessions', user?.id],
+    queryFn: () => api.me.getSessions(),
+    enabled: !!user?.id && sessionsEnabled,
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: (id) => api.me.revokeSession(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me-sessions', user?.id] });
+      toast.success('Session révoquée');
+    },
+    onError: () => toast.error('Erreur'),
+  });
+
+  const updateE2EMutation = useMutation({
+    mutationFn: (enabled) => api.auth.updateMe({ messaging_e2e_enabled: enabled }),
+    onSuccess: (_data, enabled) => {
+      setUser((u) => (u ? { ...u, messaging_e2e_enabled: enabled } : u));
+      toast.success(enabled ? 'E2E activé (préférence enregistrée)' : 'E2E désactivé');
+    },
+    onError: () => toast.error('Erreur'),
+  });
+
+  const updateReadReceiptsMutation = useMutation({
+    mutationFn: (enabled) => api.auth.updateMe({ messaging_read_receipts_enabled: enabled }),
+    onSuccess: (_data, enabled) => {
+      setUser((u) => (u ? { ...u, messaging_read_receipts_enabled: enabled } : u));
+      toast.success(
+        enabled ? 'Accusés de lecture activés' : 'Accusés de lecture désactivés (style WhatsApp)'
+      );
+    },
+    onError: () => toast.error('Erreur'),
+  });
+
+  const e2eEnabled = !!user?.messaging_e2e_enabled;
+  const readReceiptsEnabled = user?.messaging_read_receipts_enabled !== false;
+
+  useEffect(() => {
+    if (!messagingE2EEnabled || !user?.id) return undefined;
+    let disposed = false;
+    let timer = null;
+
+    const refresh = async () => {
+      try {
+        const health = await getLocalE2eeDeviceHealth(user.id);
+        const logs = getLocalE2eeEventLog();
+        if (!disposed) {
+          setE2eeDeviceHealth(health);
+          setE2eeEventLog(Array.isArray(logs) ? logs : []);
+        }
+      } catch {
+        if (!disposed) {
+          setE2eeDeviceHealth((prev) => prev || { healthy: false, availablePrekeys: 0 });
+          setE2eeEventLog(getLocalE2eeEventLog());
+        }
+      }
+      if (!disposed) timer = window.setTimeout(refresh, 45000);
+    };
+
+    refresh();
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [messagingE2EEnabled, user?.id]);
+
+  const copyE2eeDiagnostic = async () => {
+    try {
+      const payload = {
+        captured_at: new Date().toISOString(),
+        user_id: user?.id || null,
+        e2e_preference_enabled: e2eEnabled,
+        device_health: e2eeDeviceHealth,
+        recent_events: (e2eeEventLog || []).slice(0, 25),
+      };
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      toast.success('Diagnostic E2EE copié');
+    } catch {
+      toast.error('Impossible de copier le diagnostic');
+    }
+  };
+
+  const sendE2eeDiagnostic = async () => {
+    try {
+      const payload = {
+        captured_at: new Date().toISOString(),
+        user_id: user?.id || null,
+        e2e_preference_enabled: e2eEnabled,
+        device_health: e2eeDeviceHealth,
+        recent_events: (e2eeEventLog || []).slice(0, 25),
+      };
+      await api.support.submitE2eeDiagnostic(payload);
+      toast.success('Diagnostic E2EE envoyé au support');
+    } catch {
+      toast.error('Envoi impossible, copie locale recommandée');
+    }
+  };
+
+  const repairE2eeFromSettings = async () => {
+    if (!user?.id || e2eeDiagBusy) return;
+    setE2eeDiagBusy(true);
+    try {
+      const health = await repairLocalE2eeDevice(user.id);
+      setE2eeDeviceHealth(health);
+      setE2eeEventLog(getLocalE2eeEventLog());
+      if (health?.healthy) toast.success('Messagerie chiffrée réparée');
+      else toast.warning('Réparation partielle, nouvelle tentative recommandée');
+    } catch {
+      toast.error('Réparation E2EE impossible pour le moment');
+    } finally {
+      setE2eeDiagBusy(false);
+    }
+  };
 
   // Main settings screen — couleurs explicites pour PWA mobile (éviter texte blanc sur fond blanc)
   if (activeSection === 'main') {
@@ -539,16 +704,6 @@ export default function Settings() {
 
   // Liste proches (CPO 1.18)
   if (activeSection === 'closeFriends') {
-    const { data: closeFriends = [], refetch: refetchClose } = useQuery({
-      queryKey: ['close-friends', user?.id],
-      queryFn: () => api.me.getCloseFriends(),
-      enabled: !!user?.id,
-    });
-    const removeCloseMutation = useMutation({
-      mutationFn: (friendId) => api.me.removeCloseFriend(friendId),
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['close-friends', user?.id] }); toast.success('Retiré de la liste'); },
-      onError: () => toast.error('Erreur'),
-    });
     return (
       <div className="min-h-screen bg-gray-50 text-gray-900">
         <div className="sticky top-0 bg-white border-b border-gray-100 z-40">
@@ -585,21 +740,6 @@ export default function Settings() {
 
   // Demandes de suivi (CPO 2.2)
   if (activeSection === 'followRequests') {
-    const { data: requests = [], refetch: refetchReq } = useQuery({
-      queryKey: ['follow-requests', user?.id],
-      queryFn: () => api.me.getFollowRequests(),
-      enabled: !!user?.id,
-    });
-    const acceptMutation = useMutation({
-      mutationFn: (id) => api.me.acceptFollowRequest(id),
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['follow-requests', user?.id] }); toast.success('Demande acceptée'); },
-      onError: () => toast.error('Erreur'),
-    });
-    const rejectMutation = useMutation({
-      mutationFn: (id) => api.me.rejectFollowRequest(id),
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['follow-requests', user?.id] }); toast.success('Demande refusée'); },
-      onError: () => toast.error('Erreur'),
-    });
     return (
       <div className="min-h-screen bg-gray-50 text-gray-900">
         <div className="sticky top-0 bg-white border-b border-gray-100 z-40">
@@ -638,16 +778,6 @@ export default function Settings() {
 
   // Sessions actives (CPO 1.22)
   if (activeSection === 'sessions') {
-    const { data: sessions = [], refetch: refetchSessions } = useQuery({
-      queryKey: ['me-sessions', user?.id],
-      queryFn: () => api.me.getSessions(),
-      enabled: !!user?.id,
-    });
-    const revokeMutation = useMutation({
-      mutationFn: (id) => api.me.revokeSession(id),
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['me-sessions', user?.id] }); toast.success('Session révoquée'); },
-      onError: () => toast.error('Erreur'),
-    });
     return (
       <div className="min-h-screen bg-gray-50 text-gray-900">
         <div className="sticky top-0 bg-white border-b border-gray-100 z-40">
@@ -681,15 +811,6 @@ export default function Settings() {
 
   // CPO 4.40 — Messagerie E2E (préférence ; chiffrement à venir)
   if (activeSection === 'messagingE2E') {
-    const updateE2EMutation = useMutation({
-      mutationFn: (enabled) => api.auth.updateMe({ messaging_e2e_enabled: enabled }),
-      onSuccess: (_data, enabled) => {
-        setUser((u) => (u ? { ...u, messaging_e2e_enabled: enabled } : u));
-        toast.success(enabled ? 'E2E activé (préférence enregistrée)' : 'E2E désactivé');
-      },
-      onError: () => toast.error('Erreur'),
-    });
-    const e2eEnabled = !!user?.messaging_e2e_enabled;
     return (
       <div className="min-h-screen bg-gray-50 text-gray-900">
         <div className="sticky top-0 bg-white border-b border-gray-100 z-40">
@@ -704,7 +825,7 @@ export default function Settings() {
               <Lock className="w-6 h-6 text-slate-600" />
               <div>
                 <p className="font-medium text-gray-900">Chiffrement de bout en bout</p>
-                <p className="text-sm text-gray-500">Active la préférence E2E. L&apos;implémentation complète du chiffrement sera disponible dans une prochaine version.</p>
+                <p className="text-sm text-gray-500">Active la préférence E2E pour les conversations compatibles.</p>
               </div>
             </div>
             <Switch
@@ -713,6 +834,82 @@ export default function Settings() {
               disabled={updateE2EMutation.isPending}
               className="data-[state=checked]:bg-blue-600 shrink-0"
             />
+          </div>
+
+          <div className="mt-4 bg-white rounded-2xl p-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <CheckCheck className="w-6 h-6 text-slate-600 shrink-0" />
+              <div>
+                <p className="font-medium text-gray-900">Accusés de lecture (tics bleus)</p>
+                <p className="text-sm text-gray-500">
+                  Si vous désactivez, vous n’envoyez pas « lu » aux autres et vous ne voyez pas les tics bleus sur
+                  vos messages (comme sur WhatsApp).
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={readReceiptsEnabled}
+              onCheckedChange={(v) => updateReadReceiptsMutation.mutate(v)}
+              disabled={updateReadReceiptsMutation.isPending}
+              className="data-[state=checked]:bg-blue-600 shrink-0"
+            />
+          </div>
+
+          <div className="mt-4 bg-white rounded-2xl p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-medium text-gray-900">État de sécurité (cet appareil)</p>
+                <p className={`text-sm ${e2eeDeviceHealth?.healthy ? 'text-emerald-600' : 'text-amber-700'}`}>
+                  {!e2eeDeviceHealth
+                    ? 'Vérification en cours...'
+                    : e2eeDeviceHealth.healthy
+                      ? `Securisé — prekeys disponibles: ${e2eeDeviceHealth.availablePrekeys ?? 0}`
+                      : `À réparer — prekeys disponibles: ${e2eeDeviceHealth.availablePrekeys ?? 0}`}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={repairE2eeFromSettings}
+                disabled={e2eeDiagBusy}
+                className="rounded-full"
+              >
+                {e2eeDiagBusy ? 'Réparation...' : 'Réparer maintenant'}
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4 bg-white rounded-2xl p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-medium text-gray-900">Diagnostic support E2EE</p>
+                <p className="text-sm text-gray-500">Copie l&apos;état local et les événements récents pour le support.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={sendE2eeDiagnostic} className="rounded-full">
+                  Envoyer support
+                </Button>
+                <Button variant="outline" size="sm" onClick={copyE2eeDiagnostic} className="rounded-full">
+                  Copier diagnostic
+                </Button>
+              </div>
+            </div>
+            <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <p className="text-xs font-semibold text-gray-700 mb-2">Événements récents</p>
+              {e2eeEventLog.length === 0 ? (
+                <p className="text-xs text-gray-500">Aucun événement pour le moment.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {e2eeEventLog.slice(0, 6).map((evt, idx) => (
+                    <p key={`${evt?.at || 'evt'}-${idx}`} className="text-xs text-gray-600 break-words">
+                      [{evt?.at ? new Date(evt.at).toLocaleString() : '-'}] {evt?.kind || 'event'} · healthy:{' '}
+                      {String(evt?.healthy)} · prekeys:{' '}
+                      {Number.isFinite(Number(evt?.availablePrekeys)) ? Number(evt?.availablePrekeys) : 0}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

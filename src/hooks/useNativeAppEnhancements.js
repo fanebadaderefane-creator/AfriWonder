@@ -22,8 +22,12 @@ export function useNativeAppEnhancements() {
 
     const setViewportVars = () => {
       const vv = window.visualViewport;
-      const height = vv?.height || window.innerHeight || 0;
-      const appVh = height * 0.01;
+      const inner = typeof window.innerHeight === 'number' ? window.innerHeight : 0;
+      const vvH = typeof vv?.height === 'number' ? vv.height : 0;
+      // Firefox / DevTools : visualViewport peut être quasi nul ou incohérent → #root à 0px et feed “vide”.
+      let height = vvH > 32 ? vvH : inner;
+      if (height < 48) height = Math.max(inner, 400);
+      const appVh = Math.max(height * 0.01, 0.5);
       root.style.setProperty('--app-vh', `${appVh}px`);
 
       const keyboardOffset = vv

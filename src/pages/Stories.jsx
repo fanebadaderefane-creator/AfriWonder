@@ -68,17 +68,6 @@ export default function StoriesPage() {
     return () => clearTimeout(timer);
   }, [autoProgress, currentStoryIdx, selectedStoryIdx, currentStory, currentGroup, storyGroups.length, durationSec]);
 
-  if (!currentStory) {
-    return (
-      <div className="w-full h-screen bg-black flex flex-col items-center justify-center gap-4">
-        <p className="text-white text-lg">Aucune story à afficher</p>
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="rounded-xl text-white" aria-label="Retour">
-          <ArrowLeft className="w-5 h-5" />
-        </Button>
-      </div>
-    );
-  }
-
   const reactionMutation = useMutation({
     mutationFn: ({ storyId, emoji }) => api.stories.addReaction(storyId, emoji),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['stories'] }),
@@ -114,6 +103,23 @@ export default function StoriesPage() {
     if (!currentStory?.id) return;
     api.stories.view(currentStory.id).catch(() => {});
   }, [currentStory?.id]);
+
+  if (!currentStory) {
+    return (
+      <div className="w-full h-screen bg-black flex flex-col items-center justify-center gap-4">
+        <p className="text-white text-lg">Aucune story à afficher</p>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => navigate(-1)}
+          className="rounded-xl text-white"
+          aria-label="Retour"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-screen bg-black overflow-hidden">
