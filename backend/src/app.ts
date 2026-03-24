@@ -86,6 +86,7 @@ import liveRoutes from './routes/live.routes.js';
 // News / Média
 import newsRoutes from './routes/news.routes.js';
 import messageRoutes from './routes/messages.routes.js';
+import translateRoutes from './routes/translate.routes.js';
 import sellerRoutes from './routes/seller.routes.js';
 // Legal & Privacy
 import legalRoutes from './routes/legal.routes.js';
@@ -107,6 +108,7 @@ import moderationRoutes from './routes/moderation.routes.js';
 import playlistsRoutes from './routes/playlists.routes.js';
 import musicRoutes from './routes/music.routes.js';
 import storiesRoutes from './routes/stories.routes.js';
+import e2eeRoutes from './routes/e2ee.routes.js';
 import wishlistRoutes from './routes/wishlist.routes.js';
 import adsRoutes from './routes/ads.routes.js';
 import feedRoutes from './routes/feed.routes.js';
@@ -202,14 +204,14 @@ app.get('/health', (req, res) => {
 });
 
 // Prometheus metrics (CDC Observabilité) — format text/plain pour scraper
-app.get('/metrics', (req, res) => {
+app.get('/metrics', async (req, res) => {
   const apiKey = req.headers['x-health-key'] || req.query.key;
   const expected = process.env.HEALTH_API_KEY;
   if (expected && apiKey !== expected) {
     return res.status(401).set('Content-Type', 'text/plain').send('# Unauthorized\n');
   }
   try {
-    const body = getPrometheusExposition();
+    const body = await getPrometheusExposition();
     res.set('Content-Type', 'text/plain; charset=utf-8').send(body);
   } catch (err) {
     res.status(500).set('Content-Type', 'text/plain').send('# Error generating metrics\n');
@@ -388,6 +390,7 @@ app.use('/api/seller-profile', sellerProfileRoutes);
 app.use('/api/seller-subscription', sellerSubscriptionRoutes);
 app.use('/api/verification', verificationRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/translate', translateRoutes);
 app.use('/api/seller', sellerRoutes);
 app.use('/api/legal', legalRoutes);
 app.use('/api/privacy', privacyRoutes);
@@ -408,6 +411,7 @@ app.use('/api/moderation', moderationRoutes);
 app.use('/api/playlists', playlistsRoutes);
 app.use('/api/music', musicRoutes);
 app.use('/api/stories', storiesRoutes);
+app.use('/api/e2ee', e2eeRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/ads', adsRoutes);
 app.use('/api/feed', feedRoutes);

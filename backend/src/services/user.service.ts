@@ -192,6 +192,7 @@ class UserService {
     theme?: string | null;
     preferred_categories?: string[] | null;
     messaging_e2e_enabled?: boolean;  // CPO 4.40
+    messaging_read_receipts_enabled?: boolean;
   }) {
     validateUrl(data.profile_image, 'profile_image');
     if (data.profile_cover_url) validateUrl(data.profile_cover_url, 'profile_cover_url');
@@ -216,6 +217,9 @@ class UserService {
         : null;
     }
     if (data.messaging_e2e_enabled !== undefined) payload.messaging_e2e_enabled = data.messaging_e2e_enabled;
+    if (data.messaging_read_receipts_enabled !== undefined) {
+      payload.messaging_read_receipts_enabled = data.messaging_read_receipts_enabled;
+    }
 
     const selectFields = {
       id: true,
@@ -238,6 +242,7 @@ class UserService {
       theme: true,
       preferred_categories: true,
       messaging_e2e_enabled: true,
+      messaging_read_receipts_enabled: true,
     } as const;
 
     const user = await prisma.user.update({

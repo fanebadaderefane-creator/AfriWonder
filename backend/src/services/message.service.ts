@@ -2,11 +2,17 @@ import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
+import { transcribeBufferWithWhisper } from '../utils/whisperTranscription.js';
 import notificationService from './notification.service.js';
 
 let messageIo: import('socket.io').Server | null = null;
 export function setMessageIo(io: import('socket.io').Server) {
   messageIo = io;
+}
+
+/** Socket.io — salon messagerie groupe (`message:join-group`). */
+export function emitToGroupRoom(groupId: string, event: string, payload: unknown) {
+  if (messageIo) messageIo.to(`group:${groupId}`).emit(event, payload);
 }
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -170,7 +176,7 @@ class MessageService {
     };
   }
 
-  async getOrCreateConversation(user1Id: string, user2Id: string) {
+  async getOrCreateConversation(user1Id: string, user2Id: string, viewerId?: string | null) {
     const blocked = await this.isBlocked(user1Id, user2Id);
     if (blocked) throw makeHttpError('Impossible de démarrer une conversation avec cet utilisateur', 403);
 
@@ -220,6 +226,20 @@ class MessageService {
     if ((conversation as any).pinned_message?.deleted_for_all_at) {
       (conversation as any).pinned_message.content = 'Ce message a été supprimé';
     }
+
+    const vId = viewerId ?? null;
+    if (vId && conversation) {
+      const cleared =
+        conversation.user1_id === vId
+          ? (conversation as any).cleared_before_at_user1
+          : (conversation as any).cleared_before_at_user2;
+      if (cleared && (conversation as any).pinned_message) {
+        const pinAt = new Date((conversation as any).pinned_message.created_at);
+        if (pinAt <= new Date(cleared)) {
+          (conversation as any).pinned_message = null;
+        }
+      }
+    }
     return conversation;
   }
 
@@ -229,23 +249,54 @@ class MessageService {
         id: conversationId,
         ...(userId ? { OR: [{ user1_id: userId }, { user2_id: userId }] } : {}),
       },
-      select: { id: true },
+      select: {
+        id: true,
+        user1_id: true,
+        user2_id: true,
+        cleared_before_at_user1: true,
+        cleared_before_at_user2: true,
+      },
     });
     if (!conv) throw new Error('Conversation non trouvee ou acces non autorise');
 
     const take = Math.min(50, Math.max(1, limit)) + 1;
 
     const now = new Date();
+    const clearedBefore =
+      userId && conv.user1_id === userId
+        ? conv.cleared_before_at_user1
+        : userId && conv.user2_id === userId
+          ? conv.cleared_before_at_user2
+          : null;
+
+    const createdAtFilter: { lt?: Date; gt?: Date } = {};
+    if (cursor) createdAtFilter.lt = new Date(cursor);
+    if (clearedBefore) createdAtFilter.gt = clearedBefore;
+
     const where: Prisma.MessageWhereInput = {
       conversation_id: conversationId,
       is_deleted: false,
-      OR: [
-        { is_ephemeral: false },
-        { is_ephemeral: true, expires_at: { gt: now } },
-        { is_ephemeral: true, expires_at: null },
+      AND: [
+        {
+          OR: [
+            { is_ephemeral: false },
+            { is_ephemeral: true, expires_at: { gt: now } },
+            { is_ephemeral: true, expires_at: null },
+          ],
+        },
+        // Les messages programmés ne sont visibles que par l’expéditeur jusqu’à l’envoi effectif
+        ...(userId
+          ? [
+              {
+                OR: [{ status: { not: 'scheduled' } }, { sender_id: userId }],
+              },
+            ]
+          : []),
       ],
     };
-    if (cursor) (where as Prisma.MessageWhereInput).created_at = { lt: new Date(cursor) };
+    if (Object.keys(createdAtFilter).length > 0) {
+      (where as Prisma.MessageWhereInput).created_at = createdAtFilter;
+    }
 
     const messages = await prisma.message.findMany({
       where,
@@ -534,9 +585,32 @@ class MessageService {
     }
   }
 
+  async markAsDelivered(conversationId: string, userId: string) {
+    const conv = await prisma.conversation.findFirst({
+      where: { id: conversationId, OR: [{ user1_id: userId }, { user2_id: userId }] },
+    });
+    if (!conv) return { success: false, updated: 0 };
+
+    const result = await prisma.message.updateMany({
+      where: {
+        conversation_id: conversationId,
+        sender_id: { not: userId },
+        status: 'sent',
+        is_deleted: false,
+      },
+      data: { status: 'delivered' },
+    });
+
+    if (result.count > 0 && messageIo) {
+      messageIo.to(`conversation:${conversationId}`).emit('message:delivered', { conversationId, userId });
+    }
+    return { success: true, updated: result.count };
+  }
+
   async markAsRead(conversationId: string, userId: string) {
     const conv = await prisma.conversation.findFirst({
       where: { id: conversationId, OR: [{ user1_id: userId }, { user2_id: userId }] },
+      select: { id: true, user1_id: true, user2_id: true, unread_count_map: true },
     });
     if (!conv) return { success: false };
 
@@ -546,21 +620,38 @@ class MessageService {
       data: { unread_count_map: newMap },
     });
 
-    await prisma.message.updateMany({
-      where: {
-        conversation_id: conversationId,
-        sender_id: { not: userId },
-        status: { not: 'read' },
-      },
-      data: { status: 'read' },
-    });
+    const partnerId = conv.user1_id === userId ? conv.user2_id : conv.user1_id;
+    const [reader, partner] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { messaging_read_receipts_enabled: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: partnerId },
+        select: { messaging_read_receipts_enabled: true },
+      }),
+    ]);
+    const readerOk = reader?.messaging_read_receipts_enabled !== false;
+    const partnerOk = partner?.messaging_read_receipts_enabled !== false;
+    const shouldPropagateRead = readerOk && partnerOk;
 
-    if (messageIo) {
-      messageIo.to(`conversation:${conversationId}`).emit('message:read', { conversationId, userId });
+    if (shouldPropagateRead) {
+      await prisma.message.updateMany({
+        where: {
+          conversation_id: conversationId,
+          sender_id: { not: userId },
+          status: { in: ['sent', 'delivered'] },
+        },
+        data: { status: 'read' },
+      });
+
+      if (messageIo) {
+        messageIo.to(`conversation:${conversationId}`).emit('message:read', { conversationId, userId });
+      }
     }
 
-    logger.info('Messages marked as read', { conversationId, userId });
-    return { success: true };
+    logger.info('Messages marked as read', { conversationId, userId, readReceiptsPropagated: shouldPropagateRead });
+    return { success: true, readReceiptsPropagated: shouldPropagateRead };
   }
 
   async setConversationArchived(conversationId: string, userId: string, archived: boolean) {
@@ -589,6 +680,22 @@ class MessageService {
       data: isUser1 ? { muted_user1: muted } : { muted_user2: muted },
     });
     return { muted };
+  }
+
+  /** Effacer le contenu de la discussion pour l’utilisateur courant (les messages restent chez l’autre). */
+  async clearConversationHistoryForUser(conversationId: string, userId: string) {
+    const conv = await prisma.conversation.findFirst({
+      where: { id: conversationId, OR: [{ user1_id: userId }, { user2_id: userId }] },
+      select: { id: true, user1_id: true, user2_id: true },
+    });
+    if (!conv) throw makeHttpError('Conversation non trouvée', 404);
+    const now = new Date();
+    const isUser1 = conv.user1_id === userId;
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: isUser1 ? { cleared_before_at_user1: now } : { cleared_before_at_user2: now },
+    });
+    return { success: true, clearedAt: now };
   }
 
   async setConversationDraft(conversationId: string, userId: string, content: string | null) {
@@ -642,6 +749,61 @@ class MessageService {
 
   /** CPO 4.17 — Suppression pour tous (uniquement l’expéditeur, dans les 15 min). */
   private static readonly DELETE_FOR_ALL_WINDOW_MS = 15 * 60 * 1000;
+  /** Édition du texte (expéditeur, messages texte uniquement, dans les 15 min après envoi). */
+  private static readonly EDIT_MESSAGE_WINDOW_MS = 15 * 60 * 1000;
+
+  async editMessageContent(messageId: string, userId: string, rawContent: string) {
+    const msg = await prisma.message.findFirst({
+      where: {
+        id: messageId,
+        conversation: { OR: [{ user1_id: userId }, { user2_id: userId }] },
+      },
+    });
+    if (!msg) throw makeHttpError('Message non trouvé ou accès non autorisé', 404);
+    if (msg.sender_id !== userId) throw makeHttpError('Seul l’expéditeur peut modifier ce message', 403);
+    if (msg.is_deleted) throw makeHttpError('Message supprimé', 400);
+    if (msg.deleted_for_all_at) throw makeHttpError('Message non modifiable', 400);
+    if (String(msg.type || 'text').toLowerCase() !== 'text') {
+      throw makeHttpError('Seuls les messages texte peuvent être modifiés', 400);
+    }
+    const elapsed = Date.now() - msg.created_at.getTime();
+    if (elapsed > MessageService.EDIT_MESSAGE_WINDOW_MS) {
+      throw makeHttpError('La modification n’est possible que dans les 15 minutes suivant l’envoi', 400);
+    }
+    const maskedContent = maskSensitiveContacts(String(rawContent ?? '').trim()).slice(0, 2000);
+    if (!maskedContent) throw makeHttpError('Le contenu texte est requis', 400);
+
+    const updated = await prisma.message.update({
+      where: { id: messageId },
+      data: { content: maskedContent, is_edited: true },
+      include: {
+        sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
+        reply_to: { select: { id: true, content: true, type: true, sender_id: true, created_at: true } },
+      },
+    });
+
+    const convPreview = await prisma.conversation.findFirst({
+      where: { id: msg.conversation_id },
+      select: { last_message_id: true },
+    });
+    if (convPreview?.last_message_id === messageId) {
+      await prisma.conversation.update({
+        where: { id: msg.conversation_id },
+        data: { last_message_text: maskedContent.slice(0, 200) },
+      });
+    }
+
+    if (messageIo) {
+      messageIo.to(`conversation:${msg.conversation_id}`).emit('message:updated', {
+        messageId,
+        content: updated.content,
+        is_edited: true,
+        reactions: updated.reactions,
+      });
+    }
+    logger.info('Message edited', { messageId, userId });
+    return updated;
+  }
 
   async deleteForAll(messageId: string, userId: string) {
     const msg = await prisma.message.findFirst({
@@ -725,6 +887,91 @@ class MessageService {
       });
     }
     return updated;
+  }
+
+  /** Liste des personnes ayant réagi (1-1 ou groupe : accès si participant à la conversation du message). */
+  async getMessageReactionsDetail(messageId: string, viewerId: string) {
+    const msg = await prisma.message.findFirst({
+      where: {
+        id: messageId,
+        conversation: { OR: [{ user1_id: viewerId }, { user2_id: viewerId }] },
+      },
+      select: { id: true, reactions: true },
+    });
+    if (!msg) throw makeHttpError('Message non trouvé ou accès non autorisé', 404);
+
+    const raw = msg.reactions;
+    const map =
+      raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, string>) : {};
+    const userIds = Object.keys(map);
+    if (userIds.length === 0) {
+      return { reactors: [] as Array<{ user_id: string; emoji: string; username: string | null; full_name: string | null; profile_image: string | null }> };
+    }
+
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, username: true, full_name: true, profile_image: true },
+    });
+    const byId = new Map(users.map((u) => [u.id, u]));
+
+    const reactors = userIds.map((uid) => ({
+      user_id: uid,
+      emoji: String(map[uid] || '').trim().slice(0, 16),
+      username: byId.get(uid)?.username ?? null,
+      full_name: byId.get(uid)?.full_name ?? null,
+      profile_image: byId.get(uid)?.profile_image ?? null,
+    }));
+    reactors.sort((a, b) =>
+      (a.full_name || a.username || a.user_id).localeCompare(b.full_name || b.username || b.user_id, 'fr', {
+        sensitivity: 'base',
+      })
+    );
+    return { reactors };
+  }
+
+  /** Transcription Whisper — message vocal 1-1, expéditeur uniquement. */
+  async transcribeVoiceMessage(messageId: string, userId: string) {
+    const msg = await prisma.message.findFirst({
+      where: {
+        id: messageId,
+        sender_id: userId,
+        is_deleted: false,
+        conversation: { OR: [{ user1_id: userId }, { user2_id: userId }] },
+      },
+    });
+    if (!msg) throw makeHttpError('Message introuvable', 404);
+    const t = String(msg.type || '').toLowerCase();
+    if (!['voice', 'audio'].includes(t)) throw makeHttpError('Seuls les messages vocaux sont transcrits', 400);
+    if (!msg.media_url) throw makeHttpError('Fichier audio manquant', 400);
+    if (msg.transcription_text) return { text: msg.transcription_text, cached: true };
+
+    const audioRes = await fetch(msg.media_url);
+    if (!audioRes.ok) throw makeHttpError('Téléchargement audio impossible', 502);
+    const buf = Buffer.from(await audioRes.arrayBuffer());
+
+    let text: string;
+    try {
+      text = await transcribeBufferWithWhisper(buf, { filename: 'voice.webm', mime: 'audio/webm' });
+    } catch (e: unknown) {
+      const err = e as Error & { statusCode?: number };
+      if (typeof err.statusCode === 'number') {
+        throw makeHttpError(err.message || 'Erreur de transcription', err.statusCode);
+      }
+      throw e;
+    }
+
+    await prisma.message.update({
+      where: { id: messageId },
+      data: { transcription_text: text },
+    });
+
+    if (messageIo) {
+      messageIo.to(`conversation:${msg.conversation_id}`).emit('message:updated', {
+        messageId,
+        transcription_text: text,
+      });
+    }
+    return { text, cached: false };
   }
 
   async setMessageReaction(messageId: string, userId: string, emoji: string | null) {

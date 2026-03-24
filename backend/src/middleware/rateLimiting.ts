@@ -96,3 +96,17 @@ export const socketLimiter = rateLimit({
   message: { success: false, error: 'Trop de connexions WebSocket' },
   store: makeRedisStore('rl:socket:')
 });
+
+/** Traduction de texte (chat) — après authenticate pour clé par user.id */
+export const translateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 80,
+  message: { success: false, error: 'Limite de traductions atteinte. Réessayez plus tard.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const uid = (req as { user?: { id?: string } }).user?.id;
+    return uid || req.ip || 'unknown';
+  },
+  store: makeRedisStore('rl:translate:')
+});

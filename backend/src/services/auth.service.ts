@@ -2,17 +2,30 @@
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import speakeasy from 'speakeasy';
+import { Prisma } from '@prisma/client';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import * as earlyAccessService from './earlyAccess.service.js';
 import * as referralService from './referral.service.js';
 
 interface RegisterData {
-  email: string;
+  email?: string;
+  phone?: string;
   username: string;
   password: string;
   full_name?: string;
   referral_code?: string;
+}
+
+function normalizePhone(phone?: string) {
+  const raw = String(phone || '').trim();
+  if (!raw) return '';
+  const withIntlPrefix = raw.startsWith('00') ? `+${raw.slice(2)}` : raw;
+  const digits = withIntlPrefix.replace(/[^\d+]/g, '');
+  if (!digits.startsWith('+')) {
+    return /^\d{6,15}$/.test(digits) ? `+${digits}` : '';
+  }
+  return /^\+\d{6,15}$/.test(digits) ? digits : '';
 }
 
 class AuthService {
@@ -26,22 +39,38 @@ class AuthService {
     }
 
     // Valider les données requises
-    if (!data.email || !data.username || !data.password) {
-      const error: any = new Error('Email, nom d\'utilisateur et mot de passe sont requis');
+    if ((!data.email && !data.phone) || !data.username || !data.password) {
+      const error: any = new Error('Email ou numéro, nom d\'utilisateur et mot de passe sont requis');
       error.statusCode = 400;
       throw error;
     }
 
-    const emailTrimmed = data.email.trim();
+    const emailTrimmed = String(data.email || '').trim().toLowerCase();
+    const phoneTrimmed = normalizePhone(data.phone);
     const usernameTrimmed = data.username.trim();
 
-    // Valider le format de l'email
+    if (!emailTrimmed && !phoneTrimmed) {
+      const error: any = new Error('Un email ou un numéro avec indicatif international est requis');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Valider le format de l'email si présent
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(emailTrimmed)) {
+    if (emailTrimmed && !emailRegex.test(emailTrimmed)) {
       const error: any = new Error('Format d\'email invalide');
       error.statusCode = 400;
       throw error;
     }
+
+    if (data.phone && !phoneTrimmed) {
+      const error: any = new Error('Le numéro doit inclure un indicatif international valide');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const emailToStore = emailTrimmed || `phone_${phoneTrimmed.replace(/\D/g, '')}@phone.afriwonder.local`;
+    const phoneDerivedEmail = phoneTrimmed ? `phone_${phoneTrimmed.replace(/\D/g, '')}@phone.afriwonder.local` : '';
 
     // Force du mot de passe : min 8 caractères, au moins une lettre et un chiffre (sécurité / consolidation)
     const passwordMinLength = 8;
@@ -73,46 +102,82 @@ class AuthService {
       throw error;
     }
 
-    // Vérifier si l'email existe déjà
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: emailTrimmed },
-          { username: usernameTrimmed },
-        ],
-      },
-    });
+    // Vérifier unicité + hasher + créer (même try/catch : findFirst peut lever P1001 comme create)
+    let user;
+    try {
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: emailToStore },
+            { username: usernameTrimmed },
+          ],
+        },
+      });
 
-    if (existingUser) {
-      const error: any = new Error('Email ou nom d\'utilisateur déjà utilisé');
-      error.statusCode = 400;
-      throw error;
+      if (existingUser) {
+        const dup: any = new Error('Email, numéro ou nom d\'utilisateur déjà utilisé');
+        dup.statusCode = 400;
+        throw dup;
+      }
+
+      const password_hash = await bcrypt.hash(data.password, 10);
+
+      user = await prisma.user.create({
+        data: {
+          email: emailToStore,
+          username: usernameTrimmed,
+          password_hash,
+          full_name: data.full_name?.trim() || null,
+        },
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          full_name: true,
+          profile_image: true,
+          role: true,
+          created_at: true,
+        },
+      });
+    } catch (e) {
+      const anyE = e as { statusCode?: number };
+      if (anyE?.statusCode) {
+        throw e;
+      }
+      if (e instanceof Prisma.PrismaClientKnownRequestError) {
+        if (e.code === 'P2002') {
+          const err: any = new Error('Ce nom d’utilisateur ou cet email est déjà utilisé.');
+          err.statusCode = 400;
+          throw err;
+        }
+        if (e.code === 'P1001' || e.code === 'P1017') {
+          const err: any = new Error(
+            'Impossible de joindre la base de données. Vérifiez que PostgreSQL est accessible et que DATABASE_URL est correct dans backend/.env.'
+          );
+          err.statusCode = 503;
+          throw err;
+        }
+      }
+      logger.error('register: prisma (findFirst/create) failed', e instanceof Error ? e : undefined, {
+        code: e instanceof Prisma.PrismaClientKnownRequestError ? e.code : undefined,
+      });
+      const err: any = new Error(
+        'Inscription impossible pour le moment (erreur base de données). Vérifiez PostgreSQL, DATABASE_URL, puis redémarrez l’API.'
+      );
+      err.statusCode = 503;
+      throw err;
     }
 
-    // Hasher le mot de passe
-    const password_hash = await bcrypt.hash(data.password, 10);
-
-    // Créer l'utilisateur (valeurs nettoyées)
-    const user = await prisma.user.create({
-      data: {
-        email: emailTrimmed,
-        username: usernameTrimmed,
-        password_hash,
-        full_name: data.full_name?.trim() || null,
-      },
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        full_name: true,
-        profile_image: true,
-        role: true,
-        created_at: true,
-      },
-    });
-
+    /** Ne pas faire échouer l’inscription si les tables / règles de parrainage posent problème */
     if (data.referral_code?.trim()) {
-      await referralService.applyReferralCode(user.id, data.referral_code.trim());
+      try {
+        await referralService.applyReferralCode(user.id, data.referral_code.trim());
+      } catch (refErr) {
+        logger.warn('Parrainage ignoré à l’inscription', {
+          userId: user.id,
+          err: refErr instanceof Error ? refErr.message : String(refErr),
+        });
+      }
     }
 
     // Créer le portefeuille Live dès l'inscription (évite FK au premier don)
@@ -125,7 +190,7 @@ class AuthService {
 
     const tokens = this.generateTokens(user.id, user.email);
 
-    logger.info('Utilisateur créé', { userId: user.id, email: user.email });
+    logger.info('Utilisateur créé', { userId: user.id, email: user.email, phone: phoneTrimmed || undefined });
 
     return {
       user,
@@ -134,21 +199,31 @@ class AuthService {
   }
 
   async login(
-    email: string,
+    identifier: string,
     password: string,
     twoFactorCode?: string,
     backupCode?: string
   ) {
     // Valider les données requises pour éviter les erreurs 500 Prisma
-    if (!email || !password) {
-      const error: any = new Error('Email et mot de passe sont requis');
+    if (!identifier || !password) {
+      const error: any = new Error('Email, nom d\'utilisateur ou numéro et mot de passe sont requis');
       error.statusCode = 400;
       throw error;
     }
 
+    const identifierTrimmed = identifier.trim();
+    const normalizedPhone = normalizePhone(identifierTrimmed);
+    const phoneDerivedEmail = normalizedPhone ? `phone_${normalizedPhone.replace(/\D/g, '')}@phone.afriwonder.local` : '';
+
     // Trouver l'utilisateur
-    const user = await prisma.user.findUnique({
-      where: { email },
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: identifierTrimmed.toLowerCase() },
+          ...(phoneDerivedEmail ? [{ email: phoneDerivedEmail }] : []),
+          { username: identifierTrimmed },
+        ],
+      },
     });
 
     if (!user) {
@@ -300,6 +375,7 @@ class AuthService {
         created_at: true,
         data_saver_mode: true,
         messaging_e2e_enabled: true,
+        messaging_read_receipts_enabled: true,
       },
     });
 

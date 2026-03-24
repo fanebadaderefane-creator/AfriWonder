@@ -4,6 +4,7 @@
  */
 
 import { getHttpMetricsSummary } from './httpMetrics.service.js';
+import e2eeService from './e2ee.service.js';
 
 const BUCKETS_MS = [5, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
 
@@ -43,7 +44,7 @@ function formatHistogramFromLatencies(name: string, help: string, latenciesMs: n
 /**
  * Retourne le corps texte Prometheus (exposition format).
  */
-export function getPrometheusExposition(): string {
+export async function getPrometheusExposition(): Promise<string> {
   const summary = getHttpMetricsSummary();
   const lines: string[] = [];
 
@@ -62,6 +63,17 @@ export function getPrometheusExposition(): string {
     const path = parts[1] || '/';
     lines.push(formatCounter('afriwonder_http_requests_by_route_total', 'HTTP requests by route', route.count, { method, path }));
     lines.push(formatCounter('afriwonder_http_errors_by_route_total', 'HTTP errors by route', route.errors, { method, path }));
+  }
+
+  try {
+    const e2ee = await e2eeService.getHealthSnapshot();
+    lines.push(formatGauge('afriwonder_e2ee_devices_registered', 'Registered E2EE devices', e2ee.devices_registered));
+    lines.push(formatGauge('afriwonder_e2ee_prekeys_available', 'Available E2EE one-time prekeys', e2ee.prekeys_available));
+    lines.push(formatGauge('afriwonder_e2ee_envelopes_last_hour', 'E2EE envelopes created during last hour', e2ee.envelopes_last_hour));
+    lines.push(formatGauge('afriwonder_e2ee_envelopes_last_day', 'E2EE envelopes created during last day', e2ee.envelopes_last_day));
+    lines.push(formatGauge('afriwonder_e2ee_healthy', 'E2EE health status (1 healthy, 0 unhealthy)', e2ee.healthy ? 1 : 0));
+  } catch {
+    // Keep metrics endpoint resilient even if E2EE snapshot fails.
   }
 
   return lines.join('');

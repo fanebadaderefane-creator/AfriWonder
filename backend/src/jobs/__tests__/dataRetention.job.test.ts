@@ -59,9 +59,10 @@ describe('dataRetention jobs', () => {
         { id: 'p2', data_type: 'notifications', retention_days: 5 },
         { id: 'p3', data_type: 'notification_logs', retention_days: 3 },
         { id: 'p4', data_type: 'guest_cookie_consents', retention_days: 20 },
-        { id: 'p5', data_type: 'data_export_requests', retention_days: 30 },
-        { id: 'p6', data_type: 'suspicious_activity_alerts', retention_days: 60 },
-        { id: 'p7', data_type: 'unknown_type', retention_days: 1 },
+        { id: 'p5', data_type: 'e2ee_envelopes', retention_days: 180 },
+        { id: 'p6', data_type: 'data_export_requests', retention_days: 30 },
+        { id: 'p7', data_type: 'suspicious_activity_alerts', retention_days: 60 },
+        { id: 'p8', data_type: 'unknown_type', retention_days: 1 },
       ]);
 
     jest
@@ -76,6 +77,9 @@ describe('dataRetention jobs', () => {
     jest
       .spyOn(prisma.guestCookieConsent, 'deleteMany')
       .mockResolvedValue({ count: 1 } as any);
+    jest
+      .spyOn(prisma.encryptedMessageEnvelope, 'deleteMany')
+      .mockResolvedValue({ count: 7 } as any);
     jest
       .spyOn(prisma.dataExportRequest, 'deleteMany')
       .mockResolvedValue({ count: 4 } as any);

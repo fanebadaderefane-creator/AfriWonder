@@ -38,6 +38,8 @@ model User {
   monetization_enabled         Boolean                   @default(false)
   monetization_suspended_at    DateTime?
   messaging_e2e_enabled        Boolean                   @default(false)   // CPO 4.40 — préférence E2E (implémentation à venir)
+  /// Accusés de lecture (tics bleus) : si false, n’envoie pas « lu » aux autres et masque les tics bleus sur ses propres messages (CDC confidentialité)
+  messaging_read_receipts_enabled Boolean                @default(true)
   ad_campaigns                 AdCampaign[]
   addresses                    Address[]
   airtime_recharges            AirtimeRecharge[]
@@ -119,6 +121,7 @@ model User {
   notifications                Notification[]
   notification_logs            NotificationLog[]
   notification_preference      NotificationPreference?
+  push_subscriptions           PushSubscription[]
   orders                       Order[]
   order_buyer_reviews_received OrderBuyerReview[]        @relation("BuyerReviewBuyer")
   order_buyer_reviews_given    OrderBuyerReview[]        @relation("BuyerReviewSeller")
@@ -213,6 +216,8 @@ model User {
   group_calls_created         GroupCall[]
   group_call_participations    GroupCallParticipant[]
   user_sessions               UserSession[]
+  user_e2ee_devices           UserE2eeDevice[]
+  user_e2ee_prekeys           UserE2eePrekey[]
   parcel_shipments            ParcelShipment[]
   close_friends               CloseFriend[]              @relation("CloseFriendOwner")
   close_friend_of              CloseFriend[]             @relation("CloseFriendTarget")
@@ -515,6 +520,46 @@ model UserSession {
 
   @@index([user_id])
   @@index([last_seen])
+}
+
+/// Device E2E enregistré (clé identité + signed prekey)
+model UserE2eeDevice {
+  id                       String   @id @default(uuid())
+  user_id                  String
+  device_id                String
+  identity_key_public      String
+  signed_prekey_public     String
+  signed_prekey_signature  String
+  key_algo                 String   @default("x25519")
+  app_version              String?
+  platform                 String?
+  last_seen_at             DateTime @default(now())
+  created_at               DateTime @default(now())
+  updated_at               DateTime @updatedAt
+  user                     User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, device_id])
+  @@index([user_id])
+  @@index([device_id])
+  @@index([last_seen_at])
+}
+
+/// Stock de one-time prekeys (consommables une fois)
+model UserE2eePrekey {
+  id                  String   @id @default(uuid())
+  user_id             String
+  device_id           String
+  key_id              Int
+  public_key          String
+  consumed_at         DateTime?
+  consumed_by_user_id String?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+  user                User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, device_id, key_id])
+  @@index([user_id, device_id])
+  @@index([consumed_at])
 }
 
 /// Services publics / administratifs (liste pour le hub)
@@ -2123,6 +2168,23 @@ model NotificationPreference {
   @@index([user_id])
 }
 
+model PushSubscription {
+  id         String   @id @default(uuid())
+  user_id    String
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  user_agent String?
+  is_active  Boolean  @default(true)
+  last_seen  DateTime @default(now())
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, is_active])
+  @@index([last_seen])
+}
+
 model NotificationLog {
   id         String   @id @default(uuid())
   user_id    String
@@ -3066,6 +3128,9 @@ model Conversation {
   is_archived_user2  Boolean   @default(false)
   muted_user1        Boolean   @default(false)
   muted_user2        Boolean   @default(false)
+  /// Effacer l’historique « pour moi » — ne montrer que les messages après cette date (utilisateur 1 / 2).
+  cleared_before_at_user1 DateTime?
+  cleared_before_at_user2 DateTime?
   pinned_message_id  String?   @unique // CPO 4.23 — message épinglé en haut (1-1) ; @unique requis pour relation 1-1
   user1              User      @relation("User1", fields: [user1_id], references: [id], onDelete: Cascade)
   user2              User      @relation("User2", fields: [user2_id], references: [id], onDelete: Cascade)
@@ -3080,30 +3145,41 @@ model Conversation {
 
 /// Groupe de messagerie (CDC : chat en groupe)
 model ConversationGroup {
-  id                String    @id @default(uuid())
-  name              String
-  avatar_url        String?
-  created_by_id     String
-  created_at        DateTime  @default(now())
-  updated_at        DateTime  @updatedAt
-  last_message_at   DateTime?
-  last_message_text String?
-  created_by        User      @relation("ConversationGroupCreator", fields: [created_by_id], references: [id], onDelete: Cascade)
-  members           ConversationGroupMember[]
-  messages          GroupMessage[]
+  id                 String    @id @default(uuid())
+  name               String
+  /// Texte d’info pour les membres (règles, lien, etc.) — éditable par les admins
+  description        String?
+  invite_token       String?   @unique
+  avatar_url         String?
+  created_by_id      String
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+  last_message_at    DateTime?
+  last_message_text  String?
+  pinned_message_id  String?   @unique
+  created_by         User      @relation("ConversationGroupCreator", fields: [created_by_id], references: [id], onDelete: Cascade)
+  members            ConversationGroupMember[]
+  messages           GroupMessage[]
+  pinned_message     GroupMessage? @relation("GroupPinnedMessage", fields: [pinned_message_id], references: [id], onDelete: SetNull)
 
   @@index([created_by_id])
   @@index([last_message_at])
 }
 
 model ConversationGroupMember {
-  id         String   @id @default(uuid())
-  group_id   String
-  user_id    String
-  role       String   @default("member")
-  joined_at  DateTime @default(now())
-  group      ConversationGroup @relation(fields: [group_id], references: [id], onDelete: Cascade)
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id            String   @id @default(uuid())
+  group_id      String
+  user_id       String
+  role          String   @default("member")
+  joined_at     DateTime @default(now())
+  /// Dernière lecture du fil groupe (non-lus = messages après cette date, hors propres envois)
+  last_read_at  DateTime?
+  /// Pas de notification (in-app + push) pour ce groupe pour cet utilisateur
+  notifications_muted Boolean @default(false)
+  /// Libellé affiché à côté du nom dans ce groupe uniquement (ex. « Parent », « Admin ») — CDC messagerie
+  group_display_tag String?
+  group         ConversationGroup @relation(fields: [group_id], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([group_id, user_id])
   @@index([group_id])
@@ -3111,20 +3187,31 @@ model ConversationGroupMember {
 }
 
 model GroupMessage {
-  id             String            @id @default(uuid())
-  group_id       String
-  sender_id      String
-  content        String
-  type           String            @default("text")
-  media_url      String?
-  thumbnail_url  String?
-  created_at     DateTime          @default(now())
-  updated_at     DateTime          @updatedAt
-  is_deleted     Boolean           @default(false)
-  read_by        Json?
-  reply_to_id    String?
-  group          ConversationGroup  @relation(fields: [group_id], references: [id], onDelete: Cascade)
-  sender         User               @relation(fields: [sender_id], references: [id], onDelete: Cascade)
+  id                  String            @id @default(uuid())
+  group_id            String
+  sender_id           String
+  content             String
+  type                String            @default("text")
+  media_url           String?
+  thumbnail_url       String?
+  created_at          DateTime          @default(now())
+  updated_at          DateTime          @updatedAt
+  is_deleted          Boolean           @default(false)
+  /// Message modifié par l’expéditeur (délai 15 min, texte uniquement)
+  is_edited           Boolean           @default(false)
+  read_by             Json?
+  reply_to_id         String?
+  reactions           Json?
+  transcription_text  String?
+  /// Sondage : libellés des choix (type = poll)
+  poll_options        Json?
+  /// Sondage : votes { "userId": optionIndex }
+  poll_votes          Json?
+  group               ConversationGroup  @relation(fields: [group_id], references: [id], onDelete: Cascade)
+  sender              User               @relation(fields: [sender_id], references: [id], onDelete: Cascade)
+  reply_to            GroupMessage?      @relation("GroupMessageReplyThread", fields: [reply_to_id], references: [id], onDelete: SetNull)
+  replies             GroupMessage[]     @relation("GroupMessageReplyThread")
+  pinned_in_group     ConversationGroup? @relation("GroupPinnedMessage")
 
   @@index([group_id])
   @@index([sender_id])
@@ -3159,6 +3246,7 @@ model Message {
   contact_user_id      String?
   contact_name         String?
   sticker_url          String?
+  transcription_text  String?
   conversation         Conversation    @relation("ConversationMessages", fields: [conversation_id], references: [id], onDelete: Cascade)
   pinned_in            Conversation?   @relation("PinnedInConversation")
   reply_to             Message?        @relation("Reply", fields: [reply_to_message_id], references: [id])
@@ -3213,6 +3301,34 @@ model MessageReport {
 
   @@index([reporter_id])
   @@index([message_id])
+}
+
+/// Envelope chiffrée E2E stockée pour livraison/sync multi-appareils
+model EncryptedMessageEnvelope {
+  id                 String   @id @default(uuid())
+  conversation_id    String?
+  group_id           String?
+  message_id         String?
+  group_message_id   String?
+  sender_user_id     String
+  sender_device_id   String
+  recipient_user_id  String?
+  recipient_device_id String?
+  ciphertext         String
+  iv                 String
+  aad                String?
+  cipher_algo        String   @default("xchacha20poly1305")
+  message_type       String   @default("text")
+  client_message_id  String?
+  created_at         DateTime @default(now())
+
+  @@index([conversation_id, created_at])
+  @@index([group_id, created_at])
+  @@index([message_id])
+  @@index([group_message_id])
+  @@index([recipient_user_id, recipient_device_id, created_at])
+  @@index([sender_user_id, sender_device_id, created_at])
+  @@unique([sender_user_id, sender_device_id, client_message_id, recipient_user_id, recipient_device_id], map: "uniq_e2ee_envelope_idempotency")
 }
 
 model Community {

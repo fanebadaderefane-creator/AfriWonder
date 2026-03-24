@@ -20,6 +20,7 @@ import commissionSettingsService from '../services/commissionSettings.service.js
 import * as monetizationService from '../services/monetization.service.js';
 import { invalidateBannedWordsCache } from '../services/bannedWord.service.js';
 import experimentService from '../services/experiment.service.js';
+import e2eeService from '../services/e2ee.service.js';
 
 const router = Router();
 
@@ -434,6 +435,16 @@ router.get('/monitoring/errors', authenticate, requireAnyAdmin, (req, res) => {
 router.get('/monitoring/http', authenticate, requireAnyAdmin, (req, res) => {
   try {
     res.json({ success: true, data: getHttpMetricsSummary() });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/admin/monitoring/e2ee — état E2EE (devices, prekeys, envelopes)
+router.get('/monitoring/e2ee', authenticate, requireAnyAdmin, async (_req, res) => {
+  try {
+    const data = await e2eeService.getHealthSnapshot();
+    res.json({ success: true, data });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e.message });
   }

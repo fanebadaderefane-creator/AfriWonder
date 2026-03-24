@@ -5,6 +5,7 @@ import { validateUrl } from '../utils/urlValidator.js';
 import GamificationEngine from './gamification.service.js';
 import { emit } from '../events/eventBus.js';
 import { containsBannedWord } from './bannedWord.service.js';
+import notificationService from './notification.service.js';
 
 interface ListOptions {
   page: number;
@@ -917,14 +918,14 @@ class VideoService {
     const creatorId = video.creator_id;
     const authorName = user.full_name || user.username || 'Quelqu\'un';
     if (creatorId && creatorId !== userId) {
-      await prisma.notification.create({
+      await notificationService.create(creatorId, {
+        type: 'comment',
+        title: 'Nouveau commentaire',
+        message: `${authorName} a commenté votre vidéo`,
+        reference_id: videoId,
+        reference_type: 'video',
         data: {
-          user_id: creatorId,
-          type: 'comment',
-          title: 'Nouveau commentaire',
-          message: `${authorName} a commenté votre vidéo`,
-          reference_id: videoId,
-          reference_type: 'video',
+          videoId,
           from_user_id: userId,
           from_user_name: authorName,
         },
@@ -939,14 +940,14 @@ class VideoService {
       });
       const parentAuthorId = parent?.user_id;
       if (parentAuthorId && parentAuthorId !== userId && parentAuthorId !== creatorId) {
-        await prisma.notification.create({
+        await notificationService.create(parentAuthorId, {
+          type: 'comment',
+          title: 'Réponse à votre commentaire',
+          message: `${authorName} a répondu à votre commentaire`,
+          reference_id: videoId,
+          reference_type: 'video',
           data: {
-            user_id: parentAuthorId,
-            type: 'comment',
-            title: 'Réponse à votre commentaire',
-            message: `${authorName} a répondu à votre commentaire`,
-            reference_id: videoId,
-            reference_type: 'video',
+            videoId,
             from_user_id: userId,
             from_user_name: authorName,
           },

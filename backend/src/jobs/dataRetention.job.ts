@@ -26,6 +26,11 @@ const DEFAULT_RETENTION_POLICIES = [
     description: 'Messages conservés pendant 2 ans',
   },
   {
+    data_type: 'e2ee_envelopes',
+    retention_days: 180, // 6 mois
+    description: 'Envelopes E2EE conservées 6 mois pour sync multi-appareil',
+  },
+  {
     data_type: 'sessions',
     retention_days: 30, // 1 mois
     description: 'Sessions expirées nettoyées après 1 mois',
@@ -140,6 +145,9 @@ export async function applyRetentionPolicies() {
           case 'guest_cookie_consents':
             deletedCount = await cleanGuestCookieConsents(cutoffDate);
             break;
+          case 'e2ee_envelopes':
+            deletedCount = await cleanE2eeEnvelopes(cutoffDate);
+            break;
           case 'data_export_requests':
             deletedCount = await cleanDataExportRequests(cutoffDate);
             break;
@@ -219,6 +227,15 @@ async function cleanGuestCookieConsents(cutoffDate: Date): Promise<number> {
         { expires_at: { lt: new Date() } },
         { created_at: { lt: cutoffDate } },
       ],
+    },
+  });
+  return result.count;
+}
+
+async function cleanE2eeEnvelopes(cutoffDate: Date): Promise<number> {
+  const result = await prisma.encryptedMessageEnvelope.deleteMany({
+    where: {
+      created_at: { lt: cutoffDate },
     },
   });
   return result.count;

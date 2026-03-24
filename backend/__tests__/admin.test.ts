@@ -84,4 +84,18 @@ describe('Admin API', () => {
       expect(res.body.data).toHaveProperty('users');
     });
   });
+
+  describe('GET /api/admin/monitoring/e2ee', () => {
+    it('admin peut consulter le monitoring e2ee', async () => {
+      const res = await request(app)
+        .get('/api/admin/monitoring/e2ee')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toHaveProperty('devices_registered');
+      expect(res.body.data).toHaveProperty('prekeys_available');
+      expect(res.body.data).toHaveProperty('alerts');
+      expect(Array.isArray(res.body.data.alerts)).toBe(true);
+    });
+  });
 });

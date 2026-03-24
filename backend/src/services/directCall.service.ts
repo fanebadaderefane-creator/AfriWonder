@@ -3,6 +3,7 @@ import { logger } from '../utils/logger.js';
 import paymentService from './payment.service.js';
 import platformRevenueService from './platformRevenue.service.js';
 import withdrawalService from './withdrawal.service.js';
+import notificationService from './notification.service.js';
 
 /**
  * Service pour gérer les appels directs payants
@@ -43,6 +44,25 @@ class DirectCallService {
         status: 'pending',
       },
     });
+
+    // Alerter le destinataire (in-app + canaux externes activés) même s'il n'a pas l'app ouverte.
+    try {
+      const caller = await prisma.user.findUnique({
+        where: { id: callerId },
+        select: { full_name: true, username: true },
+      });
+      const callerName = caller?.full_name || caller?.username || 'Quelqu’un';
+      await notificationService.create(receiverId, {
+        type: 'call_incoming',
+        title: 'Appel entrant',
+        message: `${callerName} souhaite vous appeler`,
+        reference_type: 'direct_call',
+        reference_id: call.id,
+        data: { callId: call.id, callerId },
+      });
+    } catch (err) {
+      logger.warn('Incoming call notification failed', { callId: call.id, receiverId, err });
+    }
 
     // Créer une transaction pour le paiement Orange Money
     const transaction = await prisma.transaction.create({

@@ -44,6 +44,62 @@ router.put('/preferences', authenticate, async (req: AuthRequest, res, next) => 
   }
 });
 
+// POST /api/notifications/push/subscribe
+router.post('/push/subscribe', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const { endpoint, keys } = req.body || {};
+    const p256dh = keys?.p256dh;
+    const auth = keys?.auth;
+    if (!endpoint || !p256dh || !auth) {
+      return res.status(400).json({ success: false, error: { message: 'endpoint, keys.p256dh et keys.auth requis' } });
+    }
+
+    const sub = await prisma.pushSubscription.upsert({
+      where: { endpoint: String(endpoint) },
+      create: {
+        user_id: userId,
+        endpoint: String(endpoint),
+        p256dh: String(p256dh),
+        auth: String(auth),
+        user_agent: String(req.headers['user-agent'] || '').slice(0, 500),
+        is_active: true,
+        last_seen: new Date(),
+      },
+      update: {
+        user_id: userId,
+        p256dh: String(p256dh),
+        auth: String(auth),
+        user_agent: String(req.headers['user-agent'] || '').slice(0, 500),
+        is_active: true,
+        last_seen: new Date(),
+      },
+    });
+
+    res.json({ success: true, data: { id: sub.id } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/notifications/push/unsubscribe
+router.delete('/push/unsubscribe', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const endpoint = String(req.body?.endpoint || '');
+    if (!endpoint) {
+      return res.status(400).json({ success: false, error: { message: 'endpoint requis' } });
+    }
+    await prisma.pushSubscription.updateMany({
+      where: { user_id: userId, endpoint },
+      data: { is_active: false, last_seen: new Date() },
+    });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /api/notifications - Get user notifications
 router.get('/', authenticate, async (req: AuthRequest, res, next) => {
   try {

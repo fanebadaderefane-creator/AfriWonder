@@ -5,6 +5,7 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import messageService from '../services/message.service.js';
 import * as messageGroupService from '../services/messageGroup.service.js';
+import e2eeService from '../services/e2ee.service.js';
 import { logger } from '../utils/logger.js';
 
 const router = Router();
@@ -42,8 +43,11 @@ router.get('/presence/:userId', authenticate, async (req: AuthRequest, res, next
 // GET /api/messages/unread/count — must be before /:conversationId
 router.get('/unread/count', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const result = await messageService.getUnreadCount(req.user!.id);
-    res.json({ success: true, data: result });
+    const [dm, groupUnread] = await Promise.all([
+      messageService.getUnreadCount(req.user!.id),
+      messageGroupService.getTotalUnreadGroupMessagesForUser(req.user!.id),
+    ]);
+    res.json({ success: true, data: { count: dm.count + groupUnread } });
   } catch (error: unknown) {
     logger.error('messages/unread/count failed', error as Error, { userId: req.user?.id });
     res.json({ success: true, data: { count: 0 } });
@@ -75,7 +79,7 @@ router.get('/conversations', authenticate, async (req: AuthRequest, res, next) =
 // GET /api/messages/conversation/:userId
 router.get('/conversation/:userId', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const conversation = await messageService.getOrCreateConversation(req.user!.id, param(req, 'userId'));
+    const conversation = await messageService.getOrCreateConversation(req.user!.id, param(req, 'userId'), req.user!.id);
     res.json({ success: true, data: conversation });
   } catch (error: unknown) {
     next(error);
@@ -134,6 +138,16 @@ router.patch('/conversations/:conversationId/notifications', authenticate, async
   }
 });
 
+// POST /api/messages/conversations/:conversationId/clear-me — effacer l’historique pour moi (style WhatsApp)
+router.post('/conversations/:conversationId/clear-me', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageService.clearConversationHistoryForUser(param(req, 'conversationId'), req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
 // POST /api/messages/send
 router.post('/send', authenticate, sendLimiter, async (req: AuthRequest, res, next) => {
   try {
@@ -153,6 +167,7 @@ router.post('/send', authenticate, sendLimiter, async (req: AuthRequest, res, ne
       contact_user_id,
       contact_name,
       sticker_url,
+      e2ee_envelope,
     } = req.body;
     const message = await messageService.sendMessage(
       req.user!.id,
@@ -174,6 +189,18 @@ router.post('/send', authenticate, sendLimiter, async (req: AuthRequest, res, ne
         sticker_url,
       }
     );
+
+    if (e2ee_envelope && typeof e2ee_envelope === 'object') {
+      try {
+        await e2eeService.storeEnvelope(req.user!.id, {
+          ...e2ee_envelope,
+          conversationId: message.conversation_id,
+          messageId: message.id,
+        });
+      } catch (e) {
+        logger.warn('E2EE envelope store failed on DM send', { err: e, messageId: message.id });
+      }
+    }
     res.json({ success: true, data: message });
   } catch (error: unknown) {
     next(error);
@@ -188,6 +215,17 @@ router.patch('/message/:messageId/meta', authenticate, async (req: AuthRequest, 
       is_pinned,
       is_important,
     });
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// PATCH /api/messages/message/:messageId/content — édition texte (< 15 min, expéditeur)
+router.patch('/message/:messageId/content', authenticate, sendLimiter, async (req: AuthRequest, res, next) => {
+  try {
+    const content = req.body?.content;
+    const result = await messageService.editMessageContent(param(req, 'messageId'), req.user!.id, content);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
     next(error);
@@ -209,6 +247,26 @@ router.post('/message/:messageId/reaction', authenticate, async (req: AuthReques
 router.delete('/message/:messageId/reaction', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const result = await messageService.setMessageReaction(param(req, 'messageId'), req.user!.id, null);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// GET /api/messages/message/:messageId/reactions-detail — qui a réagi avec quel emoji
+router.get('/message/:messageId/reactions-detail', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageService.getMessageReactionsDetail(param(req, 'messageId'), req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// POST /api/messages/message/:messageId/transcribe — vocal 1-1 (Whisper, expéditeur)
+router.post('/message/:messageId/transcribe', authenticate, sendLimiter, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageService.transcribeVoiceMessage(param(req, 'messageId'), req.user!.id);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
     next(error);
@@ -238,10 +296,62 @@ router.get('/groups', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
+// POST /api/messages/group-invite/join — rejoindre un groupe via lien d'invitation
+router.post('/group-invite/join', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const token = (req.body as { token?: string })?.token;
+    const result = await messageGroupService.joinGroupByInviteToken(token ?? '', req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
 // GET /api/messages/group/:groupId — group info
 router.get('/group/:groupId', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const result = await messageGroupService.getGroup(param(req, 'groupId'), req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// PATCH /api/messages/group/:groupId — nom / avatar / description (admin)
+router.patch('/group/:groupId', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const body = (req.body || {}) as { name?: string | null; avatar_url?: string | null; description?: string | null };
+    const result = await messageGroupService.updateGroup(param(req, 'groupId'), req.user!.id, {
+      name: body.name,
+      avatar_url: body.avatar_url,
+      description: body.description,
+    });
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// PATCH /api/messages/group/:groupId/notifications — sourdine notifications (membre courant)
+router.patch('/group/:groupId/notifications', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const muted = (req.body as { muted?: unknown })?.muted;
+    if (typeof muted !== 'boolean') {
+      res.status(400).json({ success: false, message: 'muted (boolean) requis' });
+      return;
+    }
+    const result = await messageGroupService.setGroupNotificationsMuted(param(req, 'groupId'), req.user!.id, muted);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// PATCH /api/messages/group/:groupId/me/display-tag — libellé visible dans le groupe (CDC)
+router.patch('/group/:groupId/me/display-tag', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const tag = (req.body as { group_display_tag?: unknown })?.group_display_tag;
+    const result = await messageGroupService.setMyGroupDisplayTag(param(req, 'groupId'), req.user!.id, tag ?? null);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
     next(error);
@@ -260,17 +370,188 @@ router.get('/group/:groupId/messages', authenticate, async (req: AuthRequest, re
   }
 });
 
+// POST /api/messages/group/:groupId/read — marquer le fil groupe comme lu (curseur membre)
+router.post('/group/:groupId/read', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageGroupService.markGroupAsRead(param(req, 'groupId'), req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// POST /api/messages/group/:groupId/pin — body: { messageId }
+router.post('/group/:groupId/pin', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const messageId = (req.body as { messageId?: string })?.messageId;
+    if (!messageId || !String(messageId).trim()) {
+      res.status(400).json({ success: false, error: { message: 'messageId requis' } });
+      return;
+    }
+    const result = await messageGroupService.pinGroupMessage(param(req, 'groupId'), String(messageId).trim(), req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// DELETE /api/messages/group/:groupId/pin — désépingler
+router.delete('/group/:groupId/pin', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageGroupService.unpinGroupMessage(param(req, 'groupId'), req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
 // POST /api/messages/group/:groupId/send — send message to group
 router.post('/group/:groupId/send', authenticate, sendLimiter, async (req: AuthRequest, res, next) => {
   try {
-    const { content, type, media_url, thumbnail_url } = req.body || {};
+    const { content, type, media_url, thumbnail_url, reply_to_id, poll_options, e2ee_envelope, e2ee_envelopes } =
+      req.body || {};
     const result = await messageGroupService.sendGroupMessage(
       param(req, 'groupId'),
       req.user!.id,
       content ?? '',
-      { type, media_url, thumbnail_url }
+      { type, media_url, thumbnail_url, reply_to_id, poll_options }
     );
+
+    if (e2ee_envelope && typeof e2ee_envelope === 'object') {
+      try {
+        await e2eeService.storeEnvelope(req.user!.id, {
+          ...e2ee_envelope,
+          groupId: param(req, 'groupId'),
+          groupMessageId: result.id,
+        });
+      } catch (e) {
+        logger.warn('E2EE envelope store failed on group send', { err: e, messageId: result.id });
+      }
+    }
+    if (Array.isArray(e2ee_envelopes) && e2ee_envelopes.length > 0) {
+      for (const env of e2ee_envelopes) {
+        if (!env || typeof env !== 'object') continue;
+        try {
+          await e2eeService.storeEnvelope(req.user!.id, {
+            ...env,
+            groupId: param(req, 'groupId'),
+            groupMessageId: result.id,
+          });
+        } catch (e) {
+          logger.warn('E2EE envelope store failed for one group recipient', { err: e, messageId: result.id });
+        }
+      }
+    }
     res.status(201).json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// POST /api/messages/group/:groupId/messages/:messageId/reaction
+router.post('/group/:groupId/messages/:messageId/reaction', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { emoji } = req.body || {};
+    const updated = await messageGroupService.setGroupMessageReaction(
+      param(req, 'groupId'),
+      param(req, 'messageId'),
+      req.user!.id,
+      emoji
+    );
+    res.json({ success: true, data: { id: updated.id, reactions: updated.reactions } });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// DELETE /api/messages/group/:groupId/messages/:messageId/reaction
+router.delete('/group/:groupId/messages/:messageId/reaction', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const updated = await messageGroupService.setGroupMessageReaction(
+      param(req, 'groupId'),
+      param(req, 'messageId'),
+      req.user!.id,
+      null
+    );
+    res.json({ success: true, data: { id: updated.id, reactions: updated.reactions } });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// POST /api/messages/group/:groupId/messages/:messageId/poll-vote
+router.post('/group/:groupId/messages/:messageId/poll-vote', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { option_index: optionIndex } = req.body || {};
+    const data = await messageGroupService.voteGroupPoll(
+      param(req, 'groupId'),
+      param(req, 'messageId'),
+      req.user!.id,
+      optionIndex
+    );
+    res.json({ success: true, data });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// GET /api/messages/group/:groupId/messages/:messageId/reactions-detail
+router.get('/group/:groupId/messages/:messageId/reactions-detail', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageGroupService.getGroupMessageReactionsDetail(
+      param(req, 'groupId'),
+      param(req, 'messageId'),
+      req.user!.id
+    );
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// PATCH /api/messages/group/:groupId/messages/:messageId — éditer message (expéditeur, 15 min)
+router.patch('/group/:groupId/messages/:messageId', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const content = (req.body as { content?: string })?.content;
+    if (typeof content !== 'string') {
+      res.status(400).json({ success: false, message: 'content (string) requis' });
+      return;
+    }
+    const result = await messageGroupService.editGroupMessage(
+      param(req, 'groupId'),
+      param(req, 'messageId'),
+      req.user!.id,
+      content
+    );
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// POST /api/messages/group/:groupId/messages/:messageId/transcribe — vocal groupe (expéditeur)
+router.post('/group/:groupId/messages/:messageId/transcribe', authenticate, sendLimiter, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageGroupService.transcribeGroupVoiceMessage(
+      param(req, 'groupId'),
+      param(req, 'messageId'),
+      req.user!.id
+    );
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// DELETE /api/messages/group/:groupId/messages/:messageId — soft delete (expéditeur)
+router.delete('/group/:groupId/messages/:messageId', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageGroupService.deleteGroupMessage(
+      param(req, 'groupId'),
+      param(req, 'messageId'),
+      req.user!.id
+    );
+    res.json({ success: true, data: result });
   } catch (error: unknown) {
     next(error);
   }
@@ -291,6 +572,26 @@ router.post('/group/:groupId/members', authenticate, async (req: AuthRequest, re
   }
 });
 
+// PATCH /api/messages/group/:groupId/members/:userId/role — promote / demote (admin only)
+router.patch('/group/:groupId/members/:userId/role', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const role = (req.body as { role?: string })?.role;
+    if (role !== 'admin' && role !== 'member') {
+      res.status(400).json({ success: false, error: { message: 'role requis : admin ou member' } });
+      return;
+    }
+    const result = await messageGroupService.setGroupMemberRole(
+      param(req, 'groupId'),
+      req.user!.id,
+      param(req, 'userId'),
+      role
+    );
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
 // DELETE /api/messages/group/:groupId/members/:userId — remove member or leave
 router.delete('/group/:groupId/members/:userId', authenticate, async (req: AuthRequest, res, next) => {
   try {
@@ -299,6 +600,26 @@ router.delete('/group/:groupId/members/:userId', authenticate, async (req: AuthR
       req.user!.id,
       param(req, 'userId')
     );
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// POST /api/messages/group/:groupId/invite-link — générer lien d'invitation (admin)
+router.post('/group/:groupId/invite-link', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageGroupService.generateGroupInviteToken(param(req, 'groupId'), req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// DELETE /api/messages/group/:groupId/invite-link — révoquer lien (admin)
+router.delete('/group/:groupId/invite-link', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageGroupService.revokeGroupInviteToken(param(req, 'groupId'), req.user!.id);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
     next(error);
@@ -321,6 +642,16 @@ router.get('/:conversationId', authenticate, async (req: AuthRequest, res, next)
     const cursor = (req.query.cursor as string) || null;
     const { limit } = parsePageLimit(req.query as Record<string, unknown>, 30);
     const result = await messageService.getMessages(param(req, 'conversationId'), cursor, limit, req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// PUT /api/messages/:conversationId/delivered
+router.put('/:conversationId/delivered', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageService.markAsDelivered(param(req, 'conversationId'), req.user!.id);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
     next(error);

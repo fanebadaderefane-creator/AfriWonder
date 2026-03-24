@@ -24,11 +24,22 @@ describe('Auth routes', () => {
     password: 'ValidPass123!',
     full_name: 'Test User',
   };
+  const phoneUser = {
+    phone: '+22370123456',
+    username: `phone_${unique}`,
+    password: 'ValidPass123!',
+    full_name: 'Phone User',
+  };
 
   beforeEach(async () => {
     await prisma.user.deleteMany({
       where: {
-        OR: [{ email: validUser.email }, { username: validUser.username }],
+        OR: [
+          { email: validUser.email },
+          { username: validUser.username },
+          { username: phoneUser.username },
+          { email: 'phone_22370123456@phone.afriwonder.local' },
+        ],
       },
     });
   });
@@ -90,6 +101,22 @@ describe('Auth routes', () => {
         .expect(400);
       expect(res.body.success).toBe(false);
     });
+
+    it('returns 201 and creates user with phone only', async () => {
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send(phoneUser)
+        .expect(201);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.user.username).toBe(phoneUser.username);
+
+      const created = await prisma.user.findUnique({
+        where: { username: phoneUser.username },
+      });
+      expect(created).toBeTruthy();
+      expect(created!.email).toMatch(/@phone\.afriwonder\.local$/);
+    });
   });
 
   describe('POST /api/auth/login', () => {
@@ -131,6 +158,18 @@ describe('Auth routes', () => {
         .send({ email: 'unknown@example.com', password: validUser.password })
         .expect(401);
       expect(res.body.success).toBe(false);
+    });
+
+    it('returns 200 when logging in with phone number', async () => {
+      await request(app).post('/api/auth/register').send(phoneUser).expect(201);
+
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ identifier: phoneUser.phone, password: phoneUser.password })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.user.username).toBe(phoneUser.username);
     });
 
     it('returns 401 when 2FA enabled and code missing', async () => {

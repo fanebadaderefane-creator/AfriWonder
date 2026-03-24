@@ -113,9 +113,14 @@ class SupportTicketService {
     });
   }
 
-  async listAll(page: number = 1, limit: number = 20, status?: string) {
+  async listAll(page: number = 1, limit: number = 20, status?: string, category?: string) {
     const skip = (page - 1) * limit;
-    const where = status ? { status } : {};
+    const normalizedCategory = String(category || '').trim().toLowerCase();
+    const where: any = {};
+    if (status) where.status = status;
+    if (normalizedCategory === 'e2ee_diagnostic') {
+      where.subject = { contains: 'Diagnostic E2EE', mode: 'insensitive' };
+    }
     const [tickets, total] = await Promise.all([
       prisma.supportTicket.findMany({
         where,

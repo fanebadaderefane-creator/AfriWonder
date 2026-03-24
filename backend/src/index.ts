@@ -17,6 +17,7 @@ import { startAdsExpirationJob } from './jobs/adsExpiration.job.js';
 import { startLiveScheduledReminderJob } from './jobs/liveScheduledReminder.job.js';
 import { startScheduledMessagesJob } from './jobs/scheduledMessages.job.js';
 import { startModerationTimeoutJob } from './jobs/moderationTimeout.job.js';
+import { startE2eeMonitoringAlertJob } from './jobs/e2eeMonitoringAlert.job.js';
 import { initRedis } from './utils/cache.js';
 
 const socketToUserId = new Map<string, string>();
@@ -137,6 +138,14 @@ io.on('connection', (socket) => {
     if (conversationId) socket.leave(`conversation:${conversationId}`);
   });
 
+  socket.on('message:join-group', (groupId: string) => {
+    if (groupId) socket.join(`group:${groupId}`);
+  });
+
+  socket.on('message:leave-group', (groupId: string) => {
+    if (groupId) socket.leave(`group:${groupId}`);
+  });
+
   socket.on('message:typing-start', (payload: { conversationId: string; userId: string; name?: string }) => {
     if (payload?.conversationId) {
       socket.to(`conversation:${payload.conversationId}`).emit('message:typing', { userId: payload.userId, name: payload.name, typing: true });
@@ -146,6 +155,67 @@ io.on('connection', (socket) => {
   socket.on('message:typing-stop', (payload: { conversationId: string; userId: string }) => {
     if (payload?.conversationId) {
       socket.to(`conversation:${payload.conversationId}`).emit('message:typing', { userId: payload.userId, typing: false });
+    }
+  });
+
+  socket.on('message:group-typing-start', (payload: { groupId: string; userId: string; name?: string }) => {
+    if (payload?.groupId) {
+      socket.to(`group:${payload.groupId}`).emit('message:group-typing', {
+        groupId: payload.groupId,
+        userId: payload.userId,
+        name: payload.name,
+        typing: true,
+      });
+    }
+  });
+
+  socket.on('message:group-typing-stop', (payload: { groupId: string; userId: string }) => {
+    if (payload?.groupId) {
+      socket.to(`group:${payload.groupId}`).emit('message:group-typing', {
+        groupId: payload.groupId,
+        userId: payload.userId,
+        typing: false,
+      });
+    }
+  });
+
+  socket.on('message:group-recording-start', (payload: { groupId: string; userId: string; name?: string }) => {
+    if (payload?.groupId) {
+      socket.to(`group:${payload.groupId}`).emit('message:group-recording', {
+        groupId: payload.groupId,
+        userId: payload.userId,
+        name: payload.name,
+        recording: true,
+      });
+    }
+  });
+
+  socket.on('message:group-recording-stop', (payload: { groupId: string; userId: string }) => {
+    if (payload?.groupId) {
+      socket.to(`group:${payload.groupId}`).emit('message:group-recording', {
+        groupId: payload.groupId,
+        userId: payload.userId,
+        recording: false,
+      });
+    }
+  });
+
+  socket.on('message:recording-start', (payload: { conversationId: string; userId: string; name?: string }) => {
+    if (payload?.conversationId) {
+      socket.to(`conversation:${payload.conversationId}`).emit('message:recording', {
+        userId: payload.userId,
+        name: payload.name,
+        recording: true,
+      });
+    }
+  });
+
+  socket.on('message:recording-stop', (payload: { conversationId: string; userId: string }) => {
+    if (payload?.conversationId) {
+      socket.to(`conversation:${payload.conversationId}`).emit('message:recording', {
+        userId: payload.userId,
+        recording: false,
+      });
     }
   });
 
@@ -272,6 +342,7 @@ async function startServer() {
         startLiveScheduledReminderJob();
         startScheduledMessagesJob();
         startModerationTimeoutJob();
+        startE2eeMonitoringAlertJob();
 
         logger.info('✅ Jobs automatiques démarrés');
         logger.info('🛡️ Sécurité: Rate limiting + Anti-bot + Chiffrement ACTIVÉS');

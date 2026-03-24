@@ -93,6 +93,8 @@ const pool = new Pool({
 });
 const adapter = new PrismaPg(pool);
 
+// Avec `adapter`, Prisma 7 peut inférer un PrismaClient partiel (TS perd certains modèles : pushSubscription, champs récents).
+// Le runtime expose bien toutes les déléguées — on aligne le typage sur PrismaClient complet.
 const prisma = new PrismaClient({
   adapter,
   log: process.env.NODE_ENV === 'development' 
@@ -100,7 +102,7 @@ const prisma = new PrismaClient({
     : process.env.NODE_ENV === 'test'
     ? []
     : ['error'],
-});
+}) as unknown as PrismaClient;
 
 // Connect to database (only in non-test environment; never exit in test).
 // Exécuter une requête réelle après $connect() pour valider le pool (évite "Circuit breaker open" après le premier vrai query).

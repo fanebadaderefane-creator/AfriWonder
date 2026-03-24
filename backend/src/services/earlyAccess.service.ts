@@ -35,9 +35,13 @@ async function getMonetizedCount(): Promise<number> {
   try {
     return await prisma.user.count({ where: { monetization_enabled: true } });
   } catch {
-    const r = await prisma.$queryRaw<[{ count: number }]>`
-      SELECT COUNT(*)::int as count FROM "User" WHERE monetization_enabled = true`;
-    return r[0]?.count ?? 0;
+    try {
+      const r = await prisma.$queryRaw<[{ count: number }]>`
+        SELECT COUNT(*)::int as count FROM "User" WHERE monetization_enabled = true`;
+      return r[0]?.count ?? 0;
+    } catch {
+      return 0;
+    }
   }
 }
 

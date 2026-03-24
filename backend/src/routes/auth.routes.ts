@@ -9,10 +9,11 @@ const router = Router();
 // POST /api/auth/register
 router.post('/register', async (req, res, next) => {
   try {
-    const { email, username, password, full_name, referral_code } = req.body;
+    const { email, phone, username, password, full_name, referral_code } = req.body;
 
     const result = await authService.register({
       email,
+      phone,
       username,
       password,
       full_name,
@@ -23,26 +24,51 @@ router.post('/register', async (req, res, next) => {
       success: true,
       data: result,
     });
-  } catch (error) {
+  } catch (error: unknown) {
+    const err = error as { statusCode?: number; message?: string; code?: string };
+    logger.error('Register route error', {
+      message: err?.message,
+      statusCode: err?.statusCode,
+      code: err?.code,
+    });
+    if (err?.statusCode) {
+      const msg =
+        (err.message && String(err.message).trim()) ||
+        'Erreur serveur lors de l’inscription. Consultez les logs du backend (DATABASE_URL, JWT, PostgreSQL).';
+      const isJwt = /JWT_SECRET|JWT_REFRESH_SECRET/i.test(msg);
+      return res.status(err.statusCode).json({
+        success: false,
+        error: {
+          message: isJwt
+            ? 'Configuration serveur : ajoutez JWT_SECRET et JWT_REFRESH_SECRET dans backend/.env puis redémarrez l’API.'
+            : msg,
+          code: err.code,
+        },
+      });
+    }
     next(error);
   }
 });
 
 // POST /api/auth/login
 router.post('/login', async (req, res, next) => {
+  const authIdentifier = req.body?.identifier || req.body?.phone || req.body?.email;
   try {
-    const { email, password, twoFactorCode, otpCode, backupCode } = req.body;
+    const { email, identifier, phone, password, twoFactorCode, otpCode, backupCode } = req.body;
+    void email;
+    void identifier;
+    void phone;
 
     // Validation basique avant d'appeler le service
-    if (!email || !password) {
+    if (!authIdentifier || !password) {
       return res.status(400).json({
         success: false,
-        error: { message: 'Email et mot de passe sont requis' },
+        error: { message: 'Email, nom d\'utilisateur ou numéro et mot de passe sont requis' },
       });
     }
 
     const result = await authService.login(
-      email,
+      authIdentifier,
       password,
       twoFactorCode || otpCode,
       backupCode
@@ -57,7 +83,7 @@ router.post('/login', async (req, res, next) => {
     logger.error('Login error', {
       error: error.message,
       stack: error.stack,
-      email: req.body?.email,
+      identifier: authIdentifier,
     });
 
     // Si c'est une erreur connue avec statusCode, la passer au handler

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Response, type NextFunction } from 'express';
 import multer from 'multer';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
@@ -11,10 +11,44 @@ import { spawn } from 'child_process';
 
 const router = Router();
 
+/** Erreur AWS S3 / R2 (PutObject) — clés ou bucket incorrects */
+function isR2AccessDenied(err: unknown): boolean {
+  const e = err as { name?: string; message?: string; Code?: string; $metadata?: { httpStatusCode?: number } };
+  return (
+    e?.name === 'AccessDenied' ||
+    e?.Code === 'AccessDenied' ||
+    /AccessDenied|Access Denied/i.test(String(e?.message ?? ''))
+  );
+}
+
+function handleUploadStorageError(res: Response, err: unknown, next: NextFunction) {
+  if (isR2AccessDenied(err)) {
+    logger.error('R2 PutObject AccessDenied — vérifier clés API et permissions bucket', {
+      hint: 'R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, politique du token API',
+    });
+    return res.status(503).json({
+      success: false,
+      error: {
+        message:
+          'Stockage média : accès refusé (Cloudflare R2). Vérifiez les variables R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME et que le token API a bien le droit d’écriture sur le bucket.',
+        code: 'R2_ACCESS_DENIED',
+      },
+    });
+  }
+  next(err);
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 100 * 1024 * 1024, // 100 MB
+  },
+});
+
+const uploadDocument = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50 MB — documents messagerie
   },
 });
 
@@ -145,7 +179,7 @@ router.post('/image', authenticate, upload.single('file'), async (req: AuthReque
       },
     });
   } catch (error) {
-    next(error);
+    return handleUploadStorageError(res, error, next);
   }
 });
 
@@ -200,7 +234,90 @@ router.post('/video', authenticate, upload.single('file'), async (req: AuthReque
       },
     });
   } catch (error) {
-    next(error);
+    return handleUploadStorageError(res, error, next);
+  }
+});
+
+/** Vocaux / messages audio — pas de miniature vidéo (évite ffmpeg sur du webm/opus). */
+/** Documents (PDF, Office, etc.) — clé R2 `documents/`. */
+router.post('/document', authenticate, uploadDocument.single('file'), async (req: AuthRequest, res, next) => {
+  try {
+    if (!r2Client || !R2_PUBLIC_URL) {
+      const why = getR2ConfigDiagnostic();
+      if (!R2_PUBLIC_URL.trim()) why.push('R2_PUBLIC_URL (vide ou absent)');
+      logger.warn('Upload document refusé: R2 non configuré', { missing: why });
+      return res.status(503).json({ error: 'Upload non disponible : R2 non configuré (R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_PUBLIC_URL)' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const originalName = req.file.originalname || 'document.bin';
+    const safeName = createSafeFilename(originalName);
+    const fileName = `${Date.now()}-${safeName}`;
+
+    const command = new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: `documents/${fileName}`,
+      Body: req.file.buffer,
+      ContentType: req.file.mimetype || 'application/octet-stream',
+      CacheControl: 'public, max-age=31536000, immutable',
+    });
+
+    await r2Client.send(command);
+
+    const encodedFileName = encodeURIComponent(fileName);
+    const fileUrl = `${R2_PUBLIC_URL}/documents/${encodedFileName}`;
+
+    res.json({
+      success: true,
+      data: {
+        file_url: fileUrl,
+        original_name: originalName,
+      },
+    });
+  } catch (error) {
+    return handleUploadStorageError(res, error, next);
+  }
+});
+
+router.post('/audio', authenticate, upload.single('file'), async (req: AuthRequest, res, next) => {
+  try {
+    if (!r2Client || !R2_PUBLIC_URL) {
+      const why = getR2ConfigDiagnostic();
+      if (!R2_PUBLIC_URL.trim()) why.push('R2_PUBLIC_URL (vide ou absent)');
+      logger.warn('Upload audio refusé: R2 non configuré', { missing: why });
+      return res.status(503).json({ error: 'Upload non disponible : R2 non configuré (R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_PUBLIC_URL)' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const originalName = req.file.originalname || 'voice.webm';
+    const safeName = createSafeFilename(originalName);
+    const fileName = `${Date.now()}-${safeName}`;
+
+    const command = new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: `voice/${fileName}`,
+      Body: req.file.buffer,
+      ContentType: req.file.mimetype || 'audio/webm',
+      CacheControl: 'public, max-age=31536000, immutable',
+    });
+
+    await r2Client.send(command);
+
+    const encodedFileName = encodeURIComponent(fileName);
+    const fileUrl = `${R2_PUBLIC_URL}/voice/${encodedFileName}`;
+
+    res.json({
+      success: true,
+      data: {
+        file_url: fileUrl,
+      },
+    });
+  } catch (error) {
+    return handleUploadStorageError(res, error, next);
   }
 });
 

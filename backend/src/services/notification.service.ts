@@ -36,9 +36,14 @@ async function sendSms(phone: string, message: string): Promise<void> {
 }
 
 class NotificationService {
+  private warnedMissingPushConfig = false;
+
   private notificationCategory(type: string): 'order' | 'live' | 'comment' | 'like' | 'follow' {
     const t = String(type || '').toLowerCase();
     if (t.includes('live')) return 'live';
+    if (t.includes('call')) return 'live';
+    if (t.includes('mention')) return 'comment';
+    if (t.includes('message')) return 'comment';
     if (t.includes('comment')) return 'comment';
     if (t.includes('like')) return 'like';
     if (t.includes('follow')) return 'follow';
@@ -129,13 +134,76 @@ class NotificationService {
   private async sendPushToUser(userId: string, title: string, message: string, category: string, data?: any): Promise<void> {
     const pushWebhook = process.env.PUSH_WEBHOOK_URL;
     const firebaseKey = process.env.FIREBASE_SERVER_KEY;
+    const vapidPublic = process.env.VAPID_PUBLIC_KEY;
+    const vapidPrivate = process.env.VAPID_PRIVATE_KEY;
+    const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:support@afriwonder.app';
 
-    if (!pushWebhook && !firebaseKey) {
+    const payload = JSON.stringify({
+      title,
+      body: message,
+      tag: category,
+      data: { ...(data || {}), category },
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+    });
+
+    let delivered = false;
+
+    if (vapidPublic && vapidPrivate) {
+      try {
+        const webpush = (await import('web-push')).default as any;
+        webpush.setVapidDetails(vapidSubject, vapidPublic, vapidPrivate);
+        const subs = await prisma.pushSubscription.findMany({
+          where: { user_id: userId, is_active: true },
+          select: { id: true, endpoint: true, p256dh: true, auth: true },
+        });
+        if (subs.length > 0) {
+          const results = await Promise.allSettled(
+            subs.map((s) =>
+              webpush.sendNotification(
+                {
+                  endpoint: s.endpoint,
+                  keys: { p256dh: s.p256dh, auth: s.auth },
+                },
+                payload
+              )
+            )
+          );
+          for (let i = 0; i < results.length; i += 1) {
+            const r = results[i];
+            if (r.status === 'fulfilled') {
+              delivered = true;
+              continue;
+            }
+            const statusCode = (r as any).reason?.statusCode;
+            if (statusCode === 404 || statusCode === 410) {
+              await prisma.pushSubscription.update({
+                where: { id: subs[i].id },
+                data: { is_active: false, last_seen: new Date() },
+              }).catch(() => {});
+            }
+          }
+        }
+      } catch (err) {
+        logger.warn('WebPush send failed', { userId, err });
+      }
+    }
+
+    if (!pushWebhook && !firebaseKey && !delivered) {
+      if (!this.warnedMissingPushConfig) {
+        this.warnedMissingPushConfig = true;
+        logger.warn('Push notifications disabled: set VAPID keys or PUSH_WEBHOOK_URL or FIREBASE_SERVER_KEY/FCM env vars');
+      }
       await this.logChannelDelivery(userId, 'notification_push', message, 'skipped', category, title);
       return;
     }
 
     try {
+      if (delivered) {
+        await this.logChannelDelivery(userId, 'notification_push', message, 'sent', category, title);
+        return;
+      }
+
       if (pushWebhook) {
         await axios.post(
           pushWebhook,
