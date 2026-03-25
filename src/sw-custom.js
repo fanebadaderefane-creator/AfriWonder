@@ -13,7 +13,7 @@ const API_CACHE = 'afriwonder-api-v1';
 const VIDEO_CACHE = 'afriwonder-video-cache-v1';
 const IMAGE_CACHE = 'afriwonder-image-cache-v1';
 const PRECACHE = self.__WB_MANIFEST || [];
-const SW_VERSION = 'v4'; // Invalide l'ancien SW pour diffuser le correctif autoplay feed PWA
+const SW_VERSION = 'v5'; // Invalide l'ancien SW pour diffuser les correctifs offline (HLS/cache)
 
 // Share Target: rediriger les partages système vers une route interne lisible par React
 const SHARE_TARGET_PATH = '/share-target';
@@ -202,15 +202,32 @@ self.addEventListener('fetch', (event) => {
   // Ne pas cacher les requêtes avec Range (metadata/thumbnails) pour éviter miniatures cassées sur PWA.
   const isSameOrigin = url.origin === self.location.origin;
   const isProxyMedia = url.pathname.includes('proxy/media');
+  const isHlsManifest = /\.m3u8(\?|$)/i.test(url.pathname + url.search);
   const isHlsSegment = /\.ts(\?|$)/i.test(url.pathname + url.search);
-  const isVideoUrl =
-    request.destination === 'video' ||
-    url.pathname.includes('proxy/media') ||
-    /\.mp4(\?|$)/i.test(url.pathname + url.search) ||
-    /\.m3u8(\?|$)/i.test(url.pathname + url.search);
+  const isHlsAsset = isHlsManifest || isHlsSegment;
+  const isMp4 = /\.mp4(\?|$)/i.test(url.pathname + url.search);
   const hasRange = request.headers.has('Range');
 
-  if (isSameOrigin && !isProxyMedia && !hasRange && (isVideoUrl || isHlsSegment)) {
+  // HLS offline-ready: met en cache les manifestes (.m3u8) et segments (.ts),
+  // y compris quand ils viennent du CDN (pas de Range en général).
+  if (!isProxyMedia && !hasRange && isHlsAsset) {
+    event.respondWith(
+      caches.open(VIDEO_CACHE).then((cache) =>
+        cache.match(request).then((cached) =>
+          cached ||
+          fetch(request).then((netRes) => {
+            if (netRes && netRes.ok) cache.put(request, netRes.clone());
+            return netRes;
+          })
+        )
+      )
+    );
+    return;
+  }
+
+  // MP4 offline-friendly (uniquement même origine, sans Range).
+  // Les requêtes avec Range sont exclues pour éviter des comportements streaming cassés.
+  if (isSameOrigin && !isProxyMedia && !hasRange && isMp4) {
     event.respondWith(
       caches.open(VIDEO_CACHE).then((cache) =>
         cache.match(request).then((cached) =>

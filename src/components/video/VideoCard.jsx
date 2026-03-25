@@ -358,6 +358,10 @@ function VideoCardContent({
     const slow = ['slow-2g', '2g', '3g'].includes(conn.effectiveType) || !!conn.saveData;
     return slow;
   }, []);
+  const isOffline = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    return navigator.onLine === false;
+  }, []);
   const isFirefoxBrowser = useMemo(() => {
     if (typeof navigator === 'undefined') return false;
     return /firefox/i.test(navigator.userAgent || '');
@@ -380,6 +384,10 @@ function VideoCardContent({
     // Toujours préférer MP4/WebM **avant** HLS (tous navigateurs) : sur Chrome, WebView Android,
     // Samsung Internet, etc., HLS via hls.js/MSE peut livrer le son sans peindre l’image (écran vide).
     // Safari lit aussi très bien le progressif ; le HLS reste en repli si pas d’URL directe.
+    const hlsUrl = video.hls_playback_url || video.hls_url;
+    const preferHlsFirst = isOffline;
+    if (preferHlsFirst) pushUrl(hlsUrl);
+
     if (slowConnection || isDataSaver) {
       pushUrl(video.low_quality_playback_url || video.low_quality_url);
       pushUrl(video.playback_url || video.video_url || video.hd_playback_url || video.hd_url);
@@ -389,9 +397,23 @@ function VideoCardContent({
       pushUrl(video.hd_playback_url || video.hd_url);
       pushUrl(video.low_quality_playback_url || video.low_quality_url);
     }
-    pushUrl(video.hls_playback_url || video.hls_url);
+
+    // HLS en repli : quand on est hors-ligne, il est déjà en tête.
+    if (!preferHlsFirst) pushUrl(hlsUrl);
     return out;
-  }, [video.hls_playback_url, video.hls_url, video.playback_url, video.video_url, video.low_quality_playback_url, video.low_quality_url, video.hd_playback_url, video.hd_url, slowConnection, isDataSaver]);
+  }, [
+    video.hls_playback_url,
+    video.hls_url,
+    video.playback_url,
+    video.video_url,
+    video.low_quality_playback_url,
+    video.low_quality_url,
+    video.hd_playback_url,
+    video.hd_url,
+    slowConnection,
+    isDataSaver,
+    isOffline,
+  ]);
 
   const [sourceIndex, setSourceIndex] = useState(0);
   const videoUrl = playbackUrls[sourceIndex] || '';
@@ -1878,7 +1900,7 @@ function VideoCardContent({
         <div className="absolute inset-0 z-[35] flex items-center justify-center pointer-events-none">
           <div className="flex flex-col items-center gap-3 rounded-2xl bg-black/25 px-4 py-3 ring-1 ring-white/10">
             <Loader2 className="h-7 w-7 text-white/75 animate-spin sm:h-8 sm:w-8" aria-hidden />
-            {slowConnection && (
+            {slowConnection && !isOffline && (
               <p className="text-[12px] leading-tight text-white/80 text-center max-w-[180px]">
                 Connexion lente — chargement pour une lecture fluide...
               </p>
