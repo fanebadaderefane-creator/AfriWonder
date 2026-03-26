@@ -13,6 +13,16 @@ import { logger } from '../utils/logger.js';
 import { r2Client, R2_BUCKET_NAME, R2_PUBLIC_URL } from '../config/cloudflare-r2.js';
 
 const MAX_BYTES = Number(process.env.VIDEO_COMPAT_MAX_BYTES || String(120 * 1024 * 1024));
+const FEED_SAFE_ZOOM = Math.max(1, Number(process.env.VIDEO_FEED_SAFE_ZOOM || '1.12'));
+
+function buildVerticalComposeFilter(): string {
+  // 1) Cover + crop en 9:16
+  // 2) Zoom de sécurité (léger) pour rogner les bandes noires "encodées dans l'image"
+  //    qui peuvent survivre au premier crop (sources TikTok/reupload fréquentes).
+  const zoomW = Math.round(720 * FEED_SAFE_ZOOM);
+  const zoomH = Math.round(1280 * FEED_SAFE_ZOOM);
+  return `[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,scale=${zoomW}:${zoomH},crop=720:1280,format=yuv420p[v]`;
+}
 
 export type VideoStreamMeta = {
   codec_name: string;
@@ -193,10 +203,18 @@ async function ffprobeFileStreams(inputPath: string): Promise<UrlStreamProbe> {
 }
 
 function runFfmpegTranscodeToCompatMp4(inputPath: string, outputPath: string): Promise<void> {
+  // Mode "no black bars" type Shorts avec zoom de sécurité anti-bandes noires résiduelles.
+  const verticalComposeFilter = buildVerticalComposeFilter();
   const args = [
     '-y',
     '-i',
     inputPath,
+    '-filter_complex',
+    verticalComposeFilter,
+    '-map',
+    '[v]',
+    '-map',
+    '0:a?',
     '-c:v',
     'libx264',
     '-profile:v',
@@ -280,10 +298,17 @@ function isOurCdnVideoUrl(url: string): boolean {
 }
 
 function runFfmpegTranscodeUrlToFile(inputUrl: string, outputPath: string): Promise<void> {
+  const verticalComposeFilter = buildVerticalComposeFilter();
   const args = [
     '-y',
     '-i',
     inputUrl,
+    '-filter_complex',
+    verticalComposeFilter,
+    '-map',
+    '[v]',
+    '-map',
+    '0:a?',
     '-c:v',
     'libx264',
     '-profile:v',

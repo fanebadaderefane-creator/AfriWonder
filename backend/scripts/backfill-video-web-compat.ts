@@ -19,8 +19,14 @@ import {
 } from '../src/services/videoCompatTranscode.service.js';
 
 function argNum(name: string, fallback: number): number {
-  const raw = process.argv.find((a) => a.startsWith(`${name}=`))?.slice(name.length + 1);
-  const n = raw != null ? parseInt(raw, 10) : NaN;
+  const idx = process.argv.findIndex((a) => a === name || a.startsWith(`${name}=`));
+  let raw: string | undefined;
+  if (idx >= 0) {
+    const current = process.argv[idx];
+    if (current.includes('=')) raw = current.slice(name.length + 1);
+    else raw = process.argv[idx + 1];
+  }
+  const n = raw != null ? parseInt(String(raw), 10) : NaN;
   return Number.isFinite(n) ? n : fallback;
 }
 
@@ -29,7 +35,12 @@ async function main() {
   const skip = Math.max(0, argNum('--skip', 0));
   const dryRun = process.argv.includes('--dry-run');
   const force = process.argv.includes('--force');
-  const idsRaw = process.argv.find((a) => a.startsWith('--ids='))?.slice('--ids='.length);
+  const idsIndex = process.argv.findIndex((a) => a === '--ids' || a.startsWith('--ids='));
+  let idsRaw: string | undefined;
+  if (idsIndex >= 0) {
+    const current = process.argv[idsIndex];
+    idsRaw = current.includes('=') ? current.slice('--ids='.length) : process.argv[idsIndex + 1];
+  }
   const idList = idsRaw
     ? idsRaw
         .split(',')
@@ -40,7 +51,7 @@ async function main() {
   const videos =
     idList.length > 0
       ? await prisma.video.findMany({
-          where: { id: { in: idList }, video_url: { not: null } },
+          where: { id: { in: idList }, video_url: { not: '' } },
           select: { id: true, video_url: true, created_at: true },
           orderBy: { created_at: 'asc' },
         })
@@ -48,7 +59,7 @@ async function main() {
           where: {
             visibility: 'public',
             media_type: 'video',
-            video_url: { not: null },
+            video_url: { not: '' },
           },
           select: { id: true, video_url: true, created_at: true },
           orderBy: { created_at: 'asc' },
