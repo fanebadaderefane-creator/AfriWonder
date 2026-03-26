@@ -108,8 +108,8 @@ async function loadUserPreferences(userId: string): Promise<{
   };
 }
 
-/** Colonnes Video de base (sans algo_tier, avg_retention_pct, qualified_views_count, media_type) pour fallback en cas de drift DB. */
-const VIDEO_CORE_SELECT = `v.id, v.title, v.description, v.video_url, v.thumbnail_url, v.creator_id, v.visibility, v.category, v.views, v.likes, v.comments_count, v.shares, v.saves, v.duration, v.created_at, v.updated_at, v.hashtags, v.music_title, v.is_featured`;
+/** Colonnes Video de base (sans algo_tier, avg_retention_pct, qualified_views_count) pour fallback en cas de drift DB. Inclure hls_url + media_type : sinon le client ne peut pas basculer HLS si le MP4 principal est cassé. */
+const VIDEO_CORE_SELECT = `v.id, v.title, v.description, v.video_url, v.hls_url, v.thumbnail_url, v.creator_id, v.visibility, v.category, v.views, v.likes, v.comments_count, v.shares, v.saves, v.duration, v.created_at, v.updated_at, v.hashtags, v.music_title, v.is_featured, v.media_type`;
 
 /**
  * Récupère un pool de vidéos via SQL brut (colonnes de base uniquement) quand prisma.video.findMany
@@ -126,6 +126,7 @@ async function getVideoPoolFallback(
     title: string;
     description: string | null;
     video_url: string;
+    hls_url: string | null;
     thumbnail_url: string | null;
     creator_id: string;
     visibility: string;
@@ -141,6 +142,7 @@ async function getVideoPoolFallback(
     hashtags: unknown;
     music_title: string | null;
     is_featured: boolean;
+    media_type: string | null;
     creator_username: string | null;
     creator_full_name: string | null;
     creator_profile_image: string | null;
@@ -162,7 +164,7 @@ async function getVideoPoolFallback(
     algo_tier: 'test',
     avg_retention_pct: null as number | null,
     qualified_views_count: 0,
-    media_type: 'video',
+    media_type: r.media_type || 'video',
     creator: {
       id: r.creator_id,
       username: r.creator_username,

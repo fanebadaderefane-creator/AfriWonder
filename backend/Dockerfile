@@ -18,6 +18,9 @@ RUN npx prisma generate && npm run build
 # Production image
 FROM node:20-alpine
 
+# ffprobe/ffmpeg : miniatures vidéo + transcodage compat Firefox (H.264 yuv420p)
+RUN apk add --no-cache ffmpeg
+
 WORKDIR /app
 
 COPY --from=builder /app/node_modules ./node_modules

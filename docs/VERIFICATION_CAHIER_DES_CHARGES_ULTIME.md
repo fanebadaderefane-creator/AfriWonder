@@ -1,7 +1,10 @@
 # Vérification du cahier des charges ultime — AfriWonder
 
 **Date** : 11 mars 2026  
+**Dernière mise à jour suivi code** : 25 mars 2026 (messagerie : enregistrement discussions en **fichier texte** lisible pour les utilisateurs, invites/fin d’appel groupe via salons `user:*`, lobby Agora).  
 **Référentiel** : Cahier des charges ultime — Super-App Africaine Tout-en-Un (vision stratégique, architecture, 220+ fonctionnalités, inspirations WeChat/TikTok/YouTube/WhatsApp/Grab/Gojek).
+
+> **Périmètre réaliste** : le CDC inclut une cible « 100M utilisateurs » (Kafka, K8s, Elasticsearch, MQTT, data lake, etc.) qui **n’est pas entièrement réalisable dans le dépôt applicatif seul** ; les écarts listés en fin de document restent valides pour cette couche infra. Les **fonctions produit messagerie** (1-1, groupes, médias, E2EE optionnelle, etc.) sont largement couvertes côté API et client web.
 
 ---
 
@@ -67,7 +70,7 @@ Le projet AfriWonder couvre **la Phase 1 (MVP) et une grande partie de la Phase 
 | **User** (profils, abonnements, relations) | ✅ | `users.routes.ts`, User, Follow, CreatorSubscription, SellerSubscription, WonderRelation |
 | **Content** (posts, commentaires, likes) | ✅ | Contenu centré vidéo : Comment, Like, Story, VideoHashtag ; pas d’entité « post » texte seul |
 | **Media** (images, vidéos, audio) | ✅ | Upload, Video, Story, playlists, saves, proxy |
-| **Messaging** (chat, groupes, temps réel) | ✅ | `messages.routes.ts`, Conversation, Message, Socket.io (presence) ; **groupes** : 1:1 uniquement |
+| **Messaging** (chat, groupes, temps réel) | ✅ | Sauvegarde discussions : API `GET /export` & groupes ; **app** génère un **.txt** (style messagerie) — **Inbox** ⋮, **GroupChat** ⋮, **Chat** Plus ; E2EE optionnelle |
 | **Video** (streaming, transcoding, recommandations) | ✅ | videos, feed, upload, live (Agora), viewHistory, RecommendationEngine (mobile), feed.service |
 | **Payment** (wallet, transactions) | ✅ | payments.routes, Wallet, Transaction, Stripe, Orange Money, MTN MoMo (stub/config), exchangeRates |
 | **Marketplace** (produits, commandes, livraison) | ✅ | products, orders, cart, seller, shipping, shipments, addresses, disputes, refunds, returns |
@@ -119,6 +122,7 @@ Le projet AfriWonder couvre **la Phase 1 (MVP) et une grande partie de la Phase 
 | MQTT | ❌ | Non utilisé |
 | Architecture client → gateway → broker → service → DB | ⚠️ | Client → Express + Socket.io → message.service → Prisma |
 | Kafka / RabbitMQ | ❌ | Non utilisé ; événements synchrones |
+| **Appels groupe (salle / participants + média)** | ✅ / ⚠️ | API `group-calls` + token Agora RTC ; **web** : `GroupCallLobby.jsx` (`rtc`), invitations membres via `user:*` + toast global (`IncomingCallListener`), fin d’appel `user:group-call-ended` + `group:call-ended` ; **⚠️** qualité / TURN / natif = config (`AGORA_*`, `VITE_TURN_*`), pas de SFU maison |
 
 ---
 
@@ -243,7 +247,7 @@ Le projet AfriWonder couvre **la Phase 1 (MVP) et une grande partie de la Phase 
 |-----------|------------|---------|------------|
 | **Social** (profil, abonnements, commentaires, likes, stories, hashtags, etc.) | Majorité | — | Posts texte dédiés, groupes sociaux avancés |
 | **Vidéo** (upload, feed, live, replay, recommandations, qualité adaptative, analytics créateur) | Majorité | Transcoding HLS automatisé, DVR live | — |
-| **Messagerie** (chat, présence, réactions, partage fichier) | 1:1, présence | Groupes, appels groupe, chiffrement E2E | — |
+| **Messagerie** (chat, présence, réactions, partage fichier, groupes) | 1:1 + **groupes** (polls, événement, E2EE option), présence, **copie discussion** (fichier texte pour l’utilisateur, API côté serveur), archivage/brouillon/programmation côté Chat | Appels groupe multipoint via **Agora** si clés serveur ; SFU autogéré / MQTT non dans le repo | MQTT, broker dédié |
 | **Paiements** (wallet, P2P, mobile money, KYC, historique) | Majorité | MTN/Airtel complets en prod | — |
 | **Marketplace** (catalogue, panier, commandes, livraison, retours, avis) | Oui | — | — |
 | **Créateurs** (studio, analytics, revenus, tips, abonnements, live gifts) | Oui | — | — |
@@ -274,7 +278,7 @@ Le projet AfriWonder couvre **la Phase 1 (MVP) et une grande partie de la Phase 
 
 ## Conclusion
 
-- **Implémenté et aligné au CDC** : vision super-app, personas, Phase 1–3 produit, auth (dont 2FA), users, vidéo (feed, live, replay, recommandations), messagerie 1:1, paiements (wallet, Orange/MTN stub), marketplace, modération, mini-apps, PWA, performance Afrique (data saver, offline), compliance (RGPD, KYC, AML).
+- **Implémenté et aligné au CDC** : vision super-app, personas, Phase 1–3 produit, auth (dont 2FA), users, vidéo (feed, live, replay, recommandations), messagerie **1:1 et groupes** (temps réel, médias, sondages, partage d’événement, E2EE option, **enregistrement des discussions en texte simple** pour l’utilisateur, archivage/brouillon/programmation UI Chat, Inbox), **appels groupe** (lobby, Agora RTC si configuré, invitations cross-écran), paiements (wallet, Orange/MTN stub), marketplace, modération, mini-apps, PWA, performance Afrique (data saver, offline), compliance (RGPD, KYC, AML).
 - **Partiel ou à renforcer** : recherche globale (unifier sur une API/search engine), i18n (framework complet), pipeline HLS (transcoding automatisé), SDK développeur (package dédié), observabilité (Prometheus/Grafana/ELK).
 - **Non implémenté** : architecture event-driven (Kafka), NoSQL/Elasticsearch, Kubernetes, CDN/K8s dans le repo, data lake, MQTT.
 

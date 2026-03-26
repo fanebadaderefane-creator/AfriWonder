@@ -6,7 +6,7 @@ class CommunityService {
     category?: string;
     isPrivate?: boolean;
     search?: string;
-  }) {
+  }, forUserId?: string | null) {
     const skip = (page - 1) * limit;
     const where: any = {};
 
@@ -38,8 +38,22 @@ class CommunityService {
       prisma.community.count({ where }),
     ]);
 
+    let listed: Array<(typeof communities)[number] & { is_member?: boolean }> = communities;
+    if (forUserId && communities.length > 0) {
+      const ids = communities.map((c) => c.id);
+      const memberships = await prisma.communityMember.findMany({
+        where: {
+          user_id: forUserId,
+          community_id: { in: ids },
+        },
+        select: { community_id: true },
+      });
+      const memberIds = new Set(memberships.map((m) => m.community_id));
+      listed = communities.map((c) => ({ ...c, is_member: memberIds.has(c.id) }));
+    }
+
     return {
-      communities,
+      communities: listed,
       pagination: {
         page,
         limit,
@@ -97,7 +111,7 @@ class CommunityService {
     return community;
   }
 
-  async getById(communityId: string) {
+  async getById(communityId: string, forUserId?: string | null) {
     const community = await prisma.community.findUnique({
       where: { id: communityId },
       include: {
@@ -123,7 +137,15 @@ class CommunityService {
       },
     });
 
-    return community;
+    if (!community) return null;
+    if (!forUserId) return community;
+
+    const membership = await prisma.communityMember.findFirst({
+      where: { community_id: communityId, user_id: forUserId },
+      select: { id: true },
+    });
+
+    return { ...community, is_member: Boolean(membership) };
   }
 
   async join(communityId: string, userId: string) {

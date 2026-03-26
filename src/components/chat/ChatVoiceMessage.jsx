@@ -380,23 +380,38 @@ export function ChatVoiceMessage({
 
   return (
     <div
-      className="min-w-[min(100%,268px)] max-w-[min(100%,308px)] select-none"
+      className={cn(
+        'select-none',
+        // Largeur proche WhatsApp: compacte mais lisible.
+        'min-w-[min(100%,260px)] max-w-[min(100%,340px)]'
+      )}
       style={{ color: colors.ink }}
       data-voice-msg-id={messageId}
     >
       <audio ref={audioRef} src={src} preload="auto" playsInline className="hidden" />
 
-      <div className="flex items-center gap-2">
+      <div
+        className={cn(
+          'flex items-center gap-2.5 rounded-2xl border px-2.5 py-2 shadow-sm',
+          isOwn
+            ? 'border-emerald-400/30 bg-emerald-500/18'
+            : 'border-white/12 bg-white/[0.07]'
+        )}
+      >
         <button
           type="button"
           onClick={togglePlay}
-          className="flex h-12 w-10 shrink-0 items-center justify-center rounded-md transition-opacity hover:opacity-85 active:opacity-75"
+          className={cn(
+            'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition',
+            isOwn ? 'bg-emerald-500/22 hover:bg-emerald-500/28' : 'bg-black/15 hover:bg-black/20',
+            'active:scale-[0.98]'
+          )}
           aria-label={playing ? labels.pausePreview : labels.playPreview}
         >
           {playing ? (
-            <WaPauseIcon className="h-[26px] w-[26px]" fill={colors.playIcon} />
+            <WaPauseIcon className="h-[24px] w-[24px]" fill={colors.playIcon} />
           ) : (
-            <WaPlayIcon className="h-[26px] w-[26px] pl-px" fill={colors.playIcon} />
+            <WaPlayIcon className="h-[24px] w-[24px] pl-px" fill={colors.playIcon} />
           )}
         </button>
 
@@ -431,7 +446,10 @@ export function ChatVoiceMessage({
               <button
                 type="button"
                 onClick={cyclePlaybackRate}
-                className="rounded px-1.5 py-0.5 text-[11px] font-semibold transition-colors hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366]/40"
+                className={cn(
+                  'rounded px-1.5 py-0.5 text-[11px] font-semibold transition-colors',
+                  'hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366]/40'
+                )}
                 style={{ color: colors.secondary }}
                 aria-label={`Vitesse de lecture : ${playbackRate}×`}
               >
@@ -475,7 +493,7 @@ export function ChatVoiceMessage({
         </div>
 
         <div className="relative shrink-0">
-          <Avatar className="h-12 w-12 border-2 border-white shadow-sm">
+          <Avatar className={cn('h-11 w-11 border-2 shadow-sm', isOwn ? 'border-emerald-200/80' : 'border-white/80')}>
             <AvatarImage src={avatarUrl || undefined} className="object-cover" />
             <AvatarFallback className="bg-[#dfe5e7] text-[13px] font-medium text-[#54656f]">
               {avatarFallback}

@@ -376,6 +376,7 @@ class AuthService {
         data_saver_mode: true,
         messaging_e2e_enabled: true,
         messaging_read_receipts_enabled: true,
+        messaging_cdc_moderation: true,
       },
     });
 

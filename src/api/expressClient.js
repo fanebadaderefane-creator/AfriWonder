@@ -26,6 +26,39 @@ const E2EE_REQUEST_TIMEOUT_MS = 90000;
 const MAX_NETWORK_RETRIES = 2; // 2 retries = 3 attempts total (connexions difficiles Afrique)
 const RETRY_DELAYS_MS = [1000, 2000]; // backoff
 
+function getDirectUploadThresholdBytes() {
+  const mb = Number(import.meta?.env?.VITE_UPLOAD_DIRECT_THRESHOLD_MB ?? 18);
+  if (!Number.isFinite(mb) || mb < 1) return 18 * 1024 * 1024;
+  return Math.round(mb * 1024 * 1024);
+}
+
+/** Évite application/octet-stream sur PUT R2 (Firefox / lecteurs stricts). */
+function normalizeClientVideoContentType(blob) {
+  const t = (blob?.type || '').toLowerCase().trim();
+  if (!t || t === 'application/octet-stream' || t === 'binary/octet-stream') return 'video/mp4';
+  return blob.type;
+}
+
+async function putToPresignedUrl(uploadUrl, file, contentType, onProgress) {
+  await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', uploadUrl, true);
+    xhr.setRequestHeader('Content-Type', contentType || file?.type || 'application/octet-stream');
+    xhr.upload.onprogress = (evt) => {
+      if (!evt || !evt.total) return;
+      const pct = Math.min(100, Math.round((evt.loaded * 100) / evt.total));
+      onProgress?.(pct);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve(true);
+      else reject(new Error(`direct_upload_http_${xhr.status || 0}`));
+    };
+    xhr.onerror = () => reject(new Error('direct_upload_network'));
+    xhr.onabort = () => reject(new Error('direct_upload_abort'));
+    xhr.send(file);
+  });
+}
+
 const axiosInstance = axios.create({
   baseURL: API_URL,
   withCredentials: true,
@@ -313,6 +346,11 @@ export const api = {
     async revokeSession(sessionId) {
       await axiosInstance.delete(`/me/sessions/${sessionId}`);
     },
+    /** CDC Appels — agrège DirectCall + participations GroupCall */
+    async getCallHistory(page = 1, limit = 20) {
+      const { data } = await axiosInstance.get('/me/call-history', { params: { page, limit } });
+      return data.data ?? { items: [], pagination: { page: 1, limit, total: 0, totalPages: 1 } };
+    },
     async getActivity(limit = 50) {
       const { data } = await axiosInstance.get('/me/activity', { params: { limit } });
       return data.data ?? [];
@@ -462,6 +500,13 @@ export const api = {
         deviceId: deviceId || getItem('afw_device_id'),
         scrollSlow,
         interactionDetected,
+      });
+      return data;
+    },
+    /** Ré-encode la vidéo en H.264 web (créateur) — utile si une seule vidéo refuse Firefox / WebView. */
+    async repairWebPlayback(id) {
+      const { data } = await axiosInstance.post(`/videos/${id}/repair-web-playback`, null, {
+        timeout: Math.max(Number(UPLOAD_TIMEOUT_MS) || 300000, 600000),
       });
       return data;
     },
@@ -1778,10 +1823,30 @@ export const api = {
     },
   },
   upload: {
+    async presign({ kind, filename, contentType }) {
+      const { data } = await axiosInstance.post('/upload/presign', { kind, filename, contentType });
+      return data?.data ?? data;
+    },
     async image(input) {
       const file = input?.file ?? input;
       if (!(file instanceof File || file instanceof Blob)) {
         throw new Error('Fichier image invalide');
+      }
+      try {
+        if (file.size && file.size >= getDirectUploadThresholdBytes()) {
+          const blob = file instanceof File ? file : new File([file], 'image', { type: file.type || 'image/jpeg' });
+          const presigned = await api.upload.presign({
+            kind: 'image',
+            filename: blob.name || 'image',
+            contentType: blob.type || 'image/jpeg',
+          });
+          if (presigned?.uploadUrl && presigned?.file_url) {
+            await putToPresignedUrl(presigned.uploadUrl, blob, blob.type);
+            return { file_url: presigned.file_url, original_name: blob.name };
+          }
+        }
+      } catch (_) {
+        // fallback
       }
       const formData = new FormData();
       formData.append('file', file);
@@ -1793,6 +1858,23 @@ export const api = {
       const file = input?.file ?? input;
       if (!(file instanceof File || file instanceof Blob)) {
         throw new Error('Fichier vidéo invalide');
+      }
+      try {
+        if (file.size && file.size >= getDirectUploadThresholdBytes()) {
+          const blob = file instanceof File ? file : new File([file], 'video.mp4', { type: file.type || 'video/mp4' });
+          const videoCt = normalizeClientVideoContentType(blob);
+          const presigned = await api.upload.presign({
+            kind: 'video',
+            filename: blob.name || 'video.mp4',
+            contentType: videoCt,
+          });
+          if (presigned?.uploadUrl && presigned?.file_url) {
+            await putToPresignedUrl(presigned.uploadUrl, blob, videoCt, onProgress);
+            return { file_url: presigned.file_url, original_name: blob.name };
+          }
+        }
+      } catch (_) {
+        // fallback
       }
       const formData = new FormData();
       const blob = file instanceof File ? file : new File([file], 'video.mp4', { type: file.type || 'video/mp4' });
@@ -1818,6 +1900,24 @@ export const api = {
       if (!(file instanceof File || file instanceof Blob)) {
         throw new Error('Fichier audio invalide');
       }
+      try {
+        if (file.size && file.size >= getDirectUploadThresholdBytes()) {
+          const blob = file instanceof File
+            ? file
+            : new File([file], 'audio.webm', { type: file.type || 'audio/webm' });
+          const presigned = await api.upload.presign({
+            kind: 'audio',
+            filename: blob.name || 'audio.webm',
+            contentType: blob.type || 'audio/webm',
+          });
+          if (presigned?.uploadUrl && presigned?.file_url) {
+            await putToPresignedUrl(presigned.uploadUrl, blob, blob.type, onProgress);
+            return { file_url: presigned.file_url, original_name: blob.name };
+          }
+        }
+      } catch (_) {
+        // fallback
+      }
       const formData = new FormData();
       const blob = file instanceof File
         ? file
@@ -1840,6 +1940,23 @@ export const api = {
       const file = input?.file ?? input;
       if (!(file instanceof File || file instanceof Blob)) {
         throw new Error('Fichier document invalide');
+      }
+      try {
+        if (file.size && file.size >= getDirectUploadThresholdBytes()) {
+          const blob =
+            file instanceof File ? file : new File([file], 'document', { type: file.type || 'application/octet-stream' });
+          const presigned = await api.upload.presign({
+            kind: 'document',
+            filename: blob.name || 'document',
+            contentType: blob.type || 'application/octet-stream',
+          });
+          if (presigned?.uploadUrl && presigned?.file_url) {
+            await putToPresignedUrl(presigned.uploadUrl, blob, blob.type || 'application/octet-stream');
+            return { file_url: presigned.file_url, original_name: blob.name };
+          }
+        }
+      } catch (_) {
+        // fallback
       }
       const formData = new FormData();
       const blob =
@@ -1943,6 +2060,55 @@ export const api = {
       return data.data;
     },
   },
+  communities: {
+    async list({ page = 1, limit = 20, filters = {} } = {}) {
+      const params = {
+        page,
+        limit,
+        ...(filters || {}),
+      };
+      const { data } = await axiosInstance.get('/communities', { params });
+      return data.data;
+    },
+    async getById(id) {
+      const { data } = await axiosInstance.get(`/communities/${encodeURIComponent(id)}`);
+      return data.data;
+    },
+    async join(id) {
+      const { data } = await axiosInstance.post(`/communities/${encodeURIComponent(id)}/join`);
+      return data.data;
+    },
+    async leave(id) {
+      const { data } = await axiosInstance.post(`/communities/${encodeURIComponent(id)}/leave`);
+      return data.data;
+    },
+  },
+  groupCalls: {
+    async create(body = {}) {
+      const { data } = await axiosInstance.post('/group-calls', body);
+      return data.data;
+    },
+    async getById(callId) {
+      const { data } = await axiosInstance.get(`/group-calls/id/${encodeURIComponent(callId)}`);
+      return data.data;
+    },
+    async getToken(callId) {
+      const { data } = await axiosInstance.get(`/group-calls/id/${encodeURIComponent(callId)}/token`);
+      return data.data;
+    },
+    async getByRoomId(roomId) {
+      const { data } = await axiosInstance.get(`/group-calls/room/${encodeURIComponent(roomId)}`);
+      return data.data;
+    },
+    async join(callId) {
+      const { data } = await axiosInstance.post(`/group-calls/${encodeURIComponent(callId)}/join`);
+      return data.data;
+    },
+    async leave(callId) {
+      const { data } = await axiosInstance.post(`/group-calls/${encodeURIComponent(callId)}/leave`);
+      return data.data;
+    },
+  },
   miniApps: {
     async get(id) {
       const { data } = await axiosInstance.get(`/mini-apps/${id}`);
@@ -1966,6 +2132,10 @@ export const api = {
       const params = { page, limit };
       if (includeArchived) params.includeArchived = 'true';
       const { data } = await axiosInstance.get('/messages/conversations', { params });
+      return data.data;
+    },
+    async listScheduledMessages() {
+      const { data } = await axiosInstance.get('/messages/scheduled');
       return data.data;
     },
     async getConversation(userId) {
@@ -1996,7 +2166,15 @@ export const api = {
         contact_user_id: options.contact_user_id,
         contact_name: options.contact_name,
         sticker_url: options.sticker_url,
+        poll_options: options.poll_options,
+        event_id: options.event_id,
         e2ee_envelope: options.e2ee_envelope || undefined,
+      });
+      return data.data;
+    },
+    async voteDmPoll(messageId, optionIndex) {
+      const { data } = await axiosInstance.post(`/messages/message/${messageId}/poll-vote`, {
+        option_index: optionIndex,
       });
       return data.data;
     },
@@ -2012,8 +2190,10 @@ export const api = {
       const { data } = await axiosInstance.patch(`/messages/conversations/${conversationId}/archive`, { archived: !!archived });
       return data.data;
     },
-    async exportConversations() {
-      const { data } = await axiosInstance.get('/messages/export');
+    async exportConversations(conversationId) {
+      const { data } = await axiosInstance.get('/messages/export', {
+        params: conversationId ? { conversationId } : {},
+      });
       return data.data;
     },
     async markAsDelivered(conversationId) {
@@ -2102,6 +2282,10 @@ export const api = {
       const { data } = await axiosInstance.get('/messages/groups', { params: { page, limit } });
       return data.data;
     },
+    async exportAllGroupConversations() {
+      const { data } = await axiosInstance.get('/messages/groups/export');
+      return data.data;
+    },
     async getGroup(groupId) {
       const { data } = await axiosInstance.get(`/messages/group/${groupId}`);
       return data.data;
@@ -2128,6 +2312,10 @@ export const api = {
       const { data } = await axiosInstance.get(`/messages/group/${groupId}/messages`, { params });
       return data.data;
     },
+    async exportGroupMessages(groupId) {
+      const { data } = await axiosInstance.get(`/messages/group/${groupId}/export`);
+      return data.data;
+    },
     async markGroupRead(groupId) {
       const { data } = await axiosInstance.post(`/messages/group/${groupId}/read`);
       return data.data;
@@ -2148,6 +2336,9 @@ export const api = {
         thumbnail_url: options.thumbnail_url,
         reply_to_id: options.reply_to_id,
         poll_options: options.poll_options,
+        event_id: options.event_id,
+        scheduled_at: options.scheduled_at || undefined,
+        forward_from_message_id: options.forward_from_message_id || undefined,
         e2ee_envelope: options.e2ee_envelope || undefined,
         e2ee_envelopes: options.e2ee_envelopes || undefined,
       });

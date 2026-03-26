@@ -4,6 +4,12 @@ import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import { transcribeBufferWithWhisper } from '../utils/whisperTranscription.js';
 import notificationService from './notification.service.js';
+import {
+  GROUP_POLL_MAX_QUESTION_LEN,
+  GROUP_POLL_MAX_OPTIONS,
+  GROUP_POLL_MIN_OPTIONS,
+  normalizePollOptions,
+} from '../utils/pollMessage.js';
 
 let messageIo: import('socket.io').Server | null = null;
 export function setMessageIo(io: import('socket.io').Server) {
@@ -13,6 +19,22 @@ export function setMessageIo(io: import('socket.io').Server) {
 /** Socket.io — salon messagerie groupe (`message:join-group`). */
 export function emitToGroupRoom(groupId: string, event: string, payload: unknown) {
   if (messageIo) messageIo.to(`group:${groupId}`).emit(event, payload);
+}
+
+/** Socket.io — salon utilisateur (`user:join` dans index.ts). */
+export function emitToUserRoom(userId: string, event: string, payload: unknown) {
+  if (messageIo && userId) messageIo.to(`user:${userId}`).emit(event, payload);
+}
+
+/** Émet le même événement à plusieurs utilisateurs (dédoublonnage des ids). */
+export function emitToManyUserRooms(userIds: string[], event: string, payload: unknown) {
+  if (!messageIo) return;
+  const seen = new Set<string>();
+  for (const id of userIds) {
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    messageIo.to(`user:${id}`).emit(event, payload);
+  }
 }
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -303,6 +325,19 @@ class MessageService {
       include: {
         sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
         reply_to: { select: { id: true, content: true, type: true, sender_id: true, created_at: true } },
+        event_ref: {
+          select: {
+            id: true,
+            title: true,
+            image: true,
+            start_date: true,
+            end_date: true,
+            location: true,
+            status: true,
+            event_type: true,
+            virtual_url: true,
+          },
+        },
       },
       orderBy: { created_at: 'desc' },
       take,
@@ -326,6 +361,10 @@ class MessageService {
           location_label: null,
           contact_user_id: null,
           contact_name: null,
+          poll_options: null,
+          poll_votes: null,
+          event_id: null,
+          event_ref: null,
         };
       }
       return m;
@@ -356,13 +395,27 @@ class MessageService {
       contact_name?: string;
       sticker_url?: string;
       scheduled_at?: string;
+      poll_options?: unknown;
+      event_id?: string;
     }
   ) {
     const blocked = await this.isBlocked(senderId, recipientId);
     if (blocked) throw makeHttpError('Impossible d\'envoyer un message à cet utilisateur', 403);
 
     const normalizedType = String(type || 'text').trim().toLowerCase();
-    const allowedTypes = new Set(['text', 'image', 'video', 'audio', 'voice', 'file', 'sticker', 'location', 'contact']);
+    const allowedTypes = new Set([
+      'text',
+      'image',
+      'video',
+      'audio',
+      'voice',
+      'file',
+      'sticker',
+      'location',
+      'contact',
+      'poll',
+      'event',
+    ]);
     if (!allowedTypes.has(normalizedType)) {
       throw makeHttpError('Type de message invalide', 400);
     }
@@ -373,36 +426,85 @@ class MessageService {
     const thumbnailUrl = options?.thumbnail_url ? String(options.thumbnail_url).trim() : '';
     const stickerUrl = options?.sticker_url ? String(options.sticker_url).trim() : '';
 
-    if (normalizedType === 'text' && !maskedContent) {
-      throw makeHttpError('Le contenu texte est requis', 400);
-    }
-    if (['image', 'video', 'audio', 'voice', 'file'].includes(normalizedType) && !mediaUrl) {
-      throw makeHttpError('media_url est requis pour ce type de message', 400);
-    }
-    if (normalizedType === 'sticker' && !stickerUrl) {
-      throw makeHttpError('sticker_url est requis pour un sticker', 400);
-    }
-    if (normalizedType === 'location' && (options?.location_lat == null || options?.location_lng == null)) {
-      throw makeHttpError('location_lat et location_lng sont requis pour partager une localisation', 400);
-    }
-    if (normalizedType === 'contact' && !options?.contact_user_id && !options?.contact_name) {
-      throw makeHttpError('contact_user_id ou contact_name requis pour partager un contact', 400);
+    if (normalizedType === 'poll') {
+      if (mediaUrl || thumbnailUrl || stickerUrl) {
+        throw makeHttpError('Un sondage ne peut pas inclure de média', 400);
+      }
+      const question = maskSensitiveContacts(rawContent.trim()).slice(0, GROUP_POLL_MAX_QUESTION_LEN);
+      if (!question) throw makeHttpError('Question du sondage requise', 400);
+      const pollOpts = normalizePollOptions(options?.poll_options);
+      if (pollOpts.length < GROUP_POLL_MIN_OPTIONS || pollOpts.length > GROUP_POLL_MAX_OPTIONS) {
+        throw makeHttpError(
+          `Le sondage doit avoir entre ${GROUP_POLL_MIN_OPTIONS} et ${GROUP_POLL_MAX_OPTIONS} options valides`,
+          400
+        );
+      }
+    } else if (normalizedType === 'event') {
+      if (mediaUrl || thumbnailUrl || stickerUrl) {
+        throw makeHttpError('Un événement partagé ne peut pas inclure de média', 400);
+      }
+      const eid = options?.event_id ? String(options.event_id).trim() : '';
+      if (!eid) throw makeHttpError('event_id requis pour partager un événement', 400);
+    } else {
+      if (normalizedType === 'text' && !maskedContent) {
+        throw makeHttpError('Le contenu texte est requis', 400);
+      }
+      if (['image', 'video', 'audio', 'voice', 'file'].includes(normalizedType) && !mediaUrl) {
+        throw makeHttpError('media_url est requis pour ce type de message', 400);
+      }
+      if (normalizedType === 'sticker' && !stickerUrl) {
+        throw makeHttpError('sticker_url est requis pour un sticker', 400);
+      }
+      if (normalizedType === 'location' && (options?.location_lat == null || options?.location_lng == null)) {
+        throw makeHttpError('location_lat et location_lng sont requis pour partager une localisation', 400);
+      }
+      if (normalizedType === 'contact' && !options?.contact_user_id && !options?.contact_name) {
+        throw makeHttpError('contact_user_id ou contact_name requis pour partager un contact', 400);
+      }
     }
 
     const conversation = await this.getOrCreateConversation(senderId, recipientId);
     if (!conversation) throw makeHttpError('Conversation introuvable', 404);
     const otherId = conversation.user1_id === senderId ? conversation.user2_id : conversation.user1_id;
 
+    let shareEventId: string | null = null;
+    let shareEventTitle = '';
+    if (normalizedType === 'event') {
+      const eid = String(options?.event_id || '').trim();
+      const ev = await prisma.event.findFirst({
+        where: { id: eid },
+        select: { id: true, title: true, status: true, organizer_id: true },
+      });
+      if (!ev) throw makeHttpError('Événement introuvable', 404);
+      if (ev.status !== 'published' && ev.organizer_id !== senderId) {
+        throw makeHttpError('Cet événement ne peut pas être partagé', 403);
+      }
+      shareEventTitle = maskSensitiveContacts((ev.title || '').trim()).slice(0, 500);
+      if (!shareEventTitle) throw makeHttpError('Événement sans titre', 400);
+      shareEventId = ev.id;
+    }
+
     const isEphemeral = Boolean(options?.is_ephemeral);
     const expiresAt = options?.expires_at ? new Date(options.expires_at) : (isEphemeral ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null);
     const scheduledAt = options?.scheduled_at ? new Date(options.scheduled_at) : null;
     const isScheduled = scheduledAt != null && scheduledAt.getTime() > Date.now();
 
+    const isPoll = normalizedType === 'poll';
+    const isEvent = normalizedType === 'event' && shareEventId != null;
+    const pollQuestion = isPoll ? maskSensitiveContacts(rawContent.trim()).slice(0, GROUP_POLL_MAX_QUESTION_LEN) : '';
+    const pollOptsStored = isPoll ? normalizePollOptions(options?.poll_options) : [];
+
     const message = await prisma.message.create({
       data: {
         conversation_id: conversation.id,
         sender_id: senderId,
-        content: normalizedType === 'location' ? (options?.location_label || `${options?.location_lat},${options?.location_lng}`) : maskedContent,
+        content: isPoll
+          ? pollQuestion
+          : isEvent
+            ? shareEventTitle
+            : normalizedType === 'location'
+              ? (options?.location_label || `${options?.location_lat},${options?.location_lng}`)
+              : maskedContent,
         type: normalizedType,
         status: isScheduled ? 'scheduled' : 'sent',
         scheduled_at: scheduledAt,
@@ -417,10 +519,30 @@ class MessageService {
         contact_user_id: options?.contact_user_id ?? null,
         contact_name: options?.contact_name ?? null,
         sticker_url: stickerUrl || null,
+        ...(isPoll
+          ? {
+              poll_options: pollOptsStored as Prisma.InputJsonValue,
+              poll_votes: {} as Prisma.InputJsonValue,
+            }
+          : {}),
+        ...(isEvent && shareEventId ? { event_id: shareEventId } : {}),
       },
       include: {
         sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
         reply_to: { select: { id: true, content: true, type: true, sender_id: true, created_at: true } },
+        event_ref: {
+          select: {
+            id: true,
+            title: true,
+            image: true,
+            start_date: true,
+            end_date: true,
+            location: true,
+            status: true,
+            event_type: true,
+            virtual_url: true,
+          },
+        },
       },
     });
 
@@ -432,21 +554,25 @@ class MessageService {
     const prevMap = (conversation.unread_count_map as UnreadCountMap) || {};
     const newMap = incrementUnreadForUser(prevMap, otherId);
 
-    const lastText = normalizedType === 'text'
-      ? maskedContent
-      : normalizedType === 'image'
-        ? 'Image'
-        : normalizedType === 'video'
-          ? 'Video'
-          : normalizedType === 'audio' || normalizedType === 'voice'
-            ? 'Audio'
-            : normalizedType === 'sticker'
-              ? 'Sticker'
-              : normalizedType === 'location'
-                ? 'Position'
-                : normalizedType === 'contact'
-                  ? 'Contact'
-                  : 'Fichier';
+    const lastText = isPoll
+      ? `📊 ${pollQuestion.slice(0, 120)}`
+      : isEvent
+        ? `📅 ${shareEventTitle.slice(0, 120)}`
+        : normalizedType === 'text'
+          ? maskedContent
+          : normalizedType === 'image'
+            ? 'Image'
+            : normalizedType === 'video'
+              ? 'Video'
+              : normalizedType === 'audio' || normalizedType === 'voice'
+                ? 'Audio'
+                : normalizedType === 'sticker'
+                  ? 'Sticker'
+                  : normalizedType === 'location'
+                    ? 'Position'
+                    : normalizedType === 'contact'
+                      ? 'Contact'
+                      : 'Fichier';
 
     await prisma.conversation.update({
       where: { id: conversation.id },
@@ -471,7 +597,14 @@ class MessageService {
         await notificationService.create(otherId, {
           type: 'message_new',
           title: 'Nouveau message',
-          message: normalizedType === 'text' ? (maskedContent.slice(0, 120) || 'Message recu') : `Nouveau ${normalizedType}`,
+          message:
+            normalizedType === 'text'
+              ? (maskedContent.slice(0, 120) || 'Message recu')
+              : isPoll
+                ? `📊 ${pollQuestion.slice(0, 120)}`.trim() || 'Sondage'
+                : isEvent
+                  ? `📅 ${shareEventTitle.slice(0, 120)}`.trim() || 'Événement'
+                  : `Nouveau ${normalizedType}`,
           reference_type: 'conversation',
           reference_id: conversation.id,
           data: { conversationId: conversation.id, senderId },
@@ -493,6 +626,19 @@ class MessageService {
         conversation: true,
         sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
         reply_to: { select: { id: true, content: true, type: true, sender_id: true, created_at: true } },
+        event_ref: {
+          select: {
+            id: true,
+            title: true,
+            image: true,
+            start_date: true,
+            end_date: true,
+            location: true,
+            status: true,
+            event_type: true,
+            virtual_url: true,
+          },
+        },
       },
     });
     if (!message) return false;
@@ -500,7 +646,15 @@ class MessageService {
     const conv = message.conversation;
     const senderId = message.sender_id;
     const otherId = conv.user1_id === senderId ? conv.user2_id : conv.user1_id;
-    const lastText = message.type === 'text' ? (message.content?.slice(0, 200) || 'Message') : message.type;
+    const t = String(message.type || 'text').toLowerCase();
+    const lastText =
+      t === 'text'
+        ? (message.content?.slice(0, 200) || 'Message')
+        : t === 'poll'
+          ? `📊 ${(message.content || '').slice(0, 120)}`
+          : t === 'event'
+            ? `📅 ${(message.content || '').slice(0, 120)}`
+            : message.type;
     const prevMap = (conv.unread_count_map as UnreadCountMap) || {};
     const newMap = incrementUnreadForUser(prevMap, otherId);
 
@@ -530,7 +684,14 @@ class MessageService {
       await notificationService.create(otherId, {
         type: 'message_new',
         title: 'Nouveau message',
-        message: message.type === 'text' ? (message.content?.slice(0, 120) || 'Message reçu') : `Nouveau ${message.type}`,
+        message:
+          t === 'text'
+            ? (message.content?.slice(0, 120) || 'Message reçu')
+            : t === 'poll'
+              ? `📊 ${(message.content || '').slice(0, 120)}`.trim() || 'Sondage'
+              : t === 'event'
+                ? `📅 ${(message.content || '').slice(0, 120)}`.trim() || 'Événement'
+                : `Nouveau ${message.type}`,
         reference_type: 'conversation',
         reference_id: conv.id,
         data: { conversationId: conv.id, senderId },
@@ -828,6 +989,9 @@ class MessageService {
         location_label: null,
         contact_user_id: null,
         contact_name: null,
+        poll_options: Prisma.JsonNull,
+        poll_votes: Prisma.JsonNull,
+        event_id: null,
       },
     });
     if (messageIo) messageIo.to(`conversation:${msg.conversation_id}`).emit('message:deleted_for_all', { messageId });
@@ -974,6 +1138,46 @@ class MessageService {
     return { text, cached: false };
   }
 
+  /** Vote sur un sondage 1-1 (un vote par participant, remplace le précédent). */
+  async voteDmPoll(messageId: string, userId: string, optionIndexRaw: unknown) {
+    const msg = await prisma.message.findFirst({
+      where: {
+        id: messageId,
+        type: 'poll',
+        is_deleted: false,
+        conversation: { OR: [{ user1_id: userId }, { user2_id: userId }] },
+      },
+    });
+    if (!msg) throw makeHttpError('Sondage introuvable', 404);
+
+    const idx = Number(optionIndexRaw);
+    const opts = msg.poll_options;
+    const arr = Array.isArray(opts) ? opts.map((x) => String(x)) : [];
+    if (!Number.isFinite(idx) || idx !== Math.floor(idx) || idx < 0 || idx >= arr.length) {
+      throw makeHttpError('Option invalide', 400);
+    }
+
+    let votes: Record<string, number> = {};
+    if (msg.poll_votes && typeof msg.poll_votes === 'object' && !Array.isArray(msg.poll_votes)) {
+      votes = { ...(msg.poll_votes as Record<string, number>) };
+    }
+    votes[userId] = idx;
+
+    await prisma.message.update({
+      where: { id: messageId },
+      data: { poll_votes: votes as Prisma.InputJsonValue },
+    });
+
+    if (messageIo) {
+      messageIo.to(`conversation:${msg.conversation_id}`).emit('message:updated', {
+        messageId,
+        poll_votes: votes,
+      });
+    }
+
+    return { id: messageId, poll_votes: votes };
+  }
+
   async setMessageReaction(messageId: string, userId: string, emoji: string | null) {
     const msg = await this.getMessageForParticipant(messageId, userId);
     const prev = (msg.reactions && typeof msg.reactions === 'object' ? msg.reactions : {}) as Record<string, string>;
@@ -1022,18 +1226,33 @@ class MessageService {
     return { success: true };
   }
 
-  /** Export des conversations de l'utilisateur (sauvegarde cloud) — exclut messages éphémères expirés. */
-  async exportConversations(userId: string): Promise<{ conversations: Array<{ conversationId: string; otherUser: { id: string; username: string; full_name: string | null }; messages: Array<Record<string, unknown>> }> }> {
-    const convs = await prisma.conversation.findMany({
-      where: {
-        OR: [{ user1_id: userId }, { user2_id: userId }],
-      },
-      include: {
-        user1: { select: { id: true, username: true, full_name: true } },
-        user2: { select: { id: true, username: true, full_name: true } },
-      },
-      orderBy: { last_message_at: 'desc' },
-    });
+  /** Export des conversations de l'utilisateur (sauvegarde cloud) — exclut messages éphémères expirés. Si `conversationId` est fourni, une seule conversation (vérification membre). */
+  async exportConversations(
+    userId: string,
+    options?: { conversationId?: string | null }
+  ): Promise<{ conversations: Array<{ conversationId: string; otherUser: { id: string; username: string; full_name: string | null }; messages: Array<Record<string, unknown>> }> }> {
+    const convInclude = {
+      user1: { select: { id: true, username: true, full_name: true } },
+      user2: { select: { id: true, username: true, full_name: true } },
+    };
+    let convs;
+    const onlyId = options?.conversationId ? String(options.conversationId).trim() : '';
+    if (onlyId) {
+      const one = await prisma.conversation.findFirst({
+        where: { id: onlyId, OR: [{ user1_id: userId }, { user2_id: userId }] },
+        include: convInclude,
+      });
+      if (!one) throw makeHttpError('Conversation non trouvée', 404);
+      convs = [one];
+    } else {
+      convs = await prisma.conversation.findMany({
+        where: {
+          OR: [{ user1_id: userId }, { user2_id: userId }],
+        },
+        include: convInclude,
+        orderBy: { last_message_at: 'desc' },
+      });
+    }
     const now = new Date();
     const result: Array<{ conversationId: string; otherUser: { id: string; username: string; full_name: string | null }; messages: Array<Record<string, unknown>> }> = [];
     for (const c of convs) {
@@ -1066,6 +1285,67 @@ class MessageService {
       });
     }
     return { conversations: result };
+  }
+
+  /** Aperçu court pour listes (messages programmés, etc.). */
+  private static scheduledPreviewLine(type: string, content: string): string {
+    const t = String(type || 'text').toLowerCase();
+    const c = (content || '').trim();
+    if (t === 'poll') return `📊 ${c.slice(0, 100)}`.trim() || 'Sondage';
+    if (t === 'event') return `📅 ${c.slice(0, 100)}`.trim() || 'Événement';
+    if (t === 'image') return 'Image';
+    if (t === 'video') return 'Vidéo';
+    if (t === 'audio' || t === 'voice') return 'Message vocal';
+    if (t === 'file') return c.slice(0, 80) || 'Document';
+    if (t === 'location') return 'Position';
+    if (t === 'contact') return 'Contact';
+    if (t === 'sticker') return 'Sticker';
+    return c.slice(0, 140) || 'Message';
+  }
+
+  /** Messages DM programmés par l’utilisateur (CDC — vue centralisée). */
+  async listScheduledDmForUser(userId: string) {
+    const rows = await prisma.message.findMany({
+      where: {
+        sender_id: userId,
+        status: 'scheduled',
+        scheduled_at: { not: null },
+        is_deleted: false,
+      },
+      select: {
+        id: true,
+        conversation_id: true,
+        content: true,
+        type: true,
+        scheduled_at: true,
+        conversation: {
+          select: {
+            user1_id: true,
+            user2_id: true,
+            user1: { select: { id: true, username: true, full_name: true } },
+            user2: { select: { id: true, username: true, full_name: true } },
+          },
+        },
+      },
+      orderBy: { scheduled_at: 'asc' },
+      take: 100,
+    });
+    return rows.map((m) => {
+      const c = m.conversation;
+      const other = c.user1_id === userId ? c.user2 : c.user1;
+      const otherId = other.id;
+      const peerLabel = String(other.full_name || other.username || 'Discussion').trim().slice(0, 100) || 'Discussion';
+      return {
+        channel: 'dm' as const,
+        message_id: m.id,
+        conversation_id: m.conversation_id,
+        other_user_id: otherId,
+        peer_display_name: peerLabel,
+        scheduled_at: m.scheduled_at!.toISOString(),
+        type: m.type,
+        preview: MessageService.scheduledPreviewLine(m.type, m.content),
+      };
+    });
   }
 
   async getPresence(userId: string) {

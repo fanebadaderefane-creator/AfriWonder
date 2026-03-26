@@ -96,10 +96,27 @@ import FAQ from './pages/FAQ';
 import Favorites from './pages/Favorites';
 import FeedPosts from './pages/FeedPosts';
 import Formations from './pages/Formations';
+import GroupCallLobby from './pages/GroupCallLobby';
 import GroupChat from './pages/GroupChat';
 import GroupBuys from './pages/GroupBuys';
 import Health from './pages/Health';
 import Messages from './pages/MessagesMaliConnect';
+import MessagingCdcCalls from './pages/MessagingCdcCalls';
+import MessagingCdcChannels from './pages/MessagingCdcChannels';
+import MessagingCdcCommunities from './pages/MessagingCdcCommunities';
+import MessagingCdcCustomize from './pages/MessagingCdcCustomize';
+import MessagingCdcGroupsAdvanced from './pages/MessagingCdcGroupsAdvanced';
+import MessagingCdcHub from './pages/MessagingCdcHub';
+import MessagingCdcMediaAndShare from './pages/MessagingCdcMediaAndShare';
+import MessagingCdcModeration from './pages/MessagingCdcModeration';
+import MessagingCdcMultiDevice from './pages/MessagingCdcMultiDevice';
+import MessagingCdcPremium from './pages/MessagingCdcPremium';
+import MessagingCdcPrivacy from './pages/MessagingCdcPrivacy';
+import MessagingCdcProTools from './pages/MessagingCdcProTools';
+import MessagingCdcScheduled from './pages/MessagingCdcScheduled';
+import MessagingCdcSecurityAccount from './pages/MessagingCdcSecurityAccount';
+import MessagingCdcStatus from './pages/MessagingCdcStatus';
+import MessagingCdcTextFeatures from './pages/MessagingCdcTextFeatures';
 import Downloads from './pages/Downloads';
 import EditVideo from './pages/EditVideo';
 import EditProduct from './pages/EditProduct';
@@ -262,10 +279,27 @@ export const PAGES = {
     "Favorites": Favorites,
     "FeedPosts": FeedPosts,
     "Formations": Formations,
+    "GroupCallLobby": GroupCallLobby,
     "GroupChat": GroupChat,
     "GroupBuys": GroupBuys,
     "Health": Health,
     "Messages": Messages,
+    "MessagingCdcCalls": MessagingCdcCalls,
+    "MessagingCdcChannels": MessagingCdcChannels,
+    "MessagingCdcCommunities": MessagingCdcCommunities,
+    "MessagingCdcCustomize": MessagingCdcCustomize,
+    "MessagingCdcGroupsAdvanced": MessagingCdcGroupsAdvanced,
+    "MessagingCdcHub": MessagingCdcHub,
+    "MessagingCdcMediaAndShare": MessagingCdcMediaAndShare,
+    "MessagingCdcModeration": MessagingCdcModeration,
+    "MessagingCdcMultiDevice": MessagingCdcMultiDevice,
+    "MessagingCdcPremium": MessagingCdcPremium,
+    "MessagingCdcPrivacy": MessagingCdcPrivacy,
+    "MessagingCdcProTools": MessagingCdcProTools,
+    "MessagingCdcScheduled": MessagingCdcScheduled,
+    "MessagingCdcSecurityAccount": MessagingCdcSecurityAccount,
+    "MessagingCdcStatus": MessagingCdcStatus,
+    "MessagingCdcTextFeatures": MessagingCdcTextFeatures,
     "Downloads": Downloads,
     "EditVideo": EditVideo,
     "EditProduct": EditProduct,

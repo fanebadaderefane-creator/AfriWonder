@@ -9,18 +9,45 @@ const ALLOWED_VIDEO_HOSTS = [
   'africonnect.com',
   'afriwonder.com',
   'localhost',
+  /** Lectures dev : URLs stockées en 127.0.0.1 / ::1 alors que le navigateur est sur localhost (ou l’inverse). */
+  '127.0.0.1',
+  '::1',
   'r2.dev',
   'cloudflarestorage.com',
   'supabase.co',
   'supabase.in',
   'amazonaws.com',
+  'cloudfront.net',
+  /** Ex. démo / seeds : commondatastorage.googleapis.com */
+  'googleapis.com',
+  /** Liens directs / aperçus Drive et fichiers utilisateur Google */
+  'drive.google.com',
+  'docs.google.com',
+  'googleusercontent.com',
 ];
+
+/** Domaines CDN additionnels (ex. sous-domaine R2 custom), CSV sans schéma : media.afriwonder.com,cdn.example.com */
+const EXTRA_PROXY_MEDIA_HOSTS = (process.env.PROXY_MEDIA_EXTRA_HOSTS || '')
+  .split(',')
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+function normalizeHostname(host: string): string {
+  return host.replace(/^\[|\]$/g, '').toLowerCase();
+}
+
+function isLoopbackHost(host: string): boolean {
+  const h = normalizeHostname(host);
+  return h === 'localhost' || h === '127.0.0.1' || h === '::1';
+}
 
 function isAllowedVideoUrl(url: string): boolean {
   try {
     const u = new URL(url);
     const host = u.hostname.toLowerCase();
-    const ok = ALLOWED_VIDEO_HOSTS.some((h) => host === h || host.endsWith('.' + h));
+    const ok =
+      ALLOWED_VIDEO_HOSTS.some((h) => host === h || host.endsWith('.' + h)) ||
+      EXTRA_PROXY_MEDIA_HOSTS.some((h) => host === h || host.endsWith('.' + h));
     return ok && (u.protocol === 'https:' || u.protocol === 'http:');
   } catch {
     return false;
@@ -44,10 +71,13 @@ router.get('/media', async (req: Request, res: ExpressResponse) => {
   }
 
   try {
-    const targetHost = new URL(targetUrl).hostname.toLowerCase();
-    const requestHost = (req.get('host') || '').split(':')[0].toLowerCase();
-    const sameOrigin = requestHost && (targetHost === requestHost || targetHost === '127.0.0.1' && requestHost === 'localhost');
-    if (!sameOrigin && !isAllowedVideoUrl(targetUrl)) {
+    const targetHost = new URL(targetUrl).hostname;
+    const requestHost = (req.get('host') || '').split(':')[0];
+    const t = normalizeHostname(targetHost);
+    const r = normalizeHostname(requestHost);
+    const sameHost = r && t === r;
+    const bothLoopback = r && isLoopbackHost(targetHost) && isLoopbackHost(requestHost);
+    if (!sameHost && !bothLoopback && !isAllowedVideoUrl(targetUrl)) {
       return res.status(403).json({ error: 'URL non autorisée' });
     }
   } catch {
@@ -79,18 +109,25 @@ router.get('/media', async (req: Request, res: ExpressResponse) => {
     res.status(response.status);
 
     // Headers critiques (Firefox exige Content-Range, Content-Length, Accept-Ranges)
-    const importantHeaders = [
-      'content-type',
-      'content-length',
-      'content-range',
-      'accept-ranges',
-    ];
-    importantHeaders.forEach((header) => {
+    const passthroughHeaders = ['content-length', 'content-range', 'accept-ranges'];
+    passthroughHeaders.forEach((header) => {
       const value = response.headers.get(header);
-      if (value) {
-        res.setHeader(header, value);
-      }
+      if (value) res.setHeader(header, value);
     });
+
+    let contentType = response.headers.get('content-type');
+    const ctLow = (contentType || '').toLowerCase();
+    const badCt = !ctLow || ctLow.includes('octet-stream') || ctLow === 'binary/octet-stream';
+    const looksMp4Path = /\.(mp4|m4v)(\?|#|$)/i.test(targetUrl);
+    /** Clés R2 souvent sans extension dans l’URL ; Firefox refuse si le bucket renvoie octet-stream. */
+    const cdnVideoKey =
+      badCt && /\/videos\//i.test(new URL(targetUrl).pathname || '');
+    if (badCt && (looksMp4Path || cdnVideoKey)) {
+      contentType = 'video/mp4';
+    }
+    if (contentType?.trim()) {
+      res.setHeader('content-type', contentType.trim());
+    }
 
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');

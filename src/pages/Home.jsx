@@ -269,26 +269,31 @@ export default function Home() {
   });
   const walletBalance = walletData?.available_balance ?? walletData?.balance ?? 0;
 
+  const mainFeedLoading =
+    activeTab === 'pourtoi' ? feedLoading : videosLoading;
+
   const { data: userFollows = [] } = useQuery({
     queryKey: ['user-follows', user?.id],
-    ...cacheStrategy,
+    ...homeCacheStrategy,
     queryFn: async () => {
       const result = await api.users.getFollowing(user.id);
       return result.following || [];
     },
-    enabled: !!user?.id
+    enabled: !!user?.id,
   });
 
   const { data: suggestedWonderers = [] } = useQuery({
     queryKey: ['wonder-suggestions', user?.id, userFollows.length],
+    ...homeCacheStrategy,
     queryFn: async () => {
-      const result = await api.users.list({ page: 1, limit: 40 });
+      const result = await api.users.list({ page: 1, limit: 24 });
       const followedSet = new Set(userFollows.map((f) => f.id));
       return result
         .filter((u) => u.id !== user?.id && !followedSet.has(u.id) && !isDeletedUser(u))
         .slice(0, 18);
     },
-    enabled: !!user?.id,
+    // Après hydratation + feed : évite la course (query feed désactivée ⇒ feedLoading faux au tout début).
+    enabled: !!user?.id && userHydrated && !mainFeedLoading,
   });
 
   useEffect(() => {

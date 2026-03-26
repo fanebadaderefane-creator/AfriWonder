@@ -5,14 +5,11 @@ import { MessageCircle, Send, Download, Link2, Users, Bluetooth, Wifi, Music2, F
 import { motion } from 'framer-motion';
 import { toast } from "sonner";
 import offlineCacheService from '@/services/offlineCache.service.js';
-import { API_URL } from '@/api/expressClient';
-import { getAbsoluteImageUrl } from '@/lib/utils';
+import { getAbsoluteImageUrl, getVideoPlaybackUrl } from '@/lib/utils';
 
-/** URL pour récupérer la vidéo via le proxy (évite CORS avec le CDN). */
+/** Même logique que le feed : CDN direct en prod www + API séparée (évite 502 sur le proxy Render). */
 function getVideoFetchUrl(videoUrl) {
-  if (!videoUrl || typeof videoUrl !== 'string') return '';
-  const base = API_URL.startsWith('/') ? window.location.origin + API_URL : API_URL;
-  return `${base.replace(/\/$/, '')}/proxy/media?url=${encodeURIComponent(videoUrl)}`;
+  return getVideoPlaybackUrl(videoUrl) || '';
 }
 
 const shareOptions = [

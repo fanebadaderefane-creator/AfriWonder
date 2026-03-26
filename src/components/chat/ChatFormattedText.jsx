@@ -3,8 +3,14 @@ import { cn } from '@/lib/utils';
 
 /**
  * Parse style WhatsApp / proche : *gras* _italique_ ~barré~ ~~barré~~ `mono` ||spoiler||
+ * Spoilers aussi : [[spoiler]]...[[/spoiler]] (alias de ||...|| pour le CDC).
  * Le texte brut est conservé côté serveur ; le rendu est uniquement visuel.
  */
+
+function normalizeSpoilerDelimiters(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  return raw.replace(/\[\[spoiler\]\]([\s\S]*?)\[\[\/spoiler\]\]/gi, '||$1||');
+}
 
 function parseInline(str, keyPrefix) {
   if (!str) return [];
@@ -219,7 +225,7 @@ export function ChatFormattedText({
   highlightAtMentions = false,
 }) {
   const content = useMemo(() => {
-    const raw = typeof text === 'string' ? text : '';
+    const raw = normalizeSpoilerDelimiters(typeof text === 'string' ? text : '');
     if (!raw.trim()) return null;
     return renderWithOptionalMentions(raw, 'cf', spoilerTapLabel, isOnLightBubble, highlightAtMentions);
   }, [text, spoilerTapLabel, isOnLightBubble, highlightAtMentions]);
@@ -233,6 +239,7 @@ export function ChatFormattedText({
 export function stripChatMarkupForPreview(s) {
   if (!s || typeof s !== 'string') return '';
   return s
+    .replace(/\[\[spoiler\]\]([\s\S]*?)\[\[\/spoiler\]\]/gi, '$1')
     .replace(/\|\|([\s\S]*?)\|\|/g, '$1')
     .replace(/~~([^~]+)~~/g, '$1')
     .replace(/~([^~\n]+)~/g, '$1')

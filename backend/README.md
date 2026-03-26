@@ -25,6 +25,17 @@ Backend API du projet AfriWonder — Express, Prisma, PostgreSQL (votre propre b
    PORT=3000
    NODE_ENV=development
    CORS_ORIGIN=http://localhost:5173
+   # --- Upload direct vers Cloudflare R2 (recommandé pour gros fichiers) ---
+   # Requis pour l’upload direct (pré-signé) :
+   R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com"
+   R2_ACCESS_KEY_ID="..."
+   R2_SECRET_ACCESS_KEY="..."
+   R2_BUCKET_NAME="afriwonder"
+   # Domaine public (custom domain recommandé) :
+   R2_PUBLIC_URL="https://cdn.afriwonder.com"
+   # Limites (Mo) pour les routes serveur /upload/* (multer memoryStorage)
+   UPLOAD_MAX_MEDIA_MB=600
+   UPLOAD_MAX_DOCUMENT_MB=300
    ```
 
 ### 2. Installer et Configurer le Backend

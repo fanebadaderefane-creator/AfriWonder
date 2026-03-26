@@ -6,15 +6,13 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
 import { beforeAll, afterAll } from '@jest/globals';
 
 // Charger .env.test AVANT d'importer database (qui lit DATABASE_URL)
-const currentDir = path.dirname(fileURLToPath(import.meta.url));
+// Pas d'import.meta ici : Jest sans --experimental-vm-modules doit pouvoir parser ce fichier.
 const envCandidates = [
   path.resolve(process.cwd(), '.env.test'),
   path.resolve(process.cwd(), 'backend', '.env.test'),
-  path.resolve(currentDir, '..', '.env.test'),
 ];
 
 const resolvedEnvPath = envCandidates.find((p) => fs.existsSync(p));

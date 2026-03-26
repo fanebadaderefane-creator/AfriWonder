@@ -1,6 +1,9 @@
 import React from 'react';
 import VideoCard from '@/components/video/VideoCard';
 
+/** Ne monter le lecteur que pour la slide active ± N : évite 20+ <video preload="auto"> en parallèle (réseau saturé, aucune lecture). */
+const FEED_PLAYER_MOUNT_RADIUS = 2;
+
 export default function FeedVideoSlide({
   index,
   safeCurrentIndex,
@@ -23,23 +26,38 @@ export default function FeedVideoSlide({
   onInitialVisualReady,
 }) {
   const { video, slideBackgroundUrl } = slide;
+  const distance = Math.abs(index - safeCurrentIndex);
+  const shouldMountPlayer = distance <= FEED_PLAYER_MOUNT_RADIUS;
+
+  const slideShellStyle = {
+    display: 'block',
+    width: '100%',
+    height: '100dvh',
+    minHeight: '100dvh',
+    scrollSnapAlign: 'start',
+    scrollSnapStop: 'always',
+    touchAction: 'pan-y',
+    backgroundImage: slideBackgroundUrl ? `url(${slideBackgroundUrl})` : undefined,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+  };
+
+  if (!shouldMountPlayer) {
+    return (
+      <div
+        data-index={index}
+        className="relative w-full snap-start overflow-hidden bg-gray-950"
+        style={slideShellStyle}
+        aria-hidden
+      />
+    );
+  }
 
   return (
     <div
       data-index={index}
       className="relative w-full snap-start overflow-hidden bg-gray-950"
-      style={{
-        display: 'block',
-        width: '100%',
-        height: '100dvh',
-        minHeight: '100dvh',
-        scrollSnapAlign: 'start',
-        scrollSnapStop: 'always',
-        touchAction: 'pan-y',
-        backgroundImage: slideBackgroundUrl ? `url(${slideBackgroundUrl})` : undefined,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-      }}
+      style={slideShellStyle}
     >
       <VideoCard
         video={video}

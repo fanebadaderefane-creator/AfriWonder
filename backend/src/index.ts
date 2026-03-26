@@ -96,7 +96,30 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 
 // Attendre que la DB soit prête avant d’accepter du trafic et lancer les jobs (évite "credentials (not available)" / "Server has closed the connection")
 async function ensureDbConnected() {
-  await prisma.$connect();
+  if (process.env.NODE_ENV !== 'test') {
+    console.log('[api] Connexion PostgreSQL… (si blocage ici → vérifiez PostgreSQL et DATABASE_URL dans backend/.env)');
+  }
+  const ms = Math.min(Math.max(parseInt(process.env.DATABASE_CONNECT_TIMEOUT_MS || '20000', 10), 3000), 120000);
+  await new Promise<void>((resolve, reject) => {
+    const t = setTimeout(() => {
+      reject(
+        new Error(
+          `PostgreSQL indisponible après ${ms} ms (DATABASE_URL / pare-feu / instance arrêtée). Le proxy média et l’API locales ne démarreront pas sans base.`
+        )
+      );
+    }, ms);
+    prisma
+      .$connect()
+      .then(() => {
+        clearTimeout(t);
+        if (process.env.NODE_ENV !== 'test') console.log('[api] PostgreSQL OK');
+        resolve();
+      })
+      .catch((e) => {
+        clearTimeout(t);
+        reject(e);
+      });
+  });
 }
 
 // WebSocket connection
@@ -288,6 +311,7 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Démarrer après connexion DB pour éviter erreurs "credentials (not available)" / "Server has closed the connection" (notamment sur Render)
 async function startServer() {
+  if (process.env.NODE_ENV !== 'test') console.log('[api] Démarrage serveur HTTP…');
   await ensureDbConnected();
   httpServer.listen(PORT, '0.0.0.0', async () => {
   logger.info(`🚀 Server running on port ${PORT}`);

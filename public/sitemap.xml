@@ -421,6 +421,11 @@
     <priority>0.65</priority>
   </url>
   <url>
+    <loc>https://afriwonder.com/GroupCallLobby</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
     <loc>https://afriwonder.com/GroupChat</loc>
     <changefreq>weekly</changefreq>
     <priority>0.65</priority>
@@ -542,6 +547,86 @@
   </url>
   <url>
     <loc>https://afriwonder.com/MessagesMaliConnect</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/MessagingCdcCalls</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/MessagingCdcChannels</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/MessagingCdcCommunities</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/MessagingCdcCustomize</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/MessagingCdcGroupsAdvanced</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/MessagingCdcHub</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/MessagingCdcMediaAndShare</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/MessagingCdcModeration</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/MessagingCdcMultiDevice</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/MessagingCdcPremium</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/MessagingCdcPrivacy</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/MessagingCdcProTools</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/MessagingCdcScheduled</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/MessagingCdcSecurityAccount</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/MessagingCdcStatus</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/MessagingCdcTextFeatures</loc>
     <changefreq>weekly</changefreq>
     <priority>0.65</priority>
   </url>

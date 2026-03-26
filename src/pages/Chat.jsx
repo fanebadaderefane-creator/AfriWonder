@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, Send, Paperclip, Camera, Loader2, Mic, Square, Play, Pause, MoreVertical, ShieldBan, Flag, Trash2, Reply, Copy, Forward, Pin, Star, CheckSquare, Plus, Search, X, Phone, Video, MapPin, UserPlus, Timer, TimerOff, MessageCircle, Sticker, Languages, Users, UserCircle, Image as ImageIcon, BellOff, Bell, Sparkles, Link2, ListPlus, MoreHorizontal, Pencil, UserMinus, FileText } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, Camera, Loader2, Mic, Square, Play, Pause, MoreVertical, ShieldBan, Flag, Trash2, Reply, Copy, Forward, Pin, Star, CheckSquare, Plus, Search, X, Phone, Video, MapPin, UserPlus, Timer, TimerOff, MessageCircle, Sticker, Languages, Users, UserCircle, Image as ImageIcon, BellOff, Bell, Sparkles, Link2, ListPlus, MoreHorizontal, Pencil, UserMinus, FileText, CalendarDays, Download } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -36,6 +36,7 @@ import {
   repairLocalE2eeDevice,
   E2EE_STRICT_MODE,
 } from '@/lib/e2eeClient';
+import { downloadPlainTextFile, formatDmConversationToPlainText } from '@/lib/messagingExportPlainText';
 
 const MESSAGES_LIMIT = 30;
 const TYPING_DEBOUNCE_MS = 400;
@@ -187,9 +188,26 @@ const chatI18n = {
     attachContact: 'Contact',
     attachAudio: 'Audio',
     attachSchedule: 'Programmer',
+    scheduleMustBeFuture: 'Choisissez une date et une heure dans le futur.',
     attachEphemeral: 'Temporaire',
     attachPoll: 'Sondage',
+    pollDialogTitle: 'Nouveau sondage',
+    pollQuestionPlaceholder: 'Votre question…',
+    pollOptionPlaceholder: (n) => `Option ${n}`,
+    pollAddOption: 'Ajouter une option',
+    pollRemoveLastOption: 'Retirer la dernière option',
+    pollPublish: 'Publier',
+    pollValidationError: 'Question et au moins 2 options non vides requises.',
+    pollVotes: (n) => `${n} vote${n > 1 ? 's' : ''}`,
+    pollVoteError: 'Vote impossible.',
     attachEvent: 'Evenement',
+    eventShareSheetTitle: 'Partager un événement',
+    eventShareSearchPlaceholder: 'Rechercher un événement…',
+    eventShareEmpty: 'Aucun événement à afficher.',
+    eventShareMyTickets: 'Mes billets',
+    eventShareDiscover: 'Événements publics',
+    eventOpenDetails: 'Voir l’événement',
+    eventShareError: 'Impossible de charger les événements.',
     attachAiImages: 'Images IA',
     attachAudioHint: 'Utilisez le micro vert a droite pour un message vocal.',
     documentComingSoon: 'Envoi de documents bientot disponible.',
@@ -236,6 +254,9 @@ const chatI18n = {
     menuClearChat: 'Effacer le contenu',
     menuAddShortcut: 'Ajouter un raccourci',
     menuAddToList: 'Ajouter à la liste',
+    menuExportChat: 'Enregistrer cette discussion',
+    exportChatSuccess: 'Fichier enregistré — ouvrez votre dossier Téléchargements',
+    exportChatError: 'Enregistrement impossible pour le moment',
     menuThemeDefault: 'AfriWonder (par défaut)',
     menuThemePattern: 'Motif discret',
     menuThemeMidnight: 'Minuit bleu',
@@ -261,8 +282,10 @@ const chatI18n = {
     chatHeaderMenuAria: 'Options de la discussion',
     spoilerTapReveal: 'Texte masqué — appuyer pour afficher',
     scheduledMessageShort: 'Envoi programmé',
-    formattingComposerHint: 'Astuce : *gras* _italique_ ~barré~ ~~barré~~ `code` ||spoiler||',
+    formattingComposerHint:
+      'Astuce : *gras* _italique_ ~barré~ ~~barré~~ `code` ||spoiler|| ou [[spoiler]]texte[[/spoiler]] — appuyer pour révéler',
     draftComposerLabel: 'Brouillon',
+    draftSaving: 'enregistrement…',
     sending: 'Envoi en cours',
     sendFailed: 'Échec de l’envoi — réessayez',
     retrySend: 'Réessayer',
@@ -414,9 +437,26 @@ const chatI18n = {
     attachContact: 'Mogo',
     attachAudio: 'Kan',
     attachSchedule: 'Waati sigi',
+    scheduleMustBeFuture: 'I ka tile ni waati min bɛna na tile fɛ.',
     attachEphemeral: 'Tɛmɛnnen',
     attachPoll: 'Ɲininkali',
+    pollDialogTitle: 'Ɲininkali kura',
+    pollQuestionPlaceholder: 'I ka ɲinini…',
+    pollOptionPlaceholder: (n) => `Sugandi ${n}`,
+    pollAddOption: 'Sugandi wɛrɛ fara',
+    pollRemoveLastOption: 'Laban sugandi bɔ',
+    pollPublish: 'Ci',
+    pollValidationError: 'Ɲinini ni sugandi 2 min bɛɛ ka kan ka sɔrɔ.',
+    pollVotes: (n) => `Ɲininikɛla ${n}`,
+    pollVoteError: 'Ɲininike ma se.',
     attachEvent: 'Ko',
+    eventShareSheetTitle: 'Ko ci',
+    eventShareSearchPlaceholder: 'Ko yiriwa…',
+    eventShareEmpty: 'Ko si te yen.',
+    eventShareMyTickets: 'Ne ticketw',
+    eventShareDiscover: 'Kow jɛɲɔgɔnw',
+    eventOpenDetails: 'Ko lajɛ',
+    eventShareError: 'Kow ma se ka doni.',
     attachAiImages: 'AI ja',
     attachAudioHint: 'I ka mikro jɔlen taama fo vocal la.',
     documentComingSoon: 'Dokumɛnti ci bɛ na.',
@@ -462,6 +502,9 @@ const chatI18n = {
     menuClearChat: 'Kunnafoni bila',
     menuAddShortcut: 'Sira surun fara',
     menuAddToList: 'Liste fara',
+    menuExportChat: 'Barokan in marisa',
+    exportChatSuccess: 'Fichier bɔra — aw ka yɛlɛn ka doni ninnu lajɛ',
+    exportChatError: 'Marisa ma se sisan',
     menuThemeDefault: 'AfriWonder',
     menuThemePattern: 'Jɛmɛ surun',
     menuThemeMidnight: 'Sufɛ bulu',
@@ -487,8 +530,10 @@ const chatI18n = {
     chatHeaderMenuAria: 'Barokan ɲɛnajɛw',
     spoilerTapReveal: 'Dogolen — a digi ka yira',
     scheduledMessageShort: 'Waati min na ka ci',
-    formattingComposerHint: '*fanga* _slanted_ ~bɔ~ ~~bɔ~~ `kɔd` ||dogolen||',
+    formattingComposerHint:
+      '*fanga* _slanted_ ~bɔ~ ~~bɔ~~ `kɔd` ||dogolen|| walima [[spoiler]]kuma[[/spoiler]] — ɲɛnajɛ ka yira',
     draftComposerLabel: 'Draft',
+    draftSaving: 'bɛ bɛ wele…',
     sending: 'A bɛ ci',
     sendFailed: 'Ci ma se',
     retrySend: 'Segin ka ci',
@@ -505,6 +550,14 @@ function extractUrls(text) {
   if (!text || typeof text !== 'string') return [];
   const m = text.match(URL_IN_TEXT_RE);
   return m ? [...new Set(m)] : [];
+}
+
+/** `min` / valeur initiale pour `<input type="datetime-local">` (heure locale, pas UTC). */
+function toDatetimeLocalInputValue(d) {
+  const date = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 /** Ordre proche d’Instagram DM */
@@ -560,6 +613,8 @@ function getReplySnippet(rt, labels) {
   if (t === 'location') return labels.locationMessage;
   if (t === 'contact') return rt.contact_name || labels.contactMessage;
   if (t === 'file') return labels.attachDocument;
+  if (t === 'poll') return labels.attachPoll;
+  if (t === 'event') return labels.attachEvent;
   const c = rt.content;
   if (typeof c === 'string' && c.trim()) return stripChatMarkupForPreview(c.trim());
   return '…';
@@ -737,6 +792,16 @@ export default function Chat() {
   /** Bulles locales pendant l’envoi réseau (horloge ⏳ style WhatsApp). */
   const [outgoingPending, setOutgoingPending] = useState([]);
   const [attachmentSheetOpen, setAttachmentSheetOpen] = useState(false);
+  const [pollDialogOpen, setPollDialogOpen] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptionRows, setPollOptionRows] = useState(() => ['', '']);
+  const [eventShareOpen, setEventShareOpen] = useState(false);
+  const [eventSearchQuery, setEventSearchQuery] = useState('');
+  const [eventSearchDebounced, setEventSearchDebounced] = useState('');
+  useEffect(() => {
+    const id = window.setTimeout(() => setEventSearchDebounced(eventSearchQuery.trim()), 320);
+    return () => window.clearTimeout(id);
+  }, [eventSearchQuery]);
   const [cameraSheetOpen, setCameraSheetOpen] = useState(false);
   const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
   const [cameraSending, setCameraSending] = useState(false);
@@ -955,6 +1020,10 @@ export default function Chat() {
         draft_content: content,
         content,
       });
+      /** Inbox : aperçu « Brouillon · … » à jour sans recharger. */
+      if (currentUser?.id) {
+        queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser.id] });
+      }
     },
   });
 
@@ -1237,6 +1306,8 @@ export default function Chat() {
       contact_user_id,
       contact_name,
       sticker_url,
+      poll_options,
+      event_id,
     } = {}) => {
       let e2ee_envelope;
       try {
@@ -1266,6 +1337,8 @@ export default function Chat() {
         contact_user_id,
         contact_name,
         sticker_url,
+        poll_options,
+        event_id,
         e2ee_envelope,
       });
     },
@@ -1277,12 +1350,22 @@ export default function Chat() {
       refetchMessages();
       queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser?.id] });
       queryClient.invalidateQueries({ queryKey: ['messages-unread-count'] });
+      if (String(variables?.type || '').toLowerCase() === 'poll') {
+        setPollQuestion('');
+        setPollOptionRows(['', '']);
+      }
+      if (String(variables?.type || '').toLowerCase() === 'event') {
+        queryClient.invalidateQueries({ queryKey: ['events-my-tickets', currentUser?.id] });
+      }
       setMessageContent('');
       setReplyTarget(null);
       setScheduledAt('');
       setShowSchedule(false);
       if (conversationId && !variables?.scheduled_at) {
         api.messages.putDraft(conversationId, '').catch(() => {});
+      }
+      if (variables?.scheduled_at) {
+        queryClient.invalidateQueries({ queryKey: ['scheduled-messages', currentUser?.id] });
       }
       toast.success(variables?.scheduled_at ? 'Message programmé' : labels.sendSuccess);
     },
@@ -1301,6 +1384,121 @@ export default function Chat() {
       );
     },
   });
+
+  const { data: eventListData, isPending: eventListPending, isError: eventListError } = useQuery({
+    queryKey: ['chat-event-share-list', eventSearchDebounced],
+    queryFn: () =>
+      api.events.list({
+        page: 1,
+        limit: 25,
+        status: 'published',
+        ...(eventSearchDebounced.length >= 2 ? { search: eventSearchDebounced } : {}),
+      }),
+    enabled: eventShareOpen,
+  });
+
+  const { data: myTicketsData, isPending: ticketsPending } = useQuery({
+    queryKey: ['events-my-tickets', currentUser?.id],
+    queryFn: () => api.events.getMyTickets(),
+    enabled: eventShareOpen && !!currentUser?.id,
+  });
+
+  const ticketEvents = useMemo(() => {
+    const rows = Array.isArray(myTicketsData) ? myTicketsData : [];
+    const out = [];
+    const seen = new Set();
+    for (const row of rows) {
+      const ev = row?.event;
+      if (ev?.id && !seen.has(ev.id)) {
+        seen.add(ev.id);
+        out.push(ev);
+      }
+    }
+    return out;
+  }, [myTicketsData]);
+
+  const discoverEvents = useMemo(() => {
+    const raw = eventListData?.events ?? [];
+    const ticketIds = new Set(ticketEvents.map((e) => e.id));
+    return raw.filter((e) => e?.id && !ticketIds.has(e.id));
+  }, [eventListData, ticketEvents]);
+
+  const handleSelectSharedEvent = useCallback(
+    (ev) => {
+      if (!ev?.id) return;
+      sendMessageMutation.mutate({
+        content: ev.title || '',
+        type: 'event',
+        event_id: ev.id,
+        reply_to_message_id: replyTarget?.id || undefined,
+        is_ephemeral: ephemeralMode === true ? true : undefined,
+        expires_at: ephemeralMode ? ephemeralExpiresIso() : undefined,
+      });
+      setEventShareOpen(false);
+      setEventSearchQuery('');
+      setEventSearchDebounced('');
+    },
+    [sendMessageMutation, replyTarget?.id, ephemeralMode, ephemeralExpiresIso]
+  );
+
+  useEffect(() => {
+    if (eventShareOpen && eventListError) toast.error(labels.eventShareError);
+  }, [eventShareOpen, eventListError, labels.eventShareError]);
+
+  const votePollMutation = useMutation({
+    mutationFn: ({ messageId, optionIndex }) => api.messages.voteDmPoll(messageId, optionIndex),
+    onSuccess: (data) => {
+      if (!data?.id || data.poll_votes == null) return;
+      queryClient.setQueryData(['messages-list', conversationId], (old) => {
+        if (!old?.messages) return old;
+        const hit = old.messages.some((m) => m.id === data.id);
+        if (!hit) return old;
+        return {
+          ...old,
+          messages: old.messages.map((msg) =>
+            msg.id === data.id ? { ...msg, poll_votes: data.poll_votes } : msg
+          ),
+        };
+      });
+      setOlderMessages((prev) =>
+        prev.map((msg) => (msg.id === data.id ? { ...msg, poll_votes: data.poll_votes } : msg))
+      );
+    },
+    onError: (err) => {
+      toast.error(
+        err?.response?.data?.error?.message ??
+          err?.response?.data?.message ??
+          err?.apiMessage ??
+          labels.pollVoteError
+      );
+    },
+  });
+
+  const handlePublishPoll = useCallback(() => {
+    const q = pollQuestion.trim();
+    const opts = pollOptionRows.map((x) => String(x).trim()).filter(Boolean);
+    if (!q || opts.length < 2) {
+      toast.error(labels.pollValidationError);
+      return;
+    }
+    setPollDialogOpen(false);
+    sendMessageMutation.mutate({
+      content: q,
+      type: 'poll',
+      poll_options: opts,
+      reply_to_message_id: replyTarget?.id || undefined,
+      is_ephemeral: ephemeralMode === true ? true : undefined,
+      expires_at: ephemeralMode ? ephemeralExpiresIso() : undefined,
+    });
+  }, [
+    pollQuestion,
+    pollOptionRows,
+    sendMessageMutation,
+    replyTarget?.id,
+    labels.pollValidationError,
+    ephemeralMode,
+    ephemeralExpiresIso,
+  ]);
 
   const clearVoiceDraft = useCallback(() => {
     setVoiceDraft((prev) => {
@@ -1399,6 +1597,9 @@ export default function Chat() {
       const mode = deleteToastModeRef.current;
       deleteToastModeRef.current = 'default';
       toast.success(mode === 'scheduled' ? labels.cancelScheduledSuccess : labels.deleteSuccess);
+      if (mode === 'scheduled') {
+        queryClient.invalidateQueries({ queryKey: ['scheduled-messages', currentUser?.id] });
+      }
       queryClient.invalidateQueries({ queryKey: ['messages-list', conversationId] });
       queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, userId] });
       refetchMessages();
@@ -1436,6 +1637,30 @@ export default function Chat() {
       queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, userId] });
     },
     onError: (err) => toast.error(err?.response?.data?.message || err?.apiMessage || labels.clearChatError),
+  });
+
+  const exportChatMutation = useMutation({
+    mutationFn: ({ cid }) => api.messages.exportConversations(cid),
+    onSuccess: (exportPayload, { filenameBase, viewerUserId }) => {
+      const conv = exportPayload?.conversations?.[0];
+      if (!conv) {
+        toast.error(labels.exportChatError);
+        return;
+      }
+      const txt = formatDmConversationToPlainText(conv, viewerUserId);
+      const slug =
+        String(filenameBase || 'discussion')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-zA-Z0-9._-]+/g, '-')
+          .replace(/^-|-$/g, '') || 'discussion';
+      downloadPlainTextFile(`AfriWonder-discussion-${slug}-${new Date().toISOString().slice(0, 10)}.txt`, txt);
+      toast.success(labels.exportChatSuccess);
+    },
+    onError: (err) =>
+      toast.error(
+        err?.response?.data?.error?.message || err?.response?.data?.message || err?.apiMessage || labels.exportChatError
+      ),
   });
 
   const updateMetaMutation = useMutation({
@@ -1540,6 +1765,15 @@ export default function Chat() {
     }
     muteConversationMutation.mutate(!conversationMuted);
   }, [conversationId, conversationMuted, muteConversationMutation, labels.selectConversation]);
+
+  const handleExportChat = useCallback(() => {
+    if (!conversationId || exportChatMutation.isPending || !currentUser?.id) return;
+    exportChatMutation.mutate({
+      cid: conversationId,
+      filenameBase: otherUser?.username || otherUser?.full_name || 'discussion',
+      viewerUserId: currentUser.id,
+    });
+  }, [conversationId, otherUser?.username, otherUser?.full_name, exportChatMutation, currentUser?.id]);
 
   const handleSetEphemeralDuration = useCallback(
     (sec) => {
@@ -1833,6 +2067,11 @@ export default function Chat() {
         location_label: activeMessage.location_label || undefined,
         contact_user_id: activeMessage.contact_user_id || undefined,
         contact_name: activeMessage.contact_name || undefined,
+        poll_options:
+          String(msgType).toLowerCase() === 'poll' && Array.isArray(activeMessage.poll_options)
+            ? activeMessage.poll_options
+            : undefined,
+        event_id: String(msgType).toLowerCase() === 'event' ? activeMessage.event_id || undefined : undefined,
       });
     },
     onSuccess: () => {
@@ -1904,6 +2143,13 @@ export default function Chat() {
     const text = messageContent.trim();
     if (!text) return;
     const scheduled_at = showSchedule && scheduledAt ? new Date(scheduledAt).toISOString() : undefined;
+    if (scheduled_at) {
+      const when = new Date(scheduled_at).getTime();
+      if (!Number.isFinite(when) || when <= Date.now()) {
+        toast.error(labels.scheduleMustBeFuture);
+        return;
+      }
+    }
     const is_ephemeral = ephemeralMode === true;
     const expires_at = is_ephemeral ? ephemeralExpiresIso() : undefined;
     const tempId =
@@ -2588,6 +2834,14 @@ export default function Chat() {
                   <ListPlus className="w-4 h-4 text-white/72" />
                   {labels.menuAddToList}
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer focus:bg-white/[0.06] focus:text-white"
+                  onClick={handleExportChat}
+                  disabled={!conversationId || exportChatMutation.isPending}
+                >
+                  <Download className="w-4 h-4 text-white/72" />
+                  {labels.menuExportChat}
+                </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
           </DropdownMenuContent>
@@ -2692,6 +2946,25 @@ export default function Chat() {
             const isLocation = msg.type === 'location' && (msg.location_lat != null && msg.location_lng != null);
             const isContact = msg.type === 'contact' && (msg.contact_user_id || msg.contact_name);
             const isFile = msg.type === 'file' && msg.media_url;
+            const isEvent =
+              String(msg.type || '').toLowerCase() === 'event' && !!(msg.event_id || msg.event_ref);
+            const eventRef = msg.event_ref;
+            const myUid = currentUser?.id != null ? String(currentUser.id) : null;
+            const isPoll =
+              String(msg.type || '').toLowerCase() === 'poll' &&
+              Array.isArray(msg.poll_options) &&
+              msg.poll_options.map((x) => String(x).trim()).filter(Boolean).length >= 2;
+            const pollOpts = isPoll ? msg.poll_options.map((x) => String(x).trim()).filter(Boolean) : [];
+            const pollVotesRaw =
+              msg.poll_votes && typeof msg.poll_votes === 'object' && !Array.isArray(msg.poll_votes)
+                ? msg.poll_votes
+                : {};
+            const pollVoteCounts = pollOpts.map((_, i) =>
+              Object.values(pollVotesRaw).filter((v) => Number(v) === i).length
+            );
+            const totalPollVotes = pollVoteCounts.reduce((a, b) => a + b, 0);
+            const myPollVote =
+              myUid != null && pollVotesRaw[myUid] !== undefined ? Number(pollVotesRaw[myUid]) : null;
             const displayContent = decryptedContentByMessageId[msg.id] ?? msg.content;
             const strictE2eeBlocked =
               E2EE_STRICT_MODE &&
@@ -2731,14 +3004,13 @@ export default function Chat() {
                   {...bindMessageLongPress(msg)}
                   className={cn(
                     'relative max-w-[85%] rounded-[26px] px-4 py-2.5 shadow-[0_14px_32px_rgba(2,6,23,0.18)] sm:max-w-[72%]',
-                    isOwn && isAudio
-                      ? 'max-w-[min(92%,300px)] rounded-lg rounded-br-sm border-0 bg-white px-2.5 py-2 shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] text-[#111b21]'
+                    // Vocaux : pas de « gros cadre » blanc — le player (ChatVoiceMessage) porte seul la forme bulle.
+                    isAudio
+                      ? 'max-w-[min(92%,340px)] rounded-2xl border-0 bg-transparent p-0 shadow-none'
                       : isOwn
                         ? 'rounded-br-md border border-white/12 bg-[#1a2332] text-white'
-                        : isAudio
-                          ? 'max-w-[min(92%,300px)] rounded-lg rounded-bl-sm border-0 bg-white px-2.5 py-2 shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] text-[#111b21]'
-                          : 'rounded-bl-md border border-white/10 bg-[#161d2b] text-white/95',
-                    msg._localPending && msg.status === 'sending' && isOwn && !isAudio && 'opacity-[0.92]'
+                        : 'rounded-bl-md border border-white/10 bg-[#161d2b] text-white/95',
+                    msg._localPending && msg.status === 'sending' && isOwn && 'opacity-[0.92]'
                   )}
                 >
                   {msg.reply_to && (
@@ -2746,7 +3018,7 @@ export default function Chat() {
                       <p
                         className={cn(
                           'text-[11px] font-medium leading-tight',
-                          isAudio ? 'text-[#667781]' : 'text-white/42'
+                          isAudio ? (isOwn ? 'text-white/55' : 'text-white/42') : 'text-white/42'
                         )}
                       >
                         {getReplyThreadLabel(msg, isOwn, currentUser?.id, otherUser, labels)}
@@ -2756,8 +3028,8 @@ export default function Chat() {
                           'rounded-2xl border-l-[3px] px-3 py-2',
                           isAudio
                             ? isOwn
-                              ? 'border-l-[#1f8f54] bg-[#111b21]/[0.05]'
-                              : 'border-l-[#25D366] bg-[#111b21]/[0.04]'
+                              ? 'border-l-emerald-400/70 bg-black/25'
+                              : 'border-l-emerald-400/75 bg-black/32'
                             : isOwn
                               ? 'border-l-white/80 bg-black/28'
                               : 'border-l-emerald-400/75 bg-black/32'
@@ -2766,7 +3038,7 @@ export default function Chat() {
                         <p
                           className={cn(
                             'line-clamp-3 text-[13px] leading-snug',
-                            isAudio ? 'text-[#111b21]/85' : 'text-white/78'
+                            isAudio ? 'text-white/78' : 'text-white/78'
                           )}
                         >
                           {getReplySnippet(msg.reply_to, labels)}
@@ -2854,14 +3126,14 @@ export default function Chat() {
                         labels={labels}
                       />
                       {msg.transcription_text ? (
-                        <p className="mt-2 text-[12px] leading-snug text-[#3b4a54]">{msg.transcription_text}</p>
+                        <p className="mt-2 text-[12px] leading-snug text-white/65">{msg.transcription_text}</p>
                       ) : null}
                       {isOwn && !msg.transcription_text ? (
                         <button
                           type="button"
                           disabled={transcribeVoiceMutation.isPending}
                           onClick={() => transcribeVoiceMutation.mutate(msg.id)}
-                          className="mt-1.5 text-[11px] font-semibold text-[#027eb5] hover:underline disabled:opacity-50"
+                          className="mt-1.5 text-[11px] font-semibold text-sky-400/95 hover:underline disabled:opacity-50"
                         >
                           {transcribeVoiceMutation.isPending ? labels.transcribingVoice : labels.transcribeVoice}
                         </button>
@@ -2896,14 +3168,109 @@ export default function Chat() {
                       <span className="min-w-0 truncate underline-offset-2 hover:underline">{displayContent?.trim() || labels.attachDocument}</span>
                     </a>
                   )}
-                  {((displayContent && typeof displayContent === 'string' && displayContent.trim()) || strictE2eeBlocked) && !isLocation && !isContact && !isSticker && !isFile && (
+                  {isEvent && (
+                    <button
+                      type="button"
+                      disabled={!msg.event_id}
+                      onClick={() => {
+                        if (!msg.event_id) return;
+                        navigate(`${createPageUrl('EventDetails')}?id=${encodeURIComponent(msg.event_id)}`);
+                      }}
+                      className={cn(
+                        'my-1 w-full max-w-[280px] overflow-hidden rounded-2xl border text-left transition [touch-action:manipulation]',
+                        isOwn ? 'border-white/18 bg-white/[0.07]' : 'border-white/12 bg-black/28',
+                        !msg.event_id && 'cursor-default opacity-70'
+                      )}
+                    >
+                      {eventRef?.image ? (
+                        <img src={eventRef.image} alt="" className="h-28 w-full object-cover" loading="lazy" />
+                      ) : (
+                        <div className="flex h-24 items-center justify-center bg-white/[0.06]">
+                          <CalendarDays className="h-10 w-10 text-white/35" aria-hidden />
+                        </div>
+                      )}
+                      <div className="space-y-1 px-3 py-2.5">
+                        <p className="line-clamp-2 text-[14px] font-semibold leading-snug text-white/95">
+                          {eventRef?.title || displayContent}
+                        </p>
+                        {eventRef?.start_date ? (
+                          <p className="text-[11px] text-white/48">
+                            {format(new Date(eventRef.start_date), "EEE d MMM yyyy · HH:mm", { locale: fr })}
+                          </p>
+                        ) : null}
+                        {eventRef?.location ? (
+                          <p className="line-clamp-1 text-[11px] text-white/42">{eventRef.location}</p>
+                        ) : null}
+                        <p className="text-[11px] font-semibold text-emerald-300/90">{labels.eventOpenDetails} →</p>
+                      </div>
+                    </button>
+                  )}
+                  {isPoll && (
+                    <div className="my-1 space-y-2">
+                      <p className="text-[15px] font-semibold leading-snug text-white/95">{msg.content}</p>
+                      <ul className="space-y-1.5">
+                        {pollOpts.map((label, optIdx) => {
+                          const count = pollVoteCounts[optIdx] ?? 0;
+                          const pct = totalPollVotes > 0 ? Math.round((count / totalPollVotes) * 100) : 0;
+                          const isMine = myPollVote === optIdx;
+                          const voteBusy =
+                            votePollMutation.isPending && votePollMutation.variables?.messageId === msg.id;
+                          return (
+                            <li key={`${msg.id}-poll-${optIdx}`}>
+                              <button
+                                type="button"
+                                disabled={voteBusy}
+                                onClick={() => votePollMutation.mutate({ messageId: msg.id, optionIndex: optIdx })}
+                                className={cn(
+                                  'relative w-full overflow-hidden rounded-xl border px-3 py-2 text-left text-[14px] transition-colors [touch-action:manipulation] disabled:opacity-60',
+                                  isOwn
+                                    ? isMine
+                                      ? 'border-emerald-300/50 bg-emerald-950/40 text-white'
+                                      : 'border-white/20 bg-black/20 text-white/90 hover:bg-black/30'
+                                    : isMine
+                                      ? 'border-emerald-400/55 bg-emerald-950/35 text-white'
+                                      : 'border-white/12 bg-black/22 text-white/90 hover:bg-black/32'
+                                )}
+                              >
+                                {totalPollVotes > 0 ? (
+                                  <span
+                                    className={cn(
+                                      'pointer-events-none absolute inset-y-0 left-0 opacity-25',
+                                      isOwn ? 'bg-emerald-400' : 'bg-sky-500'
+                                    )}
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                ) : null}
+                                <span className="relative z-[1] flex items-center justify-between gap-2">
+                                  <span className="min-w-0 flex-1 font-medium">{label}</span>
+                                  <span className="shrink-0 text-[11px] tabular-nums text-white/55">
+                                    {count > 0 ? `${count} (${pct}%)` : '—'}
+                                  </span>
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      {totalPollVotes > 0 ? (
+                        <p className="text-[11px] text-white/45">{labels.pollVotes(totalPollVotes)}</p>
+                      ) : null}
+                    </div>
+                  )}
+                  {((displayContent && typeof displayContent === 'string' && displayContent.trim()) || strictE2eeBlocked) &&
+                    !isLocation &&
+                    !isContact &&
+                    !isSticker &&
+                    !isFile &&
+                    !isEvent &&
+                    !isPoll && (
                     <div className="text-[15px] leading-[1.35]">
                       {strictE2eeBlocked ? (
                         <span className="text-white/60">Message chiffre indisponible sur cet appareil</span>
                       ) : (
                         <ChatFormattedText
                           text={displayContent}
-                          isOnLightBubble={isAudio}
+                          isOnLightBubble={false}
                           spoilerTapLabel={labels.spoilerTapReveal}
                           className="text-[15px] leading-[1.35]"
                         />
@@ -2913,7 +3280,17 @@ export default function Chat() {
                       )}
                     </div>
                   )}
-                  {!isImage && !isVideo && !isFile && !isAudio && !isSticker && !isLocation && !isContact && !(displayContent && displayContent.trim()) && !strictE2eeBlocked && <p className="opacity-70">-</p>}
+                  {!isImage &&
+                    !isVideo &&
+                    !isFile &&
+                    !isAudio &&
+                    !isSticker &&
+                    !isLocation &&
+                    !isContact &&
+                    !isEvent &&
+                    !isPoll &&
+                    !(displayContent && displayContent.trim()) &&
+                    !strictE2eeBlocked && <p className="opacity-70">-</p>}
                   {(msg.id === pinnedMessageId || msg.is_important || msgIsEphemeral || (!isAudio && !isSticker)) && (
                     <p className={`mt-1.5 flex flex-wrap items-center gap-1 text-[11px] ${isOwn ? 'text-white/65' : 'text-white/46'}`}>
                       {(msg.id === pinnedMessageId) && <Pin className="w-3 h-3" />}
@@ -3019,7 +3396,10 @@ export default function Chat() {
           </p>
           {messageContent.trim() && !voiceDraft && !isRecording && (
             <p className="px-2 text-[11px] font-medium tracking-wide text-amber-300/85" role="status">
-              {labels.draftComposerLabel}
+              <span>{labels.draftComposerLabel}</span>
+              {putDraftMutation.isPending ? (
+                <span className="ml-2 font-normal text-white/50">{labels.draftSaving}</span>
+              ) : null}
             </p>
           )}
           {showSchedule && (
@@ -3028,7 +3408,7 @@ export default function Chat() {
                 type="datetime-local"
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
-                min={new Date().toISOString().slice(0, 16)}
+                min={toDatetimeLocalInputValue(new Date())}
                 className="rounded-xl border-white/12 bg-white/[0.04] text-sm text-white"
               />
               <button type="button" className="text-sm text-white/60 hover:text-white" onClick={() => { setShowSchedule(false); setScheduledAt(''); }}>
@@ -3368,6 +3748,7 @@ export default function Chat() {
         onSchedule={() => {
           setAttachmentSheetOpen(false);
           setShowSchedule(true);
+          setScheduledAt((prev) => prev || toDatetimeLocalInputValue(new Date(Date.now() + 2 * 60 * 1000)));
         }}
         onToggleEphemeral={() => {
           setAttachmentSheetOpen(false);
@@ -3378,7 +3759,15 @@ export default function Chat() {
           setAttachmentSheetOpen(false);
           toast.info(labels.attachAudioHint);
         }}
+        onPoll={() => {
+          setAttachmentSheetOpen(false);
+          setPollDialogOpen(true);
+        }}
         onPollSoon={() => toast.info(labels.comingSoonPremium)}
+        onEvent={() => {
+          setAttachmentSheetOpen(false);
+          setEventShareOpen(true);
+        }}
         onEventSoon={() => toast.info(labels.comingSoonPremium)}
         onAiImagesSoon={() => toast.info(labels.comingSoonPremium)}
       />
@@ -3419,6 +3808,205 @@ export default function Chat() {
         }}
         onStickerCreateSoon={() => toast.info(labels.stickerCreateSoon)}
       />
+
+      <Dialog
+        open={pollDialogOpen}
+        onOpenChange={(v) => {
+          setPollDialogOpen(v);
+          if (!v) {
+            setPollQuestion('');
+            setPollOptionRows(['', '']);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md border-white/10 bg-[#0c121c] text-white sm:rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>{labels.pollDialogTitle}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Textarea
+              value={pollQuestion}
+              onChange={(e) => setPollQuestion(e.target.value)}
+              placeholder={labels.pollQuestionPlaceholder}
+              className="min-h-[72px] resize-y border-white/15 bg-black/25 text-white placeholder:text-white/35"
+              maxLength={500}
+            />
+            <div className="space-y-2">
+              {pollOptionRows.map((row, i) => (
+                <Input
+                  key={`dm-poll-opt-${i}`}
+                  value={row}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setPollOptionRows((prev) => prev.map((p, j) => (j === i ? v : p)));
+                  }}
+                  placeholder={labels.pollOptionPlaceholder(i + 1)}
+                  className="border-white/15 bg-black/25 text-white placeholder:text-white/35"
+                  maxLength={200}
+                />
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-lg border-white/20 bg-transparent text-white hover:bg-white/10"
+                disabled={pollOptionRows.length >= 10}
+                onClick={() => setPollOptionRows((r) => (r.length >= 10 ? r : [...r, '']))}
+              >
+                {labels.pollAddOption}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-lg border-white/20 bg-transparent text-white hover:bg-white/10"
+                disabled={pollOptionRows.length <= 2}
+                onClick={() => setPollOptionRows((r) => (r.length <= 2 ? r : r.slice(0, -1)))}
+              >
+                {labels.pollRemoveLastOption}
+              </Button>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-white/75 hover:bg-white/10 hover:text-white"
+                onClick={() => setPollDialogOpen(false)}
+              >
+                {labels.cancel}
+              </Button>
+              <Button
+                type="button"
+                className="rounded-xl bg-emerald-600 text-white hover:bg-emerald-500"
+                disabled={sendMessageMutation.isPending}
+                onClick={handlePublishPoll}
+              >
+                {sendMessageMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : labels.pollPublish}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={eventShareOpen}
+        onOpenChange={(v) => {
+          setEventShareOpen(v);
+          if (!v) {
+            setEventSearchQuery('');
+            setEventSearchDebounced('');
+          }
+        }}
+      >
+        <DialogContent className="max-h-[min(88dvh,520px)] max-w-md border-white/10 bg-[#0c121c] text-white sm:rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>{labels.eventShareSheetTitle}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <Input
+              value={eventSearchQuery}
+              onChange={(e) => setEventSearchQuery(e.target.value)}
+              placeholder={labels.eventShareSearchPlaceholder}
+              className="border-white/15 bg-black/25 text-white placeholder:text-white/35"
+            />
+            <div className="max-h-[min(52dvh,400px)] space-y-4 overflow-y-auto pr-1">
+              {ticketsPending || eventListPending ? (
+                <div className="flex justify-center py-10" role="status" aria-live="polite">
+                  <Loader2 className="h-8 w-8 animate-spin text-white/35" />
+                </div>
+              ) : (
+                <>
+                  {ticketEvents.length > 0 ? (
+                    <div>
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/40">
+                        {labels.eventShareMyTickets}
+                      </p>
+                      <ul className="space-y-2">
+                        {ticketEvents.map((ev) => (
+                          <li key={`ev-tk-${ev.id}`}>
+                            <button
+                              type="button"
+                              onClick={() => handleSelectSharedEvent(ev)}
+                              disabled={sendMessageMutation.isPending}
+                              className="flex w-full gap-2.5 rounded-xl border border-white/12 bg-black/22 p-2.5 text-left transition hover:bg-black/32 disabled:opacity-60 [touch-action:manipulation]"
+                            >
+                              {ev.image ? (
+                                <img
+                                  src={ev.image}
+                                  alt=""
+                                  className="h-14 w-14 shrink-0 rounded-lg object-cover"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-white/[0.08]">
+                                  <CalendarDays className="h-7 w-7 text-white/35" aria-hidden />
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className="line-clamp-2 text-[14px] font-semibold text-white/95">{ev.title}</p>
+                                {ev.start_date ? (
+                                  <p className="mt-0.5 text-[11px] text-white/45">
+                                    {format(new Date(ev.start_date), "EEE d MMM yyyy · HH:mm", { locale: fr })}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {discoverEvents.length > 0 ? (
+                    <div>
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/40">
+                        {labels.eventShareDiscover}
+                      </p>
+                      <ul className="space-y-2">
+                        {discoverEvents.map((ev) => (
+                          <li key={`ev-pub-${ev.id}`}>
+                            <button
+                              type="button"
+                              onClick={() => handleSelectSharedEvent(ev)}
+                              disabled={sendMessageMutation.isPending}
+                              className="flex w-full gap-2.5 rounded-xl border border-white/12 bg-black/22 p-2.5 text-left transition hover:bg-black/32 disabled:opacity-60 [touch-action:manipulation]"
+                            >
+                              {ev.image ? (
+                                <img
+                                  src={ev.image}
+                                  alt=""
+                                  className="h-14 w-14 shrink-0 rounded-lg object-cover"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-white/[0.08]">
+                                  <CalendarDays className="h-7 w-7 text-white/35" aria-hidden />
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className="line-clamp-2 text-[14px] font-semibold text-white/95">{ev.title}</p>
+                                {ev.start_date ? (
+                                  <p className="mt-0.5 text-[11px] text-white/45">
+                                    {format(new Date(ev.start_date), "EEE d MMM yyyy · HH:mm", { locale: fr })}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {!ticketsPending && !eventListPending && ticketEvents.length === 0 && discoverEvents.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-white/45">{labels.eventShareEmpty}</p>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={reactionsDialogOpen}

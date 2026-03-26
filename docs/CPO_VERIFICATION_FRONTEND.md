@@ -65,9 +65,9 @@ Statut : **✅ Aligné** (écran/flux présent) | **⚠️ Partiel** (API utilis
 | CPO | Fonctionnalité | Frontend | Détail |
 |-----|----------------|----------|--------|
 | 4.1–4.15 | Chat 1-1, groupes, messages texte/vocaux/vidéo/images/fichiers, stickers/GIF, réactions, réponse, transfert | ✅ | Chat, Inbox, GroupChat, types de messages |
-| 4.16–4.24 | Éphémères, suppression pour tous, appels audio/vidéo/groupe, localisation, contact, épinglés, importants | ✅ / ⚠️ | Chat (éphémères, appels) ; **archive / brouillon : API prêtes, pas d’entrées « Archiver » / « Brouillon » visibles dans Inbox/Chat** |
-| 4.25–4.32 | Présence, « en train d’écrire », lu, multi-appareils, sauvegarde, recherche, médias partagés | ✅ / ⚠️ | Socket, Chat ; **export/sauvegarde : API export ; pas de bouton « Exporter cette conversation » dans Chat** |
-| 4.33–4.36 | Blocage/signalement, bots, entreprises, messages programmés | ⚠️ | Blocage/signalement ; **messages programmés : backend + job ; pas d’option « Programmer l’envoi » dans Chat** |
+| 4.16–4.24 | Éphémères, suppression pour tous, appels audio/vidéo/groupe, localisation, contact, épinglés, importants | ✅ | Chat + Inbox (archivage, brouillon aperçu liste) |
+| 4.25–4.32 | Présence, « en train d’écrire », lu, multi-appareils, sauvegarde, recherche, médias partagés | ✅ | Copie discussion (fichier **.txt** lisible) : **Chat** (Plus), **Inbox** ⋮, **GroupChat** ⋮ |
+| 4.33–4.36 | Blocage/signalement, bots, entreprises, messages programmés | ✅ | Programmer l’envoi : **Chat** (pièce jointe / planification) ; backend + job |
 | 4.37–4.39 | Brouillons, archivage, notifications par conversation | ✅ / ⚠️ | **Mute : Inbox (Bell/BellOff + setConversationNotifications) ✅ ; brouillon/archive : API utilisables, UI à confirmer (Chat/Inbox)** |
 | 4.40 | E2E | ❌ | Hors scope |
 
@@ -99,7 +99,7 @@ Alignement **global** (détail dans `VERIFICATION_FONCTIONNALITES_SUPER_APP.md`)
 | Brouillon / archivage chat (4.37–4.38) | Basse | Boutons ou menu « Archiver », « Brouillon » dans Inbox/Chat ; afficher brouillon dans Chat. |
 | Message programmé (4.36) | Basse | Option « Programmer l’envoi » dans Chat (date/heure). |
 | Sessions actives (1.22) | Basse | Page ou section Settings listant les sessions (`/api/me/sessions`) avec révoquer. |
-| Export conversation (4.30) | Basse | Bouton « Exporter la conversation » dans Chat (appel API export). |
+| Export conversation (4.30) | Basse | « Enregistrer cette discussion » → fichier texte (API export en coulisse). |
 
 ---
 

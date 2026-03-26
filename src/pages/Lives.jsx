@@ -413,8 +413,11 @@ export default function Lives() {
   const totalVisibleLives = filteredPopular.length + filteredScheduled.length + filteredReplays.length + filteredFollowed.length + filteredRecommendations.length;
 
   return (
-    <div className={`min-h-screen pb-24 text-white ${LIVE_PAGE_BG}`}>
-      <div className="sticky top-0 z-40 border-b border-white/[0.06] bg-[#070a12]/90 backdrop-blur-2xl">
+    <div
+      className={`min-h-screen pb-[calc(96px+env(safe-area-inset-bottom,0px))] text-white ${LIVE_PAGE_BG}`}
+    >
+      {/** En-tête dans le flux normal : il défile avec la page (pas sticky / pas colonne scroll séparée). */}
+      <div className="border-b border-white/[0.06] bg-[#070a12] pt-[env(safe-area-inset-top,0px)] shadow-[0_6px_30px_rgba(0,0,0,0.25)] backdrop-blur-2xl">
         <div className="mx-auto max-w-5xl px-4 py-3">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">

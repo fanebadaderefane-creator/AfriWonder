@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Smartphone, Download } from 'lucide-react';
+import { ArrowLeft, Smartphone, Download, Wrench } from 'lucide-react';
 import { cacheVideoForOffline, isVideoCached } from '@/lib/offlineVideoCache';
 import { Button } from "@/components/ui/button";
 import { useNavigate } from 'react-router-dom';
@@ -26,6 +26,24 @@ export default function VideoView() {
   const [isOpeningApp, setIsOpeningApp] = useState(false);
   const [offlineCached, setOfflineCached] = useState(false);
   const [offlineDownloading, setOfflineDownloading] = useState(false);
+
+  const repairFirefoxMutation = useMutation({
+    mutationFn: async () => {
+      return api.videos.repairWebPlayback(videoId);
+    },
+    onSuccess: () => {
+      toast.success('Vidéo ré-encodée (H.264 + AAC). Recharge si la lecture ne démarre pas.');
+      queryClient.invalidateQueries(['video', videoId]);
+    },
+    onError: (e) => {
+      const msg =
+        e?.response?.data?.error ||
+        e?.response?.data?.message ||
+        e?.message ||
+        'Réparation impossible';
+      toast.error(msg);
+    },
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -201,16 +219,31 @@ export default function VideoView() {
 
   return (
     <div className="h-screen w-full bg-black relative">
-      {/* Back Button */}
-      <div className="absolute top-4 left-4 z-50">
+      {/* Back Button + réparation Firefox (créateur) */}
+      <div className="absolute top-4 left-4 right-4 z-50 flex items-start justify-between gap-2">
         <Button
           variant="ghost"
           size="icon"
           onClick={() => navigate(createPageUrl('Home'))}
-          className="bg-black/50 text-white hover:bg-black/70 rounded-full backdrop-blur"
+          className="bg-black/50 text-white hover:bg-black/70 rounded-full backdrop-blur shrink-0"
+          aria-label="Retour"
         >
           <ArrowLeft className="w-6 h-6" />
         </Button>
+        {user?.id && video?.creator_id && user.id === video.creator_id && (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={repairFirefoxMutation.isPending}
+            onClick={() => repairFirefoxMutation.mutate()}
+            className="max-w-[min(100%,220px)] shrink bg-white/90 text-gray-900 hover:bg-white text-xs font-semibold shadow-md"
+            title="Ré-encode en H.264 + AAC si Firefox affiche une erreur de format"
+          >
+            <Wrench className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+            {repairFirefoxMutation.isPending ? 'Ré-encodage…' : 'Réparer lecture (Firefox)'}
+          </Button>
+        )}
       </div>
 
       {/* Video */}

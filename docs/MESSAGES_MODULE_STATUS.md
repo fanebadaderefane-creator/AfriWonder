@@ -33,16 +33,19 @@
 | **Pagination cursor** | Backend ✅ — Chat : « Charger les anciens messages » + état `olderMessages` / `cursorForOlder` ✅ |
 | **Rich media (image)** | Backend type + media_url ✅ — Chat : bouton image, upload via `api.upload.image`, envoi `type: 'image'`, affichage image dans la bulle ✅ |
 
-## ⏳ Optionnel / non implémenté
+## ⏳ Optionnel / complété depuis la fiche initiale
 
 | Point du prompt | État |
 |-----------------|------|
-| **Chiffrement** (E2E ou serveur) | Non implémenté |
-| **Rich media** (audio, fichier, GIF) | Champs backend prêts ; frontend : image uniquement |
-| **Groupes** | Schéma prêt ; pas de logique multi-participants |
-| **Mode low network** (IndexedDB, retry) | Non implémenté |
-| **UX avancée** : swipe delete, mute, pin, archivage | Non implémenté |
-| **Dashboard admin** messages | Non implémenté |
+| **Chiffrement** (E2E) | Option DM + groupe (E2EE) côté produit ; voir paramètres |
+| **Rich media** (audio, fichier, GIF) | Chat / groupes : vocal, image, etc. ; détail selon écran |
+| **Groupes** | `GroupChat`, polls, événements, appels groupe (Agora si configuré) |
+| **Export sauvegarde** | Même API JSON côté serveur ; **côté app** : fichier **.txt** lisible (style discussion, ouvrable comme WhatsApp/Bloc-notes). **Chat** / **GroupChat** / **Inbox** ⋮ — libellés « Enregistrer… », sans jargon informatique |
+| **Archivage** | Inbox filtres + menu conversation ; API `PATCH .../archive` |
+| **Brouillon / programmation** | Chat : brouillon serveur + envoi programmé (UI) |
+| **Mode low network** (IndexedDB dédié messages) | Partiel (PWA / retry API) |
+| **UX avancée** : swipe delete, pin | Partiel selon écran |
+| **Dashboard admin** messages | Non prioritaire |
 | **Notifications push** « Nouveau message » | Dépend config push globale |
 
 ---

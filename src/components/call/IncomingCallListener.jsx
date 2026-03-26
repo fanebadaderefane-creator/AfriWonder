@@ -1,13 +1,39 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Phone, PhoneOff } from 'lucide-react';
+import { toast } from 'sonner';
 import { createPageUrl } from '@/utils';
 import { useCallSocket } from '@/hooks/useCallSocket';
+
+/** Évite les toasts en double si plusieurs sockets reçoivent le même invite. */
+const recentGroupCallInvites = new Map();
+function shouldToastGroupCallInvite(callId) {
+  const key = String(callId);
+  const now = Date.now();
+  const prev = recentGroupCallInvites.get(key);
+  if (prev && now - prev < 4000) return false;
+  recentGroupCallInvites.set(key, now);
+  window.setTimeout(() => recentGroupCallInvites.delete(key), 5000);
+  return true;
+}
+
+const recentGroupCallEnded = new Map();
+function shouldToastGroupCallEnded(callId) {
+  const key = String(callId);
+  const now = Date.now();
+  const prev = recentGroupCallEnded.get(key);
+  if (prev && now - prev < 4000) return false;
+  recentGroupCallEnded.set(key, now);
+  window.setTimeout(() => recentGroupCallEnded.delete(key), 5000);
+  return true;
+}
 
 export default function IncomingCallListener({ user }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [incomingCall, setIncomingCall] = useState(null);
+  const userIdRef = useRef(user?.id);
+  userIdRef.current = user?.id;
 
   const { emit } = useCallSocket({
     userId: user?.id,
@@ -17,6 +43,32 @@ export default function IncomingCallListener({ user }) {
     },
     onEnd: () => setIncomingCall(null),
     onDecline: () => setIncomingCall(null),
+    onGroupCallInvite: (payload) => {
+      const uid = userIdRef.current;
+      if (!payload?.callId || !payload?.groupId || !uid || payload.startedBy === uid) return;
+      if (location.pathname.includes('/GroupCallLobby')) return;
+      if (!shouldToastGroupCallInvite(payload.callId)) return;
+      const who = payload.startedByName || 'Un membre';
+      const kind = payload.type === 'audio' ? 'audio' : 'vidéo';
+      const path = `${createPageUrl('GroupCallLobby')}?callId=${encodeURIComponent(payload.callId)}&groupId=${encodeURIComponent(payload.groupId)}`;
+      const url = typeof window !== 'undefined' ? `${window.location.origin}${path}` : path;
+      toast.message(`${who} lance un appel ${kind}`, {
+        duration: 25_000,
+        action: {
+          label: 'Rejoindre',
+          onClick: () => {
+            window.location.assign(url);
+          },
+        },
+      });
+    },
+    onGroupCallEnded: (payload) => {
+      if (!payload?.callId) return;
+      if (location.pathname.includes('/GroupCallLobby')) return;
+      if (location.pathname.includes('/GroupChat')) return;
+      if (!shouldToastGroupCallEnded(payload.callId)) return;
+      toast.info('Appel groupe terminé', { duration: 5000 });
+    },
   });
 
   if (!incomingCall) return null;

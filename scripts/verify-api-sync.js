@@ -29,6 +29,7 @@ const frontendEndpoints = [
   '/api/notifications',
   '/api/communities',
   '/api/messages',
+  '/api/me/call-history',
   '/api/search',
   '/api/platform/feature-flags',
   '/health',

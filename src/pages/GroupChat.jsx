@@ -64,9 +64,14 @@ import {
   Link2,
   Tag,
   BarChart2,
+  CalendarDays,
+  Phone,
+  Video,
+  Download,
+  Timer,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import BottomNav from '../components/navigation/BottomNav';
 import { useAuth } from '@/lib/AuthContext';
@@ -84,6 +89,7 @@ import {
   repairLocalE2eeDevice,
   E2EE_STRICT_MODE,
 } from '@/lib/e2eeClient';
+import { downloadPlainTextFile, formatGroupExportToPlainText } from '@/lib/messagingExportPlainText';
 
 const PAGE_BG = 'bg-[#070a12]';
 const COMPOSER_STYLE = {
@@ -119,6 +125,16 @@ const VOICE_LABELS = {
 
 const TYPING_DEBOUNCE_MS = 400;
 
+function toDatetimeLocalInputValue(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const y = d.getFullYear();
+  const mo = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const h = pad(d.getHours());
+  const mi = pad(d.getMinutes());
+  return `${y}-${mo}-${day}T${h}:${mi}`;
+}
+
 const GROUP_UI = {
   replyInThread: 'En réponse à',
   replyToSelf: 'En réponse à vous',
@@ -145,6 +161,9 @@ const GROUP_UI = {
   copiedToast: 'Copié dans le presse-papiers',
   noTextToCopy: 'Rien à copier pour ce message.',
   moreActions: 'Plus d’actions',
+  exportGroupChat: 'Enregistrer cette discussion',
+  exportGroupSuccess: 'Fichier enregistré — ouvrez votre dossier Téléchargements',
+  exportGroupError: 'Enregistrement impossible pour le moment',
   typingSuffix: 'est en train d’écrire…',
   pinnedMessage: 'Message épinglé',
   pinMessage: 'Épingler',
@@ -234,6 +253,25 @@ const GROUP_UI = {
   pollValidationError: 'Question et au moins 2 options non vides requises.',
   pollVotes: (n) => `${n} vote${n > 1 ? 's' : ''}`,
   pollVoteError: 'Vote impossible.',
+  shareEvent: 'Événement',
+  eventShareSheetTitle: 'Partager un événement',
+  eventShareSearchPlaceholder: 'Rechercher un événement…',
+  eventShareEmpty: 'Aucun événement à afficher.',
+  eventShareMyTickets: 'Mes billets',
+  eventShareDiscover: 'Événements publics',
+  eventShareError: 'Impossible de charger les événements.',
+  eventOpenDetails: 'Voir l’événement',
+  groupCallAudio: 'Appel audio (groupe)',
+  groupCallVideo: 'Appel vidéo (groupe)',
+  groupCallStartError: 'Impossible de démarrer l’appel.',
+  scheduleSend: 'Programmer l’envoi',
+  scheduleMustBeFuture: 'Choisissez une date et une heure dans le futur.',
+  scheduledMessageShort: 'Envoi programmé',
+  scheduledToast: 'Message programmé',
+  cancelScheduledToast: 'Envoi programmé annulé',
+  cancelScheduledTitle: 'Annuler l’envoi programmé ?',
+  cancelScheduledBody: 'Ce message ne sera pas envoyé au groupe.',
+  deleteScheduledMenu: 'Annuler l’envoi programmé',
 };
 
 function groupReplyThreadLabel(rt, currentUserId) {
@@ -256,6 +294,13 @@ function groupReplySnippet(rt) {
     const q = typeof rt.content === 'string' && rt.content.trim() ? rt.content.trim().slice(0, 120) : 'Sondage';
     return `📊 ${q}`;
   }
+  if (t === 'event') {
+    const title =
+      (rt.event_ref && typeof rt.event_ref.title === 'string' && rt.event_ref.title.trim()) ||
+      (typeof rt.content === 'string' && rt.content.trim()) ||
+      'Événement';
+    return `📅 ${title.slice(0, 120)}`;
+  }
   const c = rt.content;
   return typeof c === 'string' && c.trim() ? c.trim().slice(0, 180) : '…';
 }
@@ -269,18 +314,20 @@ function canCopyGroupMessageText(m) {
 }
 
 function canForwardGroupMessage(m) {
-  if (!m || m.is_deleted) return false;
+  if (!m || m.is_deleted || m.status === 'scheduled') return false;
   const t = String(m.type || 'text').toLowerCase();
   if (t === 'poll') {
     const opts = m.poll_options;
     return Array.isArray(opts) && opts.map((x) => String(x).trim()).filter(Boolean).length >= 2;
   }
+  if (t === 'event') return !!(m.event_id || m.event_ref?.id);
   if (['image', 'video', 'voice', 'audio', 'file'].includes(t)) return !!m.media_url;
   return typeof m.content === 'string' && m.content.trim().length > 0;
 }
 
 function canEditGroupMessage(m, currentUserId) {
   if (!m || m.is_deleted || !currentUserId) return false;
+  if (m.status === 'scheduled') return false;
   if (String(m.sender_id) !== String(currentUserId)) return false;
   if (String(m.type || 'text').toLowerCase() !== 'text') return false;
   const elapsed = Date.now() - new Date(m.created_at).getTime();
@@ -316,10 +363,19 @@ export default function GroupChat() {
   const [voiceDraft, setVoiceDraft] = useState(null);
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const [voiceUploading, setVoiceUploading] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [showSchedule, setShowSchedule] = useState(false);
 
   const [pollDialogOpen, setPollDialogOpen] = useState(false);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptionRows, setPollOptionRows] = useState(() => ['', '']);
+  const [eventShareOpen, setEventShareOpen] = useState(false);
+  const [eventSearchQuery, setEventSearchQuery] = useState('');
+  const [eventSearchDebounced, setEventSearchDebounced] = useState('');
+  useEffect(() => {
+    const id = window.setTimeout(() => setEventSearchDebounced(eventSearchQuery.trim()), 320);
+    return () => window.clearTimeout(id);
+  }, [eventSearchQuery]);
 
   const [reactionsDialogOpen, setReactionsDialogOpen] = useState(false);
   const [reactionsDialogMessageId, setReactionsDialogMessageId] = useState(null);
@@ -625,7 +681,16 @@ export default function GroupChat() {
   });
 
   const sendMutation = useMutation({
-    mutationFn: async ({ content, type, media_url, thumbnail_url, reply_to_id, poll_options }) => {
+    mutationFn: async ({
+      content,
+      type,
+      media_url,
+      thumbnail_url,
+      reply_to_id,
+      poll_options,
+      event_id,
+      scheduled_at,
+    }) => {
       let e2ee_envelopes;
       try {
         const normalizedType = String(type || 'text').toLowerCase();
@@ -644,16 +709,30 @@ export default function GroupChat() {
         thumbnail_url,
         reply_to_id,
         poll_options,
+        event_id,
+        scheduled_at,
         e2ee_envelopes,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       emitGroupTypingStop();
       setInput('');
       setReplyTarget(null);
+      setShowSchedule(false);
+      setScheduledAt('');
+      if (variables?.scheduled_at) {
+        toast.success(GROUP_UI.scheduledToast);
+        queryClient.invalidateQueries({ queryKey: ['scheduled-messages', currentUser?.id] });
+      }
       setPollDialogOpen(false);
       setPollQuestion('');
       setPollOptionRows(['', '']);
+      if (String(variables?.type || '').toLowerCase() === 'event') {
+        setEventShareOpen(false);
+        setEventSearchQuery('');
+        setEventSearchDebounced('');
+        queryClient.invalidateQueries({ queryKey: ['events-my-tickets', currentUser?.id] });
+      }
       queryClient.invalidateQueries({ queryKey: ['group-messages', groupId] });
       queryClient.invalidateQueries({ queryKey: ['messages-groups'] });
     },
@@ -662,6 +741,61 @@ export default function GroupChat() {
       toast.error(msg || "Impossible d'envoyer le message.");
     },
   });
+
+  const { data: eventListData, isPending: eventListPending, isError: eventListError } = useQuery({
+    queryKey: ['group-chat-event-share-list', eventSearchDebounced],
+    queryFn: () =>
+      api.events.list({
+        page: 1,
+        limit: 25,
+        status: 'published',
+        ...(eventSearchDebounced.length >= 2 ? { search: eventSearchDebounced } : {}),
+      }),
+    enabled: eventShareOpen,
+  });
+
+  const { data: myTicketsData, isPending: ticketsPending } = useQuery({
+    queryKey: ['events-my-tickets', currentUser?.id],
+    queryFn: () => api.events.getMyTickets(),
+    enabled: eventShareOpen && !!currentUser?.id,
+  });
+
+  const ticketEvents = useMemo(() => {
+    const rows = Array.isArray(myTicketsData) ? myTicketsData : [];
+    const out = [];
+    const seen = new Set();
+    for (const row of rows) {
+      const ev = row?.event;
+      if (ev?.id && !seen.has(ev.id)) {
+        seen.add(ev.id);
+        out.push(ev);
+      }
+    }
+    return out;
+  }, [myTicketsData]);
+
+  const discoverEvents = useMemo(() => {
+    const raw = eventListData?.events ?? [];
+    const ticketIds = new Set(ticketEvents.map((e) => e.id));
+    return raw.filter((e) => e?.id && !ticketIds.has(e.id));
+  }, [eventListData, ticketEvents]);
+
+  const handleSelectSharedEventGroup = useCallback(
+    (ev) => {
+      if (!ev?.id) return;
+      sendMutation.mutate({
+        content: ev.title || '',
+        type: 'event',
+        event_id: ev.id,
+        reply_to_id: replyTarget?.id || undefined,
+      });
+    },
+    [sendMutation, replyTarget?.id]
+  );
+
+  useEffect(() => {
+    if (eventShareOpen && eventListError) toast.error(GROUP_UI.eventShareError);
+  }, [eventShareOpen, eventListError]);
 
   const clearVoiceDraft = useCallback(() => {
     setVoiceDraft((prev) => {
@@ -982,6 +1116,10 @@ export default function GroupChat() {
   const deleteGroupMessageMutation = useMutation({
     mutationFn: ({ messageId }) => api.messages.deleteGroupMessage(groupId, messageId),
     onSuccess: (_d, vars) => {
+      if (vars?.wasScheduled) {
+        toast.success(GROUP_UI.cancelScheduledToast);
+        queryClient.invalidateQueries({ queryKey: ['scheduled-messages', currentUser?.id] });
+      }
       setReplyTarget((rt) => (String(rt?.id) === String(vars?.messageId) ? null : rt));
       queryClient.invalidateQueries({ queryKey: ['group-messages', groupId] });
       queryClient.invalidateQueries({ queryKey: ['group', groupId] });
@@ -1058,8 +1196,11 @@ export default function GroupChat() {
 
   const confirmDeleteGroupMessage = useCallback(() => {
     if (!deleteTarget?.id || !groupId || deleteGroupMessageMutation.isPending) return;
-    deleteGroupMessageMutation.mutate({ messageId: deleteTarget.id });
-  }, [deleteGroupMessageMutation, deleteTarget?.id, groupId]);
+    deleteGroupMessageMutation.mutate({
+      messageId: deleteTarget.id,
+      wasScheduled: deleteTarget.status === 'scheduled',
+    });
+  }, [deleteGroupMessageMutation, deleteTarget, groupId]);
 
   const leaveGroupMutation = useMutation({
     mutationFn: () => {
@@ -1213,6 +1354,68 @@ export default function GroupChat() {
     [groupId, updateGroupMutation]
   );
 
+  const startGroupCallMutation = useMutation({
+    mutationFn: ({ type }) =>
+      api.groupCalls.create({
+        type: type === 'video' ? 'video' : 'audio',
+        conversation_group_id: groupId,
+      }),
+    onSuccess: (data) => {
+      if (!data?.id || !groupId) return;
+      navigate(
+        `${createPageUrl('GroupCallLobby')}?callId=${encodeURIComponent(data.id)}&groupId=${encodeURIComponent(groupId)}`
+      );
+    },
+    onError: (err) => {
+      toast.error(
+        err?.response?.data?.message ??
+          err?.response?.data?.error?.message ??
+          err?.message ??
+          GROUP_UI.groupCallStartError
+      );
+    },
+  });
+
+  const handleStartGroupCall = useCallback(
+    (type) => {
+      if (!groupId || startGroupCallMutation.isPending) return;
+      startGroupCallMutation.mutate({ type });
+    },
+    [groupId, startGroupCallMutation]
+  );
+
+  const exportGroupMutation = useMutation({
+    mutationFn: ({ gid }) => api.messages.exportGroupMessages(gid),
+    onSuccess: (data, { gid, viewerUserId }) => {
+      const txt = formatGroupExportToPlainText(data, viewerUserId);
+      const slug =
+        String(data?.group?.name || group?.name || 'groupe')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-zA-Z0-9._-]+/g, '-')
+          .replace(/^-|-$/g, '') || 'groupe';
+      downloadPlainTextFile(
+        `AfriWonder-groupe-${slug}-${String(gid).slice(0, 8)}-${new Date().toISOString().slice(0, 10)}.txt`,
+        txt
+      );
+      toast.success(GROUP_UI.exportGroupSuccess);
+    },
+    onError: (err) => {
+      toast.error(
+        err?.response?.data?.message ??
+          err?.response?.data?.error?.message ??
+          err?.apiMessage ??
+          err?.message ??
+          GROUP_UI.exportGroupError
+      );
+    },
+  });
+
+  const handleExportGroupChat = useCallback(() => {
+    if (!groupId || exportGroupMutation.isPending || !currentUser?.id) return;
+    exportGroupMutation.mutate({ gid: groupId, viewerUserId: currentUser.id });
+  }, [groupId, exportGroupMutation, currentUser?.id]);
+
   const { data: forwardGroupsData, isLoading: forwardGroupsLoading } = useQuery({
     queryKey: ['messages-groups', currentUser?.id],
     queryFn: () => api.messages.getGroups(1, 50),
@@ -1231,6 +1434,7 @@ export default function GroupChat() {
       const content = typeof source?.content === 'string' ? source.content : '';
       const mediaUrl = source?.media_url || null;
       const thumb = source?.thumbnail_url || null;
+      const fwdId = source?.id ? String(source.id) : undefined;
       if (t === 'poll') {
         const opts = Array.isArray(source?.poll_options)
           ? source.poll_options.map((x) => String(x).trim()).filter(Boolean)
@@ -1239,6 +1443,20 @@ export default function GroupChat() {
         return api.messages.sendGroupMessage(targetGroupId, content || '', {
           type: 'poll',
           poll_options: opts,
+          forward_from_message_id: fwdId,
+        });
+      }
+      if (t === 'event') {
+        const eid = String(source?.event_id || source?.event_ref?.id || '').trim();
+        if (!eid) throw new Error('empty forward');
+        const title =
+          (source?.event_ref && typeof source.event_ref.title === 'string' && source.event_ref.title.trim()) ||
+          content ||
+          '';
+        return api.messages.sendGroupMessage(targetGroupId, title, {
+          type: 'event',
+          event_id: eid,
+          forward_from_message_id: fwdId,
         });
       }
       if (!mediaUrl && !String(content).trim()) {
@@ -1248,6 +1466,7 @@ export default function GroupChat() {
         type: t,
         media_url: mediaUrl || undefined,
         thumbnail_url: thumb || undefined,
+        forward_from_message_id: fwdId,
       });
     },
     onSuccess: () => {
@@ -1441,10 +1660,20 @@ export default function GroupChat() {
     if (!text || sendMutation.isPending) return;
     setMentionPickerOpen(false);
     setMentionQuery('');
+    const scheduled_at =
+      showSchedule && scheduledAt ? new Date(scheduledAt).toISOString() : undefined;
+    if (scheduled_at) {
+      const when = new Date(scheduled_at).getTime();
+      if (!Number.isFinite(when) || when <= Date.now()) {
+        toast.error(GROUP_UI.scheduleMustBeFuture);
+        return;
+      }
+    }
     sendMutation.mutate({
       content: text,
       type: 'text',
       reply_to_id: replyTarget?.id || undefined,
+      scheduled_at,
     });
   };
 
@@ -1583,6 +1812,54 @@ export default function GroupChat() {
                 type="button"
                 variant="ghost"
                 size="icon"
+                onClick={() => handleStartGroupCall('audio')}
+                disabled={startGroupCallMutation.isPending}
+                className="h-10 w-10 shrink-0 rounded-full bg-white/[0.06] text-white/85 hover:bg-white/[0.1] disabled:opacity-50"
+                aria-label={GROUP_UI.groupCallAudio}
+              >
+                <Phone className="h-5 w-5" strokeWidth={2} />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => handleStartGroupCall('video')}
+                disabled={startGroupCallMutation.isPending}
+                className="h-10 w-10 shrink-0 rounded-full bg-white/[0.06] text-white/85 hover:bg-white/[0.1] disabled:opacity-50"
+                aria-label={GROUP_UI.groupCallVideo}
+              >
+                <Video className="h-5 w-5" strokeWidth={2} />
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-10 w-10 shrink-0 rounded-full bg-white/[0.06] text-white/85 hover:bg-white/[0.1]"
+                    aria-label={GROUP_UI.moreActions}
+                  >
+                    <MoreVertical className="h-5 w-5" strokeWidth={2} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="z-[120] min-w-[220px] border border-white/12 bg-[#0f1724] p-1 text-white shadow-[0_24px_60px_rgba(2,6,23,0.35)]"
+                >
+                  <DropdownMenuItem
+                    className="cursor-pointer gap-2 focus:bg-white/10 focus:text-white"
+                    onClick={handleExportGroupChat}
+                    disabled={!groupId || exportGroupMutation.isPending || !currentUser?.id}
+                  >
+                    <Download className="h-4 w-4 shrink-0 opacity-90" strokeWidth={2} />
+                    {GROUP_UI.exportGroupChat}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
                 onClick={() => setGroupDetailsOpen(true)}
                 className="h-10 w-10 shrink-0 rounded-full bg-white/[0.06] text-white/85 hover:bg-white/[0.1]"
                 aria-label={GROUP_UI.groupInfoTitle}
@@ -1681,6 +1958,9 @@ export default function GroupChat() {
                 const isVideo = !isMsgDeleted && t === 'video' && m.media_url;
                 const isAudio = !isMsgDeleted && (t === 'audio' || t === 'voice') && m.media_url;
                 const isFile = !isMsgDeleted && t === 'file' && m.media_url;
+                const isEvent =
+                  !isMsgDeleted && t === 'event' && !!(m.event_id || m.event_ref);
+                const eventRef = m.event_ref;
                 const myUid = currentUser?.id != null ? String(currentUser.id) : null;
                 const isPoll =
                   !isMsgDeleted &&
@@ -1896,7 +2176,55 @@ export default function GroupChat() {
                                   ) : null}
                                 </div>
                               )}
-                              {!isImage && !isVideo && !isAudio && !isFile && !isPoll && (() => {
+                              {isEvent && (
+                                <button
+                                  type="button"
+                                  disabled={!m.event_id}
+                                  onClick={() => {
+                                    if (!m.event_id) return;
+                                    navigate(
+                                      `${createPageUrl('EventDetails')}?id=${encodeURIComponent(m.event_id)}`
+                                    );
+                                  }}
+                                  className={cn(
+                                    'mb-2 w-full max-w-[280px] overflow-hidden rounded-2xl border text-left transition [touch-action:manipulation]',
+                                    isOwn ? 'border-white/18 bg-white/[0.07]' : 'border-white/12 bg-black/28',
+                                    !m.event_id && 'cursor-default opacity-70'
+                                  )}
+                                >
+                                  {eventRef?.image ? (
+                                    <img
+                                      src={eventRef.image}
+                                      alt=""
+                                      className="h-28 w-full object-cover"
+                                      loading="lazy"
+                                    />
+                                  ) : (
+                                    <div className="flex h-24 items-center justify-center bg-white/[0.06]">
+                                      <CalendarDays className="h-10 w-10 text-white/35" aria-hidden />
+                                    </div>
+                                  )}
+                                  <div className="space-y-1 px-3 py-2.5">
+                                    <p className="line-clamp-2 text-[14px] font-semibold leading-snug text-white/95">
+                                      {eventRef?.title || decryptedContentByGroupMessageId[m.id] || m.content}
+                                    </p>
+                                    {eventRef?.start_date ? (
+                                      <p className="text-[11px] text-white/48">
+                                        {format(new Date(eventRef.start_date), 'EEE d MMM yyyy · HH:mm', {
+                                          locale: fr,
+                                        })}
+                                      </p>
+                                    ) : null}
+                                    {eventRef?.location ? (
+                                      <p className="line-clamp-1 text-[11px] text-white/42">{eventRef.location}</p>
+                                    ) : null}
+                                    <p className="text-[11px] font-semibold text-emerald-300/90">
+                                      {GROUP_UI.eventOpenDetails} →
+                                    </p>
+                                  </div>
+                                </button>
+                              )}
+                              {!isImage && !isVideo && !isAudio && !isFile && !isPoll && !isEvent && (() => {
                                 const raw = decryptedContentByGroupMessageId[m.id] ?? m.content;
                                 const strictBlocked = E2EE_STRICT_MODE && !isOwn && String(m.type || 'text').toLowerCase() === 'text' && !decryptedContentByGroupMessageId[m.id];
                                 if (strictBlocked) return true;
@@ -1928,7 +2256,16 @@ export default function GroupChat() {
                           )}
 
                           {!isMsgDeleted ? (
-                            <div className="mt-2 flex items-center justify-end gap-1">
+                            <div className="mt-2 flex flex-col gap-1">
+                              {m.status === 'scheduled' && isOwn && m.scheduled_at ? (
+                                <p className="text-[10px] font-medium text-amber-200/90">
+                                  {GROUP_UI.scheduledMessageShort} ·{' '}
+                                  {format(new Date(m.scheduled_at), "d MMM yyyy 'à' HH:mm", {
+                                    locale: fr,
+                                  })}
+                                </p>
+                              ) : null}
+                              <div className="flex items-center justify-end gap-1">
                               <p className={cn('mr-auto text-[10px] tabular-nums', isOwn ? 'text-white/55' : 'text-white/40')}>
                                 {formatDistanceToNow(new Date(m.created_at), { addSuffix: true, locale: fr })}
                               </p>
@@ -1942,8 +2279,9 @@ export default function GroupChat() {
                               </button>
                               <button
                                 type="button"
+                                disabled={m.status === 'scheduled'}
                                 className={cn(
-                                  'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/25 [touch-action:manipulation] hover:bg-black/40',
+                                  'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/25 [touch-action:manipulation] hover:bg-black/40 disabled:cursor-not-allowed disabled:opacity-40',
                                   pinnedMessageId === m.id ? 'text-amber-300' : 'text-white/80'
                                 )}
                                 aria-label={pinnedMessageId === m.id ? GROUP_UI.unpinMessage : GROUP_UI.pinMessage}
@@ -2008,7 +2346,7 @@ export default function GroupChat() {
                                         onClick={() => openDeleteGroupMessageConfirm(m)}
                                       >
                                         <Trash2 className="h-4 w-4 shrink-0 opacity-90" strokeWidth={2} />
-                                        {GROUP_UI.deleteMessage}
+                                        {m.status === 'scheduled' ? GROUP_UI.deleteScheduledMenu : GROUP_UI.deleteMessage}
                                       </DropdownMenuItem>
                                     ) : null}
                                   </DropdownMenuContent>
@@ -2042,6 +2380,7 @@ export default function GroupChat() {
                                   </div>
                                 </DropdownMenuContent>
                               </DropdownMenu>
+                              </div>
                             </div>
                           ) : (
                             <p className={cn('mt-2 text-[10px] tabular-nums', isOwn ? 'text-white/55' : 'text-white/40')}>
@@ -2105,10 +2444,12 @@ export default function GroupChat() {
       >
         <AlertDialogContent className="max-w-[min(100%,380px)] border-white/10 bg-[#0c121c] text-white sm:rounded-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">{GROUP_UI.deleteConfirmTitle}</AlertDialogTitle>
+            <AlertDialogTitle className="text-white">
+              {deleteTarget?.status === 'scheduled' ? GROUP_UI.cancelScheduledTitle : GROUP_UI.deleteConfirmTitle}
+            </AlertDialogTitle>
             <AlertDialogDescription className="text-left text-white/60">
-              {GROUP_UI.deleteConfirmBody}
-              {deleteConfirmIsOthersMessage && isGroupAdmin ? (
+              {deleteTarget?.status === 'scheduled' ? GROUP_UI.cancelScheduledBody : GROUP_UI.deleteConfirmBody}
+              {deleteTarget?.status !== 'scheduled' && deleteConfirmIsOthersMessage && isGroupAdmin ? (
                 <span className="mt-3 block text-white/75">{GROUP_UI.deleteConfirmAdminNote}</span>
               ) : null}
             </AlertDialogDescription>
@@ -2858,6 +3199,124 @@ export default function GroupChat() {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={eventShareOpen}
+        onOpenChange={(v) => {
+          setEventShareOpen(v);
+          if (!v) {
+            setEventSearchQuery('');
+            setEventSearchDebounced('');
+          }
+        }}
+      >
+        <DialogContent className="max-h-[min(88dvh,520px)] max-w-md border-white/10 bg-[#0c121c] text-white sm:rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>{GROUP_UI.eventShareSheetTitle}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <Input
+              value={eventSearchQuery}
+              onChange={(e) => setEventSearchQuery(e.target.value)}
+              placeholder={GROUP_UI.eventShareSearchPlaceholder}
+              className="border-white/15 bg-black/25 text-white placeholder:text-white/35"
+            />
+            <div className="max-h-[min(52dvh,400px)] space-y-4 overflow-y-auto pr-1">
+              {ticketsPending || eventListPending ? (
+                <div className="flex justify-center py-10" role="status" aria-live="polite">
+                  <Loader2 className="h-8 w-8 animate-spin text-white/35" />
+                </div>
+              ) : (
+                <>
+                  {ticketEvents.length > 0 ? (
+                    <div>
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/40">
+                        {GROUP_UI.eventShareMyTickets}
+                      </p>
+                      <ul className="space-y-2">
+                        {ticketEvents.map((ev) => (
+                          <li key={`g-ev-tk-${ev.id}`}>
+                            <button
+                              type="button"
+                              onClick={() => handleSelectSharedEventGroup(ev)}
+                              disabled={sendMutation.isPending}
+                              className="flex w-full gap-2.5 rounded-xl border border-white/12 bg-black/22 p-2.5 text-left transition hover:bg-black/32 disabled:opacity-60 [touch-action:manipulation]"
+                            >
+                              {ev.image ? (
+                                <img
+                                  src={ev.image}
+                                  alt=""
+                                  className="h-14 w-14 shrink-0 rounded-lg object-cover"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-white/[0.08]">
+                                  <CalendarDays className="h-7 w-7 text-white/35" aria-hidden />
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className="line-clamp-2 text-[14px] font-semibold text-white/95">{ev.title}</p>
+                                {ev.start_date ? (
+                                  <p className="mt-0.5 text-[11px] text-white/45">
+                                    {format(new Date(ev.start_date), 'EEE d MMM yyyy · HH:mm', { locale: fr })}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {discoverEvents.length > 0 ? (
+                    <div>
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/40">
+                        {GROUP_UI.eventShareDiscover}
+                      </p>
+                      <ul className="space-y-2">
+                        {discoverEvents.map((ev) => (
+                          <li key={`g-ev-pub-${ev.id}`}>
+                            <button
+                              type="button"
+                              onClick={() => handleSelectSharedEventGroup(ev)}
+                              disabled={sendMutation.isPending}
+                              className="flex w-full gap-2.5 rounded-xl border border-white/12 bg-black/22 p-2.5 text-left transition hover:bg-black/32 disabled:opacity-60 [touch-action:manipulation]"
+                            >
+                              {ev.image ? (
+                                <img
+                                  src={ev.image}
+                                  alt=""
+                                  className="h-14 w-14 shrink-0 rounded-lg object-cover"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-white/[0.08]">
+                                  <CalendarDays className="h-7 w-7 text-white/35" aria-hidden />
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className="line-clamp-2 text-[14px] font-semibold text-white/95">{ev.title}</p>
+                                {ev.start_date ? (
+                                  <p className="mt-0.5 text-[11px] text-white/45">
+                                    {format(new Date(ev.start_date), 'EEE d MMM yyyy · HH:mm', { locale: fr })}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {!ticketsPending && !eventListPending && ticketEvents.length === 0 && discoverEvents.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-white/45">{GROUP_UI.eventShareEmpty}</p>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div
         className="fixed left-0 right-0 z-40 border-t border-white/[0.06] bg-[#070a12]/96 backdrop-blur-xl"
         style={COMPOSER_STYLE}
@@ -2878,6 +3337,28 @@ export default function GroupChat() {
             >
               <X className="h-4 w-4" />
             </Button>
+          </div>
+        )}
+        {showSchedule && (
+          <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-2 rounded-[22px] border border-white/10 bg-[#0b1019]/96 px-3 py-2 text-white shadow-[0_10px_28px_rgba(2,6,23,0.18)]">
+            <Input
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+              min={toDatetimeLocalInputValue(new Date())}
+              className="rounded-xl border-white/12 bg-white/[0.04] text-sm text-white"
+            />
+            <button
+              type="button"
+              className="text-sm text-white/60 hover:text-white"
+              aria-label="Fermer la programmation"
+              onClick={() => {
+                setShowSchedule(false);
+                setScheduledAt('');
+              }}
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         )}
         <form
@@ -3008,6 +3489,31 @@ export default function GroupChat() {
                 onClick={() => setPollDialogOpen(true)}
               >
                 <BarChart2 className="h-5 w-5" strokeWidth={2} />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="mb-0.5 h-12 w-12 shrink-0 rounded-full text-white/75 hover:bg-white/[0.08] hover:text-white"
+                aria-label={GROUP_UI.shareEvent}
+                disabled={documentUploadMutation.isPending || mediaUploadMutation.isPending || sendMutation.isPending || !group}
+                onClick={() => setEventShareOpen(true)}
+              >
+                <CalendarDays className="h-5 w-5" strokeWidth={2} />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="mb-0.5 h-12 w-12 shrink-0 rounded-full text-white/75 hover:bg-white/[0.08] hover:text-white"
+                aria-label={GROUP_UI.scheduleSend}
+                disabled={documentUploadMutation.isPending || mediaUploadMutation.isPending || sendMutation.isPending || !group}
+                onClick={() => {
+                  setShowSchedule(true);
+                  setScheduledAt((prev) => prev || toDatetimeLocalInputValue(new Date(Date.now() + 2 * 60 * 1000)));
+                }}
+              >
+                <Timer className="h-5 w-5" strokeWidth={2} />
               </Button>
               <div className="relative flex min-w-0 flex-1 flex-col rounded-[26px] border border-white/12 bg-[#0f1724]/98 shadow-[0_18px_40px_rgba(2,6,23,0.22)]">
                 {mentionPickerOpen && mentionCandidates.length > 0 ? (

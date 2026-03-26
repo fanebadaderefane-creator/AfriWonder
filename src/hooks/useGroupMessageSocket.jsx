@@ -3,6 +3,7 @@
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
+import { toast } from 'sonner';
 import { getSocketBaseUrl, getSocketIoTransports } from '@/lib/getSocketBaseUrl';
 
 export function useGroupMessageSocket({ userId, userName, groupId, queryClient, enabled = true }) {
@@ -56,6 +57,10 @@ export function useGroupMessageSocket({ userId, userName, groupId, queryClient, 
                 ? { poll_votes: payload.poll_votes == null ? {} : payload.poll_votes }
                 : {}),
               ...(payload.poll_options !== undefined ? { poll_options: payload.poll_options } : {}),
+              ...(payload.event_id !== undefined ? { event_id: payload.event_id } : {}),
+              ...(payload.event_ref !== undefined ? { event_ref: payload.event_ref } : {}),
+              ...(payload.status !== undefined ? { status: payload.status } : {}),
+              ...(payload.scheduled_at !== undefined ? { scheduled_at: payload.scheduled_at } : {}),
             };
           });
         if (old.pages && Array.isArray(old.pages)) {
@@ -168,6 +173,11 @@ export function useGroupMessageSocket({ userId, userName, groupId, queryClient, 
       const qc = queryClientRef.current;
       qc.invalidateQueries({ queryKey: ['group', groupId] });
       qc.invalidateQueries({ queryKey: ['messages-groups'] });
+    });
+
+    socket.on('group:call-ended', (payload) => {
+      if (!payload?.groupId || payload.groupId !== groupId || !payload.callId) return;
+      toast.info('Appel groupe terminé', { duration: 5000 });
     });
 
     return () => {

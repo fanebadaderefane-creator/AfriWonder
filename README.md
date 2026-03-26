@@ -185,11 +185,7 @@ Le projet utilise **deux fichiers** `.env` : un pour le frontend, un pour le bac
 
 #### A. Frontend (racine du projet)
 
-Créer `.env.local` à la racine :
-
-```bash
-cp .env.example .env.local
-```
+Créer `.env.local` à la racine (si vous n’avez pas de `.env.example`, créez le fichier manuellement) :
 
 Éditer `.env.local` et remplir au minimum :
 
@@ -197,6 +193,9 @@ cp .env.example .env.local
 # API Backend (obligatoire)
 VITE_API_URL=http://localhost:3000/api
 VITE_WS_URL=ws://localhost:3000
+
+# Upload direct vers R2 (optionnel) — au-delà de ce seuil, l’app tente un PUT pré-signé (fallback automatique sinon)
+VITE_UPLOAD_DIRECT_THRESHOLD_MB=18
 
 # Base44 (optionnel en dev)
 VITE_BASE44_APP_ID=your_app_id_here
@@ -216,7 +215,7 @@ VITE_TURN_CREDENTIAL=motdepassefort
 Créer `backend/.env` :
 
 ```bash
-cp backend/.env.example backend/.env
+# (si vous n’avez pas de backend/.env.example, créez le fichier manuellement)
 ```
 
 Éditer `backend/.env` avec les valeurs **minimales** pour le développement :

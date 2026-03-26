@@ -11,7 +11,8 @@ import { useTheme } from 'next-themes';
 import { 
   ArrowLeft, Camera, User, Bell, Shield, Globe, Moon, Sun, Monitor,
   HelpCircle, LogOut, ChevronRight, Wifi, WifiOff, Smartphone, MapPin, ShieldCheck,
-  Users, MonitorSmartphone, UserPlus, Activity, Gift, Plane, ShoppingBag, Lock, CheckCheck
+  Users, MonitorSmartphone, UserPlus, Activity, Gift, Plane, ShoppingBag, Lock, CheckCheck,
+  MessageCircle,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from "sonner";
@@ -179,6 +180,12 @@ export default function Settings() {
       icon: Lock,
       label: 'Messagerie E2E (chiffrement)',
       color: 'bg-slate-100 text-slate-600'
+    },
+    {
+      id: 'messagingCdc',
+      icon: MessageCircle,
+      label: 'Messagerie complète (CDC)',
+      color: 'bg-emerald-100 text-emerald-600'
     },
     {
       id: 'groupBuys',
@@ -434,6 +441,8 @@ export default function Settings() {
                       navigate(createPageUrl('TravelAlerts'));
                     } else if (item.id === 'groupBuys') {
                       navigate(createPageUrl('GroupBuys'));
+                    } else if (item.id === 'messagingCdc') {
+                      navigate(createPageUrl('MessagingCdcHub'));
                     } else {
                       setActiveSection(item.id);
                     }

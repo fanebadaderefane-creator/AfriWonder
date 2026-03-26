@@ -6,7 +6,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 
 const DURATION = 0.2;
 
-const FULLSCREEN_PAGES = new Set(['Home', 'Create', 'Chat', 'GroupChat', 'DirectCall']);
+const FULLSCREEN_PAGES = new Set(['Home', 'Create', 'Chat', 'GroupChat', 'DirectCall', 'GroupCallLobby']);
 
 export default function PageTransition({ children, pageKey }) {
   const shouldReduceMotion = useReducedMotion();

@@ -55,7 +55,20 @@ vi.mock('@/components/common/TranslationProvider', () => ({ default: ({ children
 vi.mock('@/services/offlineCache.service.js', () => ({ default: { isCacheSupported: () => false, getCachedVideos: () => Promise.resolve([]), downloadMedia: () => Promise.resolve({ success: false }), listCachedDownloads: () => Promise.resolve([]), getTotalUsedBytes: () => Promise.resolve(0), getQuota: () => Promise.resolve({ quota: null, usage: null }), removeMedia: () => Promise.resolve() } }));
 vi.mock('react-player', () => ({ default: () => null }));
 vi.mock('react-player/lazy', () => ({ default: () => null }));
-vi.mock('@/hooks/useAgora', () => ({ useAgoraHost: () => ({ localVideoTrack: null, localAudioTrack: null, error: null, leave: vi.fn() }), useAgoraAudience: () => ({ remoteVideoRef: { current: null }, join: vi.fn(), leave: vi.fn() }) }));
+vi.mock('@/hooks/useAgora', () => ({
+  useAgoraHost: () => ({ localVideoTrack: null, localAudioTrack: null, error: null, leave: vi.fn() }),
+  useAgoraAudience: () => ({ remoteVideoRef: { current: null }, join: vi.fn(), leave: vi.fn() }),
+  useAgoraGroupCall: () => ({
+    error: null,
+    leave: vi.fn(async () => {}),
+    remoteUsers: [],
+    micOn: true,
+    camOn: true,
+    toggleMic: vi.fn(),
+    toggleCam: vi.fn(),
+    hasCameraTrack: false,
+  }),
+}));
 
 const entries = Object.entries(PAGES);
 const SLICE = entries.slice(64, 96);

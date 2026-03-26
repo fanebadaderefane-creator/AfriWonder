@@ -207,3 +207,211 @@ export function useAgoraAudience(tokenData, videoContainerRef, options = {}) {
 
   return { remoteVideoTrack, remoteAudioTrack, error, leave };
 }
+
+/**
+ * Appel groupe — mode Agora « rtc » (communication), chaque participant publie (token rôle host / publisher).
+ * @param {Object|null|undefined} tokenData - { token, appId, channel, uid }
+ * @param {React.RefObject} localVideoRef - conteneur vidéo locale (ignoré si audioOnly)
+ * @param {{ audioOnly?: boolean }} options
+ */
+export function useAgoraGroupCall(tokenData, localVideoRef, options = {}) {
+  const audioOnly = !!options.audioOnly;
+  const [error, setError] = useState(null);
+  const [remoteUsers, setRemoteUsers] = useState([]);
+  const [micOn, setMicOn] = useState(true);
+  const [camOn, setCamOn] = useState(true);
+  const [hasCameraTrack, setHasCameraTrack] = useState(false);
+  const clientRef = useRef(null);
+  const tracksRef = useRef([]);
+  const micTrackRef = useRef(null);
+  const camTrackRef = useRef(null);
+
+  const leave = useCallback(async () => {
+    try {
+      const client = clientRef.current;
+      if (client) {
+        await client.unpublish(tracksRef.current).catch(() => {});
+        await client.leave();
+        client.removeAllListeners();
+        clientRef.current = null;
+      }
+      tracksRef.current.forEach((t) => {
+        try {
+          t.close();
+        } catch (_) {
+          /* ignore */
+        }
+      });
+      tracksRef.current = [];
+      micTrackRef.current = null;
+      camTrackRef.current = null;
+      setRemoteUsers([]);
+      setMicOn(true);
+      setCamOn(true);
+      setHasCameraTrack(false);
+    } catch (e) {
+      console.warn('Agora group leave error', e);
+    }
+  }, []);
+
+  const toggleMic = useCallback(() => {
+    const t = micTrackRef.current;
+    if (!t || typeof t.setEnabled !== 'function') return;
+    try {
+      const next = !t.enabled;
+      t.setEnabled(next);
+      setMicOn(next);
+    } catch (_) {
+      /* ignore */
+    }
+  }, []);
+
+  const toggleCam = useCallback(() => {
+    const t = camTrackRef.current;
+    if (!t || typeof t.setEnabled !== 'function') return;
+    try {
+      const next = !t.enabled;
+      t.setEnabled(next);
+      setCamOn(next);
+    } catch (_) {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!tokenData?.appId || !tokenData?.channel || !tokenData?.token) {
+      setRemoteUsers([]);
+      setHasCameraTrack(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const upsertRemote = (uid, patch) => {
+      setRemoteUsers((prev) => {
+        const i = prev.findIndex((r) => r.uid === uid);
+        if (i === -1) return [...prev, { uid, ...patch }];
+        const next = [...prev];
+        next[i] = { ...next[i], ...patch };
+        return next;
+      });
+    };
+
+    (async () => {
+      setError(null);
+      setMicOn(true);
+      setCamOn(true);
+      setHasCameraTrack(false);
+      micTrackRef.current = null;
+      camTrackRef.current = null;
+      try {
+        const RTC = await loadAgora();
+        const client = RTC.createClient({ mode: 'rtc', codec: 'vp8' });
+        clientRef.current = client;
+
+        await client.join(tokenData.appId, tokenData.channel, tokenData.token, tokenData.uid ?? 0);
+
+        const publishList = [];
+        if (audioOnly) {
+          const mic = await RTC.createMicrophoneTrack();
+          if (cancelled) {
+            mic.close();
+            return;
+          }
+          micTrackRef.current = mic;
+          tracksRef.current = [mic];
+          publishList.push(mic);
+        } else {
+          try {
+            const [mic, cam] = await RTC.createMicrophoneAndCameraTracks();
+            if (cancelled) {
+              mic?.close();
+              cam?.close();
+              return;
+            }
+            micTrackRef.current = mic;
+            camTrackRef.current = cam;
+            tracksRef.current = [mic, cam];
+            publishList.push(mic, cam);
+            setHasCameraTrack(true);
+            const container = localVideoRef?.current;
+            if (container && cam) {
+              cam.play(container, { mirror: true });
+            }
+          } catch (deviceErr) {
+            const isDeviceNotFound =
+              deviceErr?.message?.includes('DEVICE_NOT_FOUND') || deviceErr?.code === 'DEVICE_NOT_FOUND';
+            if (isDeviceNotFound) {
+              const mic = await RTC.createMicrophoneTrack();
+              if (cancelled) {
+                mic.close();
+                return;
+              }
+              micTrackRef.current = mic;
+              camTrackRef.current = null;
+              tracksRef.current = [mic];
+              publishList.push(mic);
+              setHasCameraTrack(false);
+            } else {
+              throw deviceErr;
+            }
+          }
+        }
+
+        await client.publish(publishList);
+
+        client.on('user-published', async (user, mediaType) => {
+          if (cancelled) return;
+          try {
+            await client.subscribe(user, mediaType);
+          } catch (subErr) {
+            console.warn('Agora group subscribe failed', subErr);
+            return;
+          }
+          const uid = user.uid;
+          if (mediaType === 'video' && user.videoTrack) {
+            upsertRemote(uid, { videoTrack: user.videoTrack });
+          }
+          if (mediaType === 'audio' && user.audioTrack) {
+            try {
+              user.audioTrack.play();
+            } catch (_) {
+              /* ignore */
+            }
+            upsertRemote(uid, { audioTrack: user.audioTrack });
+          }
+        });
+
+        client.on('user-unpublished', (user, mediaType) => {
+          if (cancelled) return;
+          const uid = user.uid;
+          setRemoteUsers((prev) => {
+            const i = prev.findIndex((r) => r.uid === uid);
+            if (i === -1) return prev;
+            const row = { ...prev[i] };
+            if (mediaType === 'video') row.videoTrack = null;
+            if (mediaType === 'audio') row.audioTrack = null;
+            if (!row.videoTrack && !row.audioTrack) return prev.filter((_, j) => j !== i);
+            const next = [...prev];
+            next[i] = row;
+            return next;
+          });
+        });
+
+        client.on('user-left', (user) => {
+          setRemoteUsers((prev) => prev.filter((r) => r.uid !== user.uid));
+        });
+      } catch (e) {
+        if (!cancelled) setError(e?.message || 'Agora group call failed');
+        console.warn('Agora group call error', e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      leave();
+    };
+  }, [tokenData?.appId, tokenData?.channel, tokenData?.token, tokenData?.uid, audioOnly, leave]);
+
+  return { error, leave, remoteUsers, micOn, camOn, toggleMic, toggleCam, hasCameraTrack };
+}

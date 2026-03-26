@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Edit, MessageCircle, ArrowLeft, UserPlus, Bell, BellOff, Filter, Users, Plus, Archive, ArchiveRestore, MoreVertical } from 'lucide-react';
+import { Search, Edit, MessageCircle, ArrowLeft, UserPlus, Bell, BellOff, Filter, Users, Plus, Archive, ArchiveRestore, MoreVertical, Download, LayoutGrid } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { motion } from 'framer-motion';
@@ -19,6 +19,11 @@ import { usePageVisibility } from '@/hooks/usePageVisibility';
 import { toast } from 'sonner';
 import BottomNav from '../components/navigation/BottomNav';
 import { stripChatMarkupForPreview } from '@/components/chat/ChatFormattedText';
+import {
+  downloadPlainTextFile,
+  formatAllDmExportsToPlainText,
+  formatAllGroupsBundleToPlainText,
+} from '@/lib/messagingExportPlainText';
 
 const INBOX_PAGE_BG = 'bg-[#070a12]';
 const INBOX_SECTION =
@@ -82,8 +87,46 @@ export default function Inbox() {
   const [selectedMemberIds, setSelectedMemberIds] = useState([]);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [mutingConversationId, setMutingConversationId] = useState(null);
+  const [exportAllBusy, setExportAllBusy] = useState(false);
+  const [exportGroupsBundleBusy, setExportGroupsBundleBusy] = useState(false);
 
   const isPageVisible = usePageVisibility();
+
+  const handleExportAllConversations = async () => {
+    if (exportAllBusy || !user?.id) return;
+    setExportAllBusy(true);
+    try {
+      const data = await api.messages.exportConversations();
+      const txt = formatAllDmExportsToPlainText(data, user.id);
+      downloadPlainTextFile(`AfriWonder-mes-discussions-${new Date().toISOString().slice(0, 10)}.txt`, txt);
+      toast.success('Fichier enregistré — ouvrez votre dossier Téléchargements');
+    } catch (e) {
+      toast.error(e?.response?.data?.message ?? e?.message ?? 'Enregistrement impossible pour le moment');
+    } finally {
+      setExportAllBusy(false);
+    }
+  };
+
+  const handleExportAllGroupThreads = async () => {
+    if (exportGroupsBundleBusy || !user?.id) return;
+    setExportGroupsBundleBusy(true);
+    try {
+      const data = await api.messages.exportAllGroupConversations();
+      const txt = formatAllGroupsBundleToPlainText(data, user.id);
+      downloadPlainTextFile(`AfriWonder-mes-groupes-${new Date().toISOString().slice(0, 10)}.txt`, txt);
+      toast.success('Fichier enregistré — ouvrez votre dossier Téléchargements');
+      if (data?.truncated) {
+        toast.info(
+          `Seulement ${data.groupsExported ?? 0} groupe(s) sur ${data.groupsTotal ?? 0} sont dans ce fichier. Pour un autre groupe, ouvrez-le et touchez « Enregistrer cette discussion ».`,
+          { duration: 10000 }
+        );
+      }
+    } catch (e) {
+      toast.error(e?.response?.data?.message ?? e?.message ?? 'Enregistrement impossible pour le moment');
+    } finally {
+      setExportGroupsBundleBusy(false);
+    }
+  };
 
   useEffect(() => {
     const ng = searchParams.get('newGroup');
@@ -340,11 +383,44 @@ export default function Inbox() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            <Link to={createPageUrl('MessagingCdcHub')}>
+              <Button variant="ghost" size="icon" className={INBOX_ICON_BUTTON} aria-label="Hub messagerie CDC">
+                <LayoutGrid className="w-5 h-5" />
+              </Button>
+            </Link>
             <Link to={createPageUrl('Search') + '?from=inbox&mode=messages'}>
-              <Button variant="ghost" size="icon" className={INBOX_ICON_BUTTON}>
+              <Button variant="ghost" size="icon" className={INBOX_ICON_BUTTON} aria-label="Nouvelle conversation">
                 <Edit className="w-5 h-5" />
               </Button>
             </Link>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className={INBOX_ICON_BUTTON} aria-label="Plus d’options">
+                  <MoreVertical className="w-5 h-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="z-[120] min-w-[220px] border border-white/12 bg-[#0d1118] p-1 text-white shadow-[0_24px_60px_rgba(2,6,23,0.35)]"
+              >
+                <DropdownMenuItem
+                  className="cursor-pointer focus:bg-white/[0.08] focus:text-white"
+                  onClick={handleExportAllConversations}
+                  disabled={exportAllBusy || exportGroupsBundleBusy || !user?.id}
+                >
+                  <Download className="mr-2 h-4 w-4 text-white/72" />
+                  Enregistrer mes discussions privées
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer focus:bg-white/[0.08] focus:text-white"
+                  onClick={handleExportAllGroupThreads}
+                  disabled={exportGroupsBundleBusy || exportAllBusy || !user?.id}
+                >
+                  <Users className="mr-2 h-4 w-4 text-white/72" />
+                  Enregistrer mes groupes
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 

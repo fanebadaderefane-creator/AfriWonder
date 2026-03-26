@@ -119,22 +119,87 @@ export function isValidThumbnailUrl(thumbnailUrl, videoUrl) {
   return true;
 }
 
+function buildProxyMediaUrl(absoluteUrl, apiBase) {
+  return `${apiBase.replace(/\/$/, '')}/proxy/media?url=${encodeURIComponent(absoluteUrl)}`;
+}
+
 /**
- * Retourne l'URL de lecture d'une vidéo. Pour les URLs externes (CDN), passe par le proxy
- * backend pour éviter les erreurs CORS (Failed to open media).
+ * Liste ordonnée d’URLs à essayer pour la lecture (feed / VideoCard : bascule auto si erreur).
+ * - HLS (.m3u8) : URL directe (hls.js).
+ * - Prod **site ≠ API** (ex. www.afriwonder.com + onrender.com) : **CDN uniquement** — éviter
+ *   /api/proxy/media en masse (N streams → 502 Render, NS_BINDING_ABORTED). R2 sert Range en direct.
+ * - Sinon (dev, ou même domaine) : proxy si utile.
+ * VITE_FORCE_VIDEO_PROXY / VITE_DIRECT_VIDEO_PLAYBACK : surcharges.
  */
-export function getVideoPlaybackUrl(videoUrl) {
-  if (!videoUrl || typeof videoUrl !== 'string') return '';
+export function getVideoPlaybackUrlCandidates(videoUrl) {
+  if (!videoUrl || typeof videoUrl !== 'string') return [];
   const absoluteUrl = toAbsoluteBackendUrl(videoUrl);
-  if (!absoluteUrl) return '';
+  if (!absoluteUrl) return [];
 
   const apiBase = getResolvedApiBase();
+  let u;
+  let apiUrl;
   try {
-    const u = new URL(absoluteUrl);
-    const apiUrl = new URL(apiBase);
-    if (u.origin === apiUrl.origin) return absoluteUrl;
+    u = new URL(absoluteUrl);
+    apiUrl = new URL(apiBase);
   } catch {
-    return absoluteUrl;
+    return [absoluteUrl];
   }
-  return `${apiBase.replace(/\/$/, '')}/proxy/media?url=${encodeURIComponent(absoluteUrl)}`;
+
+  if (u.origin === apiUrl.origin) return [absoluteUrl];
+
+  const forceProxy =
+    import.meta.env.VITE_FORCE_VIDEO_PROXY === 'true' ||
+    import.meta.env.VITE_FORCE_VIDEO_PROXY === '1';
+  const forceDirect =
+    import.meta.env.VITE_DIRECT_VIDEO_PLAYBACK === 'true' ||
+    import.meta.env.VITE_DIRECT_VIDEO_PLAYBACK === '1';
+
+  const proxy = buildProxyMediaUrl(absoluteUrl, apiBase);
+
+  if (forceDirect) return [absoluteUrl];
+  if (forceProxy) return [proxy];
+
+  const pageOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const apiCrossSite =
+    import.meta.env.PROD &&
+    !!pageOrigin &&
+    apiUrl.origin !== pageOrigin &&
+    u.protocol === 'https:' &&
+    u.hostname !== apiUrl.hostname;
+
+  const looksLikeHlsMaster = /\.m3u8(\?|#|$)/i.test(absoluteUrl);
+
+  if (looksLikeHlsMaster) return [absoluteUrl];
+
+  // Dev : CDN en premier (latence / débit proches de la prod). Passer tout le flux par le proxy en premier
+  // sous Firefox gérait le MIME mais multipliait les allers-retours (5173→3000→CDN) et provoquait chargements
+  // très lents ou buffer long. Le proxy reste en 2e position (erreur MIME Firefox, etc.).
+  if (import.meta.env.DEV) {
+    const out = [absoluteUrl];
+    if (!out.includes(proxy)) out.push(proxy);
+    return out;
+  }
+
+  if (apiCrossSite) {
+    // Firefox est strict sur le MIME : un MP4 en application/octet-stream sur R2 échoue en direct
+    // alors que Chrome lit. Le proxy force video/mp4 (proxy.routes.ts) sans multiplier le trafic :
+    // on ne l’ajoute qu’en 2e position après le CDN, et seulement si Gecko Firefox tente la lecture.
+    const out = [absoluteUrl];
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+    const isGeckoFirefox = /firefox/i.test(ua) && !/seamonkey/i.test(ua);
+    if (isGeckoFirefox) {
+      const p = buildProxyMediaUrl(absoluteUrl, apiBase);
+      if (p && p !== absoluteUrl && !out.includes(p)) out.push(p);
+    }
+    return out;
+  }
+
+  return [proxy];
+}
+
+/** Première URL candidate (compat miniatures, liens partage, etc.). */
+export function getVideoPlaybackUrl(videoUrl) {
+  const c = getVideoPlaybackUrlCandidates(videoUrl);
+  return c[0] || '';
 }

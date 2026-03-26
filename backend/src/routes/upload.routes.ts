@@ -1,15 +1,62 @@
 import { Router, type Response, type NextFunction } from 'express';
 import multer from 'multer';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
-import { r2Client, R2_BUCKET_NAME, R2_PUBLIC_URL, getR2ConfigDiagnostic } from '../config/cloudflare-r2.js';
+import { r2Client, R2_BUCKET_NAME, R2_PUBLIC_URL, getR2ConfigDiagnostic, isR2Configured } from '../config/cloudflare-r2.js';
 import { logger } from '../utils/logger.js';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
+import { randomUUID } from 'node:crypto';
+import { maybeTranscodeMp4BufferForWeb } from '../services/videoCompatTranscode.service.js';
 
 const router = Router();
+
+const BYTES_PER_MB = 1024 * 1024;
+
+/** Limite messagerie / médias (Mo). Défaut relevé pour le CDC ; au-delà de ~512 Mo le buffer mémoire multer peut saturer — prévoir upload direct vers R2 en production. */
+function parseUploadMaxMb(envVal: string | undefined, defaultMb: number, hardCapMb: number): number {
+  const n = Number(envVal);
+  if (!Number.isFinite(n) || n < 1) return defaultMb;
+  return Math.min(Math.round(n), hardCapMb);
+}
+
+const MAX_MEDIA_UPLOAD_MB = parseUploadMaxMb(process.env.UPLOAD_MAX_MEDIA_MB, 600, 2048);
+const MAX_DOCUMENT_UPLOAD_MB = parseUploadMaxMb(process.env.UPLOAD_MAX_DOCUMENT_MB, 300, 2048);
+const PRESIGN_EXPIRES_SEC = 10 * 60;
+
+function safeExtFromName(name: string): string {
+  const ext = String(path.extname(name || '') || '').toLowerCase();
+  if (!ext || ext.length > 10) return '';
+  return ext.replace(/[^a-z0-9.]/g, '');
+}
+
+function kindToPrefix(kind: string): string {
+  const k = String(kind || '').toLowerCase();
+  if (k === 'image' || k === 'photo') return 'images';
+  if (k === 'video') return 'videos';
+  if (k === 'audio' || k === 'voice') return 'audio';
+  if (k === 'document' || k === 'file') return 'documents';
+  return 'uploads';
+}
+
+/**
+ * Firefox refuse souvent les MP4 si R2 sert `application/octet-stream` (client presign envoie ce type par défaut).
+ * On aligne le Content-Type sur l’extension pour les vidéos.
+ */
+function normalizePresignContentType(kind: string, filename: string, raw: string): string {
+  const lower = String(raw || '').toLowerCase().trim();
+  if (kindToPrefix(kind) !== 'videos') return lower || 'application/octet-stream';
+  if (lower && lower !== 'application/octet-stream' && lower !== 'binary/octet-stream') return raw;
+  const ext = safeExtFromName(filename).toLowerCase();
+  if (ext === '.mp4' || ext === '.m4v') return 'video/mp4';
+  if (ext === '.webm') return 'video/webm';
+  if (ext === '.mov') return 'video/quicktime';
+  if (ext === '.m3u8') return 'application/vnd.apple.mpegurl';
+  return 'video/mp4';
+}
 
 /** Erreur AWS S3 / R2 (PutObject) — clés ou bucket incorrects */
 function isR2AccessDenied(err: unknown): boolean {
@@ -41,15 +88,69 @@ function handleUploadStorageError(res: Response, err: unknown, next: NextFunctio
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100 MB
+    fileSize: MAX_MEDIA_UPLOAD_MB * BYTES_PER_MB,
   },
 });
 
 const uploadDocument = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50 MB — documents messagerie
+    fileSize: MAX_DOCUMENT_UPLOAD_MB * BYTES_PER_MB,
   },
+});
+
+/**
+ * POST /api/upload/presign
+ * Renvoie une URL pré-signée (PUT) pour upload direct vers R2 (scalable, pas de RAM serveur).
+ * Body: { kind: 'video'|'audio'|'document'|'image', filename, contentType }
+ * Response: { uploadUrl, file_url, key, expires_in }
+ */
+router.post('/presign', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    if (!isR2Configured() || !r2Client || !R2_PUBLIC_URL) {
+      const missing = getR2ConfigDiagnostic();
+      return res.status(503).json({
+        success: false,
+        error: { message: 'Stockage R2 non configuré', code: 'R2_NOT_CONFIGURED', missing },
+      });
+    }
+
+    const kind = String(req.body?.kind || 'uploads');
+    const filename = String(req.body?.filename || '');
+    const contentType = normalizePresignContentType(
+      kind,
+      filename,
+      String(req.body?.contentType || 'application/octet-stream')
+    );
+    const prefix = kindToPrefix(kind);
+    const ext = safeExtFromName(filename);
+    const userId = String(req.user?.id || 'user');
+    const now = Date.now();
+    const key = `${prefix}/${userId}/${now}-${randomUUID()}${ext || ''}`;
+
+    const cmd = new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: key,
+      ContentType: contentType,
+      ACL: 'public-read' as any,
+      Metadata: {
+        uploader_user_id: userId,
+        kind: String(prefix),
+        original_name: filename ? filename.slice(0, 160) : '',
+      },
+    });
+
+    const uploadUrl = await getSignedUrl(r2Client, cmd, { expiresIn: PRESIGN_EXPIRES_SEC });
+    const base = R2_PUBLIC_URL.replace(/\/+$/, '');
+    const file_url = `${base}/${key}`;
+
+    return res.json({
+      success: true,
+      data: { uploadUrl, file_url, key, expires_in: PRESIGN_EXPIRES_SEC },
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 /**
@@ -201,14 +302,31 @@ router.post('/video', authenticate, upload.single('file'), async (req: AuthReque
     const originalName = req.file.originalname || 'video.mp4';
     const safeName = createSafeFilename(originalName);
     const fileName = `${Date.now()}-${safeName}`;
-    
+
+    const mime = (req.file.mimetype || '').toLowerCase();
+    const ext = path.extname(safeName).toLowerCase();
+    const looksLikeMp4Family =
+      mime.includes('mp4') || mime.includes('quicktime') || ['.mp4', '.m4v', '.mov'].includes(ext);
+
+    let uploadBody: Buffer = req.file.buffer;
+    let uploadContentType = (req.file.mimetype || '').trim() || 'video/mp4';
+    if (looksLikeMp4Family) {
+      const ctLow = uploadContentType.toLowerCase();
+      if (!ctLow || ctLow === 'application/octet-stream') {
+        uploadContentType = 'video/mp4';
+      }
+      uploadBody = await maybeTranscodeMp4BufferForWeb(req.file.buffer, safeName);
+      if (uploadBody !== req.file.buffer) {
+        uploadContentType = 'video/mp4';
+      }
+    }
+
     // Stocker dans R2 avec le nom ASCII-safe
-    // Le nom est déjà propre (pas d'accents, pas de caractères spéciaux)
     const command = new PutObjectCommand({
       Bucket: R2_BUCKET_NAME,
       Key: `videos/${fileName}`,
-      Body: req.file.buffer,
-      ContentType: req.file.mimetype || 'video/mp4',
+      Body: uploadBody,
+      ContentType: uploadContentType,
       CacheControl: 'public, max-age=31536000, immutable',
     });
 
@@ -217,7 +335,7 @@ router.post('/video', authenticate, upload.single('file'), async (req: AuthReque
     // Générer une miniature à partir de la vidéo si possible
     let thumbnailUrl: string | undefined;
     try {
-      thumbnailUrl = await generateVideoThumbnailToR2(req.file.buffer, safeName);
+      thumbnailUrl = await generateVideoThumbnailToR2(uploadBody, safeName);
     } catch {
       thumbnailUrl = undefined;
     }

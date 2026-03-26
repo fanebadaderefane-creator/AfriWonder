@@ -33,7 +33,7 @@ function LayoutContent({ children, currentPageName }) {
   useOrientationLock(true);
 
   // Geste "swipe back" style iOS (désactivé sur Home/Create)
-  const disableSwipeBackPages = ['Home', 'Create', 'Chat', 'GroupChat', 'DirectCall'];
+  const disableSwipeBackPages = ['Home', 'Create', 'Chat', 'GroupChat', 'DirectCall', 'GroupCallLobby'];
   const swipeBackEnabled = !disableSwipeBackPages.includes(currentPageName);
   useSwipeBack(swipeBackEnabled);
   
@@ -140,7 +140,7 @@ function LayoutContent({ children, currentPageName }) {
   }, []);
 
   // Pages that should have no padding and full screen
-  const fullScreenPages = ['Home', 'Create', 'Chat', 'GroupChat', 'DirectCall'];
+  const fullScreenPages = ['Home', 'Create', 'Chat', 'GroupChat', 'DirectCall', 'GroupCallLobby'];
   const isFullScreen = fullScreenPages.includes(currentPageName);
   const { user } = useAuth();
   const { isOpen: isMenuOpen, closeMenu, openMenu, reopenMenuOnPath, clearReopenMenuOnPath, scheduleReopenWhenReturn } = useAppMenu();

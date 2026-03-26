@@ -11,6 +11,7 @@ import * as virtualCardService from '../services/virtualCard.service.js';
 import * as internationalTransferService from '../services/internationalTransfer.service.js';
 import * as paymentPreauthService from '../services/paymentPreauth.service.js';
 import * as creatorContractService from '../services/creatorContract.service.js';
+import { listMyCallHistory } from '../services/meCallHistory.service.js';
 
 const router = Router();
 
@@ -233,6 +234,18 @@ router.delete('/sessions/:id', authenticate, async (req: AuthRequest, res, next)
       return res.status(404).json({ success: false, error: { message: 'Session non trouvée' } });
     }
     res.json({ success: true, message: 'Session révoquée' });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/me/call-history — journal 1-1 + appels groupe (CDC Appels)
+router.get('/call-history', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
+    const result = await listMyCallHistory(req.user!.id, page, limit);
+    res.json({ success: true, data: result });
   } catch (e) {
     next(e);
   }

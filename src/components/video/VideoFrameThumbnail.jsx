@@ -1,6 +1,12 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { getVideoPlaybackUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, isValidThumbnailUrl, isMobileOrPWA } from '@/lib/utils';
-import { API_URL } from '@/api/expressClient';
+import {
+  getVideoPlaybackUrl,
+  getVideoPlaybackUrlCandidates,
+  VIDEO_PLACEHOLDER_IMG,
+  getAbsoluteImageUrl,
+  isValidThumbnailUrl,
+  isMobileOrPWA,
+} from '@/lib/utils';
 
 /** Video frame thumbnail. Uses thumbnail_url on mobile when valid; otherwise extracts frame at frameTime. */
 const FRAME_CACHE = new Map();
@@ -36,19 +42,10 @@ export default function VideoFrameThumbnail({ videoUrl, thumbnailUrl: thumbnailU
   const useThumbnailOnly = mobileOrPWA && thumbnailUrlProp && isValidThumbnailUrl(thumbnailUrlProp, videoUrl);
   const resolvedThumbnailUrl = useThumbnailOnly ? getAbsoluteImageUrl(thumbnailUrlProp) : '';
   const playbackUrl = useMemo(() => getVideoPlaybackUrl(videoUrl), [videoUrl]);
-  const fallbackProxyUrl = useMemo(() => {
-    if (!videoUrl || typeof videoUrl !== 'string') return '';
-    const raw = videoUrl.trim();
-    if (!/^https?:\/\//i.test(raw)) return '';
-    const base = API_URL.startsWith('/') ? window.location.origin + API_URL : API_URL;
-    return `${base.replace(/\/$/, '')}/proxy/media?url=${encodeURIComponent(raw)}`;
-  }, [videoUrl]);
   const attemptUrls = useMemo(() => {
-    const out = [];
-    if (playbackUrl) out.push(playbackUrl);
-    if (fallbackProxyUrl && fallbackProxyUrl !== playbackUrl) out.push(fallbackProxyUrl);
-    return out;
-  }, [playbackUrl, fallbackProxyUrl]);
+    const c = getVideoPlaybackUrlCandidates(videoUrl);
+    return c.length > 0 ? c : playbackUrl ? [playbackUrl] : [];
+  }, [videoUrl, playbackUrl]);
   const [attemptIndex, setAttemptIndex] = useState(0);
   const frameTimeKey = Number.isFinite(frameTime) && frameTime >= 0 ? Number(frameTime).toFixed(2) : 'auto';
   const cacheKey = `${playbackUrl || ''}::${frameTimeKey}`;

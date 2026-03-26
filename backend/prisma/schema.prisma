@@ -40,6 +40,8 @@ model User {
   messaging_e2e_enabled        Boolean                   @default(false)   // CPO 4.40 — préférence E2E (implémentation à venir)
   /// Accusés de lecture (tics bleus) : si false, n’envoie pas « lu » aux autres et masque les tics bleus sur ses propres messages (CDC confidentialité)
   messaging_read_receipts_enabled Boolean                @default(true)
+  /// Préférences écran CDC modération (ex. silentLeave, forwardLimit) — appliquées côté produit plus tard
+  messaging_cdc_moderation     Json?
   ad_campaigns                 AdCampaign[]
   addresses                    Address[]
   airtime_recharges            AirtimeRecharge[]
@@ -459,20 +461,24 @@ model Sticker {
 
 /// Appel groupe (audio/vidéo) — room + participants
 model GroupCall {
-  id          String    @id @default(uuid())
-  creator_id String
-  room_id     String    @unique
-  status      String    @default("active")
-  type        String    @default("video")
-  started_at  DateTime  @default(now())
-  ended_at    DateTime?
-  created_at  DateTime  @default(now())
-  creator     User      @relation(fields: [creator_id], references: [id], onDelete: Cascade)
-  participants GroupCallParticipant[]
+  id                      String             @id @default(uuid())
+  creator_id              String
+  room_id                 String             @unique
+  status                  String             @default("active")
+  type                    String             @default("video")
+  started_at              DateTime           @default(now())
+  ended_at                DateTime?
+  created_at              DateTime           @default(now())
+  /// Messagerie : salon pour invites / fin d’appel (socket `group:*`)
+  conversation_group_id   String?
+  creator                 User               @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+  conversation_group      ConversationGroup? @relation(fields: [conversation_group_id], references: [id], onDelete: SetNull)
+  participants            GroupCallParticipant[]
 
   @@index([creator_id])
   @@index([room_id])
   @@index([status])
+  @@index([conversation_group_id])
 }
 
 model GroupCallParticipant {
@@ -3161,6 +3167,7 @@ model ConversationGroup {
   members            ConversationGroupMember[]
   messages           GroupMessage[]
   pinned_message     GroupMessage? @relation("GroupPinnedMessage", fields: [pinned_message_id], references: [id], onDelete: SetNull)
+  group_calls        GroupCall[]
 
   @@index([created_by_id])
   @@index([last_message_at])
@@ -3192,6 +3199,9 @@ model GroupMessage {
   sender_id           String
   content             String
   type                String            @default("text")
+  /// sent | scheduled — livraison différée (CDC messages programmés)
+  status              String            @default("sent")
+  scheduled_at        DateTime?
   media_url           String?
   thumbnail_url       String?
   created_at          DateTime          @default(now())
@@ -3207,7 +3217,12 @@ model GroupMessage {
   poll_options        Json?
   /// Sondage : votes { "userId": optionIndex }
   poll_votes          Json?
+  /// Partage événement (type = event)
+  event_id            String?
+  /// Message groupe d’origine lors d’un transfert (CDC : limite une cible / traçabilité)
+  forwarded_from_message_id String?
   group               ConversationGroup  @relation(fields: [group_id], references: [id], onDelete: Cascade)
+  event_ref           Event?             @relation("GroupMessageSharedEvent", fields: [event_id], references: [id], onDelete: SetNull)
   sender              User               @relation(fields: [sender_id], references: [id], onDelete: Cascade)
   reply_to            GroupMessage?      @relation("GroupMessageReplyThread", fields: [reply_to_id], references: [id], onDelete: SetNull)
   replies             GroupMessage[]     @relation("GroupMessageReplyThread")
@@ -3216,6 +3231,10 @@ model GroupMessage {
   @@index([group_id])
   @@index([sender_id])
   @@index([created_at])
+  @@index([event_id])
+  @@index([status])
+  @@index([scheduled_at])
+  @@index([sender_id, forwarded_from_message_id])
 }
 
 model Message {
@@ -3247,7 +3266,14 @@ model Message {
   contact_name         String?
   sticker_url          String?
   transcription_text  String?
+  /// Sondage 1-1 : libellés des choix (type = poll)
+  poll_options        Json?
+  /// Sondage 1-1 : votes { "userId": optionIndex }
+  poll_votes          Json?
+  /// Partage événement (type = event) — titre dupliqué dans content pour aperçu / recherche
+  event_id            String?
   conversation         Conversation    @relation("ConversationMessages", fields: [conversation_id], references: [id], onDelete: Cascade)
+  event_ref            Event?          @relation("DmMessageSharedEvent", fields: [event_id], references: [id], onDelete: SetNull)
   pinned_in            Conversation?   @relation("PinnedInConversation")
   reply_to             Message?        @relation("Reply", fields: [reply_to_message_id], references: [id])
   replies              Message[]       @relation("Reply")
@@ -3264,6 +3290,7 @@ model Message {
   @@index([expires_at])
   @@index([scheduled_at])
   @@index([sender_id], map: "idx_messages_sender")
+  @@index([event_id])
 }
 
 model UserPresence {
@@ -4050,6 +4077,8 @@ model Event {
   tickets           EventTicket[]
   ticket_types      EventTicketType[]
   ticket_locks      TicketLock[]
+  dm_shared_messages Message[]        @relation("DmMessageSharedEvent")
+  group_shared_messages GroupMessage[] @relation("GroupMessageSharedEvent")
 
   @@index([organizer_id])
   @@index([start_date])

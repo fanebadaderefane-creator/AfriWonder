@@ -40,6 +40,22 @@ router.get('/presence/:userId', authenticate, async (req: AuthRequest, res, next
   }
 });
 
+// GET /api/messages/scheduled — messages programmés (DM + groupes), must be before /:conversationId
+router.get('/scheduled', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const [dm, group] = await Promise.all([
+      messageService.listScheduledDmForUser(req.user!.id),
+      messageGroupService.listScheduledGroupMessagesForUser(req.user!.id),
+    ]);
+    const items = [...dm, ...group].sort(
+      (a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
+    );
+    res.json({ success: true, data: { items } });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
 // GET /api/messages/unread/count — must be before /:conversationId
 router.get('/unread/count', authenticate, async (req: AuthRequest, res, next) => {
   try {
@@ -57,7 +73,10 @@ router.get('/unread/count', authenticate, async (req: AuthRequest, res, next) =>
 // GET /api/messages/export — sauvegarde cloud (export conversations + messages, hors éphémères expirés)
 router.get('/export', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const result = await messageService.exportConversations(req.user!.id);
+    const q = req.query as Record<string, unknown>;
+    const raw = q.conversationId;
+    const conversationId = typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
+    const result = await messageService.exportConversations(req.user!.id, { conversationId });
     res.json({ success: true, data: result });
   } catch (error: unknown) {
     next(error);
@@ -167,6 +186,8 @@ router.post('/send', authenticate, sendLimiter, async (req: AuthRequest, res, ne
       contact_user_id,
       contact_name,
       sticker_url,
+      poll_options,
+      event_id,
       e2ee_envelope,
     } = req.body;
     const message = await messageService.sendMessage(
@@ -187,6 +208,8 @@ router.post('/send', authenticate, sendLimiter, async (req: AuthRequest, res, ne
         contact_user_id,
         contact_name,
         sticker_url,
+        poll_options,
+        event_id,
       }
     );
 
@@ -202,6 +225,17 @@ router.post('/send', authenticate, sendLimiter, async (req: AuthRequest, res, ne
       }
     }
     res.json({ success: true, data: message });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// POST /api/messages/message/:messageId/poll-vote — sondage 1-1
+router.post('/message/:messageId/poll-vote', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { option_index: optionIndex } = req.body || {};
+    const data = await messageService.voteDmPoll(param(req, 'messageId'), req.user!.id, optionIndex);
+    res.json({ success: true, data });
   } catch (error: unknown) {
     next(error);
   }
@@ -274,6 +308,16 @@ router.post('/message/:messageId/transcribe', authenticate, sendLimiter, async (
 });
 
 // ========== Group messaging (CDC) ==========
+// GET /api/messages/groups/export — export JSON agrégé de tous les groupes du membre (plafonné côté service)
+router.get('/groups/export', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageGroupService.exportAllUserGroupConversations(req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
 // POST /api/messages/groups — create group
 router.post('/groups', authenticate, sendLimiter, async (req: AuthRequest, res, next) => {
   try {
@@ -358,6 +402,16 @@ router.patch('/group/:groupId/me/display-tag', authenticate, async (req: AuthReq
   }
 });
 
+// GET /api/messages/group/:groupId/export — export JSON du fil (membre uniquement)
+router.get('/group/:groupId/export', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageGroupService.exportGroupMessages(param(req, 'groupId'), req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
 // GET /api/messages/group/:groupId/messages — group messages (cursor pagination)
 router.get('/group/:groupId/messages', authenticate, async (req: AuthRequest, res, next) => {
   try {
@@ -408,13 +462,33 @@ router.delete('/group/:groupId/pin', authenticate, async (req: AuthRequest, res,
 // POST /api/messages/group/:groupId/send — send message to group
 router.post('/group/:groupId/send', authenticate, sendLimiter, async (req: AuthRequest, res, next) => {
   try {
-    const { content, type, media_url, thumbnail_url, reply_to_id, poll_options, e2ee_envelope, e2ee_envelopes } =
-      req.body || {};
+    const {
+      content,
+      type,
+      media_url,
+      thumbnail_url,
+      reply_to_id,
+      poll_options,
+      event_id,
+      scheduled_at,
+      forward_from_message_id,
+      e2ee_envelope,
+      e2ee_envelopes,
+    } = req.body || {};
     const result = await messageGroupService.sendGroupMessage(
       param(req, 'groupId'),
       req.user!.id,
       content ?? '',
-      { type, media_url, thumbnail_url, reply_to_id, poll_options }
+      {
+        type,
+        media_url,
+        thumbnail_url,
+        reply_to_id,
+        poll_options,
+        event_id,
+        scheduled_at,
+        forward_from_message_id,
+      }
     );
 
     if (e2ee_envelope && typeof e2ee_envelope === 'object') {

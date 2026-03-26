@@ -201,4 +201,45 @@ describe('Messages routes', () => {
     expect(convo?.messages?.[0]?.content || '').toContain('Suivi commande');
     expect(convo?.messages?.[0]?.content || '').toContain('[BM:');
   });
+
+  it('rejects unauthenticated scheduled messages list', async () => {
+    const res = await request(app).get('/api/messages/scheduled');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns scheduled DM list with peer display name', async () => {
+    const empty = await request(app)
+      .get('/api/messages/scheduled')
+      .set('Authorization', `Bearer ${buyerToken}`);
+    expect(empty.status).toBe(200);
+    expect(empty.body.success).toBe(true);
+    expect(Array.isArray(empty.body.data.items)).toBe(true);
+    expect(empty.body.data.items).toHaveLength(0);
+
+    const when = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    const sendRes = await request(app)
+      .post('/api/messages/send')
+      .set('Authorization', `Bearer ${buyerToken}`)
+      .send({
+        recipientId: sellerId,
+        type: 'text',
+        content: 'Rappel demain',
+        scheduled_at: when,
+      });
+    expect(sendRes.status).toBe(200);
+    expect(sendRes.body.success).toBe(true);
+    expect(sendRes.body.data.status).toBe('scheduled');
+
+    const list = await request(app)
+      .get('/api/messages/scheduled')
+      .set('Authorization', `Bearer ${buyerToken}`);
+    expect(list.status).toBe(200);
+    expect(list.body.data.items).toHaveLength(1);
+    const row = list.body.data.items[0];
+    expect(row.channel).toBe('dm');
+    expect(row.other_user_id).toBe(sellerId);
+    expect(row.peer_display_name).toBe('Seller Messages');
+    expect(row.preview).toContain('Rappel');
+    expect(row.scheduled_at).toBeTruthy();
+  });
 });

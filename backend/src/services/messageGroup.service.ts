@@ -10,29 +10,18 @@ import { logger } from '../utils/logger.js';
 import { transcribeBufferWithWhisper } from '../utils/whisperTranscription.js';
 import { emitToGroupRoom } from './message.service.js';
 import notificationService from './notification.service.js';
+import {
+  GROUP_POLL_MAX_OPTIONS,
+  GROUP_POLL_MAX_QUESTION_LEN,
+  GROUP_POLL_MIN_OPTIONS,
+  normalizePollOptions,
+} from '../utils/pollMessage.js';
 
 const DEFAULT_PAGE_SIZE = 30;
 /** CDC messagerie : aligné sur la cible type WhatsApp (1024). */
 const MAX_GROUP_MEMBERS = 1024;
 const MAX_GROUP_DISPLAY_TAG_LENGTH = 40;
 
-const GROUP_POLL_MIN_OPTIONS = 2;
-const GROUP_POLL_MAX_OPTIONS = 10;
-const GROUP_POLL_MAX_OPTION_LEN = 200;
-const GROUP_POLL_MAX_QUESTION_LEN = 500;
-
-function normalizePollOptions(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
-  const out: string[] = [];
-  for (const item of raw) {
-    const s = String(item ?? '')
-      .trim()
-      .slice(0, GROUP_POLL_MAX_OPTION_LEN);
-    if (s) out.push(s);
-    if (out.length >= GROUP_POLL_MAX_OPTIONS) break;
-  }
-  return out;
-}
 const MAX_GROUP_NAME_LENGTH = 100;
 const MAX_GROUP_DESCRIPTION_LENGTH = 500;
 
@@ -40,6 +29,34 @@ function makeError(message: string, statusCode: number): Error & { statusCode?: 
   const err = new Error(message) as Error & { statusCode?: number };
   err.statusCode = statusCode;
   return err;
+}
+
+/** Préférences CDC modération (User.messaging_cdc_moderation). */
+async function getMessagingCdcModerationPrefs(userId: string): Promise<{
+  silentLeave: boolean;
+  forwardLimit: boolean;
+}> {
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { messaging_cdc_moderation: true },
+  });
+  const raw = u?.messaging_cdc_moderation;
+  const obj = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  return {
+    silentLeave: obj.silentLeave === true,
+    forwardLimit: obj.forwardLimit !== false,
+  };
+}
+
+function maskSensitiveEventTitle(input: string): string {
+  let out = String(input || '').trim();
+  out = out.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[contact masque]');
+  out = out.replace(/(?<!\w)(\+?\d[\d\s().-]{6,}\d)(?!\w)/g, (match) => {
+    const digits = match.replace(/\D/g, '');
+    if (digits.length >= 8 && digits.length <= 15) return '[contact masque]';
+    return match;
+  });
+  return out.slice(0, 500);
 }
 
 const groupMessageReplySelect = {
@@ -82,6 +99,20 @@ type GroupMsgWithSender = {
     is_deleted: boolean;
     sender: { id: string; username: string; full_name: string | null; profile_image: string | null };
   } | null;
+  event_id?: string | null;
+  event_ref?: {
+    id: string;
+    title: string;
+    image: string | null;
+    start_date: Date;
+    end_date: Date;
+    location: string | null;
+    status: string;
+    event_type: string;
+    virtual_url: string | null;
+  } | null;
+  status?: string;
+  scheduled_at?: Date | null;
 };
 
 async function buildGroupMemberTagMap(groupId: string): Promise<Record<string, string | null>> {
@@ -134,6 +165,21 @@ function formatGroupMessagePayload(
       m.poll_votes != null && typeof m.poll_votes === 'object' && !Array.isArray(m.poll_votes)
         ? (m.poll_votes as Record<string, number>)
         : {},
+    event_id: m.event_id ?? null,
+    event_ref:
+      m.event_ref && typeof m.event_ref === 'object' && (m.event_ref as { id?: string }).id
+        ? {
+            id: (m.event_ref as { id: string }).id,
+            title: (m.event_ref as { title: string }).title,
+            image: (m.event_ref as { image: string | null }).image ?? null,
+            start_date: (m.event_ref as { start_date: Date }).start_date,
+            end_date: (m.event_ref as { end_date: Date }).end_date,
+            location: (m.event_ref as { location: string | null }).location ?? null,
+            status: (m.event_ref as { status: string }).status,
+            event_type: (m.event_ref as { event_type: string }).event_type,
+            virtual_url: (m.event_ref as { virtual_url: string | null }).virtual_url ?? null,
+          }
+        : null,
     reply_to: m.reply_to
       ? {
           id: m.reply_to.id,
@@ -145,7 +191,117 @@ function formatGroupMessagePayload(
           sender: m.reply_to.sender,
         }
       : null,
+    status: (m as { status?: string }).status ?? 'sent',
+    scheduled_at: m.scheduled_at ? m.scheduled_at.toISOString() : null,
+    forwarded_from_message_id:
+      (m as { forwarded_from_message_id?: string | null }).forwarded_from_message_id ?? null,
   };
+}
+
+/** Après enregistrement d’un message « envoyé » : fil du groupe, socket, notifications. */
+async function applyGroupMessageDeliverySideEffects(
+  groupId: string,
+  senderId: string,
+  message: GroupMsgWithSender & { id: string },
+  preview: string,
+  normalizedType: string,
+  rawTextForMentions: string
+) {
+  await prisma.conversationGroup.update({
+    where: { id: groupId },
+    data: {
+      last_message_at: message.created_at,
+      last_message_text: preview,
+      updated_at: message.created_at,
+    },
+  });
+
+  await prisma.conversationGroupMember
+    .update({
+      where: { group_id_user_id: { group_id: groupId, user_id: senderId } },
+      data: { last_read_at: message.created_at },
+    })
+    .catch(() => {});
+
+  const tagMapForPayload = await buildGroupMemberTagMap(groupId);
+  const payload = formatGroupMessagePayload(message, tagMapForPayload);
+  emitToGroupRoom(groupId, 'message:new', { groupId, message: payload });
+
+  const otherMembers = await prisma.conversationGroupMember.findMany({
+    where: { group_id: groupId, user_id: { not: senderId } },
+    select: {
+      user_id: true,
+      notifications_muted: true,
+      user: { select: { username: true } },
+    },
+  });
+
+  const mentionUserIds = new Set<string>();
+  if (normalizedType === 'text' && rawTextForMentions.trim()) {
+    const textBody = rawTextForMentions.trim().slice(0, 10000);
+    const mentionRegex = /@(\w+)/g;
+    let mm;
+    const mentionedLower = new Set<string>();
+    while ((mm = mentionRegex.exec(textBody)) !== null) {
+      mentionedLower.add(mm[1].toLowerCase());
+    }
+    if (mentionedLower.size > 0) {
+      const grp = await prisma.conversationGroup.findUnique({
+        where: { id: groupId },
+        select: { name: true },
+      });
+      const titleBase = grp?.name?.trim() ? grp.name.trim() : 'Groupe';
+      const senderLabel =
+        message.sender.full_name?.trim() || message.sender.username?.trim() || "Quelqu'un";
+      for (const row of otherMembers) {
+        const un = row.user?.username?.trim();
+        if (!un || row.notifications_muted) continue;
+        if (!mentionedLower.has(un.toLowerCase())) continue;
+        mentionUserIds.add(row.user_id);
+        try {
+          await notificationService.create(row.user_id, {
+            type: 'group_mention',
+            title: `Mention · ${titleBase}`,
+            message: `${senderLabel} vous a mentionné : ${textBody.slice(0, 120)}`,
+            reference_type: 'conversation_group',
+            reference_id: groupId,
+            data: { groupId, messageId: message.id, senderId },
+          });
+        } catch (err) {
+          logger.warn('Group mention notification failed', { groupId, recipientId: row.user_id, err });
+        }
+      }
+    }
+  }
+
+  if (otherMembers.length > 0) {
+    const grp = await prisma.conversationGroup.findUnique({
+      where: { id: groupId },
+      select: { name: true },
+    });
+    const senderLabel =
+      message.sender.full_name?.trim() || message.sender.username?.trim() || "Quelqu'un";
+    const titleBase = grp?.name?.trim() ? grp.name.trim() : 'Groupe';
+    const bodyLine = `${senderLabel}: ${preview}`.slice(0, 200);
+    for (const r of otherMembers) {
+      if (r.notifications_muted) continue;
+      if (mentionUserIds.has(r.user_id)) continue;
+      try {
+        await notificationService.create(r.user_id, {
+          type: 'group_message_new',
+          title: titleBase,
+          message: bodyLine,
+          reference_type: 'conversation_group',
+          reference_id: groupId,
+          data: { groupId, messageId: message.id, senderId },
+        });
+      } catch (err) {
+        logger.warn('Group message notification failed', { groupId, recipientId: r.user_id, err });
+      }
+    }
+  }
+
+  return payload;
 }
 
 export async function createGroup(creatorId: string, name: string, memberIds: string[]) {
@@ -468,13 +624,13 @@ export async function pinGroupMessage(groupId: string, messageId: string, userId
   if (!member) throw makeError('Groupe non trouvé ou accès refusé', 404);
 
   const msg = await prisma.groupMessage.findFirst({
-    where: { id: messageId, group_id: groupId, is_deleted: false },
+    where: { id: messageId, group_id: groupId, is_deleted: false, status: { not: 'scheduled' } },
     include: {
       sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
       reply_to: { select: groupMessageReplySelect },
     },
   });
-  if (!msg) throw makeError('Message introuvable', 404);
+  if (!msg) throw makeError('Message introuvable ou encore programmé', 404);
 
   await prisma.conversationGroup.update({
     where: { id: groupId },
@@ -523,7 +679,8 @@ export async function deleteGroupMessage(groupId: string, messageId: string, use
   const isAdmin = member.role === 'admin';
   if (!isSender && !isAdmin) throw makeError('Vous ne pouvez supprimer que vos propres messages', 403);
 
-  if (isSender && !isAdmin) {
+  const isScheduledPending = String((msg as { status?: string }).status || 'sent') === 'scheduled';
+  if (isSender && !isAdmin && !isScheduledPending) {
     const age = Date.now() - msg.created_at.getTime();
     if (age > DELETE_FOR_EVERYONE_WINDOW_MS) {
       throw makeError(
@@ -554,6 +711,7 @@ export async function deleteGroupMessage(groupId: string, messageId: string, use
         transcription_text: null,
         poll_options: Prisma.JsonNull,
         poll_votes: Prisma.JsonNull,
+        event_id: null,
       },
     });
   });
@@ -569,6 +727,8 @@ export async function deleteGroupMessage(groupId: string, messageId: string, use
     transcription_text: null,
     poll_options: null,
     poll_votes: null,
+    event_id: null,
+    event_ref: null,
   });
 
   if (wasPinned) {
@@ -592,6 +752,19 @@ export async function editGroupMessage(groupId: string, messageId: string, userI
     include: {
       sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
       reply_to: { select: groupMessageReplySelect },
+      event_ref: {
+        select: {
+          id: true,
+          title: true,
+          image: true,
+          start_date: true,
+          end_date: true,
+          location: true,
+          status: true,
+          event_type: true,
+          virtual_url: true,
+        },
+      },
     },
   });
   if (!msg) throw makeError('Message introuvable', 404);
@@ -614,6 +787,19 @@ export async function editGroupMessage(groupId: string, messageId: string, userI
     include: {
       sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
       reply_to: { select: groupMessageReplySelect },
+      event_ref: {
+        select: {
+          id: true,
+          title: true,
+          image: true,
+          start_date: true,
+          end_date: true,
+          location: true,
+          status: true,
+          event_type: true,
+          virtual_url: true,
+        },
+      },
     },
   });
 
@@ -649,10 +835,26 @@ export async function getGroupMessages(groupId: string, userId: string, cursor: 
 
   const take = Math.min(50, Math.max(1, limit));
   const messages = await prisma.groupMessage.findMany({
-    where: { group_id: groupId },
+    where: {
+      group_id: groupId,
+      OR: [{ status: { not: 'scheduled' } }, { sender_id: userId }],
+    },
     include: {
       sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
       reply_to: { select: groupMessageReplySelect },
+      event_ref: {
+        select: {
+          id: true,
+          title: true,
+          image: true,
+          start_date: true,
+          end_date: true,
+          location: true,
+          status: true,
+          event_type: true,
+          virtual_url: true,
+        },
+      },
     },
     orderBy: { created_at: 'desc' },
     take: take + 1,
@@ -681,12 +883,59 @@ export async function sendGroupMessage(
     thumbnail_url?: string;
     reply_to_id?: string | null;
     poll_options?: unknown;
+    event_id?: string;
+    scheduled_at?: string;
+    /** Transfert depuis un message groupe (limite une autre cible si forwardLimit actif). */
+    forward_from_message_id?: string | null;
   } = {}
 ) {
   const member = await prisma.conversationGroupMember.findFirst({
     where: { group_id: groupId, user_id: senderId },
   });
   if (!member) throw makeError('Groupe non trouvé ou accès refusé', 404);
+
+  const forwardRaw =
+    options.forward_from_message_id != null && String(options.forward_from_message_id).trim()
+      ? String(options.forward_from_message_id).trim()
+      : '';
+  let forwardFromId: string | null = null;
+  if (forwardRaw) {
+    const source = await prisma.groupMessage.findFirst({
+      where: { id: forwardRaw, is_deleted: false },
+      select: { id: true, group_id: true },
+    });
+    if (!source) throw makeError('Message source du transfert introuvable', 400);
+    const srcMembership = await prisma.conversationGroupMember.findFirst({
+      where: { group_id: source.group_id, user_id: senderId },
+    });
+    if (!srcMembership) throw makeError('Transfert non autorisé', 403);
+    const prefs = await getMessagingCdcModerationPrefs(senderId);
+    if (prefs.forwardLimit) {
+      const dup = await prisma.groupMessage.findFirst({
+        where: {
+          sender_id: senderId,
+          forwarded_from_message_id: forwardRaw,
+          is_deleted: false,
+          group_id: { not: groupId },
+        },
+        select: { id: true },
+      });
+      if (dup) {
+        throw makeError('Transfert limité : ce message a déjà été envoyé vers un autre groupe.', 400);
+      }
+    }
+    forwardFromId = forwardRaw;
+  }
+
+  let scheduledAt: Date | null = null;
+  if (options.scheduled_at != null && String(options.scheduled_at).trim()) {
+    scheduledAt = new Date(options.scheduled_at);
+    if (Number.isNaN(scheduledAt.getTime())) throw makeError('Date de programmation invalide', 400);
+    if (scheduledAt.getTime() <= Date.now()) {
+      throw makeError('Choisissez une date et une heure dans le futur', 400);
+    }
+  }
+  const isScheduled = scheduledAt != null;
 
   const normalizedType = String(options.type || 'text').trim().toLowerCase();
 
@@ -710,6 +959,7 @@ export async function sendGroupMessage(
     reply_to_id: string | null;
     poll_options?: Prisma.InputJsonValue;
     poll_votes?: Prisma.InputJsonValue;
+    event_id?: string;
   };
   let preview: string;
 
@@ -737,6 +987,33 @@ export async function sendGroupMessage(
       reply_to_id: replyToId,
       poll_options: pollOpts,
       poll_votes: {},
+    };
+  } else if (normalizedType === 'event') {
+    if (options.media_url || options.thumbnail_url) {
+      throw makeError('Un événement partagé ne peut pas inclure de média', 400);
+    }
+    const eid = String(options.event_id || '').trim();
+    if (!eid) throw makeError('event_id requis pour partager un événement', 400);
+    const ev = await prisma.event.findFirst({
+      where: { id: eid },
+      select: { id: true, title: true, status: true, organizer_id: true },
+    });
+    if (!ev) throw makeError('Événement introuvable', 404);
+    if (ev.status !== 'published' && ev.organizer_id !== senderId) {
+      throw makeError('Cet événement ne peut pas être partagé', 403);
+    }
+    const shareTitle = maskSensitiveEventTitle(ev.title || '');
+    if (!shareTitle) throw makeError('Événement sans titre', 400);
+    preview = `📅 ${shareTitle.slice(0, 120)}`;
+    createData = {
+      group_id: groupId,
+      sender_id: senderId,
+      content: shareTitle,
+      type: 'event',
+      media_url: null,
+      thumbnail_url: null,
+      reply_to_id: replyToId,
+      event_id: ev.id,
     };
   } else {
     const text = (content || '').trim().slice(0, 10000);
@@ -766,110 +1043,190 @@ export async function sendGroupMessage(
   }
 
   const message = await prisma.groupMessage.create({
-    data: createData,
+    data: {
+      ...createData,
+      status: isScheduled ? 'scheduled' : 'sent',
+      scheduled_at: isScheduled ? scheduledAt : null,
+      ...(forwardFromId ? { forwarded_from_message_id: forwardFromId } : {}),
+    },
     include: {
       sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
       reply_to: { select: groupMessageReplySelect },
+      event_ref: {
+        select: {
+          id: true,
+          title: true,
+          image: true,
+          start_date: true,
+          end_date: true,
+          location: true,
+          status: true,
+          event_type: true,
+          virtual_url: true,
+        },
+      },
     },
   });
 
-  await prisma.conversationGroup.update({
-    where: { id: groupId },
-    data: {
-      last_message_at: message.created_at,
-      last_message_text: preview,
-      updated_at: message.created_at,
-    },
-  });
-
-  await prisma.conversationGroupMember
-    .update({
-      where: { group_id_user_id: { group_id: groupId, user_id: senderId } },
-      data: { last_read_at: message.created_at },
-    })
-    .catch(() => {});
-
-  const tagMapForPayload = await buildGroupMemberTagMap(groupId);
-  const payload = formatGroupMessagePayload(message as GroupMsgWithSender, tagMapForPayload);
-  emitToGroupRoom(groupId, 'message:new', { groupId, message: payload });
-
-  const otherMembers = await prisma.conversationGroupMember.findMany({
-    where: { group_id: groupId, user_id: { not: senderId } },
-    select: {
-      user_id: true,
-      notifications_muted: true,
-      user: { select: { username: true } },
-    },
-  });
-
-  const mentionUserIds = new Set<string>();
-  if (normalizedType === 'text') {
-    const textBody = (content || '').trim().slice(0, 10000);
-    if (textBody) {
-      const mentionRegex = /@(\w+)/g;
-      let mm;
-      const mentionedLower = new Set<string>();
-      while ((mm = mentionRegex.exec(textBody)) !== null) {
-        mentionedLower.add(mm[1].toLowerCase());
-      }
-      if (mentionedLower.size > 0) {
-        const grp = await prisma.conversationGroup.findUnique({
-          where: { id: groupId },
-          select: { name: true },
-        });
-        const titleBase = grp?.name?.trim() ? grp.name.trim() : 'Groupe';
-        const senderLabel =
-          message.sender.full_name?.trim() || message.sender.username?.trim() || 'Quelqu’un';
-        for (const row of otherMembers) {
-          const un = row.user?.username?.trim();
-          if (!un || row.notifications_muted) continue;
-          if (!mentionedLower.has(un.toLowerCase())) continue;
-          mentionUserIds.add(row.user_id);
-          try {
-            await notificationService.create(row.user_id, {
-              type: 'group_mention',
-              title: `Mention · ${titleBase}`,
-              message: `${senderLabel} vous a mentionné : ${textBody.slice(0, 120)}`,
-              reference_type: 'conversation_group',
-              reference_id: groupId,
-              data: { groupId, messageId: message.id, senderId },
-            });
-          } catch (err) {
-            logger.warn('Group mention notification failed', { groupId, recipientId: row.user_id, err });
-          }
-        }
-      }
-    }
-  }
-
-  if (otherMembers.length > 0) {
-    const grp = await prisma.conversationGroup.findUnique({
-      where: { id: groupId },
-      select: { name: true },
+  if (isScheduled) {
+    logger.info('Message groupe programmé créé', {
+      messageId: message.id,
+      groupId,
+      scheduled_at: scheduledAt,
     });
-    const senderLabel =
-      message.sender.full_name?.trim() || message.sender.username?.trim() || 'Quelqu’un';
-    const titleBase = grp?.name?.trim() ? grp.name.trim() : 'Groupe';
-    const bodyLine = `${senderLabel}: ${preview}`.slice(0, 200);
-    for (const r of otherMembers) {
-      if (r.notifications_muted) continue;
-      if (mentionUserIds.has(r.user_id)) continue;
-      try {
-        await notificationService.create(r.user_id, {
-          type: 'group_message_new',
-          title: titleBase,
-          message: bodyLine,
-          reference_type: 'conversation_group',
-          reference_id: groupId,
-          data: { groupId, messageId: message.id, senderId },
-        });
-      } catch (err) {
-        logger.warn('Group message notification failed', { groupId, recipientId: r.user_id, err });
-      }
-    }
+    const tagMap = await buildGroupMemberTagMap(groupId);
+    const gm = {
+      ...(message as unknown as GroupMsgWithSender),
+      status: 'scheduled',
+      scheduled_at: scheduledAt,
+    };
+    return formatGroupMessagePayload(gm, tagMap);
   }
 
-  return payload;
+  const rawTextForMentions = normalizedType === 'text' ? (content || '').trim().slice(0, 10000) : '';
+  return applyGroupMessageDeliverySideEffects(
+    groupId,
+    senderId,
+    message as GroupMsgWithSender & { id: string },
+    preview,
+    normalizedType,
+    rawTextForMentions
+  );
+}
+
+/** Livre un message groupe programmé (job cron). */
+export async function deliverScheduledGroupMessage(messageId: string): Promise<boolean> {
+  const row = await prisma.groupMessage.findFirst({
+    where: {
+      id: messageId,
+      status: 'scheduled',
+      scheduled_at: { not: null, lte: new Date() },
+    },
+    include: {
+      sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
+      reply_to: { select: groupMessageReplySelect },
+      event_ref: {
+        select: {
+          id: true,
+          title: true,
+          image: true,
+          start_date: true,
+          end_date: true,
+          location: true,
+          status: true,
+          event_type: true,
+          virtual_url: true,
+        },
+      },
+    },
+  });
+  if (!row) return false;
+
+  const groupId = row.group_id;
+  const senderId = row.sender_id;
+  const t = String(row.type || 'text').toLowerCase();
+  const preview =
+    t === 'poll'
+      ? `📊 ${(row.content || '').slice(0, 120)}`
+      : t === 'event'
+        ? `📅 ${(row.content || '').slice(0, 120)}`
+        : t === 'image'
+          ? 'Image'
+          : t === 'video'
+            ? 'Vidéo'
+            : t === 'audio' || t === 'voice'
+              ? 'Message vocal'
+              : t === 'file'
+                ? (row.content || '').slice(0, 80) || 'Document'
+                : (row.content || '').slice(0, 200);
+
+  await prisma.groupMessage.update({
+    where: { id: messageId },
+    data: { status: 'sent' },
+  });
+
+  emitToGroupRoom(groupId, 'message:updated', {
+    groupId,
+    messageId,
+    status: 'sent',
+    scheduled_at: null,
+  });
+
+  const full = await prisma.groupMessage.findFirst({
+    where: { id: messageId },
+    include: {
+      sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
+      reply_to: { select: groupMessageReplySelect },
+      event_ref: {
+        select: {
+          id: true,
+          title: true,
+          image: true,
+          start_date: true,
+          end_date: true,
+          location: true,
+          status: true,
+          event_type: true,
+          virtual_url: true,
+        },
+      },
+    },
+  });
+  if (!full) return false;
+
+  const rawTextForMentions = t === 'text' ? (full.content || '').trim().slice(0, 10000) : '';
+  await applyGroupMessageDeliverySideEffects(
+    groupId,
+    senderId,
+    full as GroupMsgWithSender & { id: string },
+    preview,
+    t,
+    rawTextForMentions
+  );
+  return true;
+}
+
+function scheduledGroupPreviewLine(type: string, content: string): string {
+  const t = String(type || 'text').toLowerCase();
+  const c = (content || '').trim();
+  if (t === 'poll') return `📊 ${c.slice(0, 100)}`.trim() || 'Sondage';
+  if (t === 'event') return `📅 ${c.slice(0, 100)}`.trim() || 'Événement';
+  if (t === 'image') return 'Image';
+  if (t === 'video') return 'Vidéo';
+  if (t === 'audio' || t === 'voice') return 'Message vocal';
+  if (t === 'file') return c.slice(0, 80) || 'Document';
+  return c.slice(0, 140) || 'Message';
+}
+
+/** Messages de groupe programmés par l’utilisateur (vue centralisée CDC). */
+export async function listScheduledGroupMessagesForUser(userId: string) {
+  const rows = await prisma.groupMessage.findMany({
+    where: {
+      sender_id: userId,
+      status: 'scheduled',
+      scheduled_at: { not: null },
+      is_deleted: false,
+    },
+    select: {
+      id: true,
+      group_id: true,
+      content: true,
+      type: true,
+      scheduled_at: true,
+      group: { select: { id: true, name: true } },
+    },
+    orderBy: { scheduled_at: 'asc' },
+    take: 100,
+  });
+  return rows.map((m) => ({
+    channel: 'group' as const,
+    message_id: m.id,
+    group_id: m.group_id,
+    group_name: (m.group?.name || 'Groupe').slice(0, 100),
+    scheduled_at: m.scheduled_at!.toISOString(),
+    type: m.type,
+    preview: scheduledGroupPreviewLine(m.type, m.content),
+  }));
 }
 
 export async function setGroupMessageReaction(groupId: string, messageId: string, userId: string, emoji: string | null) {
@@ -1079,6 +1436,13 @@ export async function removeGroupMember(groupId: string, requesterId: string, ta
   });
 
   const remaining = await prisma.conversationGroupMember.count({ where: { group_id: groupId } });
+  const isSelfLeave = targetUserId === requesterId;
+  const silentLeave = isSelfLeave ? (await getMessagingCdcModerationPrefs(targetUserId)).silentLeave : false;
+  const shouldBroadcastMemberChange = !isSelfLeave || !silentLeave;
+  if (shouldBroadcastMemberChange && remaining > 0) {
+    emitToGroupRoom(groupId, 'group:members-updated', { groupId });
+  }
+
   if (remaining === 0) {
     await prisma.conversationGroup.delete({ where: { id: groupId } }).catch(() => {});
   }
@@ -1148,4 +1512,102 @@ export async function setGroupMemberRole(
   const group = await getGroup(groupId, requesterId);
   emitToGroupRoom(groupId, 'group:members-updated', { groupId });
   return group;
+}
+
+const GROUP_EXPORT_BATCH = 250;
+
+/** Export JSON du fil groupe (membre uniquement) — messages non supprimés, ordre chronologique. */
+export async function exportGroupMessages(groupId: string, userId: string) {
+  const member = await prisma.conversationGroupMember.findFirst({
+    where: { group_id: groupId, user_id: userId },
+  });
+  if (!member) throw makeError('Groupe non trouvé ou accès refusé', 404);
+
+  const group = await prisma.conversationGroup.findUnique({
+    where: { id: groupId },
+    select: { id: true, name: true, description: true, created_at: true },
+  });
+  if (!group) throw makeError('Groupe non trouvé', 404);
+
+  const messagesOut: Array<Record<string, unknown>> = [];
+  let skip = 0;
+  for (;;) {
+    const batch = await prisma.groupMessage.findMany({
+      where: { group_id: groupId, is_deleted: false },
+      include: {
+        sender: { select: { id: true, username: true, full_name: true } },
+      },
+      orderBy: { created_at: 'asc' },
+      skip,
+      take: GROUP_EXPORT_BATCH,
+    });
+    if (batch.length === 0) break;
+    for (const m of batch) {
+      messagesOut.push({
+        id: m.id,
+        sender_id: m.sender_id,
+        sender: m.sender,
+        content: m.content,
+        type: m.type,
+        media_url: m.media_url,
+        thumbnail_url: m.thumbnail_url,
+        created_at: m.created_at.toISOString(),
+        updated_at: m.updated_at.toISOString(),
+        is_edited: m.is_edited,
+        reply_to_id: m.reply_to_id,
+        event_id: m.event_id,
+        poll_options: m.poll_options,
+        poll_votes: m.poll_votes,
+        transcription_text: m.transcription_text,
+        reactions: m.reactions,
+        read_by: m.read_by,
+      });
+    }
+    skip += batch.length;
+    if (batch.length < GROUP_EXPORT_BATCH) break;
+  }
+
+  return {
+    group: {
+      id: group.id,
+      name: group.name,
+      description: group.description,
+      created_at: group.created_at.toISOString(),
+    },
+    exportedAt: new Date().toISOString(),
+    messageCount: messagesOut.length,
+    messages: messagesOut,
+  };
+}
+
+/** Nombre max de groupes dans un export agrégé (évite timeouts HTTP sur comptes très chargés). */
+const MAX_GROUPS_BULK_EXPORT = 40;
+
+/** Export JSON agrégé : tous les groupes dont l’utilisateur est membre (ordre adhésion la plus récente d’abord, puis tronqué au plafond). */
+export async function exportAllUserGroupConversations(userId: string) {
+  const members = await prisma.conversationGroupMember.findMany({
+    where: { user_id: userId },
+    select: { group_id: true },
+    orderBy: { joined_at: 'desc' },
+  });
+  const seen = new Set<string>();
+  const orderedGroupIds: string[] = [];
+  for (const m of members) {
+    if (seen.has(m.group_id)) continue;
+    seen.add(m.group_id);
+    orderedGroupIds.push(m.group_id);
+  }
+  const total = orderedGroupIds.length;
+  const slice = orderedGroupIds.slice(0, MAX_GROUPS_BULK_EXPORT);
+  const groups: Awaited<ReturnType<typeof exportGroupMessages>>[] = [];
+  for (const gid of slice) {
+    groups.push(await exportGroupMessages(gid, userId));
+  }
+  return {
+    bundleExportedAt: new Date().toISOString(),
+    groupsTotal: total,
+    groupsExported: groups.length,
+    truncated: total > groups.length,
+    groups,
+  };
 }

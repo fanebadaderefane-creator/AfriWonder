@@ -50,6 +50,31 @@ describe('Communities API', () => {
       expect(res.body.data).toHaveProperty('communities');
       expect(res.body.data).toHaveProperty('pagination');
     });
+
+    it('inclut is_member pour un utilisateur authentifie', async () => {
+      const other = await prisma.user.create({
+        data: {
+          email: `mem${Date.now()}@example.com`,
+          password_hash: await bcrypt.hash('Test123!@#', 10),
+          username: `mem${Date.now()}`,
+          full_name: 'Member',
+        },
+      });
+      const otherLogin = await request(app)
+        .post('/api/auth/login')
+        .send({ email: other.email, password: 'Test123!@#' });
+      const otherToken = otherLogin.body.data?.accessToken;
+      await request(app)
+        .post(`/api/communities/${community.id}/join`)
+        .set('Authorization', `Bearer ${otherToken}`);
+
+      const res = await request(app)
+        .get('/api/communities')
+        .set('Authorization', `Bearer ${otherToken}`);
+      expect(res.status).toBe(200);
+      const row = res.body.data.communities.find((c: { id: string }) => c.id === community.id);
+      expect(row?.is_member).toBe(true);
+    });
   });
 
   describe('GET /api/communities/:id', () => {
@@ -59,6 +84,30 @@ describe('Communities API', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.id).toBe(community.id);
       expect(res.body.data.name).toBe('Test Community');
+    });
+
+    it('inclut is_member pour un membre authentifie', async () => {
+      const other = await prisma.user.create({
+        data: {
+          email: `det${Date.now()}@example.com`,
+          password_hash: await bcrypt.hash('Test123!@#', 10),
+          username: `det${Date.now()}`,
+          full_name: 'Detail',
+        },
+      });
+      const otherLogin = await request(app)
+        .post('/api/auth/login')
+        .send({ email: other.email, password: 'Test123!@#' });
+      const otherToken = otherLogin.body.data?.accessToken;
+      await request(app)
+        .post(`/api/communities/${community.id}/join`)
+        .set('Authorization', `Bearer ${otherToken}`);
+
+      const res = await request(app)
+        .get(`/api/communities/${community.id}`)
+        .set('Authorization', `Bearer ${otherToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.is_member).toBe(true);
     });
   });
 

@@ -7,6 +7,7 @@ import { createJob } from '../services/transcoding.service.js';
 import * as subtitleService from '../services/subtitle.service.js';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
+import { forceWebCompatTranscodePublishedVideo } from '../services/videoCompatTranscode.service.js';
 
 const router = Router();
 
@@ -499,6 +500,42 @@ router.get('/:id/transcode/status', optionalAuth, async (req: AuthRequest, res, 
         hasHls: !!video?.hls_url,
         hls_url: video?.hls_url ?? null,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/videos/:id/repair-web-playback — ré-encode forcé MP4 web (Firefox / WebView) pour 1 vidéo défaillante
+router.post('/:id/repair-web-playback', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const videoId = param(req, 'id');
+    const video = await prisma.video.findUnique({
+      where: { id: videoId },
+      select: { id: true, creator_id: true },
+    });
+    if (!video) {
+      return res.status(404).json({ success: false, error: 'Vidéo introuvable' });
+    }
+    if (video.creator_id !== req.user!.id) {
+      return res.status(403).json({ success: false, error: 'Seul le créateur peut lancer la réparation' });
+    }
+
+    const result = await forceWebCompatTranscodePublishedVideo(videoId);
+    if (result.skipped) {
+      return res.status(400).json({ success: false, error: result.skipped });
+    }
+    if (!result.ok) {
+      return res.status(500).json({
+        success: false,
+        error: result.error || 'Transcodage échoué',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Vidéo ré-encodée pour la lecture navigateur (H.264 + yuv420p + AAC)',
+      data: { video_url: result.newUrl },
     });
   } catch (error) {
     next(error);

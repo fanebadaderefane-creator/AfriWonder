@@ -23,5 +23,6 @@ export const lazyPages = {
   Marketplace: lazy(() => import('@/pages/Marketplace')),
   Checkout: lazy(() => import('@/pages/Checkout')),
   DirectCall: lazy(() => import('@/pages/DirectCall')),
+  GroupCallLobby: lazy(() => import('@/pages/GroupCallLobby')),
   FeedPosts: lazy(() => import('@/pages/FeedPosts')),
 };

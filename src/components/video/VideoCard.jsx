@@ -21,7 +21,7 @@ import UserPlus from 'lucide-react/icons/user-plus';
 import UserCheck from 'lucide-react/icons/user-check';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn, getVideoPlaybackUrl, getAbsoluteImageUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, isMobileOrPWA } from "@/lib/utils";
+import { cn, getVideoPlaybackUrl, getVideoPlaybackUrlCandidates, getAbsoluteImageUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, isMobileOrPWA } from "@/lib/utils";
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { useTranslation } from "@/components/common/useTranslation";
@@ -140,7 +140,7 @@ function VideoCardContent({
   const userPausedRef = useRef(false);
   const navigate = useNavigate();
 
-  /** `VITE_DEBUG_VIDEO_UI=1 npm run dev` — contour rouge + logs pour vérifier le DOM / l’empilement */
+  /** `VITE_DEBUG_VIDEO_UI=1` en dev : contour rouge DOM + bandeau technique sur « Vidéo indisponible » (jamais pour le public). */
   const debugVideoUi = import.meta.env.DEV && import.meta.env.VITE_DEBUG_VIDEO_UI === '1';
 
   let hashtags = video.hashtags;
@@ -350,13 +350,26 @@ function VideoCardContent({
     }
   }, [markAutoPlaySuccess, prepareForAutoplay]);
 
-  // Connexion lente (2G/3G/saveData) â†’ prÃ©fÃ©rer basse qualitÃ© si dispo (objectif Afrique)
+  // Connexion lente â†’ prÃ©fÃ©rer basse qualitÃ© si dispo.
+  // But: Ã©viter les faux positifs (on ne veut pas afficher une alerte rÃ©seau si Ã§a va bien).
   const slowConnection = useMemo(() => {
     if (typeof navigator === 'undefined' || !navigator.connection) return false;
     const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
     if (!conn) return false;
-    const slow = ['slow-2g', '2g', '3g'].includes(conn.effectiveType) || !!conn.saveData;
-    return slow;
+
+    const effectiveType = conn.effectiveType ? String(conn.effectiveType).toLowerCase() : '';
+    const saveData = !!conn.saveData;
+    const downlink = typeof conn.downlink === 'number' ? conn.downlink : null;
+    const rtt = typeof conn.rtt === 'number' ? conn.rtt : null;
+
+    // On garde uniquement le cas "trÃ¨s lent" (slow-2g) pour ne pas sur-dÃ©clencher.
+    const isSlowByType = effectiveType === 'slow-2g';
+    const isSlowByMetrics =
+      (downlink != null && downlink > 0 && downlink < 1.5) || (rtt != null && rtt > 350);
+
+    // saveData seul = peut Ãªtre un choix utilisateur sans Ãªtre vraiment lent.
+    // On ne le traite comme "slow" que si le type ou les mÃ©triques indiquent une vraie lenteur.
+    return isSlowByType || (saveData && isSlowByMetrics);
   }, []);
   const isOffline = useMemo(() => {
     if (typeof navigator === 'undefined') return false;
@@ -377,15 +390,19 @@ function VideoCardContent({
   const playbackUrls = useMemo(() => {
     const out = [];
     const pushUrl = (raw) => {
-      const u = getVideoPlaybackUrl(raw) || (typeof raw === 'string' ? raw : '');
-      if (!u || typeof u !== 'string' || u.trim() === '') return;
-      if (!out.includes(u)) out.push(u);
+      if (raw == null || raw === '') return;
+      const candidates = getVideoPlaybackUrlCandidates(raw);
+      const list = candidates.length > 0 ? candidates : [typeof raw === 'string' ? raw : ''];
+      for (const u of list) {
+        if (!u || typeof u !== 'string' || u.trim() === '') continue;
+        if (!out.includes(u)) out.push(u);
+      }
     };
-    // Toujours préférer MP4/WebM **avant** HLS (tous navigateurs) : sur Chrome, WebView Android,
-    // Samsung Internet, etc., HLS via hls.js/MSE peut livrer le son sans peindre l’image (écran vide).
-    // Safari lit aussi très bien le progressif ; le HLS reste en repli si pas d’URL directe.
+    // Chrome / WebView : MP4 avant HLS (hls.js peut donner du son sans image sur certains GPU).
+    // Firefox : souvent strict sur le MP4 progressif (HEVC, H.264 High 10…) — si un master HLS existe,
+    // il est en général déjà en segments H.264 8 bits lisibles ; on le tente en premier.
     const hlsUrl = video.hls_playback_url || video.hls_url;
-    const preferHlsFirst = isOffline;
+    const preferHlsFirst = isOffline || (isFirefoxBrowser && !!hlsUrl);
     if (preferHlsFirst) pushUrl(hlsUrl);
 
     if (slowConnection || isDataSaver) {
@@ -393,9 +410,15 @@ function VideoCardContent({
       pushUrl(video.playback_url || video.video_url || video.hd_playback_url || video.hd_url);
       pushUrl(video.hd_playback_url || video.hd_url);
     } else {
+      // Firefox : MP4 « full » souvent High/10 bits refusés — tenter bas débit en premier si dispo.
+      if (isFirefoxBrowser) {
+        pushUrl(video.low_quality_playback_url || video.low_quality_url);
+      }
       pushUrl(video.playback_url || video.video_url || video.hd_playback_url || video.hd_url);
       pushUrl(video.hd_playback_url || video.hd_url);
-      pushUrl(video.low_quality_playback_url || video.low_quality_url);
+      if (!isFirefoxBrowser) {
+        pushUrl(video.low_quality_playback_url || video.low_quality_url);
+      }
     }
 
     // HLS en repli : quand on est hors-ligne, il est déjà en tête.
@@ -413,6 +436,7 @@ function VideoCardContent({
     slowConnection,
     isDataSaver,
     isOffline,
+    isFirefoxBrowser,
   ]);
 
   const [sourceIndex, setSourceIndex] = useState(0);
@@ -1424,6 +1448,18 @@ function VideoCardContent({
         setAutoplayMutedFallback(false);
       } catch (_) {}
     }
+
+    // Son OK mais pas d’image décodée (Firefox / WebView) : basculer tôt vers la source suivante si possible.
+    if (video.media_type !== 'image' && hasFallbackSource) {
+      window.setTimeout(() => {
+        if (!isActiveRef.current || userPausedRef.current || loadErrorRef.current) return;
+        const v = videoRef.current;
+        if (!v || v.paused) return;
+        if (hasFirstFrameRenderedRef.current) return;
+        if (hasDecodedVideoFrame(v)) return;
+        moveToNextSource();
+      }, 650);
+    }
   };
 
   const handlePause = () => {
@@ -1596,7 +1632,26 @@ function VideoCardContent({
 
     const recoverMs = slowConnection ? 9000 : 6500;
     const earlyFallbackMs = slowConnection ? 18000 : 12000;
-    const fatalMs = slowConnection ? 48000 : 32000;
+    const fatalMs = slowConnection ? 38000 : 24000;
+    /** Démarrage bloqué (readyState bas ou lecture jamais lancée) : bascule rapide vers HLS / autre MP4 si disponible. */
+    const quickStallMs = import.meta.env.DEV
+      ? slowConnection
+        ? 20000
+        : 14000
+      : slowConnection
+        ? 10000
+        : 5000;
+
+    const quickStallId = window.setTimeout(() => {
+      if (!isActiveRef.current || userPausedRef.current) return;
+      if (hasFirstFrameRenderedRef.current || loadErrorRef.current) return;
+      if (!hasFallbackSource) return;
+      const el = videoRef.current;
+      if (!el) return;
+      if (el.paused || el.readyState < 2) {
+        moveToNextSource();
+      }
+    }, quickStallMs);
 
     const earlyFallbackId = window.setTimeout(() => {
       if (!isActiveRef.current || userPausedRef.current) return;
@@ -1604,8 +1659,8 @@ function VideoCardContent({
       if (!hasFallbackSource) return;
       const el = videoRef.current;
       if (!el) return;
-      // Source primaire ne fournit encore aucune frame exploitable : tenter l’URL suivante (souvent plus fiable).
-      if (el.readyState < 2) {
+      // Pas de frame visible après délai : buffer insuffisant OU flux illisible (écran noir) → autre URL.
+      if (!hasFirstFrameRenderedRef.current) {
         moveToNextSource();
       }
     }, earlyFallbackMs);
@@ -1626,7 +1681,7 @@ function VideoCardContent({
       if (hasFirstFrameRenderedRef.current || loadErrorRef.current) return;
       const el = videoRef.current;
       if (!el) return;
-      if (!el.paused || hasFirstFrameRenderedRef.current) return;
+      // Ne pas exiger paused : certains navigateurs laissent la lecture « active » sans image (noir) → sans jamais déclencher ce garde-fou.
       if (hasFallbackSource) {
         moveToNextSource();
         return;
@@ -1635,6 +1690,7 @@ function VideoCardContent({
     }, fatalMs);
 
     return () => {
+      window.clearTimeout(quickStallId);
       window.clearTimeout(earlyFallbackId);
       window.clearTimeout(recoverId);
       window.clearTimeout(fatalId);
@@ -1651,6 +1707,117 @@ function VideoCardContent({
     slowConnection,
     hasFallbackSource,
     moveToNextSource,
+  ]);
+
+  /**
+   * Cas WebView / GPU : métadonnées OK (durée affichée) mais currentTime reste à ~0 alors que la lecture est annoncée → noir.
+   * Après quelques secondes : autre source ou écran d’erreur (miniature + Réessayer), plus d’écran noir infini.
+   */
+  useEffect(() => {
+    if (!isActive || loadError || video.media_type === 'image' || !videoUrl?.trim()) {
+      return undefined;
+    }
+    const startOffset = video.start_time != null && video.start_time > 0 ? Number(video.start_time) : 0;
+    let stuckTicks = 0;
+    const id = window.setInterval(() => {
+      if (!isActiveRef.current || loadErrorRef.current || userPausedRef.current) {
+        stuckTicks = 0;
+        return;
+      }
+      if (!hasFirstFrameRenderedRef.current) {
+        stuckTicks = 0;
+        return;
+      }
+      const el = videoRef.current;
+      if (!el || el.paused) {
+        stuckTicks = 0;
+        return;
+      }
+      const dur = Number(el.duration);
+      if (!Number.isFinite(dur) || dur < 5) {
+        stuckTicks = 0;
+        return;
+      }
+      if (el.readyState < 3) {
+        stuckTicks = 0;
+        return;
+      }
+      if (el.currentTime >= startOffset + 0.15) {
+        stuckTicks = 0;
+        return;
+      }
+      stuckTicks += 1;
+      const needTicks = slowConnection ? 20 : 12;
+      if (stuckTicks >= needTicks) {
+        stuckTicks = 0;
+        if (hasFallbackSource) moveToNextSource();
+        else setLoadError(true);
+      }
+    }, 450);
+    return () => window.clearInterval(id);
+  }, [
+    isActive,
+    loadError,
+    video.id,
+    video.start_time,
+    videoUrl,
+    video.media_type,
+    hasFallbackSource,
+    moveToNextSource,
+    slowConnection,
+  ]);
+
+  /**
+   * Données disponibles + lecture non en pause mais aucun frame décodé (videoWidth=0) : cas fréquent
+   * HEVC/codec refusé partiellement ou GPU — évite spinner + 0:00 jusqu’aux timeouts longs.
+   */
+  useEffect(() => {
+    if (!isActive || loadError || hasFirstFrameRendered || video.media_type === 'image' || !videoUrl?.trim()) {
+      return undefined;
+    }
+    let consecutive = 0;
+    const need = slowConnection ? 10 : 7;
+    const id = window.setInterval(() => {
+      if (!isActiveRef.current || loadErrorRef.current || userPausedRef.current) {
+        consecutive = 0;
+        return;
+      }
+      if (hasFirstFrameRenderedRef.current) {
+        consecutive = 0;
+        return;
+      }
+      const el = videoRef.current;
+      if (!el) {
+        consecutive = 0;
+        return;
+      }
+      if (el.paused || el.readyState < 3) {
+        consecutive = 0;
+        return;
+      }
+      if (hasDecodedVideoFrame(el)) {
+        consecutive = 0;
+        return;
+      }
+      consecutive += 1;
+      if (consecutive >= need) {
+        consecutive = 0;
+        if (hasFallbackSource) moveToNextSource();
+        else setLoadError(true);
+      }
+    }, 500);
+    return () => window.clearInterval(id);
+  }, [
+    isActive,
+    loadError,
+    hasFirstFrameRendered,
+    video.id,
+    video.media_type,
+    videoUrl,
+    slowConnection,
+    hasFallbackSource,
+    moveToNextSource,
+    hasDecodedVideoFrame,
   ]);
 
   /* ⛔ ZONE LECTURE VERROUILLÉE — FIN
@@ -1780,8 +1947,9 @@ function VideoCardContent({
               });
             }
             
-            // Ne jamais appeler load() ici — provoque écran noir (feed type TikTok)
-            if (isMobileOrPWA() && !errorRetriedRef.current) {
+            // Ne jamais appeler load() ici — provoque écran noir (feed type TikTok).
+            // Ne masquer l’échec que sur la 1re URL : si une 2e source (ex. proxy) échoue aussi, afficher l’erreur.
+            if (isMobileOrPWA() && !errorRetriedRef.current && sourceIndex === 0) {
               errorRetriedRef.current = true;
               return;
             }
@@ -1901,8 +2069,8 @@ function VideoCardContent({
           <div className="flex flex-col items-center gap-3 rounded-2xl bg-black/25 px-4 py-3 ring-1 ring-white/10">
             <Loader2 className="h-7 w-7 text-white/75 animate-spin sm:h-8 sm:w-8" aria-hidden />
             {slowConnection && !isOffline && (
-              <p className="text-[12px] leading-tight text-white/80 text-center max-w-[180px]">
-                Connexion lente — chargement pour une lecture fluide...
+              <p className="text-[12px] leading-tight text-white/80 text-center max-w-[220px]">
+                Chargement optimisÃ© pour une lecture fluide...
               </p>
             )}
           </div>
@@ -1918,7 +2086,19 @@ function VideoCardContent({
             className="max-w-full max-h-[50%] object-contain rounded-lg opacity-80"
           />
           <p className="text-white text-center mt-4 font-medium ios-text-render">Vidéo indisponible</p>
-          <p className="text-white/70 text-sm text-center mt-1 ios-text-render">Impossible de charger la vidéo. Connexion lente ? Appuyez sur Réessayer.</p>
+          <p className="text-white/70 text-sm text-center mt-1 ios-text-render max-w-[280px]">
+            Cette vidéo ne peut pas s’afficher correctement. Réessayez ou faites défiler vers la suivante.
+          </p>
+          {debugVideoUi && (
+            <p className="text-amber-200/90 text-xs text-center mt-2 max-w-[340px] ios-text-render leading-snug font-mono">
+              DEBUG (VITE_DEBUG_VIDEO_UI=1) : vérifiez CDN, proxy /api/proxy/media, API port 3000, base PostgreSQL.
+            </p>
+          )}
+          {currentUser?.id === video.creator_id && (
+            <p className="text-white/60 text-xs text-center mt-2 max-w-[300px] ios-text-render">
+              Vous êtes le créateur de cette vidéo : ouvrez sa fiche pour optimiser la lecture si besoin.
+            </p>
+          )}
           <button
             type="button"
             onClick={handleRetryLoad}
@@ -1926,6 +2106,15 @@ function VideoCardContent({
           >
             Réessayer
           </button>
+          {currentUser?.id === video.creator_id && (
+            <button
+              type="button"
+              onClick={() => navigate(`${createPageUrl('VideoView')}?id=${video.id}`)}
+              className="mt-2 px-5 py-2 text-sm text-white/90 underline-offset-2 hover:underline ios-text-render"
+            >
+              Ouvrir la fiche vidéo
+            </button>
+          )}
         </div>
       )}
 

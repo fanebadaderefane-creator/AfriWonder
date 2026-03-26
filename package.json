@@ -6,7 +6,9 @@
   "scripts": {
     "install:all": "node scripts/install-all.cjs",
     "verify:cdc": "node scripts/verify-cdc-functionality.cjs",
-    "dev": "vite --force",
+    "dev": "npx --yes concurrently -k -n api,web -c blue,magenta \"npm run dev --prefix backend\" \"vite --force\"",
+    "dev:web": "vite --force",
+    "dev:full": "npm run dev",
     "sitemap": "node scripts/generate-sitemap.cjs",
     "build": "node scripts/generate-sitemap.cjs && vite build",
     "lhci": "lhci autorun",
