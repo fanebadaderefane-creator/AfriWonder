@@ -216,6 +216,11 @@ function VideoCardContent({
   /** Pour timers de déblocage (évite closures périmées sur première frame / route). */
   const hasFirstFrameRenderedRef = useRef(false);
   const creatorInitial = useMemo(() => getCreatorInitial(video.creator_name), [video.creator_name]);
+  const creatorIdStr = String(video?.creator_id ?? '');
+  const currentUserIdStr = String(currentUser?.id ?? '');
+  const isOwnVideo = !!currentUserIdStr && !!creatorIdStr && currentUserIdStr === creatorIdStr;
+  const isCreatorFollowed = Boolean(following || isFollowing);
+  const canShowFollowCta = !!currentUser && !isOwnVideo;
   const posterRef = useRef(null);
   const firstFrameDetectionRef = useRef({
     element: null,
@@ -2205,7 +2210,7 @@ function VideoCardContent({
               {creatorInitial}
             </AvatarFallback>
           </Avatar>
-          {currentUser && currentUser.id !== video.creator_id && !isFollowing && !following ? (
+          {canShowFollowCta && !isCreatorFollowed ? (
             <span className="absolute -bottom-0.5 left-1/2 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full border border-[#0b1220] bg-[#facc15] text-[12px] font-black text-slate-950 shadow-[0_10px_18px_rgba(250,204,21,0.28)]">
               +
             </span>
@@ -2527,24 +2532,21 @@ function VideoCardContent({
               )}
             </button>
 
-            {onSubscribe && currentUser && currentUser.id !== video.creator_id && (
+            {canShowFollowCta && (
               <button
                 type="button"
                 onClick={() => {
-                  if (onSubscribe) {
-                    onSubscribe();
-                  } else {
-                    handleFollow();
-                  }
+                  if (onSubscribe) onSubscribe();
+                  else handleFollow();
                 }}
                 className={cn(
                   'shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition-all duration-200 active:scale-[0.98]',
-                  following || isFollowing
+                  isCreatorFollowed
                     ? 'border-0 bg-white/14 text-white shadow-[0_8px_20px_rgba(0,0,0,0.2)] ring-1 ring-white/18 backdrop-blur-md'
                     : 'border-0 bg-white text-slate-950 shadow-[0_10px_28px_rgba(255,255,255,0.2)]'
                 )}
               >
-                {following || isFollowing ? (
+                {isCreatorFollowed ? (
                   <>
                     <UserCheck className="mr-1 inline h-3 w-3" />
                     Wonder

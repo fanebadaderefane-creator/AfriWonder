@@ -9,7 +9,6 @@ import { useAuth } from "@/lib/AuthContext";
 import OfflineIndicator from "@/components/common/OfflineIndicator";
 import AppUpdateBanner from "@/components/common/AppUpdateBanner";
 import PWAInstallBanner from "@/components/pwa/PWAInstallBanner";
-import PWAUpdateToast from "@/components/pwa/PWAUpdateToast";
 import MenuPlus from "@/components/navigation/MenuPlus";
 import PageTransition from "@/components/common/PageTransition";
 import { useSwipeBack } from '@/hooks/useSwipeBack';
@@ -177,7 +176,6 @@ function LayoutContent({ children, currentPageName }) {
       <OfflineIndicator />
       <AppUpdateBanner />
       <PWAInstallBanner isFullScreen={isFullScreen} currentPageName={currentPageName} />
-      <PWAUpdateToast />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         

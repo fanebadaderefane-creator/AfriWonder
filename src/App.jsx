@@ -21,6 +21,7 @@ import TranslationProvider from '@/components/common/TranslationProvider';
 import CookieBanner from '@/components/legal/CookieBanner';
 import PageLoader from '@/components/common/PageLoader';
 import PageErrorFallback from '@/components/common/PageErrorFallback';
+import PWAUpdateToast from '@/components/pwa/PWAUpdateToast';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -325,6 +326,7 @@ function App() {
                     <AndroidBackButtonHandler />
                     <OfflineBanner />
                     <SlowConnectionBanner />
+                    <PWAUpdateToast />
                     <NavigationTracker />
                     <AuthenticatedApp />
                     <CookieBanner />

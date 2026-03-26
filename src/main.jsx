@@ -117,9 +117,16 @@ if (!rootElement) {
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   let registration = null;
   let updateCheckInterval = null;
+  let pendingActivationByAppHide = false;
   const isStandaloneMobile = () =>
     (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) &&
     window.innerWidth < 1024;
+  const activateWaitingWorker = (reg) => {
+    const waiting = reg?.waiting;
+    if (!waiting) return false;
+    waiting.postMessage({ type: 'SKIP_WAITING' });
+    return true;
+  };
 
   const registerSW = () => {
     navigator.serviceWorker.register('/sw-custom.js', { scope: '/' })
@@ -144,6 +151,14 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
               window.dispatchEvent(new CustomEvent('sw-update-available', { 
                 detail: { registration: reg, newWorker } 
               }));
+              // Auto-update:
+              // - navigateur classique: activation immédiate
+              // - PWA mobile standalone: activer à la prochaine mise en arrière-plan
+              if (!isStandaloneMobile()) {
+                activateWaitingWorker(reg);
+              } else {
+                pendingActivationByAppHide = true;
+              }
             } else if (newWorker.state === 'activated') {
               // En PWA mobile/WebView, un reload forcé en pleine session vidéo peut provoquer un flash noir
               // ou couper le feed. On préfère laisser la nouvelle version prendre effet au prochain cycle.
@@ -160,6 +175,11 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
           window.dispatchEvent(new CustomEvent('sw-update-available', { 
             detail: { registration: reg, newWorker: reg.waiting } 
           }));
+          if (!isStandaloneMobile()) {
+            activateWaitingWorker(reg);
+          } else {
+            pendingActivationByAppHide = true;
+          }
         }
 
         // Vérifier les mises à jour immédiatement
@@ -171,13 +191,24 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 
         // Revérifier au retour sur l’app (onglet, PWA, retour arrière iOS / bfcache)
         const checkSwUpdate = () => {
-          if (document.visibilityState === 'visible') reg.update().catch(() => {});
+          if (document.visibilityState === 'visible') {
+            reg.update().catch(() => {});
+            return;
+          }
+          if (pendingActivationByAppHide && activateWaitingWorker(reg)) {
+            pendingActivationByAppHide = false;
+          }
         };
         document.addEventListener('visibilitychange', checkSwUpdate);
         window.addEventListener('focus', checkSwUpdate);
         document.addEventListener('pageshow', (ev) => {
           if (ev.persisted) checkSwUpdate();
           else reg.update().catch(() => {});
+        });
+        window.addEventListener('pagehide', () => {
+          if (pendingActivationByAppHide && activateWaitingWorker(reg)) {
+            pendingActivationByAppHide = false;
+          }
         });
       })
       .catch((err) => {
