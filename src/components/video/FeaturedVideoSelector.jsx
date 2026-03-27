@@ -5,7 +5,7 @@ import { Star, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from "sonner";
 import { api } from '@/api/expressClient';
-import { isValidThumbnailUrl } from '@/lib/utils';
+import { getVideoPrimarySourceUrl, isValidThumbnailUrl } from '@/lib/utils';
 import VideoFrameThumbnail from './VideoFrameThumbnail';
 
 export default function FeaturedVideoSelector({ isOpen, onClose, videos, currentFeaturedId, _userId, onSuccess }) {
@@ -40,7 +40,9 @@ export default function FeaturedVideoSelector({ isOpen, onClose, videos, current
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          {videos.map((video, index) => (
+          {videos.map((video, index) => {
+            const primaryVideoUrl = getVideoPrimarySourceUrl(video);
+            return (
             <motion.div
               key={video.id}
               initial={{ opacity: 0, y: 10 }}
@@ -54,14 +56,14 @@ export default function FeaturedVideoSelector({ isOpen, onClose, videos, current
               }`}
             >
               <div className="aspect-video bg-gray-900">
-                {isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
+                {isValidThumbnailUrl(video.thumbnail_url, primaryVideoUrl) ? (
                   <img
                     src={video.thumbnail_url}
                     alt={video.title}
                     className="w-full h-full object-cover"
                   />
-                ) : video.video_url ? (
-                  <VideoFrameThumbnail videoUrl={video.video_url} thumbnailUrl={video.thumbnail_url} alt={video.title} />
+                ) : primaryVideoUrl ? (
+                  <VideoFrameThumbnail videoUrl={primaryVideoUrl} thumbnailUrl={video.thumbnail_url} alt={video.title} />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">Pas de miniature</div>
                 )}
@@ -73,12 +75,13 @@ export default function FeaturedVideoSelector({ isOpen, onClose, videos, current
                 </div>
               )}
               
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-_t from-black/80 to-transparent p-2">
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
                 <p className="text-white text-xs font-medium truncate">{video.title}</p>
                 <p className="text-white/70 text-[10px]">{video.views} vues</p>
               </div>
             </motion.div>
-          ))}
+            );
+          })}
         </div>
 
         <Button

@@ -20,6 +20,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { api } from '../api/client';
+import VideoGridThumbnail from '../components/VideoGridThumbnail';
 import { useAuth } from '../context/AuthContext';
 
 const LIMIT = 30;
@@ -213,7 +214,6 @@ export default function ProfileScreen() {
   const isOwnProfile = true;
 
   const renderVideoCard = (video, index) => {
-    const thumb = video.thumbnail_url || video.video_url || null;
     const views = video.views ?? video.views_count ?? 0;
     const likes = video.likes ?? video.likes_count ?? 0;
     return (
@@ -223,13 +223,7 @@ export default function ProfileScreen() {
         activeOpacity={0.9}
         onPress={() => navigation.navigate('VideoView', { videoId: video.id })}
       >
-        {thumb ? (
-          <Image source={{ uri: thumb }} style={styles.cardThumb} resizeMode="cover" />
-        ) : (
-          <View style={styles.cardPlaceholder}>
-            <Ionicons name="videocam-outline" size={28} color="#4B5563" />
-          </View>
-        )}
+        <VideoGridThumbnail video={video} style={styles.cardThumb} />
         <View style={styles.cardGradient} />
         <View style={styles.cardStats}>
           <Ionicons name="play" size={10} color="#FFF" />
@@ -665,12 +659,6 @@ const styles = StyleSheet.create({
   },
   cardThumb: {
     ...StyleSheet.absoluteFillObject,
-  },
-  cardPlaceholder: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#1F2937',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   cardGradient: {
     ...StyleSheet.absoluteFillObject,

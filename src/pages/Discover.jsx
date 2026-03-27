@@ -30,7 +30,7 @@ import {
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
-import { cn, getAbsoluteImageUrl, isDeletedUser, isValidThumbnailUrl, MARKETPLACE_PLACEHOLDER_IMG, VIDEO_PLACEHOLDER_IMG } from "@/lib/utils";
+import { cn, getAbsoluteImageUrl, getVideoPrimarySourceUrl, isDeletedUser, isValidThumbnailUrl, MARKETPLACE_PLACEHOLDER_IMG, VIDEO_PLACEHOLDER_IMG } from "@/lib/utils";
 import { getJSON, setJSON } from '@/utils/safeStorage';
 import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 import BottomNav from '../components/navigation/BottomNav';
@@ -99,7 +99,8 @@ function DiscoverEmptyState({ title, description }) {
 function DiscoverVideoPoster({ video, index = 0, badge, badgeClassName }) {
   const title = video?.title || 'Sans titre';
   const creatorName = video?.creator_name || 'Createur';
-  const hasValidThumb = isValidThumbnailUrl(video?.thumbnail_url, video?.video_url);
+  const primaryVideoUrl = getVideoPrimarySourceUrl(video);
+  const hasValidThumb = isValidThumbnailUrl(video?.thumbnail_url, primaryVideoUrl);
   const [thumbError, setThumbError] = useState(false);
   const resolvedThumb = hasValidThumb && !thumbError ? getAbsoluteImageUrl(video.thumbnail_url) : '';
 
@@ -119,6 +120,13 @@ function DiscoverVideoPoster({ video, index = 0, badge, badgeClassName }) {
             loading="lazy"
             decoding="async"
           />
+        ) : primaryVideoUrl ? (
+          <VideoFrameThumbnail
+            videoUrl={primaryVideoUrl}
+            thumbnailUrl={video.thumbnail_url}
+            alt={title}
+            skipThumbnailOnly
+          />
         ) : resolvedThumb ? (
           <img
             src={resolvedThumb}
@@ -127,13 +135,6 @@ function DiscoverVideoPoster({ video, index = 0, badge, badgeClassName }) {
             loading="lazy"
             decoding="async"
             onError={() => setThumbError(true)}
-          />
-        ) : video.video_url ? (
-          <VideoFrameThumbnail
-            videoUrl={video.video_url}
-            thumbnailUrl={video.thumbnail_url}
-            alt={title}
-            skipThumbnailOnly={thumbError}
           />
         ) : (
           <img

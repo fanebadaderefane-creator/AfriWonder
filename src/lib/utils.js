@@ -119,6 +119,24 @@ export function isValidThumbnailUrl(thumbnailUrl, videoUrl) {
   return true;
 }
 
+/**
+ * URL média principale pour miniatures / extraction de frame (même ordre que le feed : HLS d’abord).
+ * Évite les tuiles vides PWA quand seul hls_url est renseigné.
+ */
+export function getVideoPrimarySourceUrl(video) {
+  if (!video || typeof video !== 'object') return '';
+  const raw =
+    video.hls_url ||
+    video.video_url ||
+    video.videoUrl ||
+    video.low_quality_url ||
+    video.lowQualityUrl ||
+    video.hd_url ||
+    video.url ||
+    '';
+  return typeof raw === 'string' ? raw.trim() : '';
+}
+
 function buildProxyMediaUrl(absoluteUrl, apiBase) {
   return `${apiBase.replace(/\/$/, '')}/proxy/media?url=${encodeURIComponent(absoluteUrl)}`;
 }

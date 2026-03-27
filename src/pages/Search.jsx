@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, X, Loader2, Video, User, Package, ArrowLeft } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
-import { isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG, isDeletedUser } from "@/lib/utils";
+import { isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, getVideoPrimarySourceUrl, MARKETPLACE_PLACEHOLDER_IMG, isDeletedUser } from "@/lib/utils";
 import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -20,23 +20,24 @@ const SEARCH_SURFACE = 'border border-white/8 bg-[#0b111d]/92 shadow-[0_22px_70p
 
 /** Affiche la miniature (image valide), sinon image de secours — évite cadre noir sur Chrome/mobile */
 function VideoThumbnail({ video }) {
-  const hasValidThumb = isValidThumbnailUrl(video.thumbnail_url, video.video_url);
+  const primaryVideoUrl = getVideoPrimarySourceUrl(video);
+  const hasValidThumb = isValidThumbnailUrl(video.thumbnail_url, primaryVideoUrl);
   const [showThumb, setShowThumb] = useState(hasValidThumb);
   const [thumbError, setThumbError] = useState(false);
 
   const onThumbError = () => setThumbError(true);
 
-  if (!hasValidThumb && !video.video_url) {
+  if (!hasValidThumb && !primaryVideoUrl) {
     return (
       <div className="w-24 h-16 rounded-lg bg-gray-900 flex-shrink-0 overflow-hidden relative flex items-center justify-center">
         <Video className="w-8 h-8 text-gray-500" />
       </div>
     );
   }
-  if (!hasValidThumb && video.video_url) {
+  if (!hasValidThumb && primaryVideoUrl) {
     return (
       <div className="w-24 h-16 rounded-lg overflow-hidden flex-shrink-0">
-        <VideoFrameThumbnail videoUrl={video.video_url} thumbnailUrl={video.thumbnail_url} alt={video.title} />
+        <VideoFrameThumbnail videoUrl={primaryVideoUrl} thumbnailUrl={video.thumbnail_url} alt={video.title} />
       </div>
     );
   }

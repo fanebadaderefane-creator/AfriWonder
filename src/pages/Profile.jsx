@@ -14,7 +14,7 @@ import { motion } from 'framer-motion';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { createPageUrl } from "@/utils";
-import { cn, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
+import { cn, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, getVideoPrimarySourceUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
 import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 import OptimizedImage from '@/components/common/ImageOptimizer';
 
@@ -565,17 +565,18 @@ export default function Profile() {
                   className="w-full h-full object-cover absolute inset-0"
                   priority={false}
                 />
-              ) : video.video_url ? (
+              ) : getVideoPrimarySourceUrl(video) ? (
                 <div className="absolute inset-0 w-full h-full">
                   <VideoFrameThumbnail
-                    videoUrl={video.video_url}
+                    videoUrl={getVideoPrimarySourceUrl(video)}
                     thumbnailUrl={video.thumbnail_url}
                     alt={video.title}
                     className="w-full h-full"
                     frameTime={2}
+                    skipThumbnailOnly
                   />
                 </div>
-              ) : isValidThumbnailUrl(video.thumbnail_url, video.video_url) ? (
+              ) : isValidThumbnailUrl(video.thumbnail_url, getVideoPrimarySourceUrl(video)) ? (
                 <OptimizedImage
                   src={getAbsoluteImageUrl(video.thumbnail_url)}
                   alt={video.title}
@@ -987,15 +988,16 @@ export default function Profile() {
                     className="w-full h-full object-cover"
                     priority={false}
                   />
-                ) : featuredVideo.video_url ? (
+                ) : getVideoPrimarySourceUrl(featuredVideo) ? (
                   <VideoFrameThumbnail
-                    videoUrl={featuredVideo.video_url}
+                    videoUrl={getVideoPrimarySourceUrl(featuredVideo)}
                     thumbnailUrl={featuredVideo.thumbnail_url}
                     alt={featuredVideo.title}
                     className="w-full h-full"
                     frameTime={2}
+                    skipThumbnailOnly
                   />
-                ) : isValidThumbnailUrl(featuredVideo.thumbnail_url, featuredVideo.video_url) ? (
+                ) : isValidThumbnailUrl(featuredVideo.thumbnail_url, getVideoPrimarySourceUrl(featuredVideo)) ? (
                   <OptimizedImage
                     src={getAbsoluteImageUrl(featuredVideo.thumbnail_url)}
                     alt={featuredVideo.title}

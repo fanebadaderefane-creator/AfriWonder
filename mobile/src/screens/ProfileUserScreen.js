@@ -18,6 +18,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { api } from '../api/client';
+import VideoGridThumbnail from '../components/VideoGridThumbnail';
 import { useAuth } from '../context/AuthContext';
 
 const NUM_COLUMNS = 3;
@@ -265,20 +266,13 @@ export default function ProfileUserScreen() {
         ) : (
           <View style={styles.grid}>
             {videos.map((video) => {
-              const thumb = video.thumbnail_url || video.video_url;
               return (
                 <TouchableOpacity
                   key={video.id}
                   style={[styles.card, { width: CARD_WIDTH, height: CARD_WIDTH / CARD_ASPECT }]}
                   onPress={() => navigation.navigate('VideoView', { videoId: video.id })}
                 >
-                  {thumb ? (
-                    <Image source={{ uri: thumb }} style={styles.cardThumb} resizeMode="cover" />
-                  ) : (
-                    <View style={styles.cardPlaceholder}>
-                      <Ionicons name="videocam-outline" size={24} color="#4B5563" />
-                    </View>
-                  )}
+                  <VideoGridThumbnail video={video} style={styles.cardThumb} />
                   <View style={styles.cardStats}>
                     <Ionicons name="play" size={10} color="#FFF" />
                     <Text style={styles.cardStatsText}>{formatCount(video.views ?? video.views_count ?? 0)}</Text>
@@ -362,7 +356,6 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: PAD, gap: GAP },
   card: { borderRadius: 4, overflow: 'hidden' },
   cardThumb: { ...StyleSheet.absoluteFillObject },
-  cardPlaceholder: { ...StyleSheet.absoluteFillObject, backgroundColor: '#1F2937', alignItems: 'center', justifyContent: 'center' },
   cardStats: {
     position: 'absolute',
     bottom: 4,

@@ -20,6 +20,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { api } from '../api/client';
+import VideoGridThumbnail from '../components/VideoGridThumbnail';
 import { useAuth } from '../context/AuthContext';
 import RecommendationEngine from '../services/RecommendationEngine';
 
@@ -257,7 +258,6 @@ export default function DiscoverScreen() {
   const categoryOrTrending = selectedCategory && selectedCategory !== 'trending' ? categoryVideos : trendingVideos;
 
   const renderVideoCard = (video, showViralBadge = false) => {
-    const thumb = video.thumbnail_url || video.video_url;
     const views = video.views ?? video.views_count ?? 0;
     return (
       <TouchableOpacity
@@ -265,13 +265,7 @@ export default function DiscoverScreen() {
         style={[styles.videoCard, { width: CARD_WIDTH, height: CARD_WIDTH / CARD_ASPECT }]}
         onPress={() => navigation.navigate('VideoView', { videoId: video.id })}
       >
-        {thumb ? (
-          <Image source={{ uri: thumb }} style={styles.videoThumb} resizeMode="cover" />
-        ) : (
-          <View style={styles.videoPlaceholder}>
-            <Ionicons name="videocam-outline" size={28} color="#4B5563" />
-          </View>
-        )}
+        <VideoGridThumbnail video={video} style={styles.videoThumb} />
         {showViralBadge && (
           <View style={styles.viralBadge}>
             <Text style={styles.viralBadgeText}>VIRAL</Text>
@@ -645,7 +639,6 @@ const styles = StyleSheet.create({
   gridCell: { marginBottom: GAP },
   videoCard: { borderRadius: 8, overflow: 'hidden' },
   videoThumb: { ...StyleSheet.absoluteFillObject },
-  videoPlaceholder: { ...StyleSheet.absoluteFillObject, backgroundColor: '#1F2937', alignItems: 'center', justifyContent: 'center' },
   viralBadge: { position: 'absolute', top: 4, right: 4, backgroundColor: '#3B82F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   viralBadgeText: { fontSize: 10, fontWeight: '700', color: '#FFF' },
   videoViews: { position: 'absolute', bottom: 4, left: 4, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
