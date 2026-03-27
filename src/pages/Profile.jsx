@@ -14,7 +14,7 @@ import { motion } from 'framer-motion';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { createPageUrl } from "@/utils";
-import { cn, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, getVideoPrimarySourceUrl, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
+import { cn, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, getVideoPrimarySourceUrl, getVideoPrimarySourceUrlForFrameGrab, MARKETPLACE_PLACEHOLDER_IMG } from "@/lib/utils";
 import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 import OptimizedImage from '@/components/common/ImageOptimizer';
 
@@ -565,10 +565,10 @@ export default function Profile() {
                   className="w-full h-full object-cover absolute inset-0"
                   priority={false}
                 />
-              ) : getVideoPrimarySourceUrl(video) ? (
+              ) : getVideoPrimarySourceUrlForFrameGrab(video) ? (
                 <div className="absolute inset-0 w-full h-full">
                   <VideoFrameThumbnail
-                    videoUrl={getVideoPrimarySourceUrl(video)}
+                    videoUrl={getVideoPrimarySourceUrlForFrameGrab(video)}
                     thumbnailUrl={video.thumbnail_url}
                     alt={video.title}
                     className="w-full h-full"
@@ -988,9 +988,9 @@ export default function Profile() {
                     className="w-full h-full object-cover"
                     priority={false}
                   />
-                ) : getVideoPrimarySourceUrl(featuredVideo) ? (
+                ) : getVideoPrimarySourceUrlForFrameGrab(featuredVideo) ? (
                   <VideoFrameThumbnail
-                    videoUrl={getVideoPrimarySourceUrl(featuredVideo)}
+                    videoUrl={getVideoPrimarySourceUrlForFrameGrab(featuredVideo)}
                     thumbnailUrl={featuredVideo.thumbnail_url}
                     alt={featuredVideo.title}
                     className="w-full h-full"

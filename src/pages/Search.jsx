@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, X, Loader2, Video, User, Package, ArrowLeft } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
-import { isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, getVideoPrimarySourceUrl, MARKETPLACE_PLACEHOLDER_IMG, isDeletedUser } from "@/lib/utils";
+import { isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, getAbsoluteImageUrl, getVideoPrimarySourceUrlForFrameGrab, MARKETPLACE_PLACEHOLDER_IMG, isDeletedUser } from "@/lib/utils";
 import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -20,7 +20,7 @@ const SEARCH_SURFACE = 'border border-white/8 bg-[#0b111d]/92 shadow-[0_22px_70p
 
 /** Affiche la miniature (image valide), sinon image de secours — évite cadre noir sur Chrome/mobile */
 function VideoThumbnail({ video }) {
-  const primaryVideoUrl = getVideoPrimarySourceUrl(video);
+  const primaryVideoUrl = getVideoPrimarySourceUrlForFrameGrab(video);
   const hasValidThumb = isValidThumbnailUrl(video.thumbnail_url, primaryVideoUrl);
   const [showThumb, setShowThumb] = useState(hasValidThumb);
   const [thumbError, setThumbError] = useState(false);

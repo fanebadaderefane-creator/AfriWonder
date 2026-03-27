@@ -30,7 +30,7 @@ import {
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
-import { cn, getAbsoluteImageUrl, getVideoPrimarySourceUrl, isDeletedUser, isValidThumbnailUrl, MARKETPLACE_PLACEHOLDER_IMG, VIDEO_PLACEHOLDER_IMG } from "@/lib/utils";
+import { cn, getAbsoluteImageUrl, getVideoPrimarySourceUrl, getVideoPrimarySourceUrlForFrameGrab, isDeletedUser, isValidThumbnailUrl, MARKETPLACE_PLACEHOLDER_IMG, VIDEO_PLACEHOLDER_IMG } from "@/lib/utils";
 import { getJSON, setJSON } from '@/utils/safeStorage';
 import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 import BottomNav from '../components/navigation/BottomNav';
@@ -99,8 +99,8 @@ function DiscoverEmptyState({ title, description }) {
 function DiscoverVideoPoster({ video, index = 0, badge, badgeClassName }) {
   const title = video?.title || 'Sans titre';
   const creatorName = video?.creator_name || 'Createur';
-  const primaryVideoUrl = getVideoPrimarySourceUrl(video);
-  const hasValidThumb = isValidThumbnailUrl(video?.thumbnail_url, primaryVideoUrl);
+  const primaryVideoUrl = getVideoPrimarySourceUrlForFrameGrab(video);
+  const hasValidThumb = isValidThumbnailUrl(video?.thumbnail_url, getVideoPrimarySourceUrl(video));
   const [thumbError, setThumbError] = useState(false);
   const resolvedThumb = hasValidThumb && !thumbError ? getAbsoluteImageUrl(video.thumbnail_url) : '';
 

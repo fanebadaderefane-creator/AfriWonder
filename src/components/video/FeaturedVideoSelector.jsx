@@ -5,7 +5,7 @@ import { Star, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from "sonner";
 import { api } from '@/api/expressClient';
-import { getVideoPrimarySourceUrl, isValidThumbnailUrl } from '@/lib/utils';
+import { getVideoPrimarySourceUrl, getVideoPrimarySourceUrlForFrameGrab, isValidThumbnailUrl } from '@/lib/utils';
 import VideoFrameThumbnail from './VideoFrameThumbnail';
 
 export default function FeaturedVideoSelector({ isOpen, onClose, videos, currentFeaturedId, _userId, onSuccess }) {
@@ -41,7 +41,8 @@ export default function FeaturedVideoSelector({ isOpen, onClose, videos, current
 
         <div className="grid grid-cols-2 gap-3">
           {videos.map((video, index) => {
-            const primaryVideoUrl = getVideoPrimarySourceUrl(video);
+            const primaryVideoUrl = getVideoPrimarySourceUrlForFrameGrab(video);
+            const canonicalVideoUrl = getVideoPrimarySourceUrl(video);
             return (
             <motion.div
               key={video.id}
@@ -56,7 +57,7 @@ export default function FeaturedVideoSelector({ isOpen, onClose, videos, current
               }`}
             >
               <div className="aspect-video bg-gray-900">
-                {isValidThumbnailUrl(video.thumbnail_url, primaryVideoUrl) ? (
+                {isValidThumbnailUrl(video.thumbnail_url, canonicalVideoUrl) ? (
                   <img
                     src={video.thumbnail_url}
                     alt={video.title}

@@ -137,6 +137,35 @@ export function getVideoPrimarySourceUrl(video) {
   return typeof raw === 'string' ? raw.trim() : '';
 }
 
+const M3U8_RE = /\.m3u8(\?|#|$)/i;
+
+/**
+ * URL pour extraction de frame (canvas + &lt;video&gt;) : préférer MP4 progressif au HLS.
+ * Chrome / WebView ne lisent souvent pas le .m3u8 dans un tag vidéo pour capture, Firefox peut mieux tolérer.
+ */
+export function getVideoPrimarySourceUrlForFrameGrab(video) {
+  if (!video || typeof video !== 'object') return '';
+  const candidates = [
+    video.video_url,
+    video.videoUrl,
+    video.low_quality_url,
+    video.lowQualityUrl,
+    video.hd_url,
+    video.url,
+    video.hls_url,
+  ];
+  const clean = (s) => (typeof s === 'string' ? s.trim() : '');
+  for (const raw of candidates) {
+    const t = clean(raw);
+    if (t && !M3U8_RE.test(t)) return t;
+  }
+  for (const raw of candidates) {
+    const t = clean(raw);
+    if (t) return t;
+  }
+  return '';
+}
+
 function buildProxyMediaUrl(absoluteUrl, apiBase) {
   return `${apiBase.replace(/\/$/, '')}/proxy/media?url=${encodeURIComponent(absoluteUrl)}`;
 }
@@ -214,6 +243,51 @@ export function getVideoPlaybackUrlCandidates(videoUrl) {
   }
 
   return [proxy];
+}
+
+/**
+ * Candidats pour capture canvas (miniatures Discover / Profil) : en cross-site prod, Chrome exige
+ * souvent une ressource avec CORS pour drawImage + toDataURL ; le proxy API est same-origin.
+ * Firefox a déjà le proxy en 2e position via getVideoPlaybackUrlCandidates ; Chrome non.
+ */
+export function getVideoPlaybackUrlCandidatesForFrameGrab(videoUrl) {
+  const base = getVideoPlaybackUrlCandidates(videoUrl);
+  if (!videoUrl || typeof videoUrl !== 'string') return base;
+  const absoluteUrl = toAbsoluteBackendUrl(videoUrl);
+  if (!absoluteUrl || M3U8_RE.test(absoluteUrl)) return base;
+
+  const apiBase = getResolvedApiBase();
+  let proxy;
+  try {
+    proxy = buildProxyMediaUrl(absoluteUrl, apiBase);
+  } catch {
+    return base;
+  }
+  if (!proxy || base.includes(proxy)) return base;
+
+  const pageOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  if (!pageOrigin) return base;
+
+  try {
+    const u = new URL(absoluteUrl);
+    const apiUrl = new URL(apiBase);
+    const apiCrossSite =
+      import.meta.env.PROD &&
+      apiUrl.origin !== pageOrigin &&
+      u.protocol === 'https:' &&
+      u.hostname !== apiUrl.hostname;
+
+    if (apiCrossSite) {
+      const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+      const isGeckoFirefox = /firefox/i.test(ua) && !/seamonkey/i.test(ua);
+      if (!isGeckoFirefox) {
+        return [...base, proxy];
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return base;
 }
 
 /** Première URL candidate (compat miniatures, liens partage, etc.). */

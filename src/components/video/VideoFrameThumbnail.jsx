@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import {
   getVideoPlaybackUrl,
-  getVideoPlaybackUrlCandidates,
+  getVideoPlaybackUrlCandidatesForFrameGrab,
   VIDEO_PLACEHOLDER_IMG,
   getAbsoluteImageUrl,
   isValidThumbnailUrl,
@@ -59,7 +59,7 @@ export default function VideoFrameThumbnail({
     !!resolvedThumbnailUrl;
   const playbackUrl = useMemo(() => getVideoPlaybackUrl(videoUrl), [videoUrl]);
   const attemptUrls = useMemo(() => {
-    const c = getVideoPlaybackUrlCandidates(videoUrl);
+    const c = getVideoPlaybackUrlCandidatesForFrameGrab(videoUrl);
     return c.length > 0 ? c : playbackUrl ? [playbackUrl] : [];
   }, [videoUrl, playbackUrl]);
   const [attemptIndex, setAttemptIndex] = useState(0);
@@ -141,7 +141,12 @@ export default function VideoFrameThumbnail({
         }
         setFrameReady(true);
       } catch (_e) {
-        setError(true);
+        // Chrome : SecurityError si CORS CDN ; enchaîner sur le candidat suivant (ex. proxy same-origin).
+        if (attemptIndex < attemptUrls.length - 1) {
+          setAttemptIndex((prev) => prev + 1);
+        } else {
+          setError(true);
+        }
       }
     };
 
