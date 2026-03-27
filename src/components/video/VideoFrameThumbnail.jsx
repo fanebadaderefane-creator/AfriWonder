@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect, useLayoutEffect } from 'react';
 import {
   getVideoPlaybackUrl,
   getVideoPlaybackUrlCandidatesForFrameGrab,
@@ -79,6 +79,16 @@ export default function VideoFrameThumbnail({
     setThumbnailLoadFailed(false);
   }, [videoUrl, thumbnailUrlProp, skipThumbnailOnly]);
 
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined' || error) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const vh = window.innerHeight;
+    const margin = 640;
+    if (r.top < vh + margin && r.bottom > -margin) setIsVisible(true);
+  }, [videoUrl, error]);
+
   useEffect(() => {
     if (!videoUrl || error) return;
     const el = containerRef.current;
@@ -87,7 +97,7 @@ export default function VideoFrameThumbnail({
       setIsVisible(true);
       return;
     }
-    const rootMargin = mobileOrPWA ? '200px' : '120px';
+    const rootMargin = `${mobileOrPWA ? 720 : 480}px`;
     const io = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) setIsVisible(true);
@@ -120,10 +130,11 @@ export default function VideoFrameThumbnail({
     setFrameReady(false);
     video.muted = true;
     video.playsInline = true;
-    video.preload = 'metadata';
+    video.preload = skipThumbnailOnly || !useThumbnailOnly ? 'auto' : 'metadata';
     video.crossOrigin = isSameOrigin ? '' : 'anonymous';
     video.src = sourceToTry;
 
+    let drawnOnce = false;
     const drawFrame = () => {
       try {
         const vw = video.videoWidth || 0;
@@ -139,6 +150,7 @@ export default function VideoFrameThumbnail({
           writeFrameCache(cacheKey, dataUrl);
           setCachedFrame(dataUrl);
         }
+        drawnOnce = true;
         setFrameReady(true);
       } catch (_e) {
         // Chrome : SecurityError si CORS CDN ; enchaîner sur le candidat suivant (ex. proxy same-origin).
@@ -154,13 +166,17 @@ export default function VideoFrameThumbnail({
       const duration = Math.max(0.2, Number(video.duration || 0.2));
       const desired = Number.isFinite(frameTime) && frameTime >= 0
         ? Number(frameTime)
-        : Math.min(1, Math.max(0.08, duration / 10));
-      const target = Math.max(0.05, Math.min(duration - 0.05, desired));
+        : Math.min(0.35, Math.max(0.04, duration / 12));
+      const target = Math.max(0.04, Math.min(duration - 0.04, desired));
       video.currentTime = target;
     };
 
     const onSeeked = () => drawFrame();
-    const seekDelay = mobileOrPWA ? 2500 : 1500;
+    const onLoadedData = () => {
+      if (drawnOnce) return;
+      drawFrame();
+    };
+    const seekDelay = mobileOrPWA ? 420 : 320;
     const seekTimeout = window.setTimeout(() => {
       if (!canvasRef.current || videoRef.current?.readyState < 2) return;
       drawFrame();
@@ -175,6 +191,7 @@ export default function VideoFrameThumbnail({
     };
 
     video.addEventListener('loadedmetadata', onLoadedMetadata);
+    video.addEventListener('loadeddata', onLoadedData);
     video.addEventListener('seeked', onSeeked);
     video.addEventListener('error', onError);
     video.load();
@@ -182,36 +199,44 @@ export default function VideoFrameThumbnail({
     return () => {
       clearTimeout(seekTimeout);
       video.removeEventListener('loadedmetadata', onLoadedMetadata);
+      video.removeEventListener('loadeddata', onLoadedData);
       video.removeEventListener('seeked', onSeeked);
       video.removeEventListener('error', onError);
       video.pause();
       video.src = '';
     };
-  }, [videoUrl, isVisible, error, cacheKey, frameTime, cachedFrame, attemptUrls, attemptIndex, useThumbnailOnly, mobileOrPWA]);
+  }, [videoUrl, isVisible, error, cacheKey, frameTime, cachedFrame, attemptUrls, attemptIndex, useThumbnailOnly, mobileOrPWA, skipThumbnailOnly]);
+
+  const showServerThumb = !!(resolvedThumbnailUrl && !thumbnailLoadFailed);
+  const hasExtractedVisual = !!(cachedFrame && frameReady);
+  const showNeutralPlaceholder = !showServerThumb && !hasExtractedVisual;
 
   return (
-    <div ref={containerRef} className={`relative w-full h-full overflow-hidden bg-gray-600 ${className}`}>
-      {((!frameReady && !useThumbnailOnly) || (useThumbnailOnly && !resolvedThumbnailUrl)) && (
+    <div
+      ref={containerRef}
+      className={`relative w-full h-full overflow-hidden bg-[#374151] ${className}`}
+    >
+      {showNeutralPlaceholder ? (
         <img src={VIDEO_PLACEHOLDER_IMG} alt={alt} className="absolute inset-0 w-full h-full object-cover" />
-      )}
-      {useThumbnailOnly && resolvedThumbnailUrl ? (
+      ) : null}
+      {showServerThumb ? (
         <img
           src={resolvedThumbnailUrl}
           alt={alt}
-          className="absolute inset-0 w-full h-full object-cover"
+          className={`absolute inset-0 z-[1] w-full h-full object-cover transition-opacity duration-150 ease-out ${hasExtractedVisual ? 'opacity-0' : 'opacity-100'}`}
           onError={() => setThumbnailLoadFailed(true)}
         />
       ) : null}
-      {cachedFrame && (
+      {cachedFrame ? (
         <img
           src={cachedFrame}
           alt={alt}
-          className={`absolute inset-0 w-full h-full object-cover ${frameReady ? 'opacity-100' : 'opacity-0'}`}
+          className={`absolute inset-0 z-[2] w-full h-full object-cover ${hasExtractedVisual ? 'opacity-100' : 'opacity-0'}`}
         />
-      )}
+      ) : null}
       <canvas
         ref={canvasRef}
-        className={`absolute inset-0 w-full h-full object-cover ${(frameReady && !cachedFrame) ? 'opacity-100' : 'opacity-0'}`}
+        className={`absolute inset-0 z-[2] w-full h-full object-cover ${frameReady && !cachedFrame ? 'opacity-100' : 'opacity-0'}`}
         aria-label={alt}
         style={useThumbnailOnly ? { display: 'none' } : undefined}
       />
@@ -220,7 +245,7 @@ export default function VideoFrameThumbnail({
         ref={videoRef}
         muted
         playsInline
-        preload="metadata"
+        preload="auto"
         className="absolute opacity-0 pointer-events-none w-0 h-0"
         aria-hidden
       />
