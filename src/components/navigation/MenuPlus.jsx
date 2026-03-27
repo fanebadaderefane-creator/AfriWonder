@@ -176,24 +176,24 @@ export default function MenuPlus({ isOpen, onClose, onNavigateFromMenu, user }) 
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent side="right" className="w-[85%] max-w-md p-0 overflow-hidden flex flex-col">
+      <SheetContent side="right" className="w-[85%] max-w-md p-0 overflow-hidden flex flex-col border-l border-white/10 bg-black text-white">
         {/* En-tête fixe (profil + X) — ne défile pas */}
-        <div className="flex flex-col flex-shrink-0 bg-white">
+        <div className="flex flex-col flex-shrink-0 bg-black">
           {/* Section Profil Utilisateur avec fond dégradé */}
           {user && (
-            <div className="relative bg-gradient-to-b from-blue-500 via-blue-600 to-blue-700 px-4 pt-12 pb-6">
+            <div className="relative bg-gradient-to-b from-[#1a0f17] via-[#120b13] to-black px-4 pt-12 pb-6 border-b border-white/10">
               {/* Bouton fermer en haut à droite — reste en place au scroll */}
               <button
                 onClick={onClose}
-                className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center bg-white/90 hover:bg-white rounded-lg shadow-sm transition-colors"
+                className="absolute top-4 right-4 z-10 w-10 h-10 flex items-center justify-center bg-white/12 hover:bg-white/20 rounded-xl transition-colors"
               >
-                <X className="w-5 h-5 text-blue-600" />
+                <X className="w-5 h-5 text-white/90" />
               </button>
               
               {/* Contenu profil */}
               <div className="flex items-start gap-3 mb-6">
                 {/* Photo de profil */}
-                <Avatar className="w-16 h-16 border-2 border-white shadow-lg">
+                <Avatar className="w-16 h-16 border-2 border-white/35 shadow-lg">
                   <AvatarImage 
                     src={user.profile_image} 
                     alt={user.full_name || user.username}
@@ -201,17 +201,17 @@ export default function MenuPlus({ isOpen, onClose, onNavigateFromMenu, user }) 
                       e.target.style.display = 'none';
                     }}
                   />
-                  <AvatarFallback className="bg-white text-blue-600 font-bold text-lg">
+                  <AvatarFallback className="bg-white/90 text-slate-900 font-bold text-lg">
                     {(user.full_name || user.username || 'U')[0].toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 
                 {/* Nom et handle */}
                 <div className="flex-1 min-w-0">
-                  <h2 className="text-white font-extrabold text-xl uppercase truncate">
+                  <h2 className="text-white font-extrabold text-xl uppercase truncate tracking-tight">
                     {user.full_name || user.username || 'Utilisateur'}
                   </h2>
-                  <p className="text-white/90 text-sm truncate">
+                  <p className="text-white/70 text-sm truncate">
                     @{user.username || user.email?.split('@')[0] || 'user'}
                   </p>
                 </div>
@@ -221,15 +221,15 @@ export default function MenuPlus({ isOpen, onClose, onNavigateFromMenu, user }) 
               <div className="flex items-center justify-center gap-6">
                 <div className="flex flex-col items-center">
                   <span className="text-white text-2xl font-bold">{followers}</span>
-                  <span className="text-white/90 text-xs">Wonderers</span>
+                  <span className="text-white/65 text-xs">Wonderers</span>
                 </div>
                 <div className="flex flex-col items-center">
                   <span className="text-white text-2xl font-bold">{following}</span>
-                  <span className="text-white/90 text-xs">Dans leur Wonder</span>
+                  <span className="text-white/65 text-xs">Dans leur Wonder</span>
                 </div>
                 <div className="flex flex-col items-center">
                   <span className="text-white text-2xl font-bold">{totalLikes}</span>
-                  <span className="text-white/90 text-xs">J'aime</span>
+                  <span className="text-white/65 text-xs">J'aime</span>
                 </div>
               </div>
             </div>
@@ -237,12 +237,12 @@ export default function MenuPlus({ isOpen, onClose, onNavigateFromMenu, user }) 
         </div>
 
         {/* Liste du menu — seule zone qui défile */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto bg-black">
           <div className="flex flex-col py-4 pb-6">
             {/* Menu par sections — toutes les entrées avec navigation complète */}
             {MENU_SECTIONS.map((section) => (
               <div key={section.title} className="mb-4">
-                <h3 className="px-3 mb-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <h3 className="px-3 mb-2 text-xs font-semibold text-white/45 uppercase tracking-wide">
                   {section.title}
                 </h3>
                 <nav className="px-3 space-y-0.5">
@@ -264,25 +264,25 @@ export default function MenuPlus({ isOpen, onClose, onNavigateFromMenu, user }) 
                           className={cn(
                             "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150",
                             isActive
-                              ? "bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700"
+                              ? "bg-[#2a0f1d] text-pink-200"
                               : item.admin
-                                ? "text-yellow-700 hover:bg-yellow-50"
-                                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                                ? "text-yellow-300 hover:bg-[#2a2412]"
+                                : "text-white/85 hover:bg-white/10 hover:text-white"
                           )}
                         >
-                          <item.icon className={cn("w-5 h-5 flex-shrink-0", isActive ? "text-blue-600" : item.color)} />
+                          <item.icon className={cn("w-5 h-5 flex-shrink-0", isActive ? "text-pink-300" : "text-white/75")} />
                           <span className="flex-1">{item.label}</span>
                           {item.badge && (
-                            <span className="px-1.5 py-0.5 text-xs font-bold bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-700 rounded-full">
+                            <span className="px-1.5 py-0.5 text-xs font-bold bg-pink-500/25 text-pink-200 rounded-full border border-pink-300/30">
                               {item.badge}
                             </span>
                           )}
                           {item.admin && (
-                            <span className="px-1.5 py-0.5 text-xs font-bold bg-yellow-100 text-yellow-700 rounded-full">
+                            <span className="px-1.5 py-0.5 text-xs font-bold bg-yellow-500/20 text-yellow-300 rounded-full border border-yellow-300/20">
                               Admin
                             </span>
                           )}
-                          <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <ChevronRight className="w-4 h-4 text-white/35 flex-shrink-0" />
                         </Link>
                       );
                     })}
@@ -292,8 +292,8 @@ export default function MenuPlus({ isOpen, onClose, onNavigateFromMenu, user }) 
 
             {/* Version - AfriWonder */}
             <div className="px-6 py-3 mt-auto">
-              <p className="text-xs text-gray-400">AfriWonder v1.0.0</p>
-              <p className="text-xs text-gray-400">🇲🇱 Made in Mali</p>
+              <p className="text-xs text-white/45">AfriWonder v1.0.0</p>
+              <p className="text-xs text-white/45">🇲🇱 Made in Mali</p>
             </div>
           </div>
         </div>

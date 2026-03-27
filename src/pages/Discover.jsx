@@ -129,7 +129,12 @@ function DiscoverVideoPoster({ video, index = 0, badge, badgeClassName }) {
             onError={() => setThumbError(true)}
           />
         ) : video.video_url ? (
-          <VideoFrameThumbnail videoUrl={video.video_url} thumbnailUrl={video.thumbnail_url} alt={title} />
+          <VideoFrameThumbnail
+            videoUrl={video.video_url}
+            thumbnailUrl={video.thumbnail_url}
+            alt={title}
+            skipThumbnailOnly={thumbError}
+          />
         ) : (
           <img
             src={VIDEO_PLACEHOLDER_IMG}

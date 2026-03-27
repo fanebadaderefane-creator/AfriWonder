@@ -1870,7 +1870,7 @@ function VideoCardContent({
           data-afw-feed-poster="1"
           src={getVideoPlaybackUrl(video.video_url) || video.video_url}
           alt={video.title || ''}
-          className="absolute top-0 left-0 w-full h-full object-cover bg-gray-950"
+          className="absolute top-0 left-0 h-full w-full object-contain bg-gray-950 object-center"
           style={{ contentVisibility: 'visible' }}
         />
       ) : videoUrl ? (
@@ -1884,7 +1884,8 @@ function VideoCardContent({
           backgroundImage: !hasFirstFrameRendered
             ? `url(${VIDEO_PLACEHOLDER_IMG}), url(${posterDisplayUrl})`
             : undefined,
-          backgroundSize: 'cover',
+          backgroundSize: 'contain',
+          backgroundRepeat: 'no-repeat',
           backgroundPosition: 'center',
           ...gpuCompositingLayerStyle,
         }}
@@ -1894,7 +1895,7 @@ function VideoCardContent({
         {usePool ? (
           <div
             ref={poolContainerRef}
-            className="absolute top-0 left-0 w-full h-full object-cover z-20"
+            className="absolute left-0 top-0 z-20 h-full w-full object-contain object-center"
             style={{
               touchAction: 'pan-y',
               backfaceVisibility: 'hidden',
@@ -1910,7 +1911,7 @@ function VideoCardContent({
           ref={videoRef}
           data-afw-feed-video="1"
           src={videoSrc}
-          className="absolute top-0 left-0 w-full h-full object-cover z-20"
+          className="absolute left-0 top-0 z-20 h-full w-full object-contain object-center"
           autoPlay={false}
           preload="auto"
           loop
@@ -2017,11 +2018,12 @@ function VideoCardContent({
             data-afw-feed-poster="1"
             ref={posterRef}
             src={posterDisplayUrl}
-            className="pointer-events-none absolute inset-0 z-[25] h-full w-full object-cover"
+            className="pointer-events-none absolute inset-0 z-[25] h-full w-full object-contain object-center"
             style={{
               backgroundColor: '#050508',
               backgroundImage: `url(${VIDEO_PLACEHOLDER_IMG})`,
-              backgroundSize: 'cover',
+              backgroundSize: 'contain',
+              backgroundRepeat: 'no-repeat',
               backgroundPosition: 'center',
               contentVisibility: 'visible',
               ...(isFirefoxBrowser ? {} : { transform: 'translateZ(0)' }),

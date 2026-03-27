@@ -31,16 +31,32 @@ const writeFrameCache = (key, value) => {
   }
 };
 
-export default function VideoFrameThumbnail({ videoUrl, thumbnailUrl: thumbnailUrlProp, alt = '', className = '', frameTime = null }) {
+export default function VideoFrameThumbnail({
+  videoUrl,
+  thumbnailUrl: thumbnailUrlProp,
+  alt = '',
+  className = '',
+  frameTime = null,
+  /** Quand la miniature a déjà échoué côté parent (ex. Discover), forcer l’extraction frame sur mobile au lieu de réessayer la même URL. */
+  skipThumbnailOnly = false,
+}) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [error, setError] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [frameReady, setFrameReady] = useState(false);
+  const [thumbnailLoadFailed, setThumbnailLoadFailed] = useState(false);
   const mobileOrPWA = useMemo(() => isMobileOrPWA(), []);
-  const useThumbnailOnly = mobileOrPWA && thumbnailUrlProp && isValidThumbnailUrl(thumbnailUrlProp, videoUrl);
-  const resolvedThumbnailUrl = useThumbnailOnly ? getAbsoluteImageUrl(thumbnailUrlProp) : '';
+  const resolvedThumbnailUrl =
+    thumbnailUrlProp && isValidThumbnailUrl(thumbnailUrlProp, videoUrl)
+      ? getAbsoluteImageUrl(thumbnailUrlProp)
+      : '';
+  const useThumbnailOnly =
+    !skipThumbnailOnly &&
+    !thumbnailLoadFailed &&
+    mobileOrPWA &&
+    !!resolvedThumbnailUrl;
   const playbackUrl = useMemo(() => getVideoPlaybackUrl(videoUrl), [videoUrl]);
   const attemptUrls = useMemo(() => {
     const c = getVideoPlaybackUrlCandidates(videoUrl);
@@ -58,6 +74,10 @@ export default function VideoFrameThumbnail({ videoUrl, thumbnailUrl: thumbnailU
     setAttemptIndex(0);
     setError(false);
   }, [cacheKey]);
+
+  useEffect(() => {
+    setThumbnailLoadFailed(false);
+  }, [videoUrl, thumbnailUrlProp, skipThumbnailOnly]);
 
   useEffect(() => {
     if (!videoUrl || error) return;
@@ -174,6 +194,7 @@ export default function VideoFrameThumbnail({ videoUrl, thumbnailUrl: thumbnailU
           src={resolvedThumbnailUrl}
           alt={alt}
           className="absolute inset-0 w-full h-full object-cover"
+          onError={() => setThumbnailLoadFailed(true)}
         />
       ) : null}
       {cachedFrame && (
