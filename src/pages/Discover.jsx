@@ -110,7 +110,7 @@ function DiscoverVideoPoster({ video, index = 0, badge, badgeClassName }) {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: index * 0.03 }}
-        className="group relative aspect-[9/16] overflow-hidden rounded-2xl bg-black/20 shadow-[0_20px_50px_rgba(0,0,0,0.35)] ring-1 ring-inset ring-white/[0.08]"
+        className="group relative aspect-[9/16] overflow-hidden rounded-2xl bg-[#1a202c] shadow-[0_20px_50px_rgba(0,0,0,0.35)] ring-1 ring-inset ring-white/[0.08]"
       >
         {video.media_type === 'image' ? (
           <img

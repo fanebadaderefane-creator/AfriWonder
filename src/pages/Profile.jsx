@@ -572,7 +572,6 @@ export default function Profile() {
                     thumbnailUrl={video.thumbnail_url}
                     alt={video.title}
                     className="w-full h-full"
-                    frameTime={2}
                     skipThumbnailOnly
                   />
                 </div>
@@ -994,7 +993,6 @@ export default function Profile() {
                     thumbnailUrl={featuredVideo.thumbnail_url}
                     alt={featuredVideo.title}
                     className="w-full h-full"
-                    frameTime={2}
                     skipThumbnailOnly
                   />
                 ) : isValidThumbnailUrl(featuredVideo.thumbnail_url, getVideoPrimarySourceUrl(featuredVideo)) ? (

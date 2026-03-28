@@ -98,9 +98,9 @@ export function isDeletedUser(user) {
 
 /** Placeholder neutre (gris + play) pour vidéos sans miniature — évite toute ressemblance avec logos tiers */
 export const VIDEO_PLACEHOLDER_IMG = 'data:image/svg+xml,' + encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400" fill="%23374151">' +
-  '<rect width="300" height="400" fill="%23374151"/>' +
-  '<path d="M120 100v200l120-100z" fill="%239ca3af" opacity="0.8"/>' +
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400">' +
+  '<rect width="300" height="400" fill="%236b7280"/>' +
+  '<path d="M120 100v200l120-100z" fill="%23e5e7eb" opacity="0.85"/>' +
   '</svg>'
 );
 

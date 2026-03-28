@@ -3,10 +3,10 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import {
   Ticket, Car, UtensilsCrossed, Zap, Heart, Building2,
   Shield, Wrench, Newspaper, GraduationCap, CreditCard, Target,
-  Briefcase, Wallet, User, Settings, ChevronRight,
-  Crown, ShoppingCart, Radio, Trophy, Grid3x3, X, FileText, Lock,
-  BarChart3, Video, Sparkles, Share2, HelpCircle, MessageCircle, Info,
-  Megaphone, Globe, Bell, Compass, PlusSquare
+  Briefcase, Wallet, Settings, ChevronRight,
+  Crown, ShoppingCart, Trophy, Grid3x3, X, FileText, Lock,
+  BarChart3, Sparkles, Share2, HelpCircle, MessageCircle, Info,
+  Megaphone, Globe, Bell, PlusSquare
 } from "lucide-react";
 import { Link, useLocation } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
@@ -46,17 +46,13 @@ const MENU_SECTIONS = [
   {
     title: "SOCIAL & MESSAGERIE",
     items: [
-      { icon: MessageCircle, label: "Messages", color: "text-blue-600", page: 'Inbox' },
       { icon: BarChart3, label: "Publications & Sondages", color: "text-indigo-600", page: 'FeedPosts' },
     ],
   },
   {
     title: "CRÉATEURS & LIVE",
     items: [
-      { icon: Compass, label: "Découvrir", color: "text-primary", page: 'Discover' },
       { icon: PlusSquare, label: "Créer", color: "text-primary", page: 'Create' },
-      { icon: Radio, label: "Regarder les lives", color: "text-pink-600", badge: "Live", page: 'Live' },
-      { icon: Video, label: "Démarrer un live", color: "text-pink-600", page: 'LiveStream' },
       { icon: Sparkles, label: "Outils créateurs", color: "text-yellow-600", page: 'CreatorTools' },
       { icon: Share2, label: "Parrainage", color: "text-blue-600", page: 'Referrals' },
       { icon: Megaphone, label: "Mes campagnes pub", color: "text-blue-600", badge: "Pub", page: 'AdvertiserDashboard' },
@@ -80,7 +76,6 @@ const MENU_SECTIONS = [
   {
     title: "PARAMÈTRES",
     items: [
-      { icon: User, label: "Profil", color: "text-gray-600", page: 'Profile' },
       { icon: Settings, label: "Paramètres", color: "text-gray-600", page: 'Settings' },
       { icon: BarChart3, label: "Statistiques", color: "text-purple-600", page: 'Analytics' },
       { icon: Bell, label: "Notifications", color: "text-blue-600", page: 'Notifications' },
