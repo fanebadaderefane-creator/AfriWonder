@@ -215,6 +215,13 @@ Toutes les variables exposées au client doivent être préfixées par **`VITE_`
 | `VITE_VAPID_PUBLIC_KEY` / `REACT_APP_VAPID_PUBLIC_KEY` | Push (clé publique) |
 | `VITE_STRIPE_PUBLISHABLE_KEY` | Stripe (clé publique) |
 | `VITE_SENTRY_DSN` | Sentry frontend |
+| `VITE_GIPHY_API_KEY` | Messagerie : onglet **GIF** dans le composer (API [Giphy](https://developers.giphy.com/), clé gratuite). Sans elle, l’UI affiche un message de configuration. |
+| `VITE_TURN_URL` | **Appels WebRTC** (`DirectCall`) : serveur TURN. Plusieurs URLs possibles, **séparées par des virgules** (ex. `turn:…,turns:…`). Avec `VITE_TURN_USERNAME` et `VITE_TURN_CREDENTIAL`. |
+| `VITE_TURN_USERNAME` | Identifiant TURN |
+| `VITE_TURN_CREDENTIAL` | Mot de passe / secret TURN |
+| `VITE_ICE_TRANSPORT_POLICY` | `relay` pour forcer le relais (dépannage NAT) ; sinon laisser vide (`all`). |
+| `VITE_UPLOAD_MAX_MEDIA_MB` | Messagerie : plafond **affiché / contrôlé côté client** pour photos, vidéos, vocaux (défaut **600**, comme `UPLOAD_MAX_MEDIA_MB` backend). |
+| `VITE_UPLOAD_MAX_DOCUMENT_MB` | Messagerie : plafond client pour **documents** (défaut **300**, comme `UPLOAD_MAX_DOCUMENT_MB` backend). |
 | `VITE_ORANGE_MERCHANT_ID` | Affiché / passé au backend (ne pas mettre de secret) |
 | `VITE_ORANGE_API_KEY` | (Backend peut le lire aussi — éviter en prod côté front) |
 | `REACT_APP_ORANGE_MERCHANT_ID` | Legacy |
@@ -245,7 +252,7 @@ Toutes les variables exposées au client doivent être préfixées par **`VITE_`
 À partir de **`.env.example`** (racine) :
 
 - **Requis en prod** : `VITE_API_URL`, `VITE_WS_URL`
-- **Optionnel** : Stripe pub key, VAPID, Sentry, Orange (éviter les secrets)
+- **Optionnel** : Stripe pub key, VAPID, Sentry, **`VITE_GIPHY_API_KEY`** (GIF dans le chat), Orange (éviter les secrets)
 
 ---
 

@@ -1,14 +1,9 @@
 /**
- * Socket.io client pour Messages : user:join, conversation room, typing, new message, read.
+ * Socket.io partagé (MessageSocketProvider) : room conversation + typing / lecture.
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { io } from 'socket.io-client';
-import { getSocketBaseUrl, getSocketIoTransports } from '@/lib/getSocketBaseUrl';
+import { useMessageSocketContext } from '@/contexts/MessageSocketContext';
 
-/**
- * Hook pour une conversation : join/leave room, typing, écoute new_message / message:read / message:delivered.
- * Expose isConnected pour afficher un indicateur de reconnexion (socket.io gère la reconnexion automatique).
- */
 export function useConversationSocket(options) {
   const {
     userId,
@@ -18,12 +13,12 @@ export function useConversationSocket(options) {
     onMessageRead,
     onMessageDelivered,
   } = options || {};
-  const socketRef = useRef(null);
+
+  const { socket } = useMessageSocketContext() || {};
   const socketEverConnectedRef = useRef(false);
   const [typingUser, setTypingUser] = useState(null);
   const [recordingUser, setRecordingUser] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
-  /** Évite le bandeau « Reconnexion » sur les micro-coupures Socket.io (reconnexion auto). */
   const [showReconnectBanner, setShowReconnectBanner] = useState(false);
   const typingTimeoutRef = useRef(null);
   const recordingTimeoutRef = useRef(null);
@@ -35,102 +30,111 @@ export function useConversationSocket(options) {
   onMessageDeliveredRef.current = onMessageDelivered;
 
   useEffect(() => {
-    if (!userId || !conversationId) return;
-    const base = getSocketBaseUrl();
-    const socket = io(base, {
-      path: '/socket.io',
-      transports: getSocketIoTransports(),
-      withCredentials: true,
-    });
-    socketRef.current = socket;
+    if (!socket || !userId || !conversationId) {
+      setIsConnected(false);
+      return undefined;
+    }
 
-    socket.on('connect', () => {
+    const joinConversation = () => {
+      socket.emit('message:join-conversation', conversationId);
+    };
+
+    const onConnect = () => {
       socketEverConnectedRef.current = true;
       setIsConnected(true);
-      socket.emit('user:join', userId);
-      socket.emit('message:join-conversation', conversationId);
-    });
+      joinConversation();
+    };
 
-    socket.on('disconnect', () => {
-      setIsConnected(false);
-    });
+    const onDisconnect = () => setIsConnected(false);
 
-    socket.on('message:new', (payload) => {
-      if (onNewMessageRef.current) onNewMessageRef.current(payload);
-    });
-    socket.on('message:updated', (payload) => {
-      if (onNewMessageRef.current) onNewMessageRef.current(payload);
-    });
-    socket.on('message:read', (payload) => {
-      if (onMessageReadRef.current) onMessageReadRef.current(payload);
-    });
-    socket.on('message:delivered', (payload) => {
-      if (onMessageDeliveredRef.current) onMessageDeliveredRef.current(payload);
-    });
-    socket.on('message:typing', (payload) => {
+    const onNew = (payload) => onNewMessageRef.current?.(payload);
+    const onUpdated = (payload) => onNewMessageRef.current?.(payload);
+    const onRead = (payload) => onMessageReadRef.current?.(payload);
+    const onDelivered = (payload) => onMessageDeliveredRef.current?.(payload);
+    const onTyping = (payload) => {
       if (payload.userId === userId) return;
-      setTypingUser(payload.typing ? { userId: payload.userId, name: payload.name || 'Quelqu\'un' } : null);
+      setTypingUser(payload.typing ? { userId: payload.userId, name: payload.name || "Quelqu'un" } : null);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       if (payload.typing) {
         typingTimeoutRef.current = setTimeout(() => setTypingUser(null), 4000);
       }
-    });
-
-    socket.on('message:recording', (payload) => {
+    };
+    const onRecording = (payload) => {
       if (payload.userId === userId) return;
       if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
       if (payload.recording) {
-        setRecordingUser({ userId: payload.userId, name: payload.name || 'Quelqu\'un' });
-        // Sécurité : si le pair ferme l’onglet sans envoyer recording-stop
+        setRecordingUser({ userId: payload.userId, name: payload.name || "Quelqu'un" });
         recordingTimeoutRef.current = setTimeout(() => setRecordingUser(null), 120_000);
       } else {
         setRecordingUser(null);
       }
-    });
+    };
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    socket.on('message:new', onNew);
+    socket.on('message:updated', onUpdated);
+    socket.on('message:read', onRead);
+    socket.on('message:delivered', onDelivered);
+    socket.on('message:typing', onTyping);
+    socket.on('message:recording', onRecording);
+
+    if (socket.connected) {
+      socketEverConnectedRef.current = true;
+      setIsConnected(true);
+      joinConversation();
+    } else {
+      setIsConnected(false);
+    }
 
     return () => {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
       socket.emit('message:leave-conversation', conversationId);
-      socket.removeAllListeners();
-      socket.disconnect();
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+      socket.off('message:new', onNew);
+      socket.off('message:updated', onUpdated);
+      socket.off('message:read', onRead);
+      socket.off('message:delivered', onDelivered);
+      socket.off('message:typing', onTyping);
+      socket.off('message:recording', onRecording);
     };
-  }, [userId, conversationId]);
+  }, [socket, userId, conversationId]);
 
   useEffect(() => {
     if (isConnected) {
       setShowReconnectBanner(false);
       return undefined;
     }
-    /** Délai plus long au 1er jet (backend / proxy Vite parfois lent en dev). */
     const delayMs = socketEverConnectedRef.current ? 2800 : 12_000;
     const id = window.setTimeout(() => setShowReconnectBanner(true), delayMs);
     return () => window.clearTimeout(id);
   }, [isConnected]);
 
   const emitTypingStart = useCallback(() => {
-    if (socketRef.current?.connected && conversationId && userId && userName) {
-      socketRef.current.emit('message:typing-start', { conversationId, userId, name: userName });
+    if (socket?.connected && conversationId && userId && userName) {
+      socket.emit('message:typing-start', { conversationId, userId, name: userName });
     }
-  }, [conversationId, userId, userName]);
+  }, [socket, conversationId, userId, userName]);
 
   const emitTypingStop = useCallback(() => {
-    if (socketRef.current?.connected && conversationId && userId) {
-      socketRef.current.emit('message:typing-stop', { conversationId, userId });
+    if (socket?.connected && conversationId && userId) {
+      socket.emit('message:typing-stop', { conversationId, userId });
     }
-  }, [conversationId, userId]);
+  }, [socket, conversationId, userId]);
 
   const emitRecordingStart = useCallback(() => {
-    if (socketRef.current?.connected && conversationId && userId && userName) {
-      socketRef.current.emit('message:recording-start', { conversationId, userId, name: userName });
+    if (socket?.connected && conversationId && userId && userName) {
+      socket.emit('message:recording-start', { conversationId, userId, name: userName });
     }
-  }, [conversationId, userId, userName]);
+  }, [socket, conversationId, userId, userName]);
 
   const emitRecordingStop = useCallback(() => {
-    if (socketRef.current?.connected && conversationId && userId) {
-      socketRef.current.emit('message:recording-stop', { conversationId, userId });
+    if (socket?.connected && conversationId && userId) {
+      socket.emit('message:recording-stop', { conversationId, userId });
     }
-  }, [conversationId, userId]);
+  }, [socket, conversationId, userId]);
 
   return {
     typingUser,

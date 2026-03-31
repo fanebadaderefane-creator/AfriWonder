@@ -38,7 +38,7 @@ beforeAll(() => {
   if (typeof window !== 'undefined') {
     window.scrollTo = () => {};
     Element.prototype.scrollIntoView = () => {};
-    // jsdom n'a pas matchMedia (next-themes, PWAInstallBanner)
+    // jsdom n'a pas matchMedia (thème / PWAInstallBanner)
     window.matchMedia = (query) => ({
       matches: false,
       media: query,

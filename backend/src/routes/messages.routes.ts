@@ -105,6 +105,16 @@ router.get('/conversation/:userId', authenticate, async (req: AuthRequest, res, 
   }
 });
 
+// GET /api/messages/conversations/id/:conversationId
+router.get('/conversations/id/:conversationId', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const conversation = await messageService.getConversationById(param(req, 'conversationId'), req.user!.id);
+    res.json({ success: true, data: conversation });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
 // PATCH /api/messages/conversations/:conversationId/archive — archiver / désarchiver (body: archived boolean)
 router.patch('/conversations/:conversationId/archive', authenticate, async (req: AuthRequest, res, next) => {
   try {

@@ -4,6 +4,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { FILE_ACCEPT_MEDIA } from '@/lib/fileAccept';
+import {
+  assertChatMediaFile,
+  assertChatDocumentFile,
+  isPayloadTooLargeError,
+} from '@/lib/chatUploadLimits';
+import { compressImageFileForChat } from '@/lib/chatImageCompress';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -36,7 +42,20 @@ import {
   repairLocalE2eeDevice,
   E2EE_STRICT_MODE,
 } from '@/lib/e2eeClient';
+import { getConversationPeerId, getChatSearchIdentifiers } from '@/lib/messagingRoutes';
 import { downloadPlainTextFile, formatDmConversationToPlainText } from '@/lib/messagingExportPlainText';
+import {
+  getCachedConversations,
+  findCachedConversation,
+  findCachedConversationByPeer,
+  cacheConversations,
+  getCachedMessages,
+  cacheMessages,
+  upsertCachedConversation,
+  getOutbox,
+  queueOutboxItem,
+  removeOutboxItem,
+} from '@/services/offlineProfilesMessages.service';
 
 const MESSAGES_LIMIT = 30;
 const TYPING_DEBOUNCE_MS = 400;
@@ -56,6 +75,10 @@ const chatI18n = {
     composerRecordVoice: 'Enregistrer un message vocal',
     composerSend: 'Envoyer le message',
     uploadError: "Erreur d'envoi du media",
+    uploadPayloadTooLarge: 'Fichier trop volumineux pour le serveur.',
+    fileTooLargeMedia: (maxMb) =>
+      `Fichier trop volumineux. Maximum ${maxMb} Mo pour les photos, vidéos et messages vocaux.`,
+    fileTooLargeDocument: (maxMb) => `Document trop volumineux. Maximum ${maxMb} Mo.`,
     selectConversation: 'Selectionnez une conversation depuis Messages.',
     backToMessages: 'Retour aux messages',
     online: 'En ligne',
@@ -210,7 +233,6 @@ const chatI18n = {
     eventShareError: 'Impossible de charger les événements.',
     attachAiImages: 'Images IA',
     attachAudioHint: 'Utilisez le micro vert a droite pour un message vocal.',
-    documentComingSoon: 'Envoi de documents bientot disponible.',
     documentSendError: 'Envoi du document impossible.',
     ephemeralOn: 'Mode temporaire active',
     ephemeralOff: 'Mode temporaire desactive',
@@ -222,7 +244,8 @@ const chatI18n = {
     stickerSearchPlaceholder: 'Rechercher un emoji...',
     gifSearchPlaceholder: 'Rechercher un GIF…',
     gifLoadError: 'Impossible de charger les GIF. Vérifiez la clé API ou réessayez.',
-    gifComingSoon: 'Les GIF arrivent bientot.',
+    gifComingSoon:
+      'GIF : ajoutez VITE_GIPHY_API_KEY (clé gratuite sur giphy.com) dans .env puis reconstruisez l’app.',
     stickerCreate: 'Creer',
     stickerCreateSoon: 'Creation de stickers personnalises bientot disponible.',
     composerStickers: 'Stickers et emoji',
@@ -306,6 +329,9 @@ const chatI18n = {
     composerRecordVoice: 'Vocal ta',
     composerSend: 'Mesaji ci',
     uploadError: 'Ja ci ye te se',
+    uploadPayloadTooLarge: 'Faila in bon kosɛbɛ — serveur ma se ka minɛ.',
+    fileTooLargeMedia: (maxMb) => `Faila in bon. ${maxMb} Mo faralen tɛ ja, videyo ani vocal la.`,
+    fileTooLargeDocument: (maxMb) => `Dokumɛnti in bon. ${maxMb} Mo faralen tɛ.`,
     selectConversation: 'I ka barokan do sugandi Messages kono.',
     backToMessages: 'Segin ka taa mesajiw ma',
     online: 'A be yan',
@@ -459,7 +485,6 @@ const chatI18n = {
     eventShareError: 'Kow ma se ka doni.',
     attachAiImages: 'AI ja',
     attachAudioHint: 'I ka mikro jɔlen taama fo vocal la.',
-    documentComingSoon: 'Dokumɛnti ci bɛ na.',
     documentSendError: 'Dokumɛnti ci ma se.',
     ephemeralOn: 'Tɛmɛnnen mode dafalen',
     ephemeralOff: 'Tɛmɛnnen mode bannen',
@@ -471,7 +496,7 @@ const chatI18n = {
     stickerSearchPlaceholder: 'Emoji yiriwa...',
     gifSearchPlaceholder: 'GIF yiriwa…',
     gifLoadError: 'GIFw ma se ka doni.',
-    gifComingSoon: 'GIFw bɛ na.',
+    gifComingSoon: 'GIF : VITE_GIPHY_API_KEY fara .env la (giphy.com), o kɔ app labɛn.',
     stickerCreate: 'Da',
     stickerCreateSoon: 'I yɛrɛ sticker dafalen bɛ na.',
     composerStickers: 'Sticker ni emoji',
@@ -736,7 +761,10 @@ export default function Chat() {
   const labels = chatI18n[language] || chatI18n.fr;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const userId = searchParams.get('userId') || searchParams.get('_userId');
+  const { userId: routeUserId, conversationId: routeConversationId } = useMemo(
+    () => getChatSearchIdentifiers(searchParams),
+    [searchParams]
+  );
   const orderId = searchParams.get('orderId') || searchParams.get('_orderId');
   const messageEndRef = useRef(null);
   const typingDebounceRef = useRef(null);
@@ -769,6 +797,7 @@ export default function Chat() {
   );
   const [messageContent, setMessageContent] = useState('');
   const [conversation, setConversation] = useState(null);
+  const [cachedMessagesData, setCachedMessagesData] = useState(null);
   const [olderMessages, setOlderMessages] = useState([]);
   const [cursorForOlder, setCursorForOlder] = useState(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -823,7 +852,7 @@ export default function Chat() {
   const viewOnceOpenedSetRef = useRef(new Set());
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [contactSearchQuery, setContactSearchQuery] = useState('');
-  const [locationLoading, setLocationLoading] = useState(false);
+  const [_locationLoading, setLocationLoading] = useState(false);
   const [translateOpen, setTranslateOpen] = useState(false);
   const [translateLoading, setTranslateLoading] = useState(false);
   const [translateOriginal, setTranslateOriginal] = useState('');
@@ -841,8 +870,7 @@ export default function Chat() {
   }, [currentUser?.id]);
 
   useEffect(() => {
-    // userId est dispo dès l’URL ; conversationId est défini plus bas (TDZ si on l’utilise ici).
-    if (!currentUser?.id || !userId) return undefined;
+    if (!currentUser?.id || !(routeUserId || routeConversationId)) return undefined;
     let disposed = false;
     let timer = null;
 
@@ -861,7 +889,7 @@ export default function Chat() {
       disposed = true;
       if (timer) clearTimeout(timer);
     };
-  }, [currentUser?.id, userId]);
+  }, [currentUser?.id, routeUserId, routeConversationId]);
 
   const handleE2eeRepair = useCallback(async () => {
     if (!currentUser?.id || e2eeRepairing) return;
@@ -901,17 +929,37 @@ export default function Chat() {
 
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    getCachedConversations(currentUser.id)
+      .then((cached) => {
+        if (cached?.conversations?.length) {
+          queryClient.setQueryData(['messages-conversations', currentUser.id], (prev) => prev || { conversations: cached.conversations });
+        }
+      })
+      .catch(() => {});
+  }, [currentUser?.id, queryClient]);
+
+  const conversationLookupKey = routeUserId || routeConversationId;
+
   const { data: conversationData, isLoading: loadingConv, isError: isErrorConv, refetch: refetchConv } = useQuery({
-    queryKey: ['conversation', currentUser?.id, userId],
-    queryFn: () => api.messages.getConversation(userId),
-    enabled: !!currentUser?.id && !!userId,
+    queryKey: ['conversation', currentUser?.id, conversationLookupKey],
+    queryFn: async () => {
+      if (routeUserId) return api.messages.getConversation(routeUserId);
+      if (routeConversationId) return api.messages.getConversationById(routeConversationId);
+      return undefined;
+    },
+    enabled: !!currentUser?.id && !!conversationLookupKey,
     staleTime: 60 * 1000,
     gcTime: 15 * 60 * 1000,
     /** Depuis la liste Messages : affichage immédiat + id conversation pour charger les messages sans écran bloquant. */
     placeholderData: () => {
       const raw = queryClient.getQueryData(['messages-conversations', currentUser?.id]);
       const list = raw?.conversations ?? [];
-      return list.find((c) => String(c?.other?.id ?? '') === String(userId)) ?? undefined;
+      if (routeConversationId) {
+        return list.find((c) => String(c?.id ?? '') === String(routeConversationId)) ?? undefined;
+      }
+      return list.find((c) => String(c?.other?.id ?? '') === String(routeUserId)) ?? undefined;
     },
   });
 
@@ -919,15 +967,43 @@ export default function Chat() {
     if (conversationData) setConversation(conversationData);
   }, [conversationData]);
 
+  useEffect(() => {
+    if (!currentUser?.id || conversationData) return;
+    const loader = routeConversationId
+      ? findCachedConversation(currentUser.id, routeConversationId)
+      : routeUserId
+        ? findCachedConversationByPeer(currentUser.id, routeUserId)
+        : Promise.resolve(null);
+    loader
+      .then((cachedConversation) => {
+        if (cachedConversation?.id) setConversation(cachedConversation);
+      })
+      .catch(() => {});
+  }, [currentUser?.id, routeConversationId, routeUserId, conversationData]);
+
+  const activeConversation = conversationData ?? conversation;
+  const conversationId = activeConversation?.id || routeConversationId;
+  const userId = routeUserId || getConversationPeerId(activeConversation, currentUser?.id);
+
+  useEffect(() => {
+    if (!currentUser?.id || !activeConversation) return;
+    upsertCachedConversation(currentUser.id, activeConversation).catch(() => {});
+    const raw = queryClient.getQueryData(['messages-conversations', currentUser.id]);
+    const existing = Array.isArray(raw?.conversations) ? raw.conversations : [];
+    cacheConversations(
+      currentUser.id,
+      activeConversation?.id
+        ? [activeConversation, ...existing.filter((item) => String(item?.id) !== String(activeConversation.id))]
+        : existing
+    ).catch(() => {});
+  }, [activeConversation, currentUser?.id, queryClient]);
+
   const { data: peerProfile } = useQuery({
     queryKey: ['chat-peer-profile', userId],
     queryFn: () => api.users.getById(userId),
     enabled: !!userId && !!currentUser?.id,
     staleTime: 10 * 60 * 1000,
   });
-
-  const activeConversation = conversationData ?? conversation;
-  const conversationId = activeConversation?.id;
 
   useEffect(() => {
     if (!currentUser?.id || !conversationId) return undefined;
@@ -1010,7 +1086,7 @@ export default function Chat() {
   useEffect(() => {
     draftSavedRef.current = false;
     setMessageContent('');
-  }, [userId]);
+  }, [conversationLookupKey]);
 
   const putDraftMutation = useMutation({
     mutationFn: ({ cId, content }) => api.messages.putDraft(cId, content ?? ''),
@@ -1033,29 +1109,67 @@ export default function Chat() {
     putDraftMutation.mutate({ cId: conversationId, content: messageContent.trim() });
   }, [conversationId, messageContent]);
 
+  useEffect(() => {
+    if (!conversationId) {
+      setCachedMessagesData(null);
+      return;
+    }
+    getCachedMessages(conversationId)
+      .then((cached) => {
+        if (cached?.messages?.length) {
+          setCachedMessagesData({
+            messages: cached.messages,
+            hasMore: false,
+            nextCursor: null,
+            offline: true,
+          });
+        } else {
+          setCachedMessagesData(null);
+        }
+      })
+      .catch(() => setCachedMessagesData(null));
+  }, [conversationId]);
+
   const { data: messagesData, isPending: messagesPending, isError: isErrorMessages, refetch: refetchMessages } = useQuery({
     queryKey: ['messages-list', conversationId],
-    queryFn: () => api.messages.getMessages(conversationId, null, MESSAGES_LIMIT),
+    queryFn: async () => {
+      try {
+        return await api.messages.getMessages(conversationId, null, MESSAGES_LIMIT);
+      } catch (error) {
+        const cached = await getCachedMessages(conversationId);
+        if (cached?.messages?.length) {
+          return { messages: cached.messages, hasMore: false, nextCursor: null, offline: true };
+        }
+        throw error;
+      }
+    },
     enabled: !!conversationId,
     staleTime: 20 * 1000,
+    placeholderData: cachedMessagesData || undefined,
   });
+
+  useEffect(() => {
+    if (conversationId && Array.isArray(messagesData?.messages)) {
+      cacheMessages(conversationId, messagesData.messages).catch(() => {});
+    }
+  }, [conversationId, messagesData?.messages]);
 
   const isPageVisible = usePageVisibility();
 
   const onNewMessage = useCallback(() => {
     refetchMessages();
     runDmE2eeSyncRef.current?.();
-    queryClient.invalidateQueries({ queryKey: ['messages-unread-count'] });
+    queryClient.invalidateQueries({ queryKey: ['messages-unread-count', currentUser?.id] });
     queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser?.id] });
   }, [refetchMessages, queryClient, currentUser?.id]);
   const onMessageRead = useCallback(() => refetchMessages(), [refetchMessages]);
   const onMessageDelivered = useCallback(() => refetchMessages(), [refetchMessages]);
 
   useEffect(() => {
-    if (isErrorConv && userId) {
+    if (isErrorConv && conversationLookupKey) {
       toast.error(labels.selectConversation, { action: { label: labels.backToMessages, onClick: () => navigate(createPageUrl('Inbox')) } });
     }
-  }, [isErrorConv, userId, labels.selectConversation, labels.backToMessages, navigate]);
+  }, [isErrorConv, conversationLookupKey, labels.selectConversation, labels.backToMessages, navigate]);
 
   useEffect(() => {
     if (isErrorMessages && conversationId) {
@@ -1253,7 +1367,7 @@ export default function Chat() {
       .markAsDelivered(conversationId)
       .then(() => api.messages.markAsRead(conversationId))
       .then(() => {
-        queryClient.invalidateQueries({ queryKey: ['messages-unread-count'] });
+        queryClient.invalidateQueries({ queryKey: ['messages-unread-count', currentUser?.id] });
         queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser?.id] });
       })
       .catch(() => {});
@@ -1292,6 +1406,7 @@ export default function Chat() {
   const sendMessageMutation = useMutation({
     mutationFn: async ({
       _clientTempId: _omitTemp,
+      _outboxId,
       content,
       type = 'text',
       media_url,
@@ -1309,6 +1424,7 @@ export default function Chat() {
       poll_options,
       event_id,
     } = {}) => {
+      const outboxId = _outboxId || _omitTemp || `outbox-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       let e2ee_envelope;
       try {
         const normalizedType = String(type || 'text').toLowerCase();
@@ -1316,11 +1432,17 @@ export default function Chat() {
           e2ee_envelope = await buildE2eeEnvelopeForRecipient(userId, content, {
             senderUserId: currentUser.id,
             messageType: 'text',
-            clientMessageId: _omitTemp || null,
+            clientMessageId: _omitTemp || outboxId,
           });
         }
       } catch {
         e2ee_envelope = undefined;
+      }
+
+      if (!userId) {
+        const err = new Error('Conversation introuvable');
+        err.apiMessage = 'Conversation introuvable';
+        throw err;
       }
 
       return api.messages.send(userId, content ?? '', {
@@ -1343,13 +1465,16 @@ export default function Chat() {
       });
     },
     onSuccess: (_data, variables) => {
+      if (currentUser?.id && variables?._outboxId) {
+        removeOutboxItem(currentUser.id, variables._outboxId).catch(() => {});
+      }
       if (variables?._clientTempId) {
         setOutgoingPending((prev) => prev.filter((p) => p.tempId !== variables._clientTempId));
       }
       emitTypingStop();
       refetchMessages();
       queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser?.id] });
-      queryClient.invalidateQueries({ queryKey: ['messages-unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ['messages-unread-count', currentUser?.id] });
       if (String(variables?.type || '').toLowerCase() === 'poll') {
         setPollQuestion('');
         setPollOptionRows(['', '']);
@@ -1370,6 +1495,23 @@ export default function Chat() {
       toast.success(variables?.scheduled_at ? 'Message programmé' : labels.sendSuccess);
     },
     onError: (err, variables) => {
+      const shouldQueueOffline =
+        !!currentUser?.id
+        && !variables?.scheduled_at
+        && (
+          (typeof navigator !== 'undefined' && navigator.onLine === false)
+          || (!err?.response && /network|offline|failed to fetch/i.test(String(err?.message || err?.apiMessage || '')))
+        );
+      if (shouldQueueOffline) {
+        const outboxId = variables?._outboxId || variables?._clientTempId || `outbox-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+        queueOutboxItem(currentUser.id, {
+          ...variables,
+          _outboxId: outboxId,
+          conversationId,
+          recipientId: userId,
+          created_at: variables?.created_at || new Date().toISOString(),
+        }).catch(() => {});
+      }
       if (variables?._clientTempId) {
         setOutgoingPending((prev) =>
           prev.map((p) => (p.tempId === variables._clientTempId ? { ...p, status: 'failed' } : p))
@@ -1384,6 +1526,70 @@ export default function Chat() {
       );
     },
   });
+
+  useEffect(() => {
+    if (!currentUser?.id || !(conversationId || userId)) return;
+    let cancelled = false;
+    getOutbox(currentUser.id)
+      .then((outbox) => {
+        if (cancelled) return;
+        const scopedItems = (outbox?.items || []).filter(
+          (item) =>
+            String(item?.conversationId || '') === String(conversationId || '')
+            || String(item?.recipientId || '') === String(userId || '')
+        );
+        const asPending = scopedItems
+          .filter((item) => String(item?.type || 'text').toLowerCase() === 'text' && item?.content)
+          .map((item) => ({
+            tempId: item._clientTempId || item._outboxId || item.id,
+            content: item.content,
+            reply_to_message_id: item.reply_to_message_id || null,
+            reply_to: item.reply_to || null,
+            status: 'failed',
+            created_at: item.created_at || new Date().toISOString(),
+          }));
+        setOutgoingPending((prev) => {
+          const byId = new Map(prev.map((row) => [row.tempId, row]));
+          for (const row of asPending) {
+            if (!byId.has(row.tempId)) byId.set(row.tempId, row);
+          }
+          return [...byId.values()];
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser?.id, conversationId, userId]);
+
+  const flushQueuedMessages = useCallback(async () => {
+    if (!currentUser?.id || !userId || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
+    const outbox = await getOutbox(currentUser.id);
+    const scopedItems = (outbox?.items || []).filter(
+      (item) =>
+        String(item?.conversationId || '') === String(conversationId || '')
+        || String(item?.recipientId || '') === String(userId || '')
+    );
+    for (const item of scopedItems) {
+      try {
+        await sendMessageMutation.mutateAsync(item);
+      } catch {
+        break;
+      }
+    }
+  }, [currentUser?.id, conversationId, userId, sendMessageMutation]);
+
+  useEffect(() => {
+    if (!currentUser?.id || !userId) return undefined;
+    const handleOnline = () => {
+      flushQueuedMessages().catch(() => {});
+    };
+    window.addEventListener('online', handleOnline);
+    if (isConnected) {
+      flushQueuedMessages().catch(() => {});
+    }
+    return () => window.removeEventListener('online', handleOnline);
+  }, [currentUser?.id, userId, isConnected, flushQueuedMessages]);
 
   const { data: eventListData, isPending: eventListPending, isError: eventListError } = useQuery({
     queryKey: ['chat-event-share-list', eventSearchDebounced],
@@ -1537,6 +1743,12 @@ export default function Chat() {
       const audioFile = new File([voiceDraft.blob], `voice-${Date.now()}.${ext}`, {
         type: voiceDraft.mimeType || 'audio/webm',
       });
+      const voiceCheck = assertChatMediaFile(audioFile);
+      if (!voiceCheck.ok) {
+        toast.error(labels.fileTooLargeMedia(voiceCheck.maxMb));
+        setVoiceUploading(false);
+        return;
+      }
       const { file_url } = await api.upload.audio(audioFile);
       if (!file_url) {
         toast.error(labels.voiceStopError);
@@ -1558,11 +1770,22 @@ export default function Chat() {
           },
         }
       );
-    } catch (_e) {
+    } catch (err) {
       setVoiceUploading(false);
-      toast.error(labels.voiceStopError);
+      if (isPayloadTooLargeError(err)) toast.error(labels.uploadPayloadTooLarge);
+      else toast.error(labels.voiceStopError);
     }
-  }, [voiceDraft, clearVoiceDraft, sendMessageMutation, labels.voiceStopError, replyTarget?.id, ephemeralMode, ephemeralExpiresIso]);
+  }, [
+    voiceDraft,
+    clearVoiceDraft,
+    sendMessageMutation,
+    labels.voiceStopError,
+    labels.uploadPayloadTooLarge,
+    labels.fileTooLargeMedia,
+    replyTarget?.id,
+    ephemeralMode,
+    ephemeralExpiresIso,
+  ]);
 
   const togglePreviewPlayback = useCallback(() => {
     const el = previewAudioRef.current;
@@ -1601,7 +1824,7 @@ export default function Chat() {
         queryClient.invalidateQueries({ queryKey: ['scheduled-messages', currentUser?.id] });
       }
       queryClient.invalidateQueries({ queryKey: ['messages-list', conversationId] });
-      queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, userId] });
+      queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, conversationLookupKey] });
       refetchMessages();
     },
     onError: (err) => toast.error(err?.response?.data?.message || err?.apiMessage || labels.deleteError),
@@ -1612,7 +1835,7 @@ export default function Chat() {
     onSuccess: () => {
       toast.success(labels.deleteForAllSuccess ?? 'Message supprimé pour tous');
       refetchMessages();
-      queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, userId] });
+      queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, conversationLookupKey] });
     },
     onError: (err) => toast.error(err?.response?.data?.error || err?.response?.data?.message || labels.deleteForAllError),
   });
@@ -1621,7 +1844,7 @@ export default function Chat() {
     mutationFn: (muted) => api.messages.setConversationNotifications(conversationId, { muted }),
     onSuccess: (_d, muted) => {
       toast.success(muted ? labels.muteChatSuccess : labels.unmuteChatSuccess);
-      queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, userId] });
+      queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, conversationLookupKey] });
       queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser?.id] });
     },
     onError: () => toast.error(labels.muteChatError),
@@ -1634,7 +1857,7 @@ export default function Chat() {
       setOlderMessages([]);
       setCursorForOlder(null);
       refetchMessages();
-      queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, userId] });
+      queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, conversationLookupKey] });
     },
     onError: (err) => toast.error(err?.response?.data?.message || err?.apiMessage || labels.clearChatError),
   });
@@ -1740,7 +1963,7 @@ export default function Chat() {
     setConfirmAction({ type: 'report', messageId: lastIncoming.id });
   };
 
-  const handleDeleteMyLastMessage = () => {
+  const _handleDeleteMyLastMessage = () => {
     const lastOwn = [...messages].reverse().find((m) => m.sender_id === currentUser?.id && !m.is_deleted);
     if (!lastOwn?.id) {
       toast.error(labels.deleteNoMessage);
@@ -2097,13 +2320,13 @@ export default function Chat() {
       api.messages.unpinMessage(conversationId).then(() => {
         toast.success(labels.unpinned);
         refetchMessages();
-        queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, userId] });
+        queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, conversationLookupKey] });
       }).catch((err) => toast.error(err?.response?.data?.message || labels.sendError));
     } else {
       api.messages.pinMessage(conversationId, msg.id).then(() => {
         toast.success(labels.pinned);
         refetchMessages();
-        queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, userId] });
+        queryClient.invalidateQueries({ queryKey: ['conversation', currentUser?.id, conversationLookupKey] });
       }).catch((err) => toast.error(err?.response?.data?.message || labels.sendError));
     }
     setMessageActionsOpen(false);
@@ -2293,6 +2516,11 @@ export default function Chat() {
         ? '.png'
         : '.jpg';
     const file = new File([blob], `${isVideo ? 'video' : 'photo'}_${Date.now()}${ext}`, { type: mimeType });
+    const mediaCheck = assertChatMediaFile(file);
+    if (!mediaCheck.ok) {
+      toast.error(labels.fileTooLargeMedia(mediaCheck.maxMb));
+      return;
+    }
     const content = String(caption || '').trim();
     const sendEphemeral = viewOnceEphemeral === true || ephemeralMode === true;
     const ephemeralExpiresAt = sendEphemeral ? ephemeralExpiresIso() : undefined;
@@ -2314,7 +2542,8 @@ export default function Chat() {
           expires_at: ephemeralExpiresAt,
         });
       } else {
-        const { file_url } = await api.upload.image(file);
+        const toSend = await compressImageFileForChat(file);
+        const { file_url } = await api.upload.image(toSend);
         if (!file_url) {
           toast.error(labels.uploadError);
           return;
@@ -2330,7 +2559,11 @@ export default function Chat() {
       }
       clearCameraDraft();
     } catch (err) {
-      toast.error(err?.response?.data?.error?.message || err?.response?.data?.message || err?.apiMessage || labels.uploadError);
+      if (isPayloadTooLargeError(err)) toast.error(labels.uploadPayloadTooLarge);
+      else
+        toast.error(
+          err?.response?.data?.error?.message || err?.response?.data?.message || err?.apiMessage || labels.uploadError
+        );
     } finally {
       setCameraSending(false);
     }
@@ -2346,12 +2579,18 @@ export default function Chat() {
       toast.error(labels.selectMedia);
       return;
     }
+    const sizeCheck = assertChatMediaFile(file);
+    if (!sizeCheck.ok) {
+      toast.error(labels.fileTooLargeMedia(sizeCheck.maxMb));
+      return;
+    }
     try {
       if (isImage) {
-        const previewUrl = URL.createObjectURL(file);
+        const compressed = await compressImageFileForChat(file);
+        const previewUrl = URL.createObjectURL(compressed);
         setCameraDraft({
-          blob: file,
-          mimeType: file.type || 'image/jpeg',
+          blob: compressed,
+          mimeType: compressed.type || 'image/jpeg',
           isVideo: false,
           caption: '',
           previewUrl,
@@ -2374,7 +2613,11 @@ export default function Chat() {
         expires_at: ephemeralMode ? ephemeralExpiresIso() : undefined,
       });
     } catch (err) {
-      toast.error(err?.response?.data?.error?.message || err?.response?.data?.message || err?.apiMessage || labels.uploadError);
+      if (isPayloadTooLargeError(err)) toast.error(labels.uploadPayloadTooLarge);
+      else
+        toast.error(
+          err?.response?.data?.error?.message || err?.response?.data?.message || err?.apiMessage || labels.uploadError
+        );
     }
   };
 
@@ -2382,6 +2625,11 @@ export default function Chat() {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || !userId) return;
+    const docCheck = assertChatDocumentFile(file);
+    if (!docCheck.ok) {
+      toast.error(labels.fileTooLargeDocument(docCheck.maxMb));
+      return;
+    }
     setDocumentSending(true);
     try {
       const up = await api.upload.document(file);
@@ -2399,8 +2647,11 @@ export default function Chat() {
         expires_at: ephemeralMode ? ephemeralExpiresIso() : undefined,
       });
     } catch (err) {
-      const apiMsg = err?.response?.data?.error?.message || err?.response?.data?.message || err?.apiMessage;
-      toast.error(apiMsg || labels.documentSendError || labels.uploadError);
+      if (isPayloadTooLargeError(err)) toast.error(labels.uploadPayloadTooLarge);
+      else {
+        const apiMsg = err?.response?.data?.error?.message || err?.response?.data?.message || err?.apiMessage;
+        toast.error(apiMsg || labels.documentSendError || labels.uploadError);
+      }
     } finally {
       setDocumentSending(false);
     }
@@ -2549,7 +2800,7 @@ export default function Chat() {
 
   if (!isAuthenticated || !currentUser) return null;
 
-  if (!userId) {
+  if (!conversationLookupKey && !userId) {
     return (
       <ChatScreenShell centered>
         <div className={`w-full max-w-md rounded-[28px] p-8 text-center ${CHAT_SURFACE}`}>
@@ -2560,7 +2811,7 @@ export default function Chat() {
     );
   }
 
-  const waitingForConversation = !!userId && !conversationId && !!loadingConv && !isErrorConv;
+  const waitingForConversation = !!conversationLookupKey && !conversationId && !!loadingConv && !isErrorConv;
 
   if (isErrorConv && !conversationData) {
     return (
@@ -2917,12 +3168,16 @@ export default function Chat() {
             <p className="mt-3 text-sm text-white/45">Chargement des messages…</p>
           </div>
         ) : messages.length === 0 && outgoingPending.length === 0 ? (
-          <div className="flex min-h-[min(280px,48dvh)] flex-col items-center justify-center px-6 py-10 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.06]">
-              <MessageCircle className="h-8 w-8 text-white/40" strokeWidth={1.5} aria-hidden />
+          <div className="flex min-h-[min(320px,52dvh)] flex-col justify-end px-3 py-8">
+            <div className="mx-auto w-full max-w-[340px] rounded-[22px] border border-white/[0.08] bg-[#0c1523]/88 px-4 py-4 text-center shadow-[0_18px_46px_rgba(2,6,23,0.24)] backdrop-blur-xl">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/[0.05]">
+                <MessageCircle className="h-6 w-6 text-white/35" strokeWidth={1.7} aria-hidden />
+              </div>
+              <p className="text-[15px] font-semibold text-white/92">{labels.noMessage}</p>
+              <p className="mt-1.5 text-sm leading-relaxed text-white/48">
+                Envoyez un message, une photo ou un vocal pour démarrer une discussion plus naturelle.
+              </p>
             </div>
-            <p className="text-[15px] font-medium text-white/92">{labels.noMessage}</p>
-            <p className="mt-2 max-w-[280px] text-sm leading-relaxed text-white/42">{labels.startConversation}</p>
           </div>
         ) : displayedMessages.length === 0 ? (
           <div className="flex min-h-[min(200px,36dvh)] flex-col items-center justify-center px-6 py-10 text-center">
@@ -3126,14 +3381,16 @@ export default function Chat() {
                         labels={labels}
                       />
                       {msg.transcription_text ? (
-                        <p className="mt-2 text-[12px] leading-snug text-white/65">{msg.transcription_text}</p>
+                        <p className="mt-2 rounded-xl bg-black/10 px-3 py-2 text-[12px] leading-snug text-white/62">
+                          {msg.transcription_text}
+                        </p>
                       ) : null}
                       {isOwn && !msg.transcription_text ? (
                         <button
                           type="button"
                           disabled={transcribeVoiceMutation.isPending}
                           onClick={() => transcribeVoiceMutation.mutate(msg.id)}
-                          className="mt-1.5 text-[11px] font-semibold text-sky-400/95 hover:underline disabled:opacity-50"
+                          className="mt-2 inline-flex items-center rounded-full bg-black/10 px-3 py-1.5 text-[11px] font-semibold text-sky-300/95 hover:bg-black/15 disabled:opacity-50"
                         >
                           {transcribeVoiceMutation.isPending ? labels.transcribingVoice : labels.transcribeVoice}
                         </button>
@@ -3422,68 +3679,81 @@ export default function Chat() {
               src={voiceDraft.objectUrl}
               className="hidden"
               preload="metadata"
-              playsInline
               onPlay={() => setPreviewPlaying(true)}
               onPause={() => setPreviewPlaying(false)}
               onEnded={() => setPreviewPlaying(false)}
             />
           )}
           {isRecording ? (
-            <div className="flex flex-col gap-1.5 rounded-[30px] border border-white/10 bg-[#0a1220]/94 px-3 py-2.5 shadow-[0_18px_40px_rgba(2,6,23,0.22)] backdrop-blur-xl">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/80 hover:bg-white/[0.08]"
-                  onClick={cancelRecording}
-                  aria-label={labels.discardVoice}
-                >
-                  <Trash2 className="h-5 w-5" />
-                </button>
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="shrink-0 font-mono text-sm tabular-nums text-emerald-400">{formatRecordingClock(recordingSeconds)}</span>
-                  <div className="flex h-4 min-w-0 flex-1 items-center gap-0.5 overflow-hidden opacity-80">
-                    {Array.from({ length: 28 }).map((_, i) => (
-                      <span key={`rd-${i}`} className="h-1 w-1 shrink-0 rounded-full bg-white/28" />
-                    ))}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-500/25 text-red-200 hover:bg-red-500/35"
-                  onClick={stopRecording}
-                  aria-label={labels.stopRecording}
-                >
-                  <Square className="h-5 w-5 fill-current" />
-                </button>
-              </div>
-              <p className="px-1 text-center text-[11px] text-white/40">{labels.recording}</p>
-            </div>
-          ) : voiceDraft ? (
-            <div className="flex items-center gap-2 rounded-[30px] border border-white/10 bg-[#0a1220]/94 px-2.5 py-2 shadow-[0_18px_40px_rgba(2,6,23,0.22)] backdrop-blur-xl">
+            <div className="flex items-center gap-2 rounded-[28px] border border-white/10 bg-[#0d1624]/96 px-2.5 py-2 shadow-[0_18px_40px_rgba(2,6,23,0.22)] backdrop-blur-xl">
               <button
                 type="button"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white hover:bg-white/[0.08]"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white/55 hover:bg-white/[0.08] hover:text-white"
+                onClick={cancelRecording}
+                aria-label={labels.discardVoice}
+              >
+                <Trash2 className="h-5 w-5" />
+              </button>
+              <div className="flex min-w-0 flex-1 items-center gap-3 rounded-[20px] bg-black/20 px-3 py-2">
+                <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.18em] text-red-300">Rec</span>
+                <span className="shrink-0 font-mono text-sm tabular-nums text-white/90">{formatRecordingClock(recordingSeconds)}</span>
+                <div className="flex h-5 min-w-0 flex-1 items-center gap-[3px] overflow-hidden">
+                  {Array.from({ length: 34 }).map((_, i) => (
+                    <span
+                      key={`rd-${i}`}
+                      className="shrink-0 rounded-full bg-white/55"
+                      style={{ width: 3, height: `${6 + ((i * 7) % 12)}px`, opacity: 0.35 + ((i % 5) * 0.1) }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-500 text-white shadow-[0_8px_24px_rgba(239,68,68,0.35)] hover:bg-red-600"
+                onClick={stopRecording}
+                aria-label={labels.stopRecording}
+              >
+                <Square className="h-4.5 w-4.5 fill-current" />
+              </button>
+            </div>
+          ) : voiceDraft ? (
+            <div className="flex items-center gap-2 rounded-[28px] border border-white/10 bg-[#0d1624]/96 px-2.5 py-2 shadow-[0_18px_40px_rgba(2,6,23,0.22)] backdrop-blur-xl">
+              <button
+                type="button"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-slate-800 hover:bg-white/90"
                 onClick={togglePreviewPlayback}
                 aria-label={previewPlaying ? labels.pausePreview : labels.playPreview}
               >
                 {previewPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 pl-0.5" />}
               </button>
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <div className="flex h-4 min-w-0 flex-1 items-center gap-0.5 overflow-hidden opacity-80">
-                  {Array.from({ length: 28 }).map((_, i) => (
-                    <span key={`pv-${i}`} className="h-1 w-1 shrink-0 rounded-full bg-white/28" />
+              <div className="flex min-w-0 flex-1 items-center gap-3 rounded-[20px] bg-black/20 px-3 py-2">
+                <span className="shrink-0 font-mono text-sm tabular-nums text-white/90">{formatRecordingClock(voiceDraft.durationSec)}</span>
+                <div className="flex h-5 min-w-0 flex-1 items-center gap-[3px] overflow-hidden">
+                  {Array.from({ length: 34 }).map((_, i) => (
+                    <span
+                      key={`pv-${i}`}
+                      className="shrink-0 rounded-full"
+                      style={{
+                        width: 3,
+                        height: `${6 + ((i * 7) % 12)}px`,
+                        backgroundColor: previewPlaying && i < 12 ? '#25D366' : 'rgba(255,255,255,0.55)',
+                        opacity: previewPlaying && i < 12 ? 1 : 0.5,
+                      }}
+                    />
                   ))}
                 </div>
-                <span className="shrink-0 font-mono text-sm tabular-nums text-white/88">{formatRecordingClock(voiceDraft.durationSec)}</span>
+                {ephemeralMode && (
+                  <span
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/12 bg-white/5 text-[11px] font-semibold text-white/72"
+                    title={labels.ephemeralMode}
+                  >
+                    1
+                  </span>
+                )}
               </div>
-              {ephemeralMode && (
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/15 text-xs font-semibold text-white/70" title={labels.ephemeralMode}>
-                  1
-                </span>
-              )}
               <button
                 type="button"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/80 hover:bg-white/[0.08]"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white/55 hover:bg-white/[0.08] hover:text-white"
                 onClick={clearVoiceDraft}
                 aria-label={labels.discardVoice}
               >
@@ -3493,7 +3763,7 @@ export default function Chat() {
                 type="button"
                 disabled={voiceUploading || sendMessageMutation.isPending}
                 size="icon"
-                className="h-11 w-11 shrink-0 rounded-full bg-emerald-500 text-white hover:bg-emerald-600"
+                className="h-11 w-11 shrink-0 rounded-full bg-emerald-500 text-white shadow-[0_8px_24px_rgba(16,185,129,0.35)] hover:bg-emerald-600"
                 onClick={() => sendVoiceDraft()}
                 aria-label={labels.sendVoice}
               >
@@ -3502,17 +3772,16 @@ export default function Chat() {
             </div>
           ) : (
             <div className="flex items-end gap-1.5 sm:gap-2">
-              {/* Structure proche WhatsApp : emoji à gauche hors champ, micro / envoi à droite en pastille */}
-              <button
-                type="button"
-                className="mb-0.5 flex h-12 w-12 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-white/72 hover:bg-white/[0.08] hover:text-white active:bg-white/[0.1]"
-                onClick={() => setComposerStickerOpen(true)}
-                disabled={sendMessageMutation.isPending || !conversationId}
-                aria-label={labels.composerStickers}
-              >
-                <Sticker className="h-6 w-6" strokeWidth={1.75} />
-              </button>
               <div className="flex min-w-0 flex-1 items-center gap-0.5 rounded-[26px] border border-white/12 bg-[#0f1724]/98 px-1.5 py-1 shadow-[0_18px_40px_rgba(2,6,23,0.22)] backdrop-blur-xl">
+                <button
+                  type="button"
+                  className="flex h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-white/65 hover:bg-white/[0.07] hover:text-white active:bg-white/[0.1]"
+                  onClick={() => setComposerStickerOpen(true)}
+                  disabled={sendMessageMutation.isPending || !conversationId}
+                  aria-label={labels.composerStickers}
+                >
+                  <Sticker className="h-5 w-5" strokeWidth={1.8} />
+                </button>
                 <Input
                   placeholder={labels.placeholder}
                   value={messageContent}
@@ -3524,7 +3793,7 @@ export default function Chat() {
                   autoComplete="off"
                   autoCorrect="on"
                   aria-describedby="chat-composer-format-hint"
-                  className="min-h-[44px] h-12 min-w-0 flex-1 border-transparent bg-transparent px-2.5 text-[16px] text-white placeholder:text-white/34 shadow-none focus-visible:ring-0 sm:text-[15px]"
+                  className="min-h-[44px] h-12 min-w-0 flex-1 border-transparent bg-transparent px-1.5 text-[16px] text-white placeholder:text-white/34 shadow-none focus-visible:ring-0 sm:text-[15px]"
                 />
                 <button
                   type="button"

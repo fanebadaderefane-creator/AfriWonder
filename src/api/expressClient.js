@@ -103,27 +103,28 @@ axiosInstance.interceptors.response.use(
     
     // Si c'est une erreur 401 et qu'on n'a pas déjà tenté de rafraîchir
     if (error.response?.status === 401 && !originalRequest._retry) {
-      // Vérifier si la requête avait un token au départ
-      const hadToken = originalRequest.headers.Authorization?.startsWith('Bearer ');
-      
-      if (!hadToken) {
-        await clearTokens();
-        await setCachedAuthUser(null);
+      const reqUrl = String(originalRequest?.url || '');
+      const isRefreshCall = reqUrl.includes('/auth/refresh');
+      const isLoginOrRegister = /\/auth\/(login|register)($|\?)/.test(reqUrl);
+      if (isRefreshCall || isLoginOrRegister) {
         return Promise.reject(error);
       }
+
+      const applyAuthHeader = (req, accessToken) => {
+        if (accessToken) req.headers.Authorization = `Bearer ${accessToken}`;
+        else delete req.headers.Authorization;
+      };
 
       // Si on est déjà en train de rafraîchir, mettre en queue
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         })
-          .then(token => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
+          .then((token) => {
+            applyAuthHeader(originalRequest, token || null);
             return axiosInstance(originalRequest);
           })
-          .catch(err => {
-            return Promise.reject(err);
-          });
+          .catch((err) => Promise.reject(err));
       }
 
       originalRequest._retry = true;
@@ -131,30 +132,31 @@ axiosInstance.interceptors.response.use(
 
       try {
         const refreshToken = await getRefreshToken();
-        if (!refreshToken) {
-          await clearTokens();
-          await setCachedAuthUser(null);
-          processQueue(error);
-          isRefreshing = false;
-          return Promise.reject(error);
-        }
-        
-        const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
-        const newToken = data.data.accessToken;
-        await setAccessToken(newToken);
-        await setRefreshToken(data.data.refreshToken);
-        
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-        processQueue(null, newToken);
+        const { data } = await axios.post(
+          `${API_URL}/auth/refresh`,
+          refreshToken ? { refreshToken } : {},
+          {
+            withCredentials: true,
+            headers: { 'Content-Type': 'application/json' },
+            timeout: DEFAULT_TIMEOUT_MS,
+          }
+        );
+        const newToken = data?.data?.accessToken;
+        const newRefresh = data?.data?.refreshToken;
+        if (newToken) await setAccessToken(newToken);
+        if (newRefresh) await setRefreshToken(newRefresh);
+
+        applyAuthHeader(originalRequest, newToken || null);
+        processQueue(null, newToken || null);
         isRefreshing = false;
-        
+
         return axiosInstance(originalRequest);
       } catch (_refreshError) {
         await clearTokens();
         await setCachedAuthUser(null);
         processQueue(_refreshError);
         isRefreshing = false;
-        
+
         // Ne rediriger que si ce n'est pas déjà la page d'accueil
         if (window.location.pathname !== '/') {
           window.location.href = '/';
@@ -184,11 +186,12 @@ axiosInstance.interceptors.response.use(
       error.apiMessage = typeof raw === 'string' ? raw : (raw?.message ?? 'Trop de requêtes. Réessayez dans quelques secondes.');
     } else {
       const d = error.response?.data;
-      /** API AfriWonder : { success: false, error: { message } } */
+      /** API AfriWonder : { success: false, error: { message } } ou error: string (legacy) */
       let extracted =
         d && typeof d === 'object' && d.error && typeof d.error === 'object' && typeof d.error.message === 'string'
           ? d.error.message
           : null;
+      if (!extracted && d && typeof d === 'object' && typeof d.error === 'string') extracted = d.error;
       if (!extracted && typeof d?.message === 'string') extracted = d.message;
       if (!extracted && typeof d === 'string') extracted = d;
       const raw = extracted ?? d?.error ?? error.message;
@@ -338,6 +341,15 @@ export const api = {
     async getSuggestedFollows(limit = 20) {
       const { data } = await axiosInstance.get('/me/suggested-follows', { params: { limit } });
       return data.data ?? [];
+    },
+    async getFeedVideoStates(ids = []) {
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return { likedIds: [], savedIds: [] };
+      }
+      const { data } = await axiosInstance.get('/me/feed-video-states', {
+        params: { ids: ids.join(',') },
+      });
+      return data.data ?? { likedIds: [], savedIds: [] };
     },
     async getSessions() {
       const { data } = await axiosInstance.get('/me/sessions');
@@ -505,9 +517,13 @@ export const api = {
     },
     /** Ré-encode la vidéo en H.264 web (créateur) — utile si une seule vidéo refuse Firefox / WebView. */
     async repairWebPlayback(id) {
-      const { data } = await axiosInstance.post(`/videos/${id}/repair-web-playback`, null, {
-        timeout: Math.max(Number(UPLOAD_TIMEOUT_MS) || 300000, 600000),
-      });
+      const { data } = await axiosInstance.post(
+        `/videos/${id}/repair-web-playback`,
+        {},
+        {
+          timeout: Math.max(Number(UPLOAD_TIMEOUT_MS) || 300000, 900000),
+        }
+      );
       return data;
     },
     async tip(id, { amount, phone, message }) {
@@ -2140,6 +2156,10 @@ export const api = {
     },
     async getConversation(userId) {
       const { data } = await axiosInstance.get(`/messages/conversation/${userId}`);
+      return data.data;
+    },
+    async getConversationById(conversationId) {
+      const { data } = await axiosInstance.get(`/messages/conversations/id/${conversationId}`);
       return data.data;
     },
     async getMessages(conversationId, cursor = null, limit = 30) {

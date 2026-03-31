@@ -19,6 +19,7 @@ import Music2 from 'lucide-react/icons/music-2';
 import DollarSign from 'lucide-react/icons/dollar-sign';
 import UserPlus from 'lucide-react/icons/user-plus';
 import UserCheck from 'lucide-react/icons/user-check';
+import Eye from 'lucide-react/icons/eye';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, getVideoPlaybackUrl, getVideoPlaybackUrlCandidates, getAbsoluteImageUrl, isValidThumbnailUrl, VIDEO_PLACEHOLDER_IMG, isMobileOrPWA } from "@/lib/utils";
@@ -29,6 +30,7 @@ import { api } from '@/api/expressClient';
 import { toast } from 'sonner';
 import Hls from 'hls.js';
 import { formatFeedCount, getCreatorInitial } from '@/features/feed/feedUtils';
+import { canRequestWebPlaybackRepair } from '@/lib/videoWebRepairAccess';
 
 const extractHashtags = (description) => {
   if (!description) return [];
@@ -174,6 +176,8 @@ function VideoCardContent({
   /** PWA/mobile : true une fois l'autoplay réussi, pour afficher le son selon la préférence utilisateur */
   const [hasAutoplaySucceeded, setHasAutoplaySucceeded] = useState(false);
   const [isDataSaver, setIsDataSaver] = useState(false);
+  const [manualPlaybackUrlOverride, setManualPlaybackUrlOverride] = useState('');
+  const [isRepairingPlayback, setIsRepairingPlayback] = useState(false);
 
   useEffect(() => {
     isMutedRef.current = !!isMuted;
@@ -221,6 +225,7 @@ function VideoCardContent({
   const isOwnVideo = !!currentUserIdStr && !!creatorIdStr && currentUserIdStr === creatorIdStr;
   const isCreatorFollowed = Boolean(following || isFollowing);
   const canShowFollowCta = !!currentUser && !isOwnVideo;
+  const canRepairWebPlayback = canRequestWebPlaybackRepair(currentUser, video.creator_id);
   const posterRef = useRef(null);
   const firstFrameDetectionRef = useRef({
     element: null,
@@ -403,6 +408,7 @@ function VideoCardContent({
         if (!out.includes(u)) out.push(u);
       }
     };
+    pushUrl(manualPlaybackUrlOverride);
     // Chrome / WebView : MP4 avant HLS (hls.js peut donner du son sans image sur certains GPU).
     // Firefox : souvent strict sur le MP4 progressif (HEVC, H.264 High 10…) — si un master HLS existe,
     // il est en général déjà en segments H.264 8 bits lisibles ; on le tente en premier.
@@ -442,6 +448,7 @@ function VideoCardContent({
     isDataSaver,
     isOffline,
     isFirefoxBrowser,
+    manualPlaybackUrlOverride,
   ]);
 
   const [sourceIndex, setSourceIndex] = useState(0);
@@ -455,6 +462,11 @@ function VideoCardContent({
     setSourceIndex(0);
     errorRetriedRef.current = false;
   }, [video.id, playbackUrls.join('|')]);
+
+  useEffect(() => {
+    setManualPlaybackUrlOverride('');
+    setIsRepairingPlayback(false);
+  }, [video.id]);
 
   useEffect(() => {
     setAutoplayMutedFallback(!!isMuted);
@@ -874,8 +886,33 @@ function VideoCardContent({
 
     const isPreloadOnly = !isActive && shouldPreload;
 
+    // Safari / iOS : HLS natif en premier — évite de charger hls.js (~100 Ko) quand inutile (audit)
+    if (el.canPlayType('application/vnd.apple.mpegurl')) {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      el.src = videoUrl;
+      el.loop = true;
+      el.playsInline = true;
+      el.setAttribute('playsinline', '');
+      el.setAttribute('webkit-playsinline', 'true');
+      el.muted = true;
+      if (!isPreloadOnly) prepareForAutoplay(el, true);
+      const playOnce = () => {
+        el.removeEventListener('loadeddata', playOnce);
+        if (isActive && !userPausedRef.current) autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true });
+      };
+      el.addEventListener('loadeddata', playOnce);
+      return () => {
+        el.removeEventListener('loadeddata', playOnce);
+        try {
+          el.pause();
+        } catch (_) {}
+      };
+    }
+
     if (Hls.isSupported()) {
-      // Réutilisation de l'instance HLS déjà préchargée : on lance la lecture sans recréer (garde le buffer)
       if (isActive && hlsRef.current) {
         prepareForAutoplay(el, true);
         if (!hasAppliedStartTimeRef.current && video.start_time != null && video.start_time > 0) {
@@ -928,34 +965,11 @@ function VideoCardContent({
       return () => {
         hls.destroy();
         hlsRef.current = null;
-        // Feed type TikTok : on ne vide jamais la source (évite écran noir), on pause seulement
         if (el) {
           try {
             el.pause();
           } catch (_) {}
         }
-      };
-    }
-
-    if (el.canPlayType('application/vnd.apple.mpegurl')) {
-      el.src = videoUrl;
-      el.loop = true;
-      // iOS natif : playsInline + muted très tôt, avant toute tentative de play
-      el.playsInline = true;
-      el.setAttribute('playsinline', '');
-      el.setAttribute('webkit-playsinline', 'true');
-      el.muted = true;
-      if (!isPreloadOnly) prepareForAutoplay(el, true);
-      const playOnce = () => {
-        el.removeEventListener('loadeddata', playOnce);
-        if (isActive && !userPausedRef.current) autoplayWithPolicy(el, { preferMuted: isMutedRef.current, allowMutedFallback: true });
-      };
-      el.addEventListener('loadeddata', playOnce);
-      return () => {
-        el.removeEventListener('loadeddata', playOnce);
-        try {
-          el.pause();
-        } catch (_) {}
       };
     }
 
@@ -1341,6 +1355,71 @@ function VideoCardContent({
     }, 900);
   };
 
+  const handleRepairWebPlayback = async () => {
+    if (!currentUser?.id || !canRepairWebPlayback || isRepairingPlayback) {
+      console.info('[repair-web-playback] blocked before request', {
+        videoId: video.id,
+        hasUserId: !!currentUser?.id,
+        canRepairWebPlayback,
+        isRepairingPlayback,
+      });
+      return;
+    }
+    console.info('[repair-web-playback] request starting', {
+      videoId: video.id,
+      userId: currentUser?.id,
+      creatorId: video.creator_id,
+    });
+    setIsRepairingPlayback(true);
+    try {
+      const result = await api.videos.repairWebPlayback(video.id);
+      const repairedUrl = result?.data?.video_url || result?.video_url || '';
+      if (!repairedUrl) {
+        throw new Error('Aucune URL web réparée renvoyée');
+      }
+
+      setManualPlaybackUrlOverride(repairedUrl);
+      loadRetryPassRef.current = 0;
+      errorRetriedRef.current = false;
+      setLoadError(false);
+      setIsReadyToPlay(false);
+      setIsPlaying(false);
+      setShowVideoFrame(false);
+      setHasFirstFrameRendered(false);
+      setAutoplayMutedFallback(!!isMutedRef.current);
+      hasAutoPlayedRef.current = false;
+      userPausedRef.current = false;
+      toast.success('Version web réparée. Nouvelle lecture en cours...');
+    } catch (error) {
+      const raw = error?.message || '';
+      const looksLikeBadResponse = /JSON|Unexpected token|is not valid JSON/i.test(String(raw));
+      toast.error(
+        error?.apiMessage ||
+          (looksLikeBadResponse
+            ? 'Le serveur a mis trop longtemps ou la connexion a été coupée (transcodage). Réessayez, ou redémarrez le backend après mise à jour des timeouts.'
+            : raw || 'Impossible de réparer cette vidéo pour le web.')
+      );
+    } finally {
+      setIsRepairingPlayback(false);
+    }
+  };
+
+  const stopOverlayActionPropagation = (e) => {
+    e.stopPropagation();
+  };
+
+  const handleRepairWebPlaybackClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleRepairWebPlayback();
+  };
+
+  const handleOpenVideoViewClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigate(`${createPageUrl('VideoView')}?id=${video.id}`);
+  };
+
   const updateProgressFromElement = (el) => {
     if (!el) return;
 
@@ -1454,17 +1533,10 @@ function VideoCardContent({
       } catch (_) {}
     }
 
-    // Son OK mais pas d’image décodée (Firefox / WebView) : basculer tôt vers la source suivante si possible.
-    if (video.media_type !== 'image' && hasFallbackSource) {
-      window.setTimeout(() => {
-        if (!isActiveRef.current || userPausedRef.current || loadErrorRef.current) return;
-        const v = videoRef.current;
-        if (!v || v.paused) return;
-        if (hasFirstFrameRenderedRef.current) return;
-        if (hasDecodedVideoFrame(v)) return;
-        moveToNextSource();
-      }, 650);
-    }
+    // Ne pas abandonner une source juste après `playing` :
+    // sur mobile / WebView / Firefox, l'audio peut démarrer avant que la 1re frame
+    // ne soit réellement peinte. Les garde-fous plus bas gèrent déjà les vrais cas
+    // "audio sans image" de façon plus fiable et moins agressive.
   };
 
   const handlePause = () => {
@@ -1860,7 +1932,7 @@ function VideoCardContent({
         ...(compact
           ? { height: '100dvh', minHeight: '100dvh' }
           : { height: '100%', minHeight: '100%' }),
-        backgroundColor: '#020617',
+        backgroundColor: compact ? '#030712' : '#020617',
       }}
     >
       <div className="absolute inset-0 z-[1] overflow-hidden">
@@ -1879,11 +1951,12 @@ function VideoCardContent({
       <div
         className="absolute inset-0 z-20 overflow-hidden"
         style={{
-          // Fond noir : si la vidéo ne peint pas encore, on évite le gris (#374151) perçu comme « écran vide ».
-          backgroundColor: '#000000',
-          backgroundImage: !hasFirstFrameRendered
-            ? `url(${VIDEO_PLACEHOLDER_IMG}), url(${posterDisplayUrl})`
-            : undefined,
+          /* Feed compact : fond transparent — le <video> plein écran peint la frame réelle ; pas de tapis noir volontaire. */
+          backgroundColor: compact ? 'transparent' : '#000000',
+          backgroundImage:
+            !hasFirstFrameRendered && !compact
+              ? `url(${VIDEO_PLACEHOLDER_IMG}), url(${posterDisplayUrl})`
+              : undefined,
           backgroundSize: 'contain',
           backgroundRepeat: 'no-repeat',
           backgroundPosition: 'center',
@@ -1989,8 +2062,9 @@ function VideoCardContent({
             touchAction: 'pan-y',
             backfaceVisibility: 'hidden',
             willChange: 'transform',
-            opacity: hasFirstFrameRendered ? 1 : 0,
-            transition: 'opacity 180ms ease-out',
+            /* Feed compact : pas de fondu depuis 0 — sinon écran noir alors que la 1re frame vidéo est déjà décodée. */
+            opacity: compact || hasFirstFrameRendered ? 1 : 0,
+            transition: compact ? 'none' : 'opacity 180ms ease-out',
             ...(isFirefoxBrowser || isMobileOrPWA() ? {} : { transform: 'translateZ(0)' }),
             // Evite le cas "audio OK / image noire" observé sur certains GPU navigateurs
             // quand un filter CSS est appliqué en permanence sur <video>.
@@ -2012,8 +2086,8 @@ function VideoCardContent({
           }}
         />
         )}
-        {/* Calque miniature « TikTok » : couvre la vidéo jusqu’à la 1re frame réelle (évite écran noir). */}
-        {!hasFirstFrameRendered && !loadError && (
+        {/* Hors feed compact : miniature jusqu’à la 1re frame. Feed compact : uniquement le décodage <video> (pas de thumb CDN). */}
+        {!compact && !hasFirstFrameRendered && !loadError && (
           <img
             data-afw-feed-poster="1"
             ref={posterRef}
@@ -2059,7 +2133,7 @@ function VideoCardContent({
       </>
       ) : (
         // Si pas d'URL valide, afficher l'erreur directement
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-[50] p-4">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-[260] p-4">
           <img
             src={posterUrl}
             alt=""
@@ -2077,7 +2151,7 @@ function VideoCardContent({
             <Loader2 className="h-7 w-7 text-white/75 animate-spin sm:h-8 sm:w-8" aria-hidden />
             {slowConnection && !isOffline && (
               <p className="text-[12px] leading-tight text-white/80 text-center max-w-[220px]">
-                Chargement optimisÃ© pour une lecture fluide...
+                Chargement optimisé pour une lecture fluide...
               </p>
             )}
           </div>
@@ -2086,7 +2160,7 @@ function VideoCardContent({
 
       {/* ================= ERREUR DE CHARGEMENT ================= */}
       {loadError && !isPlaying && !hasFirstFrameRendered && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-[50] p-4">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-[260] p-4">
           <img
             src={posterUrl}
             alt=""
@@ -2096,28 +2170,61 @@ function VideoCardContent({
           <p className="text-white/70 text-sm text-center mt-1 ios-text-render max-w-[280px]">
             Cette vidéo ne peut pas s’afficher correctement. Réessayez ou faites défiler vers la suivante.
           </p>
+          {isFirefoxBrowser && (
+            <p className="text-amber-100/90 text-xs text-center mt-2 max-w-[300px] ios-text-render leading-snug">
+              Sous Firefox, les vidéos encodées en H.265 (HEVC) ne sont souvent pas prises en charge. Essayez Chrome ou Edge, ou passez à la suivante.
+            </p>
+          )}
           {debugVideoUi && (
             <p className="text-amber-200/90 text-xs text-center mt-2 max-w-[340px] ios-text-render leading-snug font-mono">
               DEBUG (VITE_DEBUG_VIDEO_UI=1) : vérifiez CDN, proxy /api/proxy/media, API port 3000, base PostgreSQL.
             </p>
           )}
-          {currentUser?.id === video.creator_id && (
+          {canRepairWebPlayback && currentUser?.id === video.creator_id && (
             <p className="text-white/60 text-xs text-center mt-2 max-w-[300px] ios-text-render">
-              Vous êtes le créateur de cette vidéo : ouvrez sa fiche pour optimiser la lecture si besoin.
+              Vous êtes le créateur de cette vidéo : vous pouvez ré-encoder pour Firefox / WebView.
+            </p>
+          )}
+          {canRepairWebPlayback && currentUser?.id !== video.creator_id && (
+            <p className="text-white/60 text-xs text-center mt-2 max-w-[300px] ios-text-render">
+              Compte staff : vous pouvez ré-encoder cette vidéo pour tous les utilisateurs (H.264 web).
             </p>
           )}
           <button
             type="button"
-            onClick={handleRetryLoad}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleRetryLoad();
+            }}
+            onPointerDown={stopOverlayActionPropagation}
+            onTouchStart={stopOverlayActionPropagation}
             className="mt-4 px-6 py-2.5 bg-white text-black rounded-full font-semibold hover:bg-gray-200 active:scale-95 transition-transform ios-text-render"
+            style={{ touchAction: 'manipulation' }}
           >
             Réessayer
           </button>
-          {currentUser?.id === video.creator_id && (
+          {canRepairWebPlayback && (
             <button
               type="button"
-              onClick={() => navigate(`${createPageUrl('VideoView')}?id=${video.id}`)}
+              onClick={handleRepairWebPlaybackClick}
+              onPointerDown={stopOverlayActionPropagation}
+              onTouchStart={stopOverlayActionPropagation}
+              disabled={isRepairingPlayback}
+              className="mt-2 px-5 py-2 text-sm rounded-full border border-white/20 text-white/95 hover:bg-white/10 disabled:opacity-60 disabled:cursor-not-allowed transition-colors ios-text-render"
+              style={{ touchAction: 'manipulation' }}
+            >
+              {isRepairingPlayback ? 'Réparation en cours...' : 'Réparer pour le web'}
+            </button>
+          )}
+          {canRepairWebPlayback && (
+            <button
+              type="button"
+              onClick={handleOpenVideoViewClick}
+              onPointerDown={stopOverlayActionPropagation}
+              onTouchStart={stopOverlayActionPropagation}
               className="mt-2 px-5 py-2 text-sm text-white/90 underline-offset-2 hover:underline ios-text-render"
+              style={{ touchAction: 'manipulation' }}
             >
               Ouvrir la fiche vidéo
             </button>
@@ -2182,8 +2289,8 @@ function VideoCardContent({
       <motion.div
         data-afw-video-actions="1"
         className={cn(
-          'absolute right-3 flex flex-col items-center gap-3 transition-opacity duration-200 ease-out sm:right-4 sm:gap-3.5',
-          hideActions ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100'
+          'absolute right-3 flex flex-col items-center gap-3 sm:right-4 sm:gap-3.5',
+          hideActions ? 'pointer-events-none' : 'pointer-events-auto'
         )}
         initial={false}
         animate={hideActions ? { opacity: 0, y: 8 } : { opacity: 1, y: 0 }}
@@ -2505,8 +2612,8 @@ function VideoCardContent({
       <motion.div 
         data-afw-video-info="1"
         className={cn(
-          'absolute left-0 right-0 overflow-x-hidden px-4 pb-3 transition-opacity duration-200 ease-out',
-          hideActions ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100'
+          'absolute left-0 right-0 overflow-x-hidden px-4 pb-3',
+          hideActions ? 'pointer-events-none' : 'pointer-events-auto'
         )}
         initial={false}
         animate={hideActions ? { opacity: 0, y: 12 } : { opacity: 1, y: 0 }}
@@ -2599,6 +2706,14 @@ function VideoCardContent({
               )}
             </div>
           )}
+
+          <div
+            className="flex items-center gap-1.5 text-[12px] font-medium tracking-tight text-white/78 drop-shadow-[0_1px_10px_rgba(0,0,0,0.52)]"
+            aria-label={`${formatFeedCount(Number(video.views ?? video.views_count ?? 0))} vues`}
+          >
+            <Eye className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
+            <span>{formatFeedCount(Number(video.views ?? video.views_count ?? 0))} vues</span>
+          </div>
 
           {video.media_type !== 'image' && (
             <div

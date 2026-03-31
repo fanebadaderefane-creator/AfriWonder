@@ -113,6 +113,23 @@ export function useAgoraHost(tokenData, videoContainerRef) {
         if (container && videoTrack) {
           videoTrack.play(container, { mirror: true });
         }
+
+        let reconnectTimer = null;
+        let backoffMs = 1000;
+        client.on('connection-state-change', (cur) => {
+          if (cancelled) return;
+          if (cur === 'CONNECTED') {
+            backoffMs = 1000;
+            return;
+          }
+          if (cur !== 'DISCONNECTED' && cur !== 'ABORTED') return;
+          if (reconnectTimer) window.clearTimeout(reconnectTimer);
+          reconnectTimer = window.setTimeout(() => {
+            if (cancelled) return;
+            setRetryKey((k) => k + 1);
+            backoffMs = Math.min(backoffMs * 2, 8000);
+          }, backoffMs);
+        });
       } catch (e) {
         if (!cancelled) setError(e?.message || 'Agora init failed');
         console.warn('Agora host error', e);

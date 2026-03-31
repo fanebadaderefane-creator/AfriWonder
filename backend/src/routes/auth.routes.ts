@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { authService } from '../services/auth.service.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { logger } from '../utils/logger.js';
+import { setAuthCookies } from '../utils/authCookies.js';
 
 const router = Router();
 
@@ -19,6 +20,8 @@ router.post('/register', async (req, res, next) => {
       full_name,
       referral_code,
     });
+
+    setAuthCookies(res, result.accessToken, result.refreshToken);
 
     res.status(201).json({
       success: true,
@@ -74,6 +77,8 @@ router.post('/login', async (req, res, next) => {
       backupCode
     );
 
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+
     res.json({
       success: true,
       data: result,
@@ -110,9 +115,9 @@ router.post('/login', async (req, res, next) => {
 router.post('/refresh', async (req, res, next) => {
   try {
     const { refreshToken, refresh_token } = req.body;
-    const token = refreshToken || refresh_token;
+    const token = refreshToken || refresh_token || req.cookies?.refresh_token;
 
-    if (!token) {
+    if (!token || typeof token !== 'string') {
       return res.status(400).json({
         success: false,
         error: { message: 'Refresh token requis' },
@@ -120,6 +125,8 @@ router.post('/refresh', async (req, res, next) => {
     }
 
     const result = await authService.refreshToken(token);
+
+    setAuthCookies(res, result.accessToken, result.refreshToken);
 
     res.json({
       success: true,
@@ -236,10 +243,8 @@ router.get('/google/callback', async (req, res, next) => {
 
     logger.info('Google OAuth - Connexion réussie', { userId: result.user?.id, email: result.user?.email });
 
-    // Set tokens in cookies
-    res.cookie('access_token', result.accessToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' });
-    res.cookie('refresh_token', result.refreshToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' });
-    
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+
     // IMPORTANT: Rediriger vers /Landing avec les tokens, qui redirigera ensuite vers / (AfriWonder)
     const frontendUrl = process.env.CORS_ORIGIN || 'http://localhost:5173';
     const redirectUrl = new URL(`${frontendUrl}/Landing`);
@@ -337,10 +342,8 @@ router.get('/facebook/callback', async (req, res, next) => {
 
     logger.info('Facebook OAuth - Connexion réussie', { userId: result.user?.id, email: result.user?.email });
 
-    // Set tokens in cookies
-    res.cookie('access_token', result.accessToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' });
-    res.cookie('refresh_token', result.refreshToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' });
-    
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+
     // IMPORTANT: Rediriger vers /Landing avec les tokens, qui redirigera ensuite vers / (AfriWonder)
     const frontendUrl = process.env.CORS_ORIGIN || 'http://localhost:5173';
     const redirectUrl = new URL(`${frontendUrl}/Landing`);

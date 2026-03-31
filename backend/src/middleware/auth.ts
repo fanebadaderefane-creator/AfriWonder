@@ -3,6 +3,18 @@ import jwt from 'jsonwebtoken';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
+/** Bearer prioritaire, sinon cookie httpOnly `access_token` (navigateur + withCredentials). */
+export function getAccessTokenFromRequest(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    const t = authHeader.slice(7).trim();
+    if (t) return t;
+  }
+  const c = req.cookies?.access_token;
+  if (typeof c === 'string' && c.trim()) return c.trim();
+  return null;
+}
+
 export interface AuthRequest extends Request {
   user?: {
     id: string;
@@ -19,16 +31,14 @@ export const authenticate = async (
   next: NextFunction
 ) => {
   try {
-    const authHeader = req.headers.authorization;
+    const token = getAccessTokenFromRequest(req);
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!token) {
       return res.status(401).json({
         success: false,
         error: { message: 'Token manquant' },
       });
     }
-
-    const token = authHeader.substring(7);
 
     if (!process.env.JWT_SECRET) {
       throw new Error('JWT_SECRET non configuré');
@@ -88,37 +98,32 @@ export const optionalAuth = async (
   next: NextFunction
 ) => {
   try {
-    const authHeader = req.headers.authorization;
+    const token = getAccessTokenFromRequest(req);
 
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
+    if (token && process.env.JWT_SECRET) {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET) as {
+          userId: string;
+        };
 
-      if (process.env.JWT_SECRET) {
-        try {
-          const decoded = jwt.verify(token, process.env.JWT_SECRET) as {
-            userId: string;
+        const user = await prisma.user.findUnique({
+          where: { id: decoded.userId },
+          select: {
+            id: true,
+            email: true,
+            username: true,
+          },
+        });
+
+        if (user) {
+          req.user = {
+            id: user.id,
+            email: user.email,
+            username: user.username,
           };
-
-          const user = await prisma.user.findUnique({
-            where: { id: decoded.userId },
-            select: {
-              id: true,
-              email: true,
-              username: true,
-            },
-          });
-
-          if (user) {
-            req.user = {
-              id: user.id,
-              email: user.email,
-              username: user.username,
-            };
-          }
-        } catch (error) {
-          // Token invalide, continuer sans authentification
-          // Ne rien faire, juste continuer
         }
+      } catch (_error) {
+        // Token invalide, continuer sans authentification
       }
     }
 

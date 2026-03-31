@@ -9,12 +9,31 @@
  */
 import { Prisma } from '@prisma/client';
 import prisma from '../config/database.js';
+import { cacheGet, cacheSet } from '../utils/cache.js';
 
 const FAVORED_DURATION_MIN = 8;
 const FAVORED_DURATION_MAX = 30;
 const EXPLORATION_RATIO = 0.12; // ~12% de contenu "exploration" (hors préférences)
 const MAX_VIDEOS_PER_CREATOR = 3; // max vidéos du même créateur dans une fenêtre
 const CANDIDATE_POOL_MULT = 5; // on tire limit * 5 candidats puis on score/trie
+const USER_PREFS_CACHE_TTL_MS = 60_000;
+const USER_SIGNAL_LIMIT = 500;
+
+type UserPreferences = {
+  seenVideoIds: Set<string>;
+  preferredCategories: Map<string, number>;
+  preferredCreatorIds: Set<string>;
+  likedVideoIds: Set<string>;
+  savedVideoIds: Set<string>;
+};
+
+type SerializedUserPreferences = {
+  seenVideoIds: string[];
+  preferredCategories: Array<[string, number]>;
+  preferredCreatorIds: string[];
+  likedVideoIds: string[];
+  savedVideoIds: string[];
+};
 
 export interface RecommendationOptions {
   limit?: number;
@@ -74,11 +93,26 @@ async function loadUserPreferences(userId: string): Promise<{
         video: { select: { creator_id: true, category: true } },
       },
       orderBy: { updated_at: 'desc' },
-      take: 500,
+      take: USER_SIGNAL_LIMIT,
     }),
-    prisma.like.findMany({ where: { user_id: userId }, select: { video_id: true } }),
-    prisma.save.findMany({ where: { user_id: userId }, select: { video_id: true } }),
-    prisma.follow.findMany({ where: { follower_id: userId }, select: { following_id: true } }),
+    prisma.like.findMany({
+      where: { user_id: userId },
+      select: { video_id: true },
+      orderBy: { created_at: 'desc' },
+      take: USER_SIGNAL_LIMIT,
+    }),
+    prisma.save.findMany({
+      where: { user_id: userId },
+      select: { video_id: true },
+      orderBy: { created_at: 'desc' },
+      take: USER_SIGNAL_LIMIT,
+    }),
+    prisma.follow.findMany({
+      where: { follower_id: userId },
+      select: { following_id: true },
+      orderBy: { created_at: 'desc' },
+      take: USER_SIGNAL_LIMIT,
+    }),
   ]);
 
   const seenVideoIds = new Set(history.map((h) => h.video_id));
@@ -106,6 +140,38 @@ async function loadUserPreferences(userId: string): Promise<{
     likedVideoIds,
     savedVideoIds,
   };
+}
+
+function serializeUserPreferences(prefs: UserPreferences): SerializedUserPreferences {
+  return {
+    seenVideoIds: Array.from(prefs.seenVideoIds),
+    preferredCategories: Array.from(prefs.preferredCategories.entries()),
+    preferredCreatorIds: Array.from(prefs.preferredCreatorIds),
+    likedVideoIds: Array.from(prefs.likedVideoIds),
+    savedVideoIds: Array.from(prefs.savedVideoIds),
+  };
+}
+
+function hydrateUserPreferences(raw: SerializedUserPreferences): UserPreferences {
+  return {
+    seenVideoIds: new Set(raw.seenVideoIds || []),
+    preferredCategories: new Map(raw.preferredCategories || []),
+    preferredCreatorIds: new Set(raw.preferredCreatorIds || []),
+    likedVideoIds: new Set(raw.likedVideoIds || []),
+    savedVideoIds: new Set(raw.savedVideoIds || []),
+  };
+}
+
+async function loadUserPreferencesCached(userId: string): Promise<UserPreferences> {
+  const cacheKey = `feed:prefs:v2:${userId}`;
+  const cached = await cacheGet<SerializedUserPreferences>(cacheKey);
+  if (cached) {
+    return hydrateUserPreferences(cached);
+  }
+
+  const prefs = await loadUserPreferences(userId);
+  cacheSet(cacheKey, serializeUserPreferences(prefs), USER_PREFS_CACHE_TTL_MS).catch(() => {});
+  return prefs;
 }
 
 /** Colonnes Video de base (sans algo_tier, avg_retention_pct, qualified_views_count) pour fallback en cas de drift DB. Inclure hls_url + media_type : sinon le client ne peut pas basculer HLS si le MP4 principal est cassé. */
@@ -231,7 +297,7 @@ export async function getPersonalizedFeed(options: RecommendationOptions): Promi
     return formatResult(paged, videos.length, page, limit);
   }
 
-  const prefs = await loadUserPreferences(userId);
+  const prefs = await loadUserPreferencesCached(userId);
 
   // Score chaque vidéo : contenu + personnalisation
   const scored = videos.map((v: any) => {
@@ -265,6 +331,7 @@ export async function getPersonalizedFeed(options: RecommendationOptions): Promi
 
   // Diversité : limiter le nombre de vidéos par créateur dans la page
   const diversified: any[] = [];
+  const diversifiedIds = new Set<string>();
   const creatorCount = new Map<string, number>();
   const explorationCount = Math.ceil(limit * EXPLORATION_RATIO);
   let explorationInjected = 0;
@@ -275,19 +342,21 @@ export async function getPersonalizedFeed(options: RecommendationOptions): Promi
     const n = creatorCount.get(c) ?? 0;
     if (n >= MAX_VIDEOS_PER_CREATOR) continue;
     diversified.push(v);
+    diversifiedIds.add(String(v.id));
     creatorCount.set(c, n + 1);
   }
 
   // Injection exploration : remplacer quelques slots par des vidéos plus "aléatoires" (fin du pool)
   if (explorationInjected < explorationCount && scored.length > diversified.length) {
-    const rest = scored.filter((x) => !diversified.includes(x));
+    const rest = scored.filter((x) => !diversifiedIds.has(String(x.id)));
     const explorationCandidates = rest.slice(-Math.min(50, rest.length));
     for (let i = 0; i < explorationCount && explorationCandidates.length > 0; i++) {
       const idx = Math.floor(Math.random() * Math.min(explorationCandidates.length, 10));
       const cand = explorationCandidates[idx];
-      if (cand && diversified.length >= 3) {
+      if (cand && diversified.length >= 3 && !diversifiedIds.has(String(cand.id))) {
         const insertAt = Math.floor(diversified.length * (0.3 + Math.random() * 0.4));
         diversified.splice(insertAt, 0, cand);
+        diversifiedIds.add(String(cand.id));
         explorationInjected++;
       }
     }

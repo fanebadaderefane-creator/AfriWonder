@@ -234,6 +234,12 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
         registration.waiting.postMessage({ type: 'SKIP_WAITING' });
       }
     }
+    if (event.data?.type === 'PUSH_OPEN' && event.data?.path) {
+      const target = String(event.data.path);
+      if (window.location.pathname + window.location.search !== target) {
+        window.location.assign(target);
+      }
+    }
   });
 
   // Gérer les erreurs du service worker

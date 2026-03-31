@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../config/database.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { invalidateUserFeedCaches } from '../services/feedCache.service.js';
 
 const router = Router();
 
@@ -20,6 +21,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
         where: { id: video_id },
         data: { saves: { decrement: 1 } },
       });
+      invalidateUserFeedCaches(userId).catch(() => {});
       res.json({ success: true, data: { saved: false } });
     } else {
       await prisma.save.create({
@@ -29,6 +31,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
         where: { id: video_id },
         data: { saves: { increment: 1 } },
       });
+      invalidateUserFeedCaches(userId).catch(() => {});
       res.json({ success: true, data: { saved: true } });
     }
   } catch (error) {

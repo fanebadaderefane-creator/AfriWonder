@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { Camera, Type, Image as ImageIcon, Users, Trash2, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -30,7 +30,7 @@ import {
 } from '@/components/messaging/MessagingCdcUi';
 import { createPageUrl } from '@/utils';
 
-export default function MessagingCdcStatus() {
+export function MessagingCdcStatusPanel() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -359,4 +359,8 @@ export default function MessagingCdcStatus() {
       </Dialog>
     </MessagingCdcShell>
   );
+}
+
+export default function MessagingCdcStatus() {
+  return <Navigate to={`${createPageUrl('MessagingCdcHub')}?section=status`} replace />;
 }

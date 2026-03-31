@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useTheme } from 'next-themes';
+import { useTheme } from '@/lib/afriwonder-theme';
 import { 
   ArrowLeft, Camera, User, Bell, Shield, Globe, Moon, Sun, Monitor,
   HelpCircle, LogOut, ChevronRight, Wifi, WifiOff, Smartphone, MapPin, ShieldCheck,

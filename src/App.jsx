@@ -1,16 +1,17 @@
 // AfriWonder full review PR - CodeRabbit
 import { Toaster } from "@/components/ui/toaster"
-import { ThemeProvider } from 'next-themes'
+import { AfriWonderThemeProvider } from '@/lib/afriwonder-theme'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { queryClientInstance, queryPersister } from '@/lib/query-client'
 import NavigationTracker from '@/lib/NavigationTracker'
 import { pagesConfig, preloadPages } from './pages.config.glob'
 import { BrowserRouter as Router, Route, Routes, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import { useEffect, Suspense } from 'react';
+import { useEffect, Suspense, useRef } from 'react';
 import { App as CapApp } from '@capacitor/app';
 import { getAccessToken, getRefreshToken } from '@/lib/secureTokenStorage';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
+import { MessageSocketProvider } from '@/contexts/MessageSocketContext';
 import { FeatureFlagsProvider } from '@/contexts/FeatureFlagsContext';
 import { PreferencesProvider } from '@/contexts/PreferencesContext';
 import { AdminProvider } from '@/lib/admin-context';
@@ -22,53 +23,40 @@ import CookieBanner from '@/components/legal/CookieBanner';
 import PageLoader from '@/components/common/PageLoader';
 import PageErrorFallback from '@/components/common/PageErrorFallback';
 import PWAUpdateToast from '@/components/pwa/PWAUpdateToast';
+import BrandedLaunchSplash from '@/components/common/BrandedLaunchSplash';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
-const CORE_ROUTE_PRELOADS = ['Discover', 'Profile', 'Inbox', 'Chat', 'Search', 'Marketplace', 'Notifications'];
-const MENU_ROUTE_PRELOADS = [
-  'Settings',
-  'Wallet',
-  'Events',
-  'Transport',
-  'FoodDelivery',
-  'Utilities',
-  'Telemedicine',
-  'RealEstate',
-  'Insurance',
-  'News',
-  'Microcredit',
-  'Crowdfunding',
-  'Jobs',
-  'MiniAppsStore',
-  'FeedPosts',
-  'Live',
-  'LiveStream',
-  'CreatorTools',
-  'Referrals',
-  'AdvertiserDashboard',
-  'Courses',
-  'BadgesProfile',
-  'Leaderboard',
-  'GamificationHub',
-  'Analytics',
-  'Language',
-  'Help',
-  'Support',
-  'About',
-  'PrivacyPolicy',
-  'DataProtection',
-];
+const CORE_ROUTE_PRELOADS = ['Discover', 'Profile', 'Inbox'];
 
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
   : <>{children}</>;
 
+const MessageSocketBridge = ({ children }) => {
+  const { user } = useAuth();
+  return <MessageSocketProvider userId={user?.id}>{children}</MessageSocketProvider>;
+};
+
 const AuthenticatedApp = () => {
   const { isLoadingAuth, authError, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const tokensWhenUnauthRef = useRef(undefined);
+  const hadAuthenticatedRef = useRef(false);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      hadAuthenticatedRef.current = true;
+      tokensWhenUnauthRef.current = undefined;
+      return;
+    }
+    if (hadAuthenticatedRef.current) {
+      tokensWhenUnauthRef.current = undefined;
+      hadAuthenticatedRef.current = false;
+    }
+  }, [isAuthenticated]);
 
   // Pages publiques accessibles sans être connecté (ne pas rediriger vers Landing)
   const publicPaths = [
@@ -96,7 +84,11 @@ const AuthenticatedApp = () => {
   useEffect(() => {
     (async () => {
       if (!isLoadingAuth && !isAuthenticated) {
-        const hasTokens = (await getAccessToken()) || (await getRefreshToken());
+        if (tokensWhenUnauthRef.current === undefined) {
+          tokensWhenUnauthRef.current =
+            !!(await getAccessToken()) || !!(await getRefreshToken());
+        }
+        const hasTokens = tokensWhenUnauthRef.current;
         if (!hasTokens) {
           const path = location.pathname;
           const isPublicPath =
@@ -119,27 +111,9 @@ const AuthenticatedApp = () => {
     );
   };
 
-  // Show loading while checking auth
+  // Chargement auth — même splash marque que le feed (routes se montent derrière au prochain tick)
   if (isLoadingAuth) {
-    return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center gap-6 bg-[#020617] px-6 text-white">
-        <div className="w-full max-w-sm space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-white/12 animate-pulse" />
-            <div className="flex-1 space-y-2">
-              <div className="h-3 w-32 rounded-full bg-white/12 animate-pulse" />
-              <div className="h-3 w-24 rounded-full bg-white/8 animate-pulse" />
-            </div>
-          </div>
-          <div className="h-40 rounded-2xl bg-white/8 animate-pulse" />
-          <div className="space-y-2">
-            <div className="h-3 w-full rounded-full bg-white/8 animate-pulse" />
-            <div className="h-3 w-11/12 rounded-full bg-white/8 animate-pulse" />
-            <div className="h-3 w-10/12 rounded-full bg-white/8 animate-pulse" />
-          </div>
-        </div>
-      </div>
-    );
+    return <BrandedLaunchSplash position="fixed" />;
   }
 
   // Handle authentication errors
@@ -250,31 +224,43 @@ const AuthenticatedApp = () => {
   );
 };
 
+// Une seule promesse getInfo pour éviter les appels doublons (Strict Mode / remontages).
+let capacitorPlatformPromise = null;
+function getCapacitorPlatformOnce() {
+  if (!capacitorPlatformPromise) {
+    capacitorPlatformPromise = CapApp.getInfo().catch(() => ({ platform: 'web' }));
+  }
+  return capacitorPlatformPromise;
+}
+
 // Gestion du bouton "Retour" Android (Capacitor App)
 const AndroidBackButtonHandler = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const pathRef = useRef(location.pathname);
+  pathRef.current = location.pathname;
 
   useEffect(() => {
     let remove;
-    CapApp.getInfo().then((info) => {
-      if (info.platform !== 'android') return;
+    let cancelled = false;
+    getCapacitorPlatformOnce().then((info) => {
+      if (cancelled || info.platform !== 'android') return;
       remove = CapApp.addListener('backButton', ({ canGoBack }) => {
-        // Fermer les pages secondaires plutôt que quitter brutalement l'app
-        if (canGoBack && location.pathname !== '/') {
+        if (canGoBack && pathRef.current !== '/') {
           navigate(-1);
         } else {
           CapApp.exitApp();
         }
       });
-    }).catch(() => {});
+    });
 
     return () => {
+      cancelled = true;
       if (remove && typeof remove.remove === 'function') {
         remove.remove();
       }
     };
-  }, [navigate, location.pathname]);
+  }, [navigate]);
 
   return null;
 };
@@ -289,34 +275,27 @@ function App() {
     const warmRoutes = () => {
       preloadPages(CORE_ROUTE_PRELOADS).catch(() => {});
     };
-    const warmMenuRoutes = () => {
-      preloadPages(MENU_ROUTE_PRELOADS).catch(() => {});
-    };
-
     if ('requestIdleCallback' in window) {
       const id = window.requestIdleCallback(warmRoutes, { timeout: 2500 });
-      const menuId = window.requestIdleCallback(warmMenuRoutes, { timeout: 6000 });
       return () => {
         window.cancelIdleCallback?.(id);
-        window.cancelIdleCallback?.(menuId);
       };
     }
 
     const timer = window.setTimeout(warmRoutes, 1200);
-    const menuTimer = window.setTimeout(warmMenuRoutes, 3200);
     return () => {
       window.clearTimeout(timer);
-      window.clearTimeout(menuTimer);
     };
   }, []);
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="afriwonder-theme">
+    <AfriWonderThemeProvider defaultTheme="system" storageKey="afriwonder-theme">
       <AuthProvider>
         <PersistQueryClientProvider
           client={queryClientInstance}
           persistOptions={{ persister: queryPersister, maxAge: 1000 * 60 * 60 * 24 }}
         >
+          <MessageSocketBridge>
           <Suspense fallback={<PageLoader />}>
           <FeatureFlagsProvider>
             <PreferencesProvider>
@@ -336,10 +315,11 @@ function App() {
             </PreferencesProvider>
           </FeatureFlagsProvider>
           </Suspense>
+          </MessageSocketBridge>
           <Toaster />
         </PersistQueryClientProvider>
       </AuthProvider>
-    </ThemeProvider>
+    </AfriWonderThemeProvider>
   )
 }
 

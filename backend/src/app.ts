@@ -1,6 +1,7 @@
 // AfriWonder full review PR - CodeRabbit
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
@@ -243,6 +244,7 @@ app.use('/api/payments/stripe/webhook', express.raw({ type: 'application/json' }
 app.use('/api/payments/orange-money/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(cookieParser());
 app.use(sanitizeInputMiddleware);
 app.use(csrfProtectionMiddleware);
 

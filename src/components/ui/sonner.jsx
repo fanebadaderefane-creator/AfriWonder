@@ -1,15 +1,15 @@
 "use client";
-import { useTheme } from "next-themes"
+import { useTheme } from "@/lib/afriwonder-theme"
 import { Toaster as Sonner } from "sonner"
 
 const Toaster = ({
   ...props
 }) => {
-  const { theme = "system" } = useTheme()
+  const { resolvedTheme = "dark" } = useTheme()
 
   return (
     (<Sonner
-      theme={theme}
+      theme={resolvedTheme}
       className="toaster group"
       toastOptions={{
         classNames: {

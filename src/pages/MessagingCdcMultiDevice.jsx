@@ -24,6 +24,8 @@ import {
   CdcRequirementChecklist,
   CdcTierLegend,
 } from '@/components/messaging/MessagingCdcUi';
+import { Navigate } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 
 function newLinkId() {
   return typeof crypto !== 'undefined' && crypto.randomUUID
@@ -31,7 +33,7 @@ function newLinkId() {
     : `dev_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export default function MessagingCdcMultiDevice() {
+export function MessagingCdcMultiDevicePanel() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [linked, setLinked] = useCdcPersistedJson('linked_devices_demo', []);
@@ -263,4 +265,8 @@ export default function MessagingCdcMultiDevice() {
       </Dialog>
     </MessagingCdcShell>
   );
+}
+
+export default function MessagingCdcMultiDevice() {
+  return <Navigate to={`${createPageUrl('MessagingCdcHub')}?section=multi-device`} replace />;
 }

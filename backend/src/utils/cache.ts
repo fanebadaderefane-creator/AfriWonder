@@ -7,7 +7,15 @@ const CACHE_TTL_SECONDS = 600; // 10 min
 
 const memory = new Map<string, { value: unknown; expiresAt: number }>();
 
-let redisClient: { get: (k: string) => Promise<string | null>; set: (k: string, v: string, opts?: { EX?: number }) => Promise<unknown> } | null = null;
+type RedisClientLike = {
+  get: (k: string) => Promise<string | null>;
+  set: (k: string, v: string, opts?: { EX?: number }) => Promise<unknown>;
+  del?: (keys: string | string[]) => Promise<unknown>;
+  keys?: (pattern: string) => Promise<string[]>;
+  scanIterator?: (options: { MATCH?: string; COUNT?: number }) => AsyncIterable<string>;
+};
+
+let redisClient: RedisClientLike | null = null;
 
 const REDIS_CONNECT_TIMEOUT_MS = 5000; // 5 s — évite blocage infini sur Render si REDIS_URL pointe vers une instance injoignable
 
@@ -27,7 +35,7 @@ export async function initRedis(): Promise<typeof redisClient> {
         setTimeout(() => reject(new Error('Redis connection timeout')), REDIS_CONNECT_TIMEOUT_MS)
       ),
     ]);
-    redisClient = client as unknown as { get: (k: string) => Promise<string | null>; set: (k: string, v: string, opts?: { EX?: number }) => Promise<unknown> };
+    redisClient = client as unknown as RedisClientLike;
     return redisClient;
   } catch {
     return null;
@@ -62,4 +70,50 @@ export async function cacheSet(key: string, value: unknown, ttlMs: number = CACH
     return;
   }
   memory.set(key, { value, expiresAt: Date.now() + ttlMs });
+}
+
+export async function cacheDelete(key: string): Promise<void> {
+  if (!redisClient) redisClient = await initRedis();
+  if (redisClient?.del) {
+    try {
+      await redisClient.del(key);
+    } catch {
+      // noop
+    }
+  }
+  memory.delete(key);
+}
+
+export async function cacheDeleteByPrefix(prefix: string): Promise<void> {
+  if (!redisClient) redisClient = await initRedis();
+
+  if (redisClient) {
+    try {
+      let keys: string[] = [];
+      if (redisClient.scanIterator) {
+        for await (const key of redisClient.scanIterator({ MATCH: `${prefix}*`, COUNT: 100 })) {
+          keys.push(String(key));
+        }
+      } else if (redisClient.keys) {
+        keys = await redisClient.keys(`${prefix}*`);
+      }
+
+      if (keys.length > 0 && redisClient.del) {
+        await redisClient.del(keys);
+      }
+    } catch {
+      // noop
+    }
+  }
+
+  for (const key of memory.keys()) {
+    if (key.startsWith(prefix)) {
+      memory.delete(key);
+    }
+  }
+}
+
+export function resetCacheForTests(): void {
+  memory.clear();
+  redisClient = null;
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AppMenuProvider } from '../contexts/AppMenuContext';
@@ -11,11 +11,16 @@ let videosData = [];
 const refetchMock = vi.fn();
 const invalidateQueriesMock = vi.fn();
 const setQueryDataMock = vi.fn();
+const originalPause = window.HTMLMediaElement.prototype.pause;
 
 vi.mock('@/api/expressClient', () => ({
   api: {
     auth: {
       me: vi.fn().mockRejectedValue(new Error('not authenticated')),
+    },
+    me: {
+      getSuggestedFollows: vi.fn().mockResolvedValue([]),
+      getFeedVideoStates: vi.fn().mockResolvedValue({ likedIds: [], savedIds: [] }),
     },
     videos: {
       list: vi.fn().mockResolvedValue({ videos: [] }),
@@ -67,7 +72,7 @@ vi.mock('@tanstack/react-query', () => ({
 }));
 
 vi.mock('../components/common/PerformanceOptimizer', () => ({
-  useNetworkStatus: () => ({ isSlowConnection: false }),
+  useNetworkStatus: () => ({ isOnline: true, isSlowConnection: false }),
   getCacheStrategy: () => ({}),
   scheduleTask: async (cb) => cb(),
 }));
@@ -122,6 +127,20 @@ describe('Home page', () => {
     videosLoading = true;
     videosData = [];
     vi.clearAllMocks();
+    window.sessionStorage.clear();
+    Object.defineProperty(window.HTMLMediaElement.prototype, 'pause', {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    });
+  });
+
+  afterAll(() => {
+    Object.defineProperty(window.HTMLMediaElement.prototype, 'pause', {
+      configurable: true,
+      writable: true,
+      value: originalPause,
+    });
   });
 
   it('affiche le loader pendant le chargement des vidéos', () => {
@@ -135,7 +154,7 @@ describe('Home page', () => {
     expect(document.querySelector('.animate-spin')).toBeInTheDocument();
   });
 
-  it('affiche l’état vide et le CTA inscription quand aucune vidéo', () => {
+  it('affiche l’état vide et le CTA inscription quand aucune vidéo', async () => {
     videosLoading = false;
     videosData = [];
 
@@ -147,7 +166,7 @@ describe('Home page', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText(/aucune video pour l'instant/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /s'inscrire pour commencer/i })).toBeInTheDocument();
+    expect(await screen.findByText(/aucune video pour l'instant/i)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /s'inscrire pour commencer/i })).toBeInTheDocument();
   });
 });

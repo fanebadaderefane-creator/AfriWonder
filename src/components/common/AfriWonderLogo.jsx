@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { cn } from '@/lib/utils';
 
-export default function AfriWonderLogo({ size = 'md', className = '' }) {
+export default function AfriWonderLogo({ size = 'md', className = '', priority = false }) {
   const [imageError, setImageError] = useState(false);
   
   const sizeClasses = {
@@ -52,8 +52,9 @@ export default function AfriWonderLogo({ size = 'md', className = '' }) {
             backdropFilter: 'none',
             WebkitBackdropFilter: 'none'
           }}
-        loading="lazy"
+        loading={priority ? 'eager' : 'lazy'}
         decoding="async"
+        fetchPriority={priority ? 'high' : undefined}
           onError={() => setImageError(true)}
       />
       ) : (

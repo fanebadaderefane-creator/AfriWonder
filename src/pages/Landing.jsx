@@ -114,6 +114,8 @@ export default function Landing() {
   const [regPhone, setRegPhone] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regAcceptTerms, setRegAcceptTerms] = useState(false);
+  const [regAvatarFile, setRegAvatarFile] = useState(null);
+  const [regAvatarPreview, setRegAvatarPreview] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [earlyAccessEnabled, setEarlyAccessEnabled] = useState(false);
 
@@ -157,6 +159,29 @@ export default function Landing() {
   const isFull = earlyAccessConfig?.isFull ?? false;
   const maxUsers = earlyAccessConfig?.maxUsers ?? 10000;
   const totalUsers = earlyAccessConfig?.totalUsers ?? 0;
+
+  const handleAvatarChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setRegAvatarFile(null);
+      setRegAvatarPreview('');
+      return;
+    }
+    setRegAvatarFile(file);
+    try {
+      const url = URL.createObjectURL(file);
+      setRegAvatarPreview((prev) => {
+        if (prev && prev.startsWith('blob:')) {
+          try {
+            URL.revokeObjectURL(prev);
+          } catch (_e) {}
+        }
+        return url;
+      });
+    } catch (_e) {
+      setRegAvatarPreview('');
+    }
+  };
 
   useEffect(() => {
     const handleBeforeInstall = (e) => {
@@ -849,6 +874,17 @@ export default function Landing() {
                           phone: registerMethod === 'phone' ? intlPhone : undefined,
                     password: regPassword,
                   });
+                  if (regAvatarFile) {
+                    try {
+                      const up = await api.upload.image(regAvatarFile);
+                      const url = up?.file_url ?? up?.url;
+                      if (url) {
+                        await api.auth.updateMe({ profile_image: url });
+                      }
+                    } catch (_avatarError) {
+                      // Avatar optionnel : ne pas bloquer l'inscription
+                    }
+                  }
                   toast.success('Compte créé ! Bienvenue sur AfriWonder.');
                   navigate('/', { replace: true });
                 } catch {
@@ -971,6 +1007,52 @@ export default function Landing() {
                   required
                 />
               </div>
+                      <div className="sm:col-span-2">
+                        <label className={LANDING_LABEL}>Photo de profil (optionnel)</label>
+                        <div className="flex items-center gap-4">
+                          <div className="relative h-14 w-14 overflow-hidden rounded-full border border-white/14 bg-white/5">
+                            {regAvatarPreview ? (
+                              <img
+                                src={regAvatarPreview}
+                                alt="Aperçu"
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <span className="flex h-full w-full items-center justify-center text-xs font-semibold text-white/70">
+                                {regFullName?.[0]?.toUpperCase() || regUsername?.[0]?.toUpperCase() || 'AW'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="inline-flex cursor-pointer items-center justify-center rounded-full bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-950 shadow-sm hover:bg-white/90">
+                              Choisir une photo
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handleAvatarChange}
+                              />
+                            </label>
+                            {regAvatarFile && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRegAvatarFile(null);
+                                  setRegAvatarPreview('');
+                                }}
+                                className="text-[11px] font-medium text-white/60 underline-offset-4 hover:text-white hover:underline"
+                              >
+                                Ignorer pour l’instant
+                              </button>
+                            )}
+                            {!regAvatarFile && (
+                              <p className="text-[11px] text-white/40">
+                                Vous pourrez ajouter ou changer la photo plus tard dans vos paramètres.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
                     <label className={LANDING_LIST_ROW}>

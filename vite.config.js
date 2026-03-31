@@ -21,6 +21,13 @@ try {
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __AFRW_SW_VERSION__: JSON.stringify(
+      process.env.VERCEL_GIT_COMMIT_SHA ||
+        process.env.GITHUB_SHA ||
+        `afw-${new Date().toISOString()}`
+    ),
+  },
   logLevel: 'info',
   resolve: {
     alias: [
@@ -69,9 +76,11 @@ export default defineConfig({
         orientation: 'portrait',
         scope: '/',
         icons: [
-          { src: '/icon-72.png', sizes: '72x72', type: 'image/png', purpose: 'any maskable' },
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+          { src: '/icon-72.png', sizes: '72x72', type: 'image/png', purpose: 'any' },
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
         shortcuts: [
           {
@@ -127,18 +136,12 @@ export default defineConfig({
   ],
   // PWA Configuration
   build: {
-    // Windows: parfois dist/robots.txt est verrouillé pendant la build.
-    // On évite l'effacement automatique pour ne pas bloquer le pipeline.
-    emptyOutDir: false,
+    emptyOutDir: true,
     rollupOptions: {
       output: {
         manualChunks: (id) => {
           if (id.includes('node_modules')) {
-            // Ne pas chunker recharts - le laisser dans le bundle principal pour éviter les erreurs d'initialisation
-            // Si recharts est présent, ne pas créer de chunk séparé
-            if (id.includes('recharts')) {
-              return; // Pas de chunk séparé, inclus dans le bundle principal
-            }
+            if (id.includes('recharts')) return 'recharts-vendor';
             if (id.includes('react-dom') || id.includes('react/') || id.includes('react-router')) return 'react-vendor';
             if (id.includes('@tanstack/react-query')) return 'query-vendor';
             if (id.includes('@radix-ui')) return 'ui-vendor';
@@ -148,13 +151,11 @@ export default defineConfig({
             if (id.includes('/three/') || id.includes('node_modules/three')) return 'three-vendor';
             if (id.includes('@stripe')) return 'stripe-vendor';
             if (id.includes('axios')) return 'axios-vendor';
-            if (id.includes('jspdf') || id.includes('html2canvas')) return 'pdf-export-vendor';
-            if (id.includes('recharts')) return; // laisser dans le bundle principal (interop)
           }
         },
       },
     },
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 200,
     commonjsOptions: {
       include: [/node_modules/],
       transformMixedEsModules: true,
@@ -176,14 +177,18 @@ export default defineConfig({
       // Empêche le navigateur de réutiliser des chunks dev potentiellement corrompus.
       'Cache-Control': 'no-store',
     },
+    // 127.0.0.1 (pas localhost) : sur Windows, localhost → ::1 en IPv6 alors que l’API écoute en IPv4 (0.0.0.0) → ECONNREFUSED au proxy.
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://127.0.0.1:3000',
         changeOrigin: true,
+        // Transcodage repair-web-playback : >5 min sinon réponse tronquée / non-JSON côté navigateur
+        timeout: 900_000,
+        proxyTimeout: 900_000,
       },
       // Socket.IO : même origine que le front en dev (Firefox / réseaux stricts)
       '/socket.io': {
-        target: 'http://localhost:3000',
+        target: 'http://127.0.0.1:3000',
         changeOrigin: true,
         ws: true,
       },

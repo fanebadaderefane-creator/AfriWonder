@@ -6,6 +6,12 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { createPageUrl } from '@/utils';
+import {
+  assertChatMediaFile,
+  assertChatDocumentFile,
+  isPayloadTooLargeError,
+} from '@/lib/chatUploadLimits';
+import { compressImageFileForChat } from '@/lib/chatImageCompress';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -174,6 +180,10 @@ const GROUP_UI = {
   attachPhotoVideo: 'Envoyer une photo ou une vidéo',
   invalidMedia: 'Choisissez une image ou une vidéo.',
   mediaSendError: 'Envoi photo ou vidéo impossible.',
+  uploadPayloadTooLarge: 'Fichier trop volumineux pour le serveur.',
+  fileTooLargeMedia: (maxMb) =>
+    `Fichier trop volumineux. Maximum ${maxMb} Mo pour les photos, vidéos et messages vocaux.`,
+  fileTooLargeDocument: (maxMb) => `Document trop volumineux. Maximum ${maxMb} Mo.`,
   loadOlderMessages: 'Chargement des messages précédents…',
   conversationStart: 'Début de la conversation',
   groupInfoTitle: 'Infos du groupe',
@@ -843,6 +853,12 @@ export default function GroupChat() {
       const audioFile = new File([voiceDraft.blob], `voice-${Date.now()}.${ext}`, {
         type: voiceDraft.mimeType || 'audio/webm',
       });
+      const voiceCheck = assertChatMediaFile(audioFile);
+      if (!voiceCheck.ok) {
+        toast.error(GROUP_UI.fileTooLargeMedia(voiceCheck.maxMb));
+        setVoiceUploading(false);
+        return;
+      }
       const { file_url } = await api.upload.audio(audioFile);
       if (!file_url) {
         toast.error(VOICE_LABELS.voiceStopError);
@@ -858,9 +874,10 @@ export default function GroupChat() {
           },
         }
       );
-    } catch {
+    } catch (err) {
       setVoiceUploading(false);
-      toast.error(VOICE_LABELS.voiceStopError);
+      if (isPayloadTooLargeError(err)) toast.error(GROUP_UI.uploadPayloadTooLarge);
+      else toast.error(VOICE_LABELS.voiceStopError);
     }
   }, [voiceDraft, groupId, replyTarget?.id, sendMutation, clearVoiceDraft]);
 
@@ -1022,6 +1039,10 @@ export default function GroupChat() {
       queryClient.invalidateQueries({ queryKey: ['messages-groups'] });
     },
     onError: (err) => {
+      if (isPayloadTooLargeError(err)) {
+        toast.error(GROUP_UI.uploadPayloadTooLarge);
+        return;
+      }
       const msg = err?.response?.data?.error?.message ?? err?.response?.data?.message ?? err?.message;
       toast.error(msg || 'Envoi du document impossible.');
     },
@@ -1036,7 +1057,8 @@ export default function GroupChat() {
         if (!url) throw new Error('Réponse upload invalide');
         return api.messages.sendGroupMessage(groupId, '', { type: 'video', media_url: url, reply_to_id });
       }
-      const { file_url } = await api.upload.image(file);
+      const imageFile = await compressImageFileForChat(file);
+      const { file_url } = await api.upload.image(imageFile);
       if (!file_url) throw new Error('Réponse upload invalide');
       return api.messages.sendGroupMessage(groupId, '', { type: 'image', media_url: file_url, reply_to_id });
     },
@@ -1047,6 +1069,10 @@ export default function GroupChat() {
       queryClient.invalidateQueries({ queryKey: ['messages-groups'] });
     },
     onError: (err) => {
+      if (isPayloadTooLargeError(err)) {
+        toast.error(GROUP_UI.uploadPayloadTooLarge);
+        return;
+      }
       const msg = err?.response?.data?.error?.message ?? err?.response?.data?.message ?? err?.message;
       toast.error(msg || GROUP_UI.mediaSendError);
     },
@@ -1343,7 +1369,8 @@ export default function GroupChat() {
         return;
       }
       try {
-        const r = await api.upload.image(file);
+        const imageFile = await compressImageFileForChat(file);
+        const r = await api.upload.image(imageFile);
         const url = r?.file_url ?? r?.url;
         if (!url) throw new Error('no url');
         updateGroupMutation.mutate({ avatar_url: url });
@@ -1697,6 +1724,11 @@ export default function GroupChat() {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || !groupId || documentUploadMutation.isPending || mediaUploadMutation.isPending) return;
+    const docCheck = assertChatDocumentFile(file);
+    if (!docCheck.ok) {
+      toast.error(GROUP_UI.fileTooLargeDocument(docCheck.maxMb));
+      return;
+    }
     documentUploadMutation.mutate({ file, reply_to_id: replyTarget?.id || undefined });
   };
 
@@ -1706,6 +1738,11 @@ export default function GroupChat() {
     if (!file || !groupId || mediaUploadMutation.isPending || documentUploadMutation.isPending) return;
     if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
       toast.error(GROUP_UI.invalidMedia);
+      return;
+    }
+    const mediaCheck = assertChatMediaFile(file);
+    if (!mediaCheck.ok) {
+      toast.error(GROUP_UI.fileTooLargeMedia(mediaCheck.maxMb));
       return;
     }
     mediaUploadMutation.mutate({ file, reply_to_id: replyTarget?.id || undefined });

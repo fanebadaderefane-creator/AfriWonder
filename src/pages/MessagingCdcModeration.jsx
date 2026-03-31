@@ -14,6 +14,8 @@ import {
 } from '@/components/messaging/MessagingCdcUi';
 import { useAuth } from '@/lib/AuthContext';
 import { api } from '@/api/expressClient';
+import { Navigate } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 
 const DEFAULT_MOD = {
   silentLeave: false,
@@ -28,7 +30,7 @@ function mergeModFromUser(user) {
   return { ...DEFAULT_MOD };
 }
 
-export default function MessagingCdcModeration() {
+export function MessagingCdcModerationPanel() {
   const { user, checkAuth } = useAuth();
   const [local, setLocal] = useCdcPersistedJson('moderation_toggles', DEFAULT_MOD);
 
@@ -136,4 +138,8 @@ export default function MessagingCdcModeration() {
       </div>
     </MessagingCdcShell>
   );
+}
+
+export default function MessagingCdcModeration() {
+  return <Navigate to={`${createPageUrl('MessagingCdcHub')}?section=moderation`} replace />;
 }

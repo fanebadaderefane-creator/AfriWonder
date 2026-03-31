@@ -14,8 +14,10 @@ import {
 import { useAuth } from '@/lib/AuthContext';
 import { api } from '@/api/expressClient';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Navigate } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 
-export default function MessagingCdcChannels() {
+export function MessagingCdcChannelsPanel() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
@@ -189,4 +191,8 @@ export default function MessagingCdcChannels() {
       </div>
     </MessagingCdcShell>
   );
+}
+
+export default function MessagingCdcChannels() {
+  return <Navigate to={`${createPageUrl('MessagingCdcHub')}?section=channels`} replace />;
 }

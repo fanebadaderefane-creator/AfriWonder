@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
   ArrowLeft, Bell, Heart, MessageCircle, UserPlus, AtSign,
   Coins, ShoppingBag, Radio, Check, Settings
@@ -45,27 +44,23 @@ export default function Notifications() {
     getUser();
   }, [navigate]);
 
-  // Fetch notifications
-  const { data: notifications = [] } = useQuery({
+  // Fetch notifications (JWT côté API ; réponse { notifications, unreadCount, pagination })
+  const { data: notificationsPayload } = useQuery({
     queryKey: ['all-notifications', user?.id],
-    queryFn: () => api.notifications.list({ user_id: user?.id }, '-created_date', 100),
-    enabled: !!user?.id
+    queryFn: () => api.notifications.list({ limit: 100 }),
+    enabled: !!user?.id,
   });
+  const notifications = notificationsPayload?.notifications ?? [];
 
   // Mark all as read mutation
   const markAllReadMutation = useMutation({
-    mutationFn: async () => {
-      const unread = notifications.filter(n => !n.is_read);
-      await Promise.all(
-        unread.map(n => api.entities.Notification.update(n.id, { is_read: true }))
-      );
-    },
+    mutationFn: () => api.notifications.markAllAsRead(),
     onSuccess: () => {
-      queryClient.invalidateQueries(['all-notifications']);
-    }
+      queryClient.invalidateQueries({ queryKey: ['all-notifications'] });
+    },
   });
 
-  const unreadCount = notifications.filter(n => !n.is_read).length;
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   const formatTime = (date) => {
     try {
@@ -77,7 +72,8 @@ export default function Notifications() {
 
   // Group notifications by date
   const groupedNotifications = notifications.reduce((groups, notification) => {
-    const date = new Date(notification.created_date);
+    const rawDate = notification.created_at ?? notification.created_date;
+    const date = new Date(rawDate);
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -179,12 +175,21 @@ export default function Notifications() {
                       }`}
                     >
                       <div className="relative">
-                        <Avatar className="h-12 w-12 border border-white/12">
-                          <AvatarImage src={notification.from_user_avatar} />
-                          <AvatarFallback className="bg-gradient-to-br from-slate-600 to-slate-800 text-white">
-                            {notification.from_user_name?.[0]?.toUpperCase() || 'U'}
-                          </AvatarFallback>
-                        </Avatar>
+                        <div className="relative flex h-12 w-12 shrink-0 overflow-hidden rounded-full border border-white/12 bg-gradient-to-br from-slate-600 to-slate-800">
+                          {notification.from_user_avatar ? (
+                            <img
+                              src={notification.from_user_avatar}
+                              alt=""
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                              decoding="async"
+                            />
+                          ) : (
+                            <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-white">
+                              {notification.from_user_name?.[0]?.toUpperCase() || 'U'}
+                            </span>
+                          )}
+                        </div>
                         <div className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border border-[#0b111d] ${config.color}`}>
                           <Icon className="w-3 h-3" />
                         </div>
@@ -196,7 +201,7 @@ export default function Notifications() {
                           {' '}{notification.message}
                         </p>
                         <p className="text-xs text-white/50 mt-1">
-                          {formatTime(notification.created_date)}
+                          {formatTime(notification.created_at ?? notification.created_date)}
                         </p>
                       </div>
 

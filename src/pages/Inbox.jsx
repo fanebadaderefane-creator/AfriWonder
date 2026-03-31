@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Edit, MessageCircle, ArrowLeft, UserPlus, Bell, BellOff, Filter, Users, Plus, Archive, ArchiveRestore, MoreVertical, Download, LayoutGrid } from 'lucide-react';
+import { Search, Edit, MessageCircle, ArrowLeft, Bell, BellOff, Filter, Users, Plus, Archive, ArchiveRestore, MoreVertical, Download, LayoutGrid } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { motion } from 'framer-motion';
@@ -15,6 +15,13 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { useAuth } from '@/lib/AuthContext';
 import { cn, isDeletedUser } from '@/lib/utils';
+import { buildChatPath } from '@/lib/messagingRoutes';
+import {
+  cacheConversations,
+  getCachedConversations,
+  cacheStories,
+  getCachedStories,
+} from '@/services/offlineProfilesMessages.service';
 import { usePageVisibility } from '@/hooks/usePageVisibility';
 import { toast } from 'sonner';
 import BottomNav from '../components/navigation/BottomNav';
@@ -89,6 +96,7 @@ export default function Inbox() {
   const [mutingConversationId, setMutingConversationId] = useState(null);
   const [exportAllBusy, setExportAllBusy] = useState(false);
   const [exportGroupsBundleBusy, setExportGroupsBundleBusy] = useState(false);
+  const [cachedStories, setCachedStories] = useState([]);
 
   const isPageVisible = usePageVisibility();
 
@@ -165,7 +173,7 @@ export default function Inbox() {
 
   const muteConversationMutation = useMutation({
     mutationFn: ({ conversationId, muted }) => api.messages.setConversationNotifications(conversationId, { muted }),
-    onSuccess: (_data, { conversationId }) => {
+    onSuccess: () => {
       setMutingConversationId(null);
       queryClient.invalidateQueries({ queryKey: ['messages-conversations', user?.id] });
     },
@@ -186,12 +194,34 @@ export default function Inbox() {
 
   const refetchIntervalWhenVisible = isPageVisible ? 10000 : false;
 
+  useEffect(() => {
+    if (!user?.id) return;
+    getCachedConversations(user.id)
+      .then((cached) => {
+        if (cached?.conversations?.length) {
+          queryClient.setQueryData(['messages-conversations', user.id], (prev) => prev || { conversations: cached.conversations });
+        }
+      })
+      .catch(() => {});
+    getCachedStories(user.id)
+      .then((cached) => {
+        if (cached?.stories?.length) setCachedStories(cached.stories);
+      })
+      .catch(() => {});
+  }, [user?.id, queryClient]);
+
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['messages-conversations', user?.id],
     queryFn: () => api.messages.getConversations(1, 50, true),
     enabled: !!user?.id,
     refetchInterval: refetchIntervalWhenVisible,
   });
+
+  useEffect(() => {
+    if (user?.id && Array.isArray(data?.conversations)) {
+      cacheConversations(user.id, data.conversations).catch(() => {});
+    }
+  }, [data?.conversations, user?.id]);
 
   const { data: groupsData } = useQuery({
     queryKey: ['messages-groups', user?.id],
@@ -200,16 +230,6 @@ export default function Inbox() {
     refetchInterval: refetchIntervalWhenVisible,
   });
   const groups = groupsData?.groups ?? [];
-
-  const { data: notificationsData = [] } = useQuery({
-    queryKey: ['notifications', user?.id],
-    queryFn: async () => {
-      const result = await api.notifications.list({ limit: 50 });
-      return result?.notifications || result?.data?.notifications || result || [];
-    },
-    enabled: !!user?.id,
-    refetchInterval: refetchIntervalWhenVisible,
-  });
 
   useEffect(() => {
     if (isError && user?.id) {
@@ -232,6 +252,24 @@ export default function Inbox() {
     },
     enabled: !!user?.id,
   });
+
+  const { data: storiesData = cachedStories } = useQuery({
+    queryKey: ['stories', 'inbox', user?.id, userFollows.length],
+    queryFn: async () => {
+      const ids = userFollows.length ? userFollows.map((u) => u.id) : [user.id];
+      const rows = await api.stories.list(ids);
+      return Array.isArray(rows) ? rows : [];
+    },
+    enabled: !!user?.id,
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (user?.id && Array.isArray(storiesData) && storiesData.length) {
+      setCachedStories(storiesData);
+      cacheStories(user.id, storiesData).catch(() => {});
+    }
+  }, [storiesData, user?.id]);
 
   const { data: suggestions = [] } = useQuery({
     queryKey: ['inbox-suggestions', user?.id, userFollows.length],
@@ -298,10 +336,6 @@ export default function Inbox() {
     });
   }, [activeFilter, showArchived, unreadConversations, conversations, searchQuery]);
 
-  const followNotifications = notificationsData.filter((n) => ['follow', 'new_follower', 'new_wonder'].includes(n.type) && !n.is_read);
-  const activityNotifications = notificationsData.filter((n) => ['like', 'comment', 'mention'].includes(n.type) && !n.is_read);
-  const messageRequestsCount = notificationsData.filter((n) => n.type === 'message_request' && !n.is_read).length;
-
   const formatTime = (date) => {
     if (!date) return '';
     try {
@@ -349,14 +383,6 @@ export default function Inbox() {
     () => userFollows.filter((u) => !isDeletedUser(u)).slice(0, 30),
     [userFollows]
   );
-  const activeThreads = useMemo(
-    () =>
-      conversations
-        .filter((conv) => conv?.other?.id && !isDeletedUser(conv.other))
-        .slice(0, 12),
-    [conversations]
-  );
-
   // Appel des hooks terminé : on peut maintenant appliquer les retours conditionnels
   if (isLoadingAuth) {
     return (
@@ -478,33 +504,40 @@ export default function Inbox() {
       </div>
 
       <div className="mx-auto mt-3 max-w-3xl space-y-3 px-3">
-        {activeThreads.length > 0 && (
+        {Array.isArray(storiesData) && storiesData.length > 0 && (
           <div className={cn(INBOX_SECTION, INBOX_SECTION_PAD)}>
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <p className="text-[15px] font-semibold text-white">Reprendre rapidement</p>
-                <p className="mt-1 text-[13px] leading-relaxed text-white/42">Accès direct aux conversations récentes.</p>
+                <p className="text-[15px] font-semibold text-white">Statuts</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-white/42">Stories récentes de vos contacts.</p>
               </div>
+              <Button
+                variant="ghost"
+                className="rounded-full bg-white/[0.06] px-3 text-white/80 hover:bg-white/[0.1] hover:text-white"
+                onClick={() => navigate(createPageUrl('Stories'))}
+              >
+                Ouvrir
+              </Button>
             </div>
             <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 no-scrollbar">
-              {activeThreads.map((conv) => {
-                const other = conv.other || {};
-                const otherName = other.full_name || other.username || 'Utilisateur';
+              {storiesData.slice(0, 12).map((story) => {
+                const author = story?.user || {};
+                const label = author.full_name || author.username || 'Story';
                 return (
                   <button
-                    key={conv.id}
+                    key={story.id}
                     type="button"
-                    onClick={() => navigate(`${createPageUrl('Chat')}?_userId=${other.id}`)}
+                    onClick={() => navigate(createPageUrl('Stories'))}
                     className="flex w-[72px] shrink-0 flex-col items-center gap-2 touch-manipulation active:opacity-90"
                   >
-                    <Avatar className="h-[52px] w-[52px] ring-1 ring-white/12 shadow-[0_12px_28px_rgba(0,0,0,0.35)]">
-                      <AvatarImage src={other.profile_image} />
-                      <AvatarFallback className="bg-gradient-to-br from-slate-600 to-slate-800 text-white">
-                        {otherName?.[0]?.toUpperCase() || 'U'}
+                    <Avatar className="h-[54px] w-[54px] ring-2 ring-emerald-400/70 ring-offset-2 ring-offset-[#070a12]">
+                      <AvatarImage src={author.profile_image || story.media_url} />
+                      <AvatarFallback className="bg-gradient-to-br from-emerald-500/80 to-cyan-500/70 text-white">
+                        {label?.[0]?.toUpperCase() || 'S'}
                       </AvatarFallback>
                     </Avatar>
                     <span className="w-full truncate text-center text-[11px] font-medium leading-snug text-white/60">
-                      {otherName.split(' ')[0]}
+                      {label.split(' ')[0]}
                     </span>
                   </button>
                 );
@@ -512,60 +545,6 @@ export default function Inbox() {
             </div>
           </div>
         )}
-
-        <div className={cn(INBOX_SECTION, 'p-2 sm:p-3')}>
-          <button
-            type="button"
-            onClick={() => navigate(createPageUrl('Notifications'))}
-            className="flex w-full min-h-[52px] items-center gap-3 rounded-2xl p-3 text-left transition-colors hover:bg-white/[0.05] active:bg-white/[0.07] touch-manipulation"
-          >
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/[0.08] text-white/78">
-              <UserPlus className="w-5 h-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-white">Nouveaux wonderers</p>
-              <p className="truncate text-sm text-white/55">
-                {followNotifications.length > 0
-                  ? `${followNotifications.length} nouveau(x) wonderer(s)`
-                  : 'Aucun nouveau wonderer'}
-              </p>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate(createPageUrl('Notifications'))}
-            className="flex w-full min-h-[52px] items-center gap-3 rounded-2xl p-3 text-left transition-colors hover:bg-white/[0.05] active:bg-white/[0.07] touch-manipulation"
-          >
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/[0.08] text-white/78">
-              <Bell className="w-5 h-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-white">Activité</p>
-              <p className="text-sm text-white/55 truncate">
-                {activityNotifications.length > 0
-                  ? `${activityNotifications.length} réaction(s) récente(s)`
-                  : 'Aucune activité récente'}
-              </p>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveFilter('unread')}
-            className="flex w-full min-h-[52px] items-center gap-3 rounded-2xl p-3 text-left transition-colors hover:bg-white/[0.05] active:bg-white/[0.07] touch-manipulation"
-          >
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/[0.08] text-white/78">
-              <MessageCircle className="w-5 h-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-white">Demandes de messages</p>
-              <p className="text-sm text-white/60 truncate">
-                {messageRequestsCount > 0 ? `${messageRequestsCount} demande(s)` : 'Aucune demande'}
-              </p>
-            </div>
-          </button>
-        </div>
 
         {/* Groupes (CDC) */}
         {(groups.length > 0 || user?.id) && (
@@ -690,7 +669,7 @@ export default function Inbox() {
                 <button
                   key={friend.id}
                   type="button"
-                  onClick={() => navigate(`${createPageUrl('Chat')}?_userId=${friend.id}`)}
+                  onClick={() => navigate(buildChatPath({ userId: friend.id, source: 'inbox-friends' }))}
                   className="flex w-[72px] shrink-0 flex-col items-center gap-2 touch-manipulation active:opacity-90"
                 >
                   <Avatar className="h-[52px] w-[52px] ring-1 ring-white/12">
@@ -820,10 +799,10 @@ export default function Inbox() {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.02 }}
-                className="mx-0.5 my-0.5 flex min-h-[56px] items-center gap-1 rounded-2xl px-2 py-2 transition-colors hover:bg-white/[0.05] active:bg-white/[0.08] sm:mx-1 sm:gap-2 sm:px-3 sm:py-3 touch-manipulation"
+                className="mx-0.5 my-0.5 flex min-h-[72px] items-center gap-1 rounded-2xl px-2 py-2 transition-colors hover:bg-white/[0.04] active:bg-white/[0.08] sm:mx-1 sm:gap-2 sm:px-3 sm:py-3 touch-manipulation"
               >
-                <Link to={`${createPageUrl('Chat')}?_userId=${otherUserId}`} className="flex min-w-0 flex-1 items-center gap-3">
-                  <Avatar className="h-14 w-14 shrink-0 ring-1 ring-white/12 shadow-[0_12px_28px_rgba(0,0,0,0.3)]">
+                <Link to={buildChatPath({ userId: otherUserId, conversationId: conv.id, source: 'inbox-list' })} className="flex min-w-0 flex-1 items-center gap-3">
+                  <Avatar className="h-14 w-14 shrink-0 ring-1 ring-white/10">
                     <AvatarImage src={otherAvatar} />
                     <AvatarFallback className="bg-gradient-to-br from-slate-600 to-slate-800 text-white font-semibold">
                       {otherName?.[0]?.toUpperCase() || 'U'}
@@ -834,7 +813,9 @@ export default function Inbox() {
                       <p className={`font-semibold truncate ${unreadCount > 0 ? 'text-white' : 'text-white/90'}`}>
                         {otherName}
                       </p>
-                      <span className="text-xs text-white/50 flex-shrink-0">{formatTime(conv.last_message_at)}</span>
+                      <span className={`text-xs flex-shrink-0 ${unreadCount > 0 ? 'text-emerald-300' : 'text-white/45'}`}>
+                        {formatTime(conv.last_message_at)}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <p className={`text-sm truncate ${unreadCount > 0 ? 'text-white/85 font-medium' : 'text-white/60'}`}>
@@ -847,34 +828,17 @@ export default function Inbox() {
                           conv.last_message_text || 'Aucun message'
                         )}
                       </p>
+                      <div className="flex shrink-0 items-center gap-2">
+                      {isMuted ? <BellOff className="h-3.5 w-3.5 text-white/35" /> : null}
                       {unreadCount > 0 && (
                         <span className="bg-[#ff2f6d] text-white text-xs font-bold min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center flex-shrink-0">
                           {unreadCount > 99 ? '99+' : unreadCount}
                         </span>
                       )}
+                      </div>
                     </div>
                   </div>
                 </Link>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-11 w-11 shrink-0 rounded-full bg-white/[0.06] text-white/70 ring-1 ring-white/[0.08] hover:bg-white/[0.10]"
-                  disabled={isMuting}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setMutingConversationId(conv.id);
-                    muteConversationMutation.mutate({ conversationId: conv.id, muted: !isMuted });
-                  }}
-                  aria-label={isMuted ? 'Activer les notifications' : 'Désactiver les notifications'}
-                  title={isMuted ? 'Activer les notifications' : 'Désactiver les notifications'}
-                >
-                  {isMuted ? (
-                    <BellOff className="w-4 h-4 text-amber-600" />
-                  ) : (
-                    <Bell className="w-4 h-4 text-white/60" />
-                  )}
-                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -887,6 +851,18 @@ export default function Inbox() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="border-0 bg-[#12151e] text-white ring-1 ring-white/[0.1]">
+                    <DropdownMenuItem
+                      className="focus:bg-white/10 focus:text-white"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setMutingConversationId(conv.id);
+                        muteConversationMutation.mutate({ conversationId: conv.id, muted: !isMuted });
+                      }}
+                      disabled={isMuting}
+                    >
+                      {isMuted ? <Bell className="w-4 h-4 mr-2" /> : <BellOff className="w-4 h-4 mr-2" />}
+                      {isMuted ? 'Activer notifications' : 'Couper notifications'}
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       className="focus:bg-white/10 focus:text-white"
                       onClick={(e) => {

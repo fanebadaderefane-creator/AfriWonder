@@ -127,6 +127,50 @@ router.get('/suggested-follows', authenticate, async (req: AuthRequest, res, nex
   }
 });
 
+// GET /api/me/feed-video-states?ids=a,b,c — états like/save pour la fenêtre visible du feed
+router.get('/feed-video-states', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const rawIds = String(req.query.ids || '');
+    const ids = rawIds
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .slice(0, 50);
+
+    if (ids.length === 0) {
+      return res.json({ success: true, data: { likedIds: [], savedIds: [] } });
+    }
+
+    const [likes, saves] = await Promise.all([
+      prisma.like.findMany({
+        where: {
+          user_id: userId,
+          video_id: { in: ids },
+        },
+        select: { video_id: true },
+      }),
+      prisma.save.findMany({
+        where: {
+          user_id: userId,
+          video_id: { in: ids },
+        },
+        select: { video_id: true },
+      }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        likedIds: likes.map((row) => row.video_id),
+        savedIds: saves.map((row) => row.video_id),
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // GET /api/me/activity — historique d'activité récente (CPO 1.15 : connexions, publications, achats, notifications)
 router.get('/activity', authenticate, async (req: AuthRequest, res, next) => {
   try {

@@ -125,6 +125,75 @@ class BackendClient {
     return Map<String, dynamic>.from(data['data'] as Map? ?? const {});
   }
 
+  /// Aligné PWA Home « abonnements » : GET /videos puis filtre par créateurs suivis.
+  Future<List<Map<String, dynamic>>> getFollowingFeedVideos({
+    required String accessToken,
+    required String userId,
+    int page = 1,
+    int limit = 25,
+  }) async {
+    final following = await getFollowingUsers(accessToken: accessToken, userId: userId);
+    if (following.isEmpty) return [];
+
+    final followingIds = following
+        .map((u) => (u['id'] ?? '').toString())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+
+    final videos = await listVideos(accessToken: accessToken, page: page, limit: limit);
+    return videos
+        .where((v) => followingIds.contains((v['creator_id'] ?? '').toString()))
+        .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> getFollowingUsers({
+    required String accessToken,
+    required String userId,
+    int page = 1,
+    int limit = 100,
+  }) async {
+    final response = await _http.get(
+      Uri.parse('$baseUrl/users/$userId/following?page=$page&limit=$limit'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    final data = _decode(response);
+    if (response.statusCode >= 400 || data['success'] != true) {
+      throw Exception(_extractErrorMessage(data, fallback: 'Impossible de charger les abonnements'));
+    }
+    final payload = data['data'];
+    if (payload is! Map) return [];
+    final raw = payload['following'];
+    if (raw is! List) return [];
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> listVideos({
+    required String accessToken,
+    int page = 1,
+    int limit = 25,
+  }) async {
+    final response = await _http.get(
+      Uri.parse('$baseUrl/videos?page=$page&limit=$limit'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    final data = _decode(response);
+    if (response.statusCode >= 400 || data['success'] != true) {
+      throw Exception(_extractErrorMessage(data, fallback: 'Impossible de charger les videos'));
+    }
+    final inner = data['data'];
+    if (inner is Map && inner['videos'] is List) {
+      final list = inner['videos'] as List<dynamic>;
+      return list
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+    return [];
+  }
+
   Future<List<Map<String, dynamic>>> getFeed(String accessToken) async {
     final response = await _http.get(
       Uri.parse('$baseUrl/feed?page=1&limit=10'),
@@ -192,6 +261,77 @@ class BackendClient {
       throw Exception(_extractErrorMessage(data, fallback: 'Follow impossible'));
     }
     return Map<String, dynamic>.from(data['data'] as Map? ?? const {});
+  }
+
+  /// GET /api/search — recherche globale (auth optionnelle).
+  Future<Map<String, dynamic>> searchGlobal({
+    String? accessToken,
+    required String q,
+    String type = 'all',
+    int page = 1,
+    int limit = 20,
+  }) async {
+    final uri = Uri.parse('$baseUrl/search').replace(
+      queryParameters: <String, String>{
+        'q': q,
+        'type': type,
+        'page': '$page',
+        'limit': '$limit',
+      },
+    );
+    final headers = <String, String>{'Accept': 'application/json'};
+    final t = accessToken?.trim();
+    if (t != null && t.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $t';
+    }
+    final response = await _http.get(uri, headers: headers);
+    final data = _decode(response);
+    if (response.statusCode >= 400 || data['success'] != true) {
+      throw Exception(_extractErrorMessage(data, fallback: 'Recherche impossible'));
+    }
+    return Map<String, dynamic>.from(data['data'] as Map? ?? const {});
+  }
+
+  /// GET /api/notifications
+  Future<Map<String, dynamic>> getNotifications({
+    required String accessToken,
+    int page = 1,
+    int limit = 20,
+  }) async {
+    final response = await _http.get(
+      Uri.parse('$baseUrl/notifications?page=$page&limit=$limit'),
+      headers: {'Authorization': 'Bearer $accessToken', 'Accept': 'application/json'},
+    );
+    final data = _decode(response);
+    if (response.statusCode >= 400 || data['success'] != true) {
+      throw Exception(_extractErrorMessage(data, fallback: 'Notifications indisponibles'));
+    }
+    return Map<String, dynamic>.from(data['data'] as Map? ?? const {});
+  }
+
+  Future<void> markNotificationRead({
+    required String accessToken,
+    required String notificationId,
+  }) async {
+    final response = await _http.put(
+      Uri.parse('$baseUrl/notifications/$notificationId/read'),
+      headers: {'Authorization': 'Bearer $accessToken', 'Accept': 'application/json'},
+    );
+    if (response.statusCode >= 400) {
+      final data = _decode(response);
+      throw Exception(_extractErrorMessage(data, fallback: 'Marquage lu impossible'));
+    }
+  }
+
+  Future<void> markAllNotificationsRead({required String accessToken}) async {
+    final response = await _http.put(
+      Uri.parse('$baseUrl/notifications/read-all'),
+      headers: {'Authorization': 'Bearer $accessToken', 'Accept': 'application/json'},
+    );
+    if (response.statusCode >= 400) {
+      final data = _decode(response);
+      throw Exception(_extractErrorMessage(data, fallback: 'Operation impossible'));
+    }
   }
 
   Map<String, dynamic> _decode(http.Response response) {

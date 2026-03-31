@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import { cacheGet, cacheSet } from '../utils/cache.js';
+import { AuthRequest } from './auth.js';
 
 type CacheOptions = {
   ttlMs?: number;
@@ -12,9 +13,16 @@ export const responseCache = (keyPrefix: string, options: CacheOptions = {}) => 
   return async (req: Request, res: Response, next: NextFunction) => {
     if (req.method !== 'GET') return next();
 
+    const authReq = req as AuthRequest;
     const authHeader = String(req.headers.authorization || '');
     const userSegment =
-      options.byUser && authHeader.startsWith('Bearer ') ? `:u:${authHeader.slice(0, 24)}` : '';
+      options.byUser
+        ? authReq.user?.id
+          ? `:u:${authReq.user.id}`
+          : authHeader.startsWith('Bearer ')
+            ? `:t:${authHeader.slice(0, 24)}`
+            : ''
+        : '';
     const cacheKey = `${keyPrefix}${userSegment}:${req.originalUrl}`;
 
     try {

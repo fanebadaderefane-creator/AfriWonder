@@ -14,6 +14,20 @@ import { r2Client, R2_BUCKET_NAME, R2_PUBLIC_URL } from '../config/cloudflare-r2
 
 const MAX_BYTES = Number(process.env.VIDEO_COMPAT_MAX_BYTES || String(120 * 1024 * 1024));
 const FEED_SAFE_ZOOM = Math.max(1, Number(process.env.VIDEO_FEED_SAFE_ZOOM || '1.12'));
+const FORCE_WEB_COMPAT_TRANSCODE_TIMEOUT_MS = Math.max(
+  60_000,
+  Number(process.env.VIDEO_COMPAT_FORCE_TIMEOUT_MS || '480000')
+);
+const FFMPEG_REMOTE_RW_TIMEOUT_US = Math.max(
+  15_000_000,
+  Math.round((Number(process.env.VIDEO_COMPAT_REMOTE_RW_TIMEOUT_MS || '90000') || 90000) * 1000)
+);
+const FFMPEG_PRESET = (() => {
+  const v = (process.env.VIDEO_COMPAT_PRESET || 'fast').toLowerCase();
+  const allowed = ['ultrafast', 'superfast', 'veryfast', 'fast', 'medium', 'slow'];
+  return allowed.includes(v) ? v : 'fast';
+})();
+const FFMPEG_CRF = String(Math.min(51, Math.max(0, Number(process.env.VIDEO_COMPAT_CRF || '26') || 26)));
 
 function buildVerticalComposeFilter(): string {
   // 1) Cover + crop en 9:16
@@ -114,7 +128,13 @@ function audioCodecNeedsCompatInMp4(audioCodec: string | null): boolean {
 export type UrlStreamProbe = {
   video: VideoStreamMeta | null;
   audioCodec: string | null;
+  /** Sonde incomplète ou ffprobe en échec : on tente quand même un transcodage (souvent HEVC mal détecté / CDN). */
+  probeFailed?: boolean;
 };
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 /**
  * ffprobe toutes les pistes : Firefox échoue aussi sur Opus/AMR/E-AC-3… dans le MP4 alors que Chrome lit.
@@ -135,7 +155,11 @@ export async function ffprobeUrlStreams(url: string): Promise<UrlStreamProbe> {
     proc.stdout.on('data', (d: Buffer) => {
       out += d.toString();
     });
-    proc.on('close', () => {
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        resolve({ video: null, audioCodec: null, probeFailed: true });
+        return;
+      }
       try {
         const j = JSON.parse(out) as { streams?: ProbeStream[] };
         const streams = j.streams || [];
@@ -149,16 +173,37 @@ export async function ffprobeUrlStreams(url: string): Promise<UrlStreamProbe> {
             audioCodec = String(s.codec_name).toLowerCase();
           }
         }
-        resolve({ video, audioCodec });
+        const probeFailed = !video && streams.length === 0;
+        resolve({ video, audioCodec, ...(probeFailed ? { probeFailed: true } : {}) });
       } catch {
-        resolve({ video: null, audioCodec: null });
+        resolve({ video: null, audioCodec: null, probeFailed: true });
       }
     });
-    proc.on('error', () => resolve({ video: null, audioCodec: null }));
+    proc.on('error', () => resolve({ video: null, audioCodec: null, probeFailed: true }));
   });
 }
 
+/** Plusieurs tentatives (CDN / TLS / cold start R2). */
+export async function ffprobeUrlStreamsWithRetry(
+  url: string,
+  attempts = 3,
+  delayMs = 900
+): Promise<UrlStreamProbe> {
+  let last: UrlStreamProbe = { video: null, audioCodec: null, probeFailed: true };
+  for (let i = 0; i < attempts; i++) {
+    last = await ffprobeUrlStreams(url);
+    if (last.video) break;
+    if (last.probeFailed) {
+      if (i < attempts - 1) await sleep(delayMs);
+      continue;
+    }
+    break;
+  }
+  return last;
+}
+
 export function streamsNeedWebCompatTranscode(probe: UrlStreamProbe): boolean {
+  if (probe.probeFailed) return true;
   if (probe.video && videoMetaNeedsCompatTranscode(probe.video)) return true;
   return audioCodecNeedsCompatInMp4(probe.audioCodec);
 }
@@ -203,10 +248,10 @@ async function ffprobeFileStreams(inputPath: string): Promise<UrlStreamProbe> {
 }
 
 function runFfmpegTranscodeToCompatMp4(inputPath: string, outputPath: string): Promise<void> {
-  // Mode "no black bars" type Shorts avec zoom de sécurité anti-bandes noires résiduelles.
   const verticalComposeFilter = buildVerticalComposeFilter();
   const args = [
     '-y',
+    '-threads', '0',
     '-i',
     inputPath,
     '-filter_complex',
@@ -217,6 +262,10 @@ function runFfmpegTranscodeToCompatMp4(inputPath: string, outputPath: string): P
     '0:a?',
     '-c:v',
     'libx264',
+    '-preset',
+    FFMPEG_PRESET,
+    '-crf',
+    FFMPEG_CRF,
     '-profile:v',
     'main',
     '-pix_fmt',
@@ -301,6 +350,13 @@ function runFfmpegTranscodeUrlToFile(inputUrl: string, outputPath: string): Prom
   const verticalComposeFilter = buildVerticalComposeFilter();
   const args = [
     '-y',
+    '-nostdin',
+    '-reconnect', '1',
+    '-reconnect_streamed', '1',
+    '-reconnect_delay_max', '5',
+    '-rw_timeout',
+    String(FFMPEG_REMOTE_RW_TIMEOUT_US),
+    '-threads', '0',
     '-i',
     inputUrl,
     '-filter_complex',
@@ -311,6 +367,10 @@ function runFfmpegTranscodeUrlToFile(inputUrl: string, outputPath: string): Prom
     '0:a?',
     '-c:v',
     'libx264',
+    '-preset',
+    FFMPEG_PRESET,
+    '-crf',
+    FFMPEG_CRF,
     '-profile:v',
     'main',
     '-pix_fmt',
@@ -328,11 +388,32 @@ function runFfmpegTranscodeUrlToFile(inputUrl: string, outputPath: string): Prom
   return new Promise((resolve, reject) => {
     const proc = spawn('ffmpeg', args);
     let stderr = '';
+    let settled = false;
+    const killTimer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      proc.kill('SIGKILL');
+      reject(
+        new Error(
+          `ffmpeg a dépassé ${Math.round(
+            FORCE_WEB_COMPAT_TRANSCODE_TIMEOUT_MS / 1000
+          )} s sur la source distante (CDN/R2).`
+        )
+      );
+    }, FORCE_WEB_COMPAT_TRANSCODE_TIMEOUT_MS);
     proc.stderr?.on('data', (d: Buffer) => {
       stderr += d.toString();
     });
-    proc.on('error', reject);
+    proc.on('error', (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(killTimer);
+      reject(error);
+    });
     proc.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(killTimer);
       if (code === 0) resolve();
       else reject(new Error(`ffmpeg url transcode ${code}: ${stderr.slice(-600)}`));
     });
@@ -342,50 +423,78 @@ function runFfmpegTranscodeUrlToFile(inputUrl: string, outputPath: string): Prom
 /**
  * Après création en base (upload presign ou ancien flux) : ffprobe sur l’URL publique ; si besoin, nouvel MP4 sur R2 + mise à jour video_url.
  */
+const compatTranscodeInFlight = new Set<string>();
+
 export async function runCompatTranscodeForPublishedVideo(videoId: string, videoUrl: string): Promise<void> {
   if (process.env.VIDEO_PUBLISH_COMPAT_TRANSCODE === '0') return;
   if (!r2Client || !R2_PUBLIC_URL) return;
   const url = String(videoUrl || '').trim();
   if (!isOurCdnVideoUrl(url)) return;
 
-  const probe = await ffprobeUrlStreams(url);
-  if (!streamsNeedWebCompatTranscode(probe)) return;
+  if (compatTranscodeInFlight.has(videoId)) return;
+  compatTranscodeInFlight.add(videoId);
 
-  const tmpOut = path.join(os.tmpdir(), `afw-pub-${videoId}-${Date.now()}.mp4`);
+  const pipelineAttempts = Math.min(4, Math.max(1, Number(process.env.VIDEO_COMPAT_PUBLISH_RETRIES || '3') || 3));
+  const backoff = [0, 2000, 5000];
+
   try {
-    await runFfmpegTranscodeUrlToFile(url, tmpOut);
-    const body = await fs.readFile(tmpOut);
-    if (body.length < 512) return;
+    const probe = await ffprobeUrlStreamsWithRetry(url, 3, 900);
+    if (!streamsNeedWebCompatTranscode(probe)) return;
 
-    const key = `videos/${Date.now()}-web-${crypto.randomUUID()}.mp4`;
-    await r2Client.send(
-      new PutObjectCommand({
-        Bucket: R2_BUCKET_NAME,
-        Key: key,
-        Body: body,
-        ContentType: 'video/mp4',
-        CacheControl: 'public, max-age=31536000, immutable',
-      })
-    );
+    let lastErr: string | undefined;
+    for (let attempt = 0; attempt < pipelineAttempts; attempt++) {
+      if (attempt > 0) await sleep(backoff[Math.min(attempt - 1, backoff.length - 1)] ?? 3000);
+      const tmpOut = path.join(os.tmpdir(), `afw-pub-${videoId}-${Date.now()}-${attempt}.mp4`);
+      try {
+        await runFfmpegTranscodeUrlToFile(url, tmpOut);
+        const body = await fs.readFile(tmpOut);
+        if (body.length < 512) {
+          lastErr = 'fichier trop petit';
+          continue;
+        }
 
-    const base = R2_PUBLIC_URL.replace(/\/+$/, '');
-    const newUrl = `${base}/${key}`;
+        const key = `videos/${Date.now()}-web-${crypto.randomUUID()}.mp4`;
+        await r2Client.send(
+          new PutObjectCommand({
+            Bucket: R2_BUCKET_NAME,
+            Key: key,
+            Body: body,
+            ContentType: 'video/mp4',
+            CacheControl: 'public, max-age=31536000, immutable',
+          })
+        );
 
-    await prisma.video.update({
-      where: { id: videoId },
-      data: { video_url: newUrl, updated_at: new Date() },
-    });
+        const base = R2_PUBLIC_URL.replace(/\/+$/, '');
+        const newUrl = `${base}/${key}`;
 
-    logger.info('Vidéo republiée en H.264 web (post-publish)', {
-      videoId,
-      codec: probe.video?.codec_name,
-      pix_fmt: probe.video?.pix_fmt,
-      audio: probe.audioCodec,
-    });
-  } catch (e) {
-    logger.warn('Compat transcode post-publish échoué', { videoId, err: (e as Error)?.message });
+        await prisma.video.update({
+          where: { id: videoId },
+          data: { video_url: newUrl, updated_at: new Date() },
+        });
+
+        logger.info('Vidéo republiée en H.264 web (post-publish)', {
+          videoId,
+          attempt: attempt + 1,
+          codec: probe.video?.codec_name,
+          pix_fmt: probe.video?.pix_fmt,
+          audio: probe.audioCodec,
+          probeFailed: probe.probeFailed,
+        });
+        return;
+      } catch (e) {
+        lastErr = (e as Error)?.message || String(e);
+        logger.warn('Compat transcode post-publish tentative échouée', {
+          videoId,
+          attempt: attempt + 1,
+          err: lastErr,
+        });
+      } finally {
+        await fs.unlink(tmpOut).catch(() => {});
+      }
+    }
+    logger.warn('Compat transcode post-publish échoué (toutes tentatives)', { videoId, lastErr });
   } finally {
-    await fs.unlink(tmpOut).catch(() => {});
+    compatTranscodeInFlight.delete(videoId);
   }
 }
 
@@ -398,6 +507,8 @@ export function scheduleCompatTranscodeAfterPublish(videoId: string, videoUrl: s
   });
 }
 
+const forceCompatTranscodeInFlight = new Set<string>();
+
 export type ForceWebCompatResult = {
   ok: boolean;
   newUrl?: string;
@@ -409,34 +520,99 @@ export type ForceWebCompatResult = {
  * Ré-encode **systématiquement** en H.264 main + yuv420p + AAC + faststart (même si ffprobe disait « OK »).
  * Cas réels : fichier lisible par Chrome mais pas Firefox, moov/buffer bizarre, métadonnées mensongères.
  */
-export async function forceWebCompatTranscodePublishedVideo(videoId: string): Promise<ForceWebCompatResult> {
-  if (!r2Client || !R2_PUBLIC_URL) {
-    return { ok: false, skipped: 'R2 non configuré' };
+function humanizeTranscodeError(raw: string): string {
+  const m = raw || '';
+  if (
+    /ENOENT|spawn .*ffmpeg|ffmpeg.*n'est pas reconnu|n'est pas reconnu en tant que commande|not recognized as an internal or external command/i.test(
+      m
+    )
+  ) {
+    return 'ffmpeg est introuvable sur ce serveur. Installez FFmpeg, vérifiez PATH (ou redémarrez le terminal après installation), puis réessayez.';
   }
+  if (/spawn .*ffprobe|ffprobe.*ENOENT/i.test(m)) {
+    return 'ffprobe est introuvable (livré avec FFmpeg). Installez FFmpeg et vérifiez le PATH.';
+  }
+  return m.length > 400 ? `${m.slice(0, 400)}…` : m;
+}
 
-  const row = await prisma.video.findUnique({
-    where: { id: videoId },
-    select: { id: true, video_url: true },
-  });
-  if (!row) return { ok: false, error: 'Vidéo introuvable' };
-
-  const url = String(row.video_url || '').trim();
-  if (!isOurCdnVideoUrl(url)) {
+export async function forceWebCompatTranscodePublishedVideo(videoId: string): Promise<ForceWebCompatResult> {
+  const startedAt = Date.now();
+  if (forceCompatTranscodeInFlight.has(videoId)) {
+    logger.warn('forceWebCompatTranscodePublishedVideo skipped', {
+      videoId,
+      duration_ms: Date.now() - startedAt,
+      reason: 'Une réparation est déjà en cours',
+    });
     return {
       ok: false,
-      skipped: 'La vidéo doit être hébergée sur le CDN AfriWonder / R2 (URL publique du bucket).',
+      skipped: 'Une réparation de lecture web est déjà en cours pour cette vidéo. Attendez la fin avant de réessayer.',
     };
+  }
+  if (!r2Client || !R2_PUBLIC_URL) {
+    logger.warn('forceWebCompatTranscodePublishedVideo skipped', {
+      videoId,
+      duration_ms: Date.now() - startedAt,
+      reason: 'R2 non configuré',
+    });
+    return { ok: false, skipped: 'R2 non configuré' };
   }
 
   const tmpOut = path.join(os.tmpdir(), `afw-force-${videoId}-${Date.now()}.mp4`);
   try {
+    forceCompatTranscodeInFlight.add(videoId);
+    logger.info('forceWebCompatTranscodePublishedVideo started', { videoId });
+    let row: { id: string; video_url: string | null } | null;
+    try {
+      row = await prisma.video.findUnique({
+        where: { id: videoId },
+        select: { id: true, video_url: true },
+      });
+    } catch (dbErr: any) {
+      const msg = dbErr?.message || String(dbErr);
+      logger.warn('forceWebCompatTranscodePublishedVideo DB read', { videoId, err: msg });
+      return {
+        ok: false,
+        error: /P1001|Can't reach database|database server/i.test(msg)
+          ? 'Base de données indisponible. Réessayez plus tard.'
+          : humanizeTranscodeError(msg),
+      };
+    }
+
+    if (!row) {
+      logger.warn('forceWebCompatTranscodePublishedVideo video missing', {
+        videoId,
+        duration_ms: Date.now() - startedAt,
+      });
+      return { ok: false, error: 'Vidéo introuvable' };
+    }
+
+    const url = String(row.video_url || '').trim();
+    if (!isOurCdnVideoUrl(url)) {
+      logger.warn('forceWebCompatTranscodePublishedVideo skipped', {
+        videoId,
+        duration_ms: Date.now() - startedAt,
+        reason: 'URL hors CDN/R2',
+      });
+      return {
+        ok: false,
+        skipped: 'La vidéo doit être hébergée sur le CDN AfriWonder / R2 (URL publique du bucket).',
+      };
+    }
+
+    logger.info('forceWebCompatTranscodePublishedVideo ffmpeg start', { videoId });
     await runFfmpegTranscodeUrlToFile(url, tmpOut);
     const body = await fs.readFile(tmpOut);
+    logger.info('forceWebCompatTranscodePublishedVideo ffmpeg done', {
+      videoId,
+      duration_ms: Date.now() - startedAt,
+      output_bytes: body.length,
+    });
     if (body.length < 512) {
       return { ok: false, error: 'Transcodage produit un fichier trop petit' };
     }
 
     const key = `videos/${Date.now()}-webfix-${crypto.randomUUID()}.mp4`;
+    logger.info('forceWebCompatTranscodePublishedVideo R2 upload start', { videoId, key });
     await r2Client.send(
       new PutObjectCommand({
         Bucket: R2_BUCKET_NAME,
@@ -446,22 +622,50 @@ export async function forceWebCompatTranscodePublishedVideo(videoId: string): Pr
         CacheControl: 'public, max-age=31536000, immutable',
       })
     );
+    logger.info('forceWebCompatTranscodePublishedVideo R2 upload done', {
+      videoId,
+      key,
+      duration_ms: Date.now() - startedAt,
+    });
 
     const base = R2_PUBLIC_URL.replace(/\/+$/, '');
     const newUrl = `${base}/${key}`;
 
-    await prisma.video.update({
-      where: { id: videoId },
-      data: { video_url: newUrl, updated_at: new Date() },
-    });
+    try {
+      logger.info('forceWebCompatTranscodePublishedVideo DB update start', { videoId });
+      await prisma.video.update({
+        where: { id: videoId },
+        data: { video_url: newUrl, updated_at: new Date() },
+      });
+      logger.info('forceWebCompatTranscodePublishedVideo DB update done', {
+        videoId,
+        duration_ms: Date.now() - startedAt,
+      });
+    } catch (dbErr: any) {
+      const msg = dbErr?.message || String(dbErr);
+      logger.warn('forceWebCompatTranscodePublishedVideo DB update', { videoId, err: msg, newUrl });
+      return {
+        ok: false,
+        error:
+          'Fichier transcodé envoyé sur le stockage, mais la mise à jour en base a échoué. Vérifiez la base de données.',
+      };
+    }
 
-    logger.info('Réparation lecture web (transcodage forcé)', { videoId });
+    logger.info('Réparation lecture web (transcodage forcé)', {
+      videoId,
+      duration_ms: Date.now() - startedAt,
+    });
     return { ok: true, newUrl };
   } catch (e) {
     const msg = (e as Error)?.message || String(e);
-    logger.warn('forceWebCompatTranscodePublishedVideo', { videoId, err: msg });
-    return { ok: false, error: msg };
+    logger.warn('forceWebCompatTranscodePublishedVideo', {
+      videoId,
+      err: msg,
+      duration_ms: Date.now() - startedAt,
+    });
+    return { ok: false, error: humanizeTranscodeError(msg) };
   } finally {
+    forceCompatTranscodeInFlight.delete(videoId);
     await fs.unlink(tmpOut).catch(() => {});
   }
 }

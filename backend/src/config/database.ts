@@ -104,20 +104,10 @@ const prisma = new PrismaClient({
     : ['error'],
 }) as unknown as PrismaClient;
 
-// Connect to database (only in non-test environment; never exit in test).
-// Exécuter une requête réelle après $connect() pour valider le pool (évite "Circuit breaker open" après le premier vrai query).
-if (process.env.NODE_ENV !== 'test') {
-  prisma.$connect()
-    .then(() => prisma.$queryRaw`SELECT 1`)
-    .then(() => {
-      logger.info('✅ Database connected');
-    })
-    .catch((error) => {
-      logger.error('❌ Database connection failed', error);
-      process.exit(1);
-    });
-} else {
-  // En mode test : pas de process.exit, connexion gérée par __tests__/setup.ts
+// Connexion : ne pas appeler $connect() ici avec process.exit(1) — ça tue le processus avant
+// httpServer.listen (index.ts) si la 1re tentative échoue ou course avec ensureDbConnected.
+// Le démarrage vérifie la DB via ensureDbConnected() dans index.ts ; premier $queryRaw valide le pool.
+if (process.env.NODE_ENV === 'test') {
   prisma.$connect().catch(() => {});
 }
 

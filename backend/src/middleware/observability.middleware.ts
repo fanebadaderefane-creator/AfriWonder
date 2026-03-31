@@ -50,7 +50,12 @@ export const httpMetricsMiddleware = (req: Request, res: Response, next: NextFun
 const API_REQUEST_TIMEOUT_MS = 30000; // 30s
 
 function isLongRunningPath(path: string): boolean {
-  return path.startsWith('/api/upload') || /\/webhook$/i.test(path);
+  return (
+    path.startsWith('/api/upload') ||
+    /\/webhook$/i.test(path) ||
+    // Transcodage ffmpeg (H.264 web) : souvent > 30 s — ne pas couper la socket (sinon proxy Vite « socket hang up » / 500)
+    path.includes('/repair-web-playback')
+  );
 }
 
 export const apiRequestTimeoutMiddleware = (req: Request, res: Response, next: NextFunction) => {

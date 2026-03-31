@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -47,7 +47,7 @@ function directStatusLabel(status) {
   return status || '—';
 }
 
-export default function MessagingCdcCalls() {
+export function MessagingCdcCallsPanel() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [demoLog, setDemoLog] = useCdcPersistedJson('calls_demo_log', DEFAULT_LOG);
@@ -270,4 +270,8 @@ export default function MessagingCdcCalls() {
       </CdcCallout>
     </MessagingCdcShell>
   );
+}
+
+export default function MessagingCdcCalls() {
+  return <Navigate to={`${createPageUrl('MessagingCdcHub')}?section=calls`} replace />;
 }

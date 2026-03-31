@@ -28,19 +28,31 @@ export class PushNotificationService {
       }
       console.log('Service Worker enregistré');
 
-      // Demander la permission
       if (Notification.permission === 'granted') {
         this.subscribeUser(registration);
-      } else if (Notification.permission !== 'denied') {
-        Notification.requestPermission().then((permission) => {
-          if (permission === 'granted') {
-            this.subscribeUser(registration);
-          }
-        });
       }
+      // Pas de requestPermission au démarrage (audit : demander après une action significative).
     } catch (error) {
       console.error('Erreur Service Worker:', error);
     }
+  }
+
+  /** À appeler depuis l’UI (ex. après 1er message, achat, ou bouton Paramètres). */
+  async requestPermissionAndSubscribe() {
+    if (!this.serviceWorkerSupported || !('Notification' in window)) return false;
+    const registration = await navigator.serviceWorker.getRegistration('/');
+    if (!registration) return false;
+    if (Notification.permission === 'granted') {
+      await this.subscribeUser(registration);
+      return true;
+    }
+    if (Notification.permission === 'denied') return false;
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      await this.subscribeUser(registration);
+      return true;
+    }
+    return false;
   }
 
   async subscribeUser(registration) {

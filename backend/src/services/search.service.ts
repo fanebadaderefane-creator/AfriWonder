@@ -43,6 +43,18 @@ export interface SuggestResult {
 const DEFAULT_LIMIT_PER_TYPE = 20;
 const DEFAULT_SUGGEST_LIMIT = 8;
 
+function normalizeSearchText(value: unknown): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function textIncludesTerm(text: unknown, term: string): boolean {
+  return normalizeSearchText(text).includes(term);
+}
+
 /**
  * Recherche globale : interroge en parallèle vidéos, utilisateurs, produits
  * et retourne un objet unifié. Respecte le filtre type (all | videos | users | products).
@@ -116,6 +128,62 @@ export async function globalSearch(options: GlobalSearchOptions): Promise<Global
   let videos = Array.isArray(videosResult) ? videosResult : [];
   let users = Array.isArray(usersResult) ? usersResult : [];
   let products = Array.isArray(productsResult) ? productsResult : [];
+
+  const normalizedTerm = normalizeSearchText(term.replace(/^#/, ''));
+
+  // Fallback accent-insensitive si la recherche SQL/Prisma ne matche pas (ex: "Drole" vs "Drôle")
+  if (normalizedTerm && normalizedTerm.length >= 2) {
+    if (shouldSearchVideos && videos.length === 0) {
+      const broadVideos = await videoService
+        .list({
+          page: 1,
+          limit: 120,
+          visibility: 'public',
+          userId,
+          category: category || undefined,
+          hashtag: hashtagForApi || hashtag,
+        })
+        .then((r) => (Array.isArray(r) ? r : r?.videos || []))
+        .catch(() => []);
+
+      videos = broadVideos.filter((v: any) =>
+        textIncludesTerm(v?.title, normalizedTerm) ||
+        textIncludesTerm(v?.description, normalizedTerm) ||
+        textIncludesTerm(v?.music_title, normalizedTerm) ||
+        (Array.isArray(v?.video_hashtags) && v.video_hashtags.some((h: any) => textIncludesTerm(h?.tag_name, normalizedTerm)))
+      );
+    }
+
+    if (shouldSearchUsers && users.length === 0) {
+      const broadUsers = await userService
+        .list(page, 120, '')
+        .then((r) => r?.users || [])
+        .catch(() => []);
+
+      users = broadUsers.filter((u: any) =>
+        textIncludesTerm(u?.username, normalizedTerm) ||
+        textIncludesTerm(u?.full_name, normalizedTerm) ||
+        textIncludesTerm(u?.email, normalizedTerm)
+      );
+    }
+
+    if (shouldSearchProducts && products.length === 0) {
+      const broadProducts = await productService
+        .list({
+          page: 1,
+          limit: 120,
+          category: category || undefined,
+        })
+        .then((r) => (Array.isArray(r) ? r : r?.products || []))
+        .catch(() => []);
+
+      products = broadProducts.filter((p: any) =>
+        textIncludesTerm(p?.name, normalizedTerm) ||
+        textIncludesTerm(p?.title, normalizedTerm) ||
+        textIncludesTerm(p?.description, normalizedTerm)
+      );
+    }
+  }
 
   if (duration && duration !== 'all' && videos.length > 0) {
     videos = videos.filter((v) => {

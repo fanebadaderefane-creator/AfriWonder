@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import userService from '../services/user.service.js';
+import { invalidateUserFeedCaches } from '../services/feedCache.service.js';
 
 const router = Router();
 
@@ -75,6 +76,7 @@ router.post('/:id/follow', authenticate, async (req: AuthRequest, res, next) => 
     const followingId = param(req, 'id');
     const followerId = req.user!.id;
     const result = await userService.toggleFollow(followerId, followingId);
+    invalidateUserFeedCaches(followerId).catch(() => {});
     res.json({ success: true, data: result });
   } catch (error: any) {
     next(error);
@@ -87,6 +89,7 @@ router.post('/:id/wonder', authenticate, async (req: AuthRequest, res, next) => 
     const creatorId = param(req, 'id');
     const followerId = req.user!.id;
     const result = await userService.toggleWonder(followerId, creatorId);
+    invalidateUserFeedCaches(followerId).catch(() => {});
     res.json({ success: true, data: result });
   } catch (error: any) {
     next(error);

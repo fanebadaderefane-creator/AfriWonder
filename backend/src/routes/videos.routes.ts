@@ -8,8 +8,20 @@ import * as subtitleService from '../services/subtitle.service.js';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import { forceWebCompatTranscodePublishedVideo } from '../services/videoCompatTranscode.service.js';
+import { invalidateUserFeedCaches } from '../services/feedCache.service.js';
 
 const router = Router();
+
+/** Réparation lecture web : créateur ou rôles staff (aligné front `videoWebRepairAccess`). */
+function canStaffRepairWebPlayback(role: string | undefined): boolean {
+  const r = (role || '').toLowerCase();
+  return (
+    r === 'admin' ||
+    r === 'super_admin' ||
+    r === 'moderation_admin' ||
+    r === 'moderator'
+  );
+}
 
 const PAGE_MIN = 1;
 const LIMIT_MAX = 100;
@@ -237,6 +249,7 @@ router.post('/:id/reaction', authenticate, async (req: AuthRequest, res, next) =
     const userId = req.user!.id;
     const type = req.body?.type ?? 'like';
     const result = await videoService.setReaction(id, userId, type);
+    invalidateUserFeedCaches(userId).catch(() => {});
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);
@@ -249,6 +262,7 @@ router.delete('/:id/reaction', authenticate, async (req: AuthRequest, res, next)
     const id = param(req, 'id');
     const userId = req.user!.id;
     const result = await videoService.setReaction(id, userId, null);
+    invalidateUserFeedCaches(userId).catch(() => {});
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);
@@ -263,6 +277,7 @@ router.post('/:id/like', authenticate, async (req: AuthRequest, res, next) => {
     const type = req.body?.type ?? 'like';
 
     const result = await videoService.toggleLike(id, userId, type);
+    invalidateUserFeedCaches(userId).catch(() => {});
 
     res.json({
       success: true,
@@ -509,6 +524,7 @@ router.get('/:id/transcode/status', optionalAuth, async (req: AuthRequest, res, 
 // POST /api/videos/:id/repair-web-playback — ré-encode forcé MP4 web (Firefox / WebView) pour 1 vidéo défaillante
 router.post('/:id/repair-web-playback', authenticate, async (req: AuthRequest, res, next) => {
   try {
+    const startedAt = Date.now();
     const videoId = param(req, 'id');
     const video = await prisma.video.findUnique({
       where: { id: videoId },
@@ -517,21 +533,60 @@ router.post('/:id/repair-web-playback', authenticate, async (req: AuthRequest, r
     if (!video) {
       return res.status(404).json({ success: false, error: 'Vidéo introuvable' });
     }
-    if (video.creator_id !== req.user!.id) {
-      return res.status(403).json({ success: false, error: 'Seul le créateur peut lancer la réparation' });
-    }
-
-    const result = await forceWebCompatTranscodePublishedVideo(videoId);
-    if (result.skipped) {
-      return res.status(400).json({ success: false, error: result.skipped });
-    }
-    if (!result.ok) {
-      return res.status(500).json({
+    const isCreator = video.creator_id === req.user!.id;
+    const isStaff = canStaffRepairWebPlayback(req.user!.role);
+    if (!isCreator && !isStaff) {
+      return res.status(403).json({
         success: false,
-        error: result.error || 'Transcodage échoué',
+        error: 'Seul le créateur ou un administrateur / modération peut lancer la réparation',
       });
     }
 
+    logger.info('repair-web-playback request started', {
+      videoId,
+      userId: req.user!.id,
+      requestId: (req as any).requestId,
+      isCreator,
+      isStaff,
+    });
+
+    const result = await forceWebCompatTranscodePublishedVideo(videoId);
+    if (result.skipped) {
+      logger.warn('repair-web-playback request skipped', {
+        videoId,
+        userId: req.user!.id,
+        requestId: (req as any).requestId,
+        duration_ms: Date.now() - startedAt,
+        reason: result.skipped,
+      });
+      return res.status(400).json({
+        success: false,
+        error: { message: result.skipped },
+      });
+    }
+    if (!result.ok) {
+      const msg = result.error || 'Transcodage échoué';
+      logger.warn('repair-web-playback request failed', {
+        videoId,
+        userId: req.user!.id,
+        requestId: (req as any).requestId,
+        duration_ms: Date.now() - startedAt,
+        error: msg,
+      });
+      return res.status(422).json({
+        success: false,
+        error: { message: msg, code: 'WEB_COMPAT_TRANSCODE_FAILED' },
+      });
+    }
+
+    invalidateUserFeedCaches(video.creator_id).catch(() => {});
+    logger.info('repair-web-playback request succeeded', {
+      videoId,
+      userId: req.user!.id,
+      requestId: (req as any).requestId,
+      duration_ms: Date.now() - startedAt,
+      hasNewUrl: !!result.newUrl,
+    });
     res.json({
       success: true,
       message: 'Vidéo ré-encodée pour la lecture navigateur (H.264 + yuv420p + AAC)',

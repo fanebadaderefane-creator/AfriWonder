@@ -92,6 +92,44 @@ function maskSensitiveContacts(input: string): string {
 }
 
 class MessageService {
+  private async getConversationForViewer(conversationId: string, viewerId: string) {
+    const conversation = await prisma.conversation.findFirst({
+      where: {
+        id: conversationId,
+        OR: [{ user1_id: viewerId }, { user2_id: viewerId }],
+      },
+      include: {
+        user1: { select: { id: true, username: true, full_name: true, profile_image: true } },
+        user2: { select: { id: true, username: true, full_name: true, profile_image: true } },
+        pinned_message: {
+          select: {
+            id: true,
+            content: true,
+            type: true,
+            created_at: true,
+            sender_id: true,
+            deleted_for_all_at: true,
+          },
+        },
+      },
+    });
+    if (!conversation) throw makeHttpError('Conversation non trouvee ou acces non autorise', 404);
+    if ((conversation as any).pinned_message?.deleted_for_all_at) {
+      (conversation as any).pinned_message.content = 'Ce message a été supprimé';
+    }
+    const cleared =
+      conversation.user1_id === viewerId
+        ? (conversation as any).cleared_before_at_user1
+        : (conversation as any).cleared_before_at_user2;
+    if (cleared && (conversation as any).pinned_message) {
+      const pinAt = new Date((conversation as any).pinned_message.created_at);
+      if (pinAt <= new Date(cleared)) {
+        (conversation as any).pinned_message = null;
+      }
+    }
+    return conversation;
+  }
+
   private async getMessageForParticipant(messageId: string, userId: string) {
     const message = await prisma.message.findFirst({
       where: {
@@ -263,6 +301,10 @@ class MessageService {
       }
     }
     return conversation;
+  }
+
+  async getConversationById(conversationId: string, userId: string) {
+    return this.getConversationForViewer(conversationId, userId);
   }
 
   async getMessages(conversationId: string, cursor?: string | null, limit: number = MESSAGES_PAGE_SIZE, userId: string | null = null) {

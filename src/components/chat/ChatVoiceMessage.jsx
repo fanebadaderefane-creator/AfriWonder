@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import { Mic, Check, CheckCheck, Loader2, AlertCircle } from 'lucide-react';
+import { Mic, Check, CheckCheck, Loader2, AlertCircle, RotateCcw, RotateCw } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -42,6 +42,10 @@ function WaPauseIcon({ className, fill }) {
       <rect x="14" y="5" width="4" height="14" rx="1" />
     </svg>
   );
+}
+
+function stopEventBubble(event) {
+  event.stopPropagation();
 }
 
 function formatVoiceDuration(sec) {
@@ -208,34 +212,43 @@ function VoiceWaveformTrack({
   setCurrent,
   labels,
   onSeekRatio,
+  palette,
 }) {
-  const { barCount, trackPadPx, trackHeightPx, barHeightScalePx, columnGapPx, knobSizePx, colors } = VOICE_UI;
+  const { barCount, trackPadPx, trackHeightPx, barHeightScalePx, columnGapPx, knobSizePx, barMaxWidthPx } = VOICE_UI;
+  const draggingRef = useRef(false);
+  const seekAtClientX = useCallback(
+    (clientX, target) => {
+      onSeekRatio(seekRatioFromClientX(clientX, target.getBoundingClientRect(), trackPadPx), lengthForSeek);
+    },
+    [lengthForSeek, onSeekRatio, trackPadPx]
+  );
 
   const onPointerDown = (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.stopPropagation();
+    draggingRef.current = true;
     e.currentTarget.setPointerCapture(e.pointerId);
-    onSeekRatio(
-      seekRatioFromClientX(e.clientX, e.currentTarget.getBoundingClientRect(), trackPadPx),
-      lengthForSeek
-    );
+    seekAtClientX(e.clientX, e.currentTarget);
   };
 
   const onPointerMove = (e) => {
-    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+    if (!draggingRef.current) return;
     e.stopPropagation();
-    onSeekRatio(
-      seekRatioFromClientX(e.clientX, e.currentTarget.getBoundingClientRect(), trackPadPx),
-      lengthForSeek
-    );
+    seekAtClientX(e.clientX, e.currentTarget);
   };
 
   const onPointerUp = (e) => {
+    draggingRef.current = false;
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
       /* ignore */
     }
+  };
+
+  const onClick = (e) => {
+    e.stopPropagation();
+    seekAtClientX(e.clientX, e.currentTarget);
   };
 
   const onKeyDown = (e) => {
@@ -262,17 +275,18 @@ function VoiceWaveformTrack({
       aria-valuemax={ariaMax}
       aria-valuenow={Math.max(0, Math.round(currentSec))}
       aria-label={labels.voiceMessage}
-      className="relative flex min-h-[44px] w-full cursor-pointer touch-none select-none flex-col justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[#25D366]/35 focus-visible:ring-offset-1"
+      className="relative flex min-h-[26px] w-full cursor-pointer touch-none select-none flex-col justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[#25D366]/20 focus-visible:ring-offset-1"
       style={{
         paddingLeft: trackPadPx,
         paddingRight: trackPadPx,
-        paddingTop: 6,
-        paddingBottom: 6,
+        paddingTop: 4,
+        paddingBottom: 4,
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onClick={onClick}
       onKeyDown={onKeyDown}
     >
       <div
@@ -292,20 +306,20 @@ function VoiceWaveformTrack({
               className="min-w-0 justify-self-center rounded-[1px] transition-[background-color] duration-100"
               style={{
                 width: '100%',
-                maxWidth: 3,
+                maxWidth: barMaxWidthPx,
                 height: `${barH}px`,
-                backgroundColor: played ? colors.barPlayed : colors.barUnplayed,
+                backgroundColor: played ? palette.barPlayed : palette.barUnplayed,
               }}
             />
           );
         })}
       </div>
       <span
-        className="pointer-events-none absolute top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.18)] ring-[2.5px] ring-white"
+        className="pointer-events-none absolute top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-[0_1px_2px_rgba(0,0,0,0.14)]"
         style={{
           width: knobSizePx,
           height: knobSizePx,
-          backgroundColor: colors.knob,
+          backgroundColor: palette.knob,
           left: knobLeft,
         }}
         aria-hidden
@@ -358,6 +372,17 @@ export function ChatVoiceMessage({
     else el.play().catch(() => {});
   }, [playing, audioRef]);
 
+  const seekBy = useCallback(
+    (deltaSec) => {
+      const el = audioRef.current;
+      if (!el) return;
+      const duration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : Math.max(displayTotal, lengthForSeek, current, 0.5);
+      el.currentTime = Math.min(duration, Math.max(0, el.currentTime + deltaSec));
+      setCurrent(el.currentTime);
+    },
+    [audioRef, current, displayTotal, lengthForSeek, setCurrent]
+  );
+
   useEffect(() => {
     const el = audioRef.current;
     if (el) el.playbackRate = playbackRate;
@@ -374,9 +399,53 @@ export function ChatVoiceMessage({
 
   const clock = createdAt ? format(new Date(createdAt), 'HH:mm', { locale: fr }) : '';
   const { colors } = VOICE_UI;
-  const micOuterRing = 'ring-[2.5px] ring-white';
   const showTotalDuration =
     displayTotal >= 1 && Math.abs(displayTotal - current) > 0.35;
+  const palette = isOwn
+    ? {
+        bubble: 'bg-[#dcf8c6] border-[#d0eec0]',
+        button: 'bg-[#f7faf5] hover:bg-[#f1f6ef]',
+        knob: '#6f7b82',
+        barPlayed: '#8aa08d',
+        barUnplayed: '#bfcfc2',
+        meta: '#667781',
+        icon: '#54656f',
+        avatarBorder: 'border-[#cfe8c2]',
+        badge: '#25D366',
+      }
+    : {
+        bubble: 'bg-white border-[#e8edef]',
+        button: 'bg-[#f3f5f6] hover:bg-[#eceff1]',
+        knob: '#34b7f1',
+        barPlayed: '#9fb8c6',
+        barUnplayed: '#d7dde1',
+        meta: '#667781',
+        icon: '#54656f',
+        avatarBorder: 'border-[#edf1f3]',
+        badge: '#34b7f1',
+      };
+  const avatarNode = (
+    <div className="relative shrink-0 flex-none">
+      <Avatar
+        className={cn(
+          'h-[34px] w-[34px] min-h-[34px] min-w-[34px] max-h-[34px] max-w-[34px] flex-none overflow-hidden rounded-full border shadow-none',
+          palette.avatarBorder
+        )}
+      >
+        <AvatarImage src={avatarUrl || undefined} className="block h-full w-full object-cover" />
+        <AvatarFallback className="bg-[#dfe5e7] text-[12px] font-medium text-[#54656f]">
+          {avatarFallback}
+        </AvatarFallback>
+      </Avatar>
+      <div
+        className="absolute -bottom-1 -right-1 flex h-[14px] w-[14px] items-center justify-center rounded-full ring-[1.5px] ring-white"
+        style={{ backgroundColor: palette.badge }}
+        aria-hidden
+      >
+        <Mic className="h-2 w-2 text-white" strokeWidth={2.4} />
+      </div>
+    </div>
+  );
 
   return (
     <div
@@ -387,35 +456,39 @@ export function ChatVoiceMessage({
       )}
       style={{ color: colors.ink }}
       data-voice-msg-id={messageId}
+      onTouchStart={stopEventBubble}
+      onTouchMove={stopEventBubble}
+      onTouchEnd={stopEventBubble}
+      onPointerDown={stopEventBubble}
     >
-      <audio ref={audioRef} src={src} preload="auto" playsInline className="hidden" />
+      <audio ref={audioRef} src={src} preload="auto" className="hidden" />
 
       <div
         className={cn(
-          'flex items-center gap-2.5 rounded-2xl border px-2.5 py-2 shadow-sm',
-          isOwn
-            ? 'border-emerald-400/30 bg-emerald-500/18'
-            : 'border-white/12 bg-white/[0.07]'
+          'flex items-center gap-1.5 rounded-[18px] border px-2 py-1.5 shadow-[0_4px_14px_rgba(15,23,42,0.05)]',
+          palette.bubble
         )}
       >
+        {isOwn ? avatarNode : null}
         <button
           type="button"
           onClick={togglePlay}
           className={cn(
-            'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition',
-            isOwn ? 'bg-emerald-500/22 hover:bg-emerald-500/28' : 'bg-black/15 hover:bg-black/20',
+            'flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-full transition',
+            palette.button,
             'active:scale-[0.98]'
           )}
           aria-label={playing ? labels.pausePreview : labels.playPreview}
+          onTouchStart={stopEventBubble}
         >
           {playing ? (
-            <WaPauseIcon className="h-[24px] w-[24px]" fill={colors.playIcon} />
+            <WaPauseIcon className="h-[18px] w-[18px]" fill={palette.icon} />
           ) : (
-            <WaPlayIcon className="h-[24px] w-[24px] pl-px" fill={colors.playIcon} />
+            <WaPlayIcon className="h-[18px] w-[18px] pl-px" fill={palette.icon} />
           )}
         </button>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 pr-0.5">
           <VoiceWaveformTrack
             trackRef={trackRef}
             heights={heights}
@@ -427,14 +500,25 @@ export function ChatVoiceMessage({
             setCurrent={setCurrent}
             labels={labels}
             onSeekRatio={onSeekRatio}
+            palette={palette}
           />
 
           <div
-            className="mt-1 flex items-center justify-between gap-3 px-0.5 text-[12px] tabular-nums leading-normal"
-            style={{ color: colors.secondary }}
+            className="mt-0.5 flex items-center justify-between gap-1.5 px-0.5 text-[10px] tabular-nums leading-none"
+            style={{ color: palette.meta }}
           >
-            <span className="flex min-w-0 shrink-0 items-center gap-1.5 whitespace-nowrap">
-              <span className="text-[#54656f]">{formatVoiceDuration(current)}</span>
+            <span className="flex min-w-0 shrink-0 items-center gap-1 whitespace-nowrap">
+              <button
+                type="button"
+                onClick={() => seekBy(-10)}
+                className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-black/5"
+                aria-label={labels.voiceSkipBack}
+                title={labels.voiceSkipBack}
+                onTouchStart={stopEventBubble}
+              >
+                <RotateCcw className="h-3 w-3" strokeWidth={2.1} />
+              </button>
+              <span style={{ color: palette.meta }}>{formatVoiceDuration(current)}</span>
               {showTotalDuration && (
                 <>
                   <span className="text-[#aebac1]" aria-hidden>
@@ -446,70 +530,60 @@ export function ChatVoiceMessage({
               <button
                 type="button"
                 onClick={cyclePlaybackRate}
-                className={cn(
-                  'rounded px-1.5 py-0.5 text-[11px] font-semibold transition-colors',
-                  'hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366]/40'
-                )}
-                style={{ color: colors.secondary }}
+                className={cn('rounded px-1 py-0.5 text-[10px] font-semibold transition-colors', 'hover:opacity-80 focus:outline-none')}
+                style={{ color: palette.meta }}
                 aria-label={`Vitesse de lecture : ${playbackRate}×`}
+                onTouchStart={stopEventBubble}
               >
                 {playbackRate}×
               </button>
+              <button
+                type="button"
+                onClick={() => seekBy(10)}
+                className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-black/5"
+                aria-label={labels.voiceSkipForward}
+                title={labels.voiceSkipForward}
+                onTouchStart={stopEventBubble}
+              >
+                <RotateCw className="h-3 w-3" strokeWidth={2.1} />
+              </button>
             </span>
-            <span className="flex shrink-0 items-center gap-1 whitespace-nowrap">
-              {clock ? <span>{clock}</span> : null}
+            <span className="flex shrink-0 items-center gap-0.5 whitespace-nowrap">
+              {clock ? <span className="translate-y-[0.5px]">{clock}</span> : null}
               {isOwn &&
                 (String(receiptStatus) === 'sending' ? (
-                  <Loader2 className="h-[15px] w-[15px] shrink-0 animate-spin text-[#8696a0]" strokeWidth={2.2} aria-label={labels?.sending} />
+                  <Loader2 className="h-[13px] w-[13px] shrink-0 animate-spin text-[#8696a0]" strokeWidth={2.2} aria-label={labels?.sending} />
                 ) : String(receiptStatus) === 'failed' ? (
                   <AlertCircle
-                    className="h-[15px] w-[15px] shrink-0 text-amber-500"
+                    className="h-[13px] w-[13px] shrink-0 text-amber-500"
                     strokeWidth={2.2}
                     aria-label={labels?.sendFailed}
                   />
                 ) : String(receiptStatus) === 'read' ? (
-                  <CheckCheck className="h-[15px] w-[15px] shrink-0 text-[#53bdeb]" strokeWidth={2.2} aria-label={labels.read} />
+                  <CheckCheck className="h-[13px] w-[13px] shrink-0 text-[#53bdeb]" strokeWidth={2.15} aria-label={labels.read} />
                 ) : String(receiptStatus) === 'delivered' ? (
                   <CheckCheck
-                    className="h-[15px] w-[15px] shrink-0 text-[#8696a0]"
-                    strokeWidth={2.2}
+                    className="h-[13px] w-[13px] shrink-0 text-[#8696a0]"
+                    strokeWidth={2.15}
                     aria-label={labels?.messageStatusDelivered}
                   />
                 ) : String(receiptStatus) === 'sent' || String(receiptStatus) === 'scheduled' ? (
                   <Check
-                    className="h-[15px] w-[15px] shrink-0 text-[#8696a0]"
-                    strokeWidth={2.2}
+                    className="h-[13px] w-[13px] shrink-0 text-[#8696a0]"
+                    strokeWidth={2.15}
                     aria-label={labels?.messageStatusSent}
                   />
                 ) : (
                   <Check
-                    className="h-[15px] w-[15px] shrink-0 text-[#8696a0]"
-                    strokeWidth={2.2}
+                    className="h-[13px] w-[13px] shrink-0 text-[#8696a0]"
+                    strokeWidth={2.15}
                     aria-label={labels?.messageStatusSent}
                   />
                 ))}
             </span>
           </div>
         </div>
-
-        <div className="relative shrink-0">
-          <Avatar className={cn('h-11 w-11 border-2 shadow-sm', isOwn ? 'border-emerald-200/80' : 'border-white/80')}>
-            <AvatarImage src={avatarUrl || undefined} className="object-cover" />
-            <AvatarFallback className="bg-[#dfe5e7] text-[13px] font-medium text-[#54656f]">
-              {avatarFallback}
-            </AvatarFallback>
-          </Avatar>
-          <div
-            className={cn(
-              'absolute -bottom-0.5 left-0 flex h-[20px] w-[20px] items-center justify-center rounded-full',
-              micOuterRing
-            )}
-            style={{ backgroundColor: colors.knob }}
-            aria-hidden
-          >
-            <Mic className="h-2.5 w-2.5 text-white" strokeWidth={2.5} />
-          </div>
-        </div>
+        {!isOwn ? avatarNode : null}
       </div>
     </div>
   );

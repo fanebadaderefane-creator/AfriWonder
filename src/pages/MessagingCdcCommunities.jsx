@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { Megaphone, Link2, LayoutList, Search, UsersRound } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -19,7 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
-export default function MessagingCdcCommunities() {
+export function MessagingCdcCommunitiesPanel() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -208,4 +208,8 @@ export default function MessagingCdcCommunities() {
       </Button>
     </MessagingCdcShell>
   );
+}
+
+export default function MessagingCdcCommunities() {
+  return <Navigate to={`${createPageUrl('MessagingCdcHub')}?section=communities`} replace />;
 }

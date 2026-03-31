@@ -18,25 +18,7 @@ import { createPageUrl } from '@/utils';
 import { motion } from 'framer-motion';
 import BottomNav from '@/components/navigation/BottomNav';
 import { useCallSocket } from '@/hooks/useCallSocket';
-
-const buildIceServers = () => {
-  const servers = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-  ];
-
-  const turnUrl = import.meta.env.VITE_TURN_URL;
-  const turnUsername = import.meta.env.VITE_TURN_USERNAME;
-  const turnCredential = import.meta.env.VITE_TURN_CREDENTIAL;
-  if (turnUrl && turnUsername && turnCredential) {
-    servers.push({
-      urls: turnUrl,
-      username: turnUsername,
-      credential: turnCredential,
-    });
-  }
-  return { iceServers: servers };
-};
+import { getWebRtcConfiguration } from '@/lib/webrtcIceServers';
 
 export default function DirectCallPage() {
   const navigate = useNavigate();
@@ -58,6 +40,8 @@ export default function DirectCallPage() {
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [callDuration, setCallDuration] = useState(0);
   const [callStartTime, setCallStartTime] = useState(null);
+  /** Libellé sous l’appel : état ICE / connexion (remplace un texte statique trompeur). */
+  const [linkStatusLabel, setLinkStatusLabel] = useState('Préparation…');
 
   const targetUserId = mode === 'outgoing' ? receiverId : callerId;
 
@@ -90,6 +74,14 @@ export default function DirectCallPage() {
     }
   }, []);
 
+  const restartIceIfPossible = useCallback(() => {
+    try {
+      peerRef.current?.restartIce?.();
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const endAndLeave = useCallback((silent = false) => {
     setCallStatus('ended');
     closePeer();
@@ -100,9 +92,32 @@ export default function DirectCallPage() {
     setTimeout(() => navigate(createPageUrl('Inbox')), 800);
   }, [callDuration, closePeer, navigate, stopMedia]);
 
+  const updateLinkStatusFromPeer = useCallback((pc) => {
+    if (!pc) return;
+    const ice = pc.iceConnectionState;
+    const conn = pc.connectionState;
+    if (ice === 'failed' || conn === 'failed' || conn === 'closed') return;
+    if (ice === 'checking' || conn === 'connecting') {
+      setLinkStatusLabel('Connexion en cours…');
+      return;
+    }
+    if (ice === 'disconnected') {
+      setLinkStatusLabel('Signal faible — reconnexion…');
+      return;
+    }
+    if (ice === 'connected' || ice === 'completed') {
+      const hasTurn = !!import.meta.env.VITE_TURN_URL?.trim();
+      setLinkStatusLabel(hasTurn ? 'Connecté' : 'Connecté (STUN seul — TURN recommandé en 4G)');
+      return;
+    }
+    if (conn === 'connected') {
+      setLinkStatusLabel('Connecté');
+    }
+  }, []);
+
   const ensurePeerConnection = useCallback(async (emitFn, myUserId, remoteId) => {
     if (peerRef.current) return peerRef.current;
-    const pc = new RTCPeerConnection(buildIceServers());
+    const pc = new RTCPeerConnection(getWebRtcConfiguration());
     peerRef.current = pc;
 
     pc.onicecandidate = (event) => {
@@ -125,12 +140,26 @@ export default function DirectCallPage() {
       setCallStatus('active');
     };
 
+    pc.oniceconnectionstatechange = () => {
+      updateLinkStatusFromPeer(pc);
+    };
+
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
+      updateLinkStatusFromPeer(pc);
+      if (pc.connectionState === 'failed') {
         if (!disposedRef.current) {
           toast.error('Connexion appel interrompue');
           endAndLeave(true);
         }
+      }
+      if (pc.connectionState === 'disconnected') {
+        setLinkStatusLabel('Signal faible — reconnexion…');
+        window.setTimeout(() => {
+          if (!disposedRef.current) restartIceIfPossible();
+        }, 1500);
+      }
+      if (pc.connectionState === 'closed' && !disposedRef.current) {
+        /* fermeture normale après endAndLeave */
       }
     };
 
@@ -139,7 +168,7 @@ export default function DirectCallPage() {
     }
 
     return pc;
-  }, [callId, callStartTime, endAndLeave]);
+  }, [callId, callStartTime, endAndLeave, restartIceIfPossible, updateLinkStatusFromPeer]);
 
   const applyPendingCandidates = useCallback(async (pc) => {
     if (!pendingCandidatesRef.current.length) return;
@@ -235,14 +264,42 @@ export default function DirectCallPage() {
   }, [navigate, targetUserId]);
 
   useEffect(() => {
-    if (!user || callStatus === 'ended' || mediaInitDoneRef.current) return;
+    const handleOnline = () => {
+      setLinkStatusLabel('Réseau revenu — reprise de la connexion…');
+      restartIceIfPossible();
+    };
+    const handleOffline = () => {
+      setLinkStatusLabel('Hors ligne — appel en attente du réseau');
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [restartIceIfPossible]);
+
+  useEffect(() => {
+    // Attendre remoteUser : l’UI principale (et le <video> local en mode vidéo) n’est montée qu’après.
+    if (!user || !remoteUser || callStatus === 'ended' || mediaInitDoneRef.current) return;
     mediaInitDoneRef.current = true;
 
     const initMedia = async () => {
       try {
-        const constraints = callType === 'video'
-          ? { audio: true, video: { width: 1280, height: 720 } }
-          : { audio: true, video: false };
+        const constraints =
+          callType === 'video'
+            ? {
+                audio: { echoCancellation: true, noiseSuppression: true },
+                video: {
+                  facingMode: 'user',
+                  width: { ideal: 1280, max: 1280 },
+                  height: { ideal: 720, max: 720 },
+                },
+              }
+            : {
+                audio: { echoCancellation: true, noiseSuppression: true },
+                video: false,
+              };
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         localStreamRef.current = stream;
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
@@ -255,7 +312,15 @@ export default function DirectCallPage() {
     };
 
     initMedia();
-  }, [user, callStatus, callType]);
+  }, [user, remoteUser, callStatus, callType]);
+
+  /** Si getUserMedia a fini après le premier paint, rattacher le flux au <video> local. */
+  useEffect(() => {
+    if (callType !== 'video') return;
+    const stream = localStreamRef.current;
+    const el = localVideoRef.current;
+    if (stream && el && el.srcObject !== stream) el.srcObject = stream;
+  }, [callType, user, remoteUser, callStatus]);
 
   useEffect(() => {
     if (!user || !remoteUser || !targetUserId || inviteSentRef.current || mode !== 'outgoing') return;
@@ -367,10 +432,12 @@ export default function DirectCallPage() {
           </button>
         </div>
 
-        <div className="absolute top-16 right-4 z-20 w-20 h-24 rounded-2xl bg-slate-700/90 border border-white/20 overflow-hidden flex items-center justify-center">
-          <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-          <span className="absolute bottom-2 left-2 text-[11px] font-semibold text-white">You</span>
-        </div>
+        {callType === 'video' ? (
+          <div className="absolute top-16 right-4 z-20 w-20 h-24 rounded-2xl bg-slate-700/90 border border-white/20 overflow-hidden flex items-center justify-center">
+            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+            <span className="absolute bottom-2 left-2 text-[11px] font-semibold text-white">You</span>
+          </div>
+        ) : null}
 
         {callType === 'audio' && (
           <div className="absolute inset-0 flex items-center justify-center z-10">
@@ -383,8 +450,8 @@ export default function DirectCallPage() {
         )}
 
         <div className="absolute left-1/2 -translate-x-1/2 z-20" style={{ bottom: 'calc(180px + env(safe-area-inset-bottom, 0px))' }}>
-          <div className="px-4 py-1.5 rounded-full bg-green-600 text-white text-xs font-semibold shadow-lg">
-            HD - Strong Connection
+          <div className="max-w-[min(92vw,320px)] px-4 py-1.5 rounded-full bg-black/55 text-white text-xs font-medium text-center shadow-lg backdrop-blur-sm border border-white/10">
+            {linkStatusLabel}
           </div>
         </div>
       </div>

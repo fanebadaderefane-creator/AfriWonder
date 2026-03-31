@@ -6,24 +6,28 @@ import { Router } from 'express';
 import { optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { feedService } from '../services/feed.service.js';
 import { responseCache } from '../middleware/responseCache.middleware.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
 
 // GET /api/feed - Feed combiné vidéos + pubs (cache court par utilisateur pour perfs)
 const FEED_MAX_LIMIT = 100;
 const FEED_CACHE_TTL_MS = 45_000; // 45 s
+const FEED_SLOW_REQUEST_MS = 600;
 router.get('/', optionalAuth, responseCache('feed:', { ttlMs: FEED_CACHE_TTL_MS, byUser: true }), async (req: AuthRequest, res, next) => {
+  const startedAt = Date.now();
+  const { page = '1', limit = '50', category, hashtag, mediaType } = req.query;
+  const userId = req.user?.id;
+  const rawLimit = parseInt(limit as string) || 50;
+  const cappedLimit = Math.min(Math.max(1, rawLimit), FEED_MAX_LIMIT);
+  const mediaTypeFilter = mediaType === 'image' || mediaType === 'video' ? mediaType : undefined;
+  const pageNum = parseInt(page as string) || 1;
   try {
-    const { page = '1', limit = '50', category, hashtag, mediaType } = req.query;
-    const userId = req.user?.id;
     const deviceId = (req.headers['x-device-id'] as string) || undefined;
     const country = (req.headers['x-country'] as string) || undefined;
-    const rawLimit = parseInt(limit as string) || 50;
-    const cappedLimit = Math.min(Math.max(1, rawLimit), FEED_MAX_LIMIT);
-    const mediaTypeFilter = mediaType === 'image' || mediaType === 'video' ? mediaType : undefined;
 
     const result = await feedService.getFeed({
-      page: parseInt(page as string) || 1,
+      page: pageNum,
       limit: cappedLimit,
       userId,
       deviceId,
@@ -32,6 +36,21 @@ router.get('/', optionalAuth, responseCache('feed:', { ttlMs: FEED_CACHE_TTL_MS,
       hashtag: hashtag as string,
       mediaType: mediaTypeFilter,
     });
+
+    const durationMs = Date.now() - startedAt;
+    // Avant res.json uniquement : après envoi, setHeader lève "Cannot set headers after they are sent" (crash du processus).
+    res.setHeader('Server-Timing', `feed;dur=${durationMs}`);
+    if (durationMs >= FEED_SLOW_REQUEST_MS) {
+      logger.warn('Slow feed request', {
+        userId,
+        page: pageNum,
+        limit: cappedLimit,
+        durationMs,
+        category: category as string | undefined,
+        hashtag: hashtag as string | undefined,
+        mediaType: mediaTypeFilter,
+      });
+    }
 
     res.json({
       success: true,

@@ -16,7 +16,15 @@ import { Button } from '@/components/ui/button';
 const SUGGEST_DEBOUNCE_MS = 300;
 const MIN_CHARS_FOR_SUGGESTIONS = 2;
 const SEARCH_PAGE_BG = 'bg-[#060913]';
-const SEARCH_SURFACE = 'border border-white/8 bg-[#0b111d]/92 shadow-[0_22px_70px_rgba(2,6,23,0.30)] backdrop-blur-2xl';
+// WebView Android peut mal composer backdrop-blur + transparence (cartes qui se superposent visuellement).
+const SEARCH_SURFACE = 'border border-white/10 bg-[#0b111d] shadow-[0_22px_70px_rgba(2,6,23,0.30)]';
+
+const normalizeSearchText = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 
 /** Affiche la miniature (image valide), sinon image de secours — évite cadre noir sur Chrome/mobile */
 function VideoThumbnail({ video }) {
@@ -109,14 +117,66 @@ export default function SearchPage() {
   const { data: globalSearchData, isLoading: searchLoading, error: searchError } = useQuery({
     queryKey: ['searchGlobal', query, effectiveSearchType, filters.category, filters.duration],
     queryFn: async () => {
-      const result = await api.search.global({
+      const buildParams = (type) => ({
         q: query.trim(),
-        type: effectiveSearchType,
+        type,
         limit: 20,
         category: filters.category && filters.category !== 'all' ? filters.category : undefined,
         duration: filters.duration !== 'all' ? filters.duration : undefined,
       });
-      return result;
+
+      const result = await api.search.global(buildParams(effectiveSearchType));
+      const hasAnyResult =
+        (result?.videos?.length || 0) +
+        (result?.users?.length || 0) +
+        (result?.products?.length || 0) > 0;
+
+      // Fallback sécurité: certaines réponses par type peuvent revenir vides côté backend/webview.
+      // On retente en "all" pour éviter les faux "Aucun résultat".
+      if (!hasAnyResult && effectiveSearchType !== 'all') {
+        const allResult = await api.search.global(buildParams('all'));
+        const hasAllResult =
+          (allResult?.videos?.length || 0) +
+          (allResult?.users?.length || 0) +
+          (allResult?.products?.length || 0) > 0;
+        if (hasAllResult) return allResult;
+      }
+
+      if (hasAnyResult) return result;
+
+      // Dernier fallback UX: filtrage client accent-insensitive sur un lot limité.
+      const term = normalizeSearchText(query);
+      if (term.length < 1) return result;
+
+      const [videoPool, userPool, productPool] = await Promise.all([
+        (effectiveSearchType === 'all' || effectiveSearchType === 'videos')
+          ? api.videos.list({ page: 1, limit: 120 }).then((r) => r?.videos || []).catch(() => [])
+          : Promise.resolve([]),
+        (effectiveSearchType === 'all' || effectiveSearchType === 'users')
+          ? api.entities.User.list('-created_date', 120).catch(() => [])
+          : Promise.resolve([]),
+        (effectiveSearchType === 'all' || effectiveSearchType === 'products')
+          ? api.products.list({ page: 1, limit: 120 }).then((r) => r?.products || []).catch(() => [])
+          : Promise.resolve([]),
+      ]);
+
+      const contains = (text) => normalizeSearchText(text).includes(term);
+
+      const videos = (Array.isArray(videoPool) ? videoPool : []).filter((v) =>
+        contains(v?.title) || contains(v?.description) || contains(v?.creator_name)
+      );
+      const users = (Array.isArray(userPool) ? userPool : []).filter((u) =>
+        contains(u?.full_name) || contains(u?.username) || contains(u?.email)
+      );
+      const products = (Array.isArray(productPool) ? productPool : []).filter((p) =>
+        contains(p?.name) || contains(p?.title) || contains(p?.description)
+      );
+
+      return {
+        videos,
+        users,
+        products,
+      };
     },
     enabled: !!query.trim(),
     retry: 1,
@@ -218,7 +278,7 @@ export default function SearchPage() {
 
               {/* Suggestions à la frappe : utilisateurs et vidéos (même principe que pour les noms) */}
               {showSuggestions && (
-                <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-[70vh] overflow-y-auto rounded-[24px] border border-white/10 bg-[#0b111d]/98 shadow-[0_24px_80px_rgba(2,6,23,0.36)] backdrop-blur-2xl">
+                <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-[70vh] overflow-y-auto rounded-[24px] border border-white/10 bg-[#0b111d] shadow-[0_24px_80px_rgba(2,6,23,0.36)]">
                   {suggestionsLoading ? (
                     <div className="flex items-center justify-center gap-2 py-6 text-white/70">
                       <Loader2 className="w-5 h-5 animate-spin text-white" />
@@ -348,16 +408,16 @@ export default function SearchPage() {
             </div>
           ) : (
             <Tabs value={filters.type} onValueChange={(v) => setFilters((prev) => ({ ...prev, type: v }))}>
-              <TabsList className={`grid w-full grid-cols-4 rounded-[24px] p-1 ${SEARCH_SURFACE}`}>
-                <TabsTrigger value="all" className="rounded-2xl text-white/70 data-[state=active]:bg-white/[0.08] data-[state=active]:text-white data-[state=active]:shadow-none">Tous</TabsTrigger>
-                <TabsTrigger value="videos" className="flex gap-1 rounded-2xl text-white/70 data-[state=active]:bg-white/[0.08] data-[state=active]:text-white data-[state=active]:shadow-none">
-                  <Video className="w-4 h-4" /> Vidéos
+              <TabsList className={`grid h-12 w-full grid-cols-4 gap-1 rounded-[24px] p-1 ${SEARCH_SURFACE}`}>
+                <TabsTrigger value="all" className="h-full w-full rounded-2xl px-2 text-xs sm:text-sm font-medium text-white/70 data-[state=active]:bg-white/[0.08] data-[state=active]:text-white data-[state=active]:shadow-none">Tous</TabsTrigger>
+                <TabsTrigger value="videos" className="h-full w-full rounded-2xl px-2 text-xs sm:text-sm font-medium text-white/70 data-[state=active]:bg-white/[0.08] data-[state=active]:text-white data-[state=active]:shadow-none">
+                  Vidéos
                 </TabsTrigger>
-                <TabsTrigger value="users" className="flex gap-1 rounded-2xl text-white/70 data-[state=active]:bg-white/[0.08] data-[state=active]:text-white data-[state=active]:shadow-none">
-                  <User className="w-4 h-4" /> Utilisateurs
+                <TabsTrigger value="users" className="h-full w-full rounded-2xl px-2 text-xs sm:text-sm font-medium text-white/70 data-[state=active]:bg-white/[0.08] data-[state=active]:text-white data-[state=active]:shadow-none">
+                  Utilisateurs
                 </TabsTrigger>
-                <TabsTrigger value="products" className="flex gap-1 rounded-2xl text-white/70 data-[state=active]:bg-white/[0.08] data-[state=active]:text-white data-[state=active]:shadow-none">
-                  <Package className="w-4 h-4" /> Produits
+                <TabsTrigger value="products" className="h-full w-full rounded-2xl px-2 text-xs sm:text-sm font-medium text-white/70 data-[state=active]:bg-white/[0.08] data-[state=active]:text-white data-[state=active]:shadow-none">
+                  Produits
                 </TabsTrigger>
               </TabsList>
             </Tabs>

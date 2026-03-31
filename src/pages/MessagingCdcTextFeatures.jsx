@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { Type, EyeOff, Reply, Pencil, Trash2, Clock, Smile, Timer, FileEdit, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createPageUrl } from '@/utils';
@@ -69,7 +69,7 @@ const features = [
   },
 ];
 
-export default function MessagingCdcTextFeatures() {
+export function MessagingCdcTextFeaturesPanel() {
   const navigate = useNavigate();
   const [spoilerOpen, setSpoilerOpen] = useState(false);
 
@@ -154,4 +154,8 @@ export default function MessagingCdcTextFeatures() {
       </CdcCallout>
     </MessagingCdcShell>
   );
+}
+
+export default function MessagingCdcTextFeatures() {
+  return <Navigate to={`${createPageUrl('MessagingCdcHub')}?section=text-features`} replace />;
 }

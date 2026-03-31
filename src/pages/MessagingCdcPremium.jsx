@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { Crown, Pin, Palette, Music, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -27,7 +27,7 @@ const COMPARE = [
   { label: 'Badge « Plus » visible', free: false, plus: true },
 ];
 
-export default function MessagingCdcPremium() {
+export function MessagingCdcPremiumPanel() {
   const navigate = useNavigate();
   const [infoOpen, setInfoOpen] = useState(false);
 
@@ -151,4 +151,8 @@ export default function MessagingCdcPremium() {
       </Dialog>
     </MessagingCdcShell>
   );
+}
+
+export default function MessagingCdcPremium() {
+  return <Navigate to={`${createPageUrl('MessagingCdcHub')}?section=premium`} replace />;
 }

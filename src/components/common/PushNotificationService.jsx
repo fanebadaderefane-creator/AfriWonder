@@ -104,6 +104,7 @@ export class PushNotificationService {
     if (!vapid) return false;
 
     try {
+      await this.registerServiceWorker();
       const registration = await navigator.serviceWorker.ready;
       let subscription = await registration.pushManager.getSubscription();
       if (!subscription) {

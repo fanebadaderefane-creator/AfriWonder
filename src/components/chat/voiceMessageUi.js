@@ -5,24 +5,25 @@
  */
 
 export const VOICE_UI = {
-  barCount: 52,
+  barCount: 54,
   /** Padding horizontal de la piste (px) — doit correspondre au style du conteneur */
   trackPadPx: 4,
   /** Hauteur utile de la zone onde (px) */
-  trackHeightPx: 44,
-  barMinHeightPx: 4,
-  /** Facteur * h (0–1) → hauteur barre max ~34px */
-  barHeightScalePx: 34,
+  trackHeightPx: 18,
+  barMinHeightPx: 2,
+  /** Facteur * h (0–1) → hauteur barre max compacte type WhatsApp */
+  barHeightScalePx: 12,
   /** Entre colonnes de la grille (px) */
-  columnGapPx: 1,
+  columnGapPx: 0.5,
   /** Pastille de lecture (px) */
-  knobSizePx: 14,
+  knobSizePx: 8,
+  barMaxWidthPx: 2,
   colors: {
-    knob: '#25D366',
-    /** Barres déjà lues (reçu & envoyé, bulle blanche WA) */
-    barPlayed: '#25D366',
+    knob: '#6f7b82',
+    /** Barres déjà lues */
+    barPlayed: '#8aa08d',
     /** Barres à venir */
-    barUnplayed: '#d1d7db',
+    barUnplayed: '#bfcfc2',
     ink: '#111b21',
     secondary: '#667781',
     playIcon: '#54656f',

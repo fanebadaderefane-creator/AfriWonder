@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { Pin, Image as ImageIcon, Droplet, Check, MessageCircle } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -34,7 +34,7 @@ const WALLPAPERS = [
   { id: 'warm', label: 'Ambre doux', bg: 'bg-gradient-to-b from-amber-950/40 via-[#070a12] to-[#050913]' },
 ];
 
-export default function MessagingCdcCustomize() {
+export function MessagingCdcCustomizePanel() {
   const navigate = useNavigate();
   const [prefs, setPrefs] = useCdcPersistedJson('customize_prefs', {
     accent: 'emerald',
@@ -171,4 +171,8 @@ export default function MessagingCdcCustomize() {
       </Dialog>
     </MessagingCdcShell>
   );
+}
+
+export default function MessagingCdcCustomize() {
+  return <Navigate to={`${createPageUrl('MessagingCdcHub')}?section=customize`} replace />;
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { KeyRound, Mail, Lock, Cloud, Fingerprint, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createPageUrl } from '@/utils';
@@ -45,7 +45,7 @@ const blocks = [
   },
 ];
 
-export default function MessagingCdcSecurityAccount() {
+export function MessagingCdcSecurityAccountPanel() {
   const navigate = useNavigate();
 
   return (
@@ -103,4 +103,8 @@ export default function MessagingCdcSecurityAccount() {
       </div>
     </MessagingCdcShell>
   );
+}
+
+export default function MessagingCdcSecurityAccount() {
+  return <Navigate to={`${createPageUrl('MessagingCdcHub')}?section=security-account`} replace />;
 }

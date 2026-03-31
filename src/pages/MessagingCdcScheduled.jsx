@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { CalendarClock, ChevronRight, Loader2, MessageCircle, Users, UsersRound } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -16,7 +16,7 @@ import { CdcCallout, CdcSubsectionTitle, CdcRequirementChecklist, CdcTierLegend 
 const ROW =
   'flex w-full items-center gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3.5 text-left shadow-[0_12px_40px_rgba(0,0,0,0.2)] transition hover:bg-white/[0.07] active:scale-[0.99] [touch-action:manipulation]';
 
-export default function MessagingCdcScheduled() {
+export function MessagingCdcScheduledPanel() {
   const navigate = useNavigate();
   const { user, isLoadingAuth } = useAuth();
   const isPageVisible = usePageVisibility();
@@ -189,4 +189,8 @@ export default function MessagingCdcScheduled() {
       </div>
     </MessagingCdcShell>
   );
+}
+
+export default function MessagingCdcScheduled() {
+  return <Navigate to={`${createPageUrl('MessagingCdcHub')}?section=scheduled`} replace />;
 }

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:afriwonder_mobile/src/services/backend_client.dart';
-import 'package:afriwonder_mobile/src/widgets/video_slide.dart';
+import 'package:afriwonder_mobile/src/screens/accueil_screen.dart';
+import 'package:afriwonder_mobile/src/screens/search_screen.dart';
+import 'package:afriwonder_mobile/src/screens/notifications_screen.dart';
 import 'package:afriwonder_mobile/src/services/push_service.dart';
 
 void main() {
@@ -21,7 +23,8 @@ class AfriWonderMobileApp extends StatelessWidget {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'AfriWonder Mobile',
+      title: 'AfriWonder',
+      locale: const Locale('fr', 'FR'),
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF09090B),
         colorScheme: const ColorScheme.dark(
@@ -187,25 +190,53 @@ class _BootstrapScreenState extends State<BootstrapScreen> {
     }
   }
 
+  List<Map<String, dynamic>> _mapFeedVideos(List<Map<String, dynamic>> items) {
+    return items.map((video) {
+      final v = Map<String, dynamic>.from(video);
+      v['_localLikes'] = (v['likes'] ?? 0) is num ? (v['likes'] as num).toInt() : 0;
+      v['_localIsLiked'] = (v['is_liked'] ?? false) == true;
+      v['_localIsFollowing'] = _activeTab == 1;
+      return v;
+    }).toList();
+  }
+
   Future<void> _loadFeed() async {
     if (_session == null) return;
     try {
-      final items = await _client.getFeed(_session!.accessToken);
+      List<Map<String, dynamic>> items;
+      if (_activeTab == 0) {
+        items = await _client.getFeed(_session!.accessToken);
+      } else {
+        final userId = (_session!.user['id'] ?? '').toString();
+        if (userId.isEmpty) {
+          items = [];
+        } else {
+          items = await _client.getFollowingFeedVideos(
+            accessToken: _session!.accessToken,
+            userId: userId,
+          );
+        }
+      }
       if (mounted) {
         setState(() {
-          _feed = items.map((video) {
-            final v = Map<String, dynamic>.from(video);
-            v['_localLikes'] = (v['likes'] ?? 0) is num ? (v['likes'] as num).toInt() : 0;
-            v['_localIsLiked'] = (v['is_liked'] ?? false) == true;
-            v['_localIsFollowing'] = false;
-            return v;
-          }).toList();
+          _feed = _mapFeedVideos(items);
         });
       }
     } catch (_) {
       if (mounted) {
         setState(() => _feed = const []);
       }
+    }
+  }
+
+  Future<void> _switchFeedTab(int tab) async {
+    if (tab == _activeTab) return;
+    setState(() => _activeTab = tab);
+    await _loadFeed();
+    if (!mounted) return;
+    if (_feed.isNotEmpty && _pageController.hasClients) {
+      _pageController.jumpToPage(0);
+      setState(() => _activeIndex = 0);
     }
   }
 
@@ -291,7 +322,7 @@ class _BootstrapScreenState extends State<BootstrapScreen> {
     if (_session == null) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('AfriWonder Mobile - Login'),
+          title: const Text('Connexion'),
           backgroundColor: Colors.black,
         ),
         body: Padding(
@@ -337,205 +368,64 @@ class _BootstrapScreenState extends State<BootstrapScreen> {
       );
     }
 
-    if (_feed.isEmpty) {
+    if (_bottomNavIndex != 0) {
+      final titles = ['', 'Découvrir', 'Créer', 'Messages', 'Profil'];
+      final title = titles[_bottomNavIndex.clamp(0, 4)];
       return Scaffold(
+        backgroundColor: const Color(0xFF09090B),
         appBar: AppBar(
-          title: Text('Bonjour ${_session!.user['full_name'] ?? _session!.user['username'] ?? ''}'),
           backgroundColor: Colors.black,
-          actions: [
-            IconButton(onPressed: _loadFeed, icon: const Icon(Icons.refresh)),
-            IconButton(onPressed: _logout, icon: const Icon(Icons.logout)),
-          ],
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () => setState(() => _bottomNavIndex = 0),
+            tooltip: 'Retour',
+          ),
+          title: Text(title),
         ),
-        body: const Center(
-          child: Text('Aucune video pour le moment'),
+        body: Center(
+          child: Text(
+            '$title — bientôt disponible',
+            style: const TextStyle(color: Colors.white60),
+            textAlign: TextAlign.center,
+          ),
         ),
       );
     }
 
-    return Scaffold(
-      extendBody: true,
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          PageView.builder(
-            controller: _pageController,
-            scrollDirection: Axis.vertical,
-            itemCount: _feed.length,
-            itemBuilder: (context, index) {
-              final video = _feed[index];
-              final id = (video['id'] ?? index).toString();
-              final likes = (video['_localLikes'] is num) ? (video['_localLikes'] as num).toInt() : 0;
-              final liked = video['_localIsLiked'] == true;
-              final followed = video['_localIsFollowing'] == true;
-              final comments = (video['comments_count'] is num) ? (video['comments_count'] as num).toInt() : 0;
-
-              final isActive = index == _activeIndex;
-              final shouldPreload = (index - _activeIndex).abs() <= 1;
-
-              return VideoSlide(
-                key: ValueKey('slide-$id'),
-                video: video,
-                isActive: isActive,
-                shouldPreload: shouldPreload,
-                isLiked: liked,
-                likeCount: likes,
-                isFollowing: followed,
-                onLikeTap: () => _toggleLikeAt(index),
-                onFollowTap: () => _toggleFollowAt(index),
-                onCommentTap: () {},
-                commentCount: comments,
-              );
-            },
-          ),
-
-          // Top bar: For You / Following + icons
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () => setState(() => _activeTab = 0),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    'For You',
-                                    style: TextStyle(
-                                      color: _activeTab == 0 ? Colors.white : Colors.white54,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Container(
-                                    height: 3,
-                                    width: double.infinity,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(99),
-                                      color: _activeTab == 0 ? Colors.pinkAccent : Colors.transparent,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () => setState(() => _activeTab = 1),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    'Following',
-                                    style: TextStyle(
-                                      color: _activeTab == 1 ? Colors.white : Colors.white54,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Container(
-                                    height: 3,
-                                    width: double.infinity,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(99),
-                                      color: _activeTab == 1 ? Colors.pinkAccent : Colors.transparent,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.search_rounded),
-                      color: Colors.white,
-                      onPressed: () {},
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.notifications_none_rounded),
-                      color: Colors.white,
-                      onPressed: () {},
-                    ),
-                  ],
-                ),
-              ),
+    return AccueilScreen(
+      user: _session!.user,
+      feed: _feed,
+      pageController: _pageController,
+      activeIndex: _activeIndex,
+      activeTab: _activeTab,
+      bottomNavIndex: _bottomNavIndex,
+      onSwitchFeedTab: _switchFeedTab,
+      onBottomNavTap: (i) => setState(() => _bottomNavIndex = i),
+      onRefresh: _loadFeed,
+      onLogout: _logout,
+      onLikeAt: _toggleLikeAt,
+      onFollowAt: _toggleFollowAt,
+      onCommentAt: (_) {},
+      onSearchTap: () {
+        Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (ctx) => SearchScreen(
+              client: _client,
+              accessToken: _session!.accessToken,
             ),
           ),
-
-          // Bottom navigation (Home / Discover / + / Messages / Profile)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: SafeArea(
-              top: false,
-              child: Container(
-                height: 68,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0x00000000), Color(0x99000000)],
-                  ),
-                ),
-                child: BottomNavigationBar(
-                  backgroundColor: Colors.transparent,
-                  type: BottomNavigationBarType.fixed,
-                  currentIndex: _bottomNavIndex,
-                  onTap: (i) => setState(() => _bottomNavIndex = i),
-                  showSelectedLabels: false,
-                  showUnselectedLabels: false,
-                  items: [
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.home_rounded, size: 28, color: _bottomNavIndex == 0 ? Colors.white : Colors.white54),
-                      label: 'Home',
-                    ),
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.explore_rounded, size: 28, color: _bottomNavIndex == 1 ? Colors.white : Colors.white54),
-                      label: 'Discover',
-                    ),
-                    BottomNavigationBarItem(
-                      icon: Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          color: Colors.black,
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(color: Colors.white10, width: 1),
-                        ),
-                        child: const Icon(Icons.add_rounded, size: 30, color: Colors.white),
-                      ),
-                      label: 'Add',
-                    ),
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.message_rounded, size: 28, color: _bottomNavIndex == 3 ? Colors.white : Colors.white54),
-                      label: 'Messages',
-                    ),
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.person_rounded, size: 28, color: _bottomNavIndex == 4 ? Colors.white : Colors.white54),
-                      label: 'Profile',
-                    ),
-                  ],
-                ),
-              ),
+        );
+      },
+      onNotificationsTap: () {
+        Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (ctx) => NotificationsScreen(
+              client: _client,
+              accessToken: _session!.accessToken,
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

@@ -467,7 +467,7 @@ export default function Discover() {
 
   return (
     <div className={`min-h-screen pb-24 text-white ${DISCOVER_PAGE_BG}`}>
-      <div className="sticky top-0 z-40 border-b border-white/[0.06] bg-[#070a12]/90 backdrop-blur-2xl">
+      <div className="relative z-10 border-b border-white/[0.06] bg-[#070a12]">
         <div className="mx-auto max-w-5xl px-4 py-3">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">

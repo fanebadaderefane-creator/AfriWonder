@@ -17,35 +17,37 @@ export const errorHandler = (
   const statusCode = err.statusCode || 500;
   const rawMessage = err.message || 'Internal Server Error';
 
-  logger.error(rawMessage, err, {
-    path: req.path,
-    method: req.method,
-    statusCode,
-  });
-
   // Ne pas exposer les messages techniques DB (circuit breaker, upstream, P1001) au client
   const isDbConnectionError =
-    statusCode === 500 &&
     /Circuit breaker|upstream database|Can't reach database|connection.*refused|ECONNREFUSED|P1001/i.test(rawMessage);
+  const effectiveStatusCode =
+    isDbConnectionError ? 503 : statusCode;
   const message = isDbConnectionError
     ? 'Service temporairement indisponible. Réessayez dans quelques instants.'
     : rawMessage;
+
+  logger.error(rawMessage, err, {
+    path: req.path,
+    method: req.method,
+    statusCode: effectiveStatusCode,
+  });
 
   // Monitoring : capture async (ne bloque pas la réponse)
   const userId = (req as any).user?.id;
   captureError(err, {
     path: req.path,
     method: req.method,
-    statusCode,
+    statusCode: effectiveStatusCode,
     userId,
   }).catch(noop);
 
   function noop() {}
 
-  res.status(statusCode).json({
+  res.status(effectiveStatusCode).json({
     success: false,
     error: {
       message,
+      ...(isDbConnectionError && { code: 'DATABASE_UNAVAILABLE' }),
       ...(process.env.NODE_ENV === 'development' && {
         stack: err.stack,
       }),

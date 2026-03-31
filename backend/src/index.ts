@@ -64,11 +64,15 @@ try {
 
 const httpServer = createServer(app);
 
-// Timeout pour requêtes longues (upload vidéo/audio) : 5 min, aligné avec le client
+// Requêtes longues : upload + transcodage « repair-web-playback » (ffmpeg) peut dépasser 5 min.
 const UPLOAD_TIMEOUT_MS = 300000;
-httpServer.timeout = UPLOAD_TIMEOUT_MS;
-httpServer.keepAliveTimeout = UPLOAD_TIMEOUT_MS + 1000;
-httpServer.headersTimeout = UPLOAD_TIMEOUT_MS + 2000;
+const LONG_HTTP_MS = Math.max(
+  UPLOAD_TIMEOUT_MS,
+  Number(process.env.HTTP_LONG_REQUEST_TIMEOUT_MS) || 900000
+);
+httpServer.timeout = LONG_HTTP_MS;
+httpServer.keepAliveTimeout = LONG_HTTP_MS + 1000;
+httpServer.headersTimeout = LONG_HTTP_MS + 2000;
 
 const corsOrigins = [
   ...(process.env.CORS_ORIGIN || '')

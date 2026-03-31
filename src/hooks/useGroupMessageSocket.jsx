@@ -101,7 +101,7 @@ export function useGroupMessageSocket({ userId, userName, groupId, queryClient, 
         return old;
       });
       qc.invalidateQueries({ queryKey: ['messages-groups'] });
-      qc.invalidateQueries({ queryKey: ['messages-unread-count'] });
+      qc.invalidateQueries({ queryKey: ['messages-unread-count', userId] });
     });
 
     socket.on('message:group-typing', (payload) => {

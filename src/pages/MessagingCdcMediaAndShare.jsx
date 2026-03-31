@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { Image, Video, FileStack, Sticker, MapPin, Contact, Gauge, HardDrive, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createPageUrl } from '@/utils';
@@ -59,7 +59,7 @@ const items = [
   },
 ];
 
-export default function MessagingCdcMediaAndShare() {
+export function MessagingCdcMediaAndSharePanel() {
   const navigate = useNavigate();
 
   return (
@@ -134,4 +134,8 @@ export default function MessagingCdcMediaAndShare() {
       </ul>
     </MessagingCdcShell>
   );
+}
+
+export default function MessagingCdcMediaAndShare() {
+  return <Navigate to={`${createPageUrl('MessagingCdcHub')}?section=media-share`} replace />;
 }

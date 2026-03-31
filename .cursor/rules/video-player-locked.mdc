@@ -40,6 +40,18 @@ Objectif : éviter **buffer → joue → buffer** et **audio / mauvaise carte** 
 
 Si cette doc et le code divergent, **ne pas « corriger » le player pour aligner la doc** sans demande explicite.
 
+## Feed compact (`compact={true}` — Home / TikTok) — première frame **vidéo** (mars 2026)
+
+**Problème à ne pas réintroduire :** masquer le `<video>` avec **`opacity: 0`** jusqu’à `hasFirstFrameRendered` **pendant que** des calques (shimmer, `thumbnail_url`, fond noir plein écran) sont au-dessus donne l’impression d’un « faux » visuel ou d’un écran noir, alors que le décodeur a **déjà** une vraie frame.
+
+**À garder :**
+
+- En mode **`compact`**, le `<video>` reste **visible** (`opacity: 1`) pour afficher **les pixels du flux** dès que le navigateur les peint — ne pas remettre un fondu depuis 0 couplé à l’absence de poster réel.
+- **`FeedVideoSlide.jsx`** : pas de squelette shimmer qui recouvre le lecteur ; pas de `slideBackgroundUrl` miniature CDN sur la slide (fond = slide sombre seulement).
+- **`VideoCard`** hors `compact` : l’ancien duo **poster image + fondu** reste valide pour éviter écran noir sur les intégrations non feed.
+
+Avant de « corriger » un flash ou un noir sur le feed : vérifier **layout Firefox** (`video-feed-rendering-firefox.mdc`), pas seulement remettre poster/shimmer par défaut.
+
 ## Si l'utilisateur demande explicitement un changement sur le player
 
 Modifier en conservant : pas de reprise forcée contre une pause utilisateur, respect des garde-fous buffer / première vidéo / connexions lentes, pas de régression écran noir Firefox/WebView (voir aussi `video-feed-rendering-firefox.mdc`).

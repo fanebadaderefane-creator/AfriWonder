@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { Store, MessageSquareText, BarChart2, Webhook, Languages, Wand2, ImagePlus, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createPageUrl } from '@/utils';
@@ -12,7 +12,7 @@ import {
   CdcTierLegend,
 } from '@/components/messaging/MessagingCdcUi';
 
-export default function MessagingCdcProTools() {
+export function MessagingCdcProToolsPanel() {
   const navigate = useNavigate();
 
   return (
@@ -125,4 +125,8 @@ export default function MessagingCdcProTools() {
       </Button>
     </MessagingCdcShell>
   );
+}
+
+export default function MessagingCdcProTools() {
+  return <Navigate to={`${createPageUrl('MessagingCdcHub')}?section=pro-tools`} replace />;
 }

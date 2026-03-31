@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { Users, AtSign, BarChart2, Calendar, Pin, History, Link2, Tag, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createPageUrl } from '@/utils';
@@ -63,7 +63,7 @@ const features = [
   },
 ];
 
-export default function MessagingCdcGroupsAdvanced() {
+export function MessagingCdcGroupsAdvancedPanel() {
   const navigate = useNavigate();
 
   return (
@@ -125,4 +125,8 @@ export default function MessagingCdcGroupsAdvanced() {
       </CdcCallout>
     </MessagingCdcShell>
   );
+}
+
+export default function MessagingCdcGroupsAdvanced() {
+  return <Navigate to={`${createPageUrl('MessagingCdcHub')}?section=groups-advanced`} replace />;
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
@@ -41,7 +41,7 @@ const rows = [
 
 const SERVER_SYNC_IDS = new Set(['e2e', 'read']);
 
-export default function MessagingCdcPrivacy() {
+export function MessagingCdcPrivacyPanel() {
   const navigate = useNavigate();
   const { user, checkAuth } = useAuth();
   const [local, setLocal] = useCdcPersistedJson('privacy_toggles', DEFAULT_PRIVACY);
@@ -121,4 +121,8 @@ export default function MessagingCdcPrivacy() {
       </div>
     </MessagingCdcShell>
   );
+}
+
+export default function MessagingCdcPrivacy() {
+  return <Navigate to={`${createPageUrl('MessagingCdcHub')}?section=privacy`} replace />;
 }

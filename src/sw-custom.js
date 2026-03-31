@@ -13,7 +13,13 @@ const API_CACHE = 'afriwonder-api-v1';
 const VIDEO_CACHE = 'afriwonder-video-cache-v1';
 const IMAGE_CACHE = 'afriwonder-image-cache-v1';
 const PRECACHE = self.__WB_MANIFEST || [];
-const SW_VERSION = 'v5'; // Invalide l'ancien SW pour diffuser les correctifs offline (HLS/cache)
+/** Injecté au build (vite `define __AFRW_SW_VERSION__`) */
+const SW_VERSION =
+  typeof __AFRW_SW_VERSION__ !== 'undefined' ? __AFRW_SW_VERSION__ : 'afw-local';
+const FEED_PREFETCH_LIMIT = 4;
+const VIDEO_CACHE_MAX_ENTRIES = 60;
+const IMAGE_CACHE_MAX_ENTRIES = 120;
+const inflightWarmups = new Set();
 
 // Share Target: rediriger les partages système vers une route interne lisible par React
 const SHARE_TARGET_PATH = '/share-target';
@@ -24,6 +30,124 @@ const SHARE_TARGET_PATH = '/share-target';
 
 // Precache des assets principaux générés par VitePWA
 precacheAndRoute(PRECACHE);
+
+function shouldCacheResponse(response) {
+  return !!response && (response.ok || response.type === 'opaque');
+}
+
+async function trimCacheEntries(cacheName, maxEntries) {
+  try {
+    const cache = await caches.open(cacheName);
+    const keys = await cache.keys();
+    if (keys.length <= maxEntries) return;
+    const staleKeys = keys.slice(0, keys.length - maxEntries);
+    await Promise.all(staleKeys.map((key) => cache.delete(key)));
+  } catch {
+    // Best effort
+  }
+}
+
+/** Sous pression disque (quota), évincer une partie du cache vidéo (audit ~80 % quota). */
+async function maybeRelieveStoragePressure() {
+  try {
+    if (!navigator.storage?.estimate) return;
+    const { usage, quota } = await navigator.storage.estimate();
+    if (!quota || usage < quota * 0.8) return;
+    const cache = await caches.open(VIDEO_CACHE);
+    const keys = await cache.keys();
+    if (!keys.length) return;
+    const drop = Math.max(1, Math.ceil(keys.length * 0.35));
+    await Promise.all(keys.slice(0, drop).map((key) => cache.delete(key)));
+  } catch {
+    // ignore
+  }
+}
+
+async function cacheFirstMediaRequest(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+
+  const networkResponse = await fetch(request);
+  if (shouldCacheResponse(networkResponse)) {
+    cache.put(request, networkResponse.clone()).catch(() => {});
+    const maxEntries = cacheName === VIDEO_CACHE ? VIDEO_CACHE_MAX_ENTRIES : IMAGE_CACHE_MAX_ENTRIES;
+    trimCacheEntries(cacheName, maxEntries).catch(() => {});
+    if (cacheName === VIDEO_CACHE) {
+      maybeRelieveStoragePressure().catch(() => {});
+    }
+  }
+  return networkResponse;
+}
+
+async function warmCacheUrl(rawUrl, cacheName) {
+  if (!rawUrl) return null;
+
+  let normalizedUrl;
+  try {
+    normalizedUrl = new URL(rawUrl, self.location.origin).toString();
+  } catch {
+    return null;
+  }
+
+  if (inflightWarmups.has(normalizedUrl)) return null;
+  inflightWarmups.add(normalizedUrl);
+
+  try {
+    const url = new URL(normalizedUrl);
+    const request = new Request(url.toString(), {
+      mode: url.origin === self.location.origin ? 'cors' : 'no-cors',
+      credentials: 'omit',
+    });
+    const cache = await caches.open(cacheName);
+    const cached = await cache.match(request);
+    if (cached) return cached;
+
+    const response = await fetch(request);
+    if (shouldCacheResponse(response)) {
+      await cache.put(request, response.clone());
+      const maxEntries = cacheName === VIDEO_CACHE ? VIDEO_CACHE_MAX_ENTRIES : IMAGE_CACHE_MAX_ENTRIES;
+      trimCacheEntries(cacheName, maxEntries).catch(() => {});
+      if (cacheName === VIDEO_CACHE) {
+        maybeRelieveStoragePressure().catch(() => {});
+      }
+    }
+    return response;
+  } catch {
+    return null;
+  } finally {
+    inflightWarmups.delete(normalizedUrl);
+  }
+}
+
+async function warmManifestAndSegments(manifestUrl, depth = 0) {
+  if (!manifestUrl || depth > 1) return;
+
+  const manifestResponse = await warmCacheUrl(manifestUrl, VIDEO_CACHE);
+  if (!manifestResponse || manifestResponse.type === 'opaque') return;
+
+  try {
+    const manifestText = await manifestResponse.clone().text();
+    const manifestBase = new URL(manifestUrl, self.location.origin);
+    const segmentUrls = manifestText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'))
+      .slice(0, FEED_PREFETCH_LIMIT);
+
+    await Promise.all(
+      segmentUrls.map((entry) => {
+        const resolved = new URL(entry, manifestBase).toString();
+        if (/\.m3u8(\?|$)/i.test(resolved)) {
+          return warmManifestAndSegments(resolved, depth + 1);
+        }
+        return warmCacheUrl(resolved, VIDEO_CACHE);
+      })
+    );
+  } catch {
+    // Manifeste non lisible ou format inattendu: rester best-effort.
+  }
+}
 
 // Background Sync pour les messages envoyés hors-ligne
 const messagesBgSyncPlugin = new BackgroundSyncPlugin('afriwonder-offline-messages-queue', {
@@ -85,6 +209,10 @@ self.addEventListener('activate', (event) => {
         );
         return Promise.all(toDelete.map((n) => caches.delete(n)));
       })
+      .then(() => Promise.all([
+        trimCacheEntries(VIDEO_CACHE, VIDEO_CACHE_MAX_ENTRIES),
+        trimCacheEntries(IMAGE_CACHE, IMAGE_CACHE_MAX_ENTRIES),
+      ]))
       .then(() => self.clients.claim())
   );
 });
@@ -99,6 +227,53 @@ self.addEventListener('message', (event) => {
       });
     });
   }
+  if (event.data?.type === 'PREFETCH_FEED_ASSETS') {
+    const assets = Array.isArray(event.data.assets) ? event.data.assets : [];
+    event.waitUntil(
+      Promise.all(
+        assets.slice(0, FEED_PREFETCH_LIMIT).map(async (asset) => {
+          const posterUrl = asset?.posterUrl;
+          const videoUrl = asset?.videoUrl;
+          const manifestUrl = asset?.manifestUrl;
+          let warmed = false;
+
+          if (posterUrl) {
+            const posterResponse = await warmCacheUrl(posterUrl, IMAGE_CACHE);
+            warmed = warmed || !!posterResponse;
+          }
+          if (manifestUrl) {
+            await warmManifestAndSegments(manifestUrl);
+            warmed = true;
+          } else if (videoUrl) {
+            const videoResponse = await warmCacheUrl(videoUrl, VIDEO_CACHE);
+            warmed = warmed || !!videoResponse;
+          }
+
+          return warmed
+            ? {
+                id: asset?.id,
+                title: asset?.title || '',
+                creatorName: asset?.creatorName || '',
+                creatorAvatar: asset?.creatorAvatar || '',
+                posterUrl: asset?.posterUrl || '',
+                video: asset?.video || null,
+                cachedAt: Date.now(),
+              }
+            : null;
+        })
+      )
+        .then((preparedAssets) => {
+          const readyAssets = preparedAssets.filter(Boolean);
+          if (readyAssets.length === 0) return;
+          return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+            clients.forEach((client) => {
+              client.postMessage({ type: 'FEED_PREFETCH_DONE', assets: readyAssets });
+            });
+          });
+        })
+        .catch(() => {})
+    );
+  }
 });
 
 // Push hors-app (messages, commentaires, appels, etc.)
@@ -111,22 +286,38 @@ self.addEventListener('push', (event) => {
     payload = { body: raw };
   }
   const title = payload.title || 'AfriWonder';
+  const tag = payload.tag || payload.category || 'message';
   const options = {
     body: payload.body || payload.message || 'Nouvelle activité',
     icon: payload.icon || '/icon-192.png',
     badge: payload.badge || '/icon-192.png',
-    tag: payload.tag || payload.category || 'afriwonder',
-    data: payload.data || {},
+    tag,
+    data: { ...(payload.data || {}), category: tag },
     renotify: true,
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    (async () => {
+      await self.registration.showNotification(title, options);
+      try {
+        if (typeof navigator !== 'undefined' && typeof navigator.setAppBadge === 'function') {
+          const notes = await self.registration.getNotifications();
+          await navigator.setAppBadge(notes.length);
+        }
+      } catch {
+        // API Badge optionnelle
+      }
+    })()
+  );
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const data = event.notification?.data || {};
+  const chatParams = new URLSearchParams();
+  if (data?.conversationId) chatParams.set('conversationId', String(data.conversationId));
+  if (data?.senderId) chatParams.set('_userId', String(data.senderId));
   const targetPath = data?.conversationId
-    ? `/Chat?conversationId=${encodeURIComponent(data.conversationId)}`
+    ? `/Chat?${chatParams.toString()}`
     : data?.videoId
       ? `/Video?id=${encodeURIComponent(data.videoId)}`
       : '/Notifications';
@@ -168,6 +359,11 @@ self.addEventListener('unhandledrejection', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  // Ne pas intercepter les callbacks OAuth (risque de réponse périmée du cache SW)
+  if (url.pathname.startsWith('/~oauth')) {
+    return;
+  }
 
   // Web Share Target: interception du POST /share-target
   if (request.method === 'POST' && url.pathname === SHARE_TARGET_PATH) {
@@ -212,41 +408,30 @@ self.addEventListener('fetch', (event) => {
   // y compris quand ils viennent du CDN (pas de Range en général).
   if (!isProxyMedia && !hasRange && isHlsAsset) {
     event.respondWith(
-      caches.open(VIDEO_CACHE).then((cache) =>
-        cache.match(request).then((cached) =>
-          cached ||
-          fetch(request).then((netRes) => {
-            if (netRes && netRes.ok) cache.put(request, netRes.clone());
-            return netRes;
-          })
-        )
-      )
+      cacheFirstMediaRequest(request, VIDEO_CACHE)
     );
     return;
   }
 
   // MP4 offline-friendly (uniquement même origine, sans Range).
   // Les requêtes avec Range sont exclues pour éviter des comportements streaming cassés.
-  if (isSameOrigin && !isProxyMedia && !hasRange && isMp4) {
+  if (!isProxyMedia && !hasRange && isMp4) {
     event.respondWith(
-      caches.open(VIDEO_CACHE).then((cache) =>
-        cache.match(request).then((cached) =>
-          cached ||
-          fetch(request).then((netRes) => {
-            if (netRes.ok) cache.put(request, netRes.clone());
-            return netRes;
-          })
-        )
-      )
+      cacheFirstMediaRequest(request, VIDEO_CACHE)
     );
     return;
   }
 
-  // Ne pas intercepter les videos CDN (streaming, Range requests)
-  const cdnHosts = ['cdn.afriwonder.com', 'cdn.afriwonder.com'];
-  const isCdnMedia = cdnHosts.includes(url.hostname) || url.hostname.endsWith('.r2.dev');
+  // Laisser passer les streams avec Range (streaming classique). Les médias déjà
+  // préchauffés sont servis par les branches cache-first ci-dessus.
+  const cdnHosts = ['cdn.afriwonder.com'];
+  const isCdnMedia =
+    cdnHosts.includes(url.hostname) ||
+    url.hostname.endsWith('.r2.dev') ||
+    url.hostname.includes('cloudflare') ||
+    url.hostname.includes('b-cdn.net');
   const isVideoRequest = request.destination === 'video';
-  if (isCdnMedia || isVideoRequest) return;
+  if ((isCdnMedia || isVideoRequest) && hasRange) return;
 
   event.respondWith(
     (async () => {
@@ -255,22 +440,19 @@ self.addEventListener('fetch', (event) => {
       if (request.destination === 'image') {
         const imageCache = await caches.open(IMAGE_CACHE);
         const cachedImage = await imageCache.match(request);
-        const networkImagePromise = fetch(request)
+        if (cachedImage) {
+          return cachedImage;
+        }
+
+        const networkImage = await fetch(request)
           .then((res) => {
             if (res && (res.ok || res.type === 'opaque')) {
               imageCache.put(request, res.clone());
+              trimCacheEntries(IMAGE_CACHE, IMAGE_CACHE_MAX_ENTRIES).catch(() => {});
             }
             return res;
           })
           .catch(() => null);
-
-        if (cachedImage) {
-          // Stale-while-revalidate: renvoie immediatement puis met a jour le cache
-          networkImagePromise.catch(() => {});
-          return cachedImage;
-        }
-
-        const networkImage = await networkImagePromise;
         if (networkImage) return networkImage;
 
         // Fallback neutre local si aucune image n'est disponible
@@ -307,41 +489,46 @@ self.addEventListener('fetch', (event) => {
         if (request.headers.get('accept')?.includes('text/html')) {
           return new Response(
             `<!DOCTYPE html>
-            <html>
+            <html lang="fr">
               <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <title>AfriWonder - Chargement...</title>
+                <title>AfriWonder — Hors ligne</title>
                 <style>
                   body {
                     margin: 0;
-                    padding: 20px;
-                    font-family: system-ui;
+                    padding: 24px;
+                    font-family: system-ui, sans-serif;
                     display: flex;
                     flex-direction: column;
                     align-items: center;
                     justify-content: center;
                     min-height: 100vh;
-                    background: #000;
+                    background: #020617;
+                    color: #f8fafc;
+                    gap: 16px;
+                    text-align: center;
+                  }
+                  a, button {
+                    color: #38bdf8;
+                    font-weight: 600;
+                  }
+                  button {
+                    margin-top: 8px;
+                    padding: 12px 20px;
+                    background: #f97316;
                     color: #fff;
-                  }
-                  .spinner {
-                    width: 40px;
-                    height: 40px;
-                    border: 4px solid rgba(255,255,255,0.1);
-                    border-top-color: #2563eb;
-                    border-radius: 50%;
-                    animation: spin 1s linear infinite;
-                  }
-                  @keyframes spin {
-                    to { transform: rotate(360deg); }
+                    border: none;
+                    border-radius: 10px;
+                    cursor: pointer;
+                    font-size: 1rem;
                   }
                 </style>
               </head>
               <body>
-                <div class="spinner"></div>
-                <p style="margin-top: 20px;">Chargement de l'application...</p>
-                <script>setTimeout(() => window.location.reload(), 2000);</script>
+                <p>Impossible de charger cette page sans réseau.</p>
+                <button type="button" onclick="window.location.reload()">Réessayer</button>
+                <p><a href="/">Retour à l&apos;accueil</a></p>
               </body>
             </html>`,
             {

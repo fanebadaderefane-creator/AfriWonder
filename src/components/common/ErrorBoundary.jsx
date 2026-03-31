@@ -28,9 +28,9 @@ export default class ErrorBoundary extends Component {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50 text-slate-800">
-          <h1 className="text-xl font-semibold mb-2">Une erreur est survenue</h1>
+          <h1 className="text-xl font-semibold mb-2">Oups, quelque chose s&apos;est mal passé.</h1>
           <p className="text-slate-600 text-center mb-6 max-w-md">
-            Réessayez ou rechargez la page. Si le problème persiste, contactez le support.
+            Rafraîchir la page ou réessayer. Si le problème persiste, contactez le support.
           </p>
           <div className="flex gap-3">
             <button
