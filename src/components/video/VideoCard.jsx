@@ -31,6 +31,7 @@ import { toast } from 'sonner';
 import Hls from 'hls.js';
 import { formatFeedCount, getCreatorInitial } from '@/features/feed/feedUtils';
 import { canRequestWebPlaybackRepair } from '@/lib/videoWebRepairAccess';
+import AfriWonderLogo from '@/components/common/AfriWonderLogo';
 
 const extractHashtags = (description) => {
   if (!description) return [];
@@ -2605,6 +2606,20 @@ function VideoCardContent({
               {sticker.emoji || sticker}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Watermark feed compact (style TikTok) */}
+      {compact && !hideActions && (
+        <div
+          className="pointer-events-none absolute left-3 z-[205] inline-flex items-center gap-2 px-0 py-0 text-white/88"
+          style={{ bottom: 'calc(20rem + env(safe-area-inset-bottom, 0px))' }}
+          aria-hidden
+        >
+          <AfriWonderLogo size="xs" className="opacity-95" />
+          <span className="max-w-[38vw] truncate text-[11px] font-semibold tracking-tight">
+            @{creatorAt || video.creator_name || 'utilisateur'}
+          </span>
         </div>
       )}
 

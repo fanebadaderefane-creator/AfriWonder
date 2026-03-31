@@ -27,6 +27,7 @@ export default function FeedVideoSlide({
   onRequireAuth,
   onInitialVisualReady,
   offlineReady = false,
+  showOfflineBadge = true,
 }) {
   const { video, slideBackgroundUrl } = slide;
   const distance = Math.abs(index - safeCurrentIndex);
@@ -62,7 +63,7 @@ export default function FeedVideoSlide({
       className="relative w-full snap-start overflow-hidden bg-gray-950"
       style={slideShellStyle}
     >
-      {offlineReady && !hideVideoHud && (
+      {offlineReady && showOfflineBadge && !hideVideoHud && (
         <div className="pointer-events-none absolute left-3 top-20 z-20 rounded-full border border-emerald-300/25 bg-emerald-500/18 px-3 py-1.5 text-[11px] font-semibold tracking-tight text-white shadow-[0_8px_30px_rgba(16,185,129,0.18)] backdrop-blur-md">
           <span className="inline-flex items-center gap-1.5">
             <Download className="h-3.5 w-3.5" />

@@ -54,9 +54,13 @@ const FEED_FULLSCREEN_WIDTH = `min(100vw, ${FEED_FULLSCREEN_MAX_WIDTH_PX}px)`;
 const FEED_POSTER_PRELOAD_COUNT = 4;
 const FEED_VIDEO_PRELOAD_COUNT = 3;
 const FEED_VIDEO_STATE_RADIUS = 3;
-const FEED_SW_PREFETCH_COUNT = 3;
+const FEED_SW_PREFETCH_COUNT = 10;
+const FEED_SW_PREFETCH_COUNT_CONSTRAINED = 4;
+const SHOW_FEED_OFFLINE_BADGES = false;
 const FEED_STARTUP_CURTAIN_SESSION_KEY = 'afw_feed_startup_curtain_seen';
 const FEED_PREPARED_STORAGE_KEY = 'afw_feed_prepared_v1';
+const FEED_VIEWED_STORAGE_KEY = 'afw_feed_viewed_catalog_v1';
+const FEED_VIEWED_STORAGE_MAX = 80;
 const EMPTY_ITEMS = [];
 
 function sameStringArray(a, b) {
@@ -104,6 +108,10 @@ export default function Home() {
   const [warmingFeedIds, setWarmingFeedIds] = useState([]);
   const [preparedFeedVideos, setPreparedFeedVideos] = useState(() => {
     const cached = getJSON(FEED_PREPARED_STORAGE_KEY, []);
+    return Array.isArray(cached) ? cached : [];
+  });
+  const [viewedFeedCatalog, setViewedFeedCatalog] = useState(() => {
+    const cached = getJSON(FEED_VIEWED_STORAGE_KEY, []);
     return Array.isArray(cached) ? cached : [];
   });
 
@@ -395,15 +403,65 @@ export default function Home() {
       };
     });
   }, [activeFeedVideos]);
+
+  useEffect(() => {
+    if (activeTab !== 'pourtoi' || activeFeedVideos.length === 0) return;
+    const video = activeFeedVideos[safeCurrentIndex];
+    if (!video?.id) return;
+
+    const posterCandidate = isValidThumbnailUrl(video?.thumbnail_url, video?.video_url)
+      ? getAbsoluteImageUrl(video.thumbnail_url) || video.thumbnail_url
+      : null;
+    const manifestUrl = getVideoPlaybackUrl(video?.hls_playback_url || video?.hls_url);
+    const preferredVideoUrl = getVideoPlaybackUrl(
+      isSlowConnection
+        ? video?.low_quality_playback_url ||
+            video?.low_quality_url ||
+            video?.playback_url ||
+            video?.video_url
+        : video?.playback_url ||
+            video?.video_url ||
+            video?.low_quality_playback_url ||
+            video?.low_quality_url
+    );
+
+    const nextItem = {
+      id: String(video.id),
+      title: video?.title || '',
+      creatorName: video?.creator_name || '',
+      creatorAvatar: video?.creator_avatar || '',
+      video,
+      posterUrl: posterCandidate,
+      manifestUrl,
+      videoUrl: manifestUrl ? null : preferredVideoUrl,
+      cachedAt: Date.now(),
+      viewedAt: Date.now(),
+    };
+
+    setViewedFeedCatalog((prev) => {
+      const map = new Map((Array.isArray(prev) ? prev : []).map((item) => [String(item?.id), item]));
+      const previous = map.get(nextItem.id);
+      map.set(nextItem.id, {
+        ...(previous || {}),
+        ...nextItem,
+        viewedAt: Date.now(),
+      });
+      const next = Array.from(map.values())
+        .sort((a, b) => Number(b?.viewedAt || 0) - Number(a?.viewedAt || 0))
+        .slice(0, FEED_VIEWED_STORAGE_MAX);
+      setJSON(FEED_VIEWED_STORAGE_KEY, next);
+      return next;
+    });
+  }, [activeFeedVideos, activeTab, isSlowConnection, safeCurrentIndex]);
   const visibleSuggestedWonderers = useMemo(
     () => suggestedWonderers.filter((candidate) => !isDeletedUser(candidate)),
     [suggestedWonderers]
   );
   const shouldConserveOfflineData = isSlowConnection || isBatteryConstrained || isDataSaverEnabled;
-  const feedWarmAssetCount = shouldConserveOfflineData ? 1 : FEED_SW_PREFETCH_COUNT;
+  const feedWarmAssetCount = shouldConserveOfflineData ? FEED_SW_PREFETCH_COUNT_CONSTRAINED : FEED_SW_PREFETCH_COUNT;
   const feedWarmAssets = useMemo(() => {
     if (!isOnline) return [];
-    return activeFeedVideos
+    const fromActiveFeed = activeFeedVideos
       .slice(safeCurrentIndex, safeCurrentIndex + feedWarmAssetCount)
       .map((video, index) => {
         const posterCandidate = isValidThumbnailUrl(video?.thumbnail_url, video?.video_url)
@@ -425,6 +483,7 @@ export default function Home() {
         return {
           id: String(video?.id || ''),
           priority: index === 0 ? 'critical' : index === 1 ? 'high' : 'ahead',
+          segmentPrefetchLimit: shouldConserveOfflineData ? 10 : 36,
           title: video?.title || '',
           creatorName: video?.creator_name || '',
           creatorAvatar: video?.creator_avatar || '',
@@ -435,7 +494,30 @@ export default function Home() {
         };
       })
       .filter((asset) => asset.id && (asset.posterUrl || asset.manifestUrl || asset.videoUrl));
-  }, [activeFeedVideos, feedWarmAssetCount, isOnline, isSlowConnection, safeCurrentIndex]);
+
+    const viewedFallback = viewedFeedCatalog
+      .slice(0, shouldConserveOfflineData ? 6 : 20)
+      .map((item) => ({
+        id: String(item?.id || ''),
+        priority: 'history',
+        segmentPrefetchLimit: shouldConserveOfflineData ? 10 : 36,
+        title: item?.title || '',
+        creatorName: item?.creatorName || '',
+        creatorAvatar: item?.creatorAvatar || '',
+        video: item?.video || null,
+        posterUrl: item?.posterUrl || null,
+        manifestUrl: item?.manifestUrl || null,
+        videoUrl: item?.videoUrl || null,
+      }))
+      .filter((asset) => asset.id && (asset.posterUrl || asset.manifestUrl || asset.videoUrl));
+
+    const merged = new Map();
+    [...fromActiveFeed, ...viewedFallback].forEach((asset) => {
+      if (!asset?.id || merged.has(asset.id)) return;
+      merged.set(asset.id, asset);
+    });
+    return Array.from(merged.values());
+  }, [activeFeedVideos, feedWarmAssetCount, isOnline, isSlowConnection, safeCurrentIndex, shouldConserveOfflineData, viewedFeedCatalog]);
   const preparedFeedVideoIds = useMemo(
     () => new Set(preparedFeedVideos.map((video) => String(video.id))),
     [preparedFeedVideos]
@@ -559,7 +641,7 @@ export default function Home() {
         });
         const next = Array.from(nextMap.values())
           .sort((a, b) => Number(b.cachedAt || 0) - Number(a.cachedAt || 0))
-          .slice(0, 18);
+          .slice(0, FEED_VIEWED_STORAGE_MAX);
         setJSON(FEED_PREPARED_STORAGE_KEY, next);
         return next;
       });
@@ -1065,7 +1147,7 @@ export default function Home() {
           <AfriWonderLogo size="xs" className="drop-shadow-[0_2px_12px_rgba(0,0,0,0.55)]" />
         </button>
 
-        {preparedFeedVideos.length > 0 && (
+        {SHOW_FEED_OFFLINE_BADGES && preparedFeedVideos.length > 0 && (
           <button
             type="button"
             onClick={() => setShowOfflineReadyPanel(true)}
@@ -1228,6 +1310,7 @@ export default function Home() {
                 hideVideoActions={hideVideoActions}
                 slide={slide}
                 offlineReady={preparedFeedVideoIds.has(String(slide.id))}
+                showOfflineBadge={SHOW_FEED_OFFLINE_BADGES}
                 isMuted={isMuted}
                 isLiked={likedVideos.has(slide.video.id)}
                 isSaved={savedVideos.has(slide.video.id)}

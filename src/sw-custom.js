@@ -16,7 +16,8 @@ const PRECACHE = self.__WB_MANIFEST || [];
 /** Injecté au build (vite `define __AFRW_SW_VERSION__`) */
 const SW_VERSION =
   typeof __AFRW_SW_VERSION__ !== 'undefined' ? __AFRW_SW_VERSION__ : 'afw-local';
-const FEED_PREFETCH_LIMIT = 4;
+const FEED_ASSET_PREFETCH_BATCH_LIMIT = 12;
+const FEED_MANIFEST_SEGMENT_PREFETCH_LIMIT = 24;
 const VIDEO_CACHE_MAX_ENTRIES = 60;
 const IMAGE_CACHE_MAX_ENTRIES = 120;
 const inflightWarmups = new Set();
@@ -120,7 +121,7 @@ async function warmCacheUrl(rawUrl, cacheName) {
   }
 }
 
-async function warmManifestAndSegments(manifestUrl, depth = 0) {
+async function warmManifestAndSegments(manifestUrl, depth = 0, segmentLimit = FEED_MANIFEST_SEGMENT_PREFETCH_LIMIT) {
   if (!manifestUrl || depth > 1) return;
 
   const manifestResponse = await warmCacheUrl(manifestUrl, VIDEO_CACHE);
@@ -133,13 +134,13 @@ async function warmManifestAndSegments(manifestUrl, depth = 0) {
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line && !line.startsWith('#'))
-      .slice(0, FEED_PREFETCH_LIMIT);
+      .slice(0, Math.max(1, segmentLimit));
 
     await Promise.all(
       segmentUrls.map((entry) => {
         const resolved = new URL(entry, manifestBase).toString();
         if (/\.m3u8(\?|$)/i.test(resolved)) {
-          return warmManifestAndSegments(resolved, depth + 1);
+          return warmManifestAndSegments(resolved, depth + 1, segmentLimit);
         }
         return warmCacheUrl(resolved, VIDEO_CACHE);
       })
@@ -231,7 +232,7 @@ self.addEventListener('message', (event) => {
     const assets = Array.isArray(event.data.assets) ? event.data.assets : [];
     event.waitUntil(
       Promise.all(
-        assets.slice(0, FEED_PREFETCH_LIMIT).map(async (asset) => {
+        assets.slice(0, FEED_ASSET_PREFETCH_BATCH_LIMIT).map(async (asset) => {
           const posterUrl = asset?.posterUrl;
           const videoUrl = asset?.videoUrl;
           const manifestUrl = asset?.manifestUrl;
@@ -242,7 +243,8 @@ self.addEventListener('message', (event) => {
             warmed = warmed || !!posterResponse;
           }
           if (manifestUrl) {
-            await warmManifestAndSegments(manifestUrl);
+            const segmentPrefetchLimit = Number(asset?.segmentPrefetchLimit) || FEED_MANIFEST_SEGMENT_PREFETCH_LIMIT;
+            await warmManifestAndSegments(manifestUrl, 0, segmentPrefetchLimit);
             warmed = true;
           } else if (videoUrl) {
             const videoResponse = await warmCacheUrl(videoUrl, VIDEO_CACHE);
