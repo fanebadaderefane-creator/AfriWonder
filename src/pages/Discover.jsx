@@ -17,7 +17,6 @@ import {
   GraduationCap,
   Hash,
   Laugh,
-  Loader2,
   Music2,
   Search,
   Shirt,

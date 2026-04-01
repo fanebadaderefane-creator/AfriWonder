@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { Network } from '@capacitor/network';
 
 export const useNetworkStatus = () => {
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -28,27 +27,12 @@ export const useNetworkStatus = () => {
       connectionCleanup = () => connection.removeEventListener('change', onConnectionChange);
     }
 
-    // Capacitor Network — prioritaire en contexte natif (Super App Mali)
-    let networkListener;
-    Network.getStatus().then((status) => {
-      setIsOnline(status.connected);
-    }).catch(() => {});
-
-    Network.addListener('networkStatusChange', (status) => {
-      setIsOnline(status.connected);
-    }).then((listener) => {
-      networkListener = listener;
-    }).catch(() => {});
-
     return () => {
       if (typeof window !== 'undefined') {
         window.removeEventListener('online', onOnline);
         window.removeEventListener('offline', onOffline);
       }
       if (connectionCleanup) connectionCleanup();
-      if (networkListener) {
-        networkListener.remove();
-      }
     };
   }, []);
 

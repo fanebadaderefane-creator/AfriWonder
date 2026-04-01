@@ -16,9 +16,7 @@ function run(cmd, cwd, optional = false) {
 
 run('npm install', root);
 run('npm install', path.join(root, 'backend'));
-run('npm install', path.join(root, 'mobile-afriwonder'));
-
-const goDir = path.join(root, 'backend-go');
-if (fs.existsSync(path.join(goDir, 'go.mod'))) {
-  run('go mod tidy', goDir, true);
+const flutterAppDir = path.join(root, 'flutter_app');
+if (fs.existsSync(path.join(flutterAppDir, 'pubspec.yaml'))) {
+  run('flutter pub get', flutterAppDir, true);
 }

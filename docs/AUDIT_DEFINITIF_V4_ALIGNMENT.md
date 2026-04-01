@@ -11,7 +11,7 @@ Ce fichier sert de **table de correspondance** entre les exigences de l’audit 
 | Domaine | État global | Commentaire court |
 |--------|-------------|---------------------|
 | PWA / build / deps | Partiel | `lodash`/`moment`/`three` retirés ; bundle encore volumineux ; objectif &lt;500 KB gzip reste à mesurer et à poursuivre. |
-| App bootstrap | Partiel | Thème maison, `CORE_ROUTE_PRELOADS` à 3, splash logo, ErrorBoundary ; préchargements / Capacitor à rationaliser. |
+| App bootstrap | Partiel | Thème maison, `CORE_ROUTE_PRELOADS` à 3, splash logo, ErrorBoundary ; préchargements à rationaliser. |
 | Feed vidéo | Divergence + partiel | L’audit propose 3 couches (skeleton → thumb → vidéo) ; le produit a privilégié **frame réelle du décodeur** sans faux calque (voir règles Cursor). Préchargement N+1/N+2 en place. |
 | Messagerie | Partiel | Socket global, compression images, CDC hub ; ticks / présence / DOMPurify partout à compléter. |
 | Offline / SW | Partiel | SW versionnée, OAuth exclu, LRU vidéo / images, fallback ; fusion offline déjà engagée. |
@@ -29,7 +29,7 @@ Ce fichier sert de **table de correspondance** entre les exigences de l’audit 
 | Remplacer `next-themes` | **Fait** | `AfriWonderThemeProvider` (`src/lib/afriwonder-theme.jsx`). |
 | Réduire routes préchargées | **Partiel** | `CORE_ROUTE_PRELOADS = ['Discover', 'Profile', 'Inbox']` (3). Vérifier qu’il n’y a pas d’autre préchargement massif ailleurs. |
 | Ne pas re-lire les tokens à chaque navigation | **À faire** | `AuthContext` / stockage : l’audit vise moins d’appels async ; à profiler. |
-| `CapApp.getInfo()` pas à chaque navigation | **À faire** | `AndroidBackButtonHandler` : mémoriser la plateforme une fois. |
+| Éviter les lectures plateforme inutiles à chaque navigation | **Fait** | Suppression de l’ancienne logique native et maintien d’un flux PWA web-only. |
 | ErrorBoundary global | **Partiel** | `ErrorBoundary` présent ; vérifier couverture racine + message type audit. |
 | Bannières offline / lent | **À faire** | Lazy mount si `!navigator.onLine` (ou équivalent). |
 

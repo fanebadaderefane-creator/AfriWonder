@@ -1,27 +1,25 @@
-import { Haptics, ImpactStyle } from '@capacitor/haptics';
-
-const isCapacitorEnv = () => typeof window !== 'undefined' && !!window.Capacitor;
+const canVibrate = () => typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
 
 export async function impactLight() {
-  if (!isCapacitorEnv()) return;
+  if (!canVibrate()) return;
   try {
-    await Haptics.impact({ style: ImpactStyle.Light });
+    navigator.vibrate(10);
   } catch {
-    // pas de crash si haptics indisponible
+    // no-op
   }
 }
 
 export async function impactMedium() {
-  if (!isCapacitorEnv()) return;
+  if (!canVibrate()) return;
   try {
-    await Haptics.impact({ style: ImpactStyle.Medium });
+    navigator.vibrate(20);
   } catch {}
 }
 
 export async function impactHeavy() {
-  if (!isCapacitorEnv()) return;
+  if (!canVibrate()) return;
   try {
-    await Haptics.impact({ style: ImpactStyle.Heavy });
+    navigator.vibrate(35);
   } catch {}
 }
 

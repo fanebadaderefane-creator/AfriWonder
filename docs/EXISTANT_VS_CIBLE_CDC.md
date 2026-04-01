@@ -45,7 +45,7 @@
 | 30 | Admin (utilisateurs, contenus, signalements, stats) | `admin`, `moderation`, `businessIntelligence`, `aiEngine` | AdminPage, AdminDashboard, ModerationDashboard |
 | 31 | IA (reco, modération auto, traduction, assistant) | `aiEngine`, `ai` (assistant) | Assistant |
 | 32 | Multilingue (fr, en, arabe, langues africaines) | — | Language, TranslationProvider |
-| 33 | Plateformes (Android, iOS, web) | — | PWA (web) ; **mobile-afriwonder (React Native / Expo, Android + iOS)** |
+| 33 | Plateformes (Android, iOS, web) | — | PWA (web) ; **flutter_app (Flutter, Android + iOS)** |
 
 ---
 
@@ -61,4 +61,4 @@
 
 Avec cette plateforme, un utilisateur peut : **discuter**, **publier**, **regarder des vidéos**, **écouter de la musique**, **vendre et acheter**, **payer**, **apprendre**, **jouer**, **travailler**, **voyager** — **le tout dans une seule application.**
 
-L’existant (Node/Express + React PWA + React Native mobile) couvre déjà une grande partie du CDC ; les écarts principaux concernent le voyage (20), la carte enrichie (21), le cloud personnel dédié (24), et l’IA côté front (31). Cible long terme : `docs/VISION_ET_ARCHITECTURE_CIBLE.md`. Voyage (20) et Cloud (24) : implémentés (backend + frontend).
+L’existant (Node/Express + React PWA + Flutter mobile) couvre déjà une grande partie du CDC ; les écarts principaux concernent le voyage (20), la carte enrichie (21), le cloud personnel dédié (24), et l’IA côté front (31). Cible long terme : `docs/VISION_ET_ARCHITECTURE_CIBLE.md`. Voyage (20) et Cloud (24) : implémentés (backend + frontend).

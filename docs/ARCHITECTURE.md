@@ -2,7 +2,19 @@
 
 ## Vue d'ensemble
 
-AfriWonder est une super-app vidéo africaine construite avec React, Vite, et un backend Express/Prisma.
+AfriWonder est une super-app vidéo africaine construite avec une PWA React/Vite, une application Flutter et un backend Node.js/Express/Prisma.
+
+## Diagramme cible
+
+```mermaid
+flowchart TD
+  A[PWA React/Vite] --> B[API Node/Express]
+  C[Flutter iOS/Android] --> B
+  B --> D[PostgreSQL]
+  B --> E[Redis]
+  B --> F[R2/S3 Assets]
+  B --> G[Agora Live]
+```
 
 ## Stack Technique
 
@@ -19,6 +31,10 @@ AfriWonder est une super-app vidéo africaine construite avec React, Vite, et un
 - **Express** - API REST
 - **Prisma** - ORM et base PostgreSQL
 - **Functions TypeScript** - Logique métier (functions/)
+- **Primary backend**: `backend/` (Node.js)
+
+### Mobile
+- **Flutter** (`flutter_app/`) - client mobile iOS/Android (stratégie cible mobile)
 
 ## Structure du Projet
 
@@ -43,6 +59,12 @@ functions/           # Backend functions (TypeScript)
 ├── payments.ts
 ├── videoEncoding.ts
 └── ...
+
+flutter_app/         # Application Flutter iOS/Android
+├── lib/
+├── android/
+├── ios/
+└── pubspec.yaml
 ```
 
 ## Flux de Données

@@ -6,7 +6,7 @@ Build the mobile app with Flutter (single codebase iOS/Android) while reusing th
 
 ## Scope
 
-- Mobile client: Flutter (`mobile_flutter`)
+- Mobile client: Flutter (`flutter_app`)
 - Backend: existing Express/Prisma API (`backend`)
 - Reuse existing auth, feed, upload, social, messaging endpoints where compatible
 - Add only missing APIs for mobile-specific features

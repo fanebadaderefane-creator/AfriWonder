@@ -16,7 +16,7 @@ Un seul dépôt avec tous les services et apps. Avantages : refactors cross-serv
 afriwonder/
 ├── apps/
 │   ├── web/                 # PWA Next.js ou Vite/React
-│   ├── mobile/              # React Native (Expo) ou Flutter
+│   ├── mobile/              # Flutter
 │   └── api-gateway/         # Kong config ou custom gateway (Node/Go)
 ├── services/
 │   ├── auth/
@@ -85,7 +85,7 @@ AfriWonder/
 │   │   ├── services/
 │   │   ├── middleware/
 │   │   └── ...
-├── mobile-afriwonder/       # App mobile
+├── flutter_app/             # App mobile Flutter
 ├── sdk/afriwonder-miniapp-sdk/
 ├── docs/
 ├── docker-compose*.yml

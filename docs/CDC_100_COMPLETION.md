@@ -110,7 +110,7 @@ Le CDC prévoit des apps Android/iOS. La PWA actuelle fournit :
 - Mode hors ligne (favoris) ✅
 - Notifications push ✅
 
-Pour des apps natives : voir `docs/PWA_LAUNCH_CHECKLIST.md` et possibilité d’export Capacitor/TWA pour Android.
+Pour des apps natives : voir `flutter_app/` (stratégie Flutter officielle) et `docs/FLUTTER_MIGRATION_PLAN.md`.
 
 ---
 

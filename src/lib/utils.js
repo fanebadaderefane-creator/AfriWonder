@@ -66,20 +66,11 @@ export function isMobileOrPWA() {
 }
 
 /**
- * Détecte si l'app tourne dans Capacitor (WebView native iOS/Android).
- * Option 3 : permet d'activer des comportements "native-like" (ex: vidéo type TikTok).
- */
-export function isCapacitor() {
-  if (typeof window === 'undefined') return false;
-  return !!(window.Capacitor || window.capacitor);
-}
-
-/**
  * Environnement où l'autoplay avec son est bloqué (PWA, mobile, standalone).
  * Pour que la vidéo démarre automatiquement comme TikTok, il faut démarrer en muet.
  */
 export function isStrictAutoplayEnvironment() {
-  return isMobileOrPWA() || isCapacitor();
+  return isMobileOrPWA();
 }
 
 /**
