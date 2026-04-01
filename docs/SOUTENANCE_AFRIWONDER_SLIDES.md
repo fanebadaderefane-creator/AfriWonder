@@ -25,7 +25,7 @@
 **Points :**
 - Aujourd’hui : les Africains utilisent massivement Facebook, TikTok, YouTube, WhatsApp
 - Risque : si ces plateformes deviennent inaccessibles, peu d’alternatives **par et pour** les Africains
-- Notre réponse : une plateforme numérique africaine tout-en-un pour valoriser les créateurs, faciliter la communication et soutenir l’économie numérique locale
+- Notre réponse : une plateforme numérique africaine tout-en-un pour valoriser les créateurs, faciliter la communication et soutenir l’économie numérique localew
 
 ---
 
@@ -129,7 +129,7 @@
 **Points :**
 - Bilan : super-app complète (vidéo, marketplace, services, finance) avec stack moderne et UX adaptée (PWA, mobile, connexions lentes)
 - Compétences : full-stack, architecture, API, BDD, temps réel, tests
-- Perspectives : React Native (Expo), backend Golang, partenariats Orange Money / Wave / MTN
+- Perspectives : Flutter mobile, optimisation backend Node.js, partenariats Orange Money / Wave / MTN
 
 ---
 

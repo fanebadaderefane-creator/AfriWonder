@@ -35,5 +35,14 @@ test-results
 
 .env
 
-# Flutter supprimé — mobile = React Native (mobile-afriwonder)
-flutter-afriwonder/
+# Legacy mobile folders removed (audit cleanup)
+mobile-afriwonder/
+mobile/
+mobile_flutter/
+experimental-backend-go/
+
+# Signatures Android Play Store (ne jamais commiter)
+android/keystore.properties
+android/*.keystore
+android/*.jks
+*.jks

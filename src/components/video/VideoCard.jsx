@@ -2105,7 +2105,7 @@ function VideoCardContent({
             }}
             alt=""
             decoding="async"
-            fetchpriority={isActive ? 'high' : 'low'}
+            fetchPriority={isActive ? 'high' : 'low'}
             onError={() => setPosterDisplayUrl(VIDEO_PLACEHOLDER_IMG)}
           />
         )}

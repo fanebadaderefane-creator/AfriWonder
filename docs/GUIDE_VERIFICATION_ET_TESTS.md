@@ -120,7 +120,7 @@ Après connexion, utiliser le `accessToken` dans `Authorization: Bearer <token>`
 
 ## 6. Mobile (Expo)
 
-- Démarrer : `cd mobile-afriwonder && npx expo start`
+- Démarrer : `cd flutter_app && flutter run`
 - Configurer `EXPO_PUBLIC_API_URL` (ex. `http://localhost:3000` ou l’IP de la machine pour appareil réel)
 - Tester : Inbox, Groupes, Créer un groupe, GroupChat, Search, lecture vidéo (hls_url si disponible)
 

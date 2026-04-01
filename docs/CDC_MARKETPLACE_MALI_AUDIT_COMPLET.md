@@ -167,7 +167,7 @@
 | Composant CDC | AfriWonder |
 |---------------|------------|
 | Frontend : React + responsive (Tailwind) | ✅ React, Tailwind |
-| Apps mobiles natives | ⚠️ PWA uniquement ; pas de React Native/Flutter |
+| Apps mobiles natives | ⚠️ PWA active ; extension native prévue via Flutter |
 | Backend Node.js (Express) | ✅ |
 | PostgreSQL + Redis | ✅ Prisma, Redis pour rate limit |
 | Stockage fichiers (S3/R2) | ✅ cloudflare-r2 |
@@ -242,10 +242,10 @@
 | Mode sombre | ✅ Settings > Apparence |
 
 ### Éléments optionnels (post-MVP)
-- **Apps mobiles natives** : PWA suffisante ; React Native/Flutter selon stratégie.
+- **Apps mobiles natives** : PWA suffisante pour le MVP ; Flutter selon stratégie.
 - **Elasticsearch** : PostgreSQL full-text suffisant pour MVP.’
 ### Priorité moyenne (P1)
-4. **Applications mobiles natives** : si exigé par le CDC, prévoir React Native ou Flutter.
+4. **Applications mobiles natives** : si exigé par le CDC, prévoir Flutter.
 
 ### Priorité basse (P2)
 1. **Recherche Elasticsearch/Algolia** : si volumétrie importante.

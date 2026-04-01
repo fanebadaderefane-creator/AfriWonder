@@ -3411,7 +3411,6 @@ export default function GroupChat() {
               src={voiceDraft.objectUrl}
               className="hidden"
               preload="metadata"
-              playsInline
               onPlay={() => setPreviewPlaying(true)}
               onPause={() => setPreviewPlaying(false)}
               onEnded={() => setPreviewPlaying(false)}

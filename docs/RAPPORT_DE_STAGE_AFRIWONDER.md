@@ -399,7 +399,7 @@ Le projet contient déjà des documentations (par ex. `docs/DOCKER_DEPLOY.md`, `
 
 - **Bilan :** Conception et développement d’une super-app complète (vidéo, marketplace, services, finance, contenu) avec une stack moderne (React, Vite, Express, Prisma, PostgreSQL) et une attention à l’UX (PWA, mobile, connexions lentes). Le projet AfriWonder démontre qu’il est possible de concevoir une plateforme numérique africaine tout-en-un, depuis l’architecture jusqu’aux fonctionnalités métier, en justifiant les choix techniques et en préparant le déploiement.
 - **Compétences mobilisées :** développement full-stack, architecture logicielle, base de données, API REST, temps réel (WebSockets), tests, documentation.
-- **Perspectives :** passage possible vers React Native (Expo) pour des applications natives, backend Golang pour la scalabilité, déploiement en production (Docker, Nginx, cloud), et partenariats avec les acteurs des paiements mobiles (Orange Money, Wave, MTN).
+- **Perspectives :** montée en puissance de l’app Flutter mobile, scalabilité continue du backend Node.js, déploiement en production (Docker, Nginx, cloud), et partenariats avec les acteurs des paiements mobiles (Orange Money, Wave, MTN).
 
 ---
 
@@ -420,7 +420,7 @@ Le projet contient déjà des documentations (par ex. `docs/DOCKER_DEPLOY.md`, `
 | Question type | Piste de réponse |
 |---------------|------------------|
 | **Pourquoi React et pas Vue ou Angular ?** | Écosystème très riche, composants réutilisables, bonne adéquation avec une app à nombreuses pages ; équipe / communauté React ; Vite optimise le build. |
-| **Pourquoi une PWA et pas une app native ?** | Une seule codebase web ; déploiement sans store ; mises à jour immédiates ; adapté aux connexions intermittentes (cache). L’évolution vers React Native (Expo) est prévue pour du natif si besoin. |
+| **Pourquoi une PWA et pas une app native ?** | Une seule codebase web ; déploiement sans store ; mises à jour immédiates ; adapté aux connexions intermittentes (cache). L’extension native officielle est portée par Flutter si nécessaire. |
 | **Comment gérez-vous la scalabilité ?** | API stateless (JWT), base PostgreSQL avec index et migrations, possibilité de cache Redis, CDN pour les médias ; architecture prête pour séparer services et base en production. |
 | **Sécurité : comment protégez-vous les données ?** | JWT avec refresh token, mots de passe hashés, validation des entrées (Zod), CORS configuré ; en production : HTTPS, variables d’environnement pour les secrets. |
 | **Pourquoi PostgreSQL et pas MongoDB ?** | Données fortement relationnelles (utilisateurs, commandes, produits, transactions) ; besoin de cohérence ACID ; Prisma permet d’évoluer le schéma proprement avec des migrations. |

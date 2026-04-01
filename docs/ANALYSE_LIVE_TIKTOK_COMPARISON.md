@@ -137,7 +137,7 @@
 #### 15. **Streaming Mobile Natif**
 **Manquant :** Seulement web browser
 **Solution TikTok :** App mobile avec streaming natif
-**Complexité :** Très élevée (nécessite app React Native/Flutter)
+**Complexité :** Très élevée (nécessite app Flutter native)
 
 #### 16. **Analytics Avancés**
 **Manquant :** Analytics basiques

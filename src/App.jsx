@@ -7,7 +7,6 @@ import NavigationTracker from '@/lib/NavigationTracker'
 import { pagesConfig, preloadPages } from './pages.config.glob'
 import { BrowserRouter as Router, Route, Routes, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useEffect, Suspense, useRef } from 'react';
-import { App as CapApp } from '@capacitor/app';
 import { getAccessToken, getRefreshToken } from '@/lib/secureTokenStorage';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
@@ -224,48 +223,6 @@ const AuthenticatedApp = () => {
   );
 };
 
-// Une seule promesse getInfo pour éviter les appels doublons (Strict Mode / remontages).
-let capacitorPlatformPromise = null;
-function getCapacitorPlatformOnce() {
-  if (!capacitorPlatformPromise) {
-    capacitorPlatformPromise = CapApp.getInfo().catch(() => ({ platform: 'web' }));
-  }
-  return capacitorPlatformPromise;
-}
-
-// Gestion du bouton "Retour" Android (Capacitor App)
-const AndroidBackButtonHandler = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const pathRef = useRef(location.pathname);
-  pathRef.current = location.pathname;
-
-  useEffect(() => {
-    let remove;
-    let cancelled = false;
-    getCapacitorPlatformOnce().then((info) => {
-      if (cancelled || info.platform !== 'android') return;
-      remove = CapApp.addListener('backButton', ({ canGoBack }) => {
-        if (canGoBack && pathRef.current !== '/') {
-          navigate(-1);
-        } else {
-          CapApp.exitApp();
-        }
-      });
-    });
-
-    return () => {
-      cancelled = true;
-      if (remove && typeof remove.remove === 'function') {
-        remove.remove();
-      }
-    };
-  }, [navigate]);
-
-  return null;
-};
-
-
 function App() {
   useEffect(() => {
     const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
@@ -302,7 +259,6 @@ function App() {
               <AdminProvider>
                 <Router>
                   <TranslationProvider>
-                    <AndroidBackButtonHandler />
                     <OfflineBanner />
                     <SlowConnectionBanner />
                     <PWAUpdateToast />

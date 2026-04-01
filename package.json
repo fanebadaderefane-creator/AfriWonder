@@ -1,7 +1,7 @@
 {
   "name": "afriwonder-app",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "install:all": "node scripts/install-all.cjs",
@@ -49,19 +49,9 @@
     "verify-persistence": "node scripts/verify-persistence.js",
     "pre-production-checklist": "node scripts/pre-production-checklist.js",
     "test-pwa": "node scripts/test-pwa.js",
-    "test-server": "node scripts/start-test-server.js",
-    "build:cap": "npm run build && npx cap sync",
-    "cap:sync": "npx cap sync",
-    "cap:open:android": "npx cap open android",
-    "cap:open:ios": "npx cap open ios"
+    "test-server": "node scripts/start-test-server.js"
   },
   "dependencies": {
-    "@capacitor/app": "^6.0.3",
-    "@capacitor/core": "^6.0.0",
-    "@capacitor/haptics": "^6.0.3",
-    "@capacitor/network": "^6.0.4",
-    "@capacitor/preferences": "^6.0.4",
-    "@capacitor/push-notifications": "^6.0.0",
     "@hello-pangea/dnd": "^17.0.0",
     "@hookform/resolvers": "^4.1.2",
     "@radix-ui/react-accordion": "^1.2.3",
@@ -136,9 +126,6 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@capacitor/android": "^6.0.0",
-    "@capacitor/cli": "^6.0.0",
-    "@capacitor/ios": "^6.0.0",
     "@eslint/js": "^9.19.0",
     "@lhci/cli": "^0.14.0",
     "@playwright/test": "^1.58.2",

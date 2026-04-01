@@ -1,6 +1,6 @@
 # Vision & architecture cible — AfriWonder
 
-**Couleur de l’application : BLEU** Stack cible : React Native (Expo), Golang, PostgreSQL+Cassandra, Redis, Elasticsearch, Python (IA), HLS+CDN, AWS/GCP. Tokens : `docs/DESIGN_TOKENS_UI.md`.
+**Couleur de l’application : BLEU** Stack cible : React PWA, Flutter, Node.js/Express, PostgreSQL, Redis, Python (IA), HLS+CDN, AWS/GCP. Tokens : `docs/DESIGN_TOKENS_UI.md`.
 
 Ce document fixe la vision produit, le modèle économique, le cahier des charges global et **l’architecture technique cible** (objectif long terme).
 
@@ -70,8 +70,8 @@ Marché considérable pour une plateforme locale.
 
 | Couche | Technologie |
 |--------|-------------|
-| **Mobile** | **React Native (Expo)** (Android + iOS) — voir `mobile-afriwonder/` |
-| **Backend** | **Golang** |
+| **Mobile** | **Flutter** (Android + iOS) — voir `flutter_app/` |
+| **Backend** | **Node.js / Express** (backend actif `backend/`) |
 | **Base de données** | **PostgreSQL** + **Cassandra** |
 | **Cache** | **Redis** |
 | **Recherche** | **Elasticsearch** |
@@ -79,7 +79,7 @@ Marché considérable pour une plateforme locale.
 | **Streaming** | **HLS** + **CDN** |
 | **Cloud** | **Amazon Web Services** ou **Google Cloud** |
 
-**Mobile officiel :** React Native (Expo) — voir `mobile-afriwonder/`. Web : PWA React. Backend actuel : Node/Express (une seule API pour PWA et mobile).
+**Mobile officiel :** Flutter — voir `flutter_app/`. Web : PWA React. Backend actuel : Node/Express (une seule API pour PWA et mobile).
 
 ---
 

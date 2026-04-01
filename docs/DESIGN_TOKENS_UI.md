@@ -1,6 +1,6 @@
 # Design tokens UI — AfriWonder (Web + Mobile)
 
-Cohérence visuelle entre la PWA (`src/`) et l’app React Native (`mobile-afriwonder/`). **Couleur de l'application complète : BLEU.** Vision et CDC : `docs/VISION_ET_ARCHITECTURE_CIBLE.md`.
+Cohérence visuelle entre la PWA (`src/`) et l’app Flutter (`flutter_app/`). **Couleur de l'application complète : BLEU.** Vision et CDC : `docs/VISION_ET_ARCHITECTURE_CIBLE.md`.
 
 ## Couleurs
 

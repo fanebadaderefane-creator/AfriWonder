@@ -29,13 +29,14 @@
 
 ## 🎯 Vue d'ensemble
 
-AfriWonder est une **super-app** développée pour le marché africain, combinant :
+AfriWonder est une **super-app** développée pour le marché africain.
+
+Le périmètre **MVP actif** est :
 
 - **Vidéo sociale** (style TikTok) avec feed, live streaming, stories
 - **Marketplace e-commerce** avec paiements mobiles (Orange Money, Wave, MTN, Stripe)
-- **Services** (réservation, transport, livraison alimentaire)
-- **Finance** (microcrédit, crowdfunding)
-- **Éducation, emploi, civic** (pétitions, campagnes)
+
+Les autres verticales (transport, food, santé, immobilier, finance avancée, civic, etc.) sont en **roadmap phase 2+**.
 
 Le projet est **monorepo** : frontend (React/Vite) à la racine, backend (Express/Prisma) dans `backend/`.
 
@@ -48,15 +49,7 @@ Le projet est **monorepo** : frontend (React/Vite) à la racine, backend (Expres
 | 📹 **Vidéo** | Feed, upload, likes, commentaires, playlists, challenges |
 | 📺 **Live** | Streaming avec dons, cadeaux, abonnements créateurs |
 | 🛒 **Marketplace** | Produits, panier, checkout, vendeurs, paiements |
-| 💼 **Services** | Réservation, prestataires, disponibilités |
-| 🚗 **Transport** | Courses, chauffeurs |
-| 🍔 **Food** | Restaurants, menus, livraison |
-| 🏥 **Télémedecine** | Rendez-vous, pharmacie |
-| 🏘️ **Immobilier** | Propriétés, annonces |
-| 🎫 **Billettirie** | Événements, billets |
-| 💳 **Finance** | Wallet, microcrédit, crowdfunding |
-| 📰 **Contenu** | Actualités, cours, emplois, civic |
-| 🎮 **Gamification** | Badges, points, leaderboard |
+| 🗺️ **Phase 2+** | Transport, food, santé, immobilier, finance avancée, civic, gamification |
 
 ---
 
@@ -185,7 +178,7 @@ Le projet utilise **deux fichiers** `.env` : un pour le frontend, un pour le bac
 
 #### A. Frontend (racine du projet)
 
-Créer `.env.local` à la racine (si vous n’avez pas de `.env.example`, créez le fichier manuellement) :
+Créer `.env.local` à la racine à partir de `.env.example` :
 
 Éditer `.env.local` et remplir au minimum :
 
@@ -215,7 +208,7 @@ VITE_TURN_CREDENTIAL=motdepassefort
 Créer `backend/.env` :
 
 ```bash
-# (si vous n’avez pas de backend/.env.example, créez le fichier manuellement)
+# Copier backend/.env.example vers backend/.env puis compléter les valeurs
 ```
 
 Éditer `backend/.env` avec les valeurs **minimales** pour le développement :

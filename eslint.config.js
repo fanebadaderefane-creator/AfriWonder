@@ -6,13 +6,7 @@ import pluginUnusedImports from "eslint-plugin-unused-imports";
 
 export default [
   {
-    // Le dossier "mobile-afriwonder" contient des fichiers .js avec JSX
-    // mais n'est pas dans le scope de lint de l'application PWA.
-    ignores: ["mobile-afriwonder/**"],
-  },
-  {
-    // Le dossier "mobile" contient aussi des fichiers .js avec JSX (base React Native),
-    // on l'exclut du lint du web.
+    // Dossiers legacy exclus du lint web.
     ignores: ["mobile/**"],
   },
   {

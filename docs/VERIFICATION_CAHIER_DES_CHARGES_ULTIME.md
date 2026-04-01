@@ -45,9 +45,9 @@ Le projet AfriWonder couvre **la Phase 1 (MVP) et une grande partie de la Phase 
 
 | Composant CDC | Statut | Détail projet |
 |---------------|--------|----------------|
-| **Clients web / mobile** | ✅ | Vite PWA (React) + Expo/React Native (mobile-afriwonder) |
+| **Clients web / mobile** | ✅ | Vite PWA (React) + Flutter (`flutter_app`) |
 | **API Gateway** | ⚠️ | Express comme API unique ; pas de gateway dédié type Kong/AWS API GW |
-| **Microservices** | ⚠️ | Monolithe modulaire (routes/services par domaine) ; backend-go minimal en parallèle |
+| **Microservices** | ⚠️ | Monolithe modulaire (routes/services par domaine) ; backend Node principal |
 | **Auth, Users, Content, Video, Messaging, Payments, Marketplace, Search, Notifications, AI, Moderation** | ✅ | Tous présents sous forme de routes + services (Express + Prisma) |
 | **Data layer (SQL, NoSQL, Cache, Object Storage)** | ✅ / ⚠️ | PostgreSQL (Prisma), Redis optionnel (rate limit, Socket.io), pas de NoSQL/Cassandra ni Elasticsearch en prod dans le repo |
 
@@ -57,7 +57,7 @@ Le projet AfriWonder couvre **la Phase 1 (MVP) et une grande partie de la Phase 
 
 | CDC | Statut | Détail |
 |-----|--------|--------|
-| **Mobile** (React Native / Flutter) | ✅ | Expo/React Native (`mobile-afriwonder`) |
+| **Mobile** (Flutter) | ✅ | Flutter (`flutter_app`) |
 | **Web** (Next.js / PWA) | ✅ | Vite + React + PWA (vite-plugin-pwa), pas Next.js |
 
 ---
