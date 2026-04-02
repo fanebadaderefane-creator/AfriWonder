@@ -11,15 +11,10 @@ import { getAbsoluteImageUrl, MARKETPLACE_PLACEHOLDER_IMG } from '@/lib/utils';
 import BottomNav from '@/components/navigation/BottomNav';
 import { useMarketplaceCurrency } from '@/contexts/MarketplaceCurrencyContext';
 
-function formatPrice(amount, currency) {
-  if (currency?.code) return `${Number(amount).toFixed(0)} ${currency.code}`;
-  return `${Number(amount).toFixed(0)}`;
-}
-
 export default function GroupBuys() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
-  const { currency } = useMarketplaceCurrency();
+  const { formatPrice } = useMarketplaceCurrency();
 
   useEffect(() => {
     api.auth.me().then(setUser).catch(() => navigate(createPageUrl('Landing')));
@@ -68,7 +63,7 @@ export default function GroupBuys() {
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{product.name}</p>
                       <p className="text-sm text-gray-500">{totalQty} / {g.min_quantity} participants</p>
-                      <p className="text-sm font-semibold text-blue-600">{formatPrice(product.price, currency)} × {g.my_quantity || 1}</p>
+                      <p className="text-sm font-semibold text-blue-600">{formatPrice(product.price)} × {g.my_quantity || 1}</p>
                     </div>
                   </Card>
                 </li>

@@ -19,6 +19,34 @@ try {
   VitePWA = require('vite-plugin-pwa').VitePWA
 } catch (_) {}
 
+let viteCompression = null
+try {
+  viteCompression = require('vite-plugin-compression')
+} catch (_) {}
+
+/** Audit p.13 : preconnect API + CDN fonts — réduit latence connexion (LCP / TTFB perçu). */
+function auditResourceHintsPlugin() {
+  const name = 'afw-audit-resource-hints'
+  return {
+    name,
+    transformIndexHtml(html) {
+      const lines = []
+      const api = process.env.VITE_API_URL || ''
+      if (api && /^https?:\/\//i.test(api)) {
+        try {
+          const u = new URL(api)
+          lines.push(`<link rel="preconnect" href="${u.origin}" crossorigin />`)
+          lines.push(`<link rel="dns-prefetch" href="${u.origin}" />`)
+        } catch (_e) {}
+      }
+      lines.push(`<link rel="dns-prefetch" href="https://fonts.googleapis.com" />`)
+      lines.push(`<link rel="dns-prefetch" href="https://fonts.gstatic.com" />`)
+      const inject = lines.length ? `${lines.join('\n    ')}\n    ` : ''
+      return html.replace('<head>', `<head>\n    ${inject}`)
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   define: {
@@ -50,6 +78,7 @@ export default defineConfig({
     },
   },
   plugins: [
+    auditResourceHintsPlugin(),
     react({
       jsxRuntime: 'automatic',
     }),
@@ -72,7 +101,8 @@ export default defineConfig({
         display: 'standalone',
         display_override: ['standalone', 'minimal-ui'],
         background_color: '#000000',
-        theme_color: '#f97316',
+        // Charte demandée par le client projet: conserver le bleu AfriWonder (pas orange)
+        theme_color: '#2563eb',
         orientation: 'portrait',
         scope: '/',
         icons: [
@@ -133,6 +163,22 @@ export default defineConfig({
         enabled: false,
       },
     })] : []),
+    ...(viteCompression
+      ? [
+          viteCompression({
+            algorithm: 'gzip',
+            ext: '.gz',
+            threshold: 1024,
+            deleteOriginFile: false,
+          }),
+          viteCompression({
+            algorithm: 'brotliCompress',
+            ext: '.br',
+            threshold: 1024,
+            deleteOriginFile: false,
+          }),
+        ]
+      : []),
   ],
   // PWA Configuration
   build: {
@@ -142,15 +188,29 @@ export default defineConfig({
         manualChunks: (id) => {
           if (id.includes('node_modules')) {
             if (id.includes('recharts')) return 'recharts-vendor';
-            if (id.includes('react-dom') || id.includes('react/') || id.includes('react-router')) return 'react-vendor';
-            if (id.includes('@tanstack/react-query')) return 'query-vendor';
             if (id.includes('@radix-ui')) return 'ui-vendor';
+            if (id.includes('@tanstack/react-query')) return 'query-vendor';
             if (id.includes('framer-motion')) return 'framer-vendor';
+            // Keep react core in its own chunk; avoid matching unrelated packages like @radix-ui/react-*
+            if (
+              id.includes('/node_modules/react/') ||
+              id.includes('/node_modules/react-dom/') ||
+              id.includes('/node_modules/react-router/') ||
+              id.includes('/node_modules/react-router-dom/')
+            ) {
+              return 'react-vendor';
+            }
             if (id.includes('hls.js')) return 'video-vendor';
             if (id.includes('agora-rtc-sdk')) return 'agora-vendor';
             if (id.includes('/three/') || id.includes('node_modules/three')) return 'three-vendor';
             if (id.includes('@stripe')) return 'stripe-vendor';
             if (id.includes('axios')) return 'axios-vendor';
+            if (id.includes('lucide-react')) return 'lucide-vendor';
+            if (id.includes('dompurify')) return 'dompurify-vendor';
+            if (id.includes('react-markdown')) return 'markdown-vendor';
+            if (id.includes('socket.io-client')) return 'socket-vendor';
+            if (id.includes('embla-carousel')) return 'embla-vendor';
+            if (id.includes('@hello-pangea/dnd')) return 'dnd-vendor';
           }
         },
       },

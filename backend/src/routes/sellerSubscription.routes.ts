@@ -2,10 +2,13 @@ import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import sellerSubscriptionService from '../services/sellerSubscription.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // POST /api/seller-subscription/subscribe — S'abonner à un tier payant (wallet ou Orange Money)
-router.post('/subscribe', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/subscribe', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { tier, payment_method, orange_money_phone } = req.body;

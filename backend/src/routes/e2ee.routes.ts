@@ -3,12 +3,15 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import e2eeService from '../services/e2ee.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 router.use(authenticate);
 
 // POST /api/e2ee/devices/register
-router.post('/devices/register', async (req: AuthRequest, res, next) => {
+router.post('/devices/register', validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await e2eeService.registerDevice(req.user!.id, req.body || {});
     res.status(201).json({ success: true, data: result });
@@ -38,7 +41,7 @@ router.get('/devices/public/:userId', async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/e2ee/prekeys/upload
-router.post('/prekeys/upload', async (req: AuthRequest, res, next) => {
+router.post('/prekeys/upload', validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await e2eeService.uploadPrekeys(req.user!.id, req.body || {});
     res.status(201).json({ success: true, data: result });
@@ -58,7 +61,7 @@ router.get('/prekeys/health', async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/e2ee/devices/rotate-signed-prekey
-router.post('/devices/rotate-signed-prekey', async (req: AuthRequest, res, next) => {
+router.post('/devices/rotate-signed-prekey', validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await e2eeService.rotateSignedPrekey(req.user!.id, req.body || {});
     res.json({ success: true, data: result });
@@ -68,7 +71,7 @@ router.post('/devices/rotate-signed-prekey', async (req: AuthRequest, res, next)
 });
 
 // POST /api/e2ee/prekeys/consume
-router.post('/prekeys/consume', async (req: AuthRequest, res, next) => {
+router.post('/prekeys/consume', validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const prekeyRowId = req.body?.prekeyRowId || req.body?.prekey_row_id;
     const result = await e2eeService.consumePrekey(prekeyRowId, req.user!.id);
@@ -89,7 +92,7 @@ router.get('/bundle/:userId', async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/e2ee/messages/envelope
-router.post('/messages/envelope', async (req: AuthRequest, res, next) => {
+router.post('/messages/envelope', validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await e2eeService.storeEnvelope(req.user!.id, req.body || {});
     res.status(201).json({ success: true, data: result });

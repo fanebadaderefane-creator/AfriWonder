@@ -10,6 +10,8 @@ Document unique listant **toutes** les clés utilisées dans le projet (backend 
 |--------|------|
 | **`.env.example`** (racine) | Template **frontend** (Vite) — copier en `.env` ou `.env.local` |
 | **`backend/.env.example`** | Template **backend** — copier en `backend/.env` |
+| **`flutter_app/.env.example`** | Rappel **dart-define** pour l’app Flutter (pas de `.env` Vite) |
+| **`sdk/afriwonder-miniapp-sdk/.env.example`** | URL API publique pour tests locaux du package SDK |
 | **`backend/ENV_TEMPLATE.txt`** | Liste détaillée backend avec commentaires |
 | **`env.local.CONFIGURER`** / **`TEMPLATE_ENV.txt`** | Anciens templates / config |
 
@@ -24,8 +26,8 @@ Document unique listant **toutes** les clés utilisées dans le projet (backend 
 | Variable | Utilisation | Exemple |
 |----------|-------------|---------|
 | `DATABASE_URL` | Connexion PostgreSQL (Prisma) | `postgresql://user:pass@host:5432/db` |
-| `JWT_SECRET` | Signature des tokens JWT (auth) | Min. 32 caractères |
-| `JWT_REFRESH_SECRET` | Signature des refresh tokens | Différent de JWT_SECRET |
+| `JWT_SECRET` | Signature des tokens JWT (auth) | **Min. 64** caractères (exigence code) |
+| `JWT_REFRESH_SECRET` | Signature des refresh tokens | **Min. 64** caractères, différent de `JWT_SECRET` |
 
 ### Serveur & CORS
 
@@ -141,7 +143,9 @@ Document unique listant **toutes** les clés utilisées dans le projet (backend 
 
 | Variable | Utilisation |
 |----------|-------------|
-| `SENDGRID_API_KEY` | Envoi d’emails |
+| `RESEND_API_KEY` | Emails transactionnels via [Resend](https://resend.com) (prioritaire si défini) |
+| `RESEND_FROM` | Expéditeur vérifié, ex. `AfriWonder <no-reply@domaine-verifie>` |
+| `SENDGRID_API_KEY` | Envoi d’emails (repli si Resend absent) |
 | `SENDGRID_FROM_EMAIL` | Ex. `noreply@afriwonder.app` |
 
 ### Traduction (chat / messages)
@@ -179,13 +183,29 @@ Sans instance joignable, le backend tente un repli limité (MyMemory). En produc
 | `PLATFORM_USER_ID` | UUID du compte « plateforme » (revenus), défaut UUID nul |
 | `RATE_LIMIT_WINDOW_MS` | Fenêtre rate limit (ms) |
 | `RATE_LIMIT_MAX_REQUESTS` | Nombre max requêtes par fenêtre |
+| `API_GENERAL_RATE_LIMIT_MAX` | Plafond **req/min** sur `/api/*` : compteur par **user** (JWT valide) ou par **IP** si anonyme ; défaut **100** (audit PDF). Augmenter si le feed est trop agressif (ex. 300). |
 
-### Supabase (optionnel)
+### Supabase (migration Phase 1 — DB + Auth + Storage)
+
+Prisma continue d’utiliser **`DATABASE_URL`** (PostgreSQL). Pour un projet Supabase, copier la chaîne **« Connection string »** (pooler **transaction** port **6543** si beaucoup de connexions courtes).
 
 | Variable | Utilisation |
 |----------|-------------|
-| `SUPABASE_URL` | Si auth Supabase utilisée |
-| `SUPABASE_ANON_KEY` | |
+| `DATABASE_URL` | Même clé qu’aujourd’hui — peut pointer vers l’instance Postgres Supabase |
+| `SUPABASE_URL` | URL projet `https://xxx.supabase.co` (webhooks, client admin, Storage API) |
+| `SUPABASE_ANON_KEY` | Clé publique (rarement nécessaire sur l’API Express si tout passe par Prisma) |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Secret serveur** — Storage / admin API, ne jamais exposer au frontend |
+| `SUPABASE_JWT_SECRET` | Si l’API valide des JWT émis par Supabase Auth |
+
+Frontend (Vite) : `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` uniquement (jamais la service role).
+
+### Secrets & audit (Doppler, GitHub, Render)
+
+| Pratique | Détail |
+|----------|--------|
+| **Doppler** | Source de vérité des secrets ; sync vers Render / Vercel / variables locales (`doppler run -- ...`) |
+| **GitHub** | `detect-secrets` + baseline `.secrets.baseline` (workflow `.github/workflows/detect-secrets.yml`) ; activer aussi **Secret scanning** sur l’organisation (paramètres dépôt) |
+| **Render** | Variables sensibles uniquement dans le dashboard ou injectées via Doppler — pas dans `render.yaml` en clair |
 
 ### Scripts (usage ponctuel)
 
@@ -215,6 +235,8 @@ Toutes les variables exposées au client doivent être préfixées par **`VITE_`
 | `VITE_VAPID_PUBLIC_KEY` / `REACT_APP_VAPID_PUBLIC_KEY` | Push (clé publique) |
 | `VITE_STRIPE_PUBLISHABLE_KEY` | Stripe (clé publique) |
 | `VITE_SENTRY_DSN` | Sentry frontend |
+| `VITE_POSTHOG_KEY` | [PostHog](https://posthog.com) — analytics (prod si clé définie) |
+| `VITE_POSTHOG_HOST` | Hôte PostHog (ex. `https://eu.i.posthog.com`) |
 | `VITE_GIPHY_API_KEY` | Messagerie : onglet **GIF** dans le composer (API [Giphy](https://developers.giphy.com/), clé gratuite). Sans elle, l’UI affiche un message de configuration. |
 | `VITE_TURN_URL` | **Appels WebRTC** (`DirectCall`) : serveur TURN. Plusieurs URLs possibles, **séparées par des virgules** (ex. `turn:…,turns:…`). Avec `VITE_TURN_USERNAME` et `VITE_TURN_CREDENTIAL`. |
 | `VITE_TURN_USERNAME` | Identifiant TURN |
@@ -237,13 +259,30 @@ Toutes les variables exposées au client doivent être préfixées par **`VITE_`
 
 ---
 
-## 3. Résumé par fichier à créer
+## 3. Flutter & SDK mini-app
+
+Ces projets **ne lisent pas** les `.env` Vite de la racine. Utiliser les exemples dédiés.
+
+### Application mobile (`flutter_app/`)
+
+- Fichier de référence : **`flutter_app/.env.example`** (commentaires uniquement ; pas de chargement automatique).
+- En pratique : passer l’URL API au build ou au run, par ex.  
+  `flutter run --dart-define=API_BASE_URL=https://votre-backend.onrender.com/api`  
+  (émulateur Android : souvent `http://10.0.2.2:3000/api` vers un backend local).
+
+### Package `@afriwonder/miniapp-sdk` (`sdk/afriwonder-miniapp-sdk/`)
+
+- **`sdk/afriwonder-miniapp-sdk/.env.example`** : variable **`AFRIWONDER_API_BASE_URL`** pour tests locaux du package (URL publique, sans secrets clients dans le bundle).
+
+---
+
+## 4. Résumé par fichier à créer
 
 ### Backend : `backend/.env`
 
 À partir de **`backend/.env.example`** ou **`backend/ENV_TEMPLATE.txt`** :
 
-- **Requis** : `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`
+- **Requis** : `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET` (secrets JWT **64+** caractères)
 - **Recommandé** : `PORT`, `NODE_ENV`, `APP_URL`, `CORS_ORIGIN`
 - **Optionnel** : tout le reste selon les modules (Orange Money, Stripe, R2, Agora, FCM, SendGrid, OAuth, cron, health, etc.)
 
@@ -256,9 +295,11 @@ Toutes les variables exposées au client doivent être préfixées par **`VITE_`
 
 ---
 
-## 4. Vérification rapide
+## 5. Vérification rapide
 
 - **Backend** : en `NODE_ENV=production`, le serveur vérifie `DATABASE_URL` et `JWT_SECRET` (sinon `process.exit(1)`).
 - **Frontend** : en production, si `VITE_API_URL` est absent, un `console.error` est affiché (voir `src/main.jsx`).
 
-Pour la liste détaillée des étapes de déploiement : **`PRODUCTION_READY.md`** et **`DEPLOIEMENT.md`**.
+Pour la liste détaillée des étapes de déploiement : **`PRODUCTION_READY.md`** et **`docs/DEPLOYMENT.md`**.
+
+Contrôle dépôt (fichiers d’exemple + artefacts audit) : **`npm run verify:audit`** à la racine ; en CI, voir aussi **`.github/workflows/audit-artifacts.yml`**.

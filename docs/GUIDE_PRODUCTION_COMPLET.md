@@ -1,4 +1,4 @@
-# Guide production AfriWonder — Configuration et clés externes
+ # Guide production AfriWonder — Configuration et clés externes
 
 > Document consolidé après analyse complète du projet. À suivre étape par étape.
 
@@ -23,7 +23,7 @@
 | Variable | Où l'obtenir | Exemple |
 |----------|--------------|---------|
 | `NODE_ENV` | Fixe | `production` |
-| `DATABASE_URL` | Supabase, Neon, Railway, ou PostgreSQL hébergé | `postgresql://user:pass@host:5432/db` |
+| `DATABASE_URL` | Supabase, Neon, Render PostgreSQL, ou PostgreSQL hébergé | `postgresql://user:pass@host:5432/db` |
 | `JWT_SECRET` | Générer 64 caractères aléatoires | `openssl rand -hex 32` |
 | `JWT_REFRESH_SECRET` | Idem, différent du JWT_SECRET | `openssl rand -hex 32` |
 | `CORS_ORIGIN` | URL de votre frontend | `https://afriwonder.com` |
@@ -125,7 +125,7 @@
 ### 4.1 Base de données PostgreSQL
 - **Supabase** : https://supabase.com → New Project → Settings → Database → Connection string
 - **Neon** : https://neon.tech
-- **Railway** : https://railway.app
+- **Render PostgreSQL** : https://render.com → New → PostgreSQL (ou utiliser Supabase / Neon avec `DATABASE_URL` sur Render)
 
 ### 4.2 Redis
 - **Upstash** : https://upstash.com (gratuit)

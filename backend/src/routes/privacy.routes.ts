@@ -1,6 +1,17 @@
 import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { param } from '../utils/params.js';
 import privacyService from '../services/privacy.service.js';
+import { validateBody } from '../utils/zodValidation.js';
+import {
+  privacy2faDisableSchema,
+  privacy2faEnableSchema,
+  privacy2faVerifySchema,
+  privacyCookieConsentSchema,
+  privacyDeleteAccountSchema,
+  privacyExportDataSchema,
+  privacyGuestCookieSchema,
+} from '../schemas/highRiskBodies.js';
 
 const router = Router();
 
@@ -9,7 +20,7 @@ const router = Router();
 // ==========================================
 
 // POST /api/privacy/cookies/consent - Enregistrer les préférences de cookies
-router.post('/cookies/consent', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/cookies/consent', authenticate, validateBody(privacyCookieConsentSchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { essential, analytics, marketing, functional, social_media } = req.body;
@@ -45,7 +56,7 @@ router.get('/cookies/preferences', authenticate, async (req: AuthRequest, res, n
 });
 
 // POST /api/privacy/cookies/guest-consent - Consentement cookies pour invités
-router.post('/cookies/guest-consent', async (req, res, next) => {
+router.post('/cookies/guest-consent', validateBody(privacyGuestCookieSchema), async (req, res, next) => {
   try {
     const { session_id, essential, analytics, marketing, functional, social_media } = req.body;
     const ip_address = req.ip || req.connection.remoteAddress || 'unknown';
@@ -71,7 +82,7 @@ router.post('/cookies/guest-consent', async (req, res, next) => {
 // ==========================================
 
 // POST /api/privacy/export-data - Demander l'export de données
-router.post('/export-data', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/export-data', authenticate, validateBody(privacyExportDataSchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const format = (req.body.format as string) || 'json';
@@ -124,7 +135,7 @@ router.get('/export-data/download/:id', authenticate, async (req: AuthRequest, r
 // ==========================================
 
 // POST /api/privacy/delete-account - Demander la suppression du compte
-router.post('/delete-account', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/delete-account', authenticate, validateBody(privacyDeleteAccountSchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { reason } = req.body;
@@ -149,7 +160,7 @@ router.post('/delete-account', authenticate, async (req: AuthRequest, res, next)
 // POST /api/privacy/cancel-deletion/:token - Annuler la suppression
 router.post('/cancel-deletion/:token', async (req, res, next) => {
   try {
-    const token = req.params.token;
+    const token = param(req, 'token');
     const result = await privacyService.cancelAccountDeletion(token);
     res.json({ 
       success: true, 
@@ -206,7 +217,7 @@ router.get('/suspicious-activities', authenticate, async (req: AuthRequest, res,
 // ==========================================
 
 // POST /api/privacy/2fa/enable - Activer 2FA
-router.post('/2fa/enable', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/2fa/enable', authenticate, validateBody(privacy2faEnableSchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { method, phone_number } = req.body;
@@ -224,7 +235,7 @@ router.post('/2fa/enable', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/privacy/2fa/verify - Vérifier et activer 2FA
-router.post('/2fa/verify', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/2fa/verify', authenticate, validateBody(privacy2faVerifySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { code } = req.body;
@@ -237,7 +248,7 @@ router.post('/2fa/verify', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/privacy/2fa/disable - Désactiver 2FA
-router.post('/2fa/disable', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/2fa/disable', authenticate, validateBody(privacy2faDisableSchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { password } = req.body;

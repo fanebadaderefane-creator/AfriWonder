@@ -17,7 +17,7 @@ export default function FeedEmptyState({
   return (
     <div
       className={cn(
-        'flex min-h-[100dvh] w-full flex-col items-center justify-center px-6 pb-32 pt-24 text-center text-white',
+        'flex min-h-full w-full flex-col items-center justify-center px-6 pb-32 pt-24 text-center text-white',
         className
       )}
     >

@@ -6,10 +6,13 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import serviceReviewService from '../services/service-review.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // POST /api/service-reviews - Créer avis
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { booking_id, rating, title, content, photos } = req.body;
 
@@ -81,7 +84,7 @@ router.get('/providers/:id/reviews', async (req, res, next) => {
 });
 
 // POST /api/service-reviews/:id/report - Signaler avis
-router.post('/:id/report', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/report', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { reason } = req.body;
 

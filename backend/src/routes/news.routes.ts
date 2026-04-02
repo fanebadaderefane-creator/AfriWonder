@@ -8,6 +8,9 @@ import { param } from '../utils/params.js';
 import newsService from '../services/news.service.js';
 import rateLimit from 'express-rate-limit';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 const commentLimiter = rateLimit({
@@ -159,7 +162,7 @@ router.get('/:id/comments', async (req, res, next) => {
 // ——— Authentifié ———
 
 // POST /api/news/:id/like — Toggle like
-router.post('/:id/like', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/like', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await newsService.toggleLike(param(req, 'id'), req.user!.id);
     res.json({ success: true, data: result });
@@ -169,7 +172,7 @@ router.post('/:id/like', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/news/:id/share — Incrémenter partage
-router.post('/:id/share', async (req, res, next) => {
+router.post('/:id/share', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     await newsService.incrementShare(param(req, 'id'));
     res.json({ success: true, data: { ok: true } });
@@ -189,7 +192,7 @@ router.get('/preferences/me', authenticate, async (req: AuthRequest, res, next) 
 });
 
 // PUT /api/news/preferences
-router.put('/preferences', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/preferences', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const prefs = await newsService.savePreferences(req.user!.id, req.body);
     res.json({ success: true, data: prefs });
@@ -199,7 +202,7 @@ router.put('/preferences', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/news/:id/comments — Ajouter commentaire (rate limit)
-router.post('/:id/comments', authenticate, commentLimiter, async (req: AuthRequest, res, next) => {
+router.post('/:id/comments', authenticate, commentLimiter, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { content, parentId } = req.body;
     const comment = await newsService.addComment(param(req, 'id'), req.user!.id, content || '', parentId);
@@ -221,7 +224,7 @@ router.delete('/comments/:commentId', authenticate, async (req: AuthRequest, res
 });
 
 // POST /api/news/comments/:commentId/report
-router.post('/comments/:commentId/report', authenticate, async (req, res, next) => {
+router.post('/comments/:commentId/report', authenticate, validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     await newsService.reportComment(param(req, 'commentId'));
     res.json({ success: true });
@@ -233,7 +236,7 @@ router.post('/comments/:commentId/report', authenticate, async (req, res, next) 
 // ——— Admin / Auteur ———
 
 // POST /api/news — Créer article
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const article = await newsService.create(req.user!.id, req.body);
     res.status(201).json({ success: true, data: article });
@@ -243,7 +246,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PATCH /api/news/:id
-router.patch('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/:id', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const isAdmin = (req as any).user?.role === 'admin';
     const article = await newsService.update(param(req, 'id'), req.user!.id, isAdmin, req.body);
@@ -254,7 +257,7 @@ router.patch('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/news/:id/status — draft | review | published | archived
-router.post('/:id/status', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/status', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { status } = req.body;
     const isAdmin = (req as any).user?.role === 'admin';
@@ -266,7 +269,7 @@ router.post('/:id/status', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/news/verified-sources — Admin: créer source vérifiée
-router.post('/verified-sources', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/verified-sources', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const source = await newsService.createVerifiedSource(req.body);
     res.status(201).json({ success: true, data: source });

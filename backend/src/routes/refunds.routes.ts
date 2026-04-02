@@ -3,9 +3,12 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import refundService from '../services/refund.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
-router.post('/orders/:orderId/refund', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/orders/:orderId/refund', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { amount, reason } = req.body;
     const refund = await refundService.requestRefund(param(req, 'orderId'), req.user!.id, { amount, reason });
@@ -24,7 +27,7 @@ router.get('/my', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/:id/process', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/process', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     if (req.user?.role !== 'admin') return res.status(403).json({ success: false, error: 'Admin required' });
     const approve = req.body.approve === true;

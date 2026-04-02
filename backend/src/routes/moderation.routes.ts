@@ -4,6 +4,9 @@ import { param } from '../utils/params.js';
 import moderationService from '../services/moderation.service.js';
 import * as moderationSanctions from '../services/moderationSanctions.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/moderation/reports
@@ -23,7 +26,7 @@ router.get('/reports', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/moderation/report
-router.post('/report', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/report', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { contentType, contentId, reason, description, evidence, severity } = req.body;
     const report = await moderationService.createReport(req.user!.id, {
@@ -41,7 +44,7 @@ router.post('/report', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PUT /api/moderation/reports/:id/review
-router.put('/reports/:id/review', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/reports/:id/review', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     if (req.user!.role !== 'admin' && req.user!.role !== 'moderator') {
       return res.status(403).json({ success: false, error: 'Moderator access required' });
@@ -58,7 +61,7 @@ router.put('/reports/:id/review', authenticate, async (req: AuthRequest, res, ne
 });
 
 // POST /api/moderation/strikes - CDC: Ajouter un strike (admin/mod)
-router.post('/strikes', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/strikes', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     if (req.user!.role !== 'admin' && req.user!.role !== 'moderator') {
       return res.status(403).json({ success: false, error: 'Moderator access required' });

@@ -3,10 +3,13 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import subscriptionService from '../services/subscription.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // POST /api/subscriptions/tiers - Créer un tier (créateur)
-router.post('/tiers', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/tiers', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { name, price, benefits } = req.body;
@@ -27,7 +30,7 @@ router.post('/tiers', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/subscriptions/subscribe - S'abonner à un créateur
-router.post('/subscribe', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/subscribe', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { tierId, phone } = req.body;
@@ -52,7 +55,7 @@ router.post('/subscribe', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/subscriptions/:id/confirm - Confirmer un abonnement (webhook)
-router.post('/:id/confirm', async (req, res, next) => {
+router.post('/:id/confirm', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const subscriptionId = param(req, 'id');
     const subscription = await subscriptionService.confirmSubscription(subscriptionId);

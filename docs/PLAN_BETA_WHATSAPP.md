@@ -91,19 +91,19 @@ npm run test:e2e
 
 ## 4. Déploiement pour beta
 
-### Option A — Hébergement simple (Railway, Render, Vercel)
+### Option A — Hébergement simple (Render + Vercel)
 
 1. **Frontend** : Vercel ou Netlify
    - Build : `npm run build`
    - Output : `dist`
    - Variables : `VITE_API_URL=https://votre-api.com`
 
-2. **Backend** : Railway ou Render
+2. **Backend** : Render (recommandé)
    - Build : `npm run build` (dans `backend/`)
    - Start : `npm start`
    - Variables : tout le `.env` depuis `backend/ENV_TEMPLATE.txt`
 
-3. **Base de données** : Supabase (PostgreSQL) ou Railway PostgreSQL
+3. **Base de données** : Supabase (PostgreSQL) ou PostgreSQL sur Render
 
 ### Option B — VPS + Docker (production typique)
 
@@ -126,7 +126,7 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 | Variable | Obligatoire | Comment l'obtenir |
 |----------|-------------|-------------------|
-| `DATABASE_URL` | ✅ | Supabase, Railway PostgreSQL |
+| `DATABASE_URL` | ✅ | Supabase, Render PostgreSQL, etc. |
 | `JWT_SECRET` | ✅ | Générer 32+ caractères |
 | `CORS_ORIGIN` | ✅ | URL du frontend (ex: `https://app.afriwonder.com`) |
 | `VITE_API_URL` | ✅ | URL du backend (ex: `https://api.afriwonder.com`) |

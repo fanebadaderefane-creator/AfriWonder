@@ -2,6 +2,13 @@ import { Router } from 'express';
 import prisma from '../config/database.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { logger } from '../utils/logger.js';
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+import {
+  notificationPreferencesBodySchema,
+  pushSubscribeBodySchema,
+  pushUnsubscribeBodySchema,
+} from '../schemas/cartProductsNotifications.schemas.js';
 
 const router = Router();
 
@@ -22,10 +29,10 @@ router.get('/preferences', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // PUT /api/notifications/preferences
-router.put('/preferences', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/preferences', authenticate, validateBody(notificationPreferencesBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
-    const body = req.body || {};
+    const body = req.body;
     const upd: Record<string, boolean> = {};
     const keys = [
       'email_like', 'email_comment', 'email_follow', 'email_order', 'email_live',
@@ -45,15 +52,12 @@ router.put('/preferences', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/notifications/push/subscribe
-router.post('/push/subscribe', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/push/subscribe', authenticate, validateBody(pushSubscribeBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
-    const { endpoint, keys } = req.body || {};
-    const p256dh = keys?.p256dh;
-    const auth = keys?.auth;
-    if (!endpoint || !p256dh || !auth) {
-      return res.status(400).json({ success: false, error: { message: 'endpoint, keys.p256dh et keys.auth requis' } });
-    }
+    const { endpoint, keys } = req.body;
+    const p256dh = keys.p256dh;
+    const auth = keys.auth;
 
     const sub = await prisma.pushSubscription.upsert({
       where: { endpoint: String(endpoint) },
@@ -83,13 +87,10 @@ router.post('/push/subscribe', authenticate, async (req: AuthRequest, res, next)
 });
 
 // DELETE /api/notifications/push/unsubscribe
-router.delete('/push/unsubscribe', authenticate, async (req: AuthRequest, res, next) => {
+router.delete('/push/unsubscribe', authenticate, validateBody(pushUnsubscribeBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
-    const endpoint = String(req.body?.endpoint || '');
-    if (!endpoint) {
-      return res.status(400).json({ success: false, error: { message: 'endpoint requis' } });
-    }
+    const endpoint = String(req.body.endpoint);
     await prisma.pushSubscription.updateMany({
       where: { user_id: userId, endpoint },
       data: { is_active: false, last_seen: new Date() },
@@ -141,7 +142,7 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PUT /api/notifications/:id/read - Mark as read
-router.put('/:id/read', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:id/read', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params;
     const userId = req.user!.id;
@@ -166,7 +167,7 @@ router.put('/:id/read', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PUT /api/notifications/read-all - Mark all as read
-router.put('/read-all', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/read-all', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
 

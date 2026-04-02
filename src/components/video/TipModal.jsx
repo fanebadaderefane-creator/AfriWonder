@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Coins, Heart, Sparkles, Gift, Crown, Gem } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from "@/lib/utils";
+import { useTranslation } from '@/components/common/useTranslation';
 
 const tipAmounts = [
   { amount: 100, icon: Heart, label: '100 F', color: 'from-pink-400 to-rose-500' },
@@ -29,6 +30,7 @@ export default function TipModal({
   onSendTip,
   walletBalance = 0 
 }) {
+  const { formatNumber } = useTranslation();
   const [selectedAmount, setSelectedAmount] = useState(null);
   const [customAmount, setCustomAmount] = useState('');
   const [selectedMethod, setSelectedMethod] = useState('wallet');
@@ -101,7 +103,7 @@ export default function TipModal({
               <div className="mb-4 rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-white/54">Votre solde AfriWonder</span>
-                  <span className="font-semibold text-white">{walletBalance.toLocaleString()} FCFA</span>
+                  <span className="font-semibold text-white">{formatNumber(walletBalance)} FCFA</span>
                 </div>
               </div>
 
@@ -157,7 +159,7 @@ export default function TipModal({
                 disabled={!finalAmount || finalAmount < 50}
                 className="h-12 w-full rounded-2xl bg-white text-base font-medium text-slate-950 hover:bg-white/92"
               >
-                Continuer · {finalAmount.toLocaleString()} FCFA
+                Continuer · {formatNumber(finalAmount)} FCFA
               </Button>
 
               <p className="mt-3 text-center text-xs text-white/40">
@@ -207,7 +209,7 @@ export default function TipModal({
                   </span>
                   {method.id === 'wallet' && (
                     <span className="text-sm text-white/48">
-                      {walletBalance.toLocaleString()} F
+                      {formatNumber(walletBalance)} F
                     </span>
                   )}
                 </motion.button>
@@ -230,7 +232,7 @@ export default function TipModal({
             <div className="mb-6 rounded-[24px] border border-white/8 bg-white/[0.04] p-4">
               <div className="flex justify-between items-center">
                 <span className="text-white/56">Montant</span>
-                <span className="text-lg font-bold text-white">{finalAmount.toLocaleString()} FCFA</span>
+                <span className="text-lg font-bold text-white">{formatNumber(finalAmount)} FCFA</span>
               </div>
             </div>
 
@@ -270,7 +272,7 @@ export default function TipModal({
 
             <h3 className="mb-2 text-2xl font-bold text-white">Merci</h3>
             <p className="mb-6 text-white/56">
-              Vous avez envoyé {finalAmount.toLocaleString()} FCFA à @{creator?.name}
+              Vous avez envoyé {formatNumber(finalAmount)} FCFA à @{creator?.name}
             </p>
 
             <Button

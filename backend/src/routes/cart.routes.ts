@@ -2,6 +2,12 @@ import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import cartService from '../services/cart.service.js';
+import { validateBody } from '../utils/zodValidation.js';
+import {
+  cartAddBodySchema,
+  cartCouponBodySchema,
+  cartUpdateBodySchema,
+} from '../schemas/cartProductsNotifications.schemas.js';
 
 const router = Router();
 
@@ -59,7 +65,7 @@ router.get('/breakdown', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/cart/add
-router.post('/add', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/add', authenticate, validateBody(cartAddBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { productId, quantity } = req.body;
     const cart = await cartService.addItem(req.user!.id, productId, quantity);
@@ -80,7 +86,7 @@ router.delete('/remove/:productId', authenticate, async (req: AuthRequest, res, 
 });
 
 // PUT /api/cart/update
-router.put('/update', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/update', authenticate, validateBody(cartUpdateBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { productId, quantity } = req.body;
     const cart = await cartService.updateQuantity(req.user!.id, productId, quantity);
@@ -101,7 +107,7 @@ router.delete('/clear', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/cart/coupon
-router.post('/coupon', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/coupon', authenticate, validateBody(cartCouponBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { couponCode } = req.body;
     const cart = await cartService.applyCoupon(req.user!.id, couponCode);

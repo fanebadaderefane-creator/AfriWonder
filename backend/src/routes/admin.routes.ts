@@ -21,6 +21,31 @@ import * as monetizationService from '../services/monetization.service.js';
 import { invalidateBannedWordsCache } from '../services/bannedWord.service.js';
 import experimentService from '../services/experiment.service.js';
 import e2eeService from '../services/e2ee.service.js';
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+import {
+  adminBackupTriggerBodySchema,
+  adminBanUserBodySchema,
+  adminBannedWordBodySchema,
+  adminBannedWordPatchBodySchema,
+  adminBlacklistBodySchema,
+  adminCommissionConfigBodySchema,
+  adminCrowdfundingSuspendBodySchema,
+  adminExperimentCreateBodySchema,
+  adminFeatureFlagBodySchema,
+  adminKillSwitchBodySchema,
+  adminLogisticsRateCreateBodySchema,
+  adminLogisticsRateUpdateBodySchema,
+  adminMonetizationRejectBodySchema,
+  adminPickupPointCreateBodySchema,
+  adminPickupPointUpdateBodySchema,
+  adminProductStatusBodySchema,
+  adminSellerStatusBodySchema,
+  adminSellerVerifyBodySchema,
+  adminUserRoleBodySchema,
+  adminUserSuspendBodySchema,
+  adminVerificationPatchBodySchema,
+} from '../schemas/videosCommentsAdmin.schemas.js';
 
 const router = Router();
 
@@ -68,7 +93,7 @@ router.get('/users', authenticate, requireAnyAdmin, async (req: AuthRequest, res
 });
 
 // PUT /api/admin/users/:id/role
-router.put('/users/:id/role', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.put('/users/:id/role', authenticate, requireAnyAdmin, validateBody(adminUserRoleBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { role } = req.body;
     const userId = param(req, 'id');
@@ -81,7 +106,7 @@ router.put('/users/:id/role', authenticate, requireAnyAdmin, async (req: AuthReq
 });
 
 // POST /api/admin/users/:id/ban
-router.post('/users/:id/ban', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.post('/users/:id/ban', authenticate, requireAnyAdmin, validateBody(adminBanUserBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { banType, reason, description, durationDays } = req.body;
     const userId = param(req, 'id');
@@ -114,7 +139,7 @@ router.get('/sellers', authenticate, requireAnyAdmin, async (req: AuthRequest, r
 });
 
 // PATCH /api/admin/sellers/:id/status
-router.patch('/sellers/:id/status', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.patch('/sellers/:id/status', authenticate, requireAnyAdmin, validateBody(adminSellerStatusBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { status } = req.body;
     const id = param(req, 'id');
@@ -127,7 +152,7 @@ router.patch('/sellers/:id/status', authenticate, requireAnyAdmin, async (req: A
 });
 
 // PATCH /api/admin/sellers/:id/verify
-router.patch('/sellers/:id/verify', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.patch('/sellers/:id/verify', authenticate, requireAnyAdmin, validateBody(adminSellerVerifyBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { is_verified } = req.body;
     const id = param(req, 'id');
@@ -153,7 +178,7 @@ router.get('/verifications', authenticate, requireAnyAdmin, async (req: AuthRequ
 });
 
 // PATCH /api/admin/verifications/:id
-router.patch('/verifications/:id', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.patch('/verifications/:id', authenticate, requireAnyAdmin, validateBody(adminVerificationPatchBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const status = req.body.status ?? (req.body.approved === true ? 'approved' : req.body.approved === false ? 'rejected' : undefined);
     if (!status || !['approved', 'rejected'].includes(status)) {
@@ -187,7 +212,7 @@ router.get('/products', authenticate, requireAnyAdmin, async (req: AuthRequest, 
 });
 
 // PATCH /api/admin/products/:id/status
-router.patch('/products/:id/status', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.patch('/products/:id/status', authenticate, requireAnyAdmin, validateBody(adminProductStatusBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { status } = req.body;
     const id = param(req, 'id');
@@ -276,32 +301,17 @@ router.get('/logistics/rates', authenticate, requireAnyAdmin, async (req: AuthRe
 });
 
 // POST /api/admin/logistics/rates
-router.post('/logistics/rates', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.post('/logistics/rates', authenticate, requireAnyAdmin, validateBody(adminLogisticsRateCreateBodySchema), async (req: AuthRequest, res, next) => {
   try {
-    const { provider, destination_country, base_cost, cost_per_kg, estimated_delivery_days, is_active } = req.body || {};
-    if (!provider || !destination_country) {
-      return res.status(400).json({ success: false, error: 'provider et destination_country requis' });
-    }
-    const baseCost = Number(base_cost);
-    const costPerKg = Number(cost_per_kg);
-    const etaDays = Number(estimated_delivery_days);
-    if (!Number.isFinite(baseCost) || baseCost < 0) {
-      return res.status(400).json({ success: false, error: 'base_cost invalide' });
-    }
-    if (!Number.isFinite(costPerKg) || costPerKg < 0) {
-      return res.status(400).json({ success: false, error: 'cost_per_kg invalide' });
-    }
-    if (!Number.isFinite(etaDays) || etaDays <= 0) {
-      return res.status(400).json({ success: false, error: 'estimated_delivery_days invalide' });
-    }
+    const { provider, destination_country, base_cost, cost_per_kg, estimated_delivery_days, is_active } = req.body;
 
     const created = await prisma.shippingRate.create({
       data: {
         provider: String(provider).trim(),
         destination_country: String(destination_country).trim().toUpperCase(),
-        base_cost: baseCost,
-        cost_per_kg: costPerKg,
-        estimated_delivery_days: etaDays,
+        base_cost,
+        cost_per_kg,
+        estimated_delivery_days,
         is_active: typeof is_active === 'boolean' ? is_active : true,
       },
     });
@@ -316,7 +326,7 @@ router.post('/logistics/rates', authenticate, requireAnyAdmin, async (req: AuthR
 });
 
 // PUT /api/admin/logistics/rates/:id
-router.put('/logistics/rates/:id', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.put('/logistics/rates/:id', authenticate, requireAnyAdmin, validateBody(adminLogisticsRateUpdateBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const current = await prisma.shippingRate.findUnique({ where: { id } });
@@ -374,12 +384,9 @@ router.get('/logistics/pickup-points', authenticate, requireAnyAdmin, async (req
 });
 
 // POST /api/admin/logistics/pickup-points
-router.post('/logistics/pickup-points', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.post('/logistics/pickup-points', authenticate, requireAnyAdmin, validateBody(adminPickupPointCreateBodySchema), async (req: AuthRequest, res, next) => {
   try {
-    const { name, address, city, country, is_active } = req.body || {};
-    if (!name || !address || !city || !country) {
-      return res.status(400).json({ success: false, error: 'name, address, city, country requis' });
-    }
+    const { name, address, city, country, is_active } = req.body;
 
     const created = await prisma.pickupPoint.create({
       data: {
@@ -401,7 +408,7 @@ router.post('/logistics/pickup-points', authenticate, requireAnyAdmin, async (re
 });
 
 // PUT /api/admin/logistics/pickup-points/:id
-router.put('/logistics/pickup-points/:id', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.put('/logistics/pickup-points/:id', authenticate, requireAnyAdmin, validateBody(adminPickupPointUpdateBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const current = await prisma.pickupPoint.findUnique({ where: { id } });
@@ -465,7 +472,7 @@ router.get('/backup/export', authenticate, requireDataAdmin, async (req: AuthReq
 });
 
 // POST /api/admin/backup/trigger — Écrit un fichier backup dans BACKUP_DIR (pour cron)
-router.post('/backup/trigger', authenticate, requireDataAdmin, async (req: AuthRequest, res, next) => {
+router.post('/backup/trigger', authenticate, requireDataAdmin, validateBody(adminBackupTriggerBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const from = req.body?.from as string;
     const to = req.body?.to as string;
@@ -502,7 +509,7 @@ router.get('/finance/dashboard', authenticate, requireFinanceAdmin, async (req: 
 });
 
 // POST /api/admin/wallets/:id/freeze — Geler un wallet (finance_admin)
-router.post('/wallets/:id/freeze', authenticate, requireFinanceAdmin, async (req: AuthRequest, res, next) => {
+router.post('/wallets/:id/freeze', authenticate, requireFinanceAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const walletId = param(req, 'id');
     const wallet = await adminFinanceService.freezeWallet(walletId);
@@ -514,7 +521,7 @@ router.post('/wallets/:id/freeze', authenticate, requireFinanceAdmin, async (req
 });
 
 // POST /api/admin/wallets/:id/unfreeze
-router.post('/wallets/:id/unfreeze', authenticate, requireFinanceAdmin, async (req: AuthRequest, res, next) => {
+router.post('/wallets/:id/unfreeze', authenticate, requireFinanceAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const walletId = param(req, 'id');
     const wallet = await adminFinanceService.unfreezeWallet(walletId);
@@ -546,7 +553,7 @@ router.get('/kill-switch', authenticate, requireAnyAdmin, async (req, res, next)
 });
 
 // PATCH /api/admin/kill-switch — Modifier (super_admin only)
-router.patch('/kill-switch', authenticate, requireSuperAdmin, async (req: AuthRequest, res, next) => {
+router.patch('/kill-switch', authenticate, requireSuperAdmin, validateBody(adminKillSwitchBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const body = req.body;
     if (typeof body.marketplace_enabled === 'boolean') await platformControlService.setMarketplaceEnabled(body.marketplace_enabled);
@@ -688,7 +695,7 @@ router.get('/analytics/strategic/export', authenticate, requireDataAdmin, async 
 });
 
 // POST /api/admin/crowdfunding/:id/suspend - Suspendre une campagne (fraud_flag optionnel)
-router.post('/crowdfunding/:id/suspend', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.post('/crowdfunding/:id/suspend', authenticate, requireAnyAdmin, validateBody(adminCrowdfundingSuspendBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const campaignId = param(req, 'id');
     const { reason, fraudFlag } = req.body;
@@ -701,7 +708,7 @@ router.post('/crowdfunding/:id/suspend', authenticate, requireAnyAdmin, async (r
 });
 
 // PATCH /api/admin/users/:id/suspend - Suspendre / réactiver un compte
-router.patch('/users/:id/suspend', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.patch('/users/:id/suspend', authenticate, requireAnyAdmin, validateBody(adminUserSuspendBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = param(req, 'id');
     const { suspended, reason } = req.body;
@@ -721,13 +728,10 @@ router.patch('/users/:id/suspend', authenticate, requireAnyAdmin, async (req: Au
 });
 
 // POST /api/admin/blacklist - Ajouter à la blacklist (user | device | ip)
-router.post('/blacklist', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.post('/blacklist', authenticate, requireAnyAdmin, validateBody(adminBlacklistBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { type, value, reason, expires_at } = req.body;
-    if (!type || !value || !['user', 'device', 'ip'].includes(type)) {
-      return res.status(400).json({ success: false, message: 'type (user|device|ip) et value requis' });
-    }
-    await addToBlacklist(type, value, { reason, createdBy: req.user!.id, expiresAt: expires_at ? new Date(expires_at) : undefined });
+    await addToBlacklist(type, value, { reason, createdBy: req.user!.id, expiresAt: expires_at ? new Date(expires_at as string | number) : undefined });
     await auditLog(req, 'blacklist_add', 'blacklist', undefined, { type, value });
     res.status(201).json({ success: true, message: 'Entrée ajoutée' });
   } catch (error: any) {
@@ -758,11 +762,10 @@ router.get('/feature-flags', authenticate, requireAnyAdmin, async (req, res, nex
 });
 
 // PATCH /api/admin/feature-flags/:key - Activer/désactiver un flag
-router.patch('/feature-flags/:key', authenticate, requireSuperAdmin, async (req: AuthRequest, res, next) => {
+router.patch('/feature-flags/:key', authenticate, requireSuperAdmin, validateBody(adminFeatureFlagBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const key = param(req, 'key');
     const { enabled } = req.body;
-    if (typeof enabled !== 'boolean') return res.status(400).json({ success: false, message: 'enabled (boolean) requis' });
     await featureFlagService.setFlag(key, enabled);
     res.json({ success: true, data: { key, enabled } });
   } catch (error: any) {
@@ -787,12 +790,9 @@ router.get('/commissions/config', authenticate, requireFinanceAdmin, async (req:
 });
 
 // PATCH /api/admin/commissions/config - Mettre a jour les overrides commissions
-router.patch('/commissions/config', authenticate, requireFinanceAdmin, async (req: AuthRequest, res, next) => {
+router.patch('/commissions/config', authenticate, requireFinanceAdmin, validateBody(adminCommissionConfigBodySchema), async (req: AuthRequest, res, next) => {
   try {
-    const { overrides, merge } = req.body || {};
-    if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) {
-      return res.status(400).json({ success: false, error: 'overrides (objet) requis' });
-    }
+    const { overrides, merge } = req.body;
     const effective = await commissionSettingsService.updateOverrides(overrides, merge !== false);
     await auditLog(req, 'change_commission', 'platform', undefined, { overrides, merge: merge !== false });
     res.json({
@@ -808,7 +808,7 @@ router.patch('/commissions/config', authenticate, requireFinanceAdmin, async (re
 });
 
 // POST /api/admin/commissions/config/reset - Reinitialiser les overrides
-router.post('/commissions/config/reset', authenticate, requireFinanceAdmin, async (req: AuthRequest, res, next) => {
+router.post('/commissions/config/reset', authenticate, requireFinanceAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const effective = await commissionSettingsService.resetOverrides();
     await auditLog(req, 'change_commission', 'platform', undefined, { action: 'reset' });
@@ -835,7 +835,7 @@ router.get('/monetization-requests', authenticate, requireAnyAdmin, async (req: 
 });
 
 // POST /api/admin/monetization-requests/:id/approve - Approuver une demande
-router.post('/monetization-requests/:id/approve', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.post('/monetization-requests/:id/approve', authenticate, requireAnyAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const result = await monetizationService.approveMonetizationRequest(id, req.user!.id);
@@ -847,7 +847,7 @@ router.post('/monetization-requests/:id/approve', authenticate, requireAnyAdmin,
 });
 
 // POST /api/admin/monetization-requests/:id/reject - Rejeter une demande
-router.post('/monetization-requests/:id/reject', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.post('/monetization-requests/:id/reject', authenticate, requireAnyAdmin, validateBody(adminMonetizationRejectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const { reason } = req.body || {};
@@ -873,12 +873,9 @@ router.get('/banned-words', authenticate, requireAnyAdmin, async (req: AuthReque
 });
 
 // POST /api/admin/banned-words — body: { word: string }
-router.post('/banned-words', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.post('/banned-words', authenticate, requireAnyAdmin, validateBody(adminBannedWordBodySchema), async (req: AuthRequest, res, next) => {
   try {
-    const word = String(req.body?.word ?? '').trim().toLowerCase();
-    if (!word || word.length < 2) {
-      return res.status(400).json({ success: false, error: { message: 'word requis (min 2 caractères)' } });
-    }
+    const word = String(req.body.word).trim().toLowerCase();
     const created = await prisma.bannedWord.upsert({
       where: { word },
       create: { word, is_active: true },
@@ -907,13 +904,10 @@ router.delete('/banned-words/:id', authenticate, requireAnyAdmin, async (req: Au
 });
 
 // PATCH /api/admin/banned-words/:id — body: { is_active: boolean }
-router.patch('/banned-words/:id', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.patch('/banned-words/:id', authenticate, requireAnyAdmin, validateBody(adminBannedWordPatchBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
-    const is_active = req.body?.is_active === true || req.body?.is_active === false ? req.body.is_active : undefined;
-    if (is_active === undefined) {
-      return res.status(400).json({ success: false, error: { message: 'is_active (boolean) requis' } });
-    }
+    const { is_active } = req.body;
     const updated = await prisma.bannedWord.update({
       where: { id },
       data: { is_active },
@@ -938,7 +932,7 @@ router.get('/experiments', authenticate, requireAnyAdmin, async (req: AuthReques
 });
 
 // POST /api/admin/experiments — créer une expérience (key, name, description, variants: [{ variant_key, traffic_pct, config? }])
-router.post('/experiments', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.post('/experiments', authenticate, requireAnyAdmin, validateBody(adminExperimentCreateBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { key, name, description, variants } = req.body;
     const experiment = await experimentService.createAdmin({ key, name, description, variants: variants || [] });

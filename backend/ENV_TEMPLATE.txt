@@ -38,6 +38,10 @@ SUPER_ADMIN_EMAIL=fanebadaderefane@gmail.com
 PORT=3000
 NODE_ENV=development
 
+# Limite générale /api/* (req/min) : par utilisateur si JWT valide, sinon par IP. Audit PDF = 100.
+# Augmenter si le feed ou l’admin déclenche trop de requêtes parallèles (ex. 300 ou 600).
+API_GENERAL_RATE_LIMIT_MAX=100
+
 # ============================================
 # CORS
 # ============================================
@@ -94,7 +98,7 @@ AWS_S3_BUCKET=afriwonder-uploads
 
 # Cloudflare R2 (Requis pour upload images/vidéos en production)
 # Dashboard Cloudflare R2 → bucket → Settings → S3 API
-# ⚠️ EN PRODUCTION (Render, Railway, etc.) : ajoutez ces variables dans le tableau de bord
+# ⚠️ EN PRODUCTION (Render, Vercel, etc.) : ajoutez ces variables dans le tableau de bord
 #    de l'hébergeur (Environment). Sinon l'upload échouera sur mobile (iPhone/Android)
 #    avec "R2 non configuré" alors qu'il peut marcher en local (Chrome avec .env).
 R2_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com

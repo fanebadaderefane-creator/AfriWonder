@@ -82,7 +82,7 @@ export default function Help() {
         </div>
         <div className="px-4 pb-3">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-500" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-500" aria-hidden="true" />
             <Input 
               placeholder="Rechercher une question..." 
               value={searchQuery} 
@@ -104,8 +104,17 @@ export default function Help() {
               transition={{ delay: index * 0.05 }}
             >
               <Card 
-                className="p-4 text-center cursor-pointer hover:shadow-md hover:border-blue-200 border-blue-100 transition-all active:scale-95"
+                role="button"
+                tabIndex={0}
+                aria-label={`${cat.label} — afficher la section questions fréquentes`}
+                className="p-4 text-center cursor-pointer hover:shadow-md hover:border-blue-200 border-blue-100 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 onClick={() => handleCategoryClick(cat.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleCategoryClick(cat.id);
+                  }
+                }}
               >
                 <cat.icon className="w-8 h-8 mx-auto text-blue-600 mb-2" />
                 <p className="text-sm font-medium text-gray-800">{cat.label}</p>
@@ -128,7 +137,8 @@ export default function Help() {
                 >
                   <CollapsibleTrigger
                     aria-label={faq.q}
-                    className="flex items-center justify-between w-full p-3 bg-blue-50/50 rounded-lg hover:bg-blue-100/80 transition-colors cursor-pointer border border-transparent hover:border-blue-200"
+                    aria-expanded={!!openFaqs[index]}
+                    className="flex items-center justify-between w-full p-3 bg-blue-50/50 rounded-lg hover:bg-blue-100/80 transition-colors cursor-pointer border border-transparent hover:border-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   >
                     <span className="text-sm font-medium text-left text-gray-800">{faq.q}</span>
                     <ChevronDown className={`w-4 h-4 text-blue-600 transition-transform ${openFaqs[index] ? 'rotate-180' : ''}`} />

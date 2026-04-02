@@ -122,7 +122,7 @@ export default function NotificationCenter({ isOpen, onClose, userId }) {
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent side="right" className="flex w-full flex-col border-l border-white/10 bg-[#060913] p-0 text-white sm:max-w-md">
-        <SheetHeader className="shrink-0 border-b border-white/8 px-4 py-3 pr-12">
+        <SheetHeader className="shrink-0 border-b border-white/8 px-4 pb-3 pr-12 pt-[max(0.75rem,calc(0.5rem+env(safe-area-inset-top,0px)))]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Bell className="w-5 h-5 text-white/72" />

@@ -9,6 +9,9 @@ import { miniAppService } from '../services/miniApp.service.js';
 import { logger } from '../utils/logger.js';
 import prisma from '../config/database.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 /**
@@ -45,7 +48,7 @@ router.get('/subscription', authenticate, async (req: AuthRequest, res, next) =>
  * POST /api/developer/subscription
  * Souscrire ou changer d'abonnement
  */
-router.post('/subscription', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/subscription', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { plan_type, payment_method } = req.body;
@@ -100,7 +103,7 @@ router.get('/revenue', authenticate, async (req: AuthRequest, res, next) => {
  * POST /api/developer/revenue/withdraw
  * Demander un retrait de revenus
  */
-router.post('/revenue/withdraw', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/revenue/withdraw', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const {

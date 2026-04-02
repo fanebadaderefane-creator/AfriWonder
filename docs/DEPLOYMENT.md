@@ -51,7 +51,8 @@ Si ces trois points fonctionnent, ils fonctionneront aussi sur **https://afriwon
 ## 1. Frontend (Vercel)
 
 - **Projet** : déployé sur Vercel avec `vercel.json`.
-- **Proxy API** : les requêtes vers `/api/*` sont redirigées vers `https://afriwonder.onrender.com/api/*`.
+- **Proxy API** : les requêtes vers `/api/*` sont redirigées vers `https://afriwonder.onrender.com/api/*` (`vercel.json`).
+- La route serverless `api/[...path].js` utilise la même origine par défaut ; tu peux surcharger avec **`BACKEND_API_ORIGIN`** (Vercel → Environment) si l’URL Render change.
 - En production, **ne pas** définir `VITE_API_URL` dans les variables d’environnement Vercel pour garder le proxy (évite CORS et expose une seule origine).
 
 ### Ajouter le domaine afriwonder.com (pour le référencement et le téléchargement)

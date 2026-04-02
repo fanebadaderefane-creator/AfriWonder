@@ -1,8 +1,33 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api } from '@/api/expressClient';
 import { getItem, setItem } from '@/utils/safeStorage';
+import { getIntlLocale } from '@/lib/localeIntl';
+import { AFW_LANGUAGE_CHANGE } from '@/constants/events';
 
 const STORAGE_KEY = 'marketplace_currency';
+
+const SUPPORTED = ['XOF', 'EUR', 'NGN', 'KES'];
+
+function normalizeCurrency(v) {
+  const s = String(v || '').toUpperCase();
+  return SUPPORTED.includes(s) ? s : 'XOF';
+}
+
+function parseRatesFromApi(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  const find = (from, to) => {
+    const d = list.find((r) => r.from_currency === from && r.to_currency === to);
+    if (d && Number(d.rate) > 0) return Number(d.rate);
+    const inv = list.find((r) => r.from_currency === to && r.to_currency === from);
+    if (inv && Number(inv.rate) > 0) return 1 / Number(inv.rate);
+    return null;
+  };
+  return {
+    eurToXof: find('EUR', 'XOF'),
+    xofToNgn: find('XOF', 'NGN'),
+    xofToKes: find('XOF', 'KES'),
+  };
+}
 
 const MarketplaceCurrencyContext = createContext({
   currency: 'XOF',
@@ -11,10 +36,15 @@ const MarketplaceCurrencyContext = createContext({
   isLoading: false
 });
 
+function readUiLanguage() {
+  return getItem('language', 'fr') || 'fr';
+}
+
 export function MarketplaceCurrencyProvider({ children }) {
-  const [currency, setCurrencyState] = useState(() => getItem(STORAGE_KEY) || 'XOF');
-  const [eurToXofRate, setEurToXofRate] = useState(null);
+  const [currency, setCurrencyState] = useState(() => normalizeCurrency(getItem(STORAGE_KEY)));
+  const [rates, setRates] = useState({ eurToXof: null, xofToNgn: null, xofToKes: null });
   const [isLoading, setIsLoading] = useState(true);
+  const [uiLanguage, setUiLanguage] = useState(() => readUiLanguage());
 
   useEffect(() => {
     setItem(STORAGE_KEY, currency);
@@ -25,35 +55,60 @@ export function MarketplaceCurrencyProvider({ children }) {
     api.exchangeRates.getRates()
       .then((data) => {
         if (cancelled) return;
-        const rates = Array.isArray(data) ? data : (data?.data ?? data?.rates ?? []);
-        const eurXof = rates.find((r) =>
-          (r.from_currency === 'EUR' && r.to_currency === 'XOF') ||
-          (r.from_currency === 'XOF' && r.to_currency === 'EUR')
-        );
-        if (eurXof) {
-          const rate = eurXof.from_currency === 'EUR' ? eurXof.rate : 1 / eurXof.rate;
-          setEurToXofRate(rate);
-        }
+        const rows = Array.isArray(data) ? data : (data?.data ?? data?.rates ?? []);
+        setRates(parseRatesFromApi(rows));
       })
       .catch(() => {})
       .finally(() => { if (!cancelled) setIsLoading(false); });
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    const sync = () => setUiLanguage(readUiLanguage());
+    window.addEventListener(AFW_LANGUAGE_CHANGE, sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener(AFW_LANGUAGE_CHANGE, sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
+
   const setCurrency = useCallback((value) => {
-    setCurrencyState(value === 'EUR' || value === 'XOF' ? value : 'XOF');
+    setCurrencyState(normalizeCurrency(value));
   }, []);
 
   const formatPrice = useCallback((amountXof) => {
     const n = Number(amountXof) || 0;
-    if (currency === 'EUR' && eurToXofRate && eurToXofRate > 0) {
-      const eur = n / eurToXofRate;
-      return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(eur);
-    }
-    return `${n.toLocaleString('fr-FR')} FCFA`;
-  }, [currency, eurToXofRate]);
+    const locale = getIntlLocale(uiLanguage);
+    const { eurToXof, xofToNgn, xofToKes } = rates;
 
-  const value = { currency, setCurrency, formatPrice, isLoading, eurToXofRate };
+    if (currency === 'EUR' && eurToXof && eurToXof > 0) {
+      const eur = n / eurToXof;
+      return new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(eur);
+    }
+    if (currency === 'NGN' && xofToNgn && xofToNgn > 0) {
+      const ngn = n * xofToNgn;
+      return new Intl.NumberFormat(locale, { style: 'currency', currency: 'NGN', maximumFractionDigits: 2 }).format(ngn);
+    }
+    if (currency === 'KES' && xofToKes && xofToKes > 0) {
+      const kes = n * xofToKes;
+      return new Intl.NumberFormat(locale, { style: 'currency', currency: 'KES', maximumFractionDigits: 2 }).format(kes);
+    }
+
+    if (currency === 'NGN' || currency === 'KES') {
+      return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(n)} FCFA`;
+    }
+
+    return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(n)} FCFA`;
+  }, [currency, rates, uiLanguage]);
+
+  const value = {
+    currency,
+    setCurrency,
+    formatPrice,
+    isLoading,
+    eurToXofRate: rates.eurToXof
+  };
 
   return (
     <MarketplaceCurrencyContext.Provider value={value}>

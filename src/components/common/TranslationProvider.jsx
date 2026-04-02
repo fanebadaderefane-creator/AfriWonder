@@ -1,4 +1,8 @@
-import React, { createContext, useState, useEffect, useContext } from "react";
+import React, { createContext, useState, useEffect, useContext, useMemo, useCallback } from "react";
+import { getIntlLocale, formatNumber as intlFormatNumber, formatDate as intlFormatDate } from "@/lib/localeIntl";
+import { AFW_LANGUAGE_CHANGE } from "@/constants/events";
+
+export { AFW_LANGUAGE_CHANGE };
 
 export const TranslationContext = createContext();
 
@@ -449,7 +453,55 @@ const translations = {
     search_try_other: "O kɛ kan in ɲɛmɑ.",
     search_try_other_users: "Mɔgɔ in ɲɛmɑ.",
     search_results_count: "sɔrɔ"
-  }
+  },
+  wo: {
+    // Wolof (fallback court, completable plus tard)
+    home: "Kër",
+    create: "Sos",
+    search: "Wut",
+    inbox: "Bataaxal",
+    profile: "Profil",
+    settings: "Parameetar",
+    language: "Làkk",
+    loading: "Mi ngi yeb...",
+    save: "Denc",
+    cancel: "Bàyyi",
+    back: "Dellu",
+    forYou: "Ngir yaw",
+    discover: "Gis",
+  },
+  ha: {
+    // Hausa (fallback court, completable plus tard)
+    home: "Gida",
+    create: "Kirkira",
+    search: "Nema",
+    inbox: "Saƙonni",
+    profile: "Bayanin kai",
+    settings: "Saituna",
+    language: "Harshe",
+    loading: "Ana lodi...",
+    save: "Ajiye",
+    cancel: "Soke",
+    back: "Koma",
+    forYou: "A gare ka",
+    discover: "Gano",
+  },
+  sw: {
+    // Swahili (fallback court, completable plus tard)
+    home: "Nyumbani",
+    create: "Unda",
+    search: "Tafuta",
+    inbox: "Ujumbe",
+    profile: "Wasifu",
+    settings: "Mipangilio",
+    language: "Lugha",
+    loading: "Inapakia...",
+    save: "Hifadhi",
+    cancel: "Ghairi",
+    back: "Rudi",
+    forYou: "Kwa ajili yako",
+    discover: "Gundua",
+  },
 };
 
 export default function TranslationProvider({ children }) {
@@ -461,6 +513,9 @@ export default function TranslationProvider({ children }) {
     localStorage.setItem("language", language);
     document.documentElement.lang = language;
     document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(AFW_LANGUAGE_CHANGE, { detail: language }));
+    }
   }, [language]);
 
   const t = (key) => {
@@ -473,8 +528,23 @@ export default function TranslationProvider({ children }) {
     }
   };
 
+  const intlLocale = useMemo(() => getIntlLocale(language), [language]);
+
+  const formatNumber = useCallback(
+    (value, options) => intlFormatNumber(value, intlLocale, options),
+    [intlLocale]
+  );
+
+  const formatDate = useCallback(
+    (value, options) => intlFormatDate(value, intlLocale, options),
+    [intlLocale]
+  );
+
   const value = {
     language,
+    intlLocale,
+    formatNumber,
+    formatDate,
     t,
     changeLanguage,
     availableLanguages: Object.keys(translations)

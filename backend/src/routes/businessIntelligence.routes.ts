@@ -9,6 +9,9 @@ import { requireAdmin } from '../middleware/requireRole.js';
 import { businessIntelligenceService } from '../services/businessIntelligence.service.js';
 import type { AuthRequest } from '../middleware/auth.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // Toutes les routes nécessitent authentification admin
@@ -129,7 +132,7 @@ router.get('/retention', async (req, res, next) => {
  * POST /api/admin/business-intelligence/insights
  * Générer un insight
  */
-router.post('/insights', async (req: AuthRequest, res, next) => {
+router.post('/insights', validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const {
       insight_type,

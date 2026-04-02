@@ -3,10 +3,13 @@ import { authenticate, AuthRequest, optionalAuth } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import * as businessPageService from '../services/businessPage.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // PUT /api/business-page - Créer ou mettre à jour ma page entreprise
-router.put('/', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { name, slug, description, avatar_url, cover_url, website, phone } = req.body;
     if (!name?.trim()) return res.status(400).json({ success: false, error: { message: 'name requis' } });

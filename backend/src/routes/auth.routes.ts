@@ -3,12 +3,75 @@ import { Router } from 'express';
 import { authService } from '../services/auth.service.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { logger } from '../utils/logger.js';
-import { setAuthCookies } from '../utils/authCookies.js';
+import { clearAuthCookies, setAuthCookies } from '../utils/authCookies.js';
+import { z } from 'zod';
+import { validateBody } from '../utils/zodValidation.js';
+import jwt from 'jsonwebtoken';
+import { revokeRefreshToken } from '../services/refreshTokenBlacklist.service.js';
 
 const router = Router();
 
+const registerSchema = z.object({
+  email: z.string().email().optional(),
+  phone: z.string().min(8).optional(),
+  username: z.string().min(2).max(30),
+  password: z.string().min(8),
+  full_name: z.string().min(2).max(120).optional(),
+  referral_code: z.string().min(2).max(64).optional(),
+});
+
+const loginSchema = z
+  .object({
+    identifier: z.string().min(2).optional(),
+    email: z.string().email().optional(),
+    phone: z.string().min(8).optional(),
+    password: z.string().min(1),
+    twoFactorCode: z.string().min(4).optional(),
+    otpCode: z.string().min(4).optional(),
+    backupCode: z.string().min(4).optional(),
+  })
+  .refine((data) => Boolean(data.identifier || data.email || data.phone), {
+    message: 'identifier, email ou phone est requis',
+    path: ['identifier'],
+  });
+
+const refreshSchema = z.object({
+  refreshToken: z.string().min(10).optional(),
+  refresh_token: z.string().min(10).optional(),
+});
+
+const logoutSchema = z.object({
+  refreshToken: z.string().min(10).optional(),
+  refresh_token: z.string().min(10).optional(),
+});
+
+const supabaseSessionSchema = z.object({
+  access_token: z.string().min(20),
+});
+
+// POST /api/auth/supabase — JWT Supabase → JWT AfriWonder (migration Auth)
+router.post('/supabase', validateBody(supabaseSessionSchema), async (req, res, next) => {
+  try {
+    const result = await authService.loginWithSupabaseAccessToken(req.body.access_token);
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error: unknown) {
+    const err = error as { statusCode?: number; message?: string };
+    if (err?.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        error: { message: err.message || 'Erreur Supabase' },
+      });
+    }
+    next(error);
+  }
+});
+
 // POST /api/auth/register
-router.post('/register', async (req, res, next) => {
+router.post('/register', validateBody(registerSchema), async (req, res, next) => {
   try {
     const { email, phone, username, password, full_name, referral_code } = req.body;
 
@@ -54,7 +117,7 @@ router.post('/register', async (req, res, next) => {
 });
 
 // POST /api/auth/login
-router.post('/login', async (req, res, next) => {
+router.post('/login', validateBody(loginSchema), async (req, res, next) => {
   const authIdentifier = req.body?.identifier || req.body?.phone || req.body?.email;
   try {
     const { email, identifier, phone, password, twoFactorCode, otpCode, backupCode } = req.body;
@@ -112,7 +175,7 @@ router.post('/login', async (req, res, next) => {
 });
 
 // POST /api/auth/refresh
-router.post('/refresh', async (req, res, next) => {
+router.post('/refresh', validateBody(refreshSchema), async (req, res, next) => {
   try {
     const { refreshToken, refresh_token } = req.body;
     const token = refreshToken || refresh_token || req.cookies?.refresh_token;
@@ -132,6 +195,30 @@ router.post('/refresh', async (req, res, next) => {
       success: true,
       data: result,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/auth/logout
+router.post('/logout', authenticate, validateBody(logoutSchema), async (req, res, next) => {
+  try {
+    const { refreshToken, refresh_token } = req.body || {};
+    const token = refreshToken || refresh_token || req.cookies?.refresh_token;
+
+    if (typeof token === 'string' && token.trim() && process.env.JWT_REFRESH_SECRET) {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET) as { exp?: number };
+        if (decoded.exp) {
+          await revokeRefreshToken(token, decoded.exp);
+        }
+      } catch {
+        // Token invalide: on nettoie quand même les cookies côté client
+      }
+    }
+
+    clearAuthCookies(res);
+    return res.json({ success: true, message: 'Déconnexion réussie' });
   } catch (error) {
     next(error);
   }

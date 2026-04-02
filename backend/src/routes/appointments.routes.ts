@@ -5,6 +5,9 @@ import prisma from '../config/database.js';
 import platformControlService from '../services/platformControl.service.js';
 import { requireKycFor } from '../services/kycRequired.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 router.get('/', authenticate, async (req: AuthRequest, res, next) => {
@@ -42,7 +45,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     if (!(await platformControlService.isHealthEnabled())) {
@@ -77,7 +80,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PATCH /api/appointments/:id — mise à jour statut (patient ou médecin). Confirmer exige payment_status === 'paid'
-router.patch('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/:id', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const appointment = await prisma.appointment.findUnique({

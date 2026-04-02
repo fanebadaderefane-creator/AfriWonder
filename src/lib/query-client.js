@@ -2,13 +2,13 @@ import { QueryClient } from '@tanstack/react-query';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { getItem, setItem, removeItem } from '@/utils/safeStorage';
 
-// gcTime 24h — requis pour la persistance (doit être >= maxAge du persister)
-const CACHE_24H = 1000 * 60 * 60 * 24;
+// gcTime — requis pour la persistance (doit être >= maxAge du persister). 48h pour usage offline intermittent (audit).
+const CACHE_48H = 1000 * 60 * 60 * 48;
 
 export const queryClientInstance = new QueryClient({
   defaultOptions: {
     queries: {
-      gcTime: CACHE_24H,
+      gcTime: CACHE_48H,
       refetchOnWindowFocus: true,
       refetchOnReconnect: true,
       retry: (failureCount, error) => {

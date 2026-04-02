@@ -34,16 +34,20 @@ export default function BottomNav({ fixed = true, feedMode = false }) {
 
     <nav 
       className={cn(
-        'z-[50]',
+        fixed || feedMode ? 'z-[60]' : 'z-[50]',
         fixed
           ? 'fixed bottom-0 left-0 right-0 h-[86px] bg-transparent'
           : feedMode
-          ? // Barre flottante légère (moins « carte »), contenu prioritaire au-dessus de la vidéo.
-            'absolute bottom-3 left-3 right-3 h-[68px] border-0 bg-transparent shadow-none sm:bottom-4 sm:h-[72px]'
+          ? // fixed (viewport) : sur iOS, absolute dans la colonne feed peut finir sous le player / mauvais stacking.
+            'fixed bottom-0 left-0 right-0 h-[68px] border-0 bg-transparent px-3 shadow-none pointer-events-none [&>*]:pointer-events-auto sm:h-[72px]'
           : 'relative h-[86px] bg-transparent'
       )}
 
-      style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 8px)' }}
+      style={{
+        paddingBottom: feedMode
+          ? 'max(12px, env(safe-area-inset-bottom, 0px))'
+          : 'max(env(safe-area-inset-bottom), 8px)',
+      }}
       role="navigation"
       aria-label="Navigation principale AfriWonder"
 

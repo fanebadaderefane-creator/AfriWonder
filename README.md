@@ -304,7 +304,17 @@ npm run test:backend:full    # backend
 
 # E2E (Playwright)
 npm run test:e2e
+
+# Vérification dépôt (artefacts audits : env examples, Render, Flutter, etc.)
+npm run verify:audit
 ```
+
+### CI GitHub
+
+| Workflow | Rôle |
+|----------|------|
+| **`CI/CD AfriWonder`** (`.github/workflows/ci.yml`) | Backend, frontend, E2E Playwright, hooks déploiement. **À garder comme check obligatoire** (branch protection). |
+| **`Audit artifacts`** (`.github/workflows/audit-artifacts.yml`) | Script `verify-audit-repo`, Flutter (`pub get` / `analyze` / `test`), rapport **Vitest coverage** (upload artefact, **non bloquant** pour ce workflow). Ne pas l’exiger en merge si l’équipe ne veut pas bloquer les PR sans Flutter sur le runner. |
 
 ---
 
@@ -487,6 +497,10 @@ Si Redis n’est pas installé, le backend peut fonctionner sans (rate limit en 
 
 | Document | Description |
 |----------|-------------|
+| [AUDIT_ALIGNMENT_STATUS_2026-04-01.md](./docs/AUDIT_ALIGNMENT_STATUS_2026-04-01.md) | Alignement roadmap audit (Phases 1–4) vs dépôt |
+| [DEVELOPER_HANDOFF_10_INSTRUCTIONS.md](./docs/DEVELOPER_HANDOFF_10_INSTRUCTIONS.md) | Passation développeur (audit p. 19) — **Render**, critères de succès |
+| [VISION_ET_ARCHITECTURE_CIBLE.md](./docs/VISION_ET_ARCHITECTURE_CIBLE.md) | Vision, marché, roadmap détaillée |
+| [DESIGN_SYSTEM_FIGMA_CHECKLIST.md](./docs/DESIGN_SYSTEM_FIGMA_CHECKLIST.md) | Checklist design system Figma (Phase 1) |
 | [ARCHITECTURE.md](./docs/ARCHITECTURE.md) | Architecture du projet |
 | [CONTRIBUTING.md](./docs/CONTRIBUTING.md) | Guide de contribution |
 | [ENV_REFERENCE.md](./docs/ENV_REFERENCE.md) | Variables d'environnement |

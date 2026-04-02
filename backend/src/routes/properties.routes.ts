@@ -4,6 +4,9 @@ import { param } from '../utils/params.js';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/properties/admin/pending - Annonces en attente (Admin seulement)
@@ -25,7 +28,7 @@ router.get('/admin/pending', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // POST /api/properties/:id/approve - Approuver une annonce (Admin seulement)
-router.post('/:id/approve', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/approve', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
     if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
@@ -59,7 +62,7 @@ router.post('/:id/approve', authenticate, async (req: AuthRequest, res, next) =>
 });
 
 // POST /api/properties/:id/reject - Rejeter une annonce (Admin seulement)
-router.post('/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/reject', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
     if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
@@ -147,7 +150,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/properties/:id/visit-request - Demande de visite
-router.post('/:id/visit-request', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/visit-request', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const propertyId = param(req, 'id');
     const userId = req.user!.id;
@@ -170,7 +173,7 @@ router.post('/:id/visit-request', authenticate, async (req: AuthRequest, res, ne
   }
 });
 
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { full_name: true } });

@@ -3,6 +3,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import analyticsService from '../services/analytics.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/analytics/video/:videoId
@@ -47,7 +50,7 @@ router.get('/:entityType/:entityId', authenticate, async (req: AuthRequest, res,
 });
 
 // POST /api/analytics/video/record — enregistrer / incrémenter VideoAnalytics (vue, likes, etc.)
-router.post('/video/record', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/video/record', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { video_id, creator_id, views, likes, comments, shares, watch_time_minutes, engagement_rate, revenue } = req.body;
     if (!video_id || !creator_id) {
@@ -71,7 +74,7 @@ router.post('/video/record', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // POST /api/analytics
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { entityType, entityId, metricType, metricValue, metadata } = req.body;
     const analytics = await analyticsService.createAnalytics({

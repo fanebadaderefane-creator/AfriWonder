@@ -45,24 +45,43 @@ Une **super-app africaine tout-en-un** avec :
 
 ---
 
-## 4. Marché
+## 4. Marché (aligné audit page 15)
 
-- **Population africaine** : plus de 1,4 milliard de personnes  
-- **Utilisateurs Internet** : plus de 600 millions  
+| Indicateur | Valeur | Source |
+|---|---:|---|
+| Population Afrique (2026) | 1.5 milliard | UN Data |
+| Taux de pénétration mobile | 51% et croissant | GSMA 2025 |
+| Utilisateurs internet mobile | 570 millions | DataReportal 2025 |
+| Marché e-commerce Afrique | $75 milliards (2026E) | Statista |
+| Croissance e-commerce | +25% / an | McKinsey Africa |
+| Valeur mobile payments Afrique | $1 trillion (2025) | FSD Africa |
+| Créateurs de contenu Afrique | 12+ millions actifs | Creator Economy |
+| Concurrents principaux | Jumia, TikTok, WhatsApp | Marché fragmenté |
 
-Marché considérable pour une plateforme locale.
+Lecture produit: la traction vient du couplage vidéo + commerce + paiements mobiles, sur un marché encore fragmenté.
 
 ---
 
-## 5. Modèle économique
+## 5. Modèle économique (MVP Phase 1)
 
-| Source | Description |
-|--------|--------------|
-| **Publicité** | Comme Facebook, TikTok |
-| **Commission marketplace** | 5 % à 10 % sur les ventes |
-| **Dons et abonnements créateurs** | Comme YouTube, TikTok |
-| **Paiement numérique** | Commission sur les transactions |
-| **Services premium** | Comptes vérifiés, promotion de contenu, outils créateurs |
+| Source de revenus | Mécanisme | Revenus potentiels (An 1) | Priorité |
+|---|---|---:|---|
+| Commission marketplace | 5-10% sur chaque vente | $15,000 - $50,000 | Haute |
+| Abonnements créateurs | $5-15/mois (badges, analytics) | $8,000 - $30,000 | Haute |
+| Frais de paiement | 1.5% sur transactions mobiles | $5,000 - $20,000 | Haute |
+| Publicité ciblée | CPM/CPC sur le feed vidéo | $3,000 - $15,000 | Moyenne |
+| Dons live streaming | 30% commission sur les dons | $2,000 - $10,000 | Moyenne |
+| AfriWonder Pro | $9.99/mois (utilisateurs premium) | $5,000 - $25,000 | Moyenne |
+| B2B / API partenaires | SDK MiniApp pour PME africaines | $10,000 - $50,000 | Long terme |
+
+### Projections financières (base conservatrice)
+
+| Période | Utilisateurs actifs | GMV Marketplace | Revenus estimés | Coûts opex / mois |
+|---|---:|---:|---:|---:|
+| Mois 1-3 (Beta) | 500 - 2,000 | $5,000 | $500 - $2,000 | $500 |
+| Mois 4-6 (Lancement) | 5,000 - 15,000 | $50,000 | $5,000 - $15,000 | $1,500 |
+| Mois 7-12 (Croissance) | 50,000 - 150,000 | $500,000 | $50,000 - $120,000 | $5,000 |
+| An 2 (Scale) | 500,000+ | $5M+ | $500,000+ | $20,000 |
 
 ---
 
@@ -205,3 +224,42 @@ Avec cette plateforme, un utilisateur peut : **discuter**, **publier**, **regard
 - **Couleur application** : bleu → `docs/DESIGN_TOKENS_UI.md`
 - **Architecture actuelle** : `docs/ARCHITECTURE.md`
 - **Design tokens (Web + Mobile)** : `docs/DESIGN_TOKENS_UI.md`
+
+---
+
+## 10. Roadmap de développement (alignée audit page 17)
+
+### Phase 1 — Fondation
+- Nettoyage complet du repository.
+- Migration vers Supabase (DB + Auth + Storage) — cible produit.
+- Déploiement backend sur Render avec CI/CD.
+- Sécurisation : Doppler, GitHub Secret Scanning, rate limiting.
+- Création du design system Figma AfriWonder.
+- Fichiers `.env.example` créés et documentés.
+- Tests de charge : API cible 1000 req/s.
+
+### Phase 2 — MVP Vidéo + Marketplace
+- Feed vidéo vertical (TikTok-like) comme feature centrale.
+- Upload vidéo chunked vers Cloudflare R2.
+- Live streaming avec Agora (intégration existante à finaliser).
+- Marketplace : produits, panier, checkout.
+- Intégration Orange Money + Wave (Sénégal, Côte d’Ivoire, Mali).
+- PWA finalisée et déployée sur `afri-wonder.app`.
+- Beta test avec 500 utilisateurs sélectionnés.
+
+### Phase 3 — Flutter + Lancement (Mois 6-8)
+- Application Flutter (iOS + Android) avec architecture Riverpod.
+- Soumission App Store + Google Play.
+- Notifications push via Firebase.
+- Mode offline first avec Hive.
+- Optimisation performance (Lighthouse > 90).
+- Lancement marketing dans 3 pays pilotes.
+- Recrutement des 100 premiers créateurs partenaires.
+
+### Phase 4 — Croissance
+- Gamification complète (badges, points, leaderboard).
+- Recommandation IA (TensorFlow.js ou API Python).
+- Expansion paiements : MTN Mobile Money, Stripe Afrique.
+- Télémedecine (priorité 2 après vidéo + marketplace).
+- Programme AfriWonder for Business (B2B SDK).
+- Levée de fonds Seed (cible $500K - $2M).

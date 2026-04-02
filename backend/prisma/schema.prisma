@@ -34,6 +34,8 @@ model User {
   data_saver_mode              Boolean                   @default(false)
   shadow_banned                Boolean                   @default(false)
   referral_code                String?                   @unique
+  /// Lien compte Supabase Auth (migration Phase 1) — optionnel
+  supabase_id                  String?                   @unique
   phone_verified               Boolean                   @default(false)
   monetization_enabled         Boolean                   @default(false)
   monetization_suspended_at    DateTime?

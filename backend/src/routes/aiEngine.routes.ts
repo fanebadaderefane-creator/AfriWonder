@@ -9,6 +9,9 @@ import { requireAdmin } from '../middleware/requireRole.js';
 import { aiEngineService } from '../services/aiEngine.service.js';
 import type { AuthRequest } from '../middleware/auth.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // Toutes les routes nécessitent authentification admin
@@ -122,7 +125,7 @@ router.get('/credit-scores', async (req, res, next) => {
  * POST /api/admin/ai-engine/models
  * Créer ou mettre à jour un modèle AI
  */
-router.post('/models', async (req: AuthRequest, res, next) => {
+router.post('/models', validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { name, type, version, precision, latency_ms, status } = req.body;
 

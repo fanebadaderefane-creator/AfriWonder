@@ -5,6 +5,9 @@ import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import creatorSubscriptionService, { CREATOR_TIERS } from '../services/creatorSubscription.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/creator-subscription/tiers - Tarifs disponibles
@@ -13,7 +16,7 @@ router.get('/tiers', (_req, res) => {
 });
 
 // POST /api/creator-subscription/subscribe - S'abonner (créateur paie pour activer son tier)
-router.post('/subscribe', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/subscribe', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const creatorId = req.user!.id;
     const { tier } = req.body;

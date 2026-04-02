@@ -8,6 +8,9 @@ import { param } from '../utils/params.js';
 import servicePayoutService from '../services/service-payout.service.js';
 import providerService from '../services/provider.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/providers/:id/payouts - Historique payouts prestataire
@@ -58,7 +61,7 @@ router.get('/providers/:id/payouts/available', authenticate, async (req: AuthReq
 });
 
 // POST /api/providers/:id/payouts/request - Demander payout
-router.post('/providers/:id/payouts/request', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/providers/:id/payouts/request', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     // VÃ©rifier que le prestataire appartient Ã  l'utilisateur
     const provider = await providerService.getProviderByUserId(req.user!.id);
@@ -101,7 +104,7 @@ router.get('/', authenticate, requireAnyAdmin, async (req: AuthRequest, res, nex
 });
 
 // POST /api/service-payouts/:id/process - Traiter payout (admin)
-router.post('/:id/process', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.post('/:id/process', authenticate, requireAnyAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const payout = await servicePayoutService.processPayout(param(req, 'id'));
     res.json({ success: true, data: payout });
@@ -111,7 +114,7 @@ router.post('/:id/process', authenticate, requireAnyAdmin, async (req: AuthReque
 });
 
 // POST /api/service-payouts/:id/complete - Marquer payout complÃ©té (admin)
-router.post('/:id/complete', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.post('/:id/complete', authenticate, requireAnyAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const payout = await servicePayoutService.completePayout(param(req, 'id'));
     res.json({ success: true, data: payout });

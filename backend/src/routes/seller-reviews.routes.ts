@@ -3,6 +3,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import sellerReviewService from '../services/sellerReview.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 router.get('/seller/:sellerId', async (req, res, next) => {
@@ -16,7 +19,7 @@ router.get('/seller/:sellerId', async (req, res, next) => {
   }
 });
 
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { seller_id, rating, content, order_id } = req.body;
     const review = await sellerReviewService.create(req.user!.id, seller_id, { rating, content, order_id });
@@ -26,7 +29,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-router.put('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:id', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { rating, content } = req.body;
     const review = await sellerReviewService.update(param(req, 'id'), req.user!.id, { rating, content });

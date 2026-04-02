@@ -4,6 +4,9 @@ import { param } from '../utils/params.js';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/restaurants/admin/pending - Liste des restaurants en attente (Admin seulement)
@@ -25,7 +28,7 @@ router.get('/admin/pending', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // POST /api/restaurants/:id/approve - Approuver un restaurant (Admin seulement)
-router.post('/:id/approve', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/approve', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
     if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
@@ -59,7 +62,7 @@ router.post('/:id/approve', authenticate, async (req: AuthRequest, res, next) =>
 });
 
 // POST /api/restaurants/:id/reject - Rejeter un restaurant (Admin seulement)
-router.post('/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/reject', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
     if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
@@ -152,7 +155,7 @@ router.get('/:id/menu-items', async (req, res, next) => {
   }
 });
 
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { name, description, address, city, phone, opening_hours, delivery_time_min, minimum_order, delivery_fee, cuisine_type } = req.body;

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Exécute les migrations Prisma puis démarre le serveur (déploiement Railway)
+# Exécute les migrations Prisma puis démarre le serveur (déploiement Render / Docker)
 # Si les migrations échouent (DB pas prête, etc.), on démarre quand même pour éviter blocage healthcheck
 echo "🔄 Running Prisma migrations..."
 for i in 1 2 3 4 5; do

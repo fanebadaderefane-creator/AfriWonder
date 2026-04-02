@@ -4,10 +4,13 @@ import { param } from '../utils/params.js';
 import groupCallService from '../services/groupCall.service.js';
 import liveService from '../services/live.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // POST /api/group-calls — créer un appel groupe (retourne room_id pour signaling)
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const type = (req.body?.type === 'audio' ? 'audio' : 'video') as 'audio' | 'video';
     const rawGid = req.body?.conversation_group_id;
@@ -68,7 +71,7 @@ router.get('/id/:callId', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/group-calls/:callId/join
-router.post('/:callId/join', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:callId/join', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const callId = param(req, 'callId');
     const result = await groupCallService.join(callId, req.user!.id);
@@ -79,7 +82,7 @@ router.post('/:callId/join', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // POST /api/group-calls/:callId/leave
-router.post('/:callId/leave', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:callId/leave', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const callId = param(req, 'callId');
     const result = await groupCallService.leave(callId, req.user!.id);

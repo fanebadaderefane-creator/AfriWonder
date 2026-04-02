@@ -3,6 +3,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/requireRole.js';
 import { mapPlacesService } from '../services/mapPlaces.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 router.get('/', async (req, res, next) => {
@@ -22,7 +25,7 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.post('/', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, requireAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { name, category, address, latitude, longitude, description, image_url } = req.body;
     if (!name || !category || latitude == null || longitude == null) {

@@ -4,6 +4,9 @@ import { requireWebhookSecret } from '../middleware/webhookSecret.js';
 import { param } from '../utils/params.js';
 import certificateService from '../services/certificate.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/certificates - Mes certificats (auth)
@@ -46,7 +49,7 @@ router.get('/:id/pdf', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/certificates/:id/verify - Demander vérification (payant)
-router.post('/:id/verify', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/verify', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const certificateId = param(req, 'id');
     const userId = req.user!.id;
@@ -74,7 +77,7 @@ router.post('/:id/verify', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/certificates/verifications/:id/confirm - Confirmer vérification (webhook; protéger par PAYMENT_WEBHOOK_SECRET en prod)
-router.post('/verifications/:id/confirm', requireWebhookSecret, async (req, res, next) => {
+router.post('/verifications/:id/confirm', requireWebhookSecret, validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const transactionId = param(req, 'id');
     const result = await certificateService.confirmVerificationPayment(transactionId);

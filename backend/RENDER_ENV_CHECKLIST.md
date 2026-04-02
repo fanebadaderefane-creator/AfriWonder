@@ -1,5 +1,7 @@
 # Checklist variables d'environnement pour Render
 
+**Alignement avec le local :** les **noms de variables** sont les mêmes que dans `backend/.env` et `backend/.env.example` (notamment `DATABASE_URL` pour Prisma). Sur Render, tu recopies les **mêmes clés** avec les **mêmes valeurs** que ton `.env` local — pas un autre nom (pas de `POSTGRES_URL` à la place de `DATABASE_URL` sauf si tu ajoutes une couche d’alias toi-même).
+
 Coche chaque variable après l'avoir ajoutée dans **Render → ton service → Environment**.
 
 Copie les **valeurs** depuis ton fichier `backend/.env` (ne les note pas ici pour la sécurité).
@@ -28,8 +30,9 @@ Copie les **valeurs** depuis ton fichier `backend/.env` (ne les note pas ici pou
 ## Base de données / cache (si utilisé)
 
 - [ ] `SUPABASE_URL` (si utilisé)
-- [ ] `REDIS_URL` — Recommandé en prod (cache + rate limit + Socket.io). Upstash / Redis Cloud / Railway. Voir docs/PRODUCTION_1M_CHECKLIST.md §1. Si absent, pas de cache distribué.
-- [ ] `DATABASE_POOL_MAX` — Optionnel. Pour 1M+ users : 20. Voir docs/PRODUCTION_1M_CHECKLIST.md §2.éviter que l’app 
+- [ ] `REDIS_URL` — Recommandé en prod (cache + rate limit + Socket.io). Upstash / Redis Cloud / Render Key Value. Voir docs/PRODUCTION_1M_CHECKLIST.md §1. Si absent, pas de cache distribué.
+- [ ] `DATABASE_POOL_MAX` — Optionnel. Pour 1M+ users : 20. Voir docs/PRODUCTION_1M_CHECKLIST.md §2.
+
 ## Envoi d’emails
 
 - [ ] `SENDGRID_API_KEY`

@@ -7,6 +7,9 @@ import platformControlService from '../services/platformControl.service.js';
 import { requireKycFor } from '../services/kycRequired.service.js';
 import { logger } from '../utils/logger.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // ========== Prestataires assurance (Devenir prestataire + admin AfriWonder) ==========
@@ -33,7 +36,7 @@ router.get('/providers', async (_req, res, next) => {
 });
 
 // POST /api/insurance/providers — Devenir prestataire (utilisateur connecté)
-router.post('/providers', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/providers', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const b = req.body;
@@ -87,7 +90,7 @@ router.get('/providers/admin/pending', authenticate, async (req: AuthRequest, re
 });
 
 // POST /api/insurance/providers/:id/approve — Approuver un prestataire (Admin)
-router.post('/providers/:id/approve', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/providers/:id/approve', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
     if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
@@ -124,7 +127,7 @@ router.post('/providers/:id/approve', authenticate, async (req: AuthRequest, res
 });
 
 // POST /api/insurance/providers/:id/reject — Rejeter un prestataire (Admin)
-router.post('/providers/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/providers/:id/reject', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
     if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
@@ -166,7 +169,7 @@ router.post('/providers/:id/reject', authenticate, async (req: AuthRequest, res,
 // ========== Demandes de devis (formulaire "Demander un devis") ==========
 
 // POST /api/insurance/quote-requests — Demander un devis (public, user_id optionnel si connecté)
-router.post('/quote-requests', optionalAuth, async (req: AuthRequest, res, next) => {
+router.post('/quote-requests', optionalAuth, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const b = req.body;
     if (!b.full_name?.trim() || !b.phone?.trim()) {
@@ -206,7 +209,7 @@ router.get('/policies', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/policies', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/policies', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const b = req.body;
@@ -241,7 +244,7 @@ router.get('/claims', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/claims', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/claims', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     if (!(await platformControlService.isInsuranceEnabled())) {
@@ -271,7 +274,7 @@ router.post('/claims', authenticate, async (req: AuthRequest, res, next) => {
 
 // PATCH /api/insurance/claims/:id — workflow staff/admin : status, validation_level, risk_score
 const claimStatusWorkflow = ['submitted', 'under_review', 'approved', 'rejected', 'paid'];
-router.patch('/claims/:id', authenticate, requireStaff, async (req: AuthRequest, res, next) => {
+router.patch('/claims/:id', authenticate, requireStaff, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const b = req.body;

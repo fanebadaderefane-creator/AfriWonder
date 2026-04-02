@@ -1,6 +1,9 @@
 import rateLimit from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
 import { createClient } from 'redis';
+import type { Request } from 'express';
+import jwt from 'jsonwebtoken';
+import { getAccessTokenFromRequest } from './auth.js';
 
 // Redis client pour rate limiting distribué
 const redisClient = process.env.REDIS_URL 
@@ -36,14 +39,44 @@ const shouldSkipAuthLimiterForE2E = (req: any) => {
   return explicitE2EHeader || playwrightClient;
 };
 
-// Rate limiter général - 10 req/s par IP (checklist production)
+/** Même logique E2E que l’auth : en dev pas de limite générale ; en prod header / Playwright uniquement. */
+const shouldSkipGeneralLimiterForE2E = (req: any) => {
+  if (process.env.NODE_ENV !== 'production') return true;
+  const explicitE2EHeader = String(req.headers?.['x-e2e-test'] || '').toLowerCase() === '1';
+  const userAgent = String(req.headers?.['user-agent'] || '').toLowerCase();
+  return explicitE2EHeader || userAgent.includes('playwright');
+};
+
+/** JWT décodé sans DB — suffisant pour clé de quota par compte (audit : 100 req/min par user). */
+function userIdFromJwtForRateLimit(req: Request): string | null {
+  const token = getAccessTokenFromRequest(req);
+  if (!token || !process.env.JWT_SECRET) return null;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET) as { userId?: string };
+    return decoded.userId || null;
+  } catch {
+    return null;
+  }
+}
+
+const apiGeneralMax = Math.max(
+  1,
+  parseInt(process.env.API_GENERAL_RATE_LIMIT_MAX || '100', 10) || 100
+);
+
+// Rate limiter général — audit : 100 req/min par utilisateur (JWT) ou par IP si anonyme ; surchargeable via env
 export const generalLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 600, // 600 req/min = 10 req/s par IP
+  windowMs: 60 * 1000,
+  max: apiGeneralMax,
   message: { success: false, error: 'Trop de requêtes, réessayez dans 1 minute' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => isWebhookPath(req.path),
+  skip: (req) => isWebhookPath(req.path) || shouldSkipGeneralLimiterForE2E(req),
+  keyGenerator: (req) => {
+    const uid = userIdFromJwtForRateLimit(req);
+    if (uid) return `user:${uid}`;
+    return `ip:${req.ip || 'unknown'}`;
+  },
   store: makeRedisStore('rl:general:')
 });
 
@@ -57,9 +90,9 @@ export const webhookLimiter = rateLimit({
 
 // Auth stricte: login/register
 export const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5, // 5 tentatives login/15min
-  message: { success: false, error: 'Trop de tentatives de connexion. Réessayez dans 15 minutes.' },
+  windowMs: 60 * 1000,
+  max: 5, // 5 tentatives login/minute
+  message: { success: false, error: 'Trop de tentatives de connexion. Réessayez dans 1 minute.' },
   skipSuccessfulRequests: true, // Ne compte que les échecs
   skip: (req) => shouldSkipAuthLimiterForE2E(req),
   store: makeRedisStore('rl:auth:')

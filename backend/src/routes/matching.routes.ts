@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
 import matchingEngineService from '../services/matchingEngine.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 router.use(authenticate);
@@ -16,7 +19,7 @@ router.get('/onboarding', async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/onboarding', async (req: AuthRequest, res, next) => {
+router.post('/onboarding', validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const data = await matchingEngineService.saveOnboardingProfile(userId, req.body || {});
@@ -26,7 +29,7 @@ router.post('/onboarding', async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/journey/preview', async (req: AuthRequest, res, next) => {
+router.post('/journey/preview', validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const data = await matchingEngineService.buildUserJourney(userId, req.body || {});
@@ -47,7 +50,7 @@ router.get('/opportunities-for-you', async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/opportunities-for-you', async (req: AuthRequest, res, next) => {
+router.post('/opportunities-for-you', validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const limit = Math.min(parseInt((req.query.limit as string) || '20', 10), 50);
@@ -107,7 +110,7 @@ router.get('/coach/history', async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/coach/chat', async (req: AuthRequest, res, next) => {
+router.post('/coach/chat', validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const message = String(req.body?.message || '').trim();
@@ -158,7 +161,7 @@ router.get('/smart-notifications', async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/opportunity-action', async (req: AuthRequest, res, next) => {
+router.post('/opportunity-action', validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const opportunityId = String(req.body?.opportunityId || '').trim();

@@ -6,6 +6,9 @@ import platformControlService from '../services/platformControl.service.js';
 import { requireKycFor } from '../services/kycRequired.service.js';
 import { evaluate as riskEvaluate } from '../services/riskEngine.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 router.get('/', authenticate, async (req: AuthRequest, res, next) => {
@@ -47,7 +50,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || (req.socket as any)?.remoteAddress;
@@ -83,7 +86,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-router.patch('/:id/status', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/:id/status', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const { status, cancellation_fee, cancellation_reason } = req.body;

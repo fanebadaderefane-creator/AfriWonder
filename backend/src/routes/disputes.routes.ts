@@ -4,10 +4,13 @@ import { requireAnyAdmin, isAllowedAdminEmail } from '../middleware/adminRbac.js
 import { param } from '../utils/params.js';
 import disputeService from '../services/dispute.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // POST /api/disputes - CrÃ©er un litige
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { order_id, reason, description, evidence_images } = req.body;
@@ -71,7 +74,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/disputes/:id/messages - Ajouter un message au litige
-router.post('/:id/messages', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/messages', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const disputeId = param(req, 'id');
@@ -94,7 +97,7 @@ router.post('/:id/messages', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // POST /api/disputes/:id/resolve - RÃ©soudre un litige (admin)
-router.post('/:id/resolve', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.post('/:id/resolve', authenticate, requireAnyAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const disputeId = param(req, 'id');

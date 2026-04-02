@@ -1127,7 +1127,7 @@ export default function Home() {
           Ne pas revenir à une largeur dépendante d'un parent flex ambigu, sinon Firefox/WebView
           peut réduire la slide et donner l'impression d'un player "noir". */}
       <div
-        className="relative mx-auto h-full min-h-[100dvh] bg-[#050816]"
+        className="relative mx-auto flex h-full min-h-0 flex-col bg-[#050816]"
         style={{
           width: FEED_FULLSCREEN_WIDTH,
           minWidth: FEED_FULLSCREEN_WIDTH,
@@ -1235,11 +1235,11 @@ export default function Home() {
           }}
           onTouchEnd={() => handlePullEnd()}
           onTouchCancel={() => handlePullEnd()}
-          className="afw-home-feed-scroll relative w-full h-full overflow-y-auto overflow-x-hidden snap-y snap-mandatory"
+          className="afw-home-feed-scroll relative min-h-0 w-full flex-1 overflow-y-auto overflow-x-hidden snap-y snap-mandatory"
           style={{
             // Garde-fou Firefox/WebView : conserver le feed en flux normal avec une hauteur explicite.
             // Ne pas remettre `absolute inset-0` ici, sinon la géométrie de la slide peut se casser.
-            minHeight: '100dvh',
+            // Pas de minHeight 100dvh : sur iOS ça dépasse la zone utile (safe areas) et masque la BottomNav.
             scrollSnapType: 'y mandatory',
             WebkitOverflowScrolling: 'touch',
             scrollBehavior: 'auto',
@@ -1264,7 +1264,7 @@ export default function Home() {
           </div>
         )}
         {activeTab === 'abonnements' && followingVideos.length === 0 && isLoading ? (
-          <div className="min-h-[100dvh] w-full shrink-0" aria-hidden />
+          <div className="min-h-full w-full shrink-0" aria-hidden />
         ) : activeTab === 'abonnements' && followingVideos.length === 0 ? (
           <FeedEmptyState
             icon={Users}
@@ -1274,7 +1274,7 @@ export default function Home() {
             onAction={!user ? () => _navigate('/Landing') : undefined}
           />
         ) : activeTab === 'pourtoi' && !shouldUseOfflinePreparedFeed && mainFeedItems.length === 0 && isLoading ? (
-          <div className="min-h-[100dvh] w-full shrink-0" aria-hidden />
+          <div className="min-h-full w-full shrink-0" aria-hidden />
         ) : activeTab === 'pourtoi' && !shouldUseOfflinePreparedFeed && mainFeedItems.length === 0 ? (
           <FeedEmptyState
             icon={feedError ? WifiOff : Sparkles}

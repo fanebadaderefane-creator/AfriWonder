@@ -3,10 +3,13 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import shipmentService from '../services/shipment.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // POST /api/shipments - Créer une expédition (réservé au vendeur)
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { order_id, carrier, tracking_number, estimated_delivery_days } = req.body;
@@ -34,7 +37,7 @@ router.get('/:orderId/timeline', authenticate, async (req: AuthRequest, res, nex
 });
 
 // POST /api/shipments/:orderId/tracking - Ajouter un événement de suivi
-router.post('/:orderId/tracking', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:orderId/tracking', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const orderId = param(req, 'orderId');
     const userId = req.user!.id;
@@ -54,7 +57,7 @@ router.post('/:orderId/tracking', authenticate, async (req: AuthRequest, res, ne
 });
 
 // POST /api/shipments/:orderId/confirm-delivery - Confirmer la livraison
-router.post('/:orderId/confirm-delivery', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:orderId/confirm-delivery', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const orderId = param(req, 'orderId');
     const userId = req.user!.id;
@@ -77,7 +80,7 @@ router.post('/:orderId/confirm-delivery', authenticate, async (req: AuthRequest,
 });
 
 // PUT /api/shipments/:orderId/location - Mettre à jour la localisation
-router.put('/:orderId/location', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:orderId/location', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const orderId = param(req, 'orderId');
     const userId = req.user!.id;

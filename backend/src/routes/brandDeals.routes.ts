@@ -3,6 +3,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import prisma from '../config/database.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/brand-deals — mes collaborations (créateur)
@@ -36,7 +39,7 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/brand-deals — créer (créateur enregistre une collaboration)
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const creatorId = req.user!.id;
     const { brand_name, amount, currency, campaign_id, notes } = req.body || {};
@@ -76,7 +79,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PATCH /api/brand-deals/:id
-router.patch('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/:id', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const userId = req.user!.id;

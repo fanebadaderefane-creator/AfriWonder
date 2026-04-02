@@ -32,6 +32,10 @@ const urls = paths.map((p) => `${base}${p}`);
 
 const isDesktop = process.env.LHCI_DESKTOP === '1' || process.env.LHCI_DESKTOP === 'true';
 
+/** Client strict : LHCI_STRICT=1 → les seuils audit p.13-14 font échouer la CI si non atteints. */
+const strict = process.env.LHCI_STRICT === '1' || process.env.LHCI_STRICT === 'true';
+const level = strict ? 'error' : 'warn';
+
 module.exports = {
   ci: {
     collect: {
@@ -63,10 +67,15 @@ module.exports = {
     },
     assert: {
       assertions: {
-        'categories:performance': ['warn', { minScore: 0.55 }],
-        'categories:accessibility': ['warn', { minScore: 0.88 }],
-        'categories:seo': ['warn', { minScore: 0.88 }],
-        'categories:best-practices': ['warn', { minScore: 0.92 }],
+        // Cibles audit page 13 — `LHCI_STRICT=1` : seuils obligatoires (client exigeant)
+        'categories:performance': [level, { minScore: 0.9 }],
+        'categories:accessibility': [level, { minScore: 0.95 }],
+        'categories:seo': [level, { minScore: 0.95 }],
+        'categories:best-practices': [level, { minScore: 0.92 }],
+        'largest-contentful-paint': [level, { maxNumericValue: 2500 }],
+        'cumulative-layout-shift': [level, { maxNumericValue: 0.1 }],
+        interactive: [level, { maxNumericValue: 3000 }],
+        'server-response-time': [level, { maxNumericValue: 800 }],
       },
     },
     upload: {

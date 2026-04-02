@@ -3,6 +3,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import microcreditService from '../services/microcredit.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/microcredit - Liste des prêts
@@ -50,7 +53,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/microcredit/request - Créer une demande de prêt
-router.post('/request', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/request', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { amount, purpose, repaymentPeriod, interestRate, business_plan } = req.body;
@@ -73,7 +76,7 @@ router.post('/request', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/microcredit/:id/contribute - Contribuer à un prêt
-router.post('/:id/contribute', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/contribute', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const loanId = param(req, 'id');
     const userId = req.user!.id;
@@ -99,7 +102,7 @@ router.post('/:id/contribute', authenticate, async (req: AuthRequest, res, next)
 });
 
 // POST /api/microcredit/contributions/:id/confirm - Confirmer une contribution (webhook)
-router.post('/contributions/:id/confirm', async (req, res, next) => {
+router.post('/contributions/:id/confirm', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const contributionId = param(req, 'id');
     const contribution = await microcreditService.confirmContribution(contributionId);
@@ -115,7 +118,7 @@ router.post('/contributions/:id/confirm', async (req, res, next) => {
 });
 
 // POST /api/microcredit/repayments/:id/pay - Marquer une échéance comme payée (admin ou cron)
-router.post('/repayments/:id/pay', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/repayments/:id/pay', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const repaymentId = param(req, 'id');
     const amount = Number(req.body.amount);
@@ -130,7 +133,7 @@ router.post('/repayments/:id/pay', authenticate, async (req: AuthRequest, res, n
 });
 
 // POST /api/microcredit/cron/check-overdue - Défauts (cron ou admin)
-router.post('/cron/check-overdue', async (req, res, next) => {
+router.post('/cron/check-overdue', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const result = await microcreditService.checkOverdueAndMarkDefault();
     res.json({ success: true, data: result });

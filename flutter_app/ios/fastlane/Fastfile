@@ -1,0 +1,25 @@
+# Fastlane — builds iOS (audit Mois 2–3)
+# Prérequis : bundle install dans ios/ ; certificats Apple Developer ; App Store Connect API key optionnelle
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Build release sans upload (CI / local)"
+  lane :build_release do
+    build_app(
+      workspace: "Runner.xcworkspace",
+      scheme: "Runner",
+      export_method: "app-store",
+      output_directory: "../build/ios",
+      output_name: "AfriWonder.ipa"
+    )
+  end
+
+  desc "Upload TestFlight (nécessite FASTLANE_APPLE_* ou session)"
+  lane :beta do
+    build_release
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true
+    )
+  end
+end

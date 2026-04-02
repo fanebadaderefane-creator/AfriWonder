@@ -3,10 +3,13 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import directCallService from '../services/directCall.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // POST /api/calls/initiate - Initier un appel payant
-router.post('/initiate', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/initiate', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { receiverId, phone, estimatedDuration } = req.body;
@@ -34,7 +37,7 @@ router.post('/initiate', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/calls/:id/end - Terminer un appel
-router.post('/:id/end', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/end', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const callId = param(req, 'id');
     const { duration } = req.body; // Durée en secondes

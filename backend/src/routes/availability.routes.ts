@@ -7,6 +7,9 @@ import { param } from '../utils/params.js';
 import availabilityService from '../services/availability.service.js';
 import providerService from '../services/provider.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/providers/:id/availability - Récupérer les disponibilités
@@ -24,7 +27,7 @@ router.get('/providers/:id/availability', async (req, res, next) => {
 });
 
 // PUT /api/providers/:id/availability - Définir les disponibilités (prestataire)
-router.put('/providers/:id/availability', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/providers/:id/availability', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const provider = await providerService.getProviderByUserId(req.user!.id);
     if (!provider || provider.id !== param(req, 'id')) {
@@ -47,7 +50,7 @@ router.put('/providers/:id/availability', authenticate, async (req: AuthRequest,
 });
 
 // POST /api/providers/:id/unavailability - Ajouter une indisponibilité (prestataire)
-router.post('/providers/:id/unavailability', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/providers/:id/unavailability', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const provider = await providerService.getProviderByUserId(req.user!.id);
     if (!provider || provider.id !== param(req, 'id')) {

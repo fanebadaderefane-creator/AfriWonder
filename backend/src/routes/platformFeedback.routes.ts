@@ -4,12 +4,15 @@ import { authenticate } from '../middleware/auth.js';
 import { requireAnyAdmin } from '../middleware/adminRbac.js';
 import { logger } from '../utils/logger.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 const VALID_TYPES = ['bug', 'suggestion', 'comment'];
 
 // POST /api/platform-feedback — Public, envoyer un feedback
-router.post('/', async (req, res, next) => {
+router.post('/', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const { type, content, email, join_whatsapp, join_mailing } = req.body;
     const t = (type || 'comment').toLowerCase();

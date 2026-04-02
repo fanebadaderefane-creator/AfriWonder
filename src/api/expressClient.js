@@ -59,6 +59,76 @@ async function putToPresignedUrl(uploadUrl, file, contentType, onProgress) {
   });
 }
 
+/** R2 multipart (S3) — gros fichiers, chunks 5 Mo (roadmap Phase 2) */
+function getMultipartThresholdBytes() {
+  const mb = Number(import.meta?.env?.VITE_UPLOAD_MULTIPART_THRESHOLD_MB ?? 20);
+  if (!Number.isFinite(mb) || mb < 5) return 20 * 1024 * 1024;
+  return Math.round(mb * 1024 * 1024);
+}
+
+function putPartToPresignedUrl(uploadUrl, blob, contentType) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', uploadUrl, true);
+    xhr.setRequestHeader('Content-Type', contentType || 'application/octet-stream');
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const raw = xhr.getResponseHeader('ETag') || xhr.getResponseHeader('etag') || '';
+        const etag = String(raw).replace(/^\"|\"$/g, '');
+        if (!etag) reject(new Error('multipart_no_etag'));
+        else resolve({ etag });
+      } else reject(new Error(`multipart_part_${xhr.status || 0}`));
+    };
+    xhr.onerror = () => reject(new Error('multipart_network'));
+    xhr.send(blob);
+  });
+}
+
+async function uploadVideoMultipartR2(blob, videoCt, onProgress) {
+  const PART = 5 * 1024 * 1024;
+  const { data: initWrap } = await axiosInstance.post('/upload/multipart/init', {
+    kind: 'video',
+    filename: blob.name || 'video.mp4',
+    contentType: videoCt,
+  });
+  const init = initWrap?.data ?? initWrap;
+  const { key, uploadId } = init;
+  const parts = [];
+  const total = blob.size;
+  let offset = 0;
+  let partNumber = 1;
+  try {
+    while (offset < total) {
+      const end = Math.min(offset + PART, total);
+      const chunk = blob.slice(offset, end);
+      const { data: urlWrap } = await axiosInstance.post('/upload/multipart/part-url', {
+        key,
+        uploadId,
+        partNumber,
+      });
+      const pu = urlWrap?.data ?? urlWrap;
+      const { etag } = await putPartToPresignedUrl(pu.uploadUrl, chunk, videoCt);
+      parts.push({ PartNumber: partNumber, ETag: etag });
+      offset = end;
+      partNumber += 1;
+      onProgress?.(Math.min(90, Math.round((offset * 90) / total)));
+    }
+    const { data: doneWrap } = await axiosInstance.post('/upload/multipart/complete', {
+      key,
+      uploadId,
+      parts,
+    });
+    const done = doneWrap?.data ?? doneWrap;
+    onProgress?.(90);
+    return { file_url: done.file_url };
+  } catch (e) {
+    try {
+      await axiosInstance.post('/upload/multipart/abort', { key, uploadId });
+    } catch (_) {}
+    throw e;
+  }
+}
+
 const axiosInstance = axios.create({
   baseURL: API_URL,
   withCredentials: true,
@@ -555,6 +625,13 @@ export const api = {
   feed: {
     async list(params = {}) {
       const { data } = await axiosInstance.get('/feed', { params });
+      return data.data;
+    },
+  },
+  /** Reco vidéo (Phase 4 — remplaçable par TF.js / modèle Python) */
+  recommendations: {
+    async listVideos(params = {}) {
+      const { data } = await axiosInstance.get('/recommendations/videos', { params });
       return data.data;
     },
   },
@@ -1774,6 +1851,14 @@ export const api = {
       });
       return data.data;
     },
+    async getUssdInstructions(provider = 'orange_money', country = 'ML', amount) {
+      const params = { provider, country };
+      if (Number.isFinite(Number(amount)) && Number(amount) > 0) {
+        params.amount = Number(amount);
+      }
+      const { data } = await axiosInstance.get('/payments/ussd/instructions', { params });
+      return data.data;
+    },
     async getWallet() {
       const { data } = await axiosInstance.get('/payments/wallet');
       return data.data;
@@ -1876,9 +1961,16 @@ export const api = {
         throw new Error('Fichier vidéo invalide');
       }
       try {
+        const blob = file instanceof File ? file : new File([file], 'video.mp4', { type: file.type || 'video/mp4' });
+        const videoCt = normalizeClientVideoContentType(blob);
+        if (file.size && file.size >= getMultipartThresholdBytes()) {
+          const out = await uploadVideoMultipartR2(blob, videoCt, onProgress);
+          if (out?.file_url) {
+            onProgress?.(100);
+            return { file_url: out.file_url, original_name: blob.name };
+          }
+        }
         if (file.size && file.size >= getDirectUploadThresholdBytes()) {
-          const blob = file instanceof File ? file : new File([file], 'video.mp4', { type: file.type || 'video/mp4' });
-          const videoCt = normalizeClientVideoContentType(blob);
           const presigned = await api.upload.presign({
             kind: 'video',
             filename: blob.name || 'video.mp4',

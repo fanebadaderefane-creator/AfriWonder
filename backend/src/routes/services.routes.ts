@@ -6,6 +6,9 @@ import providerService from '../services/provider.service.js';
 import messageService from '../services/message.service.js';
 import { requireMarketplaceFeature } from '../middleware/marketplaceSubscription.middleware.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 const isAdminRole = (role?: string) => ['super_admin', 'admin', 'moderation_admin'].includes(String(role || ''));
@@ -57,6 +60,7 @@ router.post(
   '/',
   authenticate,
   requireMarketplaceFeature('post_service'),
+  validateBody(jsonObjectBodySchema),
   async (req: AuthRequest, res, next) => {
     try {
       const provider = await providerService.getProviderByUserId(req.user!.id);
@@ -124,6 +128,7 @@ router.post(
   '/:id/contact',
   authenticate,
   requireMarketplaceFeature('contact_provider'),
+  validateBody(jsonObjectBodySchema),
   async (req: AuthRequest, res, next) => {
     try {
       const service = await serviceService.getById(param(req, 'id'));
@@ -165,7 +170,7 @@ router.get('/admin/pending', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // POST /api/services/:id/approve
-router.post('/:id/approve', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/approve', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     if (!isAdminRole(req.user?.role)) {
       return res.status(403).json({ success: false, message: 'Accès refusé' });
@@ -178,7 +183,7 @@ router.post('/:id/approve', authenticate, async (req: AuthRequest, res, next) =>
 });
 
 // POST /api/services/:id/reject
-router.post('/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/reject', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     if (!isAdminRole(req.user?.role)) {
       return res.status(403).json({ success: false, message: 'Accès refusé' });

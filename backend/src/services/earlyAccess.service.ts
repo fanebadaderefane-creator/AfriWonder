@@ -4,6 +4,10 @@ import { logger } from '../utils/logger.js';
 const DEFAULT_MAX_USERS = 10000;
 
 async function getMaxUsers(): Promise<number> {
+  const envCap = Number(process.env.EARLY_ACCESS_MAX_USERS || process.env.BETA_MAX_USERS);
+  if (Number.isFinite(envCap) && envCap > 0) {
+    return Math.floor(envCap);
+  }
   try {
     const row = await prisma.platformSettings.findUnique({
       where: { key: 'early_access_max_users' },

@@ -6,6 +6,9 @@ import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import rideShareService from '../services/rideShare.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/ride-share — liste des trajets (filtres: origin, destination, from_date, to_date, page, limit)
@@ -55,7 +58,7 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
 });
 
 // POST /api/ride-share — créer un trajet (conducteur)
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const driverId = req.user!.id;
     const { origin, destination, departure_at, seats_available, price_per_seat, notes } = req.body;
@@ -80,7 +83,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/ride-share/:id/book — réserver une ou plusieurs places
-router.post('/:id/book', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/book', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const rideShareId = param(req, 'id');
     const passengerId = req.user!.id;

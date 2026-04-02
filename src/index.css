@@ -1,3 +1,5 @@
+@import './styles/audit-design-tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -29,7 +31,7 @@
     --chart-3: 213 94% 60%;
     --chart-4: 142 71% 40%;
     --chart-5: 43 74% 55%;
-    --radius: 0.5rem;
+    --radius: 0.75rem; /* 12px cards */
     --sidebar-background: 210 40% 98%;
     --sidebar-foreground: 224 47% 20%;
     --sidebar-primary: 224 64% 33%;
@@ -38,6 +40,21 @@
     --sidebar-accent-foreground: 224 64% 33%;
     --sidebar-border: 214 32% 91%;
     --sidebar-ring: 217 91% 60%;
+    /* Audit design system — repères (charte bleue produit ; primary reste HSL ci-dessus) */
+    --afw-space-1: 0.25rem;
+    --afw-space-2: 0.5rem;
+    --afw-space-3: 0.75rem;
+    --afw-space-4: 1rem;
+    --afw-space-6: 1.5rem;
+    --afw-space-8: 2rem;
+    --afw-space-12: 3rem;
+    --afw-radius-card: 12px;
+    --afw-radius-button: 24px;
+    --afw-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.12);
+    --afw-motion-micro: 200ms ease-out;
+    --afw-motion-spring: 400ms cubic-bezier(0.22, 1, 0.36, 1);
+    --afw-success: 142 71% 36%;
+    --afw-danger: 0 72% 51%;
   }
 
   .dark {
@@ -263,6 +280,16 @@ img[data-afw-feed-poster="1"] {
   outline-offset: 2px;
 }
 
+/* Discover & écrans très sombres (#070a12) — anneau de focus lisible sur le fond */
+.discover-page :focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 3px;
+}
+
+.discover-page a:focus-visible {
+  outline-offset: 2px;
+}
+
 /* Ã‰viter outline sur clic souris (Tap highlight) */
 :focus:not(:focus-visible) {
   outline: none;
@@ -276,7 +303,7 @@ a:focus-visible {
 
 /* Transitions fluides â€” interactions courantes */
 button, a, [role="button"], input, select {
-  transition: color 0.15s, background-color 0.15s, opacity 0.15s, border-color 0.15s;
+  transition: color 0.2s ease-out, background-color 0.2s ease-out, opacity 0.2s ease-out, border-color 0.2s ease-out;
 }
 
 /* 2.3.3 Reduced motion */

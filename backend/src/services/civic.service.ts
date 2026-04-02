@@ -433,6 +433,24 @@ class CivicService {
     const body = `La pétition "${petition.title}" a atteint son objectif de ${petition.goal_signatures} signatures (${count} au total).\n\nCréateur: ${petition.creator?.full_name}\n\nRésumé: ${petition.description.slice(0, 500)}...\n\nVoir le fichier PDF en pièce jointe pour la liste des signataires.`;
     try {
       const pdfBuffer = await this.buildPetitionPdfBuffer(petitionId);
+      const { sendViaResend } = await import('../utils/transactionalEmail.js');
+      if (process.env.RESEND_API_KEY?.trim()) {
+        const ok = await sendViaResend({
+          to: petition.target_authority_email,
+          subject,
+          text: body,
+          html: `<pre style="font-family:sans-serif;white-space:pre-wrap">${body.replace(/</g, '&lt;')}</pre>`,
+          attachments:
+            pdfBuffer.length > 0
+              ? [{ filename: `petition-${petitionId}-signataires.pdf`, content: pdfBuffer }]
+              : undefined,
+        });
+        if (ok) {
+          logger.info('Authority notified via Resend', { petitionId, to: petition.target_authority_email });
+          return;
+        }
+        logger.warn('Resend authority mail failed, fallback SMTP', { petitionId });
+      }
       const nodemailer = (await import('nodemailer')).default;
       const transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
@@ -450,7 +468,7 @@ class CivicService {
         text: body,
         attachments,
       });
-      logger.info('Authority notified with PDF', { petitionId, to: petition.target_authority_email });
+      logger.info('Authority notified with PDF (SMTP)', { petitionId, to: petition.target_authority_email });
     } catch (e) {
       logger.error('Authority email failed', { petitionId, error: e });
     }

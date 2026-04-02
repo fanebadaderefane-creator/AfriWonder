@@ -9,6 +9,9 @@ import { evaluate as riskEvaluate } from '../services/riskEngine.service.js';
 import { requireKycFor } from '../services/kycRequired.service.js';
 import { auditFromRequest } from '../services/auditTrail.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 const bookLimiter = rateLimit({
@@ -21,7 +24,7 @@ const bookLimiter = rateLimit({
 });
 
 // POST /api/events/cron/send-reminders - Rappels 24h et 1h (cron, protégé par CRON_SECRET)
-router.post('/cron/send-reminders', async (req, res, next) => {
+router.post('/cron/send-reminders', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const secret = process.env.CRON_SECRET || process.env.EVENTS_REMINDERS_SECRET;
     if (secret && req.headers['x-cron-secret'] !== secret && req.body?.secret !== secret) {
@@ -73,7 +76,7 @@ router.get('/my-tickets', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/events/check-in - Check-in par QR (auth recommandé pour audit)
-router.post('/check-in', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/check-in', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { qr_code } = req.body;
     if (!qr_code) {
@@ -87,7 +90,7 @@ router.post('/check-in', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/events/payments/:id/confirm - Confirmer paiement billet (callback / webhook)
-router.post('/payments/:id/confirm', async (req, res, next) => {
+router.post('/payments/:id/confirm', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const paymentId = param(req, 'id');
     const { transaction_id } = req.body || {};
@@ -99,7 +102,7 @@ router.post('/payments/:id/confirm', async (req, res, next) => {
 });
 
 // POST /api/events/feature-payments/:id/confirm - Confirmer paiement mise en avant (callback)
-router.post('/feature-payments/:id/confirm', async (req, res, next) => {
+router.post('/feature-payments/:id/confirm', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const featurePaymentId = param(req, 'id');
     const { transaction_id } = req.body || {};
@@ -111,7 +114,7 @@ router.post('/feature-payments/:id/confirm', async (req, res, next) => {
 });
 
 // POST /api/events - Créer un événement (auth)
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const body = req.body;
@@ -161,7 +164,7 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
 });
 
 // PATCH /api/events/:id - Modifier (organisateur)
-router.patch('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/:id', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const eventId = param(req, 'id');
     const userId = req.user!.id;
@@ -173,7 +176,7 @@ router.patch('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/events/:id/tickets/lock - Lock temporaire 2 min (évite survente)
-router.post('/:id/tickets/lock', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/tickets/lock', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const eventId = param(req, 'id');
     const userId = req.user!.id;
@@ -187,7 +190,7 @@ router.post('/:id/tickets/lock', authenticate, async (req: AuthRequest, res, nex
 });
 
 // POST /api/events/:id/book — kill switch, KYC, risk, audit. Idempotency-Key optionnel (si présent, évite double résa)
-router.post('/:id/book', authenticate, bookLimiter, optionalIdempotencyMiddleware, async (req: AuthRequest, res, next) => {
+router.post('/:id/book', authenticate, bookLimiter, optionalIdempotencyMiddleware, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const eventId = param(req, 'id');
     const userId = req.user!.id;
@@ -237,7 +240,7 @@ router.get('/:id/dashboard', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // POST /api/events/:id/feature - Payer la mise en avant (auth, organisateur)
-router.post('/:id/feature', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/feature', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const eventId = param(req, 'id');
     const userId = req.user!.id;
@@ -288,7 +291,7 @@ router.get('/:id/chat', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/events/:id/chat - Envoyer un message (auth, inscrit, pendant l'événement)
-router.post('/:id/chat', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/chat', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const eventId = param(req, 'id');
     const userId = req.user!.id;
@@ -318,7 +321,7 @@ router.get('/:id/participants/export', authenticate, async (req: AuthRequest, re
 });
 
 // POST /api/events/:id/notify-participants - Message à tous les inscrits (organisateur)
-router.post('/:id/notify-participants', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/notify-participants', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const eventId = param(req, 'id');
     const userId = req.user!.id;
@@ -334,7 +337,7 @@ router.post('/:id/notify-participants', authenticate, async (req: AuthRequest, r
 });
 
 // POST /api/events/:id/close - Clôturer l'événement (organisateur)
-router.post('/:id/close', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/close', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const eventId = param(req, 'id');
     const userId = req.user!.id;
@@ -346,7 +349,7 @@ router.post('/:id/close', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/events/:id/like - Like / unlike (auth)
-router.post('/:id/like', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/like', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const eventId = param(req, 'id');
     const userId = req.user!.id;
@@ -371,7 +374,7 @@ router.get('/:id/comments', async (req, res, next) => {
 });
 
 // POST /api/events/:id/comments - Ajouter commentaire (auth)
-router.post('/:id/comments', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/comments', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const eventId = param(req, 'id');
     const userId = req.user!.id;
@@ -401,7 +404,7 @@ router.get('/tickets/:id/pdf', authenticate, async (req: AuthRequest, res, next)
 });
 
 // POST /api/events/tickets/:ticketId/cancel - Annuler mon billet (auth)
-router.post('/tickets/:ticketId/cancel', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/tickets/:ticketId/cancel', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const ticketId = param(req, 'ticketId');
     const userId = req.user!.id;
@@ -413,7 +416,7 @@ router.post('/tickets/:ticketId/cancel', authenticate, async (req: AuthRequest, 
 });
 
 // POST /api/events/tickets/:id/confirm - Alias pour confirmation paiement (legacy)
-router.post('/tickets/:id/confirm', async (req, res, next) => {
+router.post('/tickets/:id/confirm', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const paymentId = param(req, 'id');
     const result = await eventService.confirmTicketPayment(paymentId);
@@ -438,7 +441,7 @@ router.get('/admin/pending', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // POST /api/events/:id/approve - Approuver un événement (Admin seulement)
-router.post('/:id/approve', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/approve', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
     if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
@@ -453,7 +456,7 @@ router.post('/:id/approve', authenticate, async (req: AuthRequest, res, next) =>
 });
 
 // POST /api/events/:id/reject - Rejeter un événement (Admin seulement)
-router.post('/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/reject', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
     if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {

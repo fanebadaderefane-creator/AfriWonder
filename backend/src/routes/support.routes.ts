@@ -3,10 +3,13 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import supportTicketService from '../services/supportTicket.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 const ADMIN_SUPPORT_ROLES = new Set(['admin', 'super_admin', 'support_admin', 'data_admin', 'finance_admin', 'moderation_admin']);
 
-router.post('/tickets', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/tickets', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { subject, message } = req.body;
     const ticket = await supportTicketService.create(req.user!.id, subject, message);
@@ -16,7 +19,7 @@ router.post('/tickets', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/e2ee-diagnostic', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/e2ee-diagnostic', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const payload = req.body || {};
     const subject = `Diagnostic E2EE - ${new Date().toISOString().slice(0, 10)}`;
@@ -60,7 +63,7 @@ router.get('/tickets/:id', authenticate, async (req: AuthRequest, res, next) => 
   }
 });
 
-router.post('/tickets/:id/messages', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/tickets/:id/messages', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const isStaff = req.user?.role === 'admin';
     const msg = await supportTicketService.addMessage(param(req, 'id'), req.user!.id, req.body.message, isStaff);
@@ -70,7 +73,7 @@ router.post('/tickets/:id/messages', authenticate, async (req: AuthRequest, res,
   }
 });
 
-router.patch('/tickets/:id/status', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/tickets/:id/status', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     if (!ADMIN_SUPPORT_ROLES.has(String(req.user?.role || ''))) return res.status(403).json({ success: false, error: 'Admin required' });
     const ticket = await supportTicketService.updateStatus(param(req, 'id'), req.body.status);

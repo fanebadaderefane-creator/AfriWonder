@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import { randomUUID } from 'crypto';
+import onHeaders from 'on-headers';
 import { recordHttpMetric } from '../services/httpMetrics.service.js';
 import { logger } from '../utils/logger.js';
 
@@ -20,6 +21,14 @@ export const attachRequestId = (req: Request, res: Response, next: NextFunction)
 export const httpMetricsMiddleware = (req: Request, res: Response, next: NextFunction) => {
   const start = process.hrtime.bigint();
 
+  onHeaders(res, () => {
+    const elapsedNs = process.hrtime.bigint() - start;
+    const durationMs = Number(elapsedNs) / 1_000_000;
+    if (!res.headersSent) {
+      res.setHeader('X-Response-Time', `${durationMs.toFixed(2)}ms`);
+    }
+  });
+
   res.on('finish', () => {
     const elapsedNs = process.hrtime.bigint() - start;
     const durationMs = Number(elapsedNs) / 1_000_000;
@@ -32,7 +41,21 @@ export const httpMetricsMiddleware = (req: Request, res: Response, next: NextFun
       durationMs,
     });
 
-    if (durationMs >= 1200 && req.path.startsWith('/api/')) {
+    const rawPath = req.baseUrl ? `${req.baseUrl}${req.path}` : req.path;
+    const critical =
+      rawPath === '/health' ||
+      /^\/api\/health$/.test(rawPath) ||
+      /^\/api\/auth\/(login|refresh)$/.test(rawPath) ||
+      /^\/api\/videos\/feed\b/.test(rawPath);
+
+    if (critical && durationMs > 200) {
+      logger.warn('SLA audit (>200ms) route critique', {
+        method: req.method,
+        path: rawPath,
+        duration_ms: Number(durationMs.toFixed(2)),
+        requestId: (req as any).requestId,
+      });
+    } else if (durationMs >= 1200 && req.path.startsWith('/api/')) {
       logger.warn('Slow API request detected', {
         method: req.method,
         path,

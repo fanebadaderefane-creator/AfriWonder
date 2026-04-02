@@ -8,10 +8,13 @@ import bookingService from '../services/booking.service.js';
 import providerService from '../services/provider.service.js';
 import { requireMarketplaceFeature } from '../middleware/marketplaceSubscription.middleware.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // POST /api/bookings - Créer une réservation
-router.post('/', authenticate, requireMarketplaceFeature('contact_provider'), async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, requireMarketplaceFeature('contact_provider'), validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const customerId = req.user!.id;
     const { service_id, booking_date, booking_time, location_type, customer_address_id, notes, payment_method, deposit_only, phone, customer_name, customer_phone, customer_email } = req.body;
@@ -82,7 +85,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PUT /api/bookings/:id/confirm - Confirmer une réservation (prestataire)
-router.put('/:id/confirm', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:id/confirm', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const provider = await providerService.getProviderByUserId(req.user!.id);
     if (!provider) {
@@ -96,7 +99,7 @@ router.put('/:id/confirm', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // PUT /api/bookings/:id/status - Mettre à jour le statut (prestataire)
-router.put('/:id/status', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:id/status', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { status, reason } = req.body;
     if (!status) {
@@ -115,7 +118,7 @@ router.put('/:id/status', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/bookings/:id/cancel - Annuler une réservation
-router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/cancel', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { reason } = req.body;
     const booking = await bookingService.cancelBooking(param(req, 'id'), req.user!.id, reason || '');
@@ -126,7 +129,7 @@ router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/bookings/:id/complete - Marquer comme terminé (prestataire)
-router.post('/:id/complete', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/complete', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const provider = await providerService.getProviderByUserId(req.user!.id);
     if (!provider) {
@@ -140,7 +143,7 @@ router.post('/:id/complete', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // POST /api/bookings/:id/confirm-payment - Confirmer le paiement (webhook/admin)
-router.post('/:id/confirm-payment', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/confirm-payment', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { transaction_id } = req.body;
     const booking = await bookingService.confirmPayment(param(req, 'id'), transaction_id || '');

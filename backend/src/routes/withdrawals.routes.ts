@@ -4,10 +4,13 @@ import { requireAnyAdmin, isAdminRole } from '../middleware/adminRbac.js';
 import { param } from '../utils/params.js';
 import withdrawalService from '../services/withdrawal.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // POST /api/withdrawals/request - Demander un retrait
-router.post('/request', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/request', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { amount, orange_money_phone, phone, payment_method, paypal_email, pin } = req.body;
@@ -75,7 +78,7 @@ router.get('/pending', authenticate, requireAnyAdmin, async (req: AuthRequest, r
 });
 
 // POST /api/withdrawals/:id/process - Traiter un retrait (Admin)
-router.post('/:id/process', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.post('/:id/process', authenticate, requireAnyAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const adminId = req.user!.id;
     const withdrawalId = param(req, 'id');
@@ -97,7 +100,7 @@ router.post('/:id/process', authenticate, requireAnyAdmin, async (req: AuthReque
 });
 
 // POST /api/withdrawals/:id/cancel - Annuler un retrait
-router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/cancel', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const withdrawalId = param(req, 'id');

@@ -3,10 +3,13 @@ import prisma from '../config/database.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { invalidateUserFeedCaches } from '../services/feedCache.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // POST /api/saves - Save a video
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { video_id } = req.body;
     const userId = req.user!.id;

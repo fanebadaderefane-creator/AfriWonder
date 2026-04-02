@@ -4,6 +4,9 @@ import { param } from '../utils/params.js';
 import prisma from '../config/database.js';
 import eventService from '../services/event.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 router.get('/', async (req, res, next) => {
@@ -49,7 +52,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 /** Scan QR — billet Event (anti-double, QR signé). Organisateur ou staff. */
-router.post('/scan', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/scan', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { qr_code } = req.body;
     if (!qr_code) return res.status(400).json({ success: false, message: 'qr_code requis' });
@@ -61,7 +64,7 @@ router.post('/scan', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 /** Remboursement — billet Event (payment_status = refunded). */
-router.post('/refund', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/refund', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { ticket_id } = req.body;
     if (!ticket_id) return res.status(400).json({ success: false, message: 'ticket_id requis' });
@@ -72,7 +75,7 @@ router.post('/refund', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/purchase', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/purchase', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const b = req.body;

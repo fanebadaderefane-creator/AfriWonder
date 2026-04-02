@@ -11,6 +11,7 @@ import {
   getCachedAuthUser,
   setCachedAuthUser,
 } from '@/lib/secureTokenStorage';
+import { setGuestExplore } from '@/lib/guestExplore';
 
 const AuthContext = createContext({
   user: null,
@@ -53,6 +54,7 @@ export const AuthProvider = ({ children }) => {
           await setAccessToken(data.data.accessToken);
           await setRefreshToken(data.data.refreshToken);
           const currentUser = await api.auth.me();
+          setGuestExplore(false);
           setUser(currentUser);
           setIsAuthenticated(true);
           await setCachedAuthUser(currentUser);
@@ -67,6 +69,7 @@ export const AuthProvider = ({ children }) => {
 
       try {
         const currentUser = await api.auth.me();
+        setGuestExplore(false);
         setUser(currentUser);
         setIsAuthenticated(true);
         await setCachedAuthUser(currentUser);
@@ -77,6 +80,7 @@ export const AuthProvider = ({ children }) => {
             await setAccessToken(data.data.accessToken);
             await setRefreshToken(data.data.refreshToken);
             const currentUser = await api.auth.me();
+            setGuestExplore(false);
             setUser(currentUser);
             setIsAuthenticated(true);
             await setCachedAuthUser(currentUser);
@@ -159,6 +163,7 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const userData = await api.auth.login(email, password);
+      setGuestExplore(false);
       setUser(userData);
       setIsAuthenticated(true);
       setAuthError(null);
@@ -192,6 +197,7 @@ export const AuthProvider = ({ children }) => {
           window.sessionStorage?.removeItem('afriwonder_referral_code');
         } catch (_e) {}
       }
+      setGuestExplore(false);
       setUser(newUser);
       setIsAuthenticated(true);
       setAuthError(null);
@@ -217,6 +223,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     api.auth.logout();
+    setGuestExplore(false);
     setCachedAuthUser(null);
     setUser(null);
     setIsAuthenticated(false);

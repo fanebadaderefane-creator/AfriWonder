@@ -7,6 +7,26 @@ import messageService from '../services/message.service.js';
 import * as messageGroupService from '../services/messageGroup.service.js';
 import e2eeService from '../services/e2ee.service.js';
 import { logger } from '../utils/logger.js';
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+import {
+  messagesConversationArchiveSchema,
+  messagesConversationDraftSchema,
+  messagesConversationNotificationsSchema,
+  messagesEditContentSchema,
+  messagesGroupCreateSchema,
+  messagesGroupDisplayTagSchema,
+  messagesGroupInviteJoinSchema,
+  messagesGroupMembersSchema,
+  messagesGroupMessageEditSchema,
+  messagesGroupNotificationsSchema,
+  messagesGroupPatchSchema,
+  messagesGroupSendSchema,
+  messagesMetaSchema,
+  messagesPollVoteSchema,
+  messagesReactionSchema,
+  messagesSendSchema,
+} from '../schemas/highRiskBodies.js';
 
 const router = Router();
 
@@ -116,7 +136,7 @@ router.get('/conversations/id/:conversationId', authenticate, async (req: AuthRe
 });
 
 // PATCH /api/messages/conversations/:conversationId/archive — archiver / désarchiver (body: archived boolean)
-router.patch('/conversations/:conversationId/archive', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/conversations/:conversationId/archive', authenticate, validateBody(messagesConversationArchiveSchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await messageService.setConversationArchived(
       param(req, 'conversationId'),
@@ -140,7 +160,7 @@ router.get('/conversations/:conversationId/draft', authenticate, async (req: Aut
 });
 
 // PUT /api/messages/conversations/:conversationId/draft — body: content (string, vide pour effacer)
-router.put('/conversations/:conversationId/draft', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/conversations/:conversationId/draft', authenticate, validateBody(messagesConversationDraftSchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await messageService.setConversationDraft(
       param(req, 'conversationId'),
@@ -154,7 +174,7 @@ router.put('/conversations/:conversationId/draft', authenticate, async (req: Aut
 });
 
 // PATCH /api/messages/conversations/:conversationId/notifications — body: { muted: boolean } (CPO 4.39)
-router.patch('/conversations/:conversationId/notifications', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/conversations/:conversationId/notifications', authenticate, validateBody(messagesConversationNotificationsSchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await messageService.setConversationMuted(
       param(req, 'conversationId'),
@@ -168,7 +188,7 @@ router.patch('/conversations/:conversationId/notifications', authenticate, async
 });
 
 // POST /api/messages/conversations/:conversationId/clear-me — effacer l’historique pour moi (style WhatsApp)
-router.post('/conversations/:conversationId/clear-me', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/conversations/:conversationId/clear-me', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await messageService.clearConversationHistoryForUser(param(req, 'conversationId'), req.user!.id);
     res.json({ success: true, data: result });
@@ -178,7 +198,7 @@ router.post('/conversations/:conversationId/clear-me', authenticate, async (req:
 });
 
 // POST /api/messages/send
-router.post('/send', authenticate, sendLimiter, async (req: AuthRequest, res, next) => {
+router.post('/send', authenticate, validateBody(messagesSendSchema), sendLimiter, async (req: AuthRequest, res, next) => {
   try {
     const {
       recipientId,
@@ -241,7 +261,7 @@ router.post('/send', authenticate, sendLimiter, async (req: AuthRequest, res, ne
 });
 
 // POST /api/messages/message/:messageId/poll-vote — sondage 1-1
-router.post('/message/:messageId/poll-vote', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/message/:messageId/poll-vote', authenticate, validateBody(messagesPollVoteSchema), async (req: AuthRequest, res, next) => {
   try {
     const { option_index: optionIndex } = req.body || {};
     const data = await messageService.voteDmPoll(param(req, 'messageId'), req.user!.id, optionIndex);
@@ -252,7 +272,7 @@ router.post('/message/:messageId/poll-vote', authenticate, async (req: AuthReque
 });
 
 // PATCH /api/messages/message/:messageId/meta
-router.patch('/message/:messageId/meta', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/message/:messageId/meta', authenticate, validateBody(messagesMetaSchema), async (req: AuthRequest, res, next) => {
   try {
     const { is_pinned, is_important } = req.body || {};
     const result = await messageService.updateMessageMeta(param(req, 'messageId'), req.user!.id, {
@@ -266,7 +286,7 @@ router.patch('/message/:messageId/meta', authenticate, async (req: AuthRequest, 
 });
 
 // PATCH /api/messages/message/:messageId/content — édition texte (< 15 min, expéditeur)
-router.patch('/message/:messageId/content', authenticate, sendLimiter, async (req: AuthRequest, res, next) => {
+router.patch('/message/:messageId/content', authenticate, validateBody(messagesEditContentSchema), sendLimiter, async (req: AuthRequest, res, next) => {
   try {
     const content = req.body?.content;
     const result = await messageService.editMessageContent(param(req, 'messageId'), req.user!.id, content);
@@ -277,7 +297,7 @@ router.patch('/message/:messageId/content', authenticate, sendLimiter, async (re
 });
 
 // POST /api/messages/message/:messageId/reaction
-router.post('/message/:messageId/reaction', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/message/:messageId/reaction', authenticate, validateBody(messagesReactionSchema), async (req: AuthRequest, res, next) => {
   try {
     const { emoji } = req.body || {};
     const result = await messageService.setMessageReaction(param(req, 'messageId'), req.user!.id, emoji);
@@ -308,7 +328,7 @@ router.get('/message/:messageId/reactions-detail', authenticate, async (req: Aut
 });
 
 // POST /api/messages/message/:messageId/transcribe — vocal 1-1 (Whisper, expéditeur)
-router.post('/message/:messageId/transcribe', authenticate, sendLimiter, async (req: AuthRequest, res, next) => {
+router.post('/message/:messageId/transcribe', authenticate, sendLimiter, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await messageService.transcribeVoiceMessage(param(req, 'messageId'), req.user!.id);
     res.json({ success: true, data: result });
@@ -329,7 +349,7 @@ router.get('/groups/export', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // POST /api/messages/groups — create group
-router.post('/groups', authenticate, sendLimiter, async (req: AuthRequest, res, next) => {
+router.post('/groups', authenticate, validateBody(messagesGroupCreateSchema), sendLimiter, async (req: AuthRequest, res, next) => {
   try {
     const { name, memberIds } = req.body || {};
     const result = await messageGroupService.createGroup(req.user!.id, name || 'Groupe', memberIds || []);
@@ -351,7 +371,7 @@ router.get('/groups', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/messages/group-invite/join — rejoindre un groupe via lien d'invitation
-router.post('/group-invite/join', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/group-invite/join', authenticate, validateBody(messagesGroupInviteJoinSchema), async (req: AuthRequest, res, next) => {
   try {
     const token = (req.body as { token?: string })?.token;
     const result = await messageGroupService.joinGroupByInviteToken(token ?? '', req.user!.id);
@@ -372,7 +392,7 @@ router.get('/group/:groupId', authenticate, async (req: AuthRequest, res, next) 
 });
 
 // PATCH /api/messages/group/:groupId — nom / avatar / description (admin)
-router.patch('/group/:groupId', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/group/:groupId', authenticate, validateBody(messagesGroupPatchSchema), async (req: AuthRequest, res, next) => {
   try {
     const body = (req.body || {}) as { name?: string | null; avatar_url?: string | null; description?: string | null };
     const result = await messageGroupService.updateGroup(param(req, 'groupId'), req.user!.id, {
@@ -387,13 +407,9 @@ router.patch('/group/:groupId', authenticate, async (req: AuthRequest, res, next
 });
 
 // PATCH /api/messages/group/:groupId/notifications — sourdine notifications (membre courant)
-router.patch('/group/:groupId/notifications', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/group/:groupId/notifications', authenticate, validateBody(messagesGroupNotificationsSchema), async (req: AuthRequest, res, next) => {
   try {
-    const muted = (req.body as { muted?: unknown })?.muted;
-    if (typeof muted !== 'boolean') {
-      res.status(400).json({ success: false, message: 'muted (boolean) requis' });
-      return;
-    }
+    const { muted } = req.body;
     const result = await messageGroupService.setGroupNotificationsMuted(param(req, 'groupId'), req.user!.id, muted);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
@@ -402,7 +418,7 @@ router.patch('/group/:groupId/notifications', authenticate, async (req: AuthRequ
 });
 
 // PATCH /api/messages/group/:groupId/me/display-tag — libellé visible dans le groupe (CDC)
-router.patch('/group/:groupId/me/display-tag', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/group/:groupId/me/display-tag', authenticate, validateBody(messagesGroupDisplayTagSchema), async (req: AuthRequest, res, next) => {
   try {
     const tag = (req.body as { group_display_tag?: unknown })?.group_display_tag;
     const result = await messageGroupService.setMyGroupDisplayTag(param(req, 'groupId'), req.user!.id, tag ?? null);
@@ -435,7 +451,7 @@ router.get('/group/:groupId/messages', authenticate, async (req: AuthRequest, re
 });
 
 // POST /api/messages/group/:groupId/read — marquer le fil groupe comme lu (curseur membre)
-router.post('/group/:groupId/read', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/group/:groupId/read', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await messageGroupService.markGroupAsRead(param(req, 'groupId'), req.user!.id);
     res.json({ success: true, data: result });
@@ -445,7 +461,7 @@ router.post('/group/:groupId/read', authenticate, async (req: AuthRequest, res, 
 });
 
 // POST /api/messages/group/:groupId/pin — body: { messageId }
-router.post('/group/:groupId/pin', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/group/:groupId/pin', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const messageId = (req.body as { messageId?: string })?.messageId;
     if (!messageId || !String(messageId).trim()) {
@@ -470,7 +486,7 @@ router.delete('/group/:groupId/pin', authenticate, async (req: AuthRequest, res,
 });
 
 // POST /api/messages/group/:groupId/send — send message to group
-router.post('/group/:groupId/send', authenticate, sendLimiter, async (req: AuthRequest, res, next) => {
+router.post('/group/:groupId/send', authenticate, validateBody(messagesGroupSendSchema), sendLimiter, async (req: AuthRequest, res, next) => {
   try {
     const {
       content,
@@ -533,7 +549,7 @@ router.post('/group/:groupId/send', authenticate, sendLimiter, async (req: AuthR
 });
 
 // POST /api/messages/group/:groupId/messages/:messageId/reaction
-router.post('/group/:groupId/messages/:messageId/reaction', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/group/:groupId/messages/:messageId/reaction', authenticate, validateBody(messagesReactionSchema), async (req: AuthRequest, res, next) => {
   try {
     const { emoji } = req.body || {};
     const updated = await messageGroupService.setGroupMessageReaction(
@@ -564,7 +580,7 @@ router.delete('/group/:groupId/messages/:messageId/reaction', authenticate, asyn
 });
 
 // POST /api/messages/group/:groupId/messages/:messageId/poll-vote
-router.post('/group/:groupId/messages/:messageId/poll-vote', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/group/:groupId/messages/:messageId/poll-vote', authenticate, validateBody(messagesPollVoteSchema), async (req: AuthRequest, res, next) => {
   try {
     const { option_index: optionIndex } = req.body || {};
     const data = await messageGroupService.voteGroupPoll(
@@ -594,13 +610,9 @@ router.get('/group/:groupId/messages/:messageId/reactions-detail', authenticate,
 });
 
 // PATCH /api/messages/group/:groupId/messages/:messageId — éditer message (expéditeur, 15 min)
-router.patch('/group/:groupId/messages/:messageId', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/group/:groupId/messages/:messageId', authenticate, validateBody(messagesGroupMessageEditSchema), async (req: AuthRequest, res, next) => {
   try {
-    const content = (req.body as { content?: string })?.content;
-    if (typeof content !== 'string') {
-      res.status(400).json({ success: false, message: 'content (string) requis' });
-      return;
-    }
+    const { content } = req.body;
     const result = await messageGroupService.editGroupMessage(
       param(req, 'groupId'),
       param(req, 'messageId'),
@@ -614,7 +626,7 @@ router.patch('/group/:groupId/messages/:messageId', authenticate, async (req: Au
 });
 
 // POST /api/messages/group/:groupId/messages/:messageId/transcribe — vocal groupe (expéditeur)
-router.post('/group/:groupId/messages/:messageId/transcribe', authenticate, sendLimiter, async (req: AuthRequest, res, next) => {
+router.post('/group/:groupId/messages/:messageId/transcribe', authenticate, sendLimiter, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await messageGroupService.transcribeGroupVoiceMessage(
       param(req, 'groupId'),
@@ -642,14 +654,10 @@ router.delete('/group/:groupId/messages/:messageId', authenticate, async (req: A
 });
 
 // POST /api/messages/group/:groupId/members — add members (admin only)
-router.post('/group/:groupId/members', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/group/:groupId/members', authenticate, validateBody(messagesGroupMembersSchema), async (req: AuthRequest, res, next) => {
   try {
-    const { userIds } = req.body || {};
-    const result = await messageGroupService.addGroupMembers(
-      param(req, 'groupId'),
-      req.user!.id,
-      Array.isArray(userIds) ? userIds : [userIds].filter(Boolean)
-    );
+    const { userIds } = req.body;
+    const result = await messageGroupService.addGroupMembers(param(req, 'groupId'), req.user!.id, userIds);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
     next(error);
@@ -657,7 +665,7 @@ router.post('/group/:groupId/members', authenticate, async (req: AuthRequest, re
 });
 
 // PATCH /api/messages/group/:groupId/members/:userId/role — promote / demote (admin only)
-router.patch('/group/:groupId/members/:userId/role', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/group/:groupId/members/:userId/role', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const role = (req.body as { role?: string })?.role;
     if (role !== 'admin' && role !== 'member') {
@@ -691,7 +699,7 @@ router.delete('/group/:groupId/members/:userId', authenticate, async (req: AuthR
 });
 
 // POST /api/messages/group/:groupId/invite-link — générer lien d'invitation (admin)
-router.post('/group/:groupId/invite-link', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/group/:groupId/invite-link', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await messageGroupService.generateGroupInviteToken(param(req, 'groupId'), req.user!.id);
     res.json({ success: true, data: result });
@@ -711,7 +719,7 @@ router.delete('/group/:groupId/invite-link', authenticate, async (req: AuthReque
 });
 
 // POST /api/messages/group/:groupId/leave — leave group
-router.post('/group/:groupId/leave', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/group/:groupId/leave', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await messageGroupService.leaveGroup(param(req, 'groupId'), req.user!.id);
     res.json({ success: true, data: result });
@@ -733,7 +741,7 @@ router.get('/:conversationId', authenticate, async (req: AuthRequest, res, next)
 });
 
 // PUT /api/messages/:conversationId/delivered
-router.put('/:conversationId/delivered', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:conversationId/delivered', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await messageService.markAsDelivered(param(req, 'conversationId'), req.user!.id);
     res.json({ success: true, data: result });
@@ -743,7 +751,7 @@ router.put('/:conversationId/delivered', authenticate, async (req: AuthRequest, 
 });
 
 // PUT /api/messages/:conversationId/read
-router.put('/:conversationId/read', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:conversationId/read', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await messageService.markAsRead(param(req, 'conversationId'), req.user!.id);
     res.json({ success: true, data: result });
@@ -763,7 +771,7 @@ router.delete('/message/:messageId', authenticate, async (req: AuthRequest, res,
 });
 
 // POST /api/messages/message/:messageId/delete-for-all — CPO 4.17 (expéditeur, < 15 min)
-router.post('/message/:messageId/delete-for-all', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/message/:messageId/delete-for-all', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await messageService.deleteForAll(param(req, 'messageId'), req.user!.id);
     res.json({ success: true, data: result });
@@ -773,7 +781,7 @@ router.post('/message/:messageId/delete-for-all', authenticate, async (req: Auth
 });
 
 // POST /api/messages/conversations/:conversationId/pin — body: { messageId }
-router.post('/conversations/:conversationId/pin', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/conversations/:conversationId/pin', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const messageId = req.body?.messageId;
     if (!messageId) return res.status(400).json({ success: false, error: 'messageId requis' });
@@ -799,7 +807,7 @@ router.delete('/conversations/:conversationId/pin', authenticate, async (req: Au
 });
 
 // POST /api/messages/block
-router.post('/block', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/block', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { userId } = req.body;
     const result = await messageService.blockUser(req.user!.id, userId);
@@ -810,7 +818,7 @@ router.post('/block', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/messages/report
-router.post('/report', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/report', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { messageId, reason } = req.body;
     const result = await messageService.reportMessage(req.user!.id, messageId, reason);

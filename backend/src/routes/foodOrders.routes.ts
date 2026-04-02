@@ -4,6 +4,9 @@ import { param } from '../utils/params.js';
 import prisma from '../config/database.js';
 import platformControlService from '../services/platformControl.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 router.get('/', authenticate, async (req: AuthRequest, res, next) => {
@@ -49,7 +52,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     if (!(await platformControlService.isFoodEnabled())) {

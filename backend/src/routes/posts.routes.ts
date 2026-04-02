@@ -3,10 +3,13 @@ import { authenticate, AuthRequest, optionalAuth } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import * as postService from '../services/post.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // POST /api/posts - Créer un post (texte / image ; programmation, épingler, sondage optionnels)
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { text, image_url, images, visibility, scheduled_at, is_pinned, poll } = req.body;
     const post = await postService.createPost(req.user!.id, { text, image_url, images, visibility, scheduled_at, is_pinned, poll });
@@ -51,7 +54,7 @@ router.get('/archived', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/posts/polls/:pollId/vote — body: { option_index: number }
-router.post('/polls/:pollId/vote', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/polls/:pollId/vote', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const pollId = param(req, 'pollId');
     const optionIndex = parseInt(String(req.body?.option_index), 10);
@@ -78,7 +81,7 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
 });
 
 // PUT /api/posts/:id - Modifier son post (scheduled_at, is_pinned optionnels)
-router.put('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:id', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { text, image_url, images, visibility, scheduled_at, is_pinned } = req.body;
     const post = await postService.updatePost(param(req, 'id'), req.user!.id, { text, image_url, images, visibility, scheduled_at, is_pinned });

@@ -3,6 +3,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import marketplaceSubscriptionService from '../services/marketplaceSubscription.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 const isAdminRole = (role?: string) => ['super_admin', 'admin', 'moderation_admin'].includes(String(role || ''));
@@ -23,7 +26,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/subscribe', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/subscribe', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { plan_type, payment_method, orange_money_phone } = req.body || {};
     const data = await marketplaceSubscriptionService.subscribe(req.user!.id, plan_type, {
@@ -50,7 +53,7 @@ router.get('/admin/subscriptions', authenticate, async (req: AuthRequest, res, n
   }
 });
 
-router.patch('/admin/subscriptions/:id/status', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/admin/subscriptions/:id/status', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     if (!isAdminRole(req.user?.role)) {
       return res.status(403).json({ success: false, message: 'Accès refusé' });

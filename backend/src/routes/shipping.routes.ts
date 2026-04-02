@@ -4,6 +4,9 @@ import { param } from '../utils/params.js';
 import shippingService from '../services/shipping.service.js';
 import prisma from '../config/database.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/shipping/pickup-points (points relais)
@@ -37,7 +40,7 @@ router.get('/rates', async (req, res, next) => {
 
 // ——— Livraison colis (standalone) ———
 // POST /api/shipping/parcel
-router.post('/parcel', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/parcel', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const {
@@ -108,7 +111,7 @@ router.get('/parcel/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PUT /api/shipping/parcel/:id/status
-router.put('/parcel/:id/status', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/parcel/:id/status', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { status } = req.body || {};
     if (!status) return res.status(400).json({ success: false, error: { message: 'status requis' } });
@@ -120,7 +123,7 @@ router.put('/parcel/:id/status', authenticate, async (req: AuthRequest, res, nex
 });
 
 // POST /api/shipping/parcel/:id/tracking
-router.post('/parcel/:id/tracking', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/parcel/:id/tracking', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { event_type, location, description } = req.body || {};
     if (!event_type) return res.status(400).json({ success: false, error: { message: 'event_type requis' } });
@@ -156,7 +159,7 @@ router.get('/track/:trackingNumber', async (req, res, next) => {
 });
 
 // POST /api/shipping
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { orderId, trackingNumber, carrier, shippingAddress, cost, estimatedDelivery } = req.body;
     const shipping = await shippingService.createShipping(orderId, {
@@ -173,7 +176,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PUT /api/shipping/:id/status
-router.put('/:id/status', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:id/status', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { status } = req.body;
     const shipping = await shippingService.updateShippingStatus(param(req, 'id'), status);
@@ -184,7 +187,7 @@ router.put('/:id/status', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/shipping/:id/tracking
-router.post('/:id/tracking', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/tracking', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { eventType, location, description } = req.body;
     const event = await shippingService.addTrackingEvent(param(req, 'id'), {

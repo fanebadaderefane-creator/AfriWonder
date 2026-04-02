@@ -111,7 +111,7 @@
 #### ✅ Tâches Critiques
 
 1. **Configuration Serveur** (4h)
-   - Choisir hébergeur (Vercel, Railway, Render, AWS, etc.)
+   - Choisir hébergeur (Render pour l’API, Vercel pour le front, AWS, etc.)
    - Configurer domaine
    - Configurer SSL/HTTPS
    - Configurer variables d'environnement

@@ -9,6 +9,9 @@ import { miniAppService } from '../services/miniApp.service.js';
 import { logger } from '../utils/logger.js';
 import prisma from '../config/database.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 /**
@@ -97,7 +100,7 @@ router.get('/:id', async (req, res, next) => {
  * POST /api/mini-apps
  * Créer une mini-app (développeur)
  */
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const {
@@ -142,7 +145,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
  * POST /api/mini-apps/:id/install
  * Installer une mini-app (utilisateur)
  */
-router.post('/:id/install', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/install', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const id = typeof req.params.id === 'string' ? req.params.id : req.params.id?.[0];
@@ -166,7 +169,7 @@ router.post('/:id/install', authenticate, async (req: AuthRequest, res, next) =>
  * Créer une transaction dans une mini-app (utilisateur)
  * Cette route initie le paiement Orange Money
  */
-router.post('/:id/transaction', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/transaction', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const id = typeof req.params.id === 'string' ? req.params.id : req.params.id?.[0];
@@ -214,7 +217,7 @@ router.post('/:id/transaction', authenticate, async (req: AuthRequest, res, next
  * POST /api/mini-apps/:id/boost
  * Acheter un boost pour une mini-app (développeur)
  */
-router.post('/:id/boost', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/boost', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const id = typeof req.params.id === 'string' ? req.params.id : req.params.id?.[0];
@@ -292,7 +295,7 @@ router.get('/:id/reviews', async (req, res, next) => {
 /**
  * POST /api/mini-apps/:id/reviews — Soumettre ou mettre à jour son avis (CPO 8.25)
  */
-router.post('/:id/reviews', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/reviews', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const id = typeof req.params.id === 'string' ? req.params.id : req.params.id?.[0];

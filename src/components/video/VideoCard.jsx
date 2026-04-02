@@ -2299,7 +2299,10 @@ function VideoCardContent({
         style={{
           zIndex: 220,
           // Au-dessus du bloc infos + marge : évite chevauchement avec barre du bas / HUD
-          bottom: 'calc(8rem + env(safe-area-inset-bottom, 0px))',
+          // Feed compact : un peu plus haut (iPhone + BottomNav fixe)
+          bottom: compact
+            ? 'calc(11rem + env(safe-area-inset-bottom, 0px))'
+            : 'calc(8rem + env(safe-area-inset-bottom, 0px))',
         }}
       >
         <button
@@ -2609,19 +2612,7 @@ function VideoCardContent({
         </div>
       )}
 
-      {/* Watermark feed compact (style TikTok) */}
-      {compact && !hideActions && (
-        <div
-          className="pointer-events-none absolute left-3 z-[205] inline-flex items-center gap-2 px-0 py-0 text-white/88"
-          style={{ bottom: 'calc(20rem + env(safe-area-inset-bottom, 0px))' }}
-          aria-hidden
-        >
-          <AfriWonderLogo size="xs" className="opacity-95" />
-          <span className="max-w-[38vw] truncate text-[11px] font-semibold tracking-tight">
-            @{creatorAt || video.creator_name || 'utilisateur'}
-          </span>
-        </div>
-      )}
+      {/* Logo + @ : uniquement dans la ligne « infos bas » (compact) — évite le doublon avec l’ancien watermark */}
 
       {/* ================= INFOS BAS ================= */}
       <motion.div 
@@ -2637,7 +2628,9 @@ function VideoCardContent({
           touchAction: 'pan-y',
           zIndex: 210,
           // Nav feed ~74px + offset 16px + marge 8px + safe area (BottomNav)
-          bottom: 'calc(6.5rem + env(safe-area-inset-bottom, 0px))',
+          bottom: compact
+            ? 'calc(9.75rem + env(safe-area-inset-bottom, 0px))'
+            : 'calc(6.5rem + env(safe-area-inset-bottom, 0px))',
         }}
       >
         {/* Style TikTok / Reels : texte directement sur la vidéo + vignette globale — pas de gros cadre glass (trop « prototype ») */}
@@ -2648,7 +2641,15 @@ function VideoCardContent({
               onClick={() => onProfileClick(video.creator_id)}
               className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
             >
-              <span className="truncate text-[15px] font-bold tracking-[-0.02em] text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.64)]">
+              {compact && !hideActions && (
+                <span
+                  className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/40 ring-1 ring-white/18"
+                  aria-hidden
+                >
+                  <AfriWonderLogo size="xs" className="opacity-95" />
+                </span>
+              )}
+              <span className="min-w-0 truncate text-[15px] font-bold tracking-[-0.02em] text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.64)]">
                 @{creatorAt || video.creator_name}
               </span>
               {video.is_verified && (

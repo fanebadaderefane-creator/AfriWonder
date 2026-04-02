@@ -5,6 +5,9 @@ import { param } from '../utils/params.js';
 import giftService from '../services/gift.service.js';
 import prisma from '../config/database.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/gifts - Liste des gifts disponibles
@@ -25,7 +28,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // POST /api/gifts/send - Envoyer un gift
-router.post('/send', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/send', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { giftId, recipientId, phone, message } = req.body;
@@ -54,7 +57,7 @@ router.post('/send', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/gifts/:id/confirm - Confirmer le paiement (webhook; protéger par PAYMENT_WEBHOOK_SECRET en prod)
-router.post('/:id/confirm', requireWebhookSecret, async (req, res, next) => {
+router.post('/:id/confirm', requireWebhookSecret, validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const transactionId = param(req, 'id');
     const result = await giftService.confirmGiftPayment(transactionId);

@@ -7,7 +7,7 @@
 
 ## Solution : configurer R2 sur le backend de production
 
-Sur l’hébergeur du backend (Render, Railway, Fly.io, etc.) :
+Sur l’hébergeur du backend (Render recommandé, Fly.io, etc.) :
 
 1. Ouvrez le **tableau de bord** du service qui exécute l’API (backend).
 2. Allez dans **Environment** / **Variables d’environnement**.

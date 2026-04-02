@@ -172,8 +172,14 @@ export default function ArticleDetails() {
 
   if (isLoading && !isMock) {
     return (
-      <div className="h-screen flex items-center justify-center bg-slate-50">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      <div
+        className="h-screen flex flex-col items-center justify-center gap-3 bg-slate-50"
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+      >
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" aria-hidden="true" />
+        <span className="sr-only">Chargement de l&apos;article…</span>
       </div>
     );
   }
@@ -202,10 +208,10 @@ export default function ArticleDetails() {
     <div className="min-h-screen bg-slate-50 pb-20">
       {/* Header — AfriWonder */}
       <div className="sticky top-0 bg-white border-b border-slate-200 z-40 px-4 py-3 flex items-center gap-3 shadow-sm">
-        <button onClick={() => navigate(-1)} aria-label="Retour" className="text-slate-700 hover:text-blue-600">
-          <ArrowLeft className="w-6 h-6" />
+        <button type="button" onClick={() => navigate(-1)} aria-label="Retour" className="text-slate-700 hover:text-blue-600">
+          <ArrowLeft className="w-6 h-6" aria-hidden="true" />
         </button>
-        <h1 className="text-lg font-bold flex-1 truncate text-slate-900">Article</h1>
+        <p className="text-lg font-bold flex-1 truncate text-slate-900">Article</p>
       </div>
 
       {/* Featured Image */}
@@ -240,7 +246,7 @@ export default function ArticleDetails() {
           )}
         </div>
 
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">{article.title}</h2>
+        <h1 className="text-2xl font-bold text-slate-900 mb-2">{article.title}</h1>
         {(article.subtitle || article.excerpt) && (
           <p className="text-slate-600 mb-4">{article.subtitle || article.excerpt}</p>
         )}
@@ -249,7 +255,7 @@ export default function ArticleDetails() {
         <div className="flex items-center gap-3 py-4 border-b border-slate-100">
           <img
             src={article.author?.profile_image || article.author_avatar || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100'}
-            alt={article.author_name}
+            alt={article.author?.full_name || article.author_name || 'Auteur'}
             className="w-10 h-10 rounded-full object-cover"
             loading="lazy"
             decoding="async"
@@ -267,19 +273,29 @@ export default function ArticleDetails() {
 
         {/* Stats + actions — AfriWonder */}
         <div className="flex flex-wrap items-center gap-4 py-3 text-sm text-slate-600 border-b border-slate-100">
-          <span className="flex items-center gap-1"><Eye className="w-4 h-4" />{(article.views || 0).toLocaleString()} vues</span>
+          <span className="flex items-center gap-1">
+            <Eye className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <span>{(article.views || 0).toLocaleString()} vues</span>
+          </span>
           <button
+            type="button"
             className="flex items-center gap-1 hover:text-blue-600"
             onClick={() => (user || isMock) && likeMutation.mutate()}
             disabled={likeMutation.isPending}
             aria-label={likeStatus?.liked ? 'Retirer le like' : 'Aimer l’article'}
             aria-pressed={!!likeStatus?.liked}
           >
-            <Heart className={`w-4 h-4 ${likeStatus.liked ? 'fill-blue-500 text-blue-500' : ''}`} />
-            {article.likes_count ?? 0} j&apos;aime
+            <Heart className={`w-4 h-4 shrink-0 ${likeStatus.liked ? 'fill-blue-500 text-blue-500' : ''}`} aria-hidden="true" />
+            <span>{article.likes_count ?? 0} j&apos;aime</span>
           </button>
-          <span className="flex items-center gap-1"><MessageCircle className="w-4 h-4" />{article.comments_count ?? 0} commentaires</span>
-          <span className="flex items-center gap-1"><Share2 className="w-4 h-4" />{article.shares_count ?? 0} partages</span>
+          <span className="flex items-center gap-1">
+            <MessageCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <span>{article.comments_count ?? 0} commentaires</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <Share2 className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <span>{article.shares_count ?? 0} partages</span>
+          </span>
         </div>
 
         {/* Share buttons — AfriWonder gradient */}
@@ -319,7 +335,7 @@ export default function ArticleDetails() {
 
       {/* Comments */}
       <div className="p-4 bg-white border-t border-slate-100">
-        <h3 className="font-bold text-slate-900 mb-4">Commentaires ({article.comments_count ?? 0})</h3>
+        <h2 className="font-bold text-slate-900 mb-4">Commentaires ({article.comments_count ?? 0})</h2>
 
         {(user || isMock) ? (
           <div className="mb-4 pb-4 border-b border-slate-100">
@@ -331,6 +347,7 @@ export default function ArticleDetails() {
                 placeholder={replyToId ? 'Votre réponse...' : 'Ajouter un commentaire...'}
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
+                aria-label={replyToId ? 'Votre réponse' : 'Ajouter un commentaire'}
                 className="flex-1 rounded-xl border-slate-200"
               />
               <Button

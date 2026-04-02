@@ -11,6 +11,7 @@ import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+import { useTranslation } from '@/components/common/useTranslation';
 
 const COIN_PACKAGES = [
   { coins: 100, label: 'Starter', priceFcfa: 500, popular: false },
@@ -22,6 +23,7 @@ const COIN_PACKAGES = [
 ];
 
 export default function WalletPage() {
+  const { formatNumber } = useTranslation();
   const navigate = useNavigate();
   const [walletTab, setWalletTab] = useState('coins'); // 'coins' | 'history' | 'virtual-cards' | 'transfers'
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -157,16 +159,16 @@ export default function WalletPage() {
             <span className="text-sm text-blue-100">Solde actuel</span>
           </div>
           <p className="text-4xl font-bold text-white mb-4">
-            {wallet?.available_balance?.toLocaleString() ?? 0} <span className="text-lg font-normal text-blue-200">FCFA</span>
+            {formatNumber(wallet?.available_balance ?? 0)} <span className="text-lg font-normal text-blue-200">FCFA</span>
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-white/10 rounded-xl p-3">
               <p className="text-xs text-blue-200">Total dépensé</p>
-              <p className="text-lg font-semibold text-white">{totalSpent.toLocaleString()} FCFA</p>
+              <p className="text-lg font-semibold text-white">{formatNumber(totalSpent)} FCFA</p>
             </div>
             <div className="bg-white/10 rounded-xl p-3">
               <p className="text-xs text-blue-200">Total gagné</p>
-              <p className="text-lg font-semibold text-white">{(wallet?.total_earnings ?? totalEarned ?? 0).toLocaleString()} FCFA</p>
+              <p className="text-lg font-semibold text-white">{formatNumber(wallet?.total_earnings ?? totalEarned ?? 0)} FCFA</p>
             </div>
           </div>
         </div>
@@ -219,9 +221,9 @@ export default function WalletPage() {
                   <div className="flex justify-center mb-2">
                     <span className="text-2xl">🪙</span>
                   </div>
-                  <p className="text-xl font-bold text-white text-center">{pkg.coins.toLocaleString()}</p>
+                  <p className="text-xl font-bold text-white text-center">{formatNumber(pkg.coins)}</p>
                   <p className="text-xs text-gray-400 text-center mb-1">{pkg.label}</p>
-                  <p className="text-sm text-blue-300 text-center font-medium">{pkg.priceFcfa.toLocaleString()} FCFA</p>
+                  <p className="text-sm text-blue-300 text-center font-medium">{formatNumber(pkg.priceFcfa)} FCFA</p>
                 </motion.button>
               ))}
             </div>
@@ -251,7 +253,7 @@ export default function WalletPage() {
                   </div>
                 </div>
                 <p className={`font-semibold ${(tx.type === 'deposit' || tx.type === 'earning') ? 'text-green-400' : 'text-gray-300'}`}>
-                  {(tx.type === 'deposit' || tx.type === 'earning') ? '+' : '-'}{(tx.amount || 0).toLocaleString()} FCFA
+                  {(tx.type === 'deposit' || tx.type === 'earning') ? '+' : '-'}{formatNumber(tx.amount || 0)} FCFA
                 </p>
               </div>
             ))}
@@ -298,7 +300,7 @@ export default function WalletPage() {
                 max={wallet?.available_balance}
               />
               <p className="text-xs text-gray-600 mt-1">
-                Max: {wallet?.available_balance?.toLocaleString()} XOF
+                Max: {formatNumber(wallet?.available_balance ?? 0)} XOF
               </p>
             </div>
 
@@ -577,7 +579,7 @@ function WalletTransfersAndPreauths() {
               <div key={t.id} className="flex justify-between items-center p-3 rounded-xl bg-gray-800/80 border border-gray-700">
                 <div>
                   <p className="text-white font-medium">{t.recipient_name} · {t.recipient_country}</p>
-                  <p className="text-xs text-gray-500">{Number(t.amount).toLocaleString()} {t.currency} · {t.status}</p>
+                  <p className="text-xs text-gray-500">{formatNumber(Number(t.amount))} {t.currency} · {t.status}</p>
                 </div>
               </div>
             ))}
@@ -591,7 +593,7 @@ function WalletTransfersAndPreauths() {
             {preauths.map((p) => (
               <div key={p.id} className="flex justify-between items-center p-3 rounded-xl bg-gray-800/80 border border-gray-700">
                 <div>
-                  <p className="text-white font-medium">{Number(p.amount).toLocaleString()} {p.currency}</p>
+                  <p className="text-white font-medium">{formatNumber(Number(p.amount))} {p.currency}</p>
                   <p className="text-xs text-gray-500">{p.status} · {p.reference || p.order_id || ''}</p>
                 </div>
                 {p.status === 'pending' && (

@@ -599,7 +599,7 @@ VITE_STRIPE_PUBLISHABLE_KEY     ❌ À obtenir
 ### Phase 4 : Déploiement (2-3 jours) 🟡
 
 #### Infrastructure
-- [ ] Choisir hébergeur backend (Vercel, Railway, Render, AWS)
+- [ ] Choisir hébergeur backend (Render recommandé, ou Vercel serverless, AWS, etc.)
 - [ ] Choisir hébergeur frontend (Vercel, Netlify)
 - [ ] Configurer domaine (DNS)
 - [ ] Configurer SSL/HTTPS

@@ -4,10 +4,13 @@ import { param } from '../utils/params.js';
 import orderReviewService from '../services/order-review.service.js';
 import moderationService from '../services/moderation.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // POST /api/order-reviews - Créer un avis (CDC: critères détaillés, photos)
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const {
@@ -47,7 +50,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PATCH /api/order-reviews/:id/reply - CDC: Réponse vendeur aux avis
-router.patch('/:id/reply', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/:id/reply', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const reviewId = param(req, 'id');
     const sellerId = req.user!.id;
@@ -63,7 +66,7 @@ router.patch('/:id/reply', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/order-reviews/:id/report - CDC: Signalement avis frauduleux
-router.post('/:id/report', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/report', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const reviewId = param(req, 'id');
     const userId = req.user!.id;
@@ -108,7 +111,7 @@ router.get('/orders/:orderId', authenticate, async (req: AuthRequest, res, next)
 });
 
 // POST /api/order-reviews/orders/:orderId/rate-buyer - CDC 2.2.6: Notation mutuelle vendeur→acheteur
-router.post('/orders/:orderId/rate-buyer', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/orders/:orderId/rate-buyer', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const orderId = param(req, 'orderId');
     const sellerId = req.user!.id;

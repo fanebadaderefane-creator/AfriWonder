@@ -89,7 +89,8 @@ class LiveService {
         throw new Error('agora-token: RtcTokenBuilder ou RtcRole manquant. Vérifiez la version du package.');
       }
       const uid = userIdToAgoraUid(userId);
-      const expireSec = 3600 * 24;
+      const rawTtl = parseInt(process.env.AGORA_TOKEN_EXPIRE_SECONDS || '86400', 10);
+      const expireSec = Number.isFinite(rawTtl) ? Math.min(604800, Math.max(600, rawTtl)) : 86400;
       const rtcRole = role === 'host' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
       const token = RtcTokenBuilder.buildTokenWithUid(appId, appCert, channelName, uid, rtcRole, expireSec, expireSec);
       return { token, appId, channel: channelName, uid };

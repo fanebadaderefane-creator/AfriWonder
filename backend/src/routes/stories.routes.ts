@@ -3,6 +3,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import storyService from '../services/story.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/stories
@@ -28,7 +31,7 @@ router.get('/user/:userId', async (req, res, next) => {
 });
 
 // POST /api/stories
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { mediaUrl, mediaType, expiresInHours } = req.body;
     const story = await storyService.create(req.user!.id, {
@@ -43,7 +46,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/stories/:id/view
-router.post('/:id/view', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/view', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const story = await storyService.viewStory(param(req, 'id'), req.user!.id);
     res.json({ success: true, data: story });
@@ -63,7 +66,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // CPO 2.19 — Réactions
-router.post('/:id/reactions', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/reactions', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { emoji } = req.body;
     const reaction = await storyService.addReaction(param(req, 'id'), req.user!.id, emoji ?? '❤️');
@@ -92,7 +95,7 @@ router.get('/:id/reactions', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // CPO 2.21 — Sondages
-router.post('/polls/:pollId/vote', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/polls/:pollId/vote', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { optionIndex } = req.body;
     const vote = await storyService.votePoll(param(req, 'pollId'), req.user!.id, Number(optionIndex));

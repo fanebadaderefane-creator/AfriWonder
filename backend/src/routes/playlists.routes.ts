@@ -3,6 +3,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import playlistService from '../services/playlist.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/playlists
@@ -28,7 +31,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/playlists
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { name, description, isPublic } = req.body;
     const playlist = await playlistService.create(req.user!.id, {
@@ -43,7 +46,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/playlists/:id/videos
-router.post('/:id/videos', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/videos', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { videoId } = req.body;
     const item = await playlistService.addVideo(param(req, 'id'), req.user!.id, videoId);

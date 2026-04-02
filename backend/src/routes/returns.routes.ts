@@ -4,9 +4,12 @@ import { param } from '../utils/params.js';
 import { isAllowedAdminEmail } from '../middleware/adminRbac.js';
 import returnService from '../services/return.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
-router.post('/:orderId', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:orderId', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const orderId = param(req, 'orderId');
     const userId = req.user!.id;
@@ -53,7 +56,7 @@ router.get('/:returnId', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-router.put('/:returnId/status', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:returnId/status', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const returnId = param(req, 'returnId');
     const userId = req.user!.id;

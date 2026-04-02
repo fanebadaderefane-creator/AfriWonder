@@ -2,11 +2,13 @@ import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import { videoService } from '../services/video.service.js';
+import { validateBody } from '../utils/zodValidation.js';
+import { commentContentPatchSchema } from '../schemas/videosCommentsAdmin.schemas.js';
 
 const router = Router();
 
 // PUT /api/comments/:id - Modifier son propre commentaire
-router.put('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:id', authenticate, validateBody(commentContentPatchSchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const userId = req.user!.id;

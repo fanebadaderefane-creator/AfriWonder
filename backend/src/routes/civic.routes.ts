@@ -12,6 +12,9 @@ const signLimiter = rateLimit({
   standardHeaders: true,
 });
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/civic - Liste des pétitions (filtres: status, search, country, region, category)
@@ -89,7 +92,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/civic - Créer une pétition
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { title, description, goalSignatures, endDate, category, country, region, city, isNational, targetAuthorityEmail } = req.body;
@@ -117,7 +120,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/civic/:id/sign - Signer une pétition (email vérifié requis; reCAPTCHA si RECAPTCHA_SECRET défini)
-router.post('/:id/sign', signLimiter, authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/sign', signLimiter, authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const petitionId = param(req, 'id');
     const userId = req.user!.id;
@@ -155,7 +158,7 @@ router.get('/:id/comments', async (req, res, next) => {
 });
 
 // POST /api/civic/:id/comments - Ajouter un commentaire
-router.post('/:id/comments', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/comments', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const petitionId = param(req, 'id');
     const userId = req.user!.id;
@@ -169,7 +172,7 @@ router.post('/:id/comments', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // POST /api/civic/comments/:id/like - Like / unlike commentaire
-router.post('/comments/:id/like', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/comments/:id/like', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const commentId = param(req, 'id');
     const userId = req.user!.id;
@@ -181,7 +184,7 @@ router.post('/comments/:id/like', authenticate, async (req: AuthRequest, res, ne
 });
 
 // POST /api/civic/:id/share - Enregistrer un partage
-router.post('/:id/share', async (req, res, next) => {
+router.post('/:id/share', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const petitionId = param(req, 'id');
     await civicService.recordShare(petitionId);
@@ -192,7 +195,7 @@ router.post('/:id/share', async (req, res, next) => {
 });
 
 // POST /api/civic/:id/save - Sauvegarder une pétition
-router.post('/:id/save', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/save', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const petitionId = param(req, 'id');
     const userId = req.user!.id;
@@ -216,7 +219,7 @@ router.delete('/:id/save', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/civic/:id/report - Signaler une pétition
-router.post('/:id/report', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/report', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const petitionId = param(req, 'id');
     const userId = req.user!.id;
@@ -235,7 +238,7 @@ router.post('/:id/report', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/civic/:id/donate - Faire un don à une pétition
-router.post('/:id/donate', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/donate', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const petitionId = param(req, 'id');
     const userId = req.user!.id;
@@ -265,7 +268,7 @@ router.post('/:id/donate', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/civic/donations/:id/confirm - Confirmer un don (webhook)
-router.post('/donations/:id/confirm', async (req, res, next) => {
+router.post('/donations/:id/confirm', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const transactionId = param(req, 'id');
     const result = await civicService.confirmDonation(transactionId);

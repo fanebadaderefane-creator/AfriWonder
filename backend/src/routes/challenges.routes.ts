@@ -3,6 +3,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import challengeService from '../services/challenge.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/challenges - Liste des challenges
@@ -25,7 +28,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // POST /api/challenges - Créer un challenge
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { title, description, startDate, endDate, prize } = req.body;
@@ -48,7 +51,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/challenges/:id/participate - Participer à un challenge (payant)
-router.post('/:id/participate', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/participate', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const challengeId = param(req, 'id');
     const userId = req.user!.id;
@@ -77,7 +80,7 @@ router.post('/:id/participate', authenticate, async (req: AuthRequest, res, next
 });
 
 // POST /api/challenges/participations/:id/confirm - Confirmer participation (webhook)
-router.post('/participations/:id/confirm', async (req, res, next) => {
+router.post('/participations/:id/confirm', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const transactionId = param(req, 'id');
     const result = await challengeService.confirmParticipation(transactionId);

@@ -15,7 +15,7 @@ Pour chaque secret confirmé:
 1. Révoquer la clé actuelle côté fournisseur (Stripe, Cloudflare, DB, JWT, OAuth, etc.).
 2. Générer une nouvelle clé.
 3. Mettre à jour les variables GitHub (`Actions secrets` + `Environment secrets`).
-4. Mettre à jour les environnements d'hébergement (Vercel, Render/Railway, serveur Docker, etc.).
+4. Mettre à jour les environnements d'hébergement (Vercel, Render, serveur Docker, etc.).
 5. Redéployer backend/frontend.
 6. Vérifier les flux critiques (auth, paiement, upload, notifications).
 

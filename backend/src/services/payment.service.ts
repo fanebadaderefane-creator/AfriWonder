@@ -10,6 +10,20 @@ const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2025-02-24.acacia' })
   : null;
 
+/** Orange Money — URLs par pays (override avec ORANGE_MONEY_API_URL). SN / CI / ML roadmap. */
+function resolveOrangeMoneyApiBaseUrl(): string {
+  const explicit = process.env.ORANGE_MONEY_API_URL?.trim();
+  if (explicit) return explicit.replace(/\/$/, '');
+  const region = (process.env.ORANGE_MONEY_REGION || process.env.APP_COUNTRY || 'ML').toUpperCase();
+  const defaults: Record<string, string> = {
+    ML: 'https://api.orange.ml',
+    SN: 'https://api.orange-sonatel.com',
+    CI: 'https://api.orange.com',
+    BF: 'https://api.orange.bf',
+  };
+  return defaults[region] || defaults.ML;
+}
+
 class PaymentService {
   private async markPaymentAttemptPending(orderId: string, provider: string, amount: number, transactionId?: string) {
     const existing = await prisma.orderPayment.findFirst({
@@ -251,7 +265,7 @@ class PaymentService {
       throw new Error('Orange Money Mali non configure. Verifiez ORANGE_MONEY_MERCHANT_ID et ORANGE_MONEY_API_KEY');
     }
 
-    const orangeMoneyBaseUrl = process.env.ORANGE_MONEY_API_URL || 'https://api.orange.ml';
+    const orangeMoneyBaseUrl = resolveOrangeMoneyApiBaseUrl();
 
     try {
       const paymentResponse = await axios.post(
@@ -392,14 +406,58 @@ class PaymentService {
       status: data.status,
     };
   }
-// MTN MOBILE MONEY (stub — configurer MTN_MOBILE_MONEY_* en prod)
+// MTN MOBILE MONEY — Collection API si MTN_MOMO_RTP_URL + MTN_MOMO_ACCESS_TOKEN (sinon stub)
   // ============================================
   async initiateMtnMoneyPayment(userId: string, orderId: string, data: { amount: number; phone: string; returnUrl: string }) {
-    if (!process.env.MTN_MOBILE_MONEY_API_KEY || !process.env.MTN_MOBILE_MONEY_SUBSCRIPTION_KEY) {
-      throw new Error('MTN Mobile Money non configuré. Vérifiez MTN_MOBILE_MONEY_API_KEY et MTN_MOBILE_MONEY_SUBSCRIPTION_KEY');
+    const subKey = process.env.MTN_MOBILE_MONEY_SUBSCRIPTION_KEY || process.env.MTN_MOMO_SUBSCRIPTION_KEY;
+    if (!subKey) {
+      throw new Error('MTN Mobile Money non configuré. Vérifiez MTN_MOBILE_MONEY_SUBSCRIPTION_KEY');
     }
-    // Stub: en prod, appeler l'API MTN MoMo (ex: collection/v1_0/requesttopay)
-    logger.info('Paiement MTN MoMo initié (stub)', { userId, orderId, amount: data.amount });
+
+    const rtpUrl = process.env.MTN_MOMO_RTP_URL?.trim();
+    const bearer = process.env.MTN_MOMO_ACCESS_TOKEN?.trim();
+    const targetEnv = process.env.MTN_MOMO_TARGET_ENVIRONMENT || 'sandbox';
+    if (rtpUrl && bearer) {
+      try {
+        const msisdn = String(data.phone).replace(/\s/g, '').replace(/^\+/, '');
+        const ref = crypto.randomUUID();
+        const payload = {
+          amount: String(Math.round(data.amount)),
+          currency: 'XOF',
+          externalId: orderId,
+          payer: { partyIdType: 'MSISDN', partyId: msisdn },
+          payerMessage: 'AfriWonder',
+          payeeNote: `order:${orderId}`,
+        };
+        const resp = await axios.post(rtpUrl, payload, {
+          headers: {
+            Authorization: `Bearer ${bearer}`,
+            'X-Reference-Id': ref,
+            'X-Target-Environment': targetEnv,
+            'Ocp-Apim-Subscription-Key': subKey,
+            'Content-Type': 'application/json',
+          },
+          timeout: 25000,
+          validateStatus: () => true,
+        });
+        if (resp.status >= 200 && resp.status < 300) {
+          logger.info('Paiement MTN MoMo RTP accepté', { userId, orderId, status: resp.status });
+          await this.markPaymentAttemptPending(orderId, 'mtn_money', data.amount, ref);
+          return {
+            orderId,
+            reference: ref,
+            paymentUrl: data.returnUrl,
+            provider: 'mtn_money',
+            status: resp.status,
+          };
+        }
+        logger.warn('MTN MoMo RTP réponse inattendue', { status: resp.status, data: resp.data });
+      } catch (e: any) {
+        logger.error('MTN MoMo RTP erreur', { message: e?.message });
+      }
+    }
+
+    logger.info('Paiement MTN MoMo initié (stub / hors RTP)', { userId, orderId, amount: data.amount });
     return { orderId, reference: orderId, paymentUrl: data.returnUrl, provider: 'mtn_money' };
   }
 
@@ -507,11 +565,38 @@ class PaymentService {
   // WAVE (stub - configurer WAVE_* en prod) (stub — configurer WAVE_* en prod)
   // ============================================
   async initiateWavePayment(userId: string, orderId: string, data: { amount: number; currency?: string; returnUrl: string }) {
-    if (!process.env.WAVE_API_KEY) {
+    const apiKey = process.env.WAVE_API_KEY;
+    if (!apiKey) {
       throw new Error('Wave non configuré. Vérifiez WAVE_API_KEY');
     }
-    logger.info('Paiement Wave initié (stub)', { userId, orderId, amount: data.amount });
-    return { orderId, reference: orderId, paymentUrl: data.returnUrl, provider: 'wave' };
+    const base = (process.env.WAVE_API_URL || 'https://api.wave.com/v1').replace(/\/$/, '');
+    try {
+      const payload = {
+        amount: data.amount,
+        currency: data.currency || 'XOF',
+        client_reference: orderId,
+        success_url: data.returnUrl,
+        error_url: data.returnUrl,
+      };
+      const waveRes = await axios.post(`${base}/checkout/sessions`, payload, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 20000,
+        validateStatus: () => true,
+      });
+      const url =
+        waveRes.data?.wave_launch_url ||
+        waveRes.data?.checkout_url ||
+        waveRes.data?.url ||
+        data.returnUrl;
+      logger.info('Paiement Wave initié', { userId, orderId, amount: data.amount, status: waveRes.status });
+      return { orderId, reference: orderId, paymentUrl: url, provider: 'wave' };
+    } catch (e: any) {
+      logger.warn('Wave API fallback (stub)', { message: e?.message });
+      return { orderId, reference: orderId, paymentUrl: data.returnUrl, provider: 'wave' };
+    }
   }
 
   async verifyWavePayment(orderId: string, data: { status?: string }) {

@@ -1,0 +1,11 @@
+/**
+ * Jetons alignés audit — design system Figma AfriWonder
+ * Mapper les variables Figma → ces custom properties (ou inversement dans Figma).
+ */
+:root {
+  --afw-figma-primary: hsl(var(--primary));
+  --afw-figma-accent: hsl(var(--accent));
+  --afw-figma-radius-card: 1rem;
+  --afw-figma-font-display: ui-sans-serif, system-ui, sans-serif;
+  /* Lien fichier Figma (prod) : VITE_FIGMA_DESIGN_SYSTEM_URL dans .env */
+}

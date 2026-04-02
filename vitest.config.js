@@ -73,6 +73,7 @@ export default defineConfig({
         'src/components/video/VideoAnalyticsDisplay.jsx',
         'src/components/video/VideoExport.jsx',
       ],
+      // Seuils actuels (CI `test:ci:frontend` sans coverage). Cible audit long terme ~70 % : relever progressivement.
       thresholds: {
         statements: 15,
         branches: 50,

@@ -310,7 +310,7 @@ npm run build
 ### Q: Combien coûte infrastructure ?
 **R**:
 - VPS 2GB: $10-20/mois (DigitalOcean, Hetzner)
-- Database managée: $15-25/mois (Supabase, Railway)
+- Database managée: $15-25/mois (Supabase, Render Postgres, etc.)
 - Redis: Gratuit (Upstash 10K req/jour) ou $10/mois
 - Cloudflare: Gratuit
 - Sentry: Gratuit (5K erreurs/mois)

@@ -4,6 +4,7 @@
  */
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
+import { sendViaResend } from '../utils/transactionalEmail.js';
 import axios from 'axios';
 
 /** Envoyer un SMS (stub: log en dev, integrer Twilio ou Africa's Talking en prod) */
@@ -90,6 +91,33 @@ class NotificationService {
   }
 
   private async sendEmailToUser(userId: string, subject: string, message: string, category: string): Promise<void> {
+    const target = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (!target?.email) {
+      await this.logChannelDelivery(userId, 'notification_email', message, 'failed', category, subject);
+      return;
+    }
+
+    if (process.env.RESEND_API_KEY?.trim()) {
+      const ok = await sendViaResend({
+        to: target.email,
+        subject,
+        text: message,
+        html: `<p>${message}</p>`,
+      });
+      await this.logChannelDelivery(
+        userId,
+        'notification_email',
+        message,
+        ok ? 'sent' : 'failed',
+        category,
+        subject,
+      );
+      return;
+    }
+
     const host = process.env.SMTP_HOST;
     const port = Number(process.env.SMTP_PORT || 587);
     const user = process.env.SMTP_USER;
@@ -97,15 +125,6 @@ class NotificationService {
     const from = process.env.SMTP_FROM || 'no-reply@afriwonder.app';
     if (!host || !user || !pass) {
       await this.logChannelDelivery(userId, 'notification_email', message, 'skipped', category, subject);
-      return;
-    }
-
-    const target = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { email: true },
-    });
-    if (!target?.email) {
-      await this.logChannelDelivery(userId, 'notification_email', message, 'failed', category, subject);
       return;
     }
 

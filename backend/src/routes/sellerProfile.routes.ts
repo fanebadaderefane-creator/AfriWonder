@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import sellerProfileService from '../services/sellerProfile.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/seller-profile/me — Mon profil vendeur
@@ -16,7 +19,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/seller-profile — Devenir vendeur (créer le compte vendeur)
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const profile = await sellerProfileService.register(userId, req.body);
@@ -27,7 +30,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PUT /api/seller-profile — Mettre à jour mon profil vendeur
-router.put('/', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const profile = await sellerProfileService.update(userId, req.body);

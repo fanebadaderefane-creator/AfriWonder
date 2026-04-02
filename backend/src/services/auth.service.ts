@@ -7,6 +7,7 @@ import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import * as earlyAccessService from './earlyAccess.service.js';
 import * as referralService from './referral.service.js';
+import { isRefreshTokenRevoked, revokeRefreshToken } from './refreshTokenBlacklist.service.js';
 
 interface RegisterData {
   email?: string;
@@ -29,6 +30,21 @@ function normalizePhone(phone?: string) {
 }
 
 class AuthService {
+  private assertJwtSecurity() {
+    const jwtSecret = String(process.env.JWT_SECRET || '').trim();
+    const refreshSecret = String(process.env.JWT_REFRESH_SECRET || '').trim();
+    if (jwtSecret.length < 64) {
+      const err: any = new Error('JWT_SECRET doit contenir au moins 64 caracteres aleatoires');
+      err.statusCode = 500;
+      throw err;
+    }
+    if (refreshSecret.length < 64) {
+      const err: any = new Error('JWT_REFRESH_SECRET doit contenir au moins 64 caracteres aleatoires');
+      err.statusCode = 500;
+      throw err;
+    }
+  }
+
   async register(data: RegisterData) {
     // Early Access: vérifier la limite d'utilisateurs
     const earlyCheck = await earlyAccessService.canRegister();
@@ -330,8 +346,15 @@ class AuthService {
     }
 
     try {
+      const revoked = await isRefreshTokenRevoked(refreshToken);
+      if (revoked) {
+        const err: any = new Error('Refresh token revoque');
+        err.statusCode = 401;
+        throw err;
+      }
       const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET) as {
         userId: string;
+        exp?: number;
       };
 
       const user = await prisma.user.findUnique({
@@ -349,6 +372,10 @@ class AuthService {
       }
 
       const tokens = this.generateTokens(user.id, user.email);
+
+      if (decoded.exp) {
+        await revokeRefreshToken(refreshToken, decoded.exp);
+      }
 
       return tokens;
     } catch (error) {
@@ -482,6 +509,117 @@ class AuthService {
     };
   }
 
+  /**
+   * Échange un access_token Supabase (Auth) contre les JWT AfriWonder.
+   * Variables : SUPABASE_URL, SUPABASE_ANON_KEY (backend).
+   */
+  async loginWithSupabaseAccessToken(accessToken: string) {
+    const url = process.env.SUPABASE_URL?.trim();
+    const anon = process.env.SUPABASE_ANON_KEY?.trim();
+    if (!url || !anon) {
+      const err: any = new Error('Supabase non configuré : SUPABASE_URL et SUPABASE_ANON_KEY requis dans backend/.env');
+      err.statusCode = 503;
+      throw err;
+    }
+
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(url, anon, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const { data: userData, error } = await supabase.auth.getUser(accessToken);
+    if (error || !userData?.user) {
+      const err: any = new Error(error?.message || 'Token Supabase invalide ou expiré');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    const su = userData.user;
+    const email = String(su.email || '')
+      .trim()
+      .toLowerCase();
+    if (!email) {
+      const err: any = new Error('L’email du compte Supabase est requis pour lier le compte AfriWonder');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    let user = await prisma.user.findFirst({
+      where: { OR: [{ supabase_id: su.id }, { email }] },
+    });
+
+    if (!user) {
+      const earlyCheck = await earlyAccessService.canRegister();
+      if (!earlyCheck.allowed) {
+        const e: any = new Error(earlyCheck.message);
+        e.statusCode = 403;
+        throw e;
+      }
+
+      const baseUsername = email.split('@')[0].replace(/[^a-zA-Z0-9._-]/g, '_') || 'user';
+      let username = baseUsername;
+      let counter = 1;
+      while (await prisma.user.findUnique({ where: { username } })) {
+        username = `${baseUsername}${counter}`;
+        counter++;
+      }
+
+      const meta = (su.user_metadata || {}) as Record<string, string>;
+      const full_name = meta.full_name || meta.name || null;
+      const profile_image = meta.avatar_url || meta.picture || null;
+
+      user = await prisma.user.create({
+        data: {
+          email,
+          username,
+          full_name: full_name || undefined,
+          profile_image: profile_image || undefined,
+          password_hash: '',
+          is_verified: true,
+          supabase_id: su.id,
+        },
+      });
+
+      logger.info('Utilisateur créé via Supabase Auth', { userId: user.id, email: user.email });
+    } else if (user.supabase_id !== su.id) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { supabase_id: su.id },
+      });
+    }
+
+    if (!user) throw new Error('User not found');
+
+    try {
+      const ledgerService = (await import('./ledger.service.js')).default;
+      await ledgerService.getOrCreateUserWallet(user.id, 'XOF');
+    } catch (_e) {
+      // ignore
+    }
+
+    const tokens = this.generateTokens(user.id, user.email);
+
+    const userOut = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        full_name: true,
+        profile_image: true,
+        role: true,
+        created_at: true,
+      },
+    });
+
+    logger.info('Connexion via Supabase Auth', { userId: user.id, email: user.email });
+
+    return {
+      user: userOut!,
+      ...tokens,
+    };
+  }
+
   private generateTokens(userId: string, email: string) {
     if (!process.env.JWT_SECRET?.trim()) {
       const err: any = new Error('JWT_SECRET non configuré. Vérifiez backend/.env');
@@ -494,9 +632,11 @@ class AuthService {
       throw err;
     }
 
-    const jwtSecret: string = process.env.JWT_SECRET;
-    const jwtRefreshSecret: string = process.env.JWT_REFRESH_SECRET;
-    const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
+    this.assertJwtSecurity();
+
+    const jwtSecret: string = process.env.JWT_SECRET!;
+    const jwtRefreshSecret: string = process.env.JWT_REFRESH_SECRET!;
+    const expiresIn = process.env.JWT_EXPIRES_IN || '15m';
     const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '30d';
 
     const accessToken = jwt.sign(

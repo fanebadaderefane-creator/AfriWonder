@@ -36,6 +36,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { createPageUrl } from "@/utils";
+import { useAuth } from '@/lib/AuthContext';
+import { readGuestExplore, GUEST_EXPLORE_EVENT, setGuestExplore } from '@/lib/guestExplore';
+import BottomNav from '../components/navigation/BottomNav';
 
 import { FILE_ACCEPT_IMAGES, FILE_ACCEPT_VIDEOS, FILE_ACCEPT_MUSIC } from '@/lib/fileAccept';
 
@@ -101,6 +104,8 @@ function descriptionWithoutHashtags(description) {
 export default function Create() {
 
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+  const [guestExploreActive, setGuestExploreActive] = useState(() => readGuestExplore());
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const isAdMode = searchParams.get('mode') === 'ad';
@@ -227,6 +232,12 @@ export default function Create() {
       }
     };
     getUser();
+  }, []);
+
+  useEffect(() => {
+    const h = () => setGuestExploreActive(readGuestExplore());
+    window.addEventListener(GUEST_EXPLORE_EVENT, h);
+    return () => window.removeEventListener(GUEST_EXPLORE_EVENT, h);
   }, []);
 
   useEffect(() => {
@@ -1252,7 +1263,29 @@ export default function Create() {
     }
   };
 
-
+  if (!isAuthenticated && guestExploreActive) {
+    return (
+      <div className="screen flex min-h-screen flex-col items-center justify-center bg-black px-6 pb-28 text-white">
+        <p className="text-center text-lg font-semibold">Créer du contenu est réservé aux comptes connectés</p>
+        <p className="mt-3 max-w-sm text-center text-sm text-white/60">
+          En mode invité, vous pouvez regarder le feed. Connectez-vous pour publier une vidéo ou une image.
+        </p>
+        <Button
+          type="button"
+          className="mt-8 rounded-2xl bg-blue-600 px-8 py-3 font-semibold text-white hover:bg-blue-500"
+          onClick={() => {
+            setGuestExplore(false);
+            navigate(createPageUrl('Landing'));
+          }}
+        >
+          Connexion ou inscription
+        </Button>
+        <div className="fixed inset-x-0 bottom-0 w-full">
+          <BottomNav />
+        </div>
+      </div>
+    );
+  }
 
   return (
 

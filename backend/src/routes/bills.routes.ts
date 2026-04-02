@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import prisma from '../config/database.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/bills - nécessite une authentification
@@ -20,7 +23,7 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/pay', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/pay', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { bill_type, provider, account_number, customer_name, amount, payment_method, due_date, bill_period, fees } = req.body;

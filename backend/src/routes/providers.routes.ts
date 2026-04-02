@@ -6,6 +6,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import providerService from '../services/provider.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/providers - Liste des prestataires
@@ -59,7 +62,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/providers - Devenir prestataire
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { service_categories, service_radius_km, location_type, payout_method, payout_account, phone, whatsapp, email, address, city, country, bio } = req.body;
@@ -87,7 +90,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PUT /api/providers/:id - Modifier le profil prestataire
-router.put('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:id', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const provider = await providerService.getProviderByUserId(req.user!.id);
     if (!provider || provider.id !== param(req, 'id')) {
@@ -115,7 +118,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/providers/:id/verify - Approuver un prestataire (Admin AfriWonder)
-router.post('/:id/verify', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/verify', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
     if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
@@ -129,7 +132,7 @@ router.post('/:id/verify', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/providers/:id/reject - Rejeter un prestataire (Admin AfriWonder)
-router.post('/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/reject', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
     if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {

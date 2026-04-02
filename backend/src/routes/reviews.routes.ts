@@ -3,6 +3,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import reviewService from '../services/review.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/reviews/product/:productId
@@ -18,7 +21,7 @@ router.get('/product/:productId', async (req, res, next) => {
 });
 
 // POST /api/reviews
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { productId, rating, title, content, photos } = req.body;
     const review = await reviewService.create(req.user!.id, productId, {
@@ -34,7 +37,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PUT /api/reviews/:id
-router.put('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:id', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { rating, title, content, photos } = req.body;
     const review = await reviewService.update(param(req, 'id'), req.user!.id, {
@@ -60,7 +63,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/reviews/:id/helpful
-router.post('/:id/helpful', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/helpful', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const review = await reviewService.markHelpful(param(req, 'id'), req.user!.id);
     res.json({ success: true, data: review });
@@ -70,7 +73,7 @@ router.post('/:id/helpful', authenticate, async (req: AuthRequest, res, next) =>
 });
 
 // POST /api/reviews/:id/reply
-router.post('/:id/reply', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/reply', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { content } = req.body;
     const reply = await reviewService.reply(param(req, 'id'), req.user!.id, content);

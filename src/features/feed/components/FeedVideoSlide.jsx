@@ -33,11 +33,13 @@ export default function FeedVideoSlide({
   const distance = Math.abs(index - safeCurrentIndex);
   const shouldMountPlayer = distance <= FEED_PLAYER_MOUNT_RADIUS;
 
+  // Hauteur = scrollport du feed (parent), pas 100dvh : sinon sur iPhone la slide déborde sous la barre
+  // d’onglets / l’indicateur d’accueil et la nav devient invisible ou illisible.
   const slideShellStyle = {
     display: 'block',
     width: '100%',
-    height: '100dvh',
-    minHeight: '100dvh',
+    height: '100%',
+    minHeight: '100%',
     scrollSnapAlign: 'start',
     scrollSnapStop: 'always',
     touchAction: 'pan-y',

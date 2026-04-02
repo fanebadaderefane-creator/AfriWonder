@@ -6,7 +6,8 @@ import { queryClientInstance, queryPersister } from '@/lib/query-client'
 import NavigationTracker from '@/lib/NavigationTracker'
 import { pagesConfig, preloadPages } from './pages.config.glob'
 import { BrowserRouter as Router, Route, Routes, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import { useEffect, Suspense, useRef } from 'react';
+import { useEffect, Suspense, useRef, useState } from 'react';
+import { readGuestExplore, GUEST_EXPLORE_EVENT } from '@/lib/guestExplore';
 import { getAccessToken, getRefreshToken } from '@/lib/secureTokenStorage';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
@@ -44,6 +45,13 @@ const AuthenticatedApp = () => {
   const location = useLocation();
   const tokensWhenUnauthRef = useRef(undefined);
   const hadAuthenticatedRef = useRef(false);
+  const [guestExplore, setGuestExploreSnapshot] = useState(() => readGuestExplore());
+
+  useEffect(() => {
+    const sync = () => setGuestExploreSnapshot(readGuestExplore());
+    window.addEventListener(GUEST_EXPLORE_EVENT, sync);
+    return () => window.removeEventListener(GUEST_EXPLORE_EVENT, sync);
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -93,13 +101,13 @@ const AuthenticatedApp = () => {
           const isPublicPath =
             publicPaths.includes(path) ||
             path.toLowerCase().startsWith('/verify-certificate/');
-          if (!isPublicPath) {
+          if (!guestExplore && !isPublicPath) {
             navigate('/Landing', { replace: true });
           }
         }
       }
     })();
-  }, [isLoadingAuth, isAuthenticated, navigate, location.pathname]);
+  }, [isLoadingAuth, isAuthenticated, guestExplore, navigate, location.pathname]);
 
   const renderPublicRoute = (PageComp) => {
     if (!PageComp) return <div>Page non trouvée</div>;
@@ -122,8 +130,9 @@ const AuthenticatedApp = () => {
     }
   }
 
-  // If not authenticated, show Landing page or public pages via Routes
-  if (!isAuthenticated) {
+  // Invité : accès au même shell que l'app (feed, navigation) — aligné audit guest / onboarding minimal.
+  // Sans flag invité : Landing + pages publiques uniquement.
+  if (!isAuthenticated && !guestExplore) {
     const LandingPage = Pages['Landing'];
     const PrivacyPolicyPage = Pages['PrivacyPolicy'];
     const DataProtectionPage = Pages['DataProtection'];
@@ -162,14 +171,16 @@ const AuthenticatedApp = () => {
     );
   }
 
-  // Render the main app — errorElement par route pour isoler les erreurs et garder l'app navigable
+  // App complète : utilisateur connecté OU mode invité (guestExplore)
   return (
     <Routes>
       <Route
         path="/"
         element={
           <LayoutWrapper currentPageName={mainPageKey}>
-            <MainPage />
+            <Suspense fallback={<PageLoader />}>
+              <MainPage />
+            </Suspense>
           </LayoutWrapper>
         }
         errorElement={<PageErrorFallback />}
@@ -250,7 +261,7 @@ function App() {
       <AuthProvider>
         <PersistQueryClientProvider
           client={queryClientInstance}
-          persistOptions={{ persister: queryPersister, maxAge: 1000 * 60 * 60 * 24 }}
+          persistOptions={{ persister: queryPersister, maxAge: 1000 * 60 * 60 * 48 }}
         >
           <MessageSocketBridge>
           <Suspense fallback={<PageLoader />}>

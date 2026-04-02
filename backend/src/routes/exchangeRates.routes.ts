@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import exchangeRateService from '../services/exchangeRate.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/exchange-rates - liste des taux de change
@@ -35,7 +38,7 @@ router.get('/convert', async (req, res, next) => {
   }
 });
 
-router.put('/rates', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/rates', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     if (req.user?.role !== 'admin') {
       return res.status(403).json({ success: false, error: 'Admin required' });

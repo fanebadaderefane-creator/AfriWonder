@@ -3,6 +3,9 @@ import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import communityService from '../services/community.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/communities — avec Bearer : chaque entrée inclut is_member (sinon liste inchangée)
@@ -33,7 +36,7 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/communities
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { name, description, avatar, banner, category, isPrivate } = req.body;
     const community = await communityService.create(req.user!.id, {
@@ -51,7 +54,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/communities/:id/join
-router.post('/:id/join', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/join', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const member = await communityService.join(param(req, 'id'), req.user!.id);
     res.json({ success: true, data: member });
@@ -61,7 +64,7 @@ router.post('/:id/join', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/communities/:id/leave
-router.post('/:id/leave', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/leave', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await communityService.leave(param(req, 'id'), req.user!.id);
     res.json({ success: true, data: result });

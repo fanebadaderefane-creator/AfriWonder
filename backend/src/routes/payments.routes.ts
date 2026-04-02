@@ -9,8 +9,64 @@ import { requireKycFor } from '../services/kycRequired.service.js';
 import { auditFromRequest } from '../services/auditTrail.service.js';
 import { logger } from '../utils/logger.js';
 import { logWebhookIncoming, logWebhookProcessed, logWebhookError } from '../utils/webhookLogger.js';
+import { z } from 'zod';
+import { validateBody, validateQuery } from '../utils/zodValidation.js';
 
 const router = Router();
+
+const paymentInitSchema = z.object({
+  orderId: z.string().min(2),
+  amount: z.coerce.number().positive(),
+  email: z.string().email().optional(),
+  currency: z.string().min(3).max(8).optional(),
+  returnUrl: z.string().url().optional(),
+}).passthrough();
+
+const mobileMoneyInitSchema = paymentInitSchema.extend({
+  phone: z.string().min(8),
+});
+
+const paymentVerifySchema = z.object({
+  orderId: z.string().min(2),
+  status: z.string().min(2),
+  pay_token: z.string().optional(),
+  transaction_id: z.string().optional(),
+  tx_id: z.string().optional(),
+  reference: z.string().optional(),
+});
+
+const stripeCheckoutSchema = z.object({
+  orderId: z.string().min(2),
+  items: z.array(z.any()).optional(),
+  successUrl: z.string().url().optional(),
+  cancelUrl: z.string().url().optional(),
+});
+
+const walletDepositSchema = z.object({
+  amount: z.coerce.number().positive(),
+  description: z.string().max(255).optional(),
+});
+
+const walletWithdrawSchema = z.object({
+  amount: z.coerce.number().positive(),
+  description: z.string().max(255).optional(),
+  pin: z.string().min(4).max(12).optional(),
+});
+
+const walletPayOrderSchema = z.object({
+  orderId: z.string().min(2),
+  pin: z.string().min(4).max(12).optional(),
+});
+
+const walletPinSchema = z.object({
+  pin: z.string().min(4).max(12),
+});
+
+const ussdInstructionsQuerySchema = z.object({
+  provider: z.enum(['orange_money', 'wave', 'moov']).default('orange_money'),
+  country: z.enum(['ML', 'SN', 'CI', 'BF']).default('ML'),
+  amount: z.coerce.number().positive().optional(),
+});
 
 /**
  * @swagger
@@ -58,7 +114,7 @@ const router = Router();
  */
 
 // POST /api/payments/stripe/checkout
-router.post('/stripe/checkout', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/stripe/checkout', authenticate, validateBody(stripeCheckoutSchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { orderId, items, successUrl, cancelUrl } = req.body;
@@ -226,13 +282,64 @@ const handleMoovMoneyInit = async (req: AuthRequest, res: any, next: any) => {
 };
 
 // POST /api/payments/orange-money — idempotency + risk + KYC + audit
-router.post('/orange-money', authenticate, idempotencyMiddleware, handleOrangeMoneyInit);
+router.post('/orange-money', authenticate, idempotencyMiddleware, validateBody(mobileMoneyInitSchema), handleOrangeMoneyInit);
 
 // POST /api/payments/orange-money/initiate — alias pour compatibilité
-router.post('/orange-money/initiate', authenticate, idempotencyMiddleware, handleOrangeMoneyInit);
+router.post('/orange-money/initiate', authenticate, idempotencyMiddleware, validateBody(mobileMoneyInitSchema), handleOrangeMoneyInit);
+
+// GET /api/payments/ussd/instructions - Flux USSD (zones sans data)
+router.get('/ussd/instructions', validateQuery(ussdInstructionsQuerySchema), async (req, res) => {
+  const provider = String(req.query.provider || 'orange_money');
+  const country = String(req.query.country || 'ML');
+  const amount = Number(req.query.amount || 0);
+  const amountHint = Number.isFinite(amount) && amount > 0 ? ` pour ${amount.toLocaleString('fr-FR')} FCFA` : '';
+
+  const presets: Record<string, { code: string; label: string; steps: string[] }> = {
+    orange_money: {
+      code: '#144#',
+      label: 'Orange Money USSD',
+      steps: [
+        `Composez #144# puis validez.`,
+        `Choisissez "Paiement marchand"${amountHint}.`,
+        'Entrez la reference de commande affichee dans l application.',
+        'Confirmez avec votre code secret Orange Money.',
+      ],
+    },
+    wave: {
+      code: '*145#',
+      label: 'Wave USSD',
+      steps: [
+        'Composez *145# puis validez.',
+        `Selectionnez "Payer"${amountHint}.`,
+        'Saisissez la reference de commande.',
+        'Confirmez le paiement avec votre PIN.',
+      ],
+    },
+    moov: {
+      code: '*155#',
+      label: 'Moov Money USSD',
+      steps: [
+        'Composez *155# puis validez.',
+        `Choisissez le menu paiement${amountHint}.`,
+        'Saisissez la reference de transaction.',
+        'Confirmez avec votre code Moov Money.',
+      ],
+    },
+  };
+
+  const selected = presets[provider] || presets.orange_money;
+  return res.json({
+    success: true,
+    data: {
+      provider,
+      country,
+      ...selected,
+    },
+  });
+});
 
 // POST /api/payments/orange-money/verify
-router.post('/orange-money/verify', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/orange-money/verify', authenticate, validateBody(paymentVerifySchema), async (req: AuthRequest, res, next) => {
   try {
     const { orderId, status, pay_token } = req.body;
     const result = await paymentService.verifyOrangeMoneyPayment(orderId, {
@@ -686,7 +793,7 @@ router.post('/orange-money/webhook', async (req, res, next) => {
 
 // ========== MTN MOBILE MONEY ==========
 // POST /api/payments/mtn
-router.post('/mtn', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/mtn', authenticate, validateBody(mobileMoneyInitSchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { orderId, amount, phone, returnUrl } = req.body;
@@ -698,7 +805,7 @@ router.post('/mtn', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/payments/mtn/verify
-router.post('/mtn/verify', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/mtn/verify', authenticate, validateBody(paymentVerifySchema), async (req: AuthRequest, res, next) => {
   try {
     const { orderId, status, transaction_id } = req.body;
     const result = await paymentService.verifyMtnMoneyPayment(orderId, { status, transaction_id });
@@ -714,13 +821,13 @@ router.post('/mtn/verify', authenticate, async (req: AuthRequest, res, next) => 
 
 // ========== MOOV MONEY (Mali) ==========
 // POST /api/payments/moov
-router.post('/moov', authenticate, idempotencyMiddleware, handleMoovMoneyInit);
+router.post('/moov', authenticate, idempotencyMiddleware, validateBody(mobileMoneyInitSchema), handleMoovMoneyInit);
 
 // POST /api/payments/moov/initiate
-router.post('/moov/initiate', authenticate, idempotencyMiddleware, handleMoovMoneyInit);
+router.post('/moov/initiate', authenticate, idempotencyMiddleware, validateBody(mobileMoneyInitSchema), handleMoovMoneyInit);
 
 // POST /api/payments/moov/verify
-router.post('/moov/verify', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/moov/verify', authenticate, validateBody(paymentVerifySchema), async (req: AuthRequest, res, next) => {
   try {
     const { orderId, status, transaction_id } = req.body;
     const result = await paymentService.verifyMoovMoneyPayment(orderId, { status, transaction_id });
@@ -770,7 +877,7 @@ router.post('/moov/webhook', async (req, res, next) => {
 
 // ========== WAVE ==========
 // POST /api/payments/wave
-router.post('/wave', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/wave', authenticate, validateBody(paymentInitSchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { orderId, amount, returnUrl, currency } = req.body;
@@ -782,7 +889,7 @@ router.post('/wave', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/payments/wave/verify
-router.post('/wave/verify', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/wave/verify', authenticate, validateBody(paymentVerifySchema), async (req: AuthRequest, res, next) => {
   try {
     const { orderId, status } = req.body;
     const result = await paymentService.verifyWavePayment(orderId, { status });
@@ -798,7 +905,7 @@ router.post('/wave/verify', authenticate, async (req: AuthRequest, res, next) =>
 
 // ========== FLUTTERWAVE ==========
 // POST /api/payments/flutterwave
-router.post('/flutterwave', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/flutterwave', authenticate, validateBody(paymentInitSchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { orderId, amount, email, returnUrl, currency } = req.body;
@@ -810,7 +917,7 @@ router.post('/flutterwave', authenticate, async (req: AuthRequest, res, next) =>
 });
 
 // POST /api/payments/flutterwave/verify
-router.post('/flutterwave/verify', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/flutterwave/verify', authenticate, validateBody(paymentVerifySchema), async (req: AuthRequest, res, next) => {
   try {
     const { orderId, status, tx_id } = req.body;
     const result = await paymentService.verifyFlutterwavePayment(orderId, { status, tx_id });
@@ -826,7 +933,7 @@ router.post('/flutterwave/verify', authenticate, async (req: AuthRequest, res, n
 
 // ========== PAYSTACK ==========
 // POST /api/payments/paystack
-router.post('/paystack', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/paystack', authenticate, validateBody(paymentInitSchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { orderId, amount, email, returnUrl } = req.body;
@@ -838,7 +945,7 @@ router.post('/paystack', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/payments/paystack/verify
-router.post('/paystack/verify', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/paystack/verify', authenticate, validateBody(paymentVerifySchema), async (req: AuthRequest, res, next) => {
   try {
     const { orderId, reference, status } = req.body;
     const result = await paymentService.verifyPaystackPayment(orderId, { reference, status });
@@ -864,7 +971,7 @@ router.get('/wallet', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/payments/wallet/deposit
-router.post('/wallet/deposit', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/wallet/deposit', authenticate, validateBody(walletDepositSchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { amount, description } = req.body;
@@ -876,7 +983,7 @@ router.post('/wallet/deposit', authenticate, async (req: AuthRequest, res, next)
 });
 
 // POST /api/payments/wallet/withdraw
-router.post('/wallet/withdraw', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/wallet/withdraw', authenticate, validateBody(walletWithdrawSchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { amount, description, pin } = req.body;
@@ -888,7 +995,7 @@ router.post('/wallet/withdraw', authenticate, async (req: AuthRequest, res, next
 });
 
 // POST /api/payments/wallet/pay-order - Paiement d'une commande avec le portefeuille utilisateur
-router.post('/wallet/pay-order', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/wallet/pay-order', authenticate, validateBody(walletPayOrderSchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { orderId, pin } = req.body;
@@ -952,7 +1059,7 @@ router.get('/wallet/security', authenticate, async (req: AuthRequest, res, next)
 });
 
 // POST /api/payments/wallet/set-pin
-router.post('/wallet/set-pin', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/wallet/set-pin', authenticate, validateBody(walletPinSchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { pin } = req.body;
@@ -965,7 +1072,7 @@ router.post('/wallet/set-pin', authenticate, async (req: AuthRequest, res, next)
 });
 
 // POST /api/payments/wallet/validate-pin
-router.post('/wallet/validate-pin', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/wallet/validate-pin', authenticate, validateBody(walletPinSchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { pin } = req.body;

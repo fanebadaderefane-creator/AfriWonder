@@ -7,6 +7,9 @@ import { param } from '../utils/params.js';
 import prisma from '../config/database.js';
 import { haversineKm } from '../utils/haversine.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/drivers/nearby - Conducteurs à proximité (lat, lng = tri Haversine)
@@ -89,7 +92,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PUT /api/drivers/me - Créer ou mettre à jour mon profil conducteur
-router.put('/me', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/me', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { full_name: true } });

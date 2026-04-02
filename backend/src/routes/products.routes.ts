@@ -7,6 +7,23 @@ import productQuestionService from '../services/product-question.service.js';
 import auctionService from '../services/auction.service.js';
 import groupBuyService from '../services/groupBuy.service.js';
 import { responseCache } from '../middleware/responseCache.middleware.js';
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+import {
+  productAlertBodySchema,
+  productAuctionBidBodySchema,
+  productAuctionCreateBodySchema,
+  productCreateBodySchema,
+  productFlashSaleBodySchema,
+  productGroupBuyCreateBodySchema,
+  productOfferBodySchema,
+  productPreorderBodySchema,
+  productPromotionBodySchema,
+  productQuestionAnswerBodySchema,
+  productQuestionCreateBodySchema,
+  productStockPatchBodySchema,
+  productUpdateBodySchema,
+} from '../schemas/cartProductsNotifications.schemas.js';
 
 const router = Router();
 
@@ -163,14 +180,11 @@ router.get('/compare', responseCache('products:compare', { ttlMs: 30_000 }), asy
 });
 
 // POST /api/products/questions/:questionId/answer - Must be before /:id
-router.post('/questions/:questionId/answer', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/questions/:questionId/answer', authenticate, validateBody(productQuestionAnswerBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const questionId = param(req, 'questionId');
     const sellerId = req.user!.id;
     const { answer } = req.body;
-    if (!answer || typeof answer !== 'string' || !answer.trim()) {
-      return res.status(400).json({ success: false, error: { message: 'answer requise' } });
-    }
     const q = await productQuestionService.answer(questionId, sellerId, answer.trim());
     res.json({ success: true, data: q });
   } catch (error: any) {
@@ -312,11 +326,11 @@ router.get('/:id/group-buys', async (req, res, next) => {
     next(error);
   }
 });
-router.post('/:id/group-buys', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/group-buys', authenticate, validateBody(productGroupBuyCreateBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const productId = param(req, 'id');
     const userId = req.user!.id;
-    const minQuantity = Math.max(2, parseInt(String(req.body?.min_quantity), 10) || 2);
+    const minQuantity = Math.max(2, req.body.min_quantity ?? 2);
     const group = await groupBuyService.create(productId, userId, minQuantity);
     res.status(201).json({ success: true, data: group });
   } catch (error: any) {
@@ -338,17 +352,18 @@ router.get('/:id/auction', async (req, res, next) => {
 });
 
 // CPO 6.35 — Enchères : créer une enchère (vendeur)
-router.post('/:id/auction', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/auction', authenticate, validateBody(productAuctionCreateBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const productId = param(req, 'id');
     const sellerId = req.user!.id;
     const { start_price, end_at } = req.body;
-    const startPrice = start_price != null ? Number(start_price) : NaN;
-    const endAt = end_at ? new Date(end_at) : null;
-    if (!Number.isFinite(startPrice) || startPrice <= 0 || !endAt || isNaN(endAt.getTime())) {
-      return res.status(400).json({ success: false, error: { message: 'start_price (nombre > 0) et end_at (ISO date) requis' } });
-    }
-    const auction = await auctionService.create({ product_id: productId, seller_id: sellerId, start_price: startPrice, end_at: endAt });
+    const endAt = new Date(end_at);
+    const auction = await auctionService.create({
+      product_id: productId,
+      seller_id: sellerId,
+      start_price: start_price,
+      end_at: endAt,
+    });
     res.status(201).json({ success: true, data: auction });
   } catch (error: any) {
     next(error);
@@ -356,14 +371,11 @@ router.post('/:id/auction', authenticate, async (req: AuthRequest, res, next) =>
 });
 
 // CPO 6.35 — Enchères : placer une enchère
-router.post('/:id/auction/bid', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/auction/bid', authenticate, validateBody(productAuctionBidBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const productId = param(req, 'id');
     const userId = req.user!.id;
-    const amount = req.body?.amount != null ? Number(req.body.amount) : NaN;
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ success: false, error: { message: 'amount (nombre > 0) requis' } });
-    }
+    const { amount } = req.body;
     const auction = await auctionService.placeBid({ product_id: productId, user_id: userId, amount });
     res.json({ success: true, data: auction });
   } catch (error: any) {
@@ -395,7 +407,7 @@ router.get('/:id/alerts/me', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // POST /api/products
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(productCreateBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const sellerId = req.user!.id;
     const product = await productService.create({
@@ -409,7 +421,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PUT /api/products/:id
-router.put('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:id', authenticate, validateBody(productUpdateBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const sellerId = req.user!.id;
@@ -433,7 +445,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PATCH /api/products/:id/stock
-router.patch('/:id/stock', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/:id/stock', authenticate, validateBody(productStockPatchBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const sellerId = req.user!.id;
@@ -446,18 +458,17 @@ router.patch('/:id/stock', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // CPO 6.38 — Ajouter alerte prix ou stock sur un produit
-router.post('/:id/alerts', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/alerts', authenticate, validateBody(productAlertBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const productId = param(req, 'id');
     const userId = req.user!.id;
     const { alert_type, target_price } = req.body;
-    if (!alert_type || !['price', 'stock'].includes(alert_type)) {
-      return res.status(400).json({ success: false, error: { message: 'alert_type requis: price ou stock' } });
-    }
-    if (alert_type === 'price' && (target_price == null || typeof target_price !== 'number' || target_price <= 0)) {
-      return res.status(400).json({ success: false, error: { message: 'target_price requis pour une alerte prix (nombre > 0)' } });
-    }
-    const alert = await productService.addProductAlert(userId, productId, alert_type, alert_type === 'price' ? target_price : undefined);
+    const alert = await productService.addProductAlert(
+      userId,
+      productId,
+      alert_type,
+      alert_type === 'price' ? target_price : undefined
+    );
     res.status(201).json({ success: true, data: alert });
   } catch (error: any) {
     next(error);
@@ -481,14 +492,11 @@ router.delete('/:id/alerts/:type', authenticate, async (req: AuthRequest, res, n
 });
 
 // CPO 6.36 — Proposer un prix (négociation)
-router.post('/:id/offers', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/offers', authenticate, validateBody(productOfferBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const productId = param(req, 'id');
     const userId = req.user!.id;
-    const offeredPrice = parseFloat(String(req.body?.offered_price ?? 0));
-    if (!offeredPrice || offeredPrice <= 0) {
-      return res.status(400).json({ success: false, error: { message: 'offered_price requis (nombre > 0)' } });
-    }
+    const { offered_price: offeredPrice } = req.body;
     const offer = await productService.createOffer(userId, productId, offeredPrice);
     res.status(201).json({ success: true, data: offer });
   } catch (error: any) {
@@ -509,11 +517,11 @@ router.get('/:id/offers/me', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // CPO 6.37 — Créer une précommande
-router.post('/:id/preorder', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/preorder', authenticate, validateBody(productPreorderBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const productId = param(req, 'id');
     const userId = req.user!.id;
-    const quantity = Math.max(1, Math.min(99, parseInt(String(req.body?.quantity || 1), 10) || 1));
+    const quantity = req.body.quantity;
     const preorder = await productService.createPreorder(userId, productId, quantity);
     res.status(201).json({ success: true, data: preorder });
   } catch (error: any) {
@@ -522,18 +530,11 @@ router.post('/:id/preorder', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // POST /api/products/:id/promotion - Créer une promotion (payant)
-router.post('/:id/promotion', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/promotion', authenticate, validateBody(productPromotionBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const productId = param(req, 'id');
     const userId = req.user!.id;
     const { discount, startDate, endDate, phone } = req.body;
-
-    if (!discount || !startDate || !endDate || !phone) {
-      return res.status(400).json({
-        success: false,
-        error: { message: 'discount, startDate, endDate et phone requis' },
-      });
-    }
 
     const result = await productService.createPromotion(productId, userId, {
       discount,
@@ -553,18 +554,11 @@ router.post('/:id/promotion', authenticate, async (req: AuthRequest, res, next) 
 });
 
 // POST /api/products/:id/flash-sale - Créer une vente flash (payant)
-router.post('/:id/flash-sale', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/flash-sale', authenticate, validateBody(productFlashSaleBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const productId = param(req, 'id');
     const userId = req.user!.id;
     const { discount, startTime, endTime, stockLimit, phone } = req.body;
-
-    if (!discount || !startTime || !endTime || !stockLimit || !phone) {
-      return res.status(400).json({
-        success: false,
-        error: { message: 'discount, startTime, endTime, stockLimit et phone requis' },
-      });
-    }
 
     const result = await productService.createFlashSale(productId, userId, {
       discount,
@@ -585,7 +579,7 @@ router.post('/:id/flash-sale', authenticate, async (req: AuthRequest, res, next)
 });
 
 // POST /api/products/promotions/:id/confirm - Confirmer promotion (webhook)
-router.post('/promotions/:id/confirm', async (req, res, next) => {
+router.post('/promotions/:id/confirm', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const transactionId = param(req, 'id');
     const result = await productService.confirmPromotionPayment(transactionId);
@@ -601,7 +595,7 @@ router.post('/promotions/:id/confirm', async (req, res, next) => {
 });
 
 // POST /api/products/flash-sales/:id/confirm - Confirmer vente flash (webhook)
-router.post('/flash-sales/:id/confirm', async (req, res, next) => {
+router.post('/flash-sales/:id/confirm', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const transactionId = param(req, 'id');
     const result = await productService.confirmFlashSalePayment(transactionId);
@@ -630,14 +624,11 @@ router.get('/:id/questions', async (req, res, next) => {
 });
 
 // POST /api/products/:id/questions - Poser une question (CDC)
-router.post('/:id/questions', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/questions', authenticate, validateBody(productQuestionCreateBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const productId = param(req, 'id');
     const userId = req.user!.id;
     const { question } = req.body;
-    if (!question || typeof question !== 'string' || !question.trim()) {
-      return res.status(400).json({ success: false, error: { message: 'question requise' } });
-    }
     const q = await productQuestionService.create(productId, userId, question.trim());
     res.status(201).json({ success: true, data: q });
   } catch (error: any) {

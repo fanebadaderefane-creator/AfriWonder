@@ -3,6 +3,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import wishlistService from '../services/wishlist.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/wishlist
@@ -18,7 +21,7 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/wishlist/add
-router.post('/add', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/add', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { productId } = req.body;
     const item = await wishlistService.addToWishlist(req.user!.id, productId);

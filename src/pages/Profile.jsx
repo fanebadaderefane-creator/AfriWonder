@@ -7,7 +7,8 @@ import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tansta
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-import { Grid3X3, Bookmark, Heart, ShoppingBag, Play, ArrowLeft, Pencil, Trash2, FileText, Menu } from 'lucide-react';
+import { Grid3X3, Bookmark, Heart, ShoppingBag, Play, ArrowLeft, Pencil, Trash2, FileText, Menu, User } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 import { motion } from 'framer-motion';
 
@@ -34,6 +35,7 @@ import SubscriptionTiers from '../components/creator/SubscriptionTiers';
 
 import { useAppMenu } from '@/contexts/AppMenuContext';
 import { useAuth } from '@/lib/AuthContext';
+import { readGuestExplore } from '@/lib/guestExplore';
 import { getCachedProfile, cacheProfile } from '@/services/offlineProfilesMessages.service';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
@@ -656,13 +658,46 @@ export default function Profile() {
 
 
   if (!displayUser && !profileUserId) {
+    if (isLoadingAuth) {
+      return (
+        <div className={`w-full min-h-screen flex flex-col items-center justify-center ${PROFILE_PAGE_BG}`}>
+          <div className="text-center px-6">
+            <div className="mx-auto mb-4 h-16 w-16 rounded-full border-4 border-white/18 border-t-white/80 animate-spin" />
+            <p className="text-white/56">Chargement...</p>
+          </div>
+          <div className="mt-8 w-full">
+            <BottomNav />
+          </div>
+        </div>
+      );
+    }
+    if (readGuestExplore() && !user?.id) {
+      return (
+        <div className={`w-full min-h-screen flex flex-col items-center justify-center px-6 pb-28 ${PROFILE_PAGE_BG}`}>
+          <ProfileEmptyState
+            icon={User}
+            title="Votre profil"
+            description="Créez un compte ou connectez-vous pour publier, suivre des créateurs et utiliser le wallet."
+            action={
+              <Button
+                type="button"
+                className="rounded-2xl bg-blue-600 px-6 text-white hover:bg-blue-500"
+                onClick={() => navigate(createPageUrl('Landing'))}
+              >
+                Se connecter ou s&apos;inscrire
+              </Button>
+            }
+          />
+          <div className="fixed bottom-0 left-0 right-0 w-full">
+            <BottomNav />
+          </div>
+        </div>
+      );
+    }
     return (
       <div className={`w-full min-h-screen flex flex-col items-center justify-center ${PROFILE_PAGE_BG}`}>
         <div className="text-center px-6">
-          <div className="mx-auto mb-4 h-16 w-16 rounded-full border-4 border-white/18 border-t-white/80 animate-spin" />
-          <p className="text-white/56">
-            {isLoadingAuth ? 'Chargement...' : 'Profil indisponible.'}
-          </p>
+          <p className="text-white/56">Profil indisponible.</p>
         </div>
         <div className="mt-8 w-full">
           <BottomNav />

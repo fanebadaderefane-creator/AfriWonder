@@ -78,5 +78,5 @@ Si tu vois cette erreur, Render utilise le **mauvais Dockerfile** (celui du fron
 ## 🔗 Après le déploiement
 
 1. Récupère l’URL du backend Render (ex. `https://afriwonder-backend.onrender.com`)
-2. Mets à jour `vercel.json` : remplacer `afriwonder-production.up.railway.app` par ton URL Render
+2. Vérifie `vercel.json` : les rewrites `/api/*` doivent pointer vers ton URL Render (`https://<service>.onrender.com/api/...`)
 3. Push sur GitHub pour redéployer Vercel

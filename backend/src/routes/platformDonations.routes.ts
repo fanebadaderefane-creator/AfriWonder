@@ -4,11 +4,14 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { requireAnyAdmin } from '../middleware/adminRbac.js';
 import { logger } from '../utils/logger.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // POST /api/platform-donations — Public, enregistrer une intention de don
 // Le numéro Orange Money / Mobile Money est obligatoire pour envoyer la demande de paiement
-router.post('/', async (req, res, next) => {
+router.post('/', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const { amount_fcfa, donor_email, donor_phone, donor_name, donor_first_name, donor_age, donor_country, donor_city, donor_message, show_in_contributors } = req.body;
     const amount = parseInt(amount_fcfa ?? amount_fcfa, 10);

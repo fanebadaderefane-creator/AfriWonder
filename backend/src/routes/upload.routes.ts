@@ -11,8 +11,47 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { randomUUID } from 'node:crypto';
 import { maybeTranscodeMp4BufferForWeb } from '../services/videoCompatTranscode.service.js';
+import { z } from 'zod';
+import { validateBody } from '../utils/zodValidation.js';
+import * as r2Multipart from '../services/r2Multipart.service.js';
+import { getSupabaseAdmin, isSupabaseStorageConfigured } from '../config/supabase.js';
 
 const router = Router();
+
+const supabasePresignSchema = z.object({
+  kind: z.string().max(32).optional().default('video'),
+  filename: z.string().min(1).max(500),
+});
+
+const multipartInitSchema = z.object({
+  kind: z.string().max(32).optional().default('video'),
+  filename: z.string().min(1).max(500),
+  contentType: z.string().min(1).max(200),
+});
+
+const multipartPartUrlSchema = z.object({
+  key: z.string().min(1).max(1024),
+  uploadId: z.string().min(1),
+  partNumber: z.number().int().min(1).max(10000),
+});
+
+const multipartCompleteSchema = z.object({
+  key: z.string().min(1).max(1024),
+  uploadId: z.string().min(1),
+  parts: z
+    .array(
+      z.object({
+        PartNumber: z.number().int().min(1),
+        ETag: z.string().min(1),
+      })
+    )
+    .min(1),
+});
+
+const multipartAbortSchema = z.object({
+  key: z.string().min(1).max(1024),
+  uploadId: z.string().min(1),
+});
 
 const BYTES_PER_MB = 1024 * 1024;
 
@@ -26,6 +65,30 @@ function parseUploadMaxMb(envVal: string | undefined, defaultMb: number, hardCap
 const MAX_MEDIA_UPLOAD_MB = parseUploadMaxMb(process.env.UPLOAD_MAX_MEDIA_MB, 600, 2048);
 const MAX_DOCUMENT_UPLOAD_MB = parseUploadMaxMb(process.env.UPLOAD_MAX_DOCUMENT_MB, 300, 2048);
 const PRESIGN_EXPIRES_SEC = 10 * 60;
+const ALLOWED_MEDIA_MIME = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+  'audio/webm',
+  'audio/mpeg',
+  'audio/mp4',
+  'audio/wav',
+  'audio/ogg',
+]);
+const ALLOWED_DOCUMENT_MIME = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/plain',
+]);
 
 function safeExtFromName(name: string): string {
   const ext = String(path.extname(name || '') || '').toLowerCase();
@@ -87,6 +150,14 @@ function handleUploadStorageError(res: Response, err: unknown, next: NextFunctio
 
 const upload = multer({
   storage: multer.memoryStorage(),
+  fileFilter: (_req, file, cb) => {
+    const mime = String(file.mimetype || '').toLowerCase().trim();
+    if (!ALLOWED_MEDIA_MIME.has(mime)) {
+      cb(new Error('Type de fichier media non autorise'));
+      return;
+    }
+    cb(null, true);
+  },
   limits: {
     fileSize: MAX_MEDIA_UPLOAD_MB * BYTES_PER_MB,
   },
@@ -94,6 +165,14 @@ const upload = multer({
 
 const uploadDocument = multer({
   storage: multer.memoryStorage(),
+  fileFilter: (_req, file, cb) => {
+    const mime = String(file.mimetype || '').toLowerCase().trim();
+    if (!ALLOWED_DOCUMENT_MIME.has(mime)) {
+      cb(new Error('Type de document non autorise'));
+      return;
+    }
+    cb(null, true);
+  },
   limits: {
     fileSize: MAX_DOCUMENT_UPLOAD_MB * BYTES_PER_MB,
   },
@@ -147,6 +226,60 @@ router.post('/presign', authenticate, async (req: AuthRequest, res, next) => {
     return res.json({
       success: true,
       data: { uploadUrl, file_url, key, expires_in: PRESIGN_EXPIRES_SEC },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/upload/supabase/presign
+ * Upload direct vers Supabase Storage (migration Phase 1) — PUT sur signedUrl, puis file_url publique si bucket public.
+ */
+router.post('/supabase/presign', authenticate, validateBody(supabasePresignSchema), async (req: AuthRequest, res, next) => {
+  try {
+    if (!isSupabaseStorageConfigured()) {
+      return res.status(503).json({
+        success: false,
+        error: {
+          message: 'Supabase Storage non configuré (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_STORAGE_BUCKET)',
+          code: 'SUPABASE_STORAGE_NOT_CONFIGURED',
+        },
+      });
+    }
+    const admin = getSupabaseAdmin();
+    const bucket = String(process.env.SUPABASE_STORAGE_BUCKET || '').trim();
+    if (!admin || !bucket) {
+      return res.status(503).json({ success: false, error: { message: 'Client Supabase indisponible' } });
+    }
+
+    const userId = String(req.user?.id || 'user');
+    const { kind, filename } = req.body as z.infer<typeof supabasePresignSchema>;
+    const prefix = kindToPrefix(kind);
+    const ext = safeExtFromName(filename);
+    const objectPath = `${prefix}/${userId}/${Date.now()}-${randomUUID()}${ext || ''}`;
+
+    const signed = await admin.storage.from(bucket).createSignedUploadUrl(objectPath, { upsert: true });
+    if (signed.error || !signed.data) {
+      logger.error('Supabase createSignedUploadUrl', { message: signed.error?.message });
+      return res.status(502).json({
+        success: false,
+        error: { message: signed.error?.message || 'Erreur Supabase Storage' },
+      });
+    }
+
+    const { data: pub } = admin.storage.from(bucket).getPublicUrl(objectPath);
+
+    return res.json({
+      success: true,
+      data: {
+        signedUrl: signed.data.signedUrl,
+        token: signed.data.token,
+        path: signed.data.path,
+        bucket,
+        /** URL publique si le bucket est public ; sinon utiliser signedUrl côté lecture */
+        file_url: pub.publicUrl,
+      },
     });
   } catch (err) {
     next(err);
@@ -436,6 +569,64 @@ router.post('/audio', authenticate, upload.single('file'), async (req: AuthReque
     });
   } catch (error) {
     return handleUploadStorageError(res, error, next);
+  }
+});
+
+/**
+ * Multipart upload Cloudflare R2 (S3-compatible) — gros fichiers / faible mémoire.
+ */
+router.post('/multipart/init', authenticate, validateBody(multipartInitSchema), async (req: AuthRequest, res, next) => {
+  try {
+    if (!isR2Configured() || !r2Client) {
+      return res.status(503).json({
+        success: false,
+        error: { message: 'R2 non configuré', code: 'R2_NOT_CONFIGURED', missing: getR2ConfigDiagnostic() },
+      });
+    }
+    const userId = String(req.user?.id || 'user');
+    const { kind, filename, contentType } = req.body as z.infer<typeof multipartInitSchema>;
+    const key = r2Multipart.buildObjectKey(kind, userId, filename);
+    const ct = normalizePresignContentType(kind, filename, contentType);
+    const out = await r2Multipart.createMultipartUpload(key, ct);
+    return res.json({ success: true, data: { ...out, contentType: ct } });
+  } catch (err) {
+    return handleUploadStorageError(res, err, next);
+  }
+});
+
+router.post('/multipart/part-url', authenticate, validateBody(multipartPartUrlSchema), async (req: AuthRequest, res, next) => {
+  try {
+    if (!isR2Configured() || !r2Client) {
+      return res.status(503).json({ success: false, error: { message: 'R2 non configuré' } });
+    }
+    const { key, uploadId, partNumber } = req.body as z.infer<typeof multipartPartUrlSchema>;
+    const data = await r2Multipart.presignUploadPart(key, uploadId, partNumber);
+    return res.json({ success: true, data });
+  } catch (err) {
+    return handleUploadStorageError(res, err, next);
+  }
+});
+
+router.post('/multipart/complete', authenticate, validateBody(multipartCompleteSchema), async (req: AuthRequest, res, next) => {
+  try {
+    if (!isR2Configured() || !r2Client) {
+      return res.status(503).json({ success: false, error: { message: 'R2 non configuré' } });
+    }
+    const { key, uploadId, parts } = req.body as z.infer<typeof multipartCompleteSchema>;
+    const data = await r2Multipart.completeMultipartUpload(key, uploadId, parts);
+    return res.json({ success: true, data });
+  } catch (err) {
+    return handleUploadStorageError(res, err, next);
+  }
+});
+
+router.post('/multipart/abort', authenticate, validateBody(multipartAbortSchema), async (req: AuthRequest, res, next) => {
+  try {
+    const { key, uploadId } = req.body as z.infer<typeof multipartAbortSchema>;
+    await r2Multipart.abortMultipartUpload(key, uploadId);
+    return res.json({ success: true });
+  } catch (err) {
+    next(err);
   }
 });
 

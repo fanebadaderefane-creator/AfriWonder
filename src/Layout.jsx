@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense, lazy } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { Toaster } from "@/components/ui/sonner";
@@ -7,13 +7,14 @@ import { MarketplaceCurrencyProvider } from "@/contexts/MarketplaceCurrencyConte
 import { AppMenuProvider, useAppMenu } from "@/contexts/AppMenuContext";
 import { useAuth } from "@/lib/AuthContext";
 import OfflineIndicator from "@/components/common/OfflineIndicator";
+import GuestExploreBanner from "@/components/common/GuestExploreBanner";
 import AppUpdateBanner from "@/components/common/AppUpdateBanner";
 import PWAInstallBanner from "@/components/pwa/PWAInstallBanner";
-import MenuPlus from "@/components/navigation/MenuPlus";
 import PageTransition from "@/components/common/PageTransition";
 import { useSwipeBack } from '@/hooks/useSwipeBack';
 import { useNativeAppEnhancements } from '@/hooks/useNativeAppEnhancements';
-import IncomingCallListener from '@/components/call/IncomingCallListener';
+const MenuPlus = lazy(() => import("@/components/navigation/MenuPlus"));
+const IncomingCallListener = lazy(() => import("@/components/call/IncomingCallListener"));
 
 export default function Layout({ children, currentPageName }) {
   return (
@@ -173,6 +174,7 @@ function LayoutContent({ children, currentPageName }) {
       <a href="#main-content" className="skip-link">
         Aller au contenu principal
       </a>
+      <GuestExploreBanner />
       <OfflineIndicator />
       <AppUpdateBanner />
       <PWAInstallBanner isFullScreen={isFullScreen} currentPageName={currentPageName} />
@@ -383,15 +385,21 @@ function LayoutContent({ children, currentPageName }) {
       />
 
       {/* Menu latÃ©ral (MenuPlus) â€” accessible via d'autres entrÃ©es si besoin */}
-      {user?.id && <IncomingCallListener user={user} />}
+      {user?.id && (
+        <Suspense fallback={null}>
+          <IncomingCallListener user={user} />
+        </Suspense>
+      )}
 
       {user && currentPageName !== 'CreateEvent' && (
-        <MenuPlus
-          isOpen={isMenuOpen}
-          onClose={closeMenu}
-          onNavigateFromMenu={scheduleReopenWhenReturn}
-          user={user}
-        />
+        <Suspense fallback={null}>
+          <MenuPlus
+            isOpen={isMenuOpen}
+            onClose={closeMenu}
+            onNavigateFromMenu={scheduleReopenWhenReturn}
+            user={user}
+          />
+        </Suspense>
       )}
     </div>
   );

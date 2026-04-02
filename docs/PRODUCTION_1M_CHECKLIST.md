@@ -15,7 +15,7 @@ Redis est utilisé pour le cache, le rate limiting distribué et l’adapter Soc
 |-------------|----------|----------------|
 | **Upstash** | Gratuit (tier free), serverless, compatible Redis | [upstash.com](https://upstash.com) → Create Database → copier `UPSTASH_REDIS_REST_URL` ou l’URL Redis (format `rediss://...` ou `redis://...`) |
 | **Redis Cloud** | Managed, haute dispo | [redis.com/try-free](https://redis.com/try-free) → créer une base → copier l’URL de connexion |
-| **Railway** | Si vous hébergez aussi du backend sur Railway | Railway → New → Redis → Variables → `REDIS_URL` |
+| **Render / autre PaaS** | Si le backend est sur Render (ou équivalent) | Render → **Key Value** (Redis) ou Upstash → Variables → `REDIS_URL` |
 
 ### Étapes
 

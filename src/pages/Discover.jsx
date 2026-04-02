@@ -33,8 +33,15 @@ import { cn, getAbsoluteImageUrl, getVideoPrimarySourceUrl, getVideoPrimarySourc
 import { getJSON, setJSON } from '@/utils/safeStorage';
 import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 import BottomNav from '../components/navigation/BottomNav';
-import RecommendationEngine from '../components/common/RecommendationEngine';
 import { toast } from 'sonner';
+
+let recommendationEngineModulePromise = null;
+function loadRecommendationEngine() {
+  if (!recommendationEngineModulePromise) {
+    recommendationEngineModulePromise = import('@/components/common/RecommendationEngine').then((m) => m.RecommendationEngine);
+  }
+  return recommendationEngineModulePromise;
+}
 
 const DISCOVER_RECENT_SEARCHES_KEY = 'afw_discover_recent_searches';
 const DISCOVER_RECENT_SEARCHES_LIMIT = 5;
@@ -73,10 +80,10 @@ function DiscoverSectionHeader({ icon: Icon, title, subtitle, action }) {
     <div className="mb-5 flex items-start justify-between gap-3">
       <div>
         <div className="flex items-center gap-2.5">
-          {Icon ? <Icon className="h-4 w-4 text-white/50" strokeWidth={1.75} /> : null}
+          {Icon ? <Icon className="h-4 w-4 text-white/62" strokeWidth={1.75} /> : null}
           <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-white">{title}</h2>
         </div>
-        {subtitle ? <p className="mt-1.5 max-w-prose text-[13px] leading-relaxed text-white/42">{subtitle}</p> : null}
+        {subtitle ? <p className="mt-1.5 max-w-prose text-[13px] leading-relaxed text-white/65">{subtitle}</p> : null}
       </div>
       {action}
     </div>
@@ -87,10 +94,10 @@ function DiscoverEmptyState({ title, description }) {
   return (
     <div className="rounded-3xl bg-white/[0.03] px-6 py-14 text-center">
       <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.06]">
-        <Compass className="h-6 w-6 text-white/45" strokeWidth={1.5} />
+        <Compass className="h-6 w-6 text-white/60" strokeWidth={1.5} />
       </div>
       <p className="font-medium text-white/95">{title}</p>
-      <p className="mt-2 text-sm leading-relaxed text-white/45">{description}</p>
+      <p className="mt-2 text-sm leading-relaxed text-white/60">{description}</p>
     </div>
   );
 }
@@ -104,7 +111,7 @@ function DiscoverVideoPoster({ video, index = 0, badge, badgeClassName }) {
   const resolvedThumb = hasValidThumb && !thumbError ? getAbsoluteImageUrl(video.thumbnail_url) : '';
 
   return (
-    <Link to={`${createPageUrl('VideoView')}?id=${video.id}`}>
+    <Link to={`${createPageUrl('VideoView')}?id=${video.id}`} aria-label={`Voir la vidéo : ${title}`}>
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -156,7 +163,7 @@ function DiscoverVideoPoster({ video, index = 0, badge, badgeClassName }) {
         <div className="absolute inset-x-0 bottom-0 p-3">
           <div className="flex items-end justify-between gap-2">
             <div className="min-w-0">
-              <p className="truncate text-xs font-medium text-white/64">{creatorName}</p>
+              <p className="truncate text-xs font-medium text-white/78">{creatorName}</p>
               <p className="line-clamp-2 text-sm font-semibold text-white">{title}</p>
             </div>
             <span className="shrink-0 rounded-full bg-black/45 px-2 py-1 text-[10px] font-medium text-white/88 backdrop-blur-md">
@@ -187,38 +194,38 @@ function DiscoverCreatorRow({ creator, index, isInWonder, userId, onToggleWonder
       transition={{ delay: index * 0.04 }}
       className={DISCOVER_SOFT_TILE}
     >
-      <Link
-        to={`${createPageUrl('Profile')}?_userId=${creatorId}`}
-        className="flex items-center gap-3 p-4"
-      >
-        <Avatar className="h-12 w-12 ring-1 ring-white/10 shadow-[0_12px_28px_rgba(0,0,0,0.35)]">
-          <AvatarImage src={creatorAvatar} />
-          <AvatarFallback className="bg-gradient-to-br from-slate-600 to-slate-800 text-sm font-semibold text-white">
-            {creatorName?.[0]?.toUpperCase() || 'U'}
-          </AvatarFallback>
-        </Avatar>
+      <div className="flex items-center gap-2 p-4">
+        <Link
+          to={`${createPageUrl('Profile')}?_userId=${creatorId}`}
+          className="flex min-w-0 flex-1 items-center gap-3"
+        >
+          <Avatar className="h-12 w-12 ring-1 ring-white/10 shadow-[0_12px_28px_rgba(0,0,0,0.35)]">
+            <AvatarImage src={creatorAvatar} />
+            <AvatarFallback className="bg-gradient-to-br from-slate-600 to-slate-800 text-sm font-semibold text-white">
+              {creatorName?.[0]?.toUpperCase() || 'U'}
+            </AvatarFallback>
+          </Avatar>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className="truncate font-semibold text-white">{creatorName}</p>
-            {index < 3 ? (
-              <span className="rounded-full bg-white/[0.1] px-2 py-0.5 text-[10px] font-semibold text-white/75">
-                #{index + 1}
-              </span>
-            ) : null}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <p className="truncate font-semibold text-white">{creatorName}</p>
+              {index < 3 ? (
+                <span className="rounded-full bg-white/[0.1] px-2 py-0.5 text-[10px] font-semibold text-white/88">
+                  #{index + 1}
+                </span>
+              ) : null}
+            </div>
+            <p className="truncate text-sm text-white/78">{subtitle}</p>
           </div>
-          <p className="truncate text-sm text-white/54">{subtitle}</p>
-        </div>
+        </Link>
 
         {userId && userId !== creatorId ? (
           <button
             type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onToggleWonder(creatorId);
-            }}
+            onClick={() => onToggleWonder(creatorId)}
             disabled={isPending}
+            aria-label={isInWonder ? `Retirer ${creatorName} de votre Wonder` : `Ajouter ${creatorName} à votre Wonder`}
+            aria-pressed={isInWonder}
             className={cn(
               "shrink-0 rounded-full px-3 py-2 text-xs font-semibold transition-colors",
               isInWonder
@@ -229,7 +236,7 @@ function DiscoverCreatorRow({ creator, index, isInWonder, userId, onToggleWonder
             {isInWonder ? 'Dans son Wonder' : 'Wonder'}
           </button>
         ) : null}
-      </Link>
+      </div>
     </motion.div>
   );
 }
@@ -257,7 +264,7 @@ function DiscoverProductTile({ product, index }) {
         <div className="space-y-2 p-4">
           <p className="line-clamp-2 text-sm font-semibold text-white">{product.name || product.title || 'Produit'}</p>
           <p className="text-base font-bold text-white">{product.price != null ? `${formatCompactNumber(product.price)} FCFA` : 'Prix sur demande'}</p>
-          <div className="flex items-center justify-between gap-2 text-xs text-white/52">
+          <div className="flex items-center justify-between gap-2 text-xs text-white/68">
             <span className="truncate">{product.location || 'AfriWonder Shop'}</span>
             <span className="rounded-full bg-white/[0.08] px-2 py-1 text-white/72">
               Acheter
@@ -300,26 +307,38 @@ export default function Discover() {
 
   const { data: recommendedVideos = [], isLoading: loadingRecommended, isError: recommendedError, refetch: refetchRecommended } = useQuery({
     queryKey: ['recommendedVideos', user?.id],
-    queryFn: () => RecommendationEngine.getPersonalizedFeed(user.id, 20),
+    queryFn: async () => {
+      const RE = await loadRecommendationEngine();
+      return RE.getPersonalizedFeed(user.id, 20);
+    },
     enabled: !!user?.id,
     staleTime: 5 * 60 * 1000
   });
 
   const { data: creatorRecommendations = [] } = useQuery({
     queryKey: ['creatorRecommendations', user?.id],
-    queryFn: () => RecommendationEngine.getCreatorRecommendations(user.id, 10),
+    queryFn: async () => {
+      const RE = await loadRecommendationEngine();
+      return RE.getCreatorRecommendations(user.id, 10);
+    },
     enabled: !!user?.id
   });
 
   const { data: courseRecommendations = [] } = useQuery({
     queryKey: ['courseRecommendations', user?.id],
-    queryFn: () => RecommendationEngine.getCourseRecommendations(user.id, 10),
+    queryFn: async () => {
+      const RE = await loadRecommendationEngine();
+      return RE.getCourseRecommendations(user.id, 10);
+    },
     enabled: !!user?.id
   });
 
   const { data: eventRecommendations = [] } = useQuery({
     queryKey: ['eventRecommendations', user?.id],
-    queryFn: () => RecommendationEngine.getEventRecommendations(user.id, 10),
+    queryFn: async () => {
+      const RE = await loadRecommendationEngine();
+      return RE.getEventRecommendations(user.id, 10);
+    },
     enabled: !!user?.id
   });
 
@@ -465,7 +484,7 @@ export default function Discover() {
   };
 
   return (
-    <div className={`min-h-screen pb-24 text-white ${DISCOVER_PAGE_BG}`}>
+    <div className={`discover-page min-h-screen pb-24 text-white ${DISCOVER_PAGE_BG}`}>
       <div className="relative z-10 border-b border-white/[0.06] bg-[#070a12]">
         <div className="mx-auto max-w-5xl px-4 py-3">
           <div className="mb-4 flex items-start justify-between gap-3">
@@ -480,12 +499,12 @@ export default function Discover() {
                 <ArrowLeft className="h-5 w-5" />
               </Button>
               <div className="min-w-0">
-                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/38">Discover</p>
+                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/68">Discover</p>
                 <h1 className="mt-1 text-[22px] font-semibold tracking-[-0.025em] text-white sm:text-[24px]">Explorer AfriWonder</h1>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-white/45">Tendances, créateurs, hashtags et produits — une seule expérience fluide.</p>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-white/60">Tendances, créateurs, hashtags et produits — une seule expérience fluide.</p>
               </div>
             </div>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-white/55">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-white/68" aria-hidden="true">
               <Sparkles className="h-4 w-4" />
             </div>
           </div>
@@ -497,17 +516,18 @@ export default function Discover() {
               submitSearch(searchQuery);
             }}
           >
-            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-white/34" />
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-white/62" aria-hidden="true" />
             <Input
               type="search"
               placeholder="Rechercher videos, createurs, produits..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-14 rounded-[28px] border-0 bg-white/[0.06] pl-11 pr-[104px] text-white shadow-inner shadow-black/20 ring-1 ring-white/[0.08] placeholder:text-white/35"
+              className="h-14 rounded-[28px] border-0 bg-white/[0.06] pl-11 pr-[104px] text-white shadow-inner shadow-black/20 ring-1 ring-white/[0.08] placeholder:text-white/62 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/85 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070a12]"
               aria-label="Rechercher videos, createurs et produits"
             />
             <button
               type="submit"
+              aria-label="Lancer la recherche"
               className="absolute right-2 top-1/2 inline-flex h-10 -translate-y-1/2 items-center rounded-full bg-white px-4 text-sm font-semibold text-slate-950 transition-transform duration-200 hover:bg-white/92 active:scale-[0.98]"
             >
               Rechercher
@@ -522,16 +542,16 @@ export default function Discover() {
                   key={chip.key}
                   type="button"
                   onClick={() => submitSearch(chip.value)}
-                  className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-white/[0.06] px-3.5 text-[13px] font-medium leading-snug text-white/75 transition-colors touch-manipulation hover:bg-white/[0.10] hover:text-white active:scale-[0.98] sm:px-4"
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-white/[0.06] px-3.5 text-[13px] font-medium leading-snug text-white/88 transition-colors touch-manipulation hover:bg-white/[0.10] hover:text-white active:scale-[0.98] sm:px-4"
                 >
-                  <Icon className="h-4 w-4 shrink-0 text-white/48" />
+                  <Icon className="h-4 w-4 shrink-0 text-white/72" />
                   <span className="min-w-0 max-w-[min(220px,78vw)] truncate">{chip.label}</span>
                 </button>
               );
             })}
           </div>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4" aria-label="Sections Discover">
             <TabsList
               className={cn(
                 'grid min-h-[48px] w-full gap-1 rounded-full bg-white/[0.07] p-1.5 shadow-none',
@@ -540,27 +560,27 @@ export default function Discover() {
             >
               <TabsTrigger
                 value="explore"
-                className="min-h-[40px] rounded-full text-[13px] font-medium leading-snug text-white/48 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
+                className="min-h-[40px] rounded-full text-[13px] font-medium leading-snug text-white/72 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
               >
                 Explorer
               </TabsTrigger>
               {user ? (
                 <TabsTrigger
                   value="recommended"
-                  className="min-h-[40px] rounded-full text-[13px] font-medium leading-snug text-white/48 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
+                  className="min-h-[40px] rounded-full text-[13px] font-medium leading-snug text-white/72 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
                 >
                   Pour vous
                 </TabsTrigger>
               ) : null}
               <TabsTrigger
                 value="shop"
-                className="min-h-[40px] rounded-full text-[13px] font-medium leading-snug text-white/48 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
+                className="min-h-[40px] rounded-full text-[13px] font-medium leading-snug text-white/72 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
               >
                 Boutique
               </TabsTrigger>
               <TabsTrigger
                 value="creators"
-                className="min-h-[40px] rounded-full text-[13px] font-medium leading-snug text-white/48 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
+                className="min-h-[40px] rounded-full text-[13px] font-medium leading-snug text-white/72 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
               >
                 Créateurs
               </TabsTrigger>
@@ -581,11 +601,11 @@ export default function Discover() {
                 <div key={label} className={DISCOVER_STAT_CELL}>
                   <div className="flex items-center gap-3">
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/[0.08]">
-                      <Icon className="h-[18px] w-[18px] text-white/55" strokeWidth={1.75} />
+                      <Icon className="h-[18px] w-[18px] text-white/68" strokeWidth={1.75} />
                     </div>
                     <div className="min-w-0">
                       <p className="text-xl font-semibold tracking-tight text-white">{value}</p>
-                      <p className="text-[13px] text-white/42">{label}</p>
+                      <p className="text-[13px] text-white/65">{label}</p>
                     </div>
                   </div>
                 </div>
@@ -602,12 +622,15 @@ export default function Discover() {
                     return (
                       <motion.button
                         key={cat.id}
+                        type="button"
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: index * 0.03 }}
                         onClick={() => setSelectedCategory((current) => (current === cat.id ? null : cat.id))}
+                        aria-pressed={active}
+                        aria-label={`Catégorie ${cat.label}${active ? ', sélectionnée' : ''}`}
                         className={cn(
-                          'min-w-[88px] rounded-2xl p-3 text-left transition-all duration-200',
+                          'min-w-[88px] rounded-2xl p-3 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40',
                           active
                             ? 'bg-white/[0.12] shadow-[0_12px_32px_rgba(0,0,0,0.25)] ring-1 ring-white/15'
                             : 'bg-white/[0.04] hover:bg-white/[0.07]'
@@ -656,13 +679,13 @@ export default function Discover() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-lg font-semibold text-white">{challenge.title}</p>
-                          <p className="mt-1 text-sm text-white/65">{challenge._description}</p>
+                          <p className="mt-1 text-sm text-white/72">{challenge._description}</p>
                         </div>
-                        <span className="rounded-full bg-white/[0.1] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/75">
+                        <span className="rounded-full bg-white/[0.1] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/88">
                           Defi
                         </span>
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-sm text-white/65">
+                      <div className="mt-3 flex flex-wrap gap-2 text-sm text-white/72">
                         <span className="rounded-full bg-white/[0.06] px-3 py-1">#{challenge.hashtag}</span>
                         <span className="rounded-full bg-white/[0.06] px-3 py-1">{formatCompactNumber(challenge.participants_count)} participants</span>
                       </div>
@@ -680,12 +703,12 @@ export default function Discover() {
                     <Link
                       key={hashtag.tag}
                       to={`${createPageUrl('Search')}?q=${encodeURIComponent(`#${hashtag.tag}`)}`}
-                      className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-white/[0.07] px-3.5 text-[14px] font-medium leading-snug text-white/82 transition-colors touch-manipulation hover:bg-white/[0.11] active:scale-[0.98] sm:px-4"
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-white/[0.07] px-3.5 text-[14px] font-medium leading-snug text-white/92 transition-colors touch-manipulation hover:bg-white/[0.11] active:scale-[0.98] sm:px-4"
                     >
-                      <Hash className="h-4 w-4 text-white/56" />
+                      <Hash className="h-4 w-4 text-white/72" />
                       <span>#{hashtag.tag}</span>
-                      <span className="text-xs text-white/44">{hashtag.count}</span>
-                      {hashtag.trending ? <Flame className="h-3.5 w-3.5 text-white/64" /> : null}
+                      <span className="text-xs text-white/65">{hashtag.count}</span>
+                      {hashtag.trending ? <Flame className="h-3.5 w-3.5 text-white/78" /> : null}
                     </Link>
                   ))}
                 </div>
@@ -703,7 +726,7 @@ export default function Discover() {
                   <button
                     type="button"
                     onClick={() => setSelectedCategory(null)}
-                    className="text-sm font-medium text-white/68 hover:text-white"
+                    className="text-sm font-medium text-white/75 hover:text-white"
                   >
                     Reinitialiser
                   </button>
@@ -747,13 +770,18 @@ export default function Discover() {
               {recommendedError ? (
                 <div className="rounded-3xl bg-white/[0.03] px-6 py-12 text-center">
                   <p className="font-medium text-white">Une erreur s&apos;est produite.</p>
-                  <p className="mt-1 text-sm text-white/48">Impossible de recuperer les recommandations pour le moment.</p>
+                  <p className="mt-1 text-sm text-white/72">Impossible de recuperer les recommandations pour le moment.</p>
                   <Button onClick={() => refetchRecommended()} className="mt-4 rounded-full bg-white text-slate-950 hover:bg-white/92">
                     Reessayer
                   </Button>
                 </div>
               ) : loadingRecommended ? (
-                <div className={cn('grid grid-cols-2 gap-3 rounded-2xl bg-white/[0.04] p-3 sm:grid-cols-3')}>
+                <div
+                  className={cn('grid grid-cols-2 gap-3 rounded-2xl bg-white/[0.04] p-3 sm:grid-cols-3')}
+                  role="status"
+                  aria-busy="true"
+                  aria-label="Chargement des recommandations"
+                >
                   {Array.from({ length: 6 }).map((_, index) => (
                     <div key={index} className="aspect-[9/16] animate-pulse rounded-[22px] bg-white/[0.05]" />
                   ))}
@@ -802,7 +830,7 @@ export default function Discover() {
                     >
                       <div className="p-4">
                         <p className="text-sm font-semibold text-white">{course.title}</p>
-                        <p className="mt-1 text-sm text-white/54">{course.instructor_name || 'AfriWonder Learning'}</p>
+                        <p className="mt-1 text-sm text-white/78">{course.instructor_name || 'AfriWonder Learning'}</p>
                       </div>
                     </motion.div>
                   ))}
@@ -824,7 +852,7 @@ export default function Discover() {
                     >
                       <div className="p-4">
                         <p className="text-sm font-semibold text-white">{event.title}</p>
-                        <p className="mt-1 text-sm text-white/54">{event.location || 'Lieu a confirmer'}</p>
+                        <p className="mt-1 text-sm text-white/78">{event.location || 'Lieu a confirmer'}</p>
                       </div>
                     </motion.div>
                   ))}
@@ -841,7 +869,7 @@ export default function Discover() {
               title="Marketplace"
               subtitle="Une vitrine plus premium et plus cohereente avec le reste du produit."
               action={
-                <Link to={createPageUrl('Marketplace')} className="inline-flex items-center gap-1 text-sm font-medium text-white/70 hover:text-white">
+                <Link to={createPageUrl('Marketplace')} className="inline-flex items-center gap-1 text-sm font-medium text-white/78 hover:text-white">
                   Voir tout <ChevronRight className="h-4 w-4" />
                 </Link>
               }

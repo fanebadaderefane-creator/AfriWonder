@@ -1,0 +1,28 @@
+name: Deploy Backend Render Staging
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-render-staging.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-backend-render-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger Render staging deploy hook
+        env:
+          RENDER_DEPLOY_HOOK_BACKEND_STAGING: ${{ secrets.RENDER_DEPLOY_HOOK_BACKEND_STAGING }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_BACKEND_STAGING" ]; then
+            echo "Missing secret RENDER_DEPLOY_HOOK_BACKEND_STAGING"
+            exit 1
+          fi
+          curl -fsS -X POST "$RENDER_DEPLOY_HOOK_BACKEND_STAGING"
+          echo "Render staging backend deploy triggered."

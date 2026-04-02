@@ -9,6 +9,22 @@ import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import { forceWebCompatTranscodePublishedVideo } from '../services/videoCompatTranscode.service.js';
 import { invalidateUserFeedCaches } from '../services/feedCache.service.js';
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+import {
+  commentContentPatchSchema,
+  videoAddCommentBodySchema,
+  videoChapterBodySchema,
+  videoCreateBodySchema,
+  videoReactionTypeBodySchema,
+  videoRecordViewSchema,
+  videoSubtitlesGenerateBodySchema,
+  videoSubtitlesPatchBodySchema,
+  videoTipBodySchema,
+  videoTipWalletBodySchema,
+  videoTrimBodySchema,
+  videoUpdateBodySchema,
+} from '../schemas/videosCommentsAdmin.schemas.js';
 
 const router = Router();
 
@@ -129,7 +145,7 @@ router.get('/hashtag/:tag', optionalAuth, async (req: AuthRequest, res, next) =>
 });
 
 // POST /api/videos/:id/view - Enregistrer une vue (≥3s ou ≥25%, 1/30min/user)
-router.post('/:id/view', optionalAuth, async (req: AuthRequest, res, next) => {
+router.post('/:id/view', optionalAuth, validateBody(videoRecordViewSchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const userId = req.user?.id;
@@ -177,7 +193,7 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/videos - Créer une vidéo
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(videoCreateBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const videoData = {
       ...req.body,
@@ -196,7 +212,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PUT /api/videos/:id - Modifier une vidéo
-router.put('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:id', authenticate, validateBody(videoUpdateBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const userId = req.user!.id;
@@ -213,7 +229,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/videos/:id/trim - Montage léger (trim_start_sec, trim_end_sec)
-router.post('/:id/trim', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/trim', authenticate, validateBody(videoTrimBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const userId = req.user!.id;
@@ -243,7 +259,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/videos/:id/reaction — Définir une réaction (body: { type: 'like'|'love'|'fire'|... })
-router.post('/:id/reaction', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/reaction', authenticate, validateBody(videoReactionTypeBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const userId = req.user!.id;
@@ -270,7 +286,7 @@ router.delete('/:id/reaction', authenticate, async (req: AuthRequest, res, next)
 });
 
 // POST /api/videos/:id/like - Liker / réaction (body: { type?: 'like'|'love'|'fire'|'laugh'|'wow'|'sad'|'angry' })
-router.post('/:id/like', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/like', authenticate, validateBody(videoReactionTypeBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const userId = req.user!.id;
@@ -289,7 +305,7 @@ router.post('/:id/like', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/videos/:id/comment - Commenter une vidéo
-router.post('/:id/comment', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/comment', authenticate, validateBody(videoAddCommentBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const userId = req.user!.id;
@@ -307,7 +323,7 @@ router.post('/:id/comment', authenticate, async (req: AuthRequest, res, next) =>
 });
 
 // PATCH /api/videos/comments/:commentId - Modifier un commentaire (auteur uniquement)
-router.patch('/comments/:commentId', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/comments/:commentId', authenticate, validateBody(commentContentPatchSchema), async (req: AuthRequest, res, next) => {
   try {
     const commentId = param(req, 'commentId');
     const userId = req.user!.id;
@@ -361,25 +377,11 @@ router.get('/:id/comments', optionalAuth, async (req: AuthRequest, res, next) =>
 });
 
 // POST /api/videos/:id/tip - Faire un tip/don pour une vidéo (Orange Money)
-router.post('/:id/tip', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/tip', authenticate, validateBody(videoTipBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const userId = req.user!.id;
     const { amount, phone, message } = req.body;
-
-    if (!amount || amount < 50) {
-      return res.status(400).json({
-        success: false,
-        error: { message: 'Le montant minimum est de 50 FCFA' },
-      });
-    }
-
-    if (!phone) {
-      return res.status(400).json({
-        success: false,
-        error: { message: 'Le numéro de téléphone est requis pour Orange Money' },
-      });
-    }
 
     const videoTipService = (await import('../services/videoTip.service.js')).default;
     const result = await videoTipService.createTip(userId, id, {
@@ -398,18 +400,11 @@ router.post('/:id/tip', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/videos/:id/tip-wallet - Tip avec le wallet (débit immédiat)
-router.post('/:id/tip-wallet', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/tip-wallet', authenticate, validateBody(videoTipWalletBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const userId = req.user!.id;
     const { amount, message } = req.body;
-
-    if (!amount || amount < 50) {
-      return res.status(400).json({
-        success: false,
-        error: { message: 'Le montant minimum est de 50 FCFA' },
-      });
-    }
 
     const videoTipService = (await import('../services/videoTip.service.js')).default;
     const result = await videoTipService.createTipWithWallet(userId, id, { amount, message });
@@ -442,7 +437,7 @@ router.get('/:id/tips', optionalAuth, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/videos/:id/share - Incrémenter le compteur de partages
-router.post('/:id/share', optionalAuth, async (req: AuthRequest, res, next) => {
+router.post('/:id/share', optionalAuth, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
 
@@ -459,7 +454,7 @@ router.post('/:id/share', optionalAuth, async (req: AuthRequest, res, next) => {
 
 // ========== Pipeline HLS (CDC) ==========
 // POST /api/videos/:id/transcode - Enqueue transcoding job (créateur uniquement)
-router.post('/:id/transcode', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/transcode', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const videoId = param(req, 'id');
     const video = await prisma.video.findUnique({
@@ -522,7 +517,7 @@ router.get('/:id/transcode/status', optionalAuth, async (req: AuthRequest, res, 
 });
 
 // POST /api/videos/:id/repair-web-playback — ré-encode forcé MP4 web (Firefox / WebView) pour 1 vidéo défaillante
-router.post('/:id/repair-web-playback', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/repair-web-playback', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const startedAt = Date.now();
     const videoId = param(req, 'id');
@@ -609,7 +604,7 @@ router.get('/archived/list', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // PUT /api/videos/:id/archive - Archiver une vidéo (créateur)
-router.put('/:id/archive', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:id/archive', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const video = await prisma.video.findFirst({
       where: { id: param(req, 'id'), creator_id: req.user!.id },
@@ -639,13 +634,12 @@ router.get('/:id/chapters', optionalAuth, async (req: AuthRequest, res, next) =>
 });
 
 // POST /api/videos/:id/chapters - Ajouter un chapitre (créateur)
-router.post('/:id/chapters', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/chapters', authenticate, validateBody(videoChapterBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const videoId = param(req, 'id');
     const video = await prisma.video.findFirst({ where: { id: videoId, creator_id: req.user!.id } });
     if (!video) return res.status(404).json({ success: false, error: 'Vidéo introuvable' });
     const { title, start_time_sec, end_time_sec } = req.body;
-    if (!title || start_time_sec == null) return res.status(400).json({ success: false, error: { message: 'title et start_time_sec requis' } });
     const chapter = await prisma.videoChapter.create({
       data: { video_id: videoId, title, start_time_sec: Number(start_time_sec), end_time_sec: end_time_sec != null ? Number(end_time_sec) : null },
     });
@@ -684,10 +678,10 @@ router.get('/:id/subtitles', authenticate, async (req: AuthRequest, res, next) =
   }
 });
 // POST /api/videos/:id/subtitles/generate - Lancer génération STT
-router.post('/:id/subtitles/generate', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/subtitles/generate', authenticate, validateBody(videoSubtitlesGenerateBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
-    const source = (req.body?.source === 'manual' ? 'manual' : 'auto') as 'auto' | 'manual';
+    const source = req.body.source as 'auto' | 'manual';
     const gen = await subtitleService.requestGeneration(id, req.user!.id, source);
     res.status(202).json({ success: true, data: gen, message: 'Génération lancée' });
   } catch (e: any) {
@@ -696,7 +690,7 @@ router.post('/:id/subtitles/generate', authenticate, async (req: AuthRequest, re
   }
 });
 // PATCH /api/videos/:id/subtitles - Définir URL sous-titres (manuel)
-router.patch('/:id/subtitles', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/:id/subtitles', authenticate, validateBody(videoSubtitlesPatchBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const subtitle_url = req.body?.subtitle_url != null ? String(req.body.subtitle_url) : null;

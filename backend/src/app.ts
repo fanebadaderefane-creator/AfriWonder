@@ -4,8 +4,6 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import compression from 'compression';
-import rateLimit from 'express-rate-limit';
-
 // Import middleware sécurité
 import { 
   generalLimiter, 
@@ -147,6 +145,7 @@ import cloudRoutes from './routes/cloud.routes.js';
 import mapPlacesRoutes from './routes/mapPlaces.routes.js';
 import aiRoutes from './routes/ai.routes.js';
 import searchRoutes from './routes/search.routes.js';
+import recommendationsRoutes from './routes/recommendations.routes.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -167,6 +166,8 @@ const defaultOrigins = [
   'http://localhost:3000',
   'https://afri-wonder.vercel.app',
   'https://afriwonder.vercel.app',
+  'https://afri-wonder.app',
+  'https://www.afri-wonder.app',
   'https://afriwonder.com',
   'https://www.afriwonder.com',
 ];
@@ -235,8 +236,26 @@ app.get('/health/ready', async (req, res) => {
   }
 });
 
-// Middleware (CORP cross-origin pour permettre au front d’utiliser les réponses ex. proxy média)
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+// Middleware sécurité HTTP (HSTS/CSP/X-Frame-Options) + CORP pour médias proxifiés
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    frameguard: { action: 'deny' }, // X-Frame-Options: DENY
+    hsts:
+      process.env.NODE_ENV === 'production'
+        ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+        : false,
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        defaultSrc: ["'self'"],
+        frameAncestors: ["'none'"],
+        objectSrc: ["'none'"],
+        upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+      },
+    },
+  })
+);
 // Compression gzip pour réduire bande passante et latence (charges massives)
 app.use(compression());
 // Webhooks paiement exigent body brut pour vérification signature (avant express.json)
@@ -252,7 +271,7 @@ app.use(csrfProtectionMiddleware);
 app.use(antiBotMiddleware);
 
 // Rate limiting PRODUCTION (multi-niveaux)
-app.use('/api/', generalLimiter); // 10 req/s par IP (webhooks exclus)
+app.use('/api/', generalLimiter); // 100 req/min par user JWT ou par IP (webhooks exclus ; voir API_GENERAL_RATE_LIMIT_MAX)
 
 app.use('/api/payment/webhook', webhookLimiter);
 app.use('/api/payments/orange-money/webhook', webhookLimiter);
@@ -262,6 +281,7 @@ app.use('/api/payments/stripe/webhook', webhookLimiter);
 app.use('/api/auth/login', authLimiter); // 5 req/15min
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/forgot-password', authLimiter);
+app.use('/api/auth/supabase', authLimiter);
 app.use('/api/payments', paymentLimiter); // 10 req/h
 app.use('/api/upload', uploadLimiter); // 20 req/h
 app.use('/api/admin', adminLimiter); // 30 req/min
@@ -432,6 +452,7 @@ app.use('/api/creators', creatorsRoutes);
 app.use('/api/brand-deals', brandDealsRoutes);
 app.use('/api/public-services', publicServicesRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/recommendations', recommendationsRoutes);
 app.use('/api/travel', travelRoutes);
 app.use('/api/cloud', cloudRoutes);
 app.use('/api/map-places', mapPlacesRoutes);

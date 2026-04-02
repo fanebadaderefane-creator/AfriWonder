@@ -1,8 +1,9 @@
 /**
- * Proxy API vers Railway - évite CORS (les rewrites Vercel ne s'appliquent pas correctement)
+ * Proxy API vers le backend Render — aligner l’URL avec `vercel.json` (rewrites → onrender.com).
  * Gère /api/auth/login, /api/xxx, etc.
  */
-const BACKEND = 'https://afriwonder-production.up.railway.app';
+const BACKEND =
+  process.env.BACKEND_API_ORIGIN || 'https://afriwonder.onrender.com';
 
 export default async function handler(req, res) {
   const path = req.query.path;

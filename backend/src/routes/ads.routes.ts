@@ -7,6 +7,16 @@ import { param } from '../utils/params.js';
 import { adsService, AD_PRICING_BY_DURATION } from '../services/ads.service.js';
 import { requireAnyAdmin } from '../middleware/adminRbac.js';
 import moderationService from '../services/moderation.service.js';
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+import {
+  adsCampaignCreateBodySchema,
+  adsCampaignRejectBodySchema,
+  adsCampaignUpdateBodySchema,
+  adsCreativeBodySchema,
+  adsImpressionClickBodySchema,
+  adsReportBodySchema,
+} from '../schemas/addressesAdsAirtime.schemas.js';
 
 const router = Router();
 
@@ -33,12 +43,9 @@ router.get('/feed', optionalAuth, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/ads/impression - Enregistrer une vue (appelé par le front quand une pub est visible)
-router.post('/impression', optionalAuth, async (req: AuthRequest, res, next) => {
+router.post('/impression', optionalAuth, validateBody(adsImpressionClickBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { creative_id: creativeId, campaign_id: campaignId } = req.body;
-    if (!creativeId || !campaignId) {
-      return res.status(400).json({ success: false, error: 'creative_id et campaign_id requis' });
-    }
 
     const userId = req.user?.id;
     const deviceId = (req.headers['x-device-id'] as string) || req.body.device_id;
@@ -53,16 +60,13 @@ router.post('/impression', optionalAuth, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/ads/report - Signaler une publicité (CDC §4 Utilisateur peut signaler une pub)
-router.post('/report', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/report', authenticate, validateBody(adsReportBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { campaign_id: campaignId, reason } = req.body;
-    if (!campaignId || !reason || typeof reason !== 'string' || !reason.trim()) {
-      return res.status(400).json({ success: false, error: 'campaign_id et reason requis' });
-    }
     await moderationService.createReport(req.user!.id, {
       contentType: 'ad',
       contentId: campaignId,
-      reason: reason.trim(),
+      reason,
     });
     res.json({ success: true, message: 'Signalement enregistré.' });
   } catch (error) {
@@ -71,12 +75,9 @@ router.post('/report', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/ads/click - Enregistrer un clic
-router.post('/click', optionalAuth, async (req: AuthRequest, res, next) => {
+router.post('/click', optionalAuth, validateBody(adsImpressionClickBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { creative_id: creativeId, campaign_id: campaignId } = req.body;
-    if (!creativeId || !campaignId) {
-      return res.status(400).json({ success: false, error: 'creative_id et campaign_id requis' });
-    }
 
     const userId = req.user?.id;
     const deviceId = (req.headers['x-device-id'] as string) || req.body.device_id;
@@ -98,7 +99,7 @@ router.get('/pricing', authenticate, (req, res) => {
 });
 
 // POST /api/ads/campaigns - Créer une campagne
-router.post('/campaigns', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/campaigns', authenticate, validateBody(adsCampaignCreateBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const campaign = await adsService.createCampaign({
@@ -163,7 +164,7 @@ router.get('/campaigns/:id', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // PUT /api/ads/campaigns/:id - Modifier une campagne (brouillon uniquement)
-router.put('/campaigns/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/campaigns/:id', authenticate, validateBody(adsCampaignUpdateBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const campaignId = param(req, 'id');
@@ -187,7 +188,7 @@ router.delete('/campaigns/:id', authenticate, async (req: AuthRequest, res, next
 });
 
 // POST /api/ads/campaigns/:id/creatives - Ajouter un créatif
-router.post('/campaigns/:id/creatives', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/campaigns/:id/creatives', authenticate, validateBody(adsCreativeBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const campaignId = param(req, 'id');
     const creative = await adsService.addCreative({
@@ -201,7 +202,7 @@ router.post('/campaigns/:id/creatives', authenticate, async (req: AuthRequest, r
 });
 
 // POST /api/ads/campaigns/:id/submit - Soumettre pour validation
-router.post('/campaigns/:id/submit', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/campaigns/:id/submit', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const campaignId = param(req, 'id');
@@ -215,7 +216,7 @@ router.post('/campaigns/:id/submit', authenticate, async (req: AuthRequest, res,
 // --- Admin ---
 
 // POST /api/ads/campaigns/:id/approve - Approuver une campagne
-router.post('/campaigns/:id/approve', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.post('/campaigns/:id/approve', authenticate, requireAnyAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const adminId = req.user!.id;
     const campaignId = param(req, 'id');
@@ -227,16 +228,22 @@ router.post('/campaigns/:id/approve', authenticate, requireAnyAdmin, async (req:
 });
 
 // POST /api/ads/campaigns/:id/reject - Rejeter une campagne
-router.post('/campaigns/:id/reject', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
-  try {
-    const adminId = req.user!.id;
-    const campaignId = param(req, 'id');
-    const { reason } = req.body || {};
-    const campaign = await adsService.rejectCampaign(campaignId, adminId, reason);
-    res.json({ success: true, data: campaign });
-  } catch (error) {
-    next(error);
+router.post(
+  '/campaigns/:id/reject',
+  authenticate,
+  requireAnyAdmin,
+  validateBody(adsCampaignRejectBodySchema),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const adminId = req.user!.id;
+      const campaignId = param(req, 'id');
+      const { reason } = req.body;
+      const campaign = await adsService.rejectCampaign(campaignId, adminId, reason);
+      res.json({ success: true, data: campaign });
+    } catch (error) {
+      next(error);
+    }
   }
-});
+);
 
 export default router;

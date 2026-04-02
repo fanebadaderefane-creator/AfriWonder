@@ -342,7 +342,7 @@ npm run dev
 
 ### Option 2 : Déploiement Staging
 
-**Backend** : Railway, Render, ou Vercel
+**Backend** : Render (recommandé), ou autre PaaS / conteneur
 ```bash
 cd backend
 npm run build

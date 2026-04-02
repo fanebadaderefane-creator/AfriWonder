@@ -3,6 +3,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import prisma from '../config/database.js';
 import * as dailyMissionsService from '../services/dailyMissions.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 router.get('/daily-missions', authenticate, async (req: AuthRequest, res, next) => {
@@ -60,7 +63,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/award', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/award', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = (req.body.userId as string) || req.user!.id;
     const action = req.body.action as string;
@@ -123,7 +126,7 @@ router.post('/award', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-router.post('/badge', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/badge', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = (req.body.userId as string) || req.user!.id;
     const { badge_id, badge_name, badge_icon, badge_description, category } = req.body;

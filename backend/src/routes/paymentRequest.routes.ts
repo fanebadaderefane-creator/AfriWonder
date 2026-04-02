@@ -2,10 +2,13 @@ import { Router } from 'express';
 import { authenticate, AuthRequest, optionalAuth } from '../middleware/auth.js';
 import * as paymentRequestService from '../services/paymentRequest.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // POST /api/payment-request - Créer une demande de paiement (générer QR)
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { amount, currency, ttl_sec } = req.body;
     if (amount == null || Number(amount) <= 0) {
@@ -24,7 +27,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/payment-request/pay - Payer via QR (scanner et payer)
-router.post('/pay', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/pay', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { qr_token } = req.body;
     if (!qr_token) {

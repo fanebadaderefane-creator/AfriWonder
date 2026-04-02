@@ -12,6 +12,9 @@ const applyLimiter = rateLimit({
   standardHeaders: true,
 });
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/jobs/recommended - Emplois recommandés (profil candidat, pays)
@@ -49,7 +52,7 @@ router.get('/profile/candidate', authenticate, async (req: AuthRequest, res, nex
 });
 
 // PUT /api/jobs/profile/candidate - Créer / mettre à jour profil candidat
-router.put('/profile/candidate', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/profile/candidate', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { cvUrl, portfolioUrl, skills, experience, education, availability, phone } = req.body;
@@ -80,7 +83,7 @@ router.get('/profile/company', authenticate, async (req: AuthRequest, res, next)
 });
 
 // PUT /api/jobs/profile/company - Créer / mettre à jour profil entreprise
-router.put('/profile/company', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/profile/company', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { companyName, description, logoUrl, documentsLegal } = req.body;
@@ -154,7 +157,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/jobs - Créer un emploi
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const {
@@ -200,7 +203,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/jobs/:id/apply - Postuler à un emploi
-router.post('/:id/apply', applyLimiter, authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/apply', applyLimiter, authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const jobId = param(req, 'id');
     const userId = req.user!.id;
@@ -218,7 +221,7 @@ router.post('/:id/apply', applyLimiter, authenticate, async (req: AuthRequest, r
 });
 
 // POST /api/jobs/premium/:id/confirm - Confirmer paiement premium (webhook)
-router.post('/premium/:id/confirm', async (req, res, next) => {
+router.post('/premium/:id/confirm', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const transactionId = param(req, 'id');
     const result = await jobService.confirmPremiumPayment(transactionId);
@@ -234,7 +237,7 @@ router.post('/premium/:id/confirm', async (req, res, next) => {
 });
 
 // PUT /api/jobs/applications/:id/status - Employeur: changer statut candidature
-router.put('/applications/:id/status', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/applications/:id/status', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const applicationId = param(req, 'id');
     const userId = req.user!.id;
@@ -254,7 +257,7 @@ router.put('/applications/:id/status', authenticate, async (req: AuthRequest, re
 });
 
 // POST /api/jobs/rate/company - Candidat note l'entreprise (après entretien)
-router.post('/rate/company', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/rate/company', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { toUserId, jobId, rating, comment } = req.body;
@@ -269,7 +272,7 @@ router.post('/rate/company', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // POST /api/jobs/rate/candidate - Employeur note le candidat
-router.post('/rate/candidate', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/rate/candidate', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { toUserId, jobId, rating, comment } = req.body;
@@ -284,7 +287,7 @@ router.post('/rate/candidate', authenticate, async (req: AuthRequest, res, next)
 });
 
 // POST /api/jobs/:id/save - Sauvegarder une offre
-router.post('/:id/save', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/save', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const jobId = param(req, 'id');
     const userId = req.user!.id;
@@ -308,7 +311,7 @@ router.delete('/:id/save', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/jobs/:id/report - Signaler une offre
-router.post('/:id/report', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/report', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const jobId = param(req, 'id');
     const userId = req.user!.id;

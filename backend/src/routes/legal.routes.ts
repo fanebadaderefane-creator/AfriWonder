@@ -3,6 +3,9 @@ import { authenticate, optionalAuth, AuthRequest, requireAdmin } from '../middle
 import { param } from '../utils/params.js';
 import legalService from '../services/legal.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // ==========================================
@@ -49,7 +52,7 @@ router.get('/documents/version/:id', async (req, res, next) => {
 // ==========================================
 
 // POST /api/legal/accept - Accepter un document légal
-router.post('/accept', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/accept', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { document_id, document_type } = req.body;
@@ -97,7 +100,7 @@ router.get('/check-required', authenticate, async (req: AuthRequest, res, next) 
 // ==========================================
 
 // POST /api/legal/admin/documents - Créer un nouveau document
-router.post('/admin/documents', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
+router.post('/admin/documents', authenticate, requireAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const adminId = req.user!.id;
     const { type, version, language, title, content, effective_date } = req.body;
@@ -119,7 +122,7 @@ router.post('/admin/documents', authenticate, requireAdmin, async (req: AuthRequ
 });
 
 // PUT /api/legal/admin/documents/:id/activate - Activer un document
-router.put('/admin/documents/:id/activate', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
+router.put('/admin/documents/:id/activate', authenticate, requireAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const documentId = param(req, 'id');
     const document = await legalService.activateDocument(documentId);
@@ -130,7 +133,7 @@ router.put('/admin/documents/:id/activate', authenticate, requireAdmin, async (r
 });
 
 // PUT /api/legal/admin/documents/:id/deactivate - Désactiver un document
-router.put('/admin/documents/:id/deactivate', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
+router.put('/admin/documents/:id/deactivate', authenticate, requireAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const documentId = param(req, 'id');
     const document = await legalService.deactivateDocument(documentId);
@@ -175,7 +178,7 @@ router.get('/entity-info', async (req, res, next) => {
 });
 
 // PUT /api/legal/admin/entity-info - Mettre à jour les infos légales
-router.put('/admin/entity-info', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
+router.put('/admin/entity-info', authenticate, requireAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const info = await legalService.updateLegalEntityInfo(req.body);
     res.json({ success: true, data: info });

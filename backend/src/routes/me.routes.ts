@@ -13,6 +13,9 @@ import * as paymentPreauthService from '../services/paymentPreauth.service.js';
 import * as creatorContractService from '../services/creatorContract.service.js';
 import { listMyCallHistory } from '../services/meCallHistory.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // ——— Liste proches / close friends (CPO 1.18) ———
@@ -32,7 +35,7 @@ router.get('/close-friends', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // POST /api/me/close-friends — ajouter un proche (body: friend_id)
-router.post('/close-friends', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/close-friends', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const friendId = req.body?.friend_id;
@@ -82,7 +85,7 @@ router.get('/follow-requests', authenticate, async (req: AuthRequest, res, next)
 });
 
 // POST /api/me/follow-requests/:id/accept
-router.post('/follow-requests/:id/accept', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/follow-requests/:id/accept', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const requestId = param(req, 'id');
@@ -94,7 +97,7 @@ router.post('/follow-requests/:id/accept', authenticate, async (req: AuthRequest
 });
 
 // POST /api/me/follow-requests/:id/reject
-router.post('/follow-requests/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/follow-requests/:id/reject', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const requestId = param(req, 'id');
@@ -307,7 +310,7 @@ router.get('/travel-alerts', authenticate, async (req: AuthRequest, res, next) =
     next(e);
   }
 });
-router.post('/travel-alerts', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/travel-alerts', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { type, origin, destination, target_price, check_in, check_out } = req.body;
@@ -370,7 +373,7 @@ router.get('/virtual-cards', authenticate, async (req: AuthRequest, res, next) =
     next(e);
   }
 });
-router.post('/virtual-cards', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/virtual-cards', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const card = await virtualCardService.create(req.user!.id, req.body);
     res.status(201).json({ success: true, data: card });
@@ -399,7 +402,7 @@ router.get('/international-transfers', authenticate, async (req: AuthRequest, re
     next(e);
   }
 });
-router.post('/international-transfers', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/international-transfers', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const transfer = await internationalTransferService.create(req.user!.id, req.body);
     res.status(201).json({ success: true, data: transfer });
@@ -429,7 +432,7 @@ router.get('/preauths', authenticate, async (req: AuthRequest, res, next) => {
     next(e);
   }
 });
-router.post('/preauths', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/preauths', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { amount, order_id, reference, expires_in_hours } = req.body || {};
     const p = await paymentPreauthService.create(req.user!.id, Number(amount), { order_id, reference, expires_in_hours });
@@ -439,7 +442,7 @@ router.post('/preauths', authenticate, async (req: AuthRequest, res, next) => {
     next(e);
   }
 });
-router.post('/preauths/:id/capture', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/preauths/:id/capture', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const p = await paymentPreauthService.capture(param(req, 'id'), req.user!.id);
     res.json({ success: true, data: p });
@@ -448,7 +451,7 @@ router.post('/preauths/:id/capture', authenticate, async (req: AuthRequest, res,
     next(e);
   }
 });
-router.post('/preauths/:id/cancel', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/preauths/:id/cancel', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const p = await paymentPreauthService.cancel(param(req, 'id'), req.user!.id);
     res.json({ success: true, data: p });
@@ -467,7 +470,7 @@ router.get('/creator-contracts', authenticate, async (req: AuthRequest, res, nex
     next(e);
   }
 });
-router.post('/creator-contracts', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/creator-contracts', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const body = req.body || {};
     const start_at = body.start_at ? new Date(body.start_at) : undefined;
@@ -479,7 +482,7 @@ router.post('/creator-contracts', authenticate, async (req: AuthRequest, res, ne
     next(e);
   }
 });
-router.patch('/creator-contracts/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/creator-contracts/:id', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const body = req.body || {};
     if (body.start_at) body.start_at = new Date(body.start_at);

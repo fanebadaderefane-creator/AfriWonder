@@ -46,3 +46,7 @@ android/keystore.properties
 android/*.keystore
 android/*.jks
 *.jks
+
+# Lighthouse CI — rapports lhr-* régénérés (ne pas versionner les exports locaux/CI)
+.lighthouseci/lhr-*.html
+.lighthouseci/lhr-*.json

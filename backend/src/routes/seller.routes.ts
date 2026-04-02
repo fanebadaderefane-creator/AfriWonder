@@ -7,6 +7,9 @@ import loyaltyService from '../services/loyalty.service.js';
 import productService from '../services/product.service.js';
 import auctionService from '../services/auction.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 router.use(authenticate);
@@ -126,7 +129,7 @@ router.get('/loyalty', async (req: AuthRequest, res, next) => {
   }
 });
 
-router.put('/loyalty', async (req: AuthRequest, res, next) => {
+router.put('/loyalty', validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const sellerId = req.user!.id;
     const { points_per_purchase, reward_threshold, reward_type, reward_value, is_active } = req.body;
@@ -156,7 +159,7 @@ router.get('/offers', async (req: AuthRequest, res, next) => {
   }
 });
 
-router.patch('/offers/:offerId', async (req: AuthRequest, res, next) => {
+router.patch('/offers/:offerId', validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const sellerId = req.user!.id;
     const offerId = param(req, 'offerId');

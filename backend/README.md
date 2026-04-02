@@ -133,6 +133,8 @@ Authorization: Bearer <access_token>
 
 ## 🚀 Déploiement
 
+**Production cible : [Render](https://render.com)** — voir `../render.yaml`, `../Dockerfile.backend`, `RENDER_ENV_CHECKLIST.md`, et `../docs/DEPLOYMENT.md`.
+
 ```bash
 # Build
 npm run build

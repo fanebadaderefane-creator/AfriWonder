@@ -5,6 +5,21 @@ import { param } from '../utils/params.js';
 import prisma from '../config/database.js';
 import liveService from '../services/live.service.js';
 import { LIVE_CATEGORIES, LIVE_LANGUAGES, LIVE_AGE_RESTRICTIONS } from '../config/liveCategories.js';
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+import {
+  liveChapterSchema,
+  liveChatSchema,
+  liveCreatorSubscribeSchema,
+  liveEndSchema,
+  liveGiftSchema,
+  liveModerationPatchSchema,
+  liveReactionSchema,
+  liveSessionBodySchema,
+  liveStartSchema,
+  liveTipSchema,
+  liveWalletRechargeSchema,
+} from '../schemas/highRiskBodies.js';
 
 const router = Router();
 
@@ -138,7 +153,7 @@ router.get('/wallet', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/live/wallet/recharge - B: Recharge portefeuille (Orange Money)
-router.post('/wallet/recharge', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/wallet/recharge', authenticate, validateBody(liveWalletRechargeSchema), async (req: AuthRequest, res, next) => {
   try {
     const amount = Number(req.body?.amount) || 0;
     const phone = req.body?.phone;
@@ -178,7 +193,7 @@ router.get('/creator/export', authenticate, async (req: AuthRequest, res, next) 
 });
 
 // POST /api/live/creator/:creatorId/subscribe - CDC: Abonnement don récurrent
-router.post('/creator/:creatorId/subscribe', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/creator/:creatorId/subscribe', authenticate, validateBody(liveCreatorSubscribeSchema), async (req: AuthRequest, res, next) => {
   try {
     const amount = Number(req.body.amount) || 500;
     const sub = await liveService.subscribeToCreator(req.user!.id, param(req, 'creatorId'), amount);
@@ -209,7 +224,7 @@ router.get('/creator-level/:userId', async (req, res, next) => {
 });
 
 // POST /api/live/start
-router.post('/start', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/start', authenticate, validateBody(liveStartSchema), async (req: AuthRequest, res, next) => {
   try {
     const { title, description, category, streamUrl, thumbnail_url, stream_key, rtmp_url, playback_url, region, language, status, scheduled_at, tags, age_restriction, donations_enabled, private_mode, goal_target, delay_seconds, max_quality } = req.body;
     const stream = await liveService.createStream(req.user!.id, {
@@ -240,7 +255,7 @@ router.post('/start', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/live/:id/start-scheduled - Démarrer un live programmé
-router.post('/:id/start-scheduled', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/start-scheduled', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const stream = await liveService.startScheduledStream(param(req, 'id'), req.user!.id);
     res.json({ success: true, data: stream });
@@ -271,7 +286,7 @@ router.get('/:id/token', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/live/:id/join - Viewer rejoint (auth). Body: sessionId?, country? (pour analytics)
-router.post('/:id/join', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/join', authenticate, validateBody(liveSessionBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const sessionId = req.body.sessionId || req.headers['x-session-id'] || req.user!.id + Date.now();
     const country = req.body.country;
@@ -283,7 +298,7 @@ router.post('/:id/join', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/live/:id/leave
-router.post('/:id/leave', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/leave', authenticate, validateBody(liveSessionBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const sessionId = req.body.sessionId || req.headers['x-session-id'] || req.user!.id + Date.now();
     await liveService.leaveViewer(param(req, 'id'), req.user!.id, String(sessionId));
@@ -294,7 +309,7 @@ router.post('/:id/leave', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/live/:id/heartbeat
-router.post('/:id/heartbeat', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/heartbeat', authenticate, validateBody(liveSessionBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const sessionId = req.body.sessionId || req.headers['x-session-id'] || req.user!.id + Date.now();
     await liveService.heartbeatViewer(param(req, 'id'), req.user!.id, String(sessionId));
@@ -305,7 +320,7 @@ router.post('/:id/heartbeat', authenticate, async (req: AuthRequest, res, next) 
 });
 
 // POST /api/live/:id/end (body.replay_url optionnel pour D)
-router.post('/:id/end', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/end', authenticate, validateBody(liveEndSchema), async (req: AuthRequest, res, next) => {
   try {
     const replay_url = req.body?.replay_url;
     const stream = await liveService.endStream(param(req, 'id'), req.user!.id, { replay_url });
@@ -316,7 +331,7 @@ router.post('/:id/end', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/live/:id/chat (anti-spam 1/2s via chatLimiter)
-router.post('/:id/chat', authenticate, chatLimiter, async (req: AuthRequest, res, next) => {
+router.post('/:id/chat', authenticate, validateBody(liveChatSchema), chatLimiter, async (req: AuthRequest, res, next) => {
   try {
     const { message } = req.body;
     const chatMessage = await liveService.sendChatMessage(param(req, 'id'), req.user!.id, message);
@@ -327,7 +342,7 @@ router.post('/:id/chat', authenticate, chatLimiter, async (req: AuthRequest, res
 });
 
 // POST /api/live/:id/tip - CDC: don direct (sans gift)
-router.post('/:id/tip', authenticate, giftLimiter, async (req: AuthRequest, res, next) => {
+router.post('/:id/tip', authenticate, validateBody(liveTipSchema), giftLimiter, async (req: AuthRequest, res, next) => {
   try {
     const { amount, message, is_anonymous } = req.body;
     const result = await liveService.sendTip(param(req, 'id'), req.user!.id, {
@@ -342,7 +357,7 @@ router.post('/:id/tip', authenticate, giftLimiter, async (req: AuthRequest, res,
 });
 
 // POST /api/live/:id/gift (rate limit 5/10s)
-router.post('/:id/gift', authenticate, giftLimiter, async (req: AuthRequest, res, next) => {
+router.post('/:id/gift', authenticate, validateBody(liveGiftSchema), giftLimiter, async (req: AuthRequest, res, next) => {
   try {
     const { giftId, giftName, giftIcon, amount, quantity, message } = req.body;
     const gift = await liveService.sendGift(param(req, 'id'), req.user!.id, {
@@ -360,7 +375,7 @@ router.post('/:id/gift', authenticate, giftLimiter, async (req: AuthRequest, res
 });
 
 // POST /api/live/:id/like
-router.post('/:id/like', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/like', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const result = await liveService.like(param(req, 'id'), req.user!.id);
     res.json({ success: true, data: result });
@@ -370,11 +385,10 @@ router.post('/:id/like', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/live/:id/reaction - CDC: heart, fire, thumbs
-router.post('/:id/reaction', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/reaction', authenticate, validateBody(liveReactionSchema), async (req: AuthRequest, res, next) => {
   try {
-    const type = (req.body.type as string) || 'like';
-    const valid = ['like', 'heart', 'fire', 'thumbs'].includes(type) ? type : 'like';
-    const result = await liveService.reaction(param(req, 'id'), req.user!.id, valid as any);
+    const { type } = req.body;
+    const result = await liveService.reaction(param(req, 'id'), req.user!.id, type as any);
     res.json({ success: true, data: result });
   } catch (error: any) {
     next(error);
@@ -392,7 +406,7 @@ router.get('/:id/chapters', async (req, res, next) => {
 });
 
 // POST /api/live/:id/chapters - Créateur ajoute chapitre
-router.post('/:id/chapters', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/chapters', authenticate, validateBody(liveChapterSchema), async (req: AuthRequest, res, next) => {
   try {
     const { title, start_seconds, end_seconds } = req.body;
     const ch = await liveService.addReplayChapter(param(req, 'id'), req.user!.id, { title, start_seconds, end_seconds });
@@ -434,7 +448,7 @@ router.get('/:id/moderation', authenticate, async (req: AuthRequest, res, next) 
 });
 
 // PATCH /api/live/:id/moderation
-router.patch('/:id/moderation', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/:id/moderation', authenticate, validateBody(liveModerationPatchSchema), async (req: AuthRequest, res, next) => {
   try {
     const { slow_mode_seconds, comments_enabled, followers_only, banned_words } = req.body;
     const settings = await liveService.updateModerationSettings(param(req, 'id'), req.user!.id, {
@@ -450,7 +464,7 @@ router.patch('/:id/moderation', authenticate, async (req: AuthRequest, res, next
 });
 
 // POST /api/live/:id/moderators
-router.post('/:id/moderators', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/moderators', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { userId } = req.body;
     const mod = await liveService.addModerator(param(req, 'id'), req.user!.id, userId);
@@ -471,7 +485,7 @@ router.delete('/:id/moderators/:userId', authenticate, async (req: AuthRequest, 
 });
 
 // POST /api/live/:id/ban
-router.post('/:id/ban', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/ban', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { userId, reason, durationMinutes, permanent } = req.body;
     const ban = await liveService.banUser(param(req, 'id'), userId, req.user!.id, reason || 'Violation', {
@@ -495,7 +509,7 @@ router.delete('/:id/chat/:messageId', authenticate, async (req: AuthRequest, res
 });
 
 // PATCH /api/live/:id/chat/:messageId/pin - Épingler / désépingler (body: pin true/false)
-router.patch('/:id/chat/:messageId/pin', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/:id/chat/:messageId/pin', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const pin = req.body.pin !== false;
     await liveService.pinChatMessage(param(req, 'id'), param(req, 'messageId'), req.user!.id, pin);
@@ -506,7 +520,7 @@ router.patch('/:id/chat/:messageId/pin', authenticate, async (req: AuthRequest, 
 });
 
 // PATCH /api/live/:id/chat/:messageId - Mettre à jour un message (is_answered, is_question, etc.)
-router.patch('/:id/chat/:messageId', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/:id/chat/:messageId', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const streamId = param(req, 'id');
     const messageId = param(req, 'messageId');
@@ -529,7 +543,7 @@ router.delete('/:id/replay', authenticate, async (req: AuthRequest, res, next) =
 });
 
 // PATCH /api/live/:id/replay - Mettre à jour l’URL de replay (créateur ou webhook)
-router.patch('/:id/replay', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/:id/replay', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { replay_url } = req.body;
     const stream = await liveService.updateReplayUrl(param(req, 'id'), req.user!.id, replay_url);
@@ -541,7 +555,7 @@ router.patch('/:id/replay', authenticate, async (req: AuthRequest, res, next) =>
 
 // POST /api/live/:id/cleanup-viewers (cron avec X-Cron-Secret ou créateur authentifié)
 const cronOrCreatorSecret = process.env.CRON_SECRET || process.env.LIVE_CLEANUP_SECRET;
-router.post('/:id/cleanup-viewers', optionalAuth, async (req: AuthRequest, res, next) => {
+router.post('/:id/cleanup-viewers', optionalAuth, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const streamId = param(req, 'id');
     const authHeader = req.headers['x-cron-secret'] || req.headers['x-live-cleanup-secret'];
@@ -559,7 +573,7 @@ router.post('/:id/cleanup-viewers', optionalAuth, async (req: AuthRequest, res, 
 });
 
 // PUT /api/live/:id/viewers (legacy, créateur uniquement)
-router.put('/:id/viewers', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:id/viewers', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const streamId = param(req, 'id');
     const stream = await liveService.getStream(streamId);
@@ -575,7 +589,7 @@ router.put('/:id/viewers', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/live/:id/polls - Créer un sondage
-router.post('/:id/polls', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/polls', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const streamId = param(req, 'id');
     const { question, options } = req.body;
@@ -590,7 +604,7 @@ router.post('/:id/polls', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/live/:id/polls/:pollId/vote - Voter pour un sondage
-router.post('/:id/polls/:pollId/vote', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/polls/:pollId/vote', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const streamId = param(req, 'id');
     const pollId = param(req, 'pollId');
@@ -631,7 +645,7 @@ router.get('/:id/polls/:pollId/my-vote', authenticate, async (req: AuthRequest, 
 });
 
 // POST /api/live/:id/polls/:pollId/end - Terminer un sondage
-router.post('/:id/polls/:pollId/end', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/polls/:pollId/end', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const streamId = param(req, 'id');
     const pollId = param(req, 'pollId');
@@ -643,7 +657,7 @@ router.post('/:id/polls/:pollId/end', authenticate, async (req: AuthRequest, res
 });
 
 // POST /api/live/:id/cohost/invite - Inviter un co-host
-router.post('/:id/cohost/invite', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/cohost/invite', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const streamId = param(req, 'id');
     const { userId } = req.body;
@@ -658,7 +672,7 @@ router.post('/:id/cohost/invite', authenticate, async (req: AuthRequest, res, ne
 });
 
 // POST /api/live/:id/cohost/accept - Accepter une invitation co-host
-router.post('/:id/cohost/accept', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/cohost/accept', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const streamId = param(req, 'id');
     const result = await liveService.acceptCoHostInvite(streamId, req.user!.id);
@@ -669,7 +683,7 @@ router.post('/:id/cohost/accept', authenticate, async (req: AuthRequest, res, ne
 });
 
 // POST /api/live/:id/cohost/remove - Retirer un co-host
-router.post('/:id/cohost/remove', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/cohost/remove', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const streamId = param(req, 'id');
     const { userId } = req.body;
@@ -699,7 +713,7 @@ router.get('/:id/products', optionalAuth, async (req: AuthRequest, res, next) =>
 });
 
 // POST /api/live/:id/products - Ajouter un produit au live (créateur)
-router.post('/:id/products', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/products', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const liveId = param(req, 'id');
     const { product_id, position } = req.body;

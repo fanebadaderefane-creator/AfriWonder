@@ -4,8 +4,24 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import orderService from '../services/order.service.js';
 import invoiceService from '../services/invoice.service.js';
+import { z } from 'zod';
+import { validateBody, validateQuery } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 
 const router = Router();
+
+const listOrdersQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  live_id: z.string().uuid().optional(),
+  as: z.enum(['buyer', 'seller']).optional(),
+});
+
+const createOrderSchema = z.object({}).passthrough();
+
+const updateOrderStatusSchema = z.object({
+  status: z.string().min(2).max(60),
+});
 
 /**
  * @swagger
@@ -54,7 +70,7 @@ const orderActionLimiter = rateLimit({
 });
 
 // GET /api/orders  (as=buyer par défaut, as=seller, ou live_id pour commandes pendant un live)
-router.get('/', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/', authenticate, validateQuery(listOrdersQuerySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const page = parseInt(req.query.page as string) || 1;
@@ -134,7 +150,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/orders
-router.post('/', authenticate, orderActionLimiter, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, orderActionLimiter, validateBody(createOrderSchema), async (req: AuthRequest, res, next) => {
   try {
     // Phase 1: pas de paiement sur AfriWonder — contact direct vendeur (WhatsApp)
     if (process.env.MARKETPLACE_PHASE1_NO_PAYMENT === 'true') {
@@ -151,7 +167,7 @@ router.post('/', authenticate, orderActionLimiter, async (req: AuthRequest, res,
 });
 
 // PATCH /api/orders/:id/status
-router.patch('/:id/status', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/:id/status', authenticate, validateBody(updateOrderStatusSchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const userId = req.user!.id;
@@ -164,7 +180,7 @@ router.patch('/:id/status', authenticate, async (req: AuthRequest, res, next) =>
 });
 
 // POST /api/orders/:id/cancel
-router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/cancel', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const userId = req.user!.id;
@@ -176,7 +192,7 @@ router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/orders/:id/confirm-payment - Confirmer le paiement (webhook ou admin)
-router.post('/:id/confirm-payment', authenticate, orderActionLimiter, async (req: AuthRequest, res, next) => {
+router.post('/:id/confirm-payment', authenticate, orderActionLimiter, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const order = await orderService.confirmPayment(id);
@@ -187,7 +203,7 @@ router.post('/:id/confirm-payment', authenticate, orderActionLimiter, async (req
 });
 
 // POST /api/orders/:id/confirm-reception - Confirmation réception par l'acheteur
-router.post('/:id/confirm-reception', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/confirm-reception', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const userId = req.user!.id;

@@ -4,6 +4,9 @@ import { param } from '../utils/params.js';
 import userService from '../services/user.service.js';
 import { invalidateUserFeedCaches } from '../services/feedCache.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/users - Liste des utilisateurs (search: recherche par username, full_name, email)
@@ -71,7 +74,7 @@ router.get('/:id/following', optionalAuth, async (req: AuthRequest, res, next) =
 });
 
 // POST /api/users/:id/follow
-router.post('/:id/follow', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/follow', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const followingId = param(req, 'id');
     const followerId = req.user!.id;
@@ -84,7 +87,7 @@ router.post('/:id/follow', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/users/:id/wonder - Wonder = s'émerveiller avec un créateur (branding Afriwonder)
-router.post('/:id/wonder', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/wonder', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const creatorId = param(req, 'id');
     const followerId = req.user!.id;
@@ -134,7 +137,7 @@ router.get('/:id/liked-videos', optionalAuth, async (req: AuthRequest, res, next
 });
 
 // PUT /api/users/me
-router.put('/me', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/me', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const user = await userService.updateProfile(userId, req.body);

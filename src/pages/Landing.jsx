@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/expressClient';
 import { motion, MotionConfig } from 'framer-motion';
 import { useAuth } from '@/lib/AuthContext';
+import { setGuestExplore } from '@/lib/guestExplore';
 import {
   ArrowRight,
   CheckCircle2,
@@ -483,6 +484,18 @@ export default function Landing() {
                     <Download className="h-5 w-5" />
                     Installer l’app
                   </motion.button>
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => {
+                      setGuestExplore(true);
+                      navigate('/', { replace: true });
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-3.5 text-[15px] font-semibold text-white shadow-[0_12px_40px_rgba(37,99,235,0.35)] transition-colors hover:bg-blue-500"
+                  >
+                    <Video className="h-5 w-5" />
+                    Voir le feed sans compte
+                  </motion.button>
                   <motion.a
                     href="#auth"
                     whileTap={{ scale: 0.98 }}
@@ -493,10 +506,13 @@ export default function Landing() {
                   </motion.a>
                   <button
                     type="button"
-                    onClick={() => navigate('/Discover')}
+                    onClick={() => {
+                      setGuestExplore(true);
+                      navigate('/Discover');
+                    }}
                     className="inline-flex items-center justify-center gap-2 rounded-2xl px-6 py-3.5 text-[15px] font-medium text-white/55 transition-colors hover:text-white"
                   >
-                    Parcourir sans compte
+                    Découvrir sans compte
                     <ArrowRight className="h-4 w-4" />
                   </button>
                 </div>

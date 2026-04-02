@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { travelService } from '../services/travel.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 router.get('/hotels', async (req, res, next) => {
@@ -30,7 +33,7 @@ router.get('/flights', async (req, res, next) => {
   }
 });
 
-router.post('/bookings/hotel', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/bookings/hotel', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { hotel_id, check_in, check_out, guests } = req.body;
@@ -44,7 +47,7 @@ router.post('/bookings/hotel', authenticate, async (req: AuthRequest, res, next)
   }
 });
 
-router.post('/bookings/flight', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/bookings/flight', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { flight_id } = req.body;

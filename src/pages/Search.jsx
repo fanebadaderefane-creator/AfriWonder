@@ -12,6 +12,7 @@ import VideoFrameThumbnail from '../components/video/VideoFrameThumbnail';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { useMarketplaceCurrency } from '@/contexts/MarketplaceCurrencyContext';
 
 const SUGGEST_DEBOUNCE_MS = 300;
 const MIN_CHARS_FOR_SUGGESTIONS = 2;
@@ -73,6 +74,7 @@ function VideoThumbnail({ video }) {
 
 export default function SearchPage() {
   const { t } = useTranslation();
+  const { formatPrice } = useMarketplaceCurrency();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get('q') || '';
@@ -592,7 +594,7 @@ export default function SearchPage() {
                         </div>
                         <div className="flex-1">
                           <h3 className="font-semibold text-white truncate">{product.name || product.title}</h3>
-                          <p className="text-sm font-bold text-[#ff5f8f]">{product.price?.toLocaleString()} FCFA</p>
+                          <p className="text-sm font-bold text-[#ff5f8f]">{formatPrice(product.price)}</p>
                         </div>
                       </motion.div>
                     ))}

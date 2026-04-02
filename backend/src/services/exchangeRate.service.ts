@@ -47,13 +47,35 @@ class ExchangeRateService {
     });
   }
 
+  /**
+   * Taux indicatifs affichage marketplace (écrasables par admin via PUT /rates).
+   * Ordre de grandeur maintenance : ajuster ou préférer des lignes DB réelles.
+   */
+  private async ensureCrossRatesFromXof() {
+    const pairs: Array<{ from: string; to: string; rate: number }> = [
+      { from: 'XOF', to: 'NGN', rate: 2.52 },
+      { from: 'XOF', to: 'KES', rate: 0.19 },
+    ];
+    for (const { from, to, rate } of pairs) {
+      const existing = await prisma.exchangeRate.findUnique({
+        where: {
+          from_currency_to_currency: { from_currency: from, to_currency: to },
+        },
+      });
+      if (!existing) {
+        await this.setRate(from, to, rate);
+      }
+    }
+  }
+
   async getAllRates() {
     let rates = await prisma.exchangeRate.findMany({ orderBy: [{ from_currency: 'asc' }, { to_currency: 'asc' }] });
     if (rates.length === 0) {
       await this.setRate('EUR', 'XOF', 655.957);
       rates = await prisma.exchangeRate.findMany({ orderBy: [{ from_currency: 'asc' }, { to_currency: 'asc' }] });
     }
-    return rates;
+    await this.ensureCrossRatesFromXof();
+    return prisma.exchangeRate.findMany({ orderBy: [{ from_currency: 'asc' }, { to_currency: 'asc' }] });
   }
 
   /** Convertir un prix produit vers la devise cible (ex: affichage en EUR) */

@@ -2,6 +2,7 @@ import React, { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from '@/App.jsx'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
+import { initPosthog } from '@/lib/posthogClient.js'
 import '@/index.css'
 
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN
@@ -31,6 +32,14 @@ if (sentryDsn && !isDev) {
     requestIdleCallback(initSentry)
   } else {
     setTimeout(initSentry, 2000)
+  }
+}
+
+if (!isDev) {
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(() => initPosthog())
+  } else {
+    setTimeout(initPosthog, 2500)
   }
 }
 
@@ -83,9 +92,9 @@ if (!rootElement) {
   console.error('❌ Élément root introuvable!');
   document.body.innerHTML = `
     <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; text-align: center; font-family: system-ui;">
-      <h1 style="color: #f97316; margin-bottom: 16px;">Erreur de chargement</h1>
+      <h1 style="color: #2563eb; margin-bottom: 16px;">Erreur de chargement</h1>
       <p style="color: #666; margin-bottom: 24px;">L'application n'a pas pu se charger correctement.</p>
-      <button onclick="window.location.reload()" style="padding: 12px 24px; background: #f97316; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">
+      <button onclick="window.location.reload()" style="padding: 12px 24px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">
         Recharger la page
       </button>
     </div>
@@ -103,9 +112,9 @@ if (!rootElement) {
     console.error('❌ Erreur lors du rendu de React:', error);
     rootElement.innerHTML = `
       <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; text-align: center; font-family: system-ui;">
-        <h1 style="color: #f97316; margin-bottom: 16px;">Erreur de chargement</h1>
+        <h1 style="color: #2563eb; margin-bottom: 16px;">Erreur de chargement</h1>
         <p style="color: #666; margin-bottom: 24px;">Une erreur est survenue lors du chargement de l'application.</p>
-        <button onclick="window.location.reload()" style="padding: 12px 24px; background: #f97316; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">
+        <button onclick="window.location.reload()" style="padding: 12px 24px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">
           Recharger la page
         </button>
       </div>

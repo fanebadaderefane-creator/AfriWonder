@@ -5,6 +5,9 @@ import { requireAnyAdmin } from '../middleware/adminRbac.js';
 import { logger } from '../utils/logger.js';
 import * as earlyAccessService from '../services/earlyAccess.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 const EARLY_ACCESS_FALLBACK = {
@@ -28,7 +31,7 @@ router.get('/config', async (_req, res) => {
 });
 
 // POST /api/early-access/waitlist — Public, rejoindre la liste d'attente
-router.post('/waitlist', async (req, res, next) => {
+router.post('/waitlist', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const { email, full_name } = req.body;
     if (!email || typeof email !== 'string') {
@@ -42,7 +45,7 @@ router.post('/waitlist', async (req, res, next) => {
 });
 
 // PUT /api/early-access/max-users — Admin only
-router.put('/max-users', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.put('/max-users', authenticate, requireAnyAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const max = parseInt(req.body.maxUsers ?? req.body.max_users, 10);
     if (isNaN(max) || max < 1) {
@@ -56,7 +59,7 @@ router.put('/max-users', authenticate, requireAnyAdmin, async (req: AuthRequest,
 });
 
 // PUT /api/early-access/max-monetized — Admin only
-router.put('/max-monetized', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+router.put('/max-monetized', authenticate, requireAnyAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const max = parseInt(req.body.maxMonetizedCreators ?? req.body.max_monetized_creators, 10);
     if (isNaN(max) || max < 1) {

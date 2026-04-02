@@ -7,10 +7,13 @@ import { param } from '../utils/params.js';
 import serviceDisputeService from '../services/service-dispute.service.js';
 import providerService from '../services/provider.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // POST /api/service-disputes - Créer litige
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { booking_id, reason, description, evidence } = req.body;
 
@@ -75,7 +78,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // PUT /api/service-disputes/:id/resolve - Résoudre litige (admin)
-router.put('/:id/resolve', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/:id/resolve', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     // TODO: Vérifier que l'utilisateur est admin
     const { resolution, status, refund_amount } = req.body;

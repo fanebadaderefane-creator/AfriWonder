@@ -5,10 +5,13 @@ import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import creatorSupportService from '../services/creatorSupport.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // POST /api/creator-support/:creatorId - Soutenir un créateur avec le wallet
-router.post('/:creatorId', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:creatorId', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const supporterId = req.user!.id;
     const raw = req.params.creatorId;

@@ -3,6 +3,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import crowdfundingService from '../services/crowdfunding.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/crowdfunding - Liste des campagnes
@@ -40,7 +43,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/crowdfunding - Créer une campagne
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { title, description, goalAmount, endDate } = req.body;
@@ -62,7 +65,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/crowdfunding/:id/contribute - Contribuer à une campagne
-router.post('/:id/contribute', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/contribute', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const campaignId = param(req, 'id');
     const userId = req.user!.id;
@@ -92,7 +95,7 @@ router.post('/:id/contribute', authenticate, async (req: AuthRequest, res, next)
 });
 
 // POST /api/crowdfunding/contributions/:id/confirm - Confirmer une contribution (webhook)
-router.post('/contributions/:id/confirm', async (req, res, next) => {
+router.post('/contributions/:id/confirm', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const contributionId = param(req, 'id');
     const contribution = await crowdfundingService.confirmContribution(contributionId);
@@ -108,7 +111,7 @@ router.post('/contributions/:id/confirm', async (req, res, next) => {
 });
 
 // POST /api/crowdfunding/:id/release-milestone - Libérer un milestone (créateur ou admin)
-router.post('/:id/release-milestone', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/release-milestone', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const campaignId = param(req, 'id');
     const milestoneIndex = parseInt(req.body.milestoneIndex ?? req.body.milestone_index ?? '0', 10);
@@ -120,7 +123,7 @@ router.post('/:id/release-milestone', authenticate, async (req: AuthRequest, res
 });
 
 // POST /api/crowdfunding/:id/report - Signaler une campagne
-router.post('/:id/report', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/report', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const campaignId = param(req, 'id');
     const userId = req.user!.id;

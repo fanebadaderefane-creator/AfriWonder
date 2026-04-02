@@ -40,7 +40,7 @@ export default {
   setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],
   testTimeout: 30000,
   maxWorkers: 1,
-  // Seuils alignés sur couverture actuelle (~31%) — à remonter progressivement
+  // Seuils alignés sur couverture actuelle (~31 %). Cible audit long terme ~80 % — remonter progressivement.
   coverageThreshold: {
     global: {
       statements: 30,

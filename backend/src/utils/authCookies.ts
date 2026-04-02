@@ -10,8 +10,14 @@ const cookieBase = {
 };
 
 export function setAuthCookies(res: Response, accessToken: string, refreshToken: string): void {
-  res.cookie('access_token', accessToken, cookieBase);
-  res.cookie('refresh_token', refreshToken, cookieBase);
+  res.cookie('access_token', accessToken, {
+    ...cookieBase,
+    maxAge: 15 * 60 * 1000,
+  });
+  res.cookie('refresh_token', refreshToken, {
+    ...cookieBase,
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  });
 }
 
 export function clearAuthCookies(res: Response): void {

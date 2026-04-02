@@ -2,18 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { api } from '@/api/expressClient';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Phone } from 'lucide-react';
+import { Loader2, ArrowLeft, Phone, Copy } from 'lucide-react';
 import { toast } from "sonner";
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
+import { useTranslation } from '@/components/common/useTranslation';
 
 export default function MobileMoneyPayment() {
+  const { formatNumber } = useTranslation();
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [step, setStep] = useState('amount'); // 'amount' | 'method' | 'confirm' | 'processing'
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState(''); // 'orange_money' | 'wave'
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [useUssd, setUseUssd] = useState(false);
+  const [ussdInfo, setUssdInfo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [_reference, setReference] = useState('');
 
@@ -74,6 +78,28 @@ export default function MobileMoneyPayment() {
       toast.error(_error?.response?.data?.message || _error?.message || 'Erreur lors de l\'initiation du paiement');
       setLoading(false);
       setStep('confirm');
+    }
+  };
+
+  const handleLoadUssd = async () => {
+    if (!amount || parseFloat(amount) < 100) {
+      toast.error('Montant minimum: 100 FCFA');
+      return;
+    }
+    if (!method) {
+      toast.error('Sélectionnez un moyen de paiement');
+      return;
+    }
+    try {
+      setLoading(true);
+      const data = await api.payments.getUssdInstructions(method, 'ML', parseFloat(amount));
+      setUssdInfo(data);
+      setUseUssd(true);
+      setStep('confirm');
+    } catch (_e) {
+      toast.error('Impossible de charger les instructions USSD');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -152,7 +178,7 @@ export default function MobileMoneyPayment() {
                         : 'border-gray-200 text-gray-700'
                     }`}
                   >
-                    {qAmount.toLocaleString()}
+                    {formatNumber(qAmount)}
                   </button>
                 ))}
               </div>
@@ -173,7 +199,7 @@ export default function MobileMoneyPayment() {
           <div className="space-y-4">
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-200">
               <p className="text-sm font-medium text-gray-700">
-                Montant: <span className="font-bold text-blue-600">{parseFloat(amount).toLocaleString()} FCFA</span>
+                Montant: <span className="font-bold text-blue-600">{formatNumber(parseFloat(amount) || 0)} FCFA</span>
               </p>
             </div>
 
@@ -221,6 +247,14 @@ export default function MobileMoneyPayment() {
               </div>
             </div>
 
+            <button
+              type="button"
+              onClick={handleLoadUssd}
+              className="w-full rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-left text-sm text-blue-700"
+            >
+              Sans data ? Utiliser le mode USSD
+            </button>
+
             <div className="flex gap-3">
               <Button
                 variant="outline"
@@ -249,7 +283,7 @@ export default function MobileMoneyPayment() {
               <div className="space-y-3 border-t border-b py-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Montant</span>
-                  <span className="font-semibold">{parseFloat(amount).toLocaleString()} FCFA</span>
+                  <span className="font-semibold">{formatNumber(parseFloat(amount) || 0)} FCFA</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Moyen</span>
@@ -262,9 +296,40 @@ export default function MobileMoneyPayment() {
               </div>
 
               <p className="text-xs text-gray-500">
-                Vous serez redirigé vers {paymentMethods.find(p => p.id === method)?.name} pour confirmer le paiement.
+                {useUssd
+                  ? 'Suivez les étapes USSD ci-dessous pour confirmer sans connexion data.'
+                  : `Vous serez redirigé vers ${paymentMethods.find(p => p.id === method)?.name} pour confirmer le paiement.`}
               </p>
             </div>
+
+            {useUssd && ussdInfo ? (
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-blue-800">{ussdInfo.label}</p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(ussdInfo.code);
+                        toast.success('Code USSD copié');
+                      } catch {
+                        toast.error('Copie impossible');
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 text-blue-700 text-sm"
+                  >
+                    <Copy className="w-4 h-4" />
+                    Copier code
+                  </button>
+                </div>
+                <p className="text-xl font-bold text-blue-900">{ussdInfo.code}</p>
+                <ol className="list-decimal pl-5 space-y-1 text-sm text-blue-900">
+                  {(ussdInfo.steps || []).map((s, i) => (
+                    <li key={`${i}-${s}`}>{s}</li>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
 
             <div className="flex gap-3">
               <Button
@@ -275,11 +340,11 @@ export default function MobileMoneyPayment() {
                 Retour
               </Button>
               <Button
-                onClick={handleInitiatePayment}
+                onClick={useUssd ? () => navigate(createPageUrl('Wallet')) : handleInitiatePayment}
                 disabled={loading}
                 className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white h-12 rounded-xl"
               >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Payer maintenant'}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (useUssd ? 'J’ai payé via USSD' : 'Payer maintenant')}
               </Button>
             </div>
           </div>

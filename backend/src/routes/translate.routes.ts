@@ -3,6 +3,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { translateLimiter } from '../middleware/rateLimiting.js';
 import { logger } from '../utils/logger.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 const MAX_CHARS = 4500;
@@ -165,7 +168,7 @@ async function translateMyMemory(
   return null;
 }
 
-router.post('/', authenticate, translateLimiter, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, translateLimiter, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     let rawTarget = String(req.body?.target || 'fr').toLowerCase();
     if (rawTarget === 'bm') rawTarget = 'fr';

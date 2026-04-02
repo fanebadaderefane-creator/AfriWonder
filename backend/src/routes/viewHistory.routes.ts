@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import prisma from '../config/database.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // GET /api/view-history — liste des vidéos vues par l'utilisateur connecté
@@ -25,7 +28,7 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/view-history — enregistrer une vue (upsert + incrémenter views sur la vidéo)
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const {

@@ -1,5 +1,12 @@
 import { Router } from 'express';
 import prisma from '../config/database.js';
+import {
+  AUDIT_ROADMAP_2026,
+  AUDIT_ROADMAP_DISCLAIMER_FR,
+  AUDIT_BACKEND_HOSTING,
+  AUDIT_DATABASE_ENV_VAR,
+} from '../config/auditRoadmap.js';
+import { AUDIT_REPO_COMPLETION } from '../config/auditCompletion.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { requireAnyAdmin } from '../middleware/adminRbac.js';
 import platformRevenueService from '../services/platformRevenue.service.js';
@@ -18,12 +25,39 @@ const router = Router();
 // Configuration publique de base de la plateforme
 // GET /api/platform/config
 router.get('/config', (_req, res) => {
+  const betaCap = Number(process.env.EARLY_ACCESS_MAX_USERS || process.env.BETA_MAX_USERS);
+  const creatorTarget = Number(process.env.CREATOR_PARTNERS_TARGET || '100');
+  const pilots = String(process.env.PILOT_COUNTRIES || 'SN,CI,ML')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
   res.json({
     success: true,
     data: {
       name: 'AfriWonder',
       version: process.env.npm_package_version || '1.0.0',
       environment: process.env.NODE_ENV || 'development',
+      /** Alignement audit roadmap (affichage produit / apps) */
+      roadmap: {
+        /** Toujours Render pour ce dépôt (audit) — ne pas utiliser d’autre nom d’hébergeur ici. */
+        backend_deployment: AUDIT_BACKEND_HOSTING,
+        pwa_domain: 'https://afri-wonder.app',
+        beta_max_users: Number.isFinite(betaCap) && betaCap > 0 ? betaCap : 500,
+        creator_partners_target: Number.isFinite(creatorTarget) && creatorTarget > 0 ? creatorTarget : 100,
+        pilot_countries: pilots.length ? pilots : ['SN', 'CI', 'ML'],
+        seed_round_target_usd: { min: 500_000, max: 2_000_000 },
+      },
+      /** Phases 1–4 (texte officiel audit) — même contenu que docs/VISION_ET_ARCHITECTURE_CIBLE.md §10 */
+      audit_roadmap: AUDIT_ROADMAP_2026,
+      /** Évite d’interpréter la roadmap comme un certificat de complétion ; rappelle Render + DATABASE_URL */
+      audit_roadmap_meta: {
+        disclaimer_fr: AUDIT_ROADMAP_DISCLAIMER_FR,
+        backend_hosting: AUDIT_BACKEND_HOSTING,
+        database_env_var: AUDIT_DATABASE_ENV_VAR,
+      },
+      /** Booléens : ce qui est dans le dépôt vs actions manuelles — voir aussi `npm run verify:audit` */
+      audit_repo_completion: AUDIT_REPO_COMPLETION,
     },
   });
 });

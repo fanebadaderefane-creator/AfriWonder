@@ -4,6 +4,9 @@ import { param } from '../utils/params.js';
 import courseService from '../services/course.service.js';
 import courseProviderService from '../services/courseProvider.service.js';
 
+import { validateBody } from '../utils/zodValidation.js';
+import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+
 const router = Router();
 
 // ========== Prestataire Formations (Devenir formateur + admin AfriWonder) ==========
@@ -18,7 +21,7 @@ router.get('/provider/me', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/courses/provider/register
-router.post('/provider/register', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/provider/register', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const b = req.body;
@@ -59,7 +62,7 @@ router.get('/provider/admin/pending', authenticate, async (req: AuthRequest, res
 });
 
 // POST /api/courses/provider/admin/:id/approve
-router.post('/provider/admin/:id/approve', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/provider/admin/:id/approve', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
     if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
@@ -74,7 +77,7 @@ router.post('/provider/admin/:id/approve', authenticate, async (req: AuthRequest
 });
 
 // POST /api/courses/provider/admin/:id/reject
-router.post('/provider/admin/:id/reject', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/provider/admin/:id/reject', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const user = req.user!;
     if (!['super_admin', 'admin', 'moderation_admin'].includes(user.role ?? '')) {
@@ -199,7 +202,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/courses - Créer un cours
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
     const { title, description, thumbnailUrl, trailerUrl, price, category, level, durationHours, currency, language, certificateEnabled } = req.body;
@@ -228,7 +231,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/courses/:id/enroll - S'inscrire à un cours
-router.post('/:id/enroll', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/enroll', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const courseId = param(req, 'id');
     const userId = req.user!.id;
@@ -247,7 +250,7 @@ router.post('/:id/enroll', authenticate, async (req: AuthRequest, res, next) => 
 });
 
 // POST /api/courses/:id/wishlist - Ajouter à la wishlist
-router.post('/:id/wishlist', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/wishlist', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const courseId = param(req, 'id');
     const userId = req.user!.id;
@@ -271,7 +274,7 @@ router.delete('/:id/wishlist', authenticate, async (req: AuthRequest, res, next)
 });
 
 // POST /api/courses/:id/reviews - Déposer un avis
-router.post('/:id/reviews', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/reviews', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const courseId = param(req, 'id');
     const userId = req.user!.id;
@@ -287,7 +290,7 @@ router.post('/:id/reviews', authenticate, async (req: AuthRequest, res, next) =>
 });
 
 // PUT /api/courses/enrollments/:id/progress - Mettre à jour la progression (pour compat)
-router.put('/enrollments/:id/progress', authenticate, async (req: AuthRequest, res, next) => {
+router.put('/enrollments/:id/progress', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const enrollmentId = param(req, 'id');
     const progress = Number(req.body.progress);
@@ -302,7 +305,7 @@ router.put('/enrollments/:id/progress', authenticate, async (req: AuthRequest, r
 });
 
 // POST /api/courses/enrollments/:id/lessons/:lessonId/complete - Marquer une leçon comme complétée
-router.post('/enrollments/:id/lessons/:lessonId/complete', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/enrollments/:id/lessons/:lessonId/complete', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const enrollmentId = param(req, 'id');
     const lessonId = param(req, 'lessonId');
@@ -330,7 +333,7 @@ router.get('/enrollments/:id/lessons/:lessonId/stream', authenticate, async (req
 });
 
 // POST /api/courses/enrollments/:id/confirm - Confirmer le paiement (webhook)
-router.post('/enrollments/:id/confirm', async (req, res, next) => {
+router.post('/enrollments/:id/confirm', validateBody(jsonObjectBodySchema), async (req, res, next) => {
   try {
     const enrollmentId = param(req, 'id');
     const enrollment = await courseService.confirmCoursePayment(enrollmentId);
