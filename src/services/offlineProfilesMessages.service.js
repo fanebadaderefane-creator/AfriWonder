@@ -1,4 +1,5 @@
 import { openDB } from 'idb';
+import { toast } from 'sonner';
 
 const DB_NAME = 'afriwonder-profiles-messages-kv';
 const STORE = 'kv';
@@ -170,6 +171,51 @@ export async function removeOutboxItem(userId, itemId) {
     (item) => String(item?.id || item?.tempId) !== String(itemId)
   );
   await setOutbox(userId, nextItems);
+}
+
+export async function updateOutboxItem(userId, itemId, patch = {}) {
+  if (!userId || !itemId || !patch || typeof patch !== 'object') return;
+  const current = await getOutbox(userId);
+  const nextItems = (current?.items || []).map((item) =>
+    String(item?.id || item?.tempId || item?._outboxId) === String(itemId)
+      ? { ...item, ...patch }
+      : item
+  );
+  await setOutbox(userId, nextItems);
+}
+
+export async function processOutbox(userId, sendFn) {
+  if (!userId || typeof sendFn !== 'function') return;
+  const outbox = await getOutbox(userId);
+  const items = outbox?.items || [];
+  if (!items.length) return;
+
+  for (const item of items) {
+    const itemId = item?.id || item?.tempId || item?._outboxId;
+    if (!itemId) continue;
+
+    const retries = item?.retries ?? 0;
+    const nextRetryAt = item?.lastAttempt
+      ? item.lastAttempt + Math.min(30000 * Math.pow(2, retries), 300000)
+      : 0;
+
+    if (Date.now() < nextRetryAt) continue;
+
+    try {
+      await sendFn(item);
+      await removeOutboxItem(userId, itemId);
+    } catch {
+      if (retries >= 5) {
+        await removeOutboxItem(userId, itemId);
+        toast.error('Message non livré après plusieurs tentatives');
+      } else {
+        await updateOutboxItem(userId, itemId, {
+          retries: retries + 1,
+          lastAttempt: Date.now(),
+        });
+      }
+    }
+  }
 }
 
 export async function setSyncState(scope, id, value) {

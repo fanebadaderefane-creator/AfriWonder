@@ -4,8 +4,10 @@ import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import prisma from '../config/database.js';
 import liveService from '../services/live.service.js';
+import { startLiveRecording, stopLiveRecording } from '../services/liveRecording.service.js';
 import { LIVE_CATEGORIES, LIVE_LANGUAGES, LIVE_AGE_RESTRICTIONS } from '../config/liveCategories.js';
 import { validateBody } from '../utils/zodValidation.js';
+import { logger } from '../utils/logger.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 import {
   liveChapterSchema,
@@ -248,6 +250,11 @@ router.post('/start', authenticate, validateBody(liveStartSchema), async (req: A
       delay_seconds,
       max_quality,
     });
+    if (stream.status === 'live') {
+      startLiveRecording(stream.id).catch((err) =>
+        logger.warn('Recording start failed (non-bloquant)', { err: err instanceof Error ? err.message : String(err) })
+      );
+    }
     res.json({ success: true, data: stream });
   } catch (error: any) {
     next(error);
@@ -258,6 +265,11 @@ router.post('/start', authenticate, validateBody(liveStartSchema), async (req: A
 router.post('/:id/start-scheduled', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const stream = await liveService.startScheduledStream(param(req, 'id'), req.user!.id);
+    if (stream?.status === 'live') {
+      startLiveRecording(stream.id).catch((err) =>
+        logger.warn('Recording start failed (non-bloquant)', { err: err instanceof Error ? err.message : String(err) })
+      );
+    }
     res.json({ success: true, data: stream });
   } catch (error: any) {
     next(error);
@@ -322,9 +334,10 @@ router.post('/:id/heartbeat', authenticate, validateBody(liveSessionBodySchema),
 // POST /api/live/:id/end (body.replay_url optionnel pour D)
 router.post('/:id/end', authenticate, validateBody(liveEndSchema), async (req: AuthRequest, res, next) => {
   try {
-    const replay_url = req.body?.replay_url;
-    const stream = await liveService.endStream(param(req, 'id'), req.user!.id, { replay_url });
-    res.json({ success: true, data: stream });
+    const streamId = param(req, 'id');
+    const replayUrl = (await stopLiveRecording(streamId)) ?? req.body?.replay_url ?? null;
+    const stream = await liveService.endStream(streamId, req.user!.id, replayUrl ? { replay_url: replayUrl } : undefined);
+    res.json({ success: true, data: replayUrl ? { ...stream, replay_url: replayUrl } : stream });
   } catch (error: any) {
     next(error);
   }

@@ -1,9 +1,14 @@
 User-agent: *
-
 Allow: /
-
 Disallow: /api/
 Disallow: /admin/
-Disallow: /static/
+Crawl-delay: 10
 
+# Google
+User-agent: Googlebot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+
+# Sitemap
 Sitemap: https://afriwonder.com/sitemap.xml

@@ -166,23 +166,21 @@ export class StripeIntegration {
       case 'charge.refunded':
         return await this.handleRefund(data.object);
       default:
-        console.log('Unhandled webhook event:', type);
+        // Unhandled event type — no action required
+        break;
     }
   }
 
-  static async handlePaymentSuccess(paymentIntent) {
-    // Créer une transaction réussie
-    console.log('Payment succeeded:', paymentIntent.id);
+  static async handlePaymentSuccess(_paymentIntent) {
+    // TODO: créer une transaction réussie en base
   }
 
-  static async handlePaymentFailed(paymentIntent) {
-    // Marquer la transaction comme échouée
-    console.log('Payment failed:', paymentIntent.id);
+  static async handlePaymentFailed(_paymentIntent) {
+    // TODO: marquer la transaction comme échouée en base
   }
 
-  static async handleRefund(charge) {
-    // Créer un remboursement
-    console.log('Refund processed:', charge.id);
+  static async handleRefund(_charge) {
+    // TODO: enregistrer le remboursement en base
   }
 }
 

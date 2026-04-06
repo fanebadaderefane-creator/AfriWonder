@@ -222,7 +222,7 @@ export default function ArticleDetails() {
           className="w-full h-64 object-cover"
           loading="eager"
           decoding="async"
-          fetchPriority="high"
+          fetchpriority="high"
         />
       )}
 

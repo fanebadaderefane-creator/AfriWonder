@@ -17,8 +17,10 @@ export const queryClientInstance = new QueryClient({
         if (status === 401 || status === 403 || status === 404) return false;
         return true;
       },
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 5000),
-      staleTime: 60 * 1000,
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+      // Audits Complet / Senior v2 — connexions intermittentes (3G, retour app)
+      staleTime: 5 * 60 * 1000,
+      networkMode: 'offlineFirst',
     },
     mutations: {
       retry: false,

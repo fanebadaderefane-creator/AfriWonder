@@ -5,8 +5,9 @@ import {
   isValidThumbnailUrl,
 } from '@/lib/utils';
 
+// La déduplication est faite côté serveur (seenIds dans feed.service.ts).
+// Cette fonction fait uniquement le mapping item → { type: 'video', video }.
 export function extractMainFeedVideoItems(feedItems, { userHydrated = false, log = false } = {}) {
-  const seen = new Set();
   const out = [];
 
   for (const item of feedItems || []) {
@@ -31,9 +32,6 @@ export function extractMainFeedVideoItems(feedItems, { userHydrated = false, log
       continue;
     }
 
-    const key = String(video.id);
-    if (seen.has(key)) continue;
-    seen.add(key);
     out.push({ type: 'video', video });
   }
 

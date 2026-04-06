@@ -54,7 +54,7 @@ export default function AfriWonderLogo({ size = 'md', className = '', priority =
           }}
         loading={priority ? 'eager' : 'lazy'}
         decoding="async"
-        fetchPriority={priority ? 'high' : undefined}
+        fetchpriority={priority ? 'high' : undefined}
           onError={() => setImageError(true)}
       />
       ) : (

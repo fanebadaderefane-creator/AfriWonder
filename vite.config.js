@@ -13,12 +13,7 @@ import { createRequire } from 'module'
 // =============================================================================
 
 // PWA optionnel : si vite-plugin-pwa n'est pas installé, le dev server démarre quand même
-const require = createRequire(import.meta.url)
-let VitePWA = null
-try {
-  VitePWA = require('vite-plugin-pwa').VitePWA
-} catch (_) {}
-
+import { VitePWA } from 'vite-plugin-pwa'
 let viteCompression = null
 try {
   viteCompression = require('vite-plugin-compression')
@@ -82,87 +77,26 @@ export default defineConfig({
     react({
       jsxRuntime: 'automatic',
     }),
-    ...(VitePWA ? [VitePWA({
-      /** Aligné avec sw-custom.js : pas de skipWaiting tant que l’utilisateur n’a pas confirmé (PWAUpdateToast). */
+    VitePWA({
+      // Pas de skipWaiting automatique : l'utilisateur confirme via PWAUpdateToast
       registerType: 'prompt',
       injectRegister: null,
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw-custom.js',
       injectManifest: {
-        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4 MiB (bundle ~3.4 MiB)
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4 MiB
       },
-      manifest: {
-        id: '/',
-        name: 'AfriWonder - Plateforme Sociale Africaine',
-        short_name: 'AfriWonder',
-        description: 'Plateforme de partage vidéo, marketplace et services pour l\'Afrique',
-        start_url: '/',
-        display: 'standalone',
-        display_override: ['standalone', 'minimal-ui'],
-        background_color: '#000000',
-        // Charte demandée par le client projet: conserver le bleu AfriWonder (pas orange)
-        theme_color: '#2563eb',
-        orientation: 'portrait',
-        scope: '/',
-        icons: [
-          { src: '/icon-72.png', sizes: '72x72', type: 'image/png', purpose: 'any' },
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-        ],
-        shortcuts: [
-          {
-            name: 'Créer une vidéo',
-            short_name: 'Créer',
-            description: 'Ouvrir directement l’écran de création',
-            url: '/Create',
-            icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }],
-          },
-          {
-            name: 'Messages',
-            short_name: 'Inbox',
-            description: 'Accéder rapidement aux messages',
-            url: '/Inbox',
-            icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }],
-          },
-          {
-            name: 'Mon profil',
-            short_name: 'Profil',
-            description: 'Ouvrir mon profil',
-            url: '/Profile',
-            icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }],
-          },
-        ],
-        share_target: {
-          action: '/share-target',
-          method: 'POST',
-          enctype: 'multipart/form-data',
-          params: {
-            title: 'title',
-            text: 'text',
-            url: 'url',
-            files: [
-              {
-                name: 'files',
-                accept: ['image/*', 'video/*'],
-              },
-            ],
-          },
-        },
-        categories: ['social', 'entertainment', 'shopping'],
-        lang: 'fr',
-        dir: 'ltr',
-      },
+      // Pas de manifest inline - on utilise public/manifest.json (source unique de verite)
+      manifest: false,
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
       devOptions: {
-        enabled: false,
+        enabled: true,
       },
-    })] : []),
+    }),
     ...(viteCompression
       ? [
           viteCompression({
@@ -183,39 +117,73 @@ export default defineConfig({
   // PWA Configuration
   build: {
     emptyOutDir: true,
+    // Cible large : Android 5+, iOS 12+, Chrome 80+, Firefox 75+
+    // Évite les erreurs syntax ES2020+ sur vieux mobiles africains (mid/low-range)
+    target: ['es2017', 'edge88', 'firefox78', 'chrome80', 'safari13'],
+    // Terser : minification plus agressive qu'esbuild (mangle + drop_console en prod)
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,   // Supprime tous les console.* en production
+        drop_debugger: true,
+        pure_funcs: ['console.log', 'console.info', 'console.debug'],
+        passes: 2,            // Double-passe pour réduction max
+      },
+      mangle: { safari10: true },
+      format: { comments: false },
+    },
+    cssCodeSplit: true,
     rollupOptions: {
       output: {
+        // Nommage prévisible pour le cache navigateur
+        chunkFileNames: 'chunks/[name]-[hash].js',
+        entryFileNames: 'js/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
         manualChunks: (id) => {
-          if (id.includes('node_modules')) {
-            if (id.includes('recharts')) return 'recharts-vendor';
-            if (id.includes('@radix-ui')) return 'ui-vendor';
-            if (id.includes('@tanstack/react-query')) return 'query-vendor';
-            if (id.includes('framer-motion')) return 'framer-vendor';
-            // Keep react core in its own chunk; avoid matching unrelated packages like @radix-ui/react-*
-            if (
-              id.includes('/node_modules/react/') ||
-              id.includes('/node_modules/react-dom/') ||
-              id.includes('/node_modules/react-router/') ||
-              id.includes('/node_modules/react-router-dom/')
-            ) {
-              return 'react-vendor';
-            }
-            if (id.includes('hls.js')) return 'video-vendor';
-            if (id.includes('agora-rtc-sdk')) return 'agora-vendor';
-            if (id.includes('/three/') || id.includes('node_modules/three')) return 'three-vendor';
-            if (id.includes('@stripe')) return 'stripe-vendor';
-            if (id.includes('axios')) return 'axios-vendor';
-            if (id.includes('lucide-react')) return 'lucide-vendor';
-            if (id.includes('dompurify')) return 'dompurify-vendor';
-            if (id.includes('react-markdown')) return 'markdown-vendor';
-            if (id.includes('socket.io-client')) return 'socket-vendor';
-            if (id.includes('embla-carousel')) return 'embla-vendor';
-            if (id.includes('@hello-pangea/dnd')) return 'dnd-vendor';
-          }
+          if (!id.includes('node_modules')) return;
+
+          // ── TIER 1 : Cœur React (chargé à chaque page) ──────────────────
+          if (
+            id.includes('/node_modules/react/') ||
+            id.includes('/node_modules/react-dom/') ||
+            id.includes('/node_modules/react-router/') ||
+            id.includes('/node_modules/react-router-dom/')
+          ) return 'react-core';
+
+          // ── TIER 2 : Data layer (utilisé par toute l'app) ────────────────
+          if (id.includes('@tanstack/react-query')) return 'query-vendor';
+          if (id.includes('socket.io-client'))      return 'socket-vendor';
+          if (id.includes('axios'))                  return 'axios-vendor';
+
+          // ── TIER 3 : UI shell (composants du layout principal) ────────────
+          if (id.includes('@radix-ui'))              return 'ui-vendor';
+          if (id.includes('framer-motion'))          return 'framer-vendor';
+          if (id.includes('lucide-react'))           return 'lucide-vendor';
+
+          // ── TIER 4 : Features lazy (chargées à la demande) ───────────────
+          if (id.includes('recharts'))               return 'recharts-vendor'; // Analytics
+          if (id.includes('hls.js'))                 return 'video-vendor';    // Feed/Live
+          if (id.includes('agora-rtc-sdk'))          return 'agora-vendor';    // Appels
+          if (id.includes('@stripe'))                return 'stripe-vendor';   // Checkout
+          if (id.includes('/three/') || id.includes('node_modules/three')) return 'three-vendor';
+          if (id.includes('leaflet') || id.includes('react-leaflet')) return 'leaflet-vendor';
+          if (id.includes('@hello-pangea/dnd'))      return 'dnd-vendor';
+
+          // ── TIER 5 : Utilitaires (regroupés pour limiter les requêtes HTTP) ─
+          if (id.includes('dompurify'))              return 'utils-vendor';
+          if (id.includes('react-markdown'))         return 'utils-vendor';
+          if (id.includes('embla-carousel'))         return 'utils-vendor';
+          if (id.includes('date-fns'))               return 'utils-vendor';
+          if (id.includes('papaparse'))              return 'utils-vendor';
+          if (id.includes('qrcode'))                 return 'utils-vendor';
+          if (id.includes('canvas-confetti'))        return 'utils-vendor';
+          if (id.includes('sonner'))                 return 'utils-vendor';
+          if (id.includes('react-window'))           return 'utils-vendor';
+          if (id.includes('zod'))                    return 'utils-vendor';
         },
       },
     },
-    chunkSizeWarningLimit: 200,
+    chunkSizeWarningLimit: 400,
     commonjsOptions: {
       include: [/node_modules/],
       transformMixedEsModules: true,
@@ -237,7 +205,7 @@ export default defineConfig({
       // Empêche le navigateur de réutiliser des chunks dev potentiellement corrompus.
       'Cache-Control': 'no-store',
     },
-    // 127.0.0.1 (pas localhost) : sur Windows, localhost → ::1 en IPv6 alors que l’API écoute en IPv4 (0.0.0.0) → ECONNREFUSED au proxy.
+    // 127.0.0.1 (pas localhost) : sur Windows, localhost → ::1 en IPv6 alors que l'API écoute en IPv4 (0.0.0.0) → ECONNREFUSED au proxy.
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:3000',

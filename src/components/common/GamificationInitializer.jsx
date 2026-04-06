@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { api } from '@/api/expressClient';
-import GamificationService from './GamificationService';
+import { checkAndAwardBadges } from './GamificationService';
 import PushNotificationService from './PushNotificationService';
 
 /**
@@ -28,41 +28,21 @@ export const useGamificationInit = (userId) => {
         // Initialize notification preferences
         await PushNotificationService.createNotificationPreference(userId);
 
-        // Request push notification permission
-        if ('Notification' in window) {
+        // PWA : enregistrer le SW + abonnement Web Push (nécessaire pour notifier hors de l’app)
+        if ('Notification' in window && 'serviceWorker' in navigator) {
           await PushNotificationService.registerServiceWorker();
+          try {
+            await PushNotificationService.subscribeToPushNotifications(userId);
+          } catch {
+            // iOS / politique navigateur : parfois sans geste utilisateur ; NotificationSettings permet de réessayer
+          }
         }
 
-        // Check for badge eligibility
-        const userStats = await GamificationService.getUserStats(userId);
-        
-        // First video badge
-        if (userStats.videos >= 1) {
-          await GamificationService.checkAndAwardBadge(userId, 'first_video');
-        }
+        // Badges alignés sur badgeDefinitions (première vidéo, 10 vidéos, paliers followers, créateur, etc.)
+        await checkAndAwardBadges(userId);
 
-        // 100 followers badge
-        if (userStats.followers >= 100) {
-          await GamificationService.checkAndAwardBadge(userId, '100_followers');
-        }
-
-        // Content creator badge
-        if (userStats.videos >= 10) {
-          await GamificationService.checkAndAwardBadge(userId, 'content_creator');
-        }
-
-        // Video star badge
-        if (userStats.totalLikes >= 10000) {
-          await GamificationService.checkAndAwardBadge(userId, 'video_star');
-        }
-
-        // Community hero badge
-        if (userStats.totalComments >= 500) {
-          await GamificationService.checkAndAwardBadge(userId, 'community_hero');
-        }
-
-      } catch (_error) {
-        console.error('Erreur initialisation gamification:', error);
+      } catch (err) {
+        console.error('Erreur initialisation gamification:', err);
       }
     };
 

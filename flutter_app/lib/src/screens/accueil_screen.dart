@@ -26,6 +26,7 @@ class AccueilScreen extends StatefulWidget {
   final List<Map<String, dynamic>> feed;
   final PageController pageController;
   final int activeIndex;
+
   /// 0 = Pour toi, 1 = Abonnements
   final int activeTab;
   final int bottomNavIndex;
@@ -71,7 +72,9 @@ class _AccueilScreenState extends State<AccueilScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final greeting = (widget.user['full_name'] ?? widget.user['username'] ?? '').toString().trim();
+    final greeting = (widget.user['full_name'] ?? widget.user['username'] ?? '')
+        .toString()
+        .trim();
 
     return Scaffold(
       extendBody: true,
@@ -95,19 +98,24 @@ class _AccueilScreenState extends State<AccueilScreen> {
                   PageView.builder(
                     controller: widget.pageController,
                     scrollDirection: Axis.vertical,
-                    physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                    physics: const BouncingScrollPhysics(
+                        parent: AlwaysScrollableScrollPhysics()),
                     itemCount: widget.feed.length,
                     itemBuilder: (context, index) {
                       final video = widget.feed[index];
                       final id = (video['id'] ?? index).toString();
-                      final likes = (video['_localLikes'] is num) ? (video['_localLikes'] as num).toInt() : 0;
+                      final likes = (video['_localLikes'] is num)
+                          ? (video['_localLikes'] as num).toInt()
+                          : 0;
                       final liked = video['_localIsLiked'] == true;
                       final followed = video['_localIsFollowing'] == true;
-                      final comments =
-                          (video['comments_count'] is num) ? (video['comments_count'] as num).toInt() : 0;
+                      final comments = (video['comments_count'] is num)
+                          ? (video['comments_count'] as num).toInt()
+                          : 0;
 
                       final isActive = index == widget.activeIndex;
-                      final shouldPreload = (index - widget.activeIndex).abs() <= 1;
+                      final shouldPreload =
+                          (index - widget.activeIndex).abs() <= 1;
 
                       return VideoSlide(
                         key: ValueKey('slide-$id'),
@@ -190,7 +198,8 @@ class _AccueilScreenState extends State<AccueilScreen> {
                       onPressed: widget.onNotificationsTap,
                     ),
                     PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+                      icon: const Icon(Icons.more_vert_rounded,
+                          color: Colors.white),
                       tooltip: 'Plus',
                       color: const Color(0xFF111113),
                       onSelected: (value) {
@@ -199,7 +208,8 @@ class _AccueilScreenState extends State<AccueilScreen> {
                       itemBuilder: (context) => [
                         const PopupMenuItem(
                           value: 'logout',
-                          child: Text('Déconnexion', style: TextStyle(color: Colors.white)),
+                          child: Text('Déconnexion',
+                              style: TextStyle(color: Colors.white)),
                         ),
                       ],
                     ),
@@ -239,7 +249,9 @@ class _AccueilScreenState extends State<AccueilScreen> {
                       icon: Icon(
                         Icons.home_rounded,
                         size: 26,
-                        color: widget.bottomNavIndex == 0 ? Colors.white : Colors.white54,
+                        color: widget.bottomNavIndex == 0
+                            ? Colors.white
+                            : Colors.white54,
                       ),
                       label: 'Accueil',
                     ),
@@ -247,7 +259,9 @@ class _AccueilScreenState extends State<AccueilScreen> {
                       icon: Icon(
                         Icons.explore_rounded,
                         size: 26,
-                        color: widget.bottomNavIndex == 1 ? Colors.white : Colors.white54,
+                        color: widget.bottomNavIndex == 1
+                            ? Colors.white
+                            : Colors.white54,
                       ),
                       label: 'Découvrir',
                     ),
@@ -260,7 +274,8 @@ class _AccueilScreenState extends State<AccueilScreen> {
                           borderRadius: BorderRadius.circular(24),
                           border: Border.all(color: Colors.white10, width: 1),
                         ),
-                        child: const Icon(Icons.add_rounded, size: 28, color: Colors.white),
+                        child: const Icon(Icons.add_rounded,
+                            size: 28, color: Colors.white),
                       ),
                       label: 'Créer',
                     ),
@@ -268,7 +283,9 @@ class _AccueilScreenState extends State<AccueilScreen> {
                       icon: Icon(
                         Icons.message_rounded,
                         size: 26,
-                        color: widget.bottomNavIndex == 3 ? Colors.white : Colors.white54,
+                        color: widget.bottomNavIndex == 3
+                            ? Colors.white
+                            : Colors.white54,
                       ),
                       label: 'Messages',
                     ),
@@ -276,7 +293,9 @@ class _AccueilScreenState extends State<AccueilScreen> {
                       icon: Icon(
                         Icons.person_rounded,
                         size: 26,
-                        color: widget.bottomNavIndex == 4 ? Colors.white : Colors.white54,
+                        color: widget.bottomNavIndex == 4
+                            ? Colors.white
+                            : Colors.white54,
                       ),
                       label: 'Profil',
                     ),
@@ -355,7 +374,8 @@ class _AccueilEmptyState extends StatelessWidget {
           'Suivez des créateurs pour voir leurs nouvelles vidéos ici, ou repassez sur « Pour toi » pour le fil global.';
     } else {
       title = 'Aucune vidéo pour l’instant';
-      subtitle = 'Tirez pour actualiser ou vérifiez que le serveur renvoie bien le feed.';
+      subtitle =
+          'Tirez pour actualiser ou vérifiez que le serveur renvoie bien le feed.';
     }
 
     final child = Padding(
@@ -364,7 +384,9 @@ class _AccueilEmptyState extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            activeTab == 1 ? Icons.people_outline_rounded : Icons.play_circle_outline_rounded,
+            activeTab == 1
+                ? Icons.people_outline_rounded
+                : Icons.play_circle_outline_rounded,
             size: 56,
             color: Colors.white38,
           ),
@@ -379,13 +401,15 @@ class _AccueilEmptyState extends StatelessWidget {
           Text(
             title,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
+            style: const TextStyle(
+                color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 12),
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white60, fontSize: 14, height: 1.35),
+            style: const TextStyle(
+                color: Colors.white60, fontSize: 14, height: 1.35),
           ),
           const SizedBox(height: 28),
           FilledButton.icon(

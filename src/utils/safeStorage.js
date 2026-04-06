@@ -36,6 +36,7 @@ export function removeItem(key) {
   return false;
 }
 
+/** @template T @param {string} key @param {T} [fallback] @returns {T | null} */
 export function getJSON(key, fallback = null) {
   const raw = getItem(key);
   if (raw == null) return fallback;

@@ -39,4 +39,3 @@ class PushService {
     }
   }
 }
-

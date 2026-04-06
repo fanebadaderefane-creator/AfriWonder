@@ -1,6 +1,6 @@
-// AfriWonder full review PR - CodeRabbit
 // @ts-nocheck
 /* cspell:disable-file */
+// AfriWonder full review PR - CodeRabbit
 /**
  * VideoCard — full-screen feed player. Single active item, poster until first frame, HLS/MP4.
  */
@@ -2105,7 +2105,7 @@ function VideoCardContent({
             }}
             alt=""
             decoding="async"
-            fetchPriority={isActive ? 'high' : 'low'}
+            fetchpriority={isActive ? 'high' : 'low'}
             onError={() => setPosterDisplayUrl(VIDEO_PLACEHOLDER_IMG)}
           />
         )}

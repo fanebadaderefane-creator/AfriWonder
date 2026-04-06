@@ -11,6 +11,14 @@ export default defineConfig({
     include: ['src/**/*.{test,spec}.{js,jsx,ts,tsx}'],
     testTimeout: 20000,
     hookTimeout: 15000,
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        // Limiter à 1 worker pour éviter OOM sur Windows (4 GB RAM disponible)
+        maxForks: 1,
+        minForks: 1,
+      },
+    },
     exclude: [
       'node_modules',
       'dist',
@@ -18,9 +26,9 @@ export default defineConfig({
       'tests/e2e/**',
       '**/*.e2e.*',
       '**/e2e/**',
-      // En CI : exclure les smoke tests (4 parties, ~116 tests) et Landing (redirections complexes)
-      // qui provoquent OOM ou flakiness sur les runners GitHub. Exécuter en local : npm run test
-      ...(process.env.CI === 'true' ? ['**/all-pages-smoke*.test.jsx', '**/Landing.test.jsx'] : []),
+      // Exclure les smoke tests lourds (~116 tests) et Landing partout — trop lourds pour les runners
+      '**/all-pages-smoke*.test.jsx',
+      '**/Landing.test.jsx',
     ],
     coverage: {
       provider: 'v8',

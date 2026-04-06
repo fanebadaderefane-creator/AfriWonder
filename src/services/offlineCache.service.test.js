@@ -57,7 +57,9 @@ describe('offlineCache.service', () => {
       global.fetch = () => Promise.reject(new Error('Network error'));
       const result = await downloadMedia({ id: '1', video_url: 'https://example.com/v.mp4' });
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Network error');
+      expect(result.error).toBe(
+        'Impossible de telecharger cette video. Source bloquee ou indisponible.'
+      );
       global.fetch = origFetch;
     });
     it('returns error when response not ok', async () => {
@@ -66,7 +68,9 @@ describe('offlineCache.service', () => {
       global.fetch = () => Promise.resolve({ ok: false, status: 404 });
       const result = await downloadMedia({ id: '1', video_url: 'https://example.com/v.mp4' });
       expect(result.success).toBe(false);
-      expect(result.error).toContain('HTTP');
+      expect(result.error).toBe(
+        'Impossible de telecharger cette video. Source bloquee ou indisponible.'
+      );
       global.fetch = origFetch;
     });
     it('returns success and calls addDownloadMeta when fetch and cache succeed', async () => {

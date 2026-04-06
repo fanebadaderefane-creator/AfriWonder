@@ -248,7 +248,8 @@ export default function LiveStreamPage() {
     queryKey: ['live', liveStream?.id],
     queryFn: () => api.live.getById(liveStream.id),
     enabled: !!liveStream?.id && step === 'streaming',
-    refetchInterval: 3000,
+    refetchInterval: false,
+    staleTime: Infinity,
   });
 
   // Récupérer les polls actifs (avec votes utilisateur si connecté)
@@ -256,7 +257,8 @@ export default function LiveStreamPage() {
     queryKey: ['live-polls', liveStream?.id, user?.id],
     queryFn: () => api.live.getPolls(liveStream.id),
     enabled: !!liveStream?.id && step === 'streaming',
-    refetchInterval: 5000,
+    refetchInterval: false,
+    staleTime: 60_000,
   });
 
   useEffect(() => {
@@ -277,6 +279,18 @@ export default function LiveStreamPage() {
   useLiveSocket({
     streamId: liveStream?.id,
     userId: user?.id,
+    onChat: (payload) => {
+      queryClient.setQueryData(['live', liveStream?.id], (prev) => {
+        if (!prev) return prev;
+        const existing = prev.chat_messages ?? [];
+        const next = [...existing, { ...payload, id: payload?.id ?? Date.now() + Math.random() }];
+        return {
+          ...prev,
+          chat_messages: next.length > 200 ? next.slice(-200) : next,
+          total_messages: (prev.total_messages ?? 0) + 1,
+        };
+      });
+    },
     onPollCreated: (poll) => {
       setPolls(prev => [...prev, {
         id: poll.id,
@@ -307,7 +321,7 @@ export default function LiveStreamPage() {
     },
   });
 
-  const { data: tokenData, isError: tokenError } = useQuery({
+  const { data: hostTokenData, isError: tokenError } = useQuery({
     queryKey: ['live-token', liveStream?.id, 'host'],
     queryFn: () => api.live.getStreamToken(liveStream.id, 'host'),
     enabled: !!liveStream?.id && step === 'streaming',
@@ -316,11 +330,56 @@ export default function LiveStreamPage() {
   const { data: agoraStatus } = useQuery({
     queryKey: ['live-agora-status'],
     queryFn: () => api.live.getAgoraStatus(),
-    enabled: step === 'streaming' && !!liveStream?.id && !!(tokenData && !tokenData?.appId),
+    enabled: step === 'streaming' && !!liveStream?.id && !!(hostTokenData && !hostTokenData?.appId),
   });
-  const agoraToken = tokenData?.token != null ? tokenData : null;
-  const { localVideoTrack, localAudioTrack, leave: leaveAgora, error: agoraError, audioOnlyMode, retry: retryAgora } = useAgoraHost(agoraToken, localVideoRef);
+  const agoraToken = hostTokenData?.token != null ? hostTokenData : null;
+  const { localVideoTrack, localAudioTrack: _localAudioTrack, leave: leaveAgora, error: agoraError, audioOnlyMode, retry: retryAgora } = useAgoraHost(agoraToken, localVideoRef);
   const hasAgora = !!(agoraToken?.appId && agoraToken?.channel);
+
+  useEffect(() => {
+    if (step !== 'streaming' || !('wakeLock' in navigator)) return;
+
+    let lock = null;
+    const acquire = async () => {
+      try {
+        lock = await navigator.wakeLock.request('screen');
+      } catch (_) {}
+    };
+    acquire();
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') acquire();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      lock?.release().catch(() => {});
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [step]);
+
+  useEffect(() => {
+    if (!liveStream?.id || step !== 'streaming') return;
+    let renewTimer = null;
+
+    const scheduleRenew = (expireTime) => {
+      const renewIn = (expireTime * 1000) - Date.now() - 2 * 60 * 1000;
+      if (renewIn <= 0) return;
+      renewTimer = window.setTimeout(async () => {
+        try {
+          await api.live.getStreamToken(liveStream.id, 'host');
+        } catch (e) {
+          console.warn('Host token renewal failed', e);
+        }
+      }, renewIn);
+    };
+
+    if (hostTokenData?.expireTime) scheduleRenew(hostTokenData.expireTime);
+
+    return () => {
+      if (renewTimer) window.clearTimeout(renewTimer);
+    };
+  }, [liveStream?.id, step, hostTokenData?.expireTime]);
 
   // Récupérer la référence au client Agora depuis le hook (nécessite modification du hook)
   // Pour l'instant, on va créer le client directement dans startScreenShare
@@ -441,8 +500,8 @@ export default function LiveStreamPage() {
       setIsScreenSharing(false);
     }
   };
-  const agoraDiagnostic = !hasAgora && step === 'streaming'
-    ? (tokenError ? 'Backend inaccessible. Lancez : cd backend && npm run dev' : agoraStatus?.message || (tokenData && !tokenData?.appId ? 'Redémarrez le backend (cd backend && npm run dev) après avoir ajouté AGORA_APP_ID et AGORA_APP_CERTIFICATE dans backend/.env' : 'Configurez Agora (backend) pour le flux vidéo réel'))
+const agoraDiagnostic = !hasAgora && step === 'streaming'
+    ? (tokenError ? 'Backend inaccessible. Lancez : cd backend && npm run dev' : agoraStatus?.message || (hostTokenData && !hostTokenData?.appId ? 'Redémarrez le backend (cd backend && npm run dev) après avoir ajouté AGORA_APP_ID et AGORA_APP_CERTIFICATE dans backend/.env' : 'Configurez Agora (backend) pour le flux vidéo réel'))
     : '';
 
   useEffect(() => {
@@ -514,7 +573,7 @@ export default function LiveStreamPage() {
     mutationFn: () => {
       const message = newComment.trim();
       // Détecter si c'est une question (contient "?")
-      const isQuestion = message.includes('?');
+      const _isQuestion = message.includes('?');
       return api.live.sendChatMessage(liveStream?.id, message);
     },
     onSuccess: () => {

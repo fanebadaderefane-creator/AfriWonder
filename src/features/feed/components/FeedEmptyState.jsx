@@ -12,7 +12,7 @@ export default function FeedEmptyState({
   description,
   actionLabel,
   onAction,
-  className,
+  className = undefined,
 }) {
   return (
     <div

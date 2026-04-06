@@ -8,6 +8,7 @@ export default {
   transform: {
     '^.+\\.ts$': ['ts-jest', {
       useESM: true,
+      isolatedModules: true,
       tsconfig: {
         rootDir: '.',
         strict: false,
@@ -15,7 +16,6 @@ export default {
         noUnusedParameters: false,
         skipLibCheck: true,
       },
-      // isolatedModules maintenant dans tsconfig.json
     }],
   },
   testMatch: ['**/__tests__/**/*.test.ts'],
@@ -40,13 +40,14 @@ export default {
   setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],
   testTimeout: 30000,
   maxWorkers: 1,
-  // Seuils alignés sur couverture actuelle (~31 %). Cible audit long terme ~80 % — remonter progressivement.
+  // Seuils progressifs vers 80 % — raised from 30 % after auth + live + messages tests added.
+  // Cible long terme : 80 % une fois les services Video, Payment et Notification couverts.
   coverageThreshold: {
     global: {
-      statements: 30,
-      branches: 20,
-      functions: 30,
-      lines: 30,
+      statements: 50,
+      branches: 30,
+      functions: 50,
+      lines: 50,
     },
   },
   // Désactivé en CI pour éviter exit code 1 quand des handles (ex. pool PG)

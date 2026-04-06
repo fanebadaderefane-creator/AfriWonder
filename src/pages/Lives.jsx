@@ -136,7 +136,7 @@ function LiveHeroCard({ live }) {
   if (!live) return null;
 
   return (
-    <Link to={`${createPageUrl('LiveView')}?id=${live.id}`}>
+    <Link to={`${createPageUrl('LiveViewer')}?id=${live.id}`}>
       <motion.div
         whileHover={{ scale: 1.01 }}
         className="relative aspect-[1.45] overflow-hidden rounded-[28px] bg-black/25 shadow-[0_28px_80px_rgba(0,0,0,0.5)] ring-1 ring-inset ring-white/[0.08]"
@@ -190,7 +190,7 @@ function LiveHeroCard({ live }) {
 
 function LiveStreamCard({ live, type = 'live' }) {
   return (
-    <Link to={`${createPageUrl('LiveView')}?id=${live.id}`}>
+    <Link to={`${createPageUrl('LiveViewer')}?id=${live.id}`}>
       <motion.div
         whileHover={{ scale: 1.01 }}
         className="overflow-hidden rounded-2xl bg-black/15 shadow-[0_20px_50px_rgba(0,0,0,0.35)] ring-1 ring-inset ring-white/[0.08]"

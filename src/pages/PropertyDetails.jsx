@@ -66,7 +66,7 @@ export default function PropertyDetails() {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 pb-24">
       <div className="sticky top-0 z-50 bg-black/40 backdrop-blur-md border-b border-white/10 flex items-center justify-between p-4">
         <Link to={createPageUrl('RealEstate')}>
-          <Button variant="ghost" size="icon" className="text-white"><ArrowLeft className="w-5 h-5" /></Button>
+          <Button variant="ghost" size="icon" className="text-white" aria-label="Retour"><ArrowLeft className="w-5 h-5" aria-hidden="true" /></Button>
         </Link>
         <h1 className="text-lg font-bold text-white truncate max-w-[180px]">Détail du bien</h1>
         <div className="w-10" />

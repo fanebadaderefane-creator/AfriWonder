@@ -12,9 +12,9 @@ describe('query-client', () => {
     expect(opts?.queries?.refetchOnWindowFocus).toBe(true);
     expect(typeof opts?.queries?.retry).toBe('function');
   });
-  it('has gcTime 24h for persistence', () => {
+  it('has gcTime 48h for persistence (offline usage)', () => {
     const opts = queryClientInstance.getDefaultOptions?.() ?? queryClientInstance.defaultOptions;
-    expect(opts?.queries?.gcTime).toBe(1000 * 60 * 60 * 24);
+    expect(opts?.queries?.gcTime).toBe(1000 * 60 * 60 * 48);
   });
   it('exports queryPersister with persistClient and restoreClient', () => {
     expect(queryPersister).toBeDefined();

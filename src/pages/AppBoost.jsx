@@ -9,6 +9,7 @@ import BottomNav from '@/components/navigation/BottomNav';
 import { BOOST_OPTIONS } from '@/data/monetizationMock';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 export default function AppBoost() {
   const location = useLocation();
@@ -31,8 +32,10 @@ export default function AppBoost() {
   }, [navigate]);
 
   const handlePurchaseBoost = (boostId) => {
-    // Ici on pourrait appeler l'API pour acheter le boost
-    alert(`Achat du boost "${BOOST_OPTIONS[boostId].name}" - ${BOOST_OPTIONS[boostId].priceDisplay}`);
+    const boost = BOOST_OPTIONS[boostId];
+    toast.info(`Paiement pour "${boost.name}" — ${boost.priceDisplay}`, {
+      description: 'Le module de paiement arrive prochainement.',
+    });
   };
 
   if (!user) {

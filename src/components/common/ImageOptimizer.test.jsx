@@ -27,7 +27,7 @@ describe('ImageOptimizer', () => {
     expect(screen.getByRole('img')).toHaveAttribute('loading', 'eager');
   });
 
-  it('appends q=40 for slow connection', async () => {
+  it('appends q=30 for very slow connection (2g)', async () => {
     Object.defineProperty(navigator, 'connection', {
       value: { effectiveType: '2g' },
       configurable: true,
@@ -35,7 +35,7 @@ describe('ImageOptimizer', () => {
     render(<OptimizedImage src="https://example.com/pic.jpg" alt="Pic" />);
     await vi.waitFor(() => {
       const img = screen.getByRole('img');
-      expect(img.getAttribute('src')).toMatch(/\?q=40|&q=40/);
+      expect(img.getAttribute('src')).toMatch(/\?q=30|&q=30/);
     });
   });
 

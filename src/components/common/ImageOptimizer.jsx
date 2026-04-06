@@ -79,7 +79,7 @@ export default function OptimizedImage({
       loading={priority ? 'eager' : 'lazy'}
       onLoad={() => setIsLoaded(true)}
       onError={() => setError(true)}
-      fetchPriority={priority ? 'high' : 'auto'}
+      fetchpriority={priority ? 'high' : 'auto'}
       decoding="async"
       // Réduit l'impact CLS sur le layout
       style={{ contentVisibility: 'auto' }}

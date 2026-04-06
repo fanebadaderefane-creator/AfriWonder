@@ -130,12 +130,15 @@ class _SearchScreenState extends State<SearchScreen> {
         ],
       ),
       body: _loading && _result == null
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFEC4899)))
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFFEC4899)))
           : _error != null
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+                    child: Text(_error!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white70)),
                   ),
                 )
               : _controller.text.trim().isEmpty
@@ -159,7 +162,10 @@ class _SearchScreenState extends State<SearchScreen> {
                         ...users.map(_userTile),
                         if (products.isNotEmpty) _sectionTitle('Produits'),
                         ...products.map(_productTile),
-                        if (!_loading && videos.isEmpty && users.isEmpty && products.isEmpty)
+                        if (!_loading &&
+                            videos.isEmpty &&
+                            users.isEmpty &&
+                            products.isEmpty)
                           const Padding(
                             padding: EdgeInsets.all(32),
                             child: Text(
@@ -193,9 +199,13 @@ class _SearchScreenState extends State<SearchScreen> {
     return ListTile(
       leading: const CircleAvatar(
         backgroundColor: Colors.white10,
-        child: Icon(Icons.play_circle_outline_rounded, color: Colors.pinkAccent),
+        child:
+            Icon(Icons.play_circle_outline_rounded, color: Colors.pinkAccent),
       ),
-      title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white)),
+      title: Text(title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: Colors.white)),
       subtitle: creator.isNotEmpty
           ? Text(creator, style: const TextStyle(color: Colors.white54))
           : null,
@@ -210,8 +220,11 @@ class _SearchScreenState extends State<SearchScreen> {
         backgroundColor: Colors.white10,
         child: Icon(Icons.person_rounded, color: Colors.white70),
       ),
-      title: Text(name.isNotEmpty ? name : handle, style: const TextStyle(color: Colors.white)),
-      subtitle: handle.isNotEmpty ? Text('@$handle', style: const TextStyle(color: Colors.white54)) : null,
+      title: Text(name.isNotEmpty ? name : handle,
+          style: const TextStyle(color: Colors.white)),
+      subtitle: handle.isNotEmpty
+          ? Text('@$handle', style: const TextStyle(color: Colors.white54))
+          : null,
     );
   }
 
@@ -225,8 +238,13 @@ class _SearchScreenState extends State<SearchScreen> {
         backgroundColor: Colors.white10,
         child: Icon(Icons.shopping_bag_outlined, color: Colors.blueAccent),
       ),
-      title: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white)),
-      subtitle: priceLabel != null ? Text(priceLabel, style: const TextStyle(color: Colors.white54)) : null,
+      title: Text(name,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: Colors.white)),
+      subtitle: priceLabel != null
+          ? Text(priceLabel, style: const TextStyle(color: Colors.white54))
+          : null,
     );
   }
 }

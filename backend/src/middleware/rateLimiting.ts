@@ -1,24 +1,15 @@
 import rateLimit from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
-import { createClient } from 'redis';
 import type { Request } from 'express';
 import jwt from 'jsonwebtoken';
 import { getAccessTokenFromRequest } from './auth.js';
-
-// Redis client pour rate limiting distribué
-const redisClient = process.env.REDIS_URL 
-  ? createClient({ url: process.env.REDIS_URL })
-  : null;
-
-if (redisClient) {
-  redisClient.connect().catch(console.error);
-}
+import redisClient from '../config/redis.js';
 
 const makeRedisStore = (prefix: string) =>
   redisClient
     ? new RedisStore({
         // Compatible with rate-limit-redis v4 typings
-        sendCommand: (...args: string[]) => redisClient.sendCommand(args),
+        sendCommand: (...args: string[]) => redisClient!.sendCommand(args),
         prefix,
       })
     : undefined;
@@ -30,18 +21,20 @@ const isWebhookPath = (path: string) =>
   path === '/api/payments/stripe/webhook' ||
   /^\/api\/payments\/[^/]+\/webhook/.test(path);
 
-// During local/dev E2E runs, avoid auth lockouts caused by intentional negative test cases.
+// Skip rate limiting only in test mode (Jest/smoke tests).
+// Dev and staging environments are intentionally NOT bypassed — a staging server running
+// NODE_ENV=development must still enforce limits to prevent brute-force attacks.
 const shouldSkipAuthLimiterForE2E = (req: any) => {
-  if (process.env.NODE_ENV !== 'production') return true;
+  if (process.env.NODE_ENV === 'test') return true;
   const explicitE2EHeader = String(req.headers?.['x-e2e-test'] || '').toLowerCase() === '1';
   const userAgent = String(req.headers?.['user-agent'] || '').toLowerCase();
   const playwrightClient = userAgent.includes('playwright');
   return explicitE2EHeader || playwrightClient;
 };
 
-/** Même logique E2E que l’auth : en dev pas de limite générale ; en prod header / Playwright uniquement. */
+/** Skip rate limiting only in test mode; dev/staging enforce limits normally. */
 const shouldSkipGeneralLimiterForE2E = (req: any) => {
-  if (process.env.NODE_ENV !== 'production') return true;
+  if (process.env.NODE_ENV === 'test') return true;
   const explicitE2EHeader = String(req.headers?.['x-e2e-test'] || '').toLowerCase() === '1';
   const userAgent = String(req.headers?.['user-agent'] || '').toLowerCase();
   return explicitE2EHeader || userAgent.includes('playwright');

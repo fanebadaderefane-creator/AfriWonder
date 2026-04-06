@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.afriwonder_mobile"
+    namespace = "com.afriwonder.mobile"
     compileSdk = flutter.compileSdkVersion
     // firebase_messaging et plugins récents exigent NDK 27 (voir message Gradle).
     ndkVersion = "27.0.12077973"
@@ -22,7 +22,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.afriwonder_mobile"
+        applicationId = "com.afriwonder.mobile"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // firebase_messaging exige minSdk >= 23 (Android 6+). Ton téléphone est API 28, OK.

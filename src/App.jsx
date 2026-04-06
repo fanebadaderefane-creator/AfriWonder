@@ -1,4 +1,5 @@
 // AfriWonder full review PR - CodeRabbit
+import { MotionConfig } from 'framer-motion';
 import { Toaster } from "@/components/ui/toaster"
 import { AfriWonderThemeProvider } from '@/lib/afriwonder-theme'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
@@ -24,11 +25,13 @@ import PageLoader from '@/components/common/PageLoader';
 import PageErrorFallback from '@/components/common/PageErrorFallback';
 import PWAUpdateToast from '@/components/pwa/PWAUpdateToast';
 import BrandedLaunchSplash from '@/components/common/BrandedLaunchSplash';
+import AppErrorBoundary from '@/components/common/AppErrorBoundary';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
-const CORE_ROUTE_PRELOADS = ['Discover', 'Profile', 'Inbox'];
+const CORE_ROUTE_PRELOADS = ['Home', 'Discover', 'Profile', 'Inbox'];
+const SECONDARY_ROUTE_PRELOADS = ['Marketplace', 'News', 'Wallet', 'Lives'];
 
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
@@ -256,15 +259,26 @@ function App() {
     };
   }, []);
 
+  // Préchargement secondaire — pages populaires après que l'app est prête
+  useEffect(() => {
+    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (!!connection?.saveData || ['slow-2g', '2g'].includes(connection?.effectiveType)) return;
+
+    const timer = window.setTimeout(() => {
+      preloadPages(SECONDARY_ROUTE_PRELOADS).catch(() => {});
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   return (
+    <MotionConfig reducedMotion="user">
     <AfriWonderThemeProvider defaultTheme="system" storageKey="afriwonder-theme">
       <AuthProvider>
         <PersistQueryClientProvider
           client={queryClientInstance}
-          persistOptions={{ persister: queryPersister, maxAge: 1000 * 60 * 60 * 48 }}
+          persistOptions={{ persister: queryPersister, maxAge: 1000 * 60 * 60 * 48, buster: 'v2-infinite' }}
         >
           <MessageSocketBridge>
-          <Suspense fallback={<PageLoader />}>
           <FeatureFlagsProvider>
             <PreferencesProvider>
               <AdminProvider>
@@ -274,19 +288,23 @@ function App() {
                     <SlowConnectionBanner />
                     <PWAUpdateToast />
                     <NavigationTracker />
-                    <AuthenticatedApp />
+                    <AppErrorBoundary>
+                      <Suspense fallback={<PageLoader />}>
+                        <AuthenticatedApp />
+                      </Suspense>
+                    </AppErrorBoundary>
                     <CookieBanner />
                   </TranslationProvider>
                 </Router>
               </AdminProvider>
             </PreferencesProvider>
           </FeatureFlagsProvider>
-          </Suspense>
           </MessageSocketBridge>
           <Toaster />
         </PersistQueryClientProvider>
       </AuthProvider>
     </AfriWonderThemeProvider>
+    </MotionConfig>
   )
 }
 

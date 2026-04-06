@@ -1,7 +1,12 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import App from './App';
+
+vi.mock('@/lib/secureTokenStorage', () => ({
+  getAccessToken: vi.fn().mockResolvedValue(null),
+  getRefreshToken: vi.fn().mockResolvedValue(null),
+}));
 
 let authState = {
   isLoadingAuth: false,
@@ -29,8 +34,8 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   };
 });
 
-vi.mock('@/lib/query-client', () => ({
-  queryClientInstance: {},
+vi.mock('@tanstack/react-query-persist-client', () => ({
+  PersistQueryClientProvider: ({ children }) => <>{children}</>,
 }));
 
 vi.mock('@/lib/AuthContext', () => ({
@@ -80,7 +85,8 @@ const { mockLayoutRef, mockPagesRef, mockLayoutValueRef, mainPageRef } = vi.hois
   const mainPageRef = { current: 'Home' };
   return { mockLayoutRef, mockPagesRef, mockLayoutValueRef, mainPageRef };
 });
-vi.mock('./pages.config', () => ({
+// App importe `./pages.config.glob`, pas `./pages.config`
+vi.mock('./pages.config.glob', () => ({
   get pagesConfig() {
     return {
       get mainPage() { return mainPageRef.current; },
@@ -88,6 +94,7 @@ vi.mock('./pages.config', () => ({
       get Pages() { return mockPagesRef.current; },
     };
   },
+  preloadPages: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe('App routing/auth integration', () => {
@@ -111,13 +118,18 @@ describe('App routing/auth integration', () => {
       VerifyCertificate: () => <div>Verify Certificate</div>,
     };
     localStorage.clear();
+    try {
+      sessionStorage.clear();
+    } catch {
+      /* ignore */
+    }
     window.history.pushState({}, '', '/Landing');
   });
 
-  it('affiche un spinner pendant le chargement auth', () => {
+  it('affiche le splash de chargement auth (BrandedLaunchSplash)', () => {
     authState.isLoadingAuth = true;
     render(<App />);
-    expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+    expect(screen.getByLabelText('Chargement AfriWonder')).toBeInTheDocument();
   });
 
   it('affiche l’erreur user-not-registered', () => {
@@ -140,7 +152,7 @@ describe('App routing/auth integration', () => {
     expect(screen.getByText('Home Page')).toBeInTheDocument();
   });
 
-  it('redirige vers /Landing quand non authentifié, sans tokens, sur page privée', () => {
+  it('redirige vers /Landing quand non authentifié, sans tokens, sur page privée', async () => {
     authState.isAuthenticated = false;
     authState.isLoadingAuth = false;
     mockNavigate.mockClear();
@@ -148,7 +160,9 @@ describe('App routing/auth integration', () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     render(<App />);
-    expect(mockNavigate).toHaveBeenCalledWith('/Landing', { replace: true });
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/Landing', { replace: true });
+    });
   });
 
   it('affiche les enfants sans Layout quand Layout est falsy', async () => {

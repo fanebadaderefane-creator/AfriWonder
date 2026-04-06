@@ -19,6 +19,5 @@ if (!admin.apps.length) {
   });
 }
 
-export const messaging = admin.messaging();
+export const messaging: admin.messaging.Messaging = admin.messaging();
 export default admin;
-

@@ -1,5 +1,6 @@
 import React from 'react';
 import { render } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import GlobalSearchBar from './GlobalSearchBar';
 
@@ -20,12 +21,22 @@ describe('GlobalSearchBar', () => {
   });
 
   it('renders search input', () => {
-    render(<GlobalSearchBar />);
+    render(
+      <MemoryRouter>
+        <GlobalSearchBar />
+      </MemoryRouter>
+    );
     const input = document.querySelector('input');
     expect(input).toBeInTheDocument();
   });
 
   it('renders without crash when onSearch is not provided', () => {
-    expect(() => render(<GlobalSearchBar />)).not.toThrow();
+    expect(() =>
+      render(
+        <MemoryRouter>
+          <GlobalSearchBar />
+        </MemoryRouter>
+      )
+    ).not.toThrow();
   });
 });

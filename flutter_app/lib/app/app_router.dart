@@ -17,7 +17,8 @@ GoRouter createAppRouter() {
     routes: [
       GoRoute(
         path: '/',
-        builder: (context, state) => const BootstrapScreen(apiBaseUrl: kApiBaseUrl),
+        builder: (context, state) =>
+            const BootstrapScreen(apiBaseUrl: kApiBaseUrl),
       ),
     ],
   );

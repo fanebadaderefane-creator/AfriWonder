@@ -630,17 +630,17 @@ export default function Profile() {
             <div className="pointer-events-none absolute left-1 right-1 top-1 z-10 flex justify-between">
               <div className="pointer-events-auto flex gap-1">
                 <Link to={`${createPageUrl('Create')}?edit=${video.id}`} onClick={(e) => e.stopPropagation()}>
-                  <button type="button" className="rounded-xl border border-white/12 bg-black/32 p-1.5 text-white transition-all hover:bg-black/56" title="Modifier">
-                    <Pencil className="w-3.5 h-3.5" />
+                  <button type="button" className="rounded-xl border border-white/12 bg-black/32 p-1.5 text-white transition-all hover:bg-black/56" aria-label="Modifier la vidéo">
+                    <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                   </button>
                 </Link>
                 <button
                   type="button"
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteVideo?.(video); }}
                   className="rounded-xl border border-white/12 bg-black/32 p-1.5 text-white transition-all hover:bg-red-600/90"
-                  title="Supprimer"
+                  aria-label="Supprimer la vidéo"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -853,10 +853,8 @@ export default function Profile() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
 
-          {/* @ts-expect-error - TabsList accepts children via forwardRef */}
           <TabsList className="h-auto w-full justify-around bg-transparent p-0">
 
-            {/* @ts-expect-error - TabsTrigger accepts children via forwardRef */}
             <TabsTrigger 
 
               value="videos"
@@ -871,7 +869,6 @@ export default function Profile() {
 
             {isOwnProfile && (
               <>
-                {/* @ts-expect-error - TabsTrigger accepts children via forwardRef */}
                 <TabsTrigger 
 
                   value="brouillons"
@@ -883,7 +880,6 @@ export default function Profile() {
                   <FileText className="w-5 h-5" />
 
                 </TabsTrigger>
-                {/* @ts-expect-error - TabsTrigger accepts children via forwardRef */}
                 <TabsTrigger 
 
                   value="saved"
@@ -899,7 +895,6 @@ export default function Profile() {
 
             )}
 
-            {/* @ts-expect-error - TabsTrigger accepts children via forwardRef */}
             <TabsTrigger 
 
               value="liked"
@@ -914,7 +909,6 @@ export default function Profile() {
 
             {products.length > 0 && (
               <>
-                {/* @ts-expect-error - TabsTrigger accepts children via forwardRef */}
                 <TabsTrigger 
 
                   value="shop"

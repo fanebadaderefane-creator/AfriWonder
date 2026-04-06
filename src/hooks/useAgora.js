@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { api } from '@/api/expressClient';
 
 let AgoraRTC = null;
 const loadAgora = () => {
@@ -19,8 +20,10 @@ const loadAgora = () => {
  * Host: publie caméra + micro. Retourne { localVideoTrack, localAudioTrack, error, leave }.
  * @param {Object} tokenData - { token, appId, channel, uid } depuis api.live.getStreamToken(id, 'host')
  * @param {React.RefObject} videoContainerRef - élément DOM où jouer la vidéo locale (host)
+ * @param {Object} options
  */
-export function useAgoraHost(tokenData, videoContainerRef) {
+export function useAgoraHost(tokenData, videoContainerRef, options = {}) {
+  const dataSaverMode = !!options.dataSaverMode;
   const [localVideoTrack, setLocalVideoTrack] = useState(null);
   const [localAudioTrack, setLocalAudioTrack] = useState(null);
   const [error, setError] = useState(null);
@@ -78,8 +81,26 @@ export function useAgoraHost(tokenData, videoContainerRef) {
         let audioTrack = null;
         let videoTrack = null;
 
+        let renewTimer = null;
+        let reconnectAttempts = 0;
+
         try {
-          [audioTrack, videoTrack] = await RTC.createMicrophoneAndCameraTracks();
+          [audioTrack, videoTrack] = await RTC.createMicrophoneAndCameraTracks(
+            {
+              encoderConfig: {
+                sampleRate: 16000,
+                stereo: false,
+                bitrate: 48,
+              },
+              AEC: true,
+              ANS: true,
+              AGC: true,
+            },
+            {
+              encoderConfig: dataSaverMode ? '180p_4' : '480p_8',
+              optimizationMode: 'motion',
+            }
+          );
         } catch (deviceErr) {
           const isDeviceNotFound = deviceErr?.message?.includes('DEVICE_NOT_FOUND') || deviceErr?.code === 'DEVICE_NOT_FOUND';
           if (isDeviceNotFound) {
@@ -109,26 +130,44 @@ export function useAgoraHost(tokenData, videoContainerRef) {
 
         await client.publish([audioTrack, videoTrack]);
         if (cancelled) return;
+
+        if (tokenData?.expireTime && tokenData?.streamId) {
+          const renewIn = (tokenData.expireTime * 1000) - Date.now() - 2 * 60 * 1000;
+          if (renewIn > 0) {
+            renewTimer = window.setTimeout(async () => {
+              if (cancelled) return;
+              try {
+                const newData = await api.live.getStreamToken(tokenData.streamId, 'host');
+                if (clientRef.current?.connectionState === 'CONNECTED' && newData?.token) {
+                  await clientRef.current.renewToken(newData.token);
+                  console.info('[Agora] Token renouvelé avec succès');
+                }
+              } catch (e) {
+                console.warn('[Agora] Échec renouvellement token', e);
+              }
+            }, Math.max(renewIn, 0));
+          }
+        }
+
         const container = videoContainerRef?.current;
         if (container && videoTrack) {
           videoTrack.play(container, { mirror: true });
         }
 
-        let reconnectTimer = null;
-        let backoffMs = 1000;
-        client.on('connection-state-change', (cur) => {
+        client.on('connection-state-change', async (cur) => {
           if (cancelled) return;
           if (cur === 'CONNECTED') {
-            backoffMs = 1000;
+            reconnectAttempts = 0;
             return;
           }
-          if (cur !== 'DISCONNECTED' && cur !== 'ABORTED') return;
-          if (reconnectTimer) window.clearTimeout(reconnectTimer);
-          reconnectTimer = window.setTimeout(() => {
-            if (cancelled) return;
-            setRetryKey((k) => k + 1);
-            backoffMs = Math.min(backoffMs * 2, 8000);
-          }, backoffMs);
+          if (cur === 'DISCONNECTED' || cur === 'ABORTED') {
+            reconnectAttempts += 1;
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 16000);
+            console.warn(`[Agora] Déconnecté. Tentative ${reconnectAttempts} dans ${delay}ms`);
+            window.setTimeout(() => {
+              if (!cancelled) setRetryKey((k) => k + 1);
+            }, delay);
+          }
         });
       } catch (e) {
         if (!cancelled) setError(e?.message || 'Agora init failed');
@@ -139,7 +178,7 @@ export function useAgoraHost(tokenData, videoContainerRef) {
       cancelled = true;
       leave();
     };
-  }, [tokenData?.appId, tokenData?.channel, tokenData?.token, tokenData?.uid, retryKey]);
+  }, [tokenData?.appId, tokenData?.channel, tokenData?.token, tokenData?.uid, tokenData?.expireTime, tokenData?.streamId, retryKey, dataSaverMode]);
 
   return { localVideoTrack, localAudioTrack, error, audioOnlyMode, leave, retry };
 }

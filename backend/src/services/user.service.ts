@@ -2,6 +2,7 @@ import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import { validateUrl } from '../utils/urlValidator.js';
 import GamificationEngine from './gamification.service.js';
+import notificationService from './notification.service.js';
 
 /** Condition Prisma pour exclure les comptes "supprimés" (anonymisés par privacy.service). */
 const NOT_DELETED_USER = {
@@ -397,15 +398,13 @@ class UserService {
         select: { username: true, full_name: true },
       });
       const followerName = follower?.full_name || follower?.username || 'Quelqu\'un';
-      await prisma.notification.create({
-        data: {
-          user_id: followingId,
-          type: 'follow_request',
-          title: 'Demande de suivi',
-          message: `${followerName} souhaite vous suivre`,
-          reference_type: 'follow_request',
-          reference_id: followerId,
-        },
+      await notificationService.create(followingId, {
+        type: 'follow_request',
+        title: 'Demande de suivi',
+        message: `${followerName} souhaite vous suivre`,
+        reference_type: 'follow_request',
+        reference_id: followerId,
+        data: { from_user_id: followerId },
       });
       return { following: false, requestPending: true };
     }
@@ -421,15 +420,13 @@ class UserService {
       select: { username: true, full_name: true },
     });
     const followerName = follower?.full_name || follower?.username || 'Quelqu\'un';
-    await prisma.notification.create({
-      data: {
-        user_id: followingId,
-        type: 'new_follower',
-        title: 'Nouveau follower',
-        message: `${followerName} te suit maintenant`,
-        reference_type: 'user',
-        reference_id: followerId,
-      },
+    await notificationService.create(followingId, {
+      type: 'new_follower',
+      title: 'Nouveau follower',
+      message: `${followerName} te suit maintenant`,
+      reference_type: 'user',
+      reference_id: followerId,
+      data: { from_user_id: followerId },
     });
     await prisma.wonderRelation.upsert({
       where: {
@@ -489,15 +486,13 @@ class UserService {
       select: { username: true, full_name: true },
     });
     const followerName = follower?.full_name || follower?.username || 'Quelqu\'un';
-    await prisma.notification.create({
-      data: {
-        user_id: req.requester_id,
-        type: 'follow_request_accepted',
-        title: 'Demande acceptée',
-        message: `Votre demande de suivi a été acceptée`,
-        reference_type: 'user',
-        reference_id: targetUserId,
-      },
+    await notificationService.create(req.requester_id, {
+      type: 'follow_request_accepted',
+      title: 'Demande acceptée',
+      message: `Votre demande de suivi a été acceptée`,
+      reference_type: 'user',
+      reference_id: targetUserId,
+      data: { from_user_id: targetUserId },
     });
     return { accepted: true };
   }
@@ -585,15 +580,13 @@ class UserService {
         select: { username: true, full_name: true },
       });
       const wondererName = wonderer?.full_name || wonderer?.username || 'Quelqu\'un';
-      await prisma.notification.create({
-        data: {
-          user_id: creatorId,
-          type: 'new_wonder',
-          title: 'Nouveau Wonder',
-          message: `${wondererName} est dans ton Wonder ✨`,
-          reference_type: 'user',
-          reference_id: followerId,
-        },
+      await notificationService.create(creatorId, {
+        type: 'new_wonder',
+        title: 'Nouveau Wonder',
+        message: `${wondererName} est dans ton Wonder ✨`,
+        reference_type: 'user',
+        reference_id: followerId,
+        data: { from_user_id: followerId },
       });
       await prisma.follow.upsert({
         where: {

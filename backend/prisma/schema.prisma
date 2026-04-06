@@ -1414,6 +1414,8 @@ model LiveStream {
   stream_token          String?
   thumbnail_url         String?
   replay_url            String?
+  recording_resource_id String?
+  recording_sid         String?
   total_messages        Int                     @default(0)
   total_likes           Int                     @default(0)
   total_tips_amount     Float                   @default(0)

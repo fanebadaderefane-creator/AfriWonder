@@ -118,12 +118,12 @@ export default function JobDetails() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <div className="sticky top-0 bg-white border-b border-gray-100 z-40 px-4 py-3 flex items-center gap-3">
-        <button onClick={() => navigate(-1)}><ArrowLeft className="w-6 h-6" /></button>
+        <button onClick={() => navigate(-1)} aria-label="Retour"><ArrowLeft className="w-6 h-6" aria-hidden="true" /></button>
         <h1 className="text-lg font-bold flex-1 truncate">{job.title}</h1>
         {user && (
           <>
-            <Button variant="ghost" size="icon" onClick={() => saveMutation.mutate()} title="Sauvegarder"><Heart className="w-5 h-5" /></Button>
-            <Button variant="ghost" size="icon" onClick={() => setShowReport(true)} title="Signaler"><Flag className="w-5 h-5" /></Button>
+            <Button variant="ghost" size="icon" onClick={() => saveMutation.mutate()} aria-label="Sauvegarder cette offre"><Heart className="w-5 h-5" aria-hidden="true" /></Button>
+            <Button variant="ghost" size="icon" onClick={() => setShowReport(true)} aria-label="Signaler cette offre"><Flag className="w-5 h-5" aria-hidden="true" /></Button>
           </>
         )}
       </div>

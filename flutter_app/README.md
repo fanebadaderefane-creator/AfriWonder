@@ -1,40 +1,57 @@
-# AfriWonder Mobile (Flutter)
+# AfriWonder Flutter App
 
-Flutter client for iOS and Android that reuses the current AfriWonder backend.
+Base Flutter officielle pour atteindre la parité produit utilisateur avec la PWA.
 
-## Prerequisites
+## Objectif
 
-- Flutter stable installed
-- Backend running on `http://localhost:3000`
+`flutter_app/` réutilise le backend existant et couvre désormais les domaines principaux suivants :
 
-## Run in development
+- authentification et reprise de session
+- feed, découverte, recherche et profil
+- messagerie, groupes et appels directs
+- live viewer et live host
+- marketplace, panier, checkout et commandes
+- notifications, settings, wallet, privacy, legal, support et offline center
+
+## Lancer le projet
 
 ```bash
 cd flutter_app
 flutter pub get
-flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3000/api
+flutter run
 ```
 
-Notes:
+## Configuration locale
 
-- `10.0.2.2` is for Android emulator to access host machine.
-- For iOS simulator, use:
-  - `--dart-define=API_BASE_URL=http://127.0.0.1:3000/api`
-- For physical device, use LAN IP of your machine.
+Créer `flutter_app/.env` à partir de `.env.example`.
 
-## Backend reuse strategy
+Exemple :
 
-- Reuse existing APIs first (`auth`, `feed`, `videos`, `notifications`)
-- Add only missing mobile-specific endpoints in `backend`
-- Keep web/PWA behavior unchanged
+```env
+API_URL=http://10.0.2.2:3000/api
+SOCKET_URL=http://10.0.2.2:3000
+AGORA_APP_ID=YOUR_AGORA_APP_ID
+```
 
-## Near-term roadmap
+Notes :
 
-1. Auth integration (login/refresh/me)
-2. Feed integration
-3. Device registration API for push notifications
-4. Offline minimum cache and retry queue
+- Android emulator : `10.0.2.2`
+- iOS simulator : `http://127.0.0.1:3000/api`
+- appareil réel : IP locale de votre machine
 
-## Reference
+## Socle technique
 
-- Migration plan: `docs/FLUTTER_MIGRATION_PLAN.md`
+- `dio` pour l’API REST et le refresh token
+- `socket_io_client` pour le temps réel
+- `firebase_messaging` pour le push natif
+- `agora_rtc_engine` pour le live et les appels
+- `flutter_secure_storage` pour la session
+- `go_router` pour la navigation
+- `flutter_riverpod` pour l’état applicatif
+
+## Références
+
+- `docs/mobile/FLUTTER_MVP_CONTRACT_MATRIX.md`
+- `docs/mobile/FLUTTER_FOUNDATION_ARCHITECTURE.md`
+- `docs/mobile/BACKEND_MOBILE_API_SPEC.md`
+- `docs/mobile/FLUTTER_MIGRATION_ROLLOUT.md`

@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { validateBody } from '../utils/zodValidation.js';
 import * as r2Multipart from '../services/r2Multipart.service.js';
 import { getSupabaseAdmin, isSupabaseStorageConfigured } from '../config/supabase.js';
+import { fileSignatureMatchesMime } from '../utils/fileSignature.js';
 
 const router = Router();
 
@@ -89,6 +90,38 @@ const ALLOWED_DOCUMENT_MIME = new Set([
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'text/plain',
 ]);
+
+function validateUploadedFileSignature(
+  file: Express.Multer.File,
+  category: 'media' | 'document'
+): { ok: true } | { ok: false; message: string } {
+  const mime = String(file?.mimetype || '').toLowerCase().trim();
+  const originalName = String(file?.originalname || 'file');
+
+  if (mime === 'text/plain') return { ok: true };
+
+  const isAllowedMime =
+    category === 'media' ? ALLOWED_MEDIA_MIME.has(mime) : ALLOWED_DOCUMENT_MIME.has(mime);
+  if (!isAllowedMime) {
+    return { ok: false, message: 'Type de fichier non autorise' };
+  }
+
+  if (!fileSignatureMatchesMime(file.buffer, mime)) {
+    logger.warn('Upload rejecte: signature fichier incoherente', {
+      category,
+      mime,
+      originalName,
+      size: file?.size,
+    });
+    return {
+      ok: false,
+      message:
+        "Le contenu du fichier ne correspond pas a son type annonce. Renommez ou reconvertissez le fichier avant l'upload.",
+    };
+  }
+
+  return { ok: true };
+}
 
 function safeExtFromName(name: string): string {
   const ext = String(path.extname(name || '') || '').toLowerCase();
@@ -385,6 +418,10 @@ router.post('/image', authenticate, upload.single('file'), async (req: AuthReque
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
+    const fileValidation = validateUploadedFileSignature(req.file, 'media');
+    if (!fileValidation.ok) {
+      return res.status(400).json({ success: false, error: fileValidation.message });
+    }
 
     // Créer un nom de fichier ASCII-safe (évite les problèmes d'encodage)
     const originalName = req.file.originalname || 'image.jpg';
@@ -432,6 +469,10 @@ router.post('/video', authenticate, upload.single('file'), async (req: AuthReque
     // Créer un nom de fichier ASCII-safe (évite les problèmes d'encodage)
     // ⚠️ IMPORTANT : Ne jamais garder les accents dans les noms de fichiers CDN
     // Cela cause des erreurs MEDIA_ERR_SRC_NOT_SUPPORTED (errorCode: 4)
+    const fileValidation = validateUploadedFileSignature(req.file, 'media');
+    if (!fileValidation.ok) {
+      return res.status(400).json({ success: false, error: fileValidation.message });
+    }
     const originalName = req.file.originalname || 'video.mp4';
     const safeName = createSafeFilename(originalName);
     const fileName = `${Date.now()}-${safeName}`;
@@ -503,6 +544,10 @@ router.post('/document', authenticate, uploadDocument.single('file'), async (req
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    const fileValidation = validateUploadedFileSignature(req.file, 'document');
+    if (!fileValidation.ok) {
+      return res.status(400).json({ success: false, error: fileValidation.message });
+    }
     const originalName = req.file.originalname || 'document.bin';
     const safeName = createSafeFilename(originalName);
     const fileName = `${Date.now()}-${safeName}`;
@@ -544,6 +589,10 @@ router.post('/audio', authenticate, upload.single('file'), async (req: AuthReque
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    const fileValidation = validateUploadedFileSignature(req.file, 'media');
+    if (!fileValidation.ok) {
+      return res.status(400).json({ success: false, error: fileValidation.message });
+    }
     const originalName = req.file.originalname || 'voice.webm';
     const safeName = createSafeFilename(originalName);
     const fileName = `${Date.now()}-${safeName}`;
@@ -631,4 +680,3 @@ router.post('/multipart/abort', authenticate, validateBody(multipartAbortSchema)
 });
 
 export default router;
-

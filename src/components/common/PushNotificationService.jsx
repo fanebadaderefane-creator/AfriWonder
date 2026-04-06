@@ -101,7 +101,14 @@ export class PushNotificationService {
     if (!allowed) return false;
     if (!('serviceWorker' in navigator)) return false;
     const vapid = import.meta.env.VITE_VAPID_PUBLIC_KEY || import.meta.env.REACT_APP_VAPID_PUBLIC_KEY || '';
-    if (!vapid) return false;
+    if (!vapid?.trim()) {
+      if (import.meta.env.DEV) {
+        console.warn(
+          '[AfriWonder Push] VITE_VAPID_PUBLIC_KEY absente : pas d’abonnement Web Push, notifications uniquement in-app.'
+        );
+      }
+      return false;
+    }
 
     try {
       await this.registerServiceWorker();

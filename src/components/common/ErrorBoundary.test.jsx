@@ -34,9 +34,11 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>
     );
     await waitFor(() => {
-      expect(screen.getByText('Une erreur est survenue')).toBeInTheDocument();
+      expect(screen.getByText(/Oups, quelque chose s'est mal passé/i)).toBeInTheDocument();
     });
-    expect(screen.getByText(/Réessayez ou rechargez la page/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Rafraîchir la page ou réessayer/i)
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Recharger/i })).toBeInTheDocument();
   });
 

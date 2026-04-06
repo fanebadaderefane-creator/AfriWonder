@@ -332,7 +332,7 @@ export default function Insurance() {
       <div className="sticky top-0 z-50 bg-slate-900/90 backdrop-blur-md border-b border-blue-500/20">
         <div className="flex items-center justify-between p-4">
           <Link to={createPageUrl('Home')}>
-            <Button variant="ghost" size="icon" className="text-white hover:bg-blue-500/20"><ArrowLeft className="w-5 h-5" /></Button>
+            <Button variant="ghost" size="icon" className="text-white hover:bg-blue-500/20" aria-label="Retour"><ArrowLeft className="w-5 h-5" aria-hidden="true" /></Button>
           </Link>
           <h1 className="text-xl font-bold text-white">Assurances</h1>
           <Button variant="ghost" size="icon" className="text-white hover:bg-blue-500/20" onClick={() => setDocsOpen(true)}><FileText className="w-5 h-5" /></Button>

@@ -86,7 +86,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _markAllRead() async {
     try {
-      await widget.client.markAllNotificationsRead(accessToken: widget.accessToken);
+      await widget.client
+          .markAllNotificationsRead(accessToken: widget.accessToken);
       if (!mounted) return;
       await _load();
     } catch (e) {
@@ -113,7 +114,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           if (_items.isNotEmpty && _unread > 0)
             TextButton(
               onPressed: _loading ? null : _markAllRead,
-              child: const Text('Tout lu', style: TextStyle(color: Color(0xFFEC4899))),
+              child: const Text('Tout lu',
+                  style: TextStyle(color: Color(0xFFEC4899))),
             ),
         ],
       ),
@@ -125,7 +127,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: const [
                   SizedBox(height: 120),
-                  Center(child: CircularProgressIndicator(color: Color(0xFFEC4899))),
+                  Center(
+                      child:
+                          CircularProgressIndicator(color: Color(0xFFEC4899))),
                 ],
               )
             : _error != null
@@ -134,27 +138,33 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     padding: const EdgeInsets.all(24),
                     children: [
                       SizedBox(height: MediaQuery.sizeOf(context).height * 0.2),
-                      Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+                      Text(_error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white70)),
                     ],
                   )
                 : _items.isEmpty
                     ? ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         children: [
-                          SizedBox(height: MediaQuery.sizeOf(context).height * 0.25),
-                          const Icon(Icons.notifications_none_rounded, size: 56, color: Colors.white24),
+                          SizedBox(
+                              height: MediaQuery.sizeOf(context).height * 0.25),
+                          const Icon(Icons.notifications_none_rounded,
+                              size: 56, color: Colors.white24),
                           const SizedBox(height: 16),
                           const Text(
                             'Aucune notification',
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.white54, fontSize: 16),
+                            style:
+                                TextStyle(color: Colors.white54, fontSize: 16),
                           ),
                         ],
                       )
                     : ListView.separated(
                         physics: const AlwaysScrollableScrollPhysics(),
                         itemCount: _items.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1, color: Colors.white10),
+                        separatorBuilder: (_, __) =>
+                            const Divider(height: 1, color: Colors.white10),
                         itemBuilder: (context, index) {
                           final n = _items[index];
                           final title = (n['title'] ?? '').toString();
@@ -168,7 +178,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               title.isNotEmpty ? title : 'Notification',
                               style: TextStyle(
                                 color: Colors.white,
-                                fontWeight: unread ? FontWeight.w700 : FontWeight.w500,
+                                fontWeight:
+                                    unread ? FontWeight.w700 : FontWeight.w500,
                               ),
                             ),
                             subtitle: Padding(
@@ -177,17 +188,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   if (message.isNotEmpty)
-                                    Text(message, style: const TextStyle(color: Colors.white60, fontSize: 13)),
+                                    Text(message,
+                                        style: const TextStyle(
+                                            color: Colors.white60,
+                                            fontSize: 13)),
                                   if (created.isNotEmpty)
                                     Text(
                                       created,
-                                      style: const TextStyle(color: Colors.white38, fontSize: 11),
+                                      style: const TextStyle(
+                                          color: Colors.white38, fontSize: 11),
                                     ),
                                 ],
                               ),
                             ),
                             trailing: unread
-                                ? const Icon(Icons.circle, size: 10, color: Color(0xFFEC4899))
+                                ? const Icon(Icons.circle,
+                                    size: 10, color: Color(0xFFEC4899))
                                 : null,
                           );
                         },

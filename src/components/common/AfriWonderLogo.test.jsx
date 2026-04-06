@@ -15,11 +15,11 @@ describe('AfriWonderLogo', () => {
     expect(img).toHaveAttribute('src', '/icon-192.png');
   });
 
-  it('renders fallback emoji when image fails to load', () => {
+  it('renders fallback text when image fails to load', () => {
     render(<AfriWonderLogo />);
     const img = screen.getByRole('img', { name: 'AfriWonder Logo' });
     fireEvent.error(img);
-    expect(screen.getByText('🌍')).toBeInTheDocument();
+    expect(screen.getByText('AfriWonder')).toBeInTheDocument();
   });
 
   it('applies size class', () => {

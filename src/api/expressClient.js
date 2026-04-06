@@ -2324,6 +2324,14 @@ export const api = {
       const { data } = await axiosInstance.get(`/messages/presence/${userId}`);
       return data.data;
     },
+    async searchInConversation(conversationId, q) {
+      const { data } = await axiosInstance.get(`/messages/${conversationId}/search`, { params: { q } });
+      return data.data;
+    },
+    async getStarredMessages() {
+      const { data } = await axiosInstance.get('/messages/starred');
+      return data.data;
+    },
     async deleteMessage(messageId) {
       const { data } = await axiosInstance.delete(`/messages/message/${messageId}`);
       return data.data;

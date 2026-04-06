@@ -8,6 +8,7 @@ export function useConversationSocket(options) {
   const {
     userId,
     conversationId,
+    peerId,
     userName,
     onNewMessage,
     onMessageRead,
@@ -18,6 +19,7 @@ export function useConversationSocket(options) {
   const socketEverConnectedRef = useRef(false);
   const [typingUser, setTypingUser] = useState(null);
   const [recordingUser, setRecordingUser] = useState(null);
+  const [presence, setPresence] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [showReconnectBanner, setShowReconnectBanner] = useState(false);
   const typingTimeoutRef = useRef(null);
@@ -56,7 +58,7 @@ export function useConversationSocket(options) {
       setTypingUser(payload.typing ? { userId: payload.userId, name: payload.name || "Quelqu'un" } : null);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       if (payload.typing) {
-        typingTimeoutRef.current = setTimeout(() => setTypingUser(null), 4000);
+        typingTimeoutRef.current = setTimeout(() => setTypingUser(null), 3000);
       }
     };
     const onRecording = (payload) => {
@@ -70,6 +72,14 @@ export function useConversationSocket(options) {
       }
     };
 
+    const onPresenceUpdate = (payload) => {
+      if (!peerId || payload?.userId !== peerId) return;
+      setPresence({
+        is_online: !!payload.isOnline,
+        last_seen: payload.lastSeen || null,
+      });
+    };
+
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('message:new', onNew);
@@ -78,6 +88,7 @@ export function useConversationSocket(options) {
     socket.on('message:delivered', onDelivered);
     socket.on('message:typing', onTyping);
     socket.on('message:recording', onRecording);
+    socket.on('presence:update', onPresenceUpdate);
 
     if (socket.connected) {
       socketEverConnectedRef.current = true;
@@ -99,8 +110,9 @@ export function useConversationSocket(options) {
       socket.off('message:delivered', onDelivered);
       socket.off('message:typing', onTyping);
       socket.off('message:recording', onRecording);
+      socket.off('presence:update', onPresenceUpdate);
     };
-  }, [socket, userId, conversationId]);
+  }, [socket, userId, conversationId, peerId]);
 
   useEffect(() => {
     if (isConnected) {
@@ -139,6 +151,7 @@ export function useConversationSocket(options) {
   return {
     typingUser,
     recordingUser,
+    presence,
     emitTypingStart,
     emitTypingStop,
     emitRecordingStart,

@@ -1,5 +1,5 @@
 import React, { Suspense, useCallback, useEffect, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   MessageCircle,
@@ -25,7 +25,10 @@ import { Button } from '@/components/ui/button';
 import { createPageUrl } from '@/utils';
 import BottomNav from '@/components/navigation/BottomNav';
 import PageLoader from '@/components/common/PageLoader';
+import { useAuth } from '@/lib/AuthContext';
 import { MESSAGING_CDC_LAZY_PANELS } from '@/pages/messagingCdcPanels.lazy';
+
+const SUPER_ADMIN_EMAIL = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com').toLowerCase();
 
 const CARD =
   'flex w-full items-center gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3.5 text-left shadow-[0_12px_40px_rgba(0,0,0,0.25)] transition hover:bg-white/[0.07] active:scale-[0.99] [touch-action:manipulation]';
@@ -35,6 +38,7 @@ const SECTION_TITLE = 'mb-2 mt-6 text-[11px] font-semibold uppercase tracking-[0
 export default function MessagingCdcHub() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { user, isLoadingAuth } = useAuth();
   const section = searchParams.get('section') || '';
 
   const LazyPanel = useMemo(() => (section ? MESSAGING_CDC_LAZY_PANELS[section] : null), [section]);
@@ -55,6 +59,18 @@ export default function MessagingCdcHub() {
   const closeSection = useCallback(() => {
     setSearchParams({}, { replace: true });
   }, [setSearchParams]);
+
+  if (isLoadingAuth) {
+    return (
+      <div className="relative flex min-h-[100dvh] items-center justify-center bg-[#070a12] text-white">
+        <PageLoader />
+      </div>
+    );
+  }
+
+  if (!user || user.email?.toLowerCase() !== SUPER_ADMIN_EMAIL) {
+    return <Navigate to={createPageUrl('Inbox')} replace />;
+  }
 
   if (LazyPanel) {
     const Panel = LazyPanel;

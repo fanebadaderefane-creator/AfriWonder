@@ -108,6 +108,12 @@ if (!rootElement) {
         </ErrorBoundary>
       </StrictMode>
     );
+    // Cache le loader de demarrage apres hydratation
+    const loader = document.getElementById('app-loader');
+    if (loader) {
+      loader.classList.add('hidden');
+      setTimeout(() => loader.remove(), 350);
+    }
   } catch (error) {
     console.error('❌ Erreur lors du rendu de React:', error);
     rootElement.innerHTML = `

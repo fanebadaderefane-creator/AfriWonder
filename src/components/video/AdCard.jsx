@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * CDC Phase 1 - Carte publicitaire In-Feed
  * Format vidéo plein écran, marqué "Sponsorisé", CTA cliquable
@@ -31,7 +30,7 @@ export default function AdCard({
   const impressionSentRef = useRef(false);
 
   const creative = ad?.creative;
-  const advertiser = ad?.advertiser;
+  const _advertiser = ad?.advertiser;
   const isVideo = creative?.media_type === 'video';
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);

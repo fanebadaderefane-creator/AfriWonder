@@ -53,7 +53,7 @@ export default function BecomeDriver() {
       <div className="sticky top-0 z-50 bg-black/40 backdrop-blur-md border-b border-white/10">
         <div className="flex items-center justify-between p-4">
           <Link to={createPageUrl('Transport')}>
-            <Button variant="ghost" size="icon" className="text-white"><ArrowLeft className="w-5 h-5" /></Button>
+            <Button variant="ghost" size="icon" className="text-white" aria-label="Retour"><ArrowLeft className="w-5 h-5" aria-hidden="true" /></Button>
           </Link>
           <h1 className="text-xl font-bold text-white">Devenir conducteur</h1>
           <div className="w-10" />

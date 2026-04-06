@@ -135,6 +135,7 @@ import Leaderboard from './pages/Leaderboard';
 import Live from './pages/Live';
 import LiveStream from './pages/LiveStream';
 import LiveView from './pages/LiveView';
+import LiveViewer from './pages/LiveViewer';
 import Lives from './pages/Lives';
 import LoanDetails from './pages/LoanDetails';
 import Marketplace from './pages/Marketplace';
@@ -185,6 +186,7 @@ import ProviderDashboard from './pages/ProviderDashboard';
 import Settings from './pages/Settings';
 import ShareOffline from './pages/ShareOffline';
 import StartLive from './pages/StartLive';
+import StarredMessages from './pages/StarredMessages';
 import Stories from './pages/Stories';
 import Support from './pages/Support';
 import UserVerification from './pages/UserVerification';
@@ -318,6 +320,7 @@ export const PAGES = {
     "Live": Live,
     "LiveStream": LiveStream,
     "LiveView": LiveView,
+    "LiveViewer": LiveViewer,
     "Lives": Lives,
     "LoanDetails": LoanDetails,
     "Marketplace": Marketplace,
@@ -368,6 +371,7 @@ export const PAGES = {
     "Settings": Settings,
     "ShareOffline": ShareOffline,
     "StartLive": StartLive,
+    "StarredMessages": StarredMessages,
     "Stories": Stories,
     "Support": Support,
     "UserVerification": UserVerification,

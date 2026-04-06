@@ -2,6 +2,9 @@
 
 This file tracks concrete repository alignment against the client audit.
 
+**Correspondance avec le PDF « AfriWonder Audit Complet » (01 avril 2026, 19 p.) :**  
+`docs/AUDIT_PDF_01_AVRIL_2026_EXECUTION.md` (tableau section par section, statut ✅ / 🟡 / 📋).
+
 ## Charte d’honnêteté (ne pas sur-déclarer)
 
 - **Backend** : la cible documentée dans ce dépôt est **Render** uniquement (fichiers `render.yaml`, `Dockerfile.backend`, workflows `deploy-render*.yml`). Il n’y a pas de configuration Railway active.
@@ -215,6 +218,24 @@ Texte des exigences également dans l’API : **`GET /api/platform/config`** →
 | B2B SDK | 🟡 | Package `sdk/afriwonder-miniapp-sdk` ; adoption partenaires 📋. |
 | Levée Seed 500k–2M | 📋 | Indicateur dans `/platform/config` seulement ; fundraising 📋. |
 
+## Audit Complet (PDF 1) vs Audit Senior v2 (PDF 2) — « régression »
+
+Les deux PDF portent sur le **même dépôt** ; le v2 reprend les constats du Complet et ajoute une grille OWASP / CI / migrations. La **baisse de score affichée** (ex. 42 → 38) et les mentions « zéro progrès » s’appuient sur un **instantané GitHub** au moment de la rédaction : **elles ne reflètent pas forcément l’arbre local** après commits non poussés ou branches différentes.
+
+**Ce que l’audit Senior v2 décrit à juste titre (hors GitHub)** : une session d’assistant (Cursor, etc.) peut **affirmer** des changements **sans** les committer, **sans** les pousser, ou en **régressant** une zone sensible (player, cache React Query, navigation). Dans ce cas, le dépôt distant **ne bouge pas** ou **empire** — ce n’est **pas** une contradiction avec un arbre local modifié mais non publié. **Preuve de travail** = diff Git + tests/CI verts + revue humaine sur les zones verrouillées (ex. règles `.cursor` feed / `VideoCard`).
+
+**Points souvent déjà couverts localement alors que le PDF dit le contraire** (à re-vérifier avant de « refaire ») :
+
+- **`.env.example`** : présents à la racine, `backend/`, `flutter_app/`, etc. — le v2 peut être **périmé** sur ce point.
+- **Backend** : `helmet`, CORS, rate limiting, handler d’erreurs — vérifier `backend/src/app.ts` plutôt que de dupliquer.
+- **CI** : `npm audit` peut déjà tourner avec `continue-on-error` — **durcir** (faire échouer le job sur vuln) est un choix produit (risque de blocage tant que des advisories existent).
+
+**Choses volontairement non automatiques** (destructif ou hors périmètre sans ordre explicite) : `git mv` massif des `.md` vers `docs/`, suppression de dossiers `mobile/`, `backend-go/`, etc.
+
+**Alignement code récent (hors player verrouillé)** : boundary React globale (`AppErrorBoundary`), defaults React Query (`staleTime` 5 min, `networkMode: 'offlineFirst'`, backoff retry jusqu’à 10 s) — voir `src/App.jsx`, `src/lib/query-client.js`.
+
 ## Integrity note
 
 Les statuts 🟡 / 📋 signifient : **ne pas présenter l’audit comme « 100 % terminé »** sans preuves prod (mesures, stores, contrats, DNS, levée). Le dépôt reste aligné **Render** + **`DATABASE_URL`** ; il n’y a pas de seconde vérité « autre hébergeur » pour le backend dans ces documents.
+
+**Livraison mesurable** : avant de conclure une tâche « alignée audit / client », exécuter `npm run verify:delivery` et consigner le résultat ; cadre détaillé : `docs/CLIENT_DELIVERY_CONTRACT.md`.

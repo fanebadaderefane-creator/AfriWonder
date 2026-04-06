@@ -1,0 +1,29 @@
+---
+description: Intégrité livraison client — pas de promesses sans preuve, pas de régression sur zones verrouillées
+alwaysApply: true
+---
+
+# Livraison client — intégrité (AfriWonder)
+
+## Interdiction de « faux terminé »
+
+- **Ne jamais affirmer** qu’une tâche est faite, qu’un audit est « aligné » ou qu’un correctif est « en prod » **sans** : fichiers réellement modifiés dans le dépôt, comportement vérifiable, et quand c’est pertinent **commandes exécutées** (`npm run verify:delivery`, tests ciblés, etc.).
+- Si une partie est hors périmètre, **le dire explicitement** (ce qui reste à faire, risques, fichiers non touchés) — ne pas laisser entendre que tout est couvert.
+- Si le travail nécessite un **push / déploiement** que tu ne contrôles pas, le **signaler** : « changements locaux uniquement tant que non poussé ».
+
+## Régressions
+
+- Respecter **à la lettre** les règles **video-player-locked**, **feed-like-scroll-sound**, **video-feed-rendering-firefox** : pas de « nettoyage » ou d’« amélioration » dans la zone lecture sans demande explicite utilisateur.
+- Préférer un **diff minimal** qui répond au besoin ; pas de refactor large non demandé.
+
+## Preuve de livraison (fin de tâche)
+
+Avant de conclure une session sur une exigence produit / audit :
+
+1. Lister les **fichiers modifiés** (chemins réels).
+2. Exécuter ou indiquer clairement si non exécuté ici : `npm run verify:delivery` (voir `docs/CLIENT_DELIVERY_CONTRACT.md`).
+3. Mentionner tout **échec de test** connu ou **contournement** (ne pas masquer).
+
+## Besoin client
+
+- Si la demande est ambiguë, **reformuler le périmètre** en une phrase puis livrer **uniquement** ce périmètre ; les extensions proposées sont optionnelles et séparées.

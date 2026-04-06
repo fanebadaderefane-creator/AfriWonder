@@ -50,7 +50,8 @@ class _BootstrapScreenState extends State<BootstrapScreen> {
     void showSnack(RemoteMessage message) {
       if (!mounted) return;
       final now = DateTime.now();
-      if (_lastPushSnackAt != null && now.difference(_lastPushSnackAt!) < const Duration(seconds: 1)) {
+      if (_lastPushSnackAt != null &&
+          now.difference(_lastPushSnackAt!) < const Duration(seconds: 1)) {
         return;
       }
       _lastPushSnackAt = now;
@@ -145,7 +146,8 @@ class _BootstrapScreenState extends State<BootstrapScreen> {
   List<Map<String, dynamic>> _mapFeedVideos(List<Map<String, dynamic>> items) {
     return items.map((video) {
       final v = Map<String, dynamic>.from(video);
-      v['_localLikes'] = (v['likes'] ?? 0) is num ? (v['likes'] as num).toInt() : 0;
+      v['_localLikes'] =
+          (v['likes'] ?? 0) is num ? (v['likes'] as num).toInt() : 0;
       v['_localIsLiked'] = (v['is_liked'] ?? false) == true;
       v['_localIsFollowing'] = _activeTab == 1;
       return v;
@@ -199,10 +201,13 @@ class _BootstrapScreenState extends State<BootstrapScreen> {
     if (videoId.isEmpty) return;
 
     final wasLiked = video['_localIsLiked'] == true;
-    final likes = (video['_localLikes'] is num) ? (video['_localLikes'] as num).toInt() : 0;
+    final likes = (video['_localLikes'] is num)
+        ? (video['_localLikes'] as num).toInt()
+        : 0;
     setState(() {
       _feed[index]['_localIsLiked'] = !wasLiked;
-      _feed[index]['_localLikes'] = wasLiked ? (likes - 1).clamp(0, 1 << 31) : likes + 1;
+      _feed[index]['_localLikes'] =
+          wasLiked ? (likes - 1).clamp(0, 1 << 31) : likes + 1;
     });
 
     try {
@@ -228,7 +233,10 @@ class _BootstrapScreenState extends State<BootstrapScreen> {
     if (_session == null || index < 0 || index >= _feed.length) return;
     final video = _feed[index];
     final creatorId = (video['creator_id'] ?? '').toString();
-    if (creatorId.isEmpty || creatorId == (_session!.user['id'] ?? '').toString()) return;
+    if (creatorId.isEmpty ||
+        creatorId == (_session!.user['id'] ?? '').toString()) {
+      return;
+    }
     final prev = video['_localIsFollowing'] == true;
 
     setState(() {
@@ -281,7 +289,8 @@ class _BootstrapScreenState extends State<BootstrapScreen> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              Text('Backend API: ${widget.apiBaseUrl}', style: const TextStyle(color: Colors.white70)),
+              Text('Backend API: ${widget.apiBaseUrl}',
+                  style: const TextStyle(color: Colors.white70)),
               const SizedBox(height: 18),
               TextField(
                 controller: _identifierCtrl,
@@ -305,7 +314,8 @@ class _BootstrapScreenState extends State<BootstrapScreen> {
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+                  child: Text(_error!,
+                      style: const TextStyle(color: Colors.redAccent)),
                 ),
               SizedBox(
                 width: double.infinity,

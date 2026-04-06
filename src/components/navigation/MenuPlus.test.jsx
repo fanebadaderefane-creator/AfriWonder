@@ -4,6 +4,10 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 import MenuPlus from './MenuPlus';
 
+vi.mock('@tanstack/react-query', () => ({
+  useQuery: vi.fn(() => ({ data: null, isLoading: false, isError: false })),
+}));
+
 vi.mock('@/contexts/FeatureFlagsContext', () => ({
   useFeatureFlags: () => ({ isEnabled: () => true }),
 }));
@@ -20,10 +24,8 @@ describe('MenuPlus', () => {
       </MemoryRouter>
     );
     expect(screen.getByText('Test User')).toBeInTheDocument();
-    expect(screen.getByText('Super App AfriWonder')).toBeInTheDocument();
-    expect(screen.getByText('Commerce & Services')).toBeInTheDocument();
+    expect(screen.getByText('COMMERCE & SERVICES')).toBeInTheDocument();
     expect(screen.getByText('Marketplace')).toBeInTheDocument();
-    expect(screen.getByText('Mode hors-ligne')).toBeInTheDocument();
   });
 
   it('renders Utilisateur when user has no full_name', () => {

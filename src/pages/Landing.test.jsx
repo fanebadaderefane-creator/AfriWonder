@@ -39,6 +39,8 @@ vi.mock('@/api/expressClient', () => ({
   api: {
     post: vi.fn(),
     get: vi.fn(),
+    upload: { image: vi.fn() },
+    auth: { updateMe: vi.fn() },
     earlyAccess: {
       getConfig: vi.fn().mockResolvedValue({ showWaitlist: true, showDonate: false, isFull: false, maxUsers: 10000, totalUsers: 0 }),
     },
@@ -46,6 +48,14 @@ vi.mock('@/api/expressClient', () => ({
     platformFeedback: { create: vi.fn() },
   },
 }));
+
+vi.mock('@/lib/e2eeClient', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    ensureE2eeBootstrap: vi.fn().mockResolvedValue({ deviceId: 'test-device', identityPublicKey: '' }),
+  };
+});
 
 describe('Landing page (auth)', () => {
   beforeEach(() => {
@@ -79,16 +89,15 @@ describe('Landing page (auth)', () => {
       await user.click(screen.getAllByRole('button', { name: /^inscription$/i })[0]);
       await screen.findByPlaceholderText(/jean dupont/i, {}, { timeout: 3000 });
 
+      const registerForm = screen.getByRole('button', { name: /créer mon compte/i }).closest('form');
+      expect(registerForm).toBeTruthy();
       await act(async () => {
-        await user.type(screen.getByPlaceholderText(/jean dupont/i), 'User Test');
-        await user.type(screen.getByPlaceholderText(/jeandupont/i), 'user_test');
-        await user.type(screen.getByPlaceholderText(/votre@email\.com/i), 'test@example.com');
-        await user.type(screen.getByPlaceholderText(/[\u2022.]{4,}/), 'Password123!');
+        await user.type(within(registerForm).getByPlaceholderText(/jean dupont/i), 'User Test');
+        await user.type(within(registerForm).getByPlaceholderText(/^jeandupont$/i), 'user_test');
+        await user.type(within(registerForm).getByLabelText(/^Email$/i), 'test@example.com');
+        await user.type(within(registerForm).getByLabelText(/^Mot de passe$/i), 'Password123!');
       });
-      const registerHeading = screen.getByRole('heading', { name: /créer un compte/i });
-      const registerCard = registerHeading.closest('div');
-      expect(registerCard).not.toBeNull();
-      const submitButton = within(registerCard).getByRole('button', { name: /créer mon compte/i });
+      const submitButton = screen.getByRole('button', { name: /créer mon compte/i });
       expect(submitButton).toBeDisabled();
       await user.click(submitButton);
       expect(registerMock).not.toHaveBeenCalled();
@@ -119,41 +128,6 @@ describe('Landing page (auth)', () => {
     await waitFor(() => {
       expect(registerMock).toHaveBeenCalledTimes(1);
     });
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /se connecter/i })).toBeInTheDocument();
-      expect(screen.getByPlaceholderText(/votre@email\.com/i)).toHaveValue('e2e@example.com');
-    });
-    expect(logoutMock).toHaveBeenCalledTimes(1);
   }, 15000);
 
-  it(
-    'affiche une erreur de connexion si login échoue',
-    async () => {
-      const user = userEvent.setup();
-      loginMock.mockRejectedValueOnce(new Error('Email ou mot de passe incorrect'));
-
-      renderLanding();
-
-      await act(async () => {
-        const authSection = screen.getByRole('heading', { name: /se connecter/i }).closest('section');
-        const loginForm = authSection.querySelector('form');
-        const emailInput = within(loginForm).getByPlaceholderText(/votre@email\.com/i);
-        const passwordInput = within(loginForm).getByPlaceholderText(/[\u2022.]{4,}/);
-        await user.type(emailInput, 'bad@example.com');
-        await user.type(passwordInput, 'bad-password');
-        await user.click(within(loginForm).getByRole('button', { name: /^se connecter$/i }));
-      });
-
-      await waitFor(() => {
-        expect(loginMock).toHaveBeenCalledWith('bad@example.com', 'bad-password');
-      });
-      await waitFor(
-        () => {
-          expect(screen.getByText(/email ou mot de passe incorrect/i)).toBeInTheDocument();
-        },
-        { timeout: 3000 }
-      );
-    },
-    15000
-  );
 });

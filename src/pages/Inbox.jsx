@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Edit, MessageCircle, ArrowLeft, Bell, BellOff, Filter, Users, Plus, Archive, ArchiveRestore, MoreVertical, Download, LayoutGrid } from 'lucide-react';
+import { Search, Edit, MessageCircle, ArrowLeft, Bell, BellOff, Filter, Users, Plus, Archive, ArchiveRestore, MoreVertical, Download, Star } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { motion } from 'framer-motion';
@@ -396,7 +396,8 @@ export default function Inbox() {
 
   return (
     <div className={`min-h-screen pb-[calc(120px+env(safe-area-inset-bottom))] text-white ${INBOX_PAGE_BG}`}>
-      <div className="sticky top-0 z-40 border-b border-white/[0.06] bg-[#070a12]/90 backdrop-blur-2xl">
+      {/* Pas de sticky : un seul scroll page (en-tête + recherche + liste), comme les apps grand public */}
+      <div className="border-b border-white/[0.06] bg-[#070a12]">
         <div className="mx-auto max-w-3xl px-4 pb-3 pt-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-3">
@@ -409,11 +410,6 @@ export default function Inbox() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <Link to={createPageUrl('MessagingCdcHub')}>
-              <Button variant="ghost" size="icon" className={INBOX_ICON_BUTTON} aria-label="Hub messagerie CDC">
-                <LayoutGrid className="w-5 h-5" />
-              </Button>
-            </Link>
             <Link to={createPageUrl('Search') + '?from=inbox&mode=messages'}>
               <Button variant="ghost" size="icon" className={INBOX_ICON_BUTTON} aria-label="Nouvelle conversation">
                 <Edit className="w-5 h-5" />
@@ -444,6 +440,13 @@ export default function Inbox() {
                 >
                   <Users className="mr-2 h-4 w-4 text-white/72" />
                   Enregistrer mes groupes
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer focus:bg-white/[0.08] focus:text-white"
+                  onClick={() => navigate(createPageUrl('StarredMessages'))}
+                >
+                  <Star className="mr-2 h-4 w-4 text-white/72" />
+                  Messages importants
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -503,7 +506,7 @@ export default function Inbox() {
         </div>
       </div>
 
-      <div className="mx-auto mt-3 max-w-3xl space-y-3 px-3">
+      <div className="mx-auto mt-3 max-w-3xl space-y-3 px-4">
         {Array.isArray(storiesData) && storiesData.length > 0 && (
           <div className={cn(INBOX_SECTION, INBOX_SECTION_PAD)}>
             <div className="mb-3 flex items-center justify-between gap-3">

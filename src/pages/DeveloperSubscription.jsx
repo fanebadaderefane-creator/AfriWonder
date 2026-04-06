@@ -9,6 +9,7 @@ import BottomNav from '@/components/navigation/BottomNav';
 import { DEVELOPER_PLANS } from '@/data/monetizationMock';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 export default function DeveloperSubscription() {
   const navigate = useNavigate();
@@ -29,8 +30,10 @@ export default function DeveloperSubscription() {
   }, [navigate]);
 
   const handleSubscribe = (planId) => {
-    // Ici on pourrait appeler l'API pour souscrire
-    alert(`Souscription au plan ${DEVELOPER_PLANS[planId].name} - ${DEVELOPER_PLANS[planId].priceDisplay}`);
+    const plan = DEVELOPER_PLANS[planId];
+    toast.info(`Abonnement "${plan.name}" — ${plan.priceDisplay}`, {
+      description: 'Le module de paiement arrive prochainement.',
+    });
   };
 
   if (!user) {
@@ -116,7 +119,7 @@ export default function DeveloperSubscription() {
                         </div>
                       </div>
                       {isPopular && (
-                        <Badge className="bg-[#2563eb] text-white border-0">Populaire</Badge>
+                        <Badge variant="default" className="bg-[#2563eb] text-white border-0">Populaire</Badge>
                       )}
                     </div>
                   </CardHeader>

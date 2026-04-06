@@ -2,10 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Shield, Lock, Eye, Trash2, Share2, FileText, Download, Settings as SettingsIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import api from '../services/api';
+import { toast } from 'sonner';
+import { useAuth } from '@/lib/AuthContext';
+import { api } from '@/api/expressClient';
 
 export default function DataProtection() {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [legalInfo, setLegalInfo] = useState(null);
   const [exportLoading, setExportLoading] = useState(false);
 
@@ -24,20 +27,23 @@ export default function DataProtection() {
   };
 
   const handleExportData = async () => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      alert('Vous devez être connecté pour exporter vos données');
+    if (!isAuthenticated) {
+      toast.error('Vous devez être connecté pour exporter vos données');
       navigate('/login');
       return;
     }
 
+    const toastId = toast.loading('Traitement de votre demande…');
     try {
       setExportLoading(true);
       await api.post('/privacy/export-data', { format: 'json' });
-      alert('Votre demande d\'export a été enregistrée. Vous recevrez un email quand elle sera prête (sous 24h).');
+      toast.success(
+        'Demande enregistrée — vous recevrez un e-mail sous 24 h',
+        { id: toastId }
+      );
     } catch (error) {
       console.error('Error requesting export:', error);
-      alert('Erreur lors de la demande d\'export');
+      toast.error("Erreur lors de la demande d'export", { id: toastId });
     } finally {
       setExportLoading(false);
     }

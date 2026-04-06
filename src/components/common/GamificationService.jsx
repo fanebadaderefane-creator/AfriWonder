@@ -31,9 +31,9 @@ export async function awardPoints(userId, points, _reason) {
     }
 
     return { success: true, points };
-  } catch (_error) {
+  } catch (error) {
     console.error('Error awarding points:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: error?.message };
   }
 }
 
@@ -65,9 +65,9 @@ export async function awardBadge(userId, badgeId) {
     await awardPoints(userId, badgeDefinition.points, `Badge awarded: ${badgeId}`);
 
     return { success: true, badge: badgeDefinition };
-  } catch (_error) {
+  } catch (error) {
     console.error('Error awarding badge:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: error?.message };
   }
 }
 
@@ -123,9 +123,9 @@ export async function checkAndAwardBadges(userId) {
     }
 
     return { success: true, newBadges };
-  } catch (_error) {
+  } catch (error) {
     console.error('Error checking badges:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: error?.message };
   }
 }
 
@@ -142,7 +142,7 @@ export async function getUserStats(userId) {
       badgesCount: badges?.length || 0,
       pointsBalance: points?.[0]?.balance || 0
     };
-  } catch (_error) {
+  } catch (error) {
     console.error('Error getting user stats:', error);
     return { videosCount: 0, followersCount: 0, badgesCount: 0, pointsBalance: 0 };
   }

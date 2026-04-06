@@ -3,13 +3,16 @@ import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Mail, Clock, CheckCircle } from 'lucide-react';
+import { toast } from 'sonner';
+import { useAuth } from '@/lib/AuthContext';
 import BottomNav from '../components/navigation/BottomNav';
-import api from '../services/api';
+import { api } from '@/api/expressClient';
 
 export default function PrivacyPolicy() {
   const navigate = useNavigate();
   const [document, setDocument] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { isAuthenticated } = useAuth();
   const [hasAccepted, setHasAccepted] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -35,8 +38,7 @@ export default function PrivacyPolicy() {
 
   const checkAcceptance = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
+      if (!isAuthenticated) return;
 
       const response = await api.get('/legal/check-required');
       const required = response.data.data.documents.find(
@@ -49,26 +51,23 @@ export default function PrivacyPolicy() {
   };
 
   const handleAccept = async () => {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
+
+    const toastId = toast.loading('Enregistrement…');
     try {
       setAccepting(true);
-      const token = localStorage.getItem('token');
-      
-      if (!token) {
-        // Rediriger vers login
-        navigate('/login');
-        return;
-      }
-
       await api.post('/legal/accept', {
         document_id: document.id,
         document_type: 'privacy_policy',
       });
-
       setHasAccepted(true);
-      alert('Politique de confidentialité acceptée avec succès');
+      toast.success('Politique de confidentialité acceptée', { id: toastId });
     } catch (error) {
       console.error('Error accepting policy:', error);
-      alert('Erreur lors de l\'acceptation');
+      toast.error("Erreur lors de l'acceptation", { id: toastId });
     } finally {
       setAccepting(false);
     }

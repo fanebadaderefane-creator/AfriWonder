@@ -40,7 +40,8 @@ class BackendClient {
 
     final data = _decode(response);
     if (response.statusCode >= 400 || data['success'] != true) {
-      throw Exception(_extractErrorMessage(data, fallback: 'Echec de connexion'));
+      throw Exception(
+          _extractErrorMessage(data, fallback: 'Echec de connexion'));
     }
 
     final payload = Map<String, dynamic>.from(data['data'] as Map);
@@ -68,7 +69,8 @@ class BackendClient {
 
     try {
       final me = await getMe(accessToken);
-      return AuthSession(accessToken: accessToken, refreshToken: refreshToken, user: me);
+      return AuthSession(
+          accessToken: accessToken, refreshToken: refreshToken, user: me);
     } catch (_) {
       final renewed = await refresh(refreshToken);
       final me = await getMe(renewed.accessToken);
@@ -120,7 +122,8 @@ class BackendClient {
     );
     final data = _decode(response);
     if (response.statusCode >= 400 || data['success'] != true) {
-      throw Exception(_extractErrorMessage(data, fallback: 'Impossible de recuperer le profil'));
+      throw Exception(_extractErrorMessage(data,
+          fallback: 'Impossible de recuperer le profil'));
     }
     return Map<String, dynamic>.from(data['data'] as Map? ?? const {});
   }
@@ -132,7 +135,8 @@ class BackendClient {
     int page = 1,
     int limit = 25,
   }) async {
-    final following = await getFollowingUsers(accessToken: accessToken, userId: userId);
+    final following =
+        await getFollowingUsers(accessToken: accessToken, userId: userId);
     if (following.isEmpty) return [];
 
     final followingIds = following
@@ -140,7 +144,8 @@ class BackendClient {
         .where((id) => id.isNotEmpty)
         .toSet();
 
-    final videos = await listVideos(accessToken: accessToken, page: page, limit: limit);
+    final videos =
+        await listVideos(accessToken: accessToken, page: page, limit: limit);
     return videos
         .where((v) => followingIds.contains((v['creator_id'] ?? '').toString()))
         .toList();
@@ -158,7 +163,8 @@ class BackendClient {
     );
     final data = _decode(response);
     if (response.statusCode >= 400 || data['success'] != true) {
-      throw Exception(_extractErrorMessage(data, fallback: 'Impossible de charger les abonnements'));
+      throw Exception(_extractErrorMessage(data,
+          fallback: 'Impossible de charger les abonnements'));
     }
     final payload = data['data'];
     if (payload is! Map) return [];
@@ -181,7 +187,8 @@ class BackendClient {
     );
     final data = _decode(response);
     if (response.statusCode >= 400 || data['success'] != true) {
-      throw Exception(_extractErrorMessage(data, fallback: 'Impossible de charger les videos'));
+      throw Exception(_extractErrorMessage(data,
+          fallback: 'Impossible de charger les videos'));
     }
     final inner = data['data'];
     if (inner is Map && inner['videos'] is List) {
@@ -201,7 +208,8 @@ class BackendClient {
     );
     final data = _decode(response);
     if (response.statusCode >= 400) {
-      throw Exception(_extractErrorMessage(data, fallback: 'Impossible de charger le feed'));
+      throw Exception(_extractErrorMessage(data,
+          fallback: 'Impossible de charger le feed'));
     }
 
     final raw = data['data'] ?? data;
@@ -216,15 +224,15 @@ class BackendClient {
         .whereType<Map>()
         .map((e) => Map<String, dynamic>.from(e))
         .where((item) {
-          final type = (item['type'] ?? 'video').toString();
-          if (type != 'video' && item['video'] == null) return false;
-          return true;
-        })
-        .map((item) {
-          final video = (item['video'] is Map) ? Map<String, dynamic>.from(item['video']) : item;
-          return video;
-        })
-        .toList();
+      final type = (item['type'] ?? 'video').toString();
+      if (type != 'video' && item['video'] == null) return false;
+      return true;
+    }).map((item) {
+      final video = (item['video'] is Map)
+          ? Map<String, dynamic>.from(item['video'])
+          : item;
+      return video;
+    }).toList();
   }
 
   Future<Map<String, dynamic>> toggleLike({
@@ -258,7 +266,8 @@ class BackendClient {
     );
     final data = _decode(response);
     if (response.statusCode >= 400 || data['success'] != true) {
-      throw Exception(_extractErrorMessage(data, fallback: 'Follow impossible'));
+      throw Exception(
+          _extractErrorMessage(data, fallback: 'Follow impossible'));
     }
     return Map<String, dynamic>.from(data['data'] as Map? ?? const {});
   }
@@ -287,7 +296,8 @@ class BackendClient {
     final response = await _http.get(uri, headers: headers);
     final data = _decode(response);
     if (response.statusCode >= 400 || data['success'] != true) {
-      throw Exception(_extractErrorMessage(data, fallback: 'Recherche impossible'));
+      throw Exception(
+          _extractErrorMessage(data, fallback: 'Recherche impossible'));
     }
     return Map<String, dynamic>.from(data['data'] as Map? ?? const {});
   }
@@ -300,11 +310,15 @@ class BackendClient {
   }) async {
     final response = await _http.get(
       Uri.parse('$baseUrl/notifications?page=$page&limit=$limit'),
-      headers: {'Authorization': 'Bearer $accessToken', 'Accept': 'application/json'},
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+        'Accept': 'application/json'
+      },
     );
     final data = _decode(response);
     if (response.statusCode >= 400 || data['success'] != true) {
-      throw Exception(_extractErrorMessage(data, fallback: 'Notifications indisponibles'));
+      throw Exception(
+          _extractErrorMessage(data, fallback: 'Notifications indisponibles'));
     }
     return Map<String, dynamic>.from(data['data'] as Map? ?? const {});
   }
@@ -315,22 +329,30 @@ class BackendClient {
   }) async {
     final response = await _http.put(
       Uri.parse('$baseUrl/notifications/$notificationId/read'),
-      headers: {'Authorization': 'Bearer $accessToken', 'Accept': 'application/json'},
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+        'Accept': 'application/json'
+      },
     );
     if (response.statusCode >= 400) {
       final data = _decode(response);
-      throw Exception(_extractErrorMessage(data, fallback: 'Marquage lu impossible'));
+      throw Exception(
+          _extractErrorMessage(data, fallback: 'Marquage lu impossible'));
     }
   }
 
   Future<void> markAllNotificationsRead({required String accessToken}) async {
     final response = await _http.put(
       Uri.parse('$baseUrl/notifications/read-all'),
-      headers: {'Authorization': 'Bearer $accessToken', 'Accept': 'application/json'},
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+        'Accept': 'application/json'
+      },
     );
     if (response.statusCode >= 400) {
       final data = _decode(response);
-      throw Exception(_extractErrorMessage(data, fallback: 'Operation impossible'));
+      throw Exception(
+          _extractErrorMessage(data, fallback: 'Operation impossible'));
     }
   }
 
@@ -341,9 +363,12 @@ class BackendClient {
     return {'data': decoded};
   }
 
-  String _extractErrorMessage(Map<String, dynamic> data, {required String fallback}) {
+  String _extractErrorMessage(Map<String, dynamic> data,
+      {required String fallback}) {
     final error = data['error'];
-    if (error is Map && error['message'] != null) return error['message'].toString();
+    if (error is Map && error['message'] != null) {
+      return error['message'].toString();
+    }
     if (data['message'] != null) return data['message'].toString();
     return fallback;
   }

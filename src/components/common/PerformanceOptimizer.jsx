@@ -15,7 +15,7 @@ export const useNetworkStatus = () => {
 
     let connectionCleanup;
     if (typeof navigator !== 'undefined' && 'connection' in navigator) {
-      const connection = navigator.connection;
+      const connection = /** @type {any} */ (/** @type {any} */ (navigator).connection);
       const isSlowType = ['slow-2g', '2g', '3g'].includes(connection.effectiveType);
       setIsSlowConnection(isSlowType || connection.saveData);
 
@@ -116,7 +116,8 @@ export const useIntersectionObserver = (ref, callback, options = {}) => {
 // Estimate network speed
 export const estimateNetworkSpeed = async () => {
   try {
-    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    const _nav = /** @type {any} */ (navigator);
+    const connection = _nav.connection || _nav.mozConnection || _nav.webkitConnection;
     if (!connection) return 'high';
     return connection.effectiveType;
   } catch (_error) {

@@ -10,9 +10,11 @@ import OfflineIndicator from "@/components/common/OfflineIndicator";
 import GuestExploreBanner from "@/components/common/GuestExploreBanner";
 import AppUpdateBanner from "@/components/common/AppUpdateBanner";
 import PWAInstallBanner from "@/components/pwa/PWAInstallBanner";
+import PushOptInBanner from "@/components/pwa/PushOptInBanner";
 import PageTransition from "@/components/common/PageTransition";
 import { useSwipeBack } from '@/hooks/useSwipeBack';
 import { useNativeAppEnhancements } from '@/hooks/useNativeAppEnhancements';
+import useGamificationInit from '@/components/common/GamificationInitializer';
 const MenuPlus = lazy(() => import("@/components/navigation/MenuPlus"));
 const IncomingCallListener = lazy(() => import("@/components/call/IncomingCallListener"));
 
@@ -143,6 +145,7 @@ function LayoutContent({ children, currentPageName }) {
   const fullScreenPages = ['Home', 'Create', 'Chat', 'GroupChat', 'DirectCall', 'GroupCallLobby'];
   const isFullScreen = fullScreenPages.includes(currentPageName);
   const { user } = useAuth();
+  useGamificationInit(user?.id);
   const { isOpen: isMenuOpen, closeMenu, openMenu, reopenMenuOnPath, clearReopenMenuOnPath, scheduleReopenWhenReturn } = useAppMenu();
   const location = useLocation();
 
@@ -178,11 +181,11 @@ function LayoutContent({ children, currentPageName }) {
       <OfflineIndicator />
       <AppUpdateBanner />
       <PWAInstallBanner isFullScreen={isFullScreen} currentPageName={currentPageName} />
+      <PushOptInBanner userId={user?.id} isFullScreen={isFullScreen} />
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-        
+        /* Police Inter chargee de facon asynchrone dans index.html (preload + onload) */
         * {
-          font-family: 'Inter', sans-serif;
+          font-family: 'Inter', system-ui, -apple-system, sans-serif;
         }
         
         /* Safe area insets for mobile */

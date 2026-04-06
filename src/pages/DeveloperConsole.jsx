@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import BottomNav from '@/components/navigation/BottomNav';
 import { motion } from 'framer-motion';
+import { toast } from 'sonner';
 import { DEVELOPER_PLANS, MOCK_REVENUE_DATA } from '@/data/monetizationMock';
 
 export default function DeveloperConsole() {
@@ -197,10 +198,7 @@ export default function DeveloperConsole() {
         {/* Create App Button */}
         <Button
           className="w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white"
-          onClick={() => {
-            // Ici on pourrait ouvrir un modal ou rediriger vers une page de création
-            alert('Fonctionnalité de création à venir');
-          }}
+          onClick={() => toast.info('Création de mini-app — disponible prochainement')}
         >
           <Plus className="w-4 h-4 mr-2" />
           Créer une nouvelle Mini-App
@@ -353,9 +351,7 @@ export default function DeveloperConsole() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => {
-                        alert(`Demande de boost envoyée pour ${app.name} (mock).`);
-                      }}
+                      onClick={() => toast.info(`Boost pour "${app.name}" — disponible prochainement`)}
                     >
                       <Rocket className="w-4 h-4 mr-1" />
                       Booster
@@ -386,7 +382,7 @@ export default function DeveloperConsole() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => alert(`Ouverture du journal des versions pour ${app.name} (mock).`)}
+                      onClick={() => toast.info(`Journal des versions pour "${app.name}" — disponible prochainement`)}
                     >
                       <FileCode className="w-4 h-4 mr-1" />
                       Voir le journal des versions

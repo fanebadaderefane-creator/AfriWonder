@@ -111,11 +111,11 @@ Tu peux utiliser [Supabase](https://supabase.com) pour une base PostgreSQL gratu
 ### 1. Cloner le repository
 
 ```bash
-git clone https://github.com/VOTRE_ORG/AfriWonder.git
+git clone https://github.com/fanebadaderefane-creator/AfriWonder.git
 cd AfriWonder
 ```
 
-> Remplace `VOTRE_ORG` par l’URL réelle du dépôt GitHub.
+> Dépôt public : `github.com/fanebadaderefane-creator/AfriWonder` (fork : adapter l’URL `git clone`).
 
 ### 2. Installer le frontend (racine)
 

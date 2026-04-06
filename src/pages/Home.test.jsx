@@ -48,19 +48,18 @@ vi.mock('@tanstack/react-query', () => ({
   useQuery: vi.fn().mockImplementation(({ queryKey }) => {
     const key = Array.isArray(queryKey) ? queryKey[0] : queryKey;
     const base = { refetch: refetchMock };
-    if (key === 'videos') {
-      return { ...base, data: videosData, isLoading: videosLoading };
-    }
-    if (key === 'feed') {
-      return { ...base, data: videosData, isLoading: videosLoading };
-    }
-    if (key === 'comments') {
-      return { ...base, data: [] };
-    }
-    if (key === 'user-follows') {
-      return { ...base, data: [] };
-    }
+    if (key === 'videos') return { ...base, data: videosData, isLoading: videosLoading };
+    if (key === 'comments') return { ...base, data: [] };
+    if (key === 'user-follows') return { ...base, data: [] };
     return { ...base, data: [] };
+  }),
+  useInfiniteQuery: vi.fn().mockImplementation(({ queryKey }) => {
+    const key = Array.isArray(queryKey) ? queryKey[0] : queryKey;
+    const base = { refetch: refetchMock, fetchNextPage: vi.fn(), hasNextPage: false };
+    if (key === 'feed') {
+      return { ...base, data: { pages: [videosData] }, isLoading: videosLoading };
+    }
+    return { ...base, data: { pages: [[]] }, isLoading: false };
   }),
   useMutation: () => ({
     mutate: vi.fn(),
@@ -143,7 +142,7 @@ describe('Home page', () => {
     });
   });
 
-  it('affiche le loader pendant le chargement des vidéos', () => {
+  it('affiche le rideau de chargement pendant le chargement du feed', () => {
     render(
       <MemoryRouter>
         <AppMenuProvider>
@@ -151,7 +150,8 @@ describe('Home page', () => {
         </AppMenuProvider>
       </MemoryRouter>
     );
-    expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+    // Plus de spinner `.animate-spin` : splash plein écran (BrandedLaunchSplash / FeedStartupCurtain).
+    expect(screen.getByLabelText('Chargement AfriWonder')).toBeInTheDocument();
   });
 
   it('affiche l’état vide et le CTA inscription quand aucune vidéo', async () => {

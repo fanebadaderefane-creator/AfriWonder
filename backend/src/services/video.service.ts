@@ -796,6 +796,30 @@ class VideoService {
         data: { likes: { increment: 1 } },
       }),
     ]);
+
+    const vCreator = await prisma.video.findUnique({
+      where: { id: videoId },
+      select: { creator_id: true },
+    });
+    if (vCreator?.creator_id && vCreator.creator_id !== userId) {
+      const liker = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { username: true, full_name: true },
+      });
+      const likerName = liker?.full_name || liker?.username || 'Quelqu\'un';
+      notificationService.create(vCreator.creator_id, {
+        type: 'like',
+        title: 'Nouvelle réaction',
+        message:
+          reactionType === 'like'
+            ? `${likerName} a aimé votre vidéo`
+            : `${likerName} a réagi à votre vidéo`,
+        reference_type: 'video',
+        reference_id: videoId,
+        data: { videoId, from_user_id: userId, reaction: reactionType },
+      }).catch(() => {});
+    }
+
     return { reaction: reactionType, reaction_counts: await this.getReactionCounts(videoId) };
   }
 

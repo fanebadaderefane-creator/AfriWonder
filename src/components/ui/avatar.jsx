@@ -5,7 +5,7 @@ import * as AvatarPrimitive from "@radix-ui/react-avatar"
 
 import { cn } from "@/lib/utils"
 
-const Avatar = React.forwardRef(({ className, ...props }, ref) => (
+const Avatar = React.forwardRef(/** @param {{ className?: string, children?: React.ReactNode, [k: string]: any }} props */ ({ className, ...props }, ref) => (
   <AvatarPrimitive.Root
     ref={ref}
     className={cn("relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full", className)}
@@ -14,6 +14,7 @@ const Avatar = React.forwardRef(({ className, ...props }, ref) => (
 Avatar.displayName = AvatarPrimitive.Root.displayName
 
 const AvatarImage = React.forwardRef(
+  /** @param {{ className?: string, src?: string, alt?: string, loading?: "eager" | "lazy", decoding?: "auto" | "async" | "sync", fetchPriority?: string, [k: string]: any }} props */
   (
     {
       className,
@@ -37,7 +38,7 @@ const AvatarImage = React.forwardRef(
 )
 AvatarImage.displayName = AvatarPrimitive.Image.displayName
 
-const AvatarFallback = React.forwardRef(({ className, ...props }, ref) => (
+const AvatarFallback = React.forwardRef(/** @param {{ className?: string, children?: React.ReactNode, [k: string]: any }} props */ ({ className, ...props }, ref) => (
   <AvatarPrimitive.Fallback
     ref={ref}
     className={cn(

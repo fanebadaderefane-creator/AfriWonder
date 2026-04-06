@@ -1,10 +1,10 @@
 /* cspell:disable-file */
 // AfriWonder full review PR - CodeRabbit
-// @ts-nocheck
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useReducer } from 'react';
+import { FEED_PAGE_SIZE } from '@/constants/feed';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/expressClient';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import CommentSheet from '../components/video/CommentSheet';
 import TipModal from '../components/video/TipModal';
 import ShareSheet from '../components/video/ShareSheet';
@@ -18,6 +18,7 @@ import FeedPullToRefresh from '@/features/feed/components/FeedPullToRefresh';
 import FeedStartupCurtain from '@/features/feed/components/FeedStartupCurtain';
 import FeedTopBannerRail from '@/features/feed/components/FeedTopBannerRail';
 import FeedVideoSlide from '@/features/feed/components/FeedVideoSlide';
+import FeedVideoSkeleton from '@/features/feed/components/FeedVideoSkeleton';
 import {
   extractMainFeedVideoItems,
   getFeedPosterUrl,
@@ -26,11 +27,7 @@ import {
 import { useAppMenu } from '@/contexts/AppMenuContext';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import NotificationService from '../components/notifications/NotificationService';
-import Sparkles from 'lucide-react/icons/sparkles';
-import Users from 'lucide-react/icons/users';
-import WifiOff from 'lucide-react/icons/wifi-off';
-import Download from 'lucide-react/icons/download';
-import CloudOff from 'lucide-react/icons/cloud-off';
+import { Sparkles, Users, WifiOff, Download, CloudOff } from 'lucide-react';
 import { toast } from "sonner";
 import { useNetworkStatus, getCacheStrategy } from '../components/common/PerformanceOptimizer';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -61,6 +58,7 @@ const FEED_STARTUP_CURTAIN_SESSION_KEY = 'afw_feed_startup_curtain_seen';
 const FEED_PREPARED_STORAGE_KEY = 'afw_feed_prepared_v1';
 const FEED_VIEWED_STORAGE_KEY = 'afw_feed_viewed_catalog_v1';
 const FEED_VIEWED_STORAGE_MAX = 80;
+/** @type {any[]} */
 const EMPTY_ITEMS = [];
 
 function sameStringArray(a, b) {
@@ -73,26 +71,66 @@ function sameStringArray(a, b) {
   return true;
 }
 
+const initialFeedState = { likedVideos: new Set(), savedVideos: new Set(), followingCount: 0 };
+function feedReducer(state, action) {
+  switch (action.type) {
+    case 'RESET_INTERACTIONS':
+      return { ...state, likedVideos: new Set(), savedVideos: new Set() };
+    case 'SYNC_LIKES': {
+      const next = new Set(state.likedVideos);
+      action.visibleIds.forEach((id) => next.delete(id));
+      action.likedIds.forEach((id) => next.add(id));
+      return { ...state, likedVideos: next };
+    }
+    case 'SYNC_SAVES': {
+      const next = new Set(state.savedVideos);
+      action.visibleIds.forEach((id) => next.delete(id));
+      action.savedIds.forEach((id) => next.add(id));
+      return { ...state, savedVideos: next };
+    }
+    case 'TOGGLE_LIKE': {
+      const next = new Set(state.likedVideos);
+      if (action.liked) next.add(String(action.videoId));
+      else next.delete(String(action.videoId));
+      return { ...state, likedVideos: next };
+    }
+    case 'TOGGLE_SAVE': {
+      const next = new Set(state.savedVideos);
+      if (action.saved) next.add(String(action.videoId));
+      else next.delete(String(action.videoId));
+      return { ...state, savedVideos: next };
+    }
+    case 'SET_FOLLOWING_COUNT':
+      return { ...state, followingCount: action.count };
+    default:
+      return state;
+  }
+}
+
 export default function Home() {
   const _navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('pourtoi');
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [showComments, setShowComments] = useState(false);
-  const [showTip, setShowTip] = useState(false);
-  const [showShare, setShowShare] = useState(false);
-  const [showGift, setShowGift] = useState(false);
+  // Un seul état pour tous les modals — évite N re-renders indépendants.
+  const [activeModal, setActiveModal] = useState(/** @type {string | null} */ (null)); // null | 'comments' | 'tip' | 'share' | 'gift' | 'wonderers' | 'offline'
+  const showComments = activeModal === 'comments';
+  const showTip = activeModal === 'tip';
+  const showShare = activeModal === 'share';
+  const showGift = activeModal === 'gift';
   const { isOpen: isMenuOpen, openMenu } = useAppMenu();
   const { isMuted, setMuted } = usePreferences();
   
   useWakeLock(true);
   
-  const [selectedVideo, setSelectedVideo] = useState(null);
-  const [user, setUser] = useState(null);
+  const [selectedVideo, setSelectedVideo] = useState(/** @type {any} */ (null));
+  const [user, setUser] = useState(/** @type {any} */ (null));
   /** Évite 2× GET /feed : la clé ['feed', user?.id] passait de undefined → id au retour de /auth/me. */
   const [userHydrated, setUserHydrated] = useState(false);
-  const [likedVideos, setLikedVideos] = useState(new Set());
-  const [savedVideos, setSavedVideos] = useState(new Set());
-  const [followingCount, setFollowingCount] = useState(0);
+  const [feedState, _dispatchRaw] = useReducer(feedReducer, initialFeedState);
+  const dispatch = /** @type {(action: any) => void} */ (_dispatchRaw);
+  const likedVideos = feedState.likedVideos;
+  const savedVideos = feedState.savedVideos;
+  const followingCount = feedState.followingCount;
   const [initialFeedVisualReady, setInitialFeedVisualReady] = useState(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -102,27 +140,27 @@ export default function Home() {
     }
   });
 
-  const [showWonderersPanel, setShowWonderersPanel] = useState(false);
-  const [showOfflineReadyPanel, setShowOfflineReadyPanel] = useState(false);
+  const showWonderersPanel = activeModal === 'wonderers';
+  const showOfflineReadyPanel = activeModal === 'offline';
   const [isBatteryConstrained, setIsBatteryConstrained] = useState(false);
-  const [warmingFeedIds, setWarmingFeedIds] = useState([]);
-  const [preparedFeedVideos, setPreparedFeedVideos] = useState(() => {
+  const [warmingFeedIds, setWarmingFeedIds] = useState(/** @type {any[]} */ ([]));
+  const [preparedFeedVideos, setPreparedFeedVideos] = useState(/** @returns {any[]} */ () => {
     const cached = getJSON(FEED_PREPARED_STORAGE_KEY, []);
     return Array.isArray(cached) ? cached : [];
   });
-  const [viewedFeedCatalog, setViewedFeedCatalog] = useState(() => {
+  const [viewedFeedCatalog, setViewedFeedCatalog] = useState(/** @returns {any[]} */ () => {
     const cached = getJSON(FEED_VIEWED_STORAGE_KEY, []);
     return Array.isArray(cached) ? cached : [];
   });
 
-  const containerRef = useRef(null);
+  const containerRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const queryClient = useQueryClient();
   const [pullDistance, setPullDistance] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const touchStartYRef = useRef(0);
   const pullDistanceRef = useRef(0);
   const currentIndexRef = useRef(0);
-  const observerRef = useRef(null);
+  const observerRef = useRef(/** @type {IntersectionObserver | null} */ (null));
   const scrollRafRef = useRef(0);
   /** Évite double GET /feed : l’effet d’invalidation ne doit pas refetch au 1er `user.id` (la query vient de partir). */
   const feedInvalidatePrevUserIdRef = useRef(undefined);
@@ -146,7 +184,8 @@ export default function Home() {
   const { isOnline, isSlowConnection } = useNetworkStatus();
   const isDataSaverEnabled = useMemo(() => {
     if (typeof navigator === 'undefined') return false;
-    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    const nav = /** @type {any} */ (navigator);
+    const connection = nav.connection || nav.mozConnection || nav.webkitConnection;
     return !!connection?.saveData;
   }, []);
   const cacheStrategy = getCacheStrategy(isSlowConnection);
@@ -157,25 +196,38 @@ export default function Home() {
     refetchOnMount: false,
   };
 
-  const { data: feedData, isLoading: feedLoading, isError: feedError, refetch: refetchFeed } = useQuery({
+  const {
+    data: feedInfiniteData,
+    isLoading: feedLoading,
+    isError: feedError,
+    refetch: refetchFeed,
+    fetchNextPage: fetchFeedNextPage,
+    hasNextPage: feedHasNextPage,
+  } = useInfiniteQuery({
     queryKey: ['feed', user?.id ?? 'guest'],
     ...homeCacheStrategy,
     retry: 1,
-    queryFn: async () => {
+    initialPageParam: 1,
+    queryFn: async ({ pageParam = 1 }) => {
       const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
-      const result = await api.feed.list({ page: 1, limit: 25 });
-      if (import.meta.env.DEV) {
+      const result = await api.feed.list({ page: pageParam, limit: FEED_PAGE_SIZE });
+      if (import.meta.env.DEV && import.meta.env.VITE_DEBUG_FEED_QUERY === '1') {
         const items = result?.items;
         const ms = typeof performance !== 'undefined' ? Math.round(performance.now() - t0) : 0;
         console.log('[Feed query] réponse:', {
-          ms,
+          ms, page: pageParam,
           type: typeof result,
           hasItems: !!items,
           count: items?.length,
           sample: items?.[0],
         });
       }
-      return result?.items ?? [];
+      return /** @type {any[]} */ (result?.items ?? []);
+    },
+    getNextPageParam: (lastPage, pages) => {
+      const safeLastPage = Array.isArray(lastPage) ? lastPage : EMPTY_ITEMS;
+      const safePages = Array.isArray(pages) ? pages : EMPTY_ITEMS;
+      return safeLastPage.length === FEED_PAGE_SIZE ? safePages.length + 1 : undefined;
     },
     enabled: activeTab === 'pourtoi' && userHydrated,
   });
@@ -204,14 +256,14 @@ export default function Home() {
     queryKey: ['videos', user?.id ?? 'guest'],
     ...homeCacheStrategy,
     queryFn: async () => {
-      const result = await api.videos.list({ page: 1, limit: 25 });
+      const result = await api.videos.list({ page: 1, limit: FEED_PAGE_SIZE });
       return result.videos || [];
     },
     enabled: activeTab === 'abonnements' && userHydrated && !!user?.id && hasActiveFollows,
   });
   const videos = videosData ?? EMPTY_ITEMS;
 
-  const [hiddenAdIds, setHiddenAdIds] = useState(() => {
+  const [hiddenAdIds, setHiddenAdIds] = useState(/** @returns {any[]} */ () => {
     const cached = getJSON('afw_hidden_ads', []);
     return Array.isArray(cached) ? cached : [];
   });
@@ -225,7 +277,12 @@ export default function Home() {
     });
   }, []);
 
-  const feedItemsRaw = feedData ?? EMPTY_ITEMS;
+  const feedItemsRaw = useMemo(
+    () => Array.isArray(feedInfiniteData?.pages)
+      ? feedInfiniteData.pages.flat()
+      : EMPTY_ITEMS,
+    [feedInfiniteData]
+  );
   const feedItems = useMemo(() => {
     if (hiddenAdIds.length === 0) return feedItemsRaw;
     return feedItemsRaw.filter(
@@ -383,6 +440,16 @@ export default function Home() {
   const safeCurrentIndex = feedLength > 0
     ? Math.max(0, Math.min(Number.isFinite(currentIndex) ? currentIndex : 0, feedLength - 1))
     : 0;
+
+  // Charger la page suivante quand l'utilisateur est à 3 vidéos de la fin.
+  useEffect(() => {
+    if (activeTab !== 'pourtoi') return;
+    if (!feedHasNextPage) return;
+    if (feedLength > 0 && safeCurrentIndex >= feedLength - 3) {
+      fetchFeedNextPage();
+    }
+  }, [safeCurrentIndex, feedLength, feedHasNextPage, fetchFeedNextPage, activeTab]);
+
   const visibleFeedVideoIds = useMemo(() => {
     const start = Math.max(0, safeCurrentIndex - FEED_VIDEO_STATE_RADIUS);
     const end = safeCurrentIndex + FEED_VIDEO_STATE_RADIUS + 1;
@@ -538,7 +605,8 @@ export default function Home() {
   });
 
   useEffect(() => {
-    if (typeof navigator === 'undefined' || typeof navigator.getBattery !== 'function') return;
+    const _nav = /** @type {any} */ (navigator);
+    if (typeof navigator === 'undefined' || typeof _nav.getBattery !== 'function') return;
 
     let batteryManager;
     let disposed = false;
@@ -548,7 +616,7 @@ export default function Home() {
       setIsBatteryConstrained(Boolean(!batteryManager.charging && batteryLow));
     };
 
-    navigator.getBattery()
+    _nav.getBattery()
       .then((battery) => {
         if (disposed) return;
         batteryManager = battery;
@@ -568,10 +636,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!user?.id) {
-      setLikedVideos(new Set());
-      setSavedVideos(new Set());
-    }
+    if (!user?.id) dispatch({ type: 'RESET_INTERACTIONS' });
   }, [user?.id]);
 
   useEffect(() => {
@@ -581,18 +646,8 @@ export default function Home() {
     const likedIdSet = new Set((feedVideoStates.likedIds || []).map(String));
     const savedIdSet = new Set((feedVideoStates.savedIds || []).map(String));
 
-    setLikedVideos((prev) => {
-      const next = new Set(prev);
-      visibleIdSet.forEach((id) => next.delete(id));
-      likedIdSet.forEach((id) => next.add(id));
-      return next;
-    });
-    setSavedVideos((prev) => {
-      const next = new Set(prev);
-      visibleIdSet.forEach((id) => next.delete(id));
-      savedIdSet.forEach((id) => next.add(id));
-      return next;
-    });
+    dispatch({ type: 'SYNC_LIKES', visibleIds: visibleIdSet, likedIds: likedIdSet });
+    dispatch({ type: 'SYNC_SAVES', visibleIds: visibleIdSet, savedIds: savedIdSet });
   }, [feedVideoStates, visibleFeedVideoIds]);
 
   useEffect(() => {
@@ -683,7 +738,7 @@ export default function Home() {
   }, [feedLength]);
 
   useEffect(() => {
-    setFollowingCount(followingCountMemo);
+    dispatch({ type: 'SET_FOLLOWING_COUNT', count: followingCountMemo });
   }, [followingCountMemo]);
 
   // Sécurité PWA/mobile : s'assurer qu'aucune vidéo du feed ne continue à jouer
@@ -691,7 +746,7 @@ export default function Home() {
   useEffect(() => {
     return () => {
       if (typeof document === 'undefined') return;
-      const players = document.querySelectorAll('video[data-afw-feed-video="1"]');
+      const players = /** @type {NodeListOf<HTMLVideoElement>} */ (document.querySelectorAll('video[data-afw-feed-video="1"]'));
       players.forEach((node) => {
         try {
           node.pause();
@@ -716,7 +771,7 @@ export default function Home() {
     const anyOverlayOpen = hideVideoHud || isMenuOpen;
     if (!anyOverlayOpen || typeof document === 'undefined') return;
 
-    const players = document.querySelectorAll('video[data-afw-feed-video="1"]');
+    const players = /** @type {NodeListOf<HTMLVideoElement>} */ (document.querySelectorAll('video[data-afw-feed-video="1"]'));
     players.forEach((node) => {
       try {
         node.pause();
@@ -801,7 +856,7 @@ export default function Home() {
   }, []);
 
   const likeMutation = useMutation({
-    mutationFn: async ({ video, type = 'like' }) => {
+    mutationFn: async (/** @type {{video: any, type?: string | null}} */ { video, type = 'like' }) => {
       if (!user) {
         return { isLiked: false, reaction: null, video: null };
       }
@@ -815,7 +870,7 @@ export default function Home() {
         const reaction = result?.reaction ?? result?.data?.reaction ?? type;
         const newLiked = result?.liked ?? result?.data?.liked ?? true;
         return { isLiked: newLiked, reaction, video };
-      } catch (error) {
+      } catch (/** @type {any} */ error) {
         const status = error.response?.status;
         const body = error.response?.data;
         const likedFromError = body?.data?.liked ?? body?.liked;
@@ -829,12 +884,7 @@ export default function Home() {
     },
     onSuccess: (data) => {
       if (data?.video) {
-        setLikedVideos(prev => {
-          const next = new Set(prev);
-          if (data.isLiked) next.add(data.video.id);
-          else next.delete(data.video.id);
-          return next;
-        });
+        dispatch({ type: 'TOGGLE_LIKE', videoId: data.video.id, liked: data.isLiked });
         if (data.isLiked && user?.id && data.video?.creator_id) {
           try {
             NotificationService.notifyVideoLike(user.id, data.video.id, data.video.creator_id);
@@ -860,7 +910,7 @@ export default function Home() {
   );
 
   const saveMutation = useMutation({
-    mutationFn: async (video) => {
+    mutationFn: async (/** @type {any} */ video) => {
       if (!user) {
         toast.error('Connectez-vous pour sauvegarder');
         return false;
@@ -872,14 +922,9 @@ export default function Home() {
       }
       return !isSaved;
     },
-    onSuccess: (isNowSaved, video) => {
+    onSuccess: (/** @type {any} */ isNowSaved, /** @type {any} */ video) => {
       if (typeof isNowSaved === 'boolean' && video) {
-        setSavedVideos(prev => {
-          const next = new Set(prev);
-          if (isNowSaved) next.add(video.id);
-          else next.delete(video.id);
-          return next;
-        });
+        dispatch({ type: 'TOGGLE_SAVE', videoId: video.id, saved: isNowSaved });
       }
     }
   });
@@ -964,7 +1009,7 @@ export default function Home() {
       } else {
         toast.error('Selectionnez Mon Wallet ou Orange Money avec un numero.');
       }
-    } catch (err) {
+    } catch (/** @type {any} */ err) {
       toast.error(err?.apiMessage || 'Erreur lors de l\'envoi du tip');
       throw err;
     }
@@ -1028,10 +1073,7 @@ export default function Home() {
 
   useEffect(() => {
     if (selectedVideo?.id) return;
-    setShowComments(false);
-    setShowShare(false);
-    setShowTip(false);
-    setShowGift(false);
+    setActiveModal(null);
   }, [selectedVideo?.id]);
 
   // Mise à jour de l'index actif en fonction du scroll (style TikTok)
@@ -1039,7 +1081,7 @@ export default function Home() {
   const updateIndexFromScroll = useCallback(() => {
     const container = containerRef.current;
     if (!container || feedLength === 0) return;
-    const firstSlide = container.querySelector('[data-index="0"]');
+    const firstSlide = /** @type {HTMLElement | null} */ (container.querySelector('[data-index="0"]'));
     if (!firstSlide) return;
     const h = firstSlide.offsetHeight;
     if (h <= 0) return;
@@ -1080,15 +1122,18 @@ export default function Home() {
         let best = null;
         entries.forEach((entry) => {
           if (!entry.isIntersecting || entry.intersectionRatio < 0.6) return;
-          const index = Number(entry.target.dataset.index);
+          const index = Number(/** @type {HTMLElement} */ (entry.target).dataset.index);
           if (!Number.isFinite(index)) return;
           if (best === null || entry.intersectionRatio > best.ratio) {
             best = { index, ratio: entry.intersectionRatio };
           }
         });
-        if (best != null && best.index !== currentIndexRef.current) {
-          currentIndexRef.current = best.index;
-          setCurrentIndex(best.index);
+        if (best != null) {
+          const safeBest = /** @type {{ index: number, ratio: number }} */ (best);
+          if (safeBest.index !== currentIndexRef.current) {
+            currentIndexRef.current = safeBest.index;
+            setCurrentIndex(safeBest.index);
+          }
         }
       },
       { threshold: 0.6, root: container, rootMargin: '0px' }
@@ -1150,7 +1195,7 @@ export default function Home() {
         {SHOW_FEED_OFFLINE_BADGES && preparedFeedVideos.length > 0 && (
           <button
             type="button"
-            onClick={() => setShowOfflineReadyPanel(true)}
+            onClick={() => setActiveModal('offline')}
             className={cn(
               'absolute right-3 top-3 z-50 inline-flex items-center gap-2 rounded-full border border-white/12 bg-black/35 px-3 py-2 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(0,0,0,0.3)] backdrop-blur-md transition-all duration-300 active:scale-[0.98]',
               hideVideoHud ? 'pointer-events-none opacity-0' : 'opacity-100'
@@ -1192,7 +1237,7 @@ export default function Home() {
             countLabel={`${followingCountMemo} createurs suivis`}
             getAvatarInitials={getAvatarInitials}
             onCreatorClick={(creatorId) => _navigate(`/Profile?_userId=${creatorId}`)}
-            onSeeAll={() => setShowWonderersPanel(true)}
+            onSeeAll={() => setActiveModal('wonderers')}
           />
         )}
 
@@ -1264,7 +1309,7 @@ export default function Home() {
           </div>
         )}
         {activeTab === 'abonnements' && followingVideos.length === 0 && isLoading ? (
-          <div className="min-h-full w-full shrink-0" aria-hidden />
+          <FeedVideoSkeleton count={3} />
         ) : activeTab === 'abonnements' && followingVideos.length === 0 ? (
           <FeedEmptyState
             icon={Users}
@@ -1274,7 +1319,7 @@ export default function Home() {
             onAction={!user ? () => _navigate('/Landing') : undefined}
           />
         ) : activeTab === 'pourtoi' && !shouldUseOfflinePreparedFeed && mainFeedItems.length === 0 && isLoading ? (
-          <div className="min-h-full w-full shrink-0" aria-hidden />
+          <FeedVideoSkeleton count={3} />
         ) : activeTab === 'pourtoi' && !shouldUseOfflinePreparedFeed && mainFeedItems.length === 0 ? (
           <FeedEmptyState
             icon={feedError ? WifiOff : Sparkles}
@@ -1320,16 +1365,16 @@ export default function Home() {
                 onLike={handleLike}
                 onComment={() => {
                   setSelectedVideo(slide.video);
-                  setShowComments(true);
+                  setActiveModal('comments');
                 }}
                 onShare={() => {
                   setSelectedVideo(slide.video);
-                  setShowShare(true);
+                  setActiveModal('share');
                 }}
                 onSave={() => saveMutation.mutate(slide.video)}
                 onTip={() => {
                   setSelectedVideo(slide.video);
-                  setShowTip(true);
+                  setActiveModal('tip');
                 }}
                 onSubscribe={() => handleToggleWonder(slide.video.creator_id, slide.video.creator_name)}
                 onProfileClick={(creatorId) => {
@@ -1364,7 +1409,7 @@ export default function Home() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setShowOfflineReadyPanel(false)}
+                  onClick={() => setActiveModal(null)}
                   className="text-white/70 hover:text-white text-sm"
                   aria-label="Fermer les videos preparees hors connexion"
                 >
@@ -1381,10 +1426,10 @@ export default function Home() {
                       const targetIndex = feedSlides.findIndex((slide) => String(slide.id) === String(item.id));
                       if (targetIndex >= 0) {
                         const container = containerRef.current;
-                        const firstSlide = container?.querySelector('[data-index="0"]');
+                        const firstSlide = /** @type {HTMLElement | null | undefined} */ (container?.querySelector('[data-index="0"]'));
                         const slideHeight = firstSlide?.offsetHeight || window.innerHeight;
                         container?.scrollTo({ top: slideHeight * targetIndex, behavior: 'smooth' });
-                        setShowOfflineReadyPanel(false);
+                        setActiveModal(null);
                       }
                     }}
                     className="flex w-full items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.04] p-3 text-left transition-colors hover:bg-white/[0.07]"
@@ -1423,7 +1468,7 @@ export default function Home() {
                 <h3 className="text-white font-bold text-base">Tout ton Wonder</h3>
                 <button
                   type="button"
-                  onClick={() => setShowWonderersPanel(false)}
+                  onClick={() => setActiveModal(null)}
                   className="text-white/70 hover:text-white text-sm"
                   aria-label="Fermer la liste de ton Wonder"
                 >
@@ -1493,15 +1538,15 @@ export default function Home() {
 
       <CommentSheet
         isOpen={isCommentOverlayOpen}
-        onClose={() => setShowComments(false)}
+        onClose={() => setActiveModal(null)}
         videoId={selectedVideo?.id}
         comments={comments}
         isLoading={commentsLoading}
         isError={commentsError}
         onRetry={() => refetchComments()}
         onTip={() => {
-          setShowComments(false);
-          setShowTip(true);
+          setActiveModal(null);
+          setActiveModal('tip');
         }}
         user={user}
         onRefresh={() => queryClient.invalidateQueries({ queryKey: ['comments', selectedVideo?.id] })}
@@ -1509,7 +1554,7 @@ export default function Home() {
 
       <TipModal
         isOpen={isTipOverlayOpen}
-        onClose={() => setShowTip(false)}
+        onClose={() => setActiveModal(null)}
         creator={{
           name: selectedVideo?.creator_name,
           avatar: selectedVideo?.creator_avatar
@@ -1520,7 +1565,7 @@ export default function Home() {
 
       <ShareSheet
         isOpen={isShareOverlayOpen}
-        onClose={() => setShowShare(false)}
+        onClose={() => setActiveModal(null)}
         video={selectedVideo}
         onShareSuccess={async () => {
           if (selectedVideo) {
@@ -1541,7 +1586,7 @@ export default function Home() {
 
       <GiftPurchaseModal
         isOpen={isGiftOverlayOpen}
-        onClose={() => setShowGift(false)}
+        onClose={() => setActiveModal(null)}
         receiverId={selectedVideo?.creator_id}
         liveId={null}
       />

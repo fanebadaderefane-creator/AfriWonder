@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 import { api } from '@/api/expressClient';
 
@@ -27,36 +27,22 @@ import { usePageVisibility } from '@/hooks/usePageVisibility';
 
 
 
-export default function TopHeader({ 
-
-  activeTab = 'pourtoi', 
-
-  onTabChange, 
-
+export default function TopHeader({
+  activeTab = 'pourtoi',
+  onTabChange,
   showTabs = true,
-
   title,
-
   isLowData = false,
-
-  isDarkMode = false,
-
-  onToggleDarkMode,
-
-  unreadNotifications = 0,
-
   followingCount = 0,
-
-  onRefresh,
-
+  onRefresh = undefined,
   showMenuButton = false,
-
   onMenuOpen,
-
   fixed = true,
-
   feedMode = false,
-
+  // Props acceptées pour compatibilité descendante, non utilisées dans ce composant
+  isDarkMode: _isDarkMode,
+  onToggleDarkMode: _onToggleDarkMode,
+  unreadNotifications: _unreadNotifications,
 }) {
 
   const { user: authUser } = useAuth();
@@ -101,7 +87,7 @@ export default function TopHeader({
   const notifications = Array.isArray(notificationsData) ? notificationsData : [];
   const unreadCount = notifications.filter((n) => !n.is_read).length;
   const messagesCount = messagesUnread?.count ?? 0;
-  const warmPage = (page) => {
+  const warmPage = (/** @type {string} */ page) => {
     preloadPageByName(page).catch(() => {});
   };
 
@@ -292,16 +278,18 @@ export default function TopHeader({
               onFocus={() => warmPage('Search')}
               onTouchStart={() => warmPage('Search')}
               className={cn(feedMode ? 'hidden' : 'block')}
+              aria-label="Rechercher"
             >
               <Button
                 variant="ghost"
                 size="icon"
+                aria-label="Rechercher"
                 className={cn(
                   'text-white hover:bg-white/10',
                   feedMode ? feedIconButtonClass : 'h-9 w-9'
                 )}
               >
-                <Search className="h-5 w-5 text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.35)]" strokeWidth={2.35} />
+                <Search className="h-5 w-5 text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.35)]" strokeWidth={2.35} aria-hidden="true" />
               </Button>
             </Link>
 
@@ -312,20 +300,20 @@ export default function TopHeader({
               onTouchStart={() => warmPage('Inbox')}
               className="block text-white visited:text-white"
               style={{ color: '#ffffff' }}
+              aria-label={messagesCount > 0 ? `Messages — ${messagesCount} non lu${messagesCount > 1 ? 's' : ''}` : 'Messages'}
             >
               <Button
                 variant="ghost"
                 size="icon"
+                aria-label={messagesCount > 0 ? `Messages — ${messagesCount} non lu${messagesCount > 1 ? 's' : ''}` : 'Messages'}
                 className={cn(
                   'relative text-white hover:bg-white/10',
-                  feedMode
-                    ? feedIconButtonClass
-                    : 'h-9 w-9'
+                  feedMode ? feedIconButtonClass : 'h-9 w-9'
                 )}
               >
-                <MessageCircle className={cn(feedMode ? 'h-4 w-4 text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.35)]' : 'w-5 h-5 text-white')} strokeWidth={2.35} />
+                <MessageCircle className={cn(feedMode ? 'h-4 w-4 text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.35)]' : 'w-5 h-5 text-white')} strokeWidth={2.35} aria-hidden="true" />
                 {messagesCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full border border-[#0b111d] bg-blue-500 px-1 text-[10px] font-bold text-white shadow-[0_8px_18px_rgba(59,130,246,0.32)]">
+                  <span aria-hidden="true" className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full border border-[#0b111d] bg-blue-500 px-1 text-[10px] font-bold text-white shadow-[0_8px_18px_rgba(59,130,246,0.32)]">
                     {messagesCount > 99 ? '99+' : messagesCount}
                   </span>
                 )}
@@ -335,17 +323,16 @@ export default function TopHeader({
             <Button
               variant="ghost"
               size="icon"
+              aria-label={unreadCount > 0 ? `Notifications — ${unreadCount} non lue${unreadCount > 1 ? 's' : ''}` : 'Notifications'}
               className={cn(
-                  'relative text-white hover:bg-white/10',
-                feedMode
-                    ? feedIconButtonClass
-                  : 'h-9 w-9'
+                'relative text-white hover:bg-white/10',
+                feedMode ? feedIconButtonClass : 'h-9 w-9'
               )}
               onClick={() => setShowNotifications(true)}
             >
-              <Bell className={cn(feedMode ? 'h-4 w-4 text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.35)]' : 'w-5 h-5 text-white')} strokeWidth={2.35} />
+              <Bell className={cn(feedMode ? 'h-4 w-4 text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.35)]' : 'w-5 h-5 text-white')} strokeWidth={2.35} aria-hidden="true" />
               {unreadCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full border border-[#0b111d] bg-red-500 px-1 text-[10px] font-bold text-white shadow-[0_8px_18px_rgba(239,68,68,0.32)]">
+                <span aria-hidden="true" className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full border border-[#0b111d] bg-red-500 px-1 text-[10px] font-bold text-white shadow-[0_8px_18px_rgba(239,68,68,0.32)]">
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               )}

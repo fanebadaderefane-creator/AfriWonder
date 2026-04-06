@@ -43,12 +43,112 @@ class NotificationService {
     const t = String(type || '').toLowerCase();
     if (t.includes('live')) return 'live';
     if (t.includes('call')) return 'live';
+    if (t.includes('wonder')) return 'follow';
     if (t.includes('mention')) return 'comment';
     if (t.includes('message')) return 'comment';
     if (t.includes('comment')) return 'comment';
+    if (t.includes('tip')) return 'like';
     if (t.includes('like')) return 'like';
     if (t.includes('follow')) return 'follow';
     return 'order';
+  }
+
+  /** Origine publique PWA (liens dans les push + action_url). */
+  private getPublicOrigin(): string {
+    const raw =
+      process.env.APP_PUBLIC_URL?.trim() ||
+      process.env.FRONTEND_URL?.trim() ||
+      process.env.CLIENT_APP_URL?.trim() ||
+      '';
+    if (raw) return raw.replace(/\/+$/, '');
+    const cors = process.env.CORS_ORIGIN?.trim();
+    if (cors) {
+      const first = cors.split(',')[0]?.trim();
+      if (first) return first.replace(/\/+$/, '');
+    }
+    return 'https://afriwonder.com';
+  }
+
+  /**
+   * URL absolue pour router l'utilisateur au bon écran (tap sur la notification système).
+   */
+  public buildPushDeepLink(
+    type: string,
+    reference_type?: string | null,
+    reference_id?: string | null,
+    data?: Record<string, unknown> | null,
+  ): string {
+    const origin = this.getPublicOrigin();
+    const toAbs = (pathnameAndQuery: string) =>
+      `${origin}${pathnameAndQuery.startsWith('/') ? pathnameAndQuery : `/${pathnameAndQuery}`}`;
+
+    const t = String(type || '').toLowerCase();
+    const rt = String(reference_type || '').toLowerCase();
+    const rid = reference_id ? String(reference_id) : '';
+    const d = data && typeof data === 'object' ? data : {};
+
+    const groupId =
+      (typeof d.groupId === 'string' && d.groupId) ||
+      (/group/.test(rt) ? rid : '') ||
+      '';
+
+    if (groupId && (rt.includes('group') || t.includes('group'))) {
+      return toAbs(`/GroupChat?groupId=${encodeURIComponent(groupId)}`);
+    }
+
+    const conversationId =
+      (typeof d.conversationId === 'string' && d.conversationId) ||
+      (rt === 'conversation' ? rid : '') ||
+      '';
+
+    if (t.includes('message') && conversationId) {
+      return toAbs(`/Chat?conversationId=${encodeURIComponent(conversationId)}`);
+    }
+
+    const videoId =
+      (typeof d.videoId === 'string' && d.videoId) ||
+      (rt === 'video' ? rid : '') ||
+      '';
+
+    if (
+      videoId &&
+      (t.includes('comment') || t.includes('like') || t.includes('tip') || rt === 'video')
+    ) {
+      return toAbs(`/VideoView?id=${encodeURIComponent(videoId)}`);
+    }
+
+    if (
+      (t.includes('follow') || t.includes('follower') || t.includes('wonder')) &&
+      rid &&
+      (rt === 'user' || rt === 'follow_request')
+    ) {
+      return toAbs(`/Profile?userId=${encodeURIComponent(rid)}`);
+    }
+
+    if (t.includes('call') && rid) {
+      const caller = typeof d.callerId === 'string' && d.callerId ? d.callerId : '';
+      const q = new URLSearchParams({ mode: 'incoming', callId: rid });
+      if (caller) q.set('callerId', caller);
+      return toAbs(`/DirectCall?${q.toString()}`);
+    }
+
+    if (t.includes('live') && rid) {
+      return toAbs(`/LiveView?channel=${encodeURIComponent(rid)}`);
+    }
+
+    if (
+      (t.includes('order') ||
+        rt === 'order' ||
+        t.includes('shipment') ||
+        t.includes('return') ||
+        t.includes('payment') ||
+        t.includes('dispute')) &&
+      rid
+    ) {
+      return toAbs('/Orders');
+    }
+
+    return toAbs('/Notifications');
   }
 
   private async logChannelDelivery(
@@ -157,28 +257,33 @@ class NotificationService {
     const vapidPrivate = process.env.VAPID_PRIVATE_KEY;
     const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:support@afriwonder.app';
 
+    const dataObj = { ...(data || {}), category };
     const payload = JSON.stringify({
       title,
       body: message,
       tag: category,
-      data: { ...(data || {}), category },
+      data: dataObj,
       icon: '/icon-192.png',
       badge: '/icon-192.png',
     });
 
     let delivered = false;
 
+    const activeSubscriptions = await prisma.pushSubscription.findMany({
+      where: { user_id: userId, is_active: true },
+      select: { id: true, endpoint: true, p256dh: true, auth: true },
+    });
+
+    const webPushSubscriptions = activeSubscriptions.filter((s) => !String(s.endpoint).startsWith('fcm:'));
+    const mobilePushSubscriptions = activeSubscriptions.filter((s) => String(s.endpoint).startsWith('fcm:'));
+
     if (vapidPublic && vapidPrivate) {
       try {
         const webpush = (await import('web-push')).default as any;
         webpush.setVapidDetails(vapidSubject, vapidPublic, vapidPrivate);
-        const subs = await prisma.pushSubscription.findMany({
-          where: { user_id: userId, is_active: true },
-          select: { id: true, endpoint: true, p256dh: true, auth: true },
-        });
-        if (subs.length > 0) {
+        if (webPushSubscriptions.length > 0) {
           const results = await Promise.allSettled(
-            subs.map((s) =>
+            webPushSubscriptions.map((s) =>
               webpush.sendNotification(
                 {
                   endpoint: s.endpoint,
@@ -197,7 +302,7 @@ class NotificationService {
             const statusCode = (r as any).reason?.statusCode;
             if (statusCode === 404 || statusCode === 410) {
               await prisma.pushSubscription.update({
-                where: { id: subs[i].id },
+                where: { id: webPushSubscriptions[i].id },
                 data: { is_active: false, last_seen: new Date() },
               }).catch(() => {});
             }
@@ -234,6 +339,30 @@ class NotificationService {
       }
 
       if (firebaseKey) {
+        const registrationIds = mobilePushSubscriptions
+          .map((sub) => String(sub.endpoint).split(':').slice(2).join(':'))
+          .filter(Boolean);
+
+        if (registrationIds.length > 0) {
+          await axios.post(
+            'https://fcm.googleapis.com/fcm/send',
+            {
+              registration_ids: registrationIds,
+              notification: { title, body: message },
+              data: { ...(data || {}), category },
+            },
+            {
+              timeout: 5000,
+              headers: {
+                Authorization: `key=${firebaseKey}`,
+                'Content-Type': 'application/json',
+              },
+            },
+          );
+          await this.logChannelDelivery(userId, 'notification_push', message, 'sent', category, title);
+          return;
+        }
+
         await axios.post(
           'https://fcm.googleapis.com/fcm/send',
           {
@@ -325,6 +454,19 @@ class NotificationService {
     reference_id?: string;
     data?: any;
   }) {
+    const payloadData: Record<string, unknown> = {
+      ...(data.data && typeof data.data === 'object' ? data.data : {}),
+    };
+    const actionUrl = this.buildPushDeepLink(
+      data.type,
+      data.reference_type,
+      data.reference_id,
+      payloadData,
+    );
+    if (payloadData.url == null || payloadData.url === '') {
+      payloadData.url = actionUrl;
+    }
+
     const notification = await prisma.notification.create({
       data: {
         user_id: userId,
@@ -334,6 +476,7 @@ class NotificationService {
         reference_type: data.reference_type,
         reference_id: data.reference_id,
         is_read: false,
+        action_url: actionUrl,
       },
     });
 
@@ -342,7 +485,7 @@ class NotificationService {
       type: data.type,
       title: data.title,
       message: data.message,
-      data: data.data,
+      data: payloadData,
     }).catch((err) => {
       logger.warn('dispatchAdditionalChannels failed', { userId, type: data.type, err });
     });

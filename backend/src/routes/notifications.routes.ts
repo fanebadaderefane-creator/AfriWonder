@@ -86,6 +86,45 @@ router.post('/push/subscribe', authenticate, validateBody(pushSubscribeBodySchem
   }
 });
 
+// POST /api/notifications/device-token
+// Compat mobile Flutter: enregistre un token FCM/APNs en le stockant dans PushSubscription.
+router.post('/device-token', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const token = String(req.body?.token || '').trim();
+    const platform = String(req.body?.platform || 'unknown').trim().toLowerCase();
+
+    if (!token) {
+      return res.status(400).json({ success: false, error: 'token requis' });
+    }
+
+    const endpoint = `fcm:${platform}:${token}`;
+
+    const sub = await prisma.pushSubscription.upsert({
+      where: { endpoint },
+      create: {
+        user_id: userId,
+        endpoint,
+        p256dh: 'mobile',
+        auth: 'mobile',
+        user_agent: String(req.headers['user-agent'] || '').slice(0, 500),
+        is_active: true,
+        last_seen: new Date(),
+      },
+      update: {
+        user_id: userId,
+        user_agent: String(req.headers['user-agent'] || '').slice(0, 500),
+        is_active: true,
+        last_seen: new Date(),
+      },
+    });
+
+    res.json({ success: true, data: { id: sub.id, endpoint } });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // DELETE /api/notifications/push/unsubscribe
 router.delete('/push/unsubscribe', authenticate, validateBody(pushUnsubscribeBodySchema), async (req: AuthRequest, res, next) => {
   try {

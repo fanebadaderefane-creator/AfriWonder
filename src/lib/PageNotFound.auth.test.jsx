@@ -39,7 +39,7 @@ describe('PageNotFound (auth query)', () => {
     apiMock.auth.me.mockRejectedValueOnce(new Error('Unauthorized'));
     renderPageNotFound('/any-missing');
     await vi.waitFor(() => {
-      expect(screen.getByText(/Page Not Found/i)).toBeInTheDocument();
+      expect(screen.getByText(/Page introuvable/i)).toBeInTheDocument();
     });
     expect(screen.getByText('404')).toBeInTheDocument();
   });
@@ -48,7 +48,7 @@ describe('PageNotFound (auth query)', () => {
     apiMock.auth.me.mockResolvedValueOnce({ id: 1, email: 'u@test.com' });
     renderPageNotFound('/missing');
     await vi.waitFor(() => {
-      expect(screen.getByText(/Page Not Found/i)).toBeInTheDocument();
+      expect(screen.getByText(/Page introuvable/i)).toBeInTheDocument();
     });
     expect(screen.getByText('404')).toBeInTheDocument();
   });

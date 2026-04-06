@@ -53,6 +53,22 @@ beforeAll(() => {
   if (typeof globalThis.indexedDB === 'undefined') {
     globalThis.indexedDB = { open: () => ({ result: {}, transaction: () => {} }), deleteDatabase: () => {} };
   }
+  // jsdom : pas de MediaStream (pages type DirectCall / WebRTC)
+  if (typeof globalThis.MediaStream === 'undefined') {
+    const MS = class MediaStream {
+      constructor() {
+        this._tracks = [];
+      }
+      getTracks() {
+        return this._tracks;
+      }
+      addTrack() {}
+    };
+    globalThis.MediaStream = MS;
+    if (typeof window !== 'undefined') {
+      window.MediaStream = MS;
+    }
+  }
 });
 
 // Extend Vitest's expect with jest-dom matchers

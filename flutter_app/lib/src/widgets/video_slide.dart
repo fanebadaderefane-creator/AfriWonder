@@ -53,7 +53,9 @@ class _VideoSlideState extends State<VideoSlide> {
     }
 
     if (widget.isActive) {
-      if (_initialized && _controller != null && !_controller!.value.isPlaying) {
+      if (_initialized &&
+          _controller != null &&
+          !_controller!.value.isPlaying) {
         _controller!.setVolume(0.0);
         _controller!.play();
       }
@@ -76,7 +78,8 @@ class _VideoSlideState extends State<VideoSlide> {
       if (!mounted) return;
       setState(() {
         _initialized = true;
-        _readyToShow = false; // attendre le "premier instant" avant d'enlever le poster
+        _readyToShow =
+            false; // attendre le "premier instant" avant d'enlever le poster
       });
 
       _controller!
@@ -89,7 +92,8 @@ class _VideoSlideState extends State<VideoSlide> {
         final c = _controller;
         if (c == null) return;
         if (_readyToShow) return;
-        if (c.value.isInitialized && c.value.position > const Duration(milliseconds: 150)) {
+        if (c.value.isInitialized &&
+            c.value.position > const Duration(milliseconds: 150)) {
           if (!mounted) return;
           setState(() => _readyToShow = true);
         }
@@ -137,7 +141,9 @@ class _VideoSlideState extends State<VideoSlide> {
   Widget build(BuildContext context) {
     final posterUrl = _resolvePosterSrc(widget.video);
     final creator = (widget.video['creator_name'] ??
-            (widget.video['creator'] is Map ? widget.video['creator']['username'] : null) ??
+            (widget.video['creator'] is Map
+                ? widget.video['creator']['username']
+                : null) ??
             '')
         .toString();
     final title = (widget.video['title'] ?? '').toString();
@@ -175,13 +181,17 @@ class _VideoSlideState extends State<VideoSlide> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('@${creator.isNotEmpty ? creator : 'user'}',
-                    style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w700)),
+                    style: const TextStyle(
+                        color: Colors.white70, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 8),
                 Text(
                   title.isNotEmpty ? title : 'Video',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 18),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 18),
                 ),
               ],
             ),
@@ -207,10 +217,10 @@ class _VideoSlideState extends State<VideoSlide> {
                 const SizedBox(height: 6),
                 Text(
                   '${widget.likeCount}',
-                  style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                      color: Colors.white70, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 18),
-
                 IconButton(
                   onPressed: widget.onCommentTap,
                   icon: const Icon(
@@ -225,13 +235,14 @@ class _VideoSlideState extends State<VideoSlide> {
                 const SizedBox(height: 2),
                 Text(
                   '${widget.commentCount}',
-                  style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                      color: Colors.white70, fontWeight: FontWeight.w700),
                 ),
-
                 const SizedBox(height: 22),
                 Container(
                   width: 86,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
                     color: widget.isFollowing ? Colors.white10 : Colors.white,
                     borderRadius: BorderRadius.circular(22),
@@ -255,22 +266,22 @@ class _VideoSlideState extends State<VideoSlide> {
             ),
           ),
 
-               // Volume (mute par défaut)
-               Positioned(
-                 right: 16,
-                 bottom: 88,
-                 child: IconButton(
-                   onPressed: _toggleMute,
-                   icon: Icon(
-                     _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                     size: 30,
-                     color: Colors.white,
-                   ),
-                   style: IconButton.styleFrom(
-                     backgroundColor: const Color(0x28000000),
-                   ),
-                 ),
-               ),
+          // Volume (mute par défaut)
+          Positioned(
+            right: 16,
+            bottom: 88,
+            child: IconButton(
+              onPressed: _toggleMute,
+              icon: Icon(
+                _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                size: 30,
+                color: Colors.white,
+              ),
+              style: IconButton.styleFrom(
+                backgroundColor: const Color(0x28000000),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -278,7 +289,10 @@ class _VideoSlideState extends State<VideoSlide> {
 
   String _resolvePosterSrc(Map<String, dynamic> video) {
     final candidate = _toNonEmptyString(video['thumbnail_url']);
-    if (candidate != null && (candidate.startsWith('http') || candidate.startsWith('data:'))) return candidate;
+    if (candidate != null &&
+        (candidate.startsWith('http') || candidate.startsWith('data:'))) {
+      return candidate;
+    }
 
     // fallback: pas de poster => noir (on ne force pas une image qui serait en fait une vidéo).
     return 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
@@ -291,4 +305,3 @@ class _VideoSlideState extends State<VideoSlide> {
     return s;
   }
 }
-

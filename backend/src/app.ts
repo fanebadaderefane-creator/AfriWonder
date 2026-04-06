@@ -177,9 +177,15 @@ const corsOriginsFromEnv = (process.env.CORS_ORIGIN || '')
   .filter((s) => s && s !== '*'); // * interdit avec credentials
 const allowedOrigins = [...new Set([...corsOriginsFromEnv, ...defaultOrigins])];
 
+// CORS_ALLOW_VERCEL_PREVIEW=true doit être explicitement activé (staging uniquement).
+// En production, cette option DOIT être false : tout subdomain *.vercel.app aurait sinon
+// accès complet à l'API avec credentials, permettant à afriwonder-fake.vercel.app d'attaquer.
+const allowVercelPreview = process.env.CORS_ALLOW_VERCEL_PREVIEW === 'true' &&
+  process.env.NODE_ENV !== 'production';
+
 const corsOptions: cors.CorsOptions = {
   origin: (origin, cb) => {
-    const isVercelPreview = origin?.endsWith('.vercel.app');
+    const isVercelPreview = allowVercelPreview && origin?.endsWith('.vercel.app');
     const isAllowed = !origin || allowedOrigins.includes(origin) || isVercelPreview;
     // Toujours renvoyer une chaîne explicite, jamais true (évite Access-Control-Allow-Origin: *)
     const value = isAllowed ? (origin || allowedOrigins[0] || defaultOrigins[0]) : false;
@@ -198,7 +204,7 @@ app.use(apiRequestTimeoutMiddleware); // 30s timeout API (hors upload/webhooks) 
 
 // Commissions : chargement différé après $connect() (voir index.ts) pour éviter erreurs DB au boot
 
-// Sentry (Express) — l’instrumentation HTTP/Tracing est configurée dans initSentry()
+// Sentry (Express) — l'instrumentation HTTP/Tracing est configurée dans initSentry()
 
 // Health check (AVANT anti-bot pour que curl/k8s/CI puissent appeler /health)
 app.get('/health', (req, res) => {

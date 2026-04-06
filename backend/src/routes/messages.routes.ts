@@ -60,6 +60,16 @@ router.get('/presence/:userId', authenticate, async (req: AuthRequest, res, next
   }
 });
 
+// GET /api/messages/starred
+router.get('/starred', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await messageService.getStarredMessages(req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
 // GET /api/messages/scheduled — messages programmés (DM + groupes), must be before /:conversationId
 router.get('/scheduled', authenticate, async (req: AuthRequest, res, next) => {
   try {
@@ -130,6 +140,21 @@ router.get('/conversations/id/:conversationId', authenticate, async (req: AuthRe
   try {
     const conversation = await messageService.getConversationById(param(req, 'conversationId'), req.user!.id);
     res.json({ success: true, data: conversation });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// GET /api/messages/:conversationId/search?q=terme
+router.get('/:conversationId/search', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const q = req.query?.q;
+    const result = await messageService.searchConversationMessages(
+      param(req, 'conversationId'),
+      req.user!.id,
+      typeof q === 'string' ? q : ''
+    );
+    res.json({ success: true, data: result });
   } catch (error: unknown) {
     next(error);
   }

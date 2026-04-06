@@ -21,8 +21,10 @@ DATABASE_URL="postgresql://postgres.xxxxxxxxxxxxx:VOTRE_MOT_DE_PASSE@aws-0-eu-ce
 # Générer un secret aléatoire (minimum 32 caractères)
 # PowerShell : [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))
 # Ou : https://generate-secret.vercel.app/32
+# Secrets 64+ caractères en production (openssl rand -hex 64) — voir auth.service.ts
 JWT_SECRET="votre_secret_jwt_tres_long_et_aleatoire_ici_minimum_32_caracteres"
-JWT_EXPIRES_IN="7d"
+# Audit PDF §6 : access token court (défaut code 15m si absent)
+JWT_EXPIRES_IN="15m"
 JWT_REFRESH_SECRET="votre_refresh_secret_different_du_jwt_secret"
 JWT_REFRESH_EXPIRES_IN="30d"
 

@@ -37,6 +37,34 @@ export function emitToManyUserRooms(userIds: string[], event: string, payload: u
   }
 }
 
+export async function broadcastPresence(userId: string, isOnline: boolean) {
+  if (!userId) return;
+
+  const now = new Date();
+  const conversations = await prisma.conversation.findMany({
+    where: { OR: [{ user1_id: userId }, { user2_id: userId }] },
+    select: { user1_id: true, user2_id: true },
+  });
+
+  const peerIds = new Set<string>();
+  for (const conversation of conversations) {
+    if (conversation.user1_id !== userId) peerIds.add(conversation.user1_id);
+    if (conversation.user2_id !== userId) peerIds.add(conversation.user2_id);
+  }
+
+  await prisma.userPresence.upsert({
+    where: { user_id: userId },
+    update: { is_online: isOnline, last_seen: now },
+    create: { id: crypto.randomUUID(), user_id: userId, is_online: isOnline, last_seen: now },
+  });
+
+  emitToManyUserRooms(Array.from(peerIds), 'presence:update', {
+    userId,
+    isOnline,
+    lastSeen: now.toISOString(),
+  });
+}
+
 const DEFAULT_PAGE_SIZE = 20;
 const MESSAGES_PAGE_SIZE = 30;
 
@@ -950,8 +978,8 @@ class MessageService {
     return { success: true };
   }
 
-  /** CPO 4.17 — Suppression pour tous (uniquement l’expéditeur, dans les 15 min). */
-  private static readonly DELETE_FOR_ALL_WINDOW_MS = 15 * 60 * 1000;
+  /** CPO 4.17 — Suppression pour tous (expéditeur, fenêtre étendue). */
+  private static readonly DELETE_FOR_ALL_WINDOW_MS = 24 * 60 * 60 * 1000;
   /** Édition du texte (expéditeur, messages texte uniquement, dans les 15 min après envoi). */
   private static readonly EDIT_MESSAGE_WINDOW_MS = 15 * 60 * 1000;
 
@@ -1016,7 +1044,7 @@ class MessageService {
     if (!msg || msg.sender_id !== userId) throw makeHttpError('Message non trouvé ou non autorisé', 404);
     const elapsed = Date.now() - msg.created_at.getTime();
     if (elapsed > MessageService.DELETE_FOR_ALL_WINDOW_MS) {
-      throw makeHttpError('La suppression pour tous n’est possible que dans les 15 minutes suivant l’envoi', 400);
+      throw makeHttpError('La suppression pour tous n’est possible que dans les 24 heures suivant l’envoi', 400);
     }
     await prisma.message.update({
       where: { id: messageId },
@@ -1093,6 +1121,70 @@ class MessageService {
       });
     }
     return updated;
+  }
+
+  async searchConversationMessages(conversationId: string, userId: string, q: string) {
+    const term = String(q || '').trim();
+    if (term.length < 2) return { messages: [] };
+
+    const conversation = await prisma.conversation.findFirst({
+      where: {
+        id: conversationId,
+        OR: [{ user1_id: userId }, { user2_id: userId }],
+      },
+      select: { id: true },
+    });
+    if (!conversation) throw makeHttpError('Conversation non trouvée ou accès non autorisé', 404);
+
+    const messages = await prisma.message.findMany({
+      where: {
+        conversation_id: conversationId,
+        content: { contains: term, mode: 'insensitive' },
+        deleted_for_all_at: null,
+        type: { in: ['text', 'image', 'video', 'document', 'file'] },
+      },
+      select: {
+        id: true,
+        content: true,
+        type: true,
+        created_at: true,
+        sender_id: true,
+        sender: { select: { username: true, profile_image: true, full_name: true } },
+      },
+      orderBy: { created_at: 'desc' },
+      take: 30,
+    });
+
+    return { messages };
+  }
+
+  async getStarredMessages(userId: string) {
+    const messages = await prisma.message.findMany({
+      where: {
+        is_important: true,
+        deleted_for_all_at: null,
+        conversation: {
+          OR: [{ user1_id: userId }, { user2_id: userId }],
+        },
+      },
+      include: {
+        sender: { select: { id: true, username: true, full_name: true, profile_image: true } },
+        conversation: {
+          select: {
+            id: true,
+            user1_id: true,
+            user2_id: true,
+            user1: { select: { id: true, username: true, full_name: true, profile_image: true } },
+            user2: { select: { id: true, username: true, full_name: true, profile_image: true } },
+            group_name: true,
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+      take: 100,
+    });
+
+    return { messages };
   }
 
   /** Liste des personnes ayant réagi (1-1 ou groupe : accès si participant à la conversation du message). */
@@ -1399,18 +1491,11 @@ class MessageService {
   }
 
   async setPresenceOnline(userId: string) {
-    await prisma.userPresence.upsert({
-      where: { user_id: userId },
-      create: { id: crypto.randomUUID(), user_id: userId, is_online: true },
-      update: { is_online: true },
-    });
+    await broadcastPresence(userId, true);
   }
 
   async setPresenceOffline(userId: string) {
-    await prisma.userPresence.updateMany({
-      where: { user_id: userId },
-      data: { is_online: false },
-    });
+    await broadcastPresence(userId, false);
   }
 }
 

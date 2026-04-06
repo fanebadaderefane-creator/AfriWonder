@@ -9,8 +9,7 @@ import { initSentry } from './config/sentry.js';
 import app from './app.js';
 import prisma from './config/database.js';
 import { logger } from './utils/logger.js';
-import messageService from './services/message.service.js';
-import { setMessageIo } from './services/message.service.js';
+import { setMessageIo, broadcastPresence } from './services/message.service.js';
 import { startAccountDeletionJobs } from './jobs/accountDeletion.job.js';
 import { startDataRetentionJob, initializeRetentionPolicies } from './jobs/dataRetention.job.js';
 import { startAdsExpirationJob } from './jobs/adsExpiration.job.js';
@@ -22,6 +21,13 @@ import { initRedis } from './utils/cache.js';
 
 const socketToUserId = new Map<string, string>();
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 30000;
+
+function hasActiveSocketForUser(userId: string) {
+  for (const activeUserId of socketToUserId.values()) {
+    if (activeUserId === userId) return true;
+  }
+  return false;
+}
 
 // Charger backend/.env en priorité (évite qu'un .env à la racine du projet n'écrase DATABASE_URL)
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -134,7 +140,7 @@ io.on('connection', (socket) => {
     if (userId) {
       socket.join(`user:${userId}`);
       socketToUserId.set(socket.id, userId);
-      messageService.setPresenceOnline(userId).catch((e) => logger.warn('Presence online', e));
+      broadcastPresence(userId, true).catch((e) => logger.warn('Presence online', { err: e instanceof Error ? e.message : String(e) }));
       logger.info('User joined room', { userId, socketId: socket.id });
     }
   });
@@ -143,15 +149,19 @@ io.on('connection', (socket) => {
     if (userId) {
       socket.leave(`user:${userId}`);
       socketToUserId.delete(socket.id);
-      messageService.setPresenceOffline(userId).catch((e) => logger.warn('Presence offline', e));
+      if (!hasActiveSocketForUser(userId)) {
+        broadcastPresence(userId, false).catch((e) => logger.warn('Presence offline', { err: e instanceof Error ? e.message : String(e) }));
+      }
     }
   });
 
   socket.on('disconnect', () => {
     const userId = socketToUserId.get(socket.id);
     if (userId) {
-      messageService.setPresenceOffline(userId).catch((e) => logger.warn('Presence offline', e));
       socketToUserId.delete(socket.id);
+      if (!hasActiveSocketForUser(userId)) {
+        broadcastPresence(userId, false).catch((e) => logger.warn('Presence offline', { err: e instanceof Error ? e.message : String(e) }));
+      }
     }
     logger.info('WebSocket client disconnected', { socketId: socket.id });
   });

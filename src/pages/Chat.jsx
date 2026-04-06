@@ -23,7 +23,6 @@ import { toast } from 'sonner';
 import { formatDistanceToNow, format, isToday, isYesterday } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useConversationSocket } from '@/hooks/useMessageSocket';
-import { usePageVisibility } from '@/hooks/usePageVisibility';
 import { useTranslation } from '@/components/common/useTranslation';
 import { useAuth } from '@/lib/AuthContext';
 import { cn } from '@/lib/utils';
@@ -53,12 +52,12 @@ import {
   cacheMessages,
   upsertCachedConversation,
   getOutbox,
+  processOutbox,
   queueOutboxItem,
   removeOutboxItem,
 } from '@/services/offlineProfilesMessages.service';
 
 const MESSAGES_LIMIT = 30;
-const TYPING_DEBOUNCE_MS = 400;
 
 const chatI18n = {
   fr: {
@@ -767,7 +766,8 @@ export default function Chat() {
   );
   const orderId = searchParams.get('orderId') || searchParams.get('_orderId');
   const messageEndRef = useRef(null);
-  const typingDebounceRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const messageNodeRefs = useRef(new Map());
   const fileInputRef = useRef(null);
   const documentInputRef = useRef(null);
   const cameraPhotoInputRef = useRef(null);
@@ -916,6 +916,9 @@ export default function Chat() {
   const [translateError, setTranslateError] = useState(null);
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const [chatSearchResults, setChatSearchResults] = useState([]);
+  const [chatSearchLoading, setChatSearchLoading] = useState(false);
+  const [highlightedSearchMessageId, setHighlightedSearchMessageId] = useState(null);
   const [mediaGalleryOpen, setMediaGalleryOpen] = useState(false);
   const [mediaGalleryTab, setMediaGalleryTab] = useState('media');
   const [wallpaperTheme, setWallpaperTheme] = useState(() => {
@@ -1154,8 +1157,6 @@ export default function Chat() {
     }
   }, [conversationId, messagesData?.messages]);
 
-  const isPageVisible = usePageVisibility();
-
   const onNewMessage = useCallback(() => {
     refetchMessages();
     runDmE2eeSyncRef.current?.();
@@ -1181,12 +1182,13 @@ export default function Chat() {
     queryKey: ['presence', userId],
     queryFn: () => api.messages.getPresence(userId),
     enabled: !!userId,
-    refetchInterval: isPageVisible ? 15000 : false,
+    staleTime: 30_000,
   });
 
   const {
     typingUser,
     recordingUser,
+    presence: livePresence,
     emitTypingStart,
     emitTypingStop,
     emitRecordingStart,
@@ -1196,6 +1198,7 @@ export default function Chat() {
   } = useConversationSocket({
     userId: currentUser?.id,
     conversationId,
+    peerId: userId,
     userName: currentUser?.full_name || currentUser?.username,
     onNewMessage,
     onMessageRead,
@@ -1211,11 +1214,7 @@ export default function Chat() {
     };
   }, [isRecording, conversationId, currentUser?.id, emitRecordingStart, emitRecordingStop, emitTypingStop]);
 
-  useEffect(() => {
-    if (isConnected && userId) {
-      queryClient.invalidateQueries({ queryKey: ['presence', userId] });
-    }
-  }, [isConnected, userId, queryClient]);
+  const effectivePresence = livePresence ?? presence ?? null;
 
   const firstPageMessages = messagesData?.messages ?? [];
   const hasMore = messagesData?.hasMore ?? false;
@@ -1275,22 +1274,8 @@ export default function Chat() {
     e2eeSyncCursorRef.current = null;
   }, [conversationId]);
 
-  const messagesFilteredBySearch = useMemo(() => {
-    const q = chatSearchQuery.trim().toLowerCase();
-    if (!chatSearchOpen || !q) return messages;
-    return messages.filter((m) => {
-      if (m.is_deleted) return false;
-      const c = (m.content || '').toLowerCase();
-      if (c.includes(q)) return true;
-      const sn = (m.sender?.full_name || m.sender?.username || '').toLowerCase();
-      return sn.includes(q);
-    });
-  }, [messages, chatSearchOpen, chatSearchQuery]);
-
   const outgoingPendingAsMessages = useMemo(() => {
     if (!currentUser?.id) return [];
-    const q = chatSearchQuery.trim();
-    if (chatSearchOpen && q) return [];
     return outgoingPending.map((p) => ({
       id: p.tempId,
       sender_id: currentUser.id,
@@ -1303,11 +1288,11 @@ export default function Chat() {
       is_deleted: false,
       _localPending: true,
     }));
-  }, [outgoingPending, currentUser?.id, chatSearchOpen, chatSearchQuery]);
+  }, [outgoingPending, currentUser?.id]);
 
   const displayedMessages = useMemo(
-    () => [...messagesFilteredBySearch, ...outgoingPendingAsMessages],
-    [messagesFilteredBySearch, outgoingPendingAsMessages]
+    () => [...messages, ...outgoingPendingAsMessages],
+    [messages, outgoingPendingAsMessages]
   );
 
   const mediaGalleryItems = useMemo(() => {
@@ -1377,12 +1362,77 @@ export default function Chat() {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [displayedMessages]);
 
+  useEffect(() => {
+    if (!chatSearchOpen) {
+      setChatSearchResults([]);
+      setChatSearchLoading(false);
+      return undefined;
+    }
+    const q = chatSearchQuery.trim();
+    if (q.length < 2 || !conversationId) {
+      setChatSearchResults([]);
+      setChatSearchLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(async () => {
+      setChatSearchLoading(true);
+      try {
+        const result = await api.messages.searchInConversation(conversationId, q);
+        if (!cancelled) setChatSearchResults(result?.messages || []);
+      } catch (error) {
+        if (!cancelled) {
+          setChatSearchResults([]);
+          toast.error(error?.apiMessage || error?.message || labels.loadOlderError);
+        }
+      } finally {
+        if (!cancelled) setChatSearchLoading(false);
+      }
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [chatSearchOpen, chatSearchQuery, conversationId, labels.loadOlderError]);
+
+  const scrollToSearchMessage = useCallback((messageId) => {
+    if (!messageId) return;
+    setHighlightedSearchMessageId(messageId);
+    const node = messageNodeRefs.current.get(String(messageId));
+    if (node?.scrollIntoView) {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      window.setTimeout(() => setHighlightedSearchMessageId(null), 2200);
+      return;
+    }
+    toast.info('Ce message n’est pas encore chargé dans la vue actuelle');
+  }, []);
+
   const handleInputChange = (e) => {
-    setMessageContent(e.target.value);
-    if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
-    emitTypingStart();
-    typingDebounceRef.current = setTimeout(() => emitTypingStop(), TYPING_DEBOUNCE_MS);
+    const value = e.target.value;
+    setMessageContent(value);
+
+    if (!typingTimeoutRef.current) {
+      emitTypingStart();
+    }
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      emitTypingStop();
+      typingTimeoutRef.current = null;
+    }, 3000);
   };
+
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+      emitTypingStop();
+    };
+  }, [emitTypingStop]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -1472,6 +1522,10 @@ export default function Chat() {
         setOutgoingPending((prev) => prev.filter((p) => p.tempId !== variables._clientTempId));
       }
       emitTypingStop();
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
       refetchMessages();
       queryClient.invalidateQueries({ queryKey: ['messages-conversations', currentUser?.id] });
       queryClient.invalidateQueries({ queryKey: ['messages-unread-count', currentUser?.id] });
@@ -1564,19 +1618,13 @@ export default function Chat() {
 
   const flushQueuedMessages = useCallback(async () => {
     if (!currentUser?.id || !userId || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
-    const outbox = await getOutbox(currentUser.id);
-    const scopedItems = (outbox?.items || []).filter(
-      (item) =>
+    await processOutbox(currentUser.id, async (item) => {
+      const sameConversation =
         String(item?.conversationId || '') === String(conversationId || '')
-        || String(item?.recipientId || '') === String(userId || '')
-    );
-    for (const item of scopedItems) {
-      try {
-        await sendMessageMutation.mutateAsync(item);
-      } catch {
-        break;
-      }
-    }
+        || String(item?.recipientId || '') === String(userId || '');
+      if (!sameConversation) return;
+      await sendMessageMutation.mutateAsync(item);
+    });
   }, [currentUser?.id, conversationId, userId, sendMessageMutation]);
 
   useEffect(() => {
@@ -2141,10 +2189,10 @@ export default function Chat() {
     ? `${recordingUser.name} ${labels.recordingSuffix}`
     : typingUser
       ? `${typingUser.name} ${labels.typingSuffix}`
-      : presence?.is_online
+      : effectivePresence?.is_online
         ? labels.online
-        : presence?.last_seen
-          ? `Vu ${formatDistanceToNow(new Date(presence.last_seen), { addSuffix: true, locale: fr })}`
+        : effectivePresence?.last_seen
+          ? `Vu ${formatDistanceToNow(new Date(effectivePresence.last_seen), { addSuffix: true, locale: fr })}`
           : labels.offline;
 
   useEffect(() => {
@@ -2870,7 +2918,7 @@ export default function Chat() {
               {(otherUser?.full_name?.[0] || otherUser?.username?.[0] || '?').toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          {(recordingUser || typingUser || presence?.is_online) && (
+          {(recordingUser || typingUser || effectivePresence?.is_online) && (
             <span
               className={cn(
                 'absolute bottom-0 right-0 h-3 w-3 rounded-full ring-2 ring-[#070a12]',
@@ -3100,19 +3148,55 @@ export default function Chat() {
       </div>
 
       {chatSearchOpen && (
-        <div className="relative z-10 flex shrink-0 items-center gap-2 border-b border-white/8 bg-black/25 px-3 py-2 backdrop-blur-md">
-          <Search className="h-4 w-4 shrink-0 text-white/45" aria-hidden />
-          <Input
-            value={chatSearchQuery}
-            onChange={(e) => setChatSearchQuery(e.target.value)}
-            placeholder={labels.searchInChatPlaceholder}
-            className="h-9 flex-1 border-white/12 bg-white/[0.06] text-sm text-white placeholder:text-white/35"
-            autoFocus
-          />
-          <Button type="button" variant="ghost" size="icon" className={CHAT_ICON_BUTTON} onClick={() => { setChatSearchOpen(false); setChatSearchQuery(''); }} aria-label={labels.cancel}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+        <>
+          <div className="relative z-10 flex shrink-0 items-center gap-2 border-b border-white/8 bg-black/25 px-3 py-2 backdrop-blur-md">
+            <Search className="h-4 w-4 shrink-0 text-white/45" aria-hidden />
+            <Input
+              value={chatSearchQuery}
+              onChange={(e) => setChatSearchQuery(e.target.value)}
+              placeholder={labels.searchInChatPlaceholder}
+              className="h-9 flex-1 border-white/12 bg-white/[0.06] text-sm text-white placeholder:text-white/35"
+              autoFocus
+            />
+            <Button type="button" variant="ghost" size="icon" className={CHAT_ICON_BUTTON} onClick={() => { setChatSearchOpen(false); setChatSearchQuery(''); setChatSearchResults([]); }} aria-label={labels.cancel}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="relative z-10 max-h-56 overflow-y-auto border-b border-white/8 bg-[#0b1019]/96 px-3 py-2 backdrop-blur-xl">
+            {chatSearchLoading ? (
+              <div className="flex items-center justify-center py-4 text-white/60">
+                <Loader2 className="h-4 w-4 animate-spin" />
+              </div>
+            ) : chatSearchQuery.trim().length < 2 ? (
+              <p className="py-3 text-sm text-white/42">Tapez au moins 2 caractères</p>
+            ) : chatSearchResults.length === 0 ? (
+              <p className="py-3 text-sm text-white/42">Aucun résultat</p>
+            ) : (
+              <div className="space-y-1">
+                {chatSearchResults.map((result) => (
+                  <button
+                    key={result.id}
+                    type="button"
+                    onClick={() => scrollToSearchMessage(result.id)}
+                    className="flex w-full items-start gap-3 rounded-2xl px-3 py-2 text-left hover:bg-white/[0.05]"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-white">
+                        {result.sender?.full_name || result.sender?.username || 'Message'}
+                      </p>
+                      <p className="line-clamp-2 text-sm text-white/62">
+                        {stripChatMarkupForPreview(result.content || '') || '—'}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-[11px] text-white/38">
+                      {formatDistanceToNow(new Date(result.created_at), { addSuffix: true, locale: fr })}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {orderId && (
@@ -3234,7 +3318,20 @@ export default function Chat() {
             const previousMessage = displayedMessages[index - 1];
             const showIncomingAvatar = !isOwn && (!previousMessage || previousMessage.sender_id !== msg.sender_id);
             return (
-              <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex items-end gap-2 ${isOwn ? 'justify-end' : 'justify-start'}`}>
+              <motion.div
+                key={msg.id}
+                ref={(node) => {
+                  if (node) messageNodeRefs.current.set(String(msg.id), node);
+                  else messageNodeRefs.current.delete(String(msg.id));
+                }}
+                data-message-id={msg.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={cn(
+                  `flex items-end gap-2 ${isOwn ? 'justify-end' : 'justify-start'}`,
+                  highlightedSearchMessageId === msg.id && 'rounded-3xl bg-amber-400/10 ring-1 ring-amber-300/35'
+                )}
+              >
                 {selectionMode && (
                   <button
                     type="button"

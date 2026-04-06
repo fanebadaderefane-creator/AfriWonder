@@ -37,9 +37,10 @@ describe('PushNotificationService', () => {
     expect(result).toBe(false);
   });
 
-  it('subscribe returns true', async () => {
+  it('subscribe returns false without full browser push setup (SW + VAPID)', async () => {
+    global.Notification = { permission: 'granted', requestPermission: vi.fn() };
     const result = await PushNotificationService.subscribe('user1');
-    expect(result).toBe(true);
+    expect(result).toBe(false);
   });
 
   it('sendNotification does not throw when permission granted', () => {

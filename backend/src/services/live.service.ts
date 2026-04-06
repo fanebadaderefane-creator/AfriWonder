@@ -78,7 +78,7 @@ class LiveService {
   }
 
   /** Token Agora RTC (si AGORA_APP_ID + AGORA_APP_CERTIFICATE) */
-  async getAgoraToken(channelName: string, userId: string, role: 'host' | 'audience'): Promise<{ token: string; appId: string; channel: string; uid: number } | null> {
+  async getAgoraToken(channelName: string, userId: string, role: 'host' | 'audience'): Promise<{ token: string; appId: string; channel: string; uid: number; expireTime: number } | null> {
     const appId = process.env.AGORA_APP_ID?.trim();
     const appCert = process.env.AGORA_APP_CERTIFICATE?.trim();
     if (!appId || !appCert) return null;
@@ -92,8 +92,9 @@ class LiveService {
       const rawTtl = parseInt(process.env.AGORA_TOKEN_EXPIRE_SECONDS || '86400', 10);
       const expireSec = Number.isFinite(rawTtl) ? Math.min(604800, Math.max(600, rawTtl)) : 86400;
       const rtcRole = role === 'host' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
+      const expireTime = Math.floor(Date.now() / 1000) + expireSec;
       const token = RtcTokenBuilder.buildTokenWithUid(appId, appCert, channelName, uid, rtcRole, expireSec, expireSec);
-      return { token, appId, channel: channelName, uid };
+      return { token, appId, channel: channelName, uid, expireTime };
     } catch (e) {
       const msg = (e as Error).message;
       logger.warn('Agora token generation failed', { err: msg });
@@ -222,7 +223,7 @@ class LiveService {
     if (role === 'host' && stream.creator_id !== userId) throw new Error('Unauthorized');
     try {
       const agora = await this.getAgoraToken(stream.room_id, userId, role);
-      if (agora) return agora;
+      if (agora) return { ...agora, streamId };
     } catch (_e) {
       logger.warn('Agora token fallback to HMAC', { streamId });
     }
@@ -231,6 +232,8 @@ class LiveService {
       appId: null,
       channel: null,
       uid: null,
+      expireTime: null,
+      streamId,
     };
   }
 
@@ -1129,7 +1132,7 @@ class LiveService {
     }
 
     const io = getIO();
-    if (io) io.to(`stream:${streamId}`).emit('live:ended', { streamId });
+    if (io) io.to(`stream:${streamId}`).emit('live:ended', { streamId, replayUrl: finalReplayUrl ?? null });
 
     logger.info('Live stream ended', { streamId, userId, durationMinutes });
     return prisma.liveStream.findUnique({ where: { id: streamId } });
