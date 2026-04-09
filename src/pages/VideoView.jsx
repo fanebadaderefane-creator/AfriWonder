@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
-import VideoCard from '../components/video/VideoCard';
+import AdaptiveVideoPlayer from '../components/video/AdaptiveVideoPlayer';
 import CommentSheet from '../components/video/CommentSheet';
 import TipModal from '../components/video/TipModal';
 import ShareSheet from '../components/video/ShareSheet';
@@ -33,7 +33,7 @@ export default function VideoView() {
     },
     onSuccess: () => {
       toast.success('Vidéo ré-encodée (H.264 + AAC). Recharge si la lecture ne démarre pas.');
-      queryClient.invalidateQueries(['video', videoId]);
+      queryClient.invalidateQueries({ queryKey: ['video', videoId] });
     },
     onError: (e) => {
       const msg =
@@ -89,7 +89,12 @@ export default function VideoView() {
   }, [videoId]);
 
   // Fetch comments
-  const { data: comments = [] } = useQuery({
+  const {
+    data: comments = [],
+    isLoading: commentsLoading,
+    isError: commentsError,
+    refetch: refetchComments,
+  } = useQuery({
     queryKey: ['comments', videoId],
     queryFn: async () => {
       const result = await api.videos.getComments(videoId, { page: 1, limit: 50 });
@@ -123,7 +128,7 @@ export default function VideoView() {
     },
     onSuccess: (isNowLiked) => {
       setIsLiked(isNowLiked);
-      queryClient.invalidateQueries(['video', videoId]);
+      queryClient.invalidateQueries({ queryKey: ['video', videoId] });
     }
   });
 
@@ -141,22 +146,6 @@ export default function VideoView() {
     },
     onSuccess: (isNowSaved) => {
       setIsSaved(isNowSaved);
-    }
-  });
-
-  // Comment mutation
-  const commentMutation = useMutation({
-    mutationFn: async ({ content, parentId }) => {
-      if (!user) {
-        toast.error('Connectez-vous pour commenter');
-        return;
-      }
-      await api.videos.comment(videoId, content, parentId);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries(['comments', videoId]);
-      queryClient.invalidateQueries(['video', videoId]);
-      toast.success('Commentaire ajouté');
     }
   });
 
@@ -212,7 +201,7 @@ export default function VideoView() {
   if (isLoading || !video) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-black">
-        <div className="w-10 h-10 border-4 border-orange-500 border-_t-transparent rounded-full animate-spin" />
+        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -224,7 +213,7 @@ export default function VideoView() {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => navigate(createPageUrl('Home'))}
+          onClick={() => navigate(-1)}
           className="bg-black/50 text-white hover:bg-black/70 rounded-full backdrop-blur shrink-0"
           aria-label="Retour"
         >
@@ -246,19 +235,23 @@ export default function VideoView() {
         )}
       </div>
 
-      {/* Video */}
-      <VideoCard
+      {/* Video — AdaptiveVideoPlayer = VideoCard + indicateur réseau (hors feed) */}
+      <AdaptiveVideoPlayer
         video={video}
         isActive={true}
         isLiked={isLiked}
         isSaved={isSaved}
         isMuted={isMuted}
+        isFollowing={false}
         onMuteToggle={() => setIsMuted(!isMuted)}
         onLike={() => likeMutation.mutate()}
         onComment={() => setShowComments(true)}
         onShare={() => setShowShare(true)}
         onSave={() => saveMutation.mutate()}
         onTip={() => setShowTip(true)}
+        onSubscribe={() => {}}
+        onRequireAuth={() => toast.error('Connectez-vous pour continuer')}
+        onInitialVisualReady={() => {}}
         onProfileClick={(creatorId) => {
           navigate(`${createPageUrl('Profile')}?_userId=${creatorId}`);
         }}
@@ -293,7 +286,13 @@ export default function VideoView() {
         onClose={() => setShowComments(false)}
         videoId={videoId}
         comments={comments}
-        onAddComment={(content, parentId) => commentMutation.mutate({ content, parentId })}
+        isLoading={commentsLoading}
+        isError={commentsError}
+        onRetry={() => refetchComments()}
+        onRefresh={() => {
+          queryClient.invalidateQueries({ queryKey: ['comments', videoId] });
+          queryClient.invalidateQueries({ queryKey: ['video', videoId] });
+        }}
         onTip={() => {
           setShowComments(false);
           setShowTip(true);
@@ -317,6 +316,7 @@ export default function VideoView() {
         isOpen={showShare}
         onClose={() => setShowShare(false)}
         video={video}
+        onShareSuccess={() => {}}
       />
     </div>
   );

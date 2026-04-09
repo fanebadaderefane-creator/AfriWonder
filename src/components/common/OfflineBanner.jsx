@@ -34,7 +34,10 @@ export default function OfflineBanner() {
       aria-live="polite"
     >
       <WifiOff className="w-5 h-5 shrink-0" aria-hidden />
-      <span>Vous êtes hors ligne. Les données peuvent ne pas être à jour.</span>
+      <span>
+        Hors ligne — vous pouvez encore naviguer et lire les vidéos déjà en cache (fil préparé). Certaines actions
+        nécessitent le réseau.
+      </span>
     </div>
   );
 }

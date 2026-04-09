@@ -21,6 +21,7 @@ import {
   liveStartSchema,
   liveTipSchema,
   liveWalletRechargeSchema,
+  liveWalletMockOrangeConfirmSchema,
 } from '../schemas/highRiskBodies.js';
 
 const router = Router();
@@ -166,12 +167,51 @@ router.post('/wallet/recharge', authenticate, validateBody(liveWalletRechargeSch
   }
 });
 
-// GET /api/live/wallet/recharge/confirm - B: Callback après paiement recharge
+// POST /api/live/wallet/recharge/mock-orange-confirm — simulation uniquement : « code secret » comme sur USSD Orange
+router.post(
+  '/wallet/recharge/mock-orange-confirm',
+  authenticate,
+  validateBody(liveWalletMockOrangeConfirmSchema),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const { transactionId, pin } = req.body as { transactionId: string; pin: string };
+      const data = await liveService.confirmWalletRechargeAfterMockOrangePin(req.user!.id, transactionId, pin);
+      res.json({ success: true, data });
+    } catch (error: any) {
+      next(error);
+    }
+  },
+);
+
+// GET /api/live/wallet/recharge/status/:transactionId — polling après Orange (crédit = webhook)
+router.get('/wallet/recharge/status/:transactionId', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const transactionId = param(req, 'transactionId');
+    const data = await liveService.getWalletRechargeStatus(req.user!.id, transactionId);
+    if (!data) return res.status(404).json({ success: false, error: 'Transaction introuvable' });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/live/wallet/recharge/confirm — crédit manuel (mock, ou dev sans webhook)
 router.get('/wallet/recharge/confirm', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const transactionId = req.query.transactionId as string;
     if (!transactionId) return res.status(400).json({ success: false, error: 'transactionId requis' });
-    const result = await liveService.confirmWalletRecharge(transactionId);
+    const allow =
+      process.env.ORANGE_MONEY_MOCK === 'true' ||
+      process.env.WALLET_RECHARGE_ALLOW_RETURN_CONFIRM === '1' ||
+      process.env.NODE_ENV !== 'production';
+    if (!allow) {
+      return res.status(403).json({
+        success: false,
+        error:
+          'Confirmation automatique désactivée. Le solde est mis à jour par le webhook Orange après paiement.',
+      });
+    }
+    const result = await liveService.confirmWalletRecharge(transactionId, req.user!.id);
     res.json({ success: true, data: result });
   } catch (error: any) {
     next(error);

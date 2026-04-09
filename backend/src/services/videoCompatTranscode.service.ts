@@ -329,7 +329,7 @@ export async function maybeTranscodeMp4BufferForWeb(buffer: Buffer, baseName: st
   }
 }
 
-function isOurCdnVideoUrl(url: string): boolean {
+export function isOurCdnVideoUrl(url: string): boolean {
   const u = url.trim();
   if (!u.startsWith('http')) return false;
   try {
@@ -469,7 +469,14 @@ export async function runCompatTranscodeForPublishedVideo(videoId: string, video
 
         await prisma.video.update({
           where: { id: videoId },
-          data: { video_url: newUrl, updated_at: new Date() },
+          data: { video_url: newUrl, low_quality_url: null, updated_at: new Date() },
+        });
+
+        const { runLowQualityRenditionForPublishedVideo } = await import('./videoLowQualityRendition.service.js');
+        setImmediate(() => {
+          runLowQualityRenditionForPublishedVideo(videoId).catch((e) =>
+            logger.warn('lowQuality after compat transcode', { videoId, err: String(e) })
+          );
         });
 
         logger.info('Vidéo republiée en H.264 web (post-publish)', {
@@ -635,7 +642,7 @@ export async function forceWebCompatTranscodePublishedVideo(videoId: string): Pr
       logger.info('forceWebCompatTranscodePublishedVideo DB update start', { videoId });
       await prisma.video.update({
         where: { id: videoId },
-        data: { video_url: newUrl, updated_at: new Date() },
+        data: { video_url: newUrl, low_quality_url: null, updated_at: new Date() },
       });
       logger.info('forceWebCompatTranscodePublishedVideo DB update done', {
         videoId,
@@ -650,6 +657,13 @@ export async function forceWebCompatTranscodePublishedVideo(videoId: string): Pr
           'Fichier transcodé envoyé sur le stockage, mais la mise à jour en base a échoué. Vérifiez la base de données.',
       };
     }
+
+    const { runLowQualityRenditionForPublishedVideo } = await import('./videoLowQualityRendition.service.js');
+    setImmediate(() => {
+      runLowQualityRenditionForPublishedVideo(videoId).catch((e) =>
+        logger.warn('lowQuality after force compat', { videoId, err: String(e) })
+      );
+    });
 
     logger.info('Réparation lecture web (transcodage forcé)', {
       videoId,

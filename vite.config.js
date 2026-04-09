@@ -36,6 +36,17 @@ function auditResourceHintsPlugin() {
       }
       lines.push(`<link rel="dns-prefetch" href="https://fonts.googleapis.com" />`)
       lines.push(`<link rel="dns-prefetch" href="https://fonts.gstatic.com" />`)
+      const mediaCdn =
+        process.env.VITE_MEDIA_PRECONNECT ||
+        process.env.VITE_PUBLIC_MEDIA_ORIGIN ||
+        'https://cdn.afriwonder.com'
+      if (mediaCdn && /^https?:\/\//i.test(mediaCdn)) {
+        try {
+          const m = new URL(mediaCdn)
+          lines.push(`<link rel="preconnect" href="${m.origin}" crossorigin />`)
+          lines.push(`<link rel="dns-prefetch" href="${m.origin}" />`)
+        } catch (_e) {}
+      }
       const inject = lines.length ? `${lines.join('\n    ')}\n    ` : ''
       return html.replace('<head>', `<head>\n    ${inject}`)
     },

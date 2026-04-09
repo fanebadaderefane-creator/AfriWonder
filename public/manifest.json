@@ -28,6 +28,13 @@
   ],
   "shortcuts": [
     {
+      "name": "Accueil / Feed",
+      "short_name": "Accueil",
+      "description": "Ouvrir le feed (vidéos déjà en cache utilisables hors ligne)",
+      "url": "/?utm_source=shortcut_feed",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
       "name": "Creer une video",
       "short_name": "Creer",
       "description": "Ouvrir directement l'ecran de creation",

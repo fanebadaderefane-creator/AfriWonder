@@ -22,6 +22,11 @@ import { toast } from "sonner";
 
 import { createPageUrl } from "@/utils";
 
+import {
+  QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX,
+  QUERY_INVALIDATE_VIDEOS_PREFIX,
+} from '@/lib/persistence-registry.js';
+
 
 
 const categories = [
@@ -256,7 +261,9 @@ export default function EditVideo() {
 
     onSuccess: () => {
 
-      queryClient.invalidateQueries({ queryKey: ['profile-videos'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX });
+
+      queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_VIDEOS_PREFIX });
 
       queryClient.invalidateQueries({ queryKey: ['video', videoId] });
 
@@ -288,7 +295,9 @@ export default function EditVideo() {
 
     onSuccess: () => {
 
-      queryClient.invalidateQueries({ queryKey: ['profile-videos'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX });
+
+      queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_VIDEOS_PREFIX });
 
       toast.success('Vidéo supprimée');
 

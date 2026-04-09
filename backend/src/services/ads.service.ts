@@ -301,11 +301,13 @@ class AdsService {
 
     let filtered = campaigns;
     if (context?.country && context.country.length >= 2) {
-      filtered = filtered.filter(
-        (c) =>
-          c.target_countries.length === 0 ||
-          c.target_countries.some((tc: string) => tc.toUpperCase() === context.country!.toUpperCase())
-      );
+      filtered = filtered.filter((c) => {
+        const countries = Array.isArray(c.target_countries) ? c.target_countries : [];
+        return (
+          countries.length === 0 ||
+          countries.some((tc: string) => tc.toUpperCase() === context.country!.toUpperCase())
+        );
+      });
     }
     if (context?.age != null) {
       filtered = filtered.filter((c) => {
@@ -358,11 +360,13 @@ class AdsService {
     // Filtrage ciblage basique (pays, âge, sexe)
     let filtered = campaigns;
     if (context?.country && context.country.length === 2) {
-      filtered = filtered.filter(
-        (c) =>
-          c.target_countries.length === 0 ||
-          c.target_countries.some((tc: string) => tc.toUpperCase() === context.country!.toUpperCase())
-      );
+      filtered = filtered.filter((c) => {
+        const countries = Array.isArray(c.target_countries) ? c.target_countries : [];
+        return (
+          countries.length === 0 ||
+          countries.some((tc: string) => tc.toUpperCase() === context.country!.toUpperCase())
+        );
+      });
     }
     if (context?.age != null) {
       filtered = filtered.filter((c) => {

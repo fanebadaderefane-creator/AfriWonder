@@ -8,15 +8,24 @@
     "moduleResolution": "bundler",
     "lib": ["esnext", "dom", "dom.iterable"],
     "target": "esnext",
-    "checkJs": true,
+    "allowJs": true,
+    "checkJs": false,
     "noImplicitAny": false,
     "strictNullChecks": false,
     "skipLibCheck": true,
+    "maxNodeModuleJsDepth": 0,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "types": []
   },
-  "include": ["src/components/**/*.js", "src/components/**/*.jsx", "src/components/**/*.d.ts", "src/pages/**/*.jsx", "src/Layout.jsx","src/vite-env.d.ts"],
-  "exclude": ["node_modules", "dist", "src/vite-plugins", "src/api", "src/lib"]
+  "include": ["src"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/vite-plugins",
+    "**/*.test.js",
+    "**/*.test.jsx",
+    "**/__tests__/**"
+  ]
 } 

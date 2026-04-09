@@ -8,10 +8,16 @@ import { getJSON, setJSON } from '@/utils/safeStorage';
 
 const PREFERENCES_KEY = 'afw_preferences';
 
+// Flutter : répliquer les mêmes clés dans les préférences locales (pas de renommage silencieux).
 const DEFAULTS = {
   isMuted: false,
   soundPreferenceSet: false,
   language: 'fr',
+  callDataSaver: false,
+  /** Si false : pas de préchargement vidé feed sur réseau cellulaire */
+  feedPrefetchOnMobileData: true,
+  /** Si true : préchargement uniquement en Wi‑Fi / ethernet */
+  feedPrefetchWifiOnly: false,
 };
 
 /**

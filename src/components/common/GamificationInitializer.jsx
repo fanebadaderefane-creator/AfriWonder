@@ -13,16 +13,19 @@ export const useGamificationInit = (userId) => {
 
     const initializeGamification = async () => {
       try {
-        // Initialize user points if not exists
-        const points = await api.entities.UserPoints.filter({ user_id: userId });
-        if (points.length === 0) {
-          await api.entities.UserPoints.create({
-            user_id: userId,
-            total_points: 0,
-            points_this_month: 0,
-            level: 1,
-            rank: 'bronze'
-          });
+        // Legacy entity API can be absent depending on backend build; skip safely.
+        const userPointsApi = api?.entities?.UserPoints;
+        if (userPointsApi?.filter && userPointsApi?.create) {
+          const points = await userPointsApi.filter({ user_id: userId });
+          if (Array.isArray(points) && points.length === 0) {
+            await userPointsApi.create({
+              user_id: userId,
+              total_points: 0,
+              points_this_month: 0,
+              level: 1,
+              rank: 'bronze'
+            });
+          }
         }
 
         // Initialize notification preferences

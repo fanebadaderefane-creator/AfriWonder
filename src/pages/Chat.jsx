@@ -953,6 +953,8 @@ export default function Chat() {
       return undefined;
     },
     enabled: !!currentUser?.id && !!conversationLookupKey,
+    networkMode: 'offlineFirst',
+    retry: 1,
     staleTime: 60 * 1000,
     gcTime: 15 * 60 * 1000,
     /** Depuis la liste Messages : affichage immédiat + id conversation pour charger les messages sans écran bloquant. */
@@ -1005,6 +1007,8 @@ export default function Chat() {
     queryKey: ['chat-peer-profile', userId],
     queryFn: () => api.users.getById(userId),
     enabled: !!userId && !!currentUser?.id,
+    networkMode: 'offlineFirst',
+    retry: 1,
     staleTime: 10 * 60 * 1000,
   });
 
@@ -1073,6 +1077,9 @@ export default function Chat() {
     queryKey: ['conversation-draft', conversationId, currentUser?.id],
     queryFn: () => api.messages.getDraft(conversationId),
     enabled: !!conversationId && !!currentUser?.id,
+    networkMode: 'offlineFirst',
+    retry: 1,
+    staleTime: 30 * 1000,
   });
   useEffect(() => {
     if (!conversationId || draftData === undefined) return;
@@ -1147,6 +1154,8 @@ export default function Chat() {
       }
     },
     enabled: !!conversationId,
+    networkMode: 'offlineFirst',
+    retry: 1,
     staleTime: 20 * 1000,
     placeholderData: cachedMessagesData || undefined,
   });
@@ -1182,6 +1191,8 @@ export default function Chat() {
     queryKey: ['presence', userId],
     queryFn: () => api.messages.getPresence(userId),
     enabled: !!userId,
+    networkMode: 'offlineFirst',
+    retry: 1,
     staleTime: 30_000,
   });
 

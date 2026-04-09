@@ -4,6 +4,7 @@
  */
 import { getAlgorithmFeed } from './feedAlgorithm.service.js';
 import { adsService } from './ads.service.js';
+import { logger } from '../utils/logger.js';
 
 const AD_FREQUENCY_MIN = 4; // 1 ad après au moins 4 vidéos
 const AD_FREQUENCY_MAX = 5;
@@ -33,6 +34,7 @@ export interface FeedOptions {
   category?: string;
   hashtag?: string;
   mediaType?: 'video' | 'image';
+  refreshNonce?: string;
 }
 
 class FeedService {
@@ -43,33 +45,43 @@ class FeedService {
     const limit = options.limit || 50;
     const page = options.page || 1;
 
-    const [videoResult, inFeedAds, topBannerAds] = await Promise.all([
-      getAlgorithmFeed({
-        page,
-        limit: limit + 20,
-        userId: options.userId,
-        deviceId: options.deviceId,
-        category: options.category,
-        hashtag: options.hashtag,
-        mediaType: options.mediaType,
-      }),
-      adsService.getActiveAdsForFeed(Math.ceil(limit / AD_FREQUENCY_MIN) + 5, {
-        userId: options.userId,
-        deviceId: options.deviceId,
-        country: options.country,
-        city: options.city,
-        age: options.age,
-        gender: options.gender,
-      }),
-      adsService.getTopBannerAds(2, {
-        userId: options.userId,
-        deviceId: options.deviceId,
-        country: options.country,
-        city: options.city,
-        age: options.age,
-        gender: options.gender,
-      }),
-    ]);
+    const videoResult = await getAlgorithmFeed({
+      page,
+      limit: limit + 20,
+      userId: options.userId,
+      deviceId: options.deviceId,
+      category: options.category,
+      hashtag: options.hashtag,
+      mediaType: options.mediaType,
+      refreshNonce: options.refreshNonce,
+    });
+
+    let inFeedAds: Awaited<ReturnType<typeof adsService.getActiveAdsForFeed>> = [];
+    let topBannerAds: Awaited<ReturnType<typeof adsService.getTopBannerAds>> = [];
+    try {
+      [inFeedAds, topBannerAds] = await Promise.all([
+        adsService.getActiveAdsForFeed(Math.ceil(limit / AD_FREQUENCY_MIN) + 5, {
+          userId: options.userId,
+          deviceId: options.deviceId,
+          country: options.country,
+          city: options.city,
+          age: options.age,
+          gender: options.gender,
+        }),
+        adsService.getTopBannerAds(2, {
+          userId: options.userId,
+          deviceId: options.deviceId,
+          country: options.country,
+          city: options.city,
+          age: options.age,
+          gender: options.gender,
+        }),
+      ]);
+    } catch (err) {
+      logger.warn('Feed: chargement des annonces échoué, feed vidéo seul', {
+        message: (err as Error)?.message,
+      });
+    }
 
     const rawVideos = videoResult.videos || [];
     // Éviter les doublons de vidéos dans un même batch de feed (même id répété)

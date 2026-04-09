@@ -30,10 +30,15 @@ export const antiBotMiddleware = (req: Request, res: Response, next: NextFunctio
     });
   }
 
-  // Vérifier headers suspects (pas de referer, pas d'origin)
-  const isSuspicious = !req.headers.referer && 
-                       !req.headers.origin && 
-                       req.method === 'POST';
+  // POST sans Referer/Origin = normal pour webhooks paiement (Orange, Stripe, etc.) — ne pas bruit alertes.
+  const path = req.path || req.url || '';
+  const isPaymentWebhook =
+    (path.includes('/payments/') && path.includes('/webhook')) || path === '/api/payment/webhook';
+  const isSuspicious =
+    !isPaymentWebhook &&
+    !req.headers.referer &&
+    !req.headers.origin &&
+    req.method === 'POST';
 
   if (isSuspicious && process.env.NODE_ENV === 'production') {
     // Log pour analyse

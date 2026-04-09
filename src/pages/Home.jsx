@@ -1,6 +1,6 @@
 /* cspell:disable-file */
 // AfriWonder full review PR - CodeRabbit
-import React, { useState, useEffect, useRef, useCallback, useMemo, useReducer } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useReducer } from 'react';
 import { FEED_PAGE_SIZE } from '@/constants/feed';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/expressClient';
@@ -26,6 +26,13 @@ import {
 } from '@/features/feed/feedUtils';
 import { useAppMenu } from '@/contexts/AppMenuContext';
 import { usePreferences } from '@/contexts/PreferencesContext';
+import { useAuth } from '@/lib/AuthContext';
+import {
+  listCachedVideoIds,
+  getPlaybackObjectUrl,
+  listOfflineFeedVideos,
+} from '@/lib/offlineVideoCache';
+import { schedulePrefetchNextVideos, scheduleActiveVideoMirrorToCache } from '@/lib/feedVideoPrefetch';
 import NotificationService from '../components/notifications/NotificationService';
 import { Sparkles, Users, WifiOff, Download, CloudOff } from 'lucide-react';
 import { toast } from "sonner";
@@ -36,6 +43,14 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { getJSON, setJSON } from '@/utils/safeStorage';
 import { impactLight } from '@/lib/haptics';
 import { useWakeLock } from '@/hooks/useWakeLock';
+import {
+  APP_EVENTS,
+  QUERY_INVALIDATE_FEED_PREFIX,
+  QUERY_INVALIDATE_VIDEOS_PREFIX,
+  queryKeyFeed,
+  queryKeyFeedVideoStates,
+  queryKeyVideos,
+} from '@/lib/persistence-registry.js';
 
 /** Initiales pour avatar sans photo (max 2 caractères). */
 function getAvatarInitials(user) {
@@ -51,8 +66,11 @@ const FEED_FULLSCREEN_WIDTH = `min(100vw, ${FEED_FULLSCREEN_MAX_WIDTH_PX}px)`;
 const FEED_POSTER_PRELOAD_COUNT = 4;
 const FEED_VIDEO_PRELOAD_COUNT = 3;
 const FEED_VIDEO_STATE_RADIUS = 3;
-const FEED_SW_PREFETCH_COUNT = 10;
-const FEED_SW_PREFETCH_COUNT_CONSTRAINED = 4;
+const FEED_SW_PREFETCH_COUNT = 20;
+const FEED_SW_PREFETCH_COUNT_CONSTRAINED = 8;
+/** Vidéos suivantes à précharger en disque après la vidéo en cours (spéc. produit : 15) */
+/** Aligné sur OFFLINE_VIDEO_CACHE_MAX_ENTRIES (~20) : file d’attente préchargement disque sur réseaux faibles. */
+const FEED_DISK_PREFETCH_NEXT = 20;
 const SHOW_FEED_OFFLINE_BADGES = false;
 const FEED_STARTUP_CURTAIN_SESSION_KEY = 'afw_feed_startup_curtain_seen';
 const FEED_PREPARED_STORAGE_KEY = 'afw_feed_prepared_v1';
@@ -118,14 +136,14 @@ export default function Home() {
   const showShare = activeModal === 'share';
   const showGift = activeModal === 'gift';
   const { isOpen: isMenuOpen, openMenu } = useAppMenu();
-  const { isMuted, setMuted } = usePreferences();
+  const { isMuted, setMuted, feedPrefetchOnMobileData, feedPrefetchWifiOnly } = usePreferences();
   
   useWakeLock(true);
   
   const [selectedVideo, setSelectedVideo] = useState(/** @type {any} */ (null));
-  const [user, setUser] = useState(/** @type {any} */ (null));
-  /** Évite 2× GET /feed : la clé ['feed', user?.id] passait de undefined → id au retour de /auth/me. */
-  const [userHydrated, setUserHydrated] = useState(false);
+  /** AuthContext (persistant au-delà du remount Home) : évite clé ['feed','guest'] puis refetch + rideau logo au retour sur Accueil. */
+  const { user, isLoadingAuth } = useAuth();
+  const authReady = !isLoadingAuth;
   const [feedState, _dispatchRaw] = useReducer(feedReducer, initialFeedState);
   const dispatch = /** @type {(action: any) => void} */ (_dispatchRaw);
   const likedVideos = feedState.likedVideos;
@@ -152,11 +170,19 @@ export default function Home() {
     const cached = getJSON(FEED_VIEWED_STORAGE_KEY, []);
     return Array.isArray(cached) ? cached : [];
   });
+  /** Snapshots IndexedDB pour feed « pour toi » sans aucune donnée réseau (cold start hors-ligne) */
+  const [idbOfflineFeedVideos, setIdbOfflineFeedVideos] = useState(EMPTY_ITEMS);
+  /** blob: URLs pour lecture hors-ligne (entries présentes dans le cache disque) */
+  const [diskBlobUrlByVideoId, setDiskBlobUrlByVideoId] = useState(
+    /** @type {Record<string, string>} */ ({})
+  );
 
   const containerRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const queryClient = useQueryClient();
   const [pullDistance, setPullDistance] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  /** Incrémenté après un pull refresh réussi : useLayoutEffect remet le scroll sur la slide 0 une fois le DOM à jour. */
+  const [feedPullScrollSeq, setFeedPullScrollSeq] = useState(0);
   const touchStartYRef = useRef(0);
   const pullDistanceRef = useRef(0);
   const currentIndexRef = useRef(0);
@@ -164,22 +190,6 @@ export default function Home() {
   const scrollRafRef = useRef(0);
   /** Évite double GET /feed : l’effet d’invalidation ne doit pas refetch au 1er `user.id` (la query vient de partir). */
   const feedInvalidatePrevUserIdRef = useRef(undefined);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.auth
-      .me()
-      .then((u) => {
-        if (!cancelled) setUser(u);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setUserHydrated(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const { isOnline, isSlowConnection } = useNetworkStatus();
   const isDataSaverEnabled = useMemo(() => {
@@ -199,15 +209,21 @@ export default function Home() {
   const {
     data: feedInfiniteData,
     isLoading: feedLoading,
+    isFetching: feedFetching,
     isError: feedError,
     refetch: refetchFeed,
     fetchNextPage: fetchFeedNextPage,
     hasNextPage: feedHasNextPage,
   } = useInfiniteQuery({
-    queryKey: ['feed', user?.id ?? 'guest'],
+    queryKey: queryKeyFeed(user?.id),
     ...homeCacheStrategy,
-    retry: 1,
     initialPageParam: 1,
+    /** Garde les pages pendant un refetch (pull-to-refresh) : évite feed vide → logo AfriWonder. */
+    placeholderData: (previousData) => previousData,
+    retry: (failureCount) => {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+      return failureCount < 1;
+    },
     queryFn: async ({ pageParam = 1 }) => {
       const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
       const result = await api.feed.list({ page: pageParam, limit: FEED_PAGE_SIZE });
@@ -229,7 +245,7 @@ export default function Home() {
       const safePages = Array.isArray(pages) ? pages : EMPTY_ITEMS;
       return safeLastPage.length === FEED_PAGE_SIZE ? safePages.length + 1 : undefined;
     },
-    enabled: activeTab === 'pourtoi' && userHydrated,
+    enabled: activeTab === 'pourtoi' && authReady,
   });
 
   const { data: userFollowsData } = useQuery({
@@ -252,14 +268,19 @@ export default function Home() {
   );
   const hasActiveFollows = activeFollowingUsers.length > 0;
 
-  const { data: videosData, isLoading: videosLoading, refetch: refetchVideos } = useQuery({
-    queryKey: ['videos', user?.id ?? 'guest'],
+  const {
+    data: videosData,
+    isLoading: videosLoading,
+    isFetching: videosFetching,
+  } = useQuery({
+    queryKey: queryKeyVideos(user?.id),
     ...homeCacheStrategy,
+    placeholderData: (previousData) => previousData,
     queryFn: async () => {
       const result = await api.videos.list({ page: 1, limit: FEED_PAGE_SIZE });
       return result.videos || [];
     },
-    enabled: activeTab === 'abonnements' && userHydrated && !!user?.id && hasActiveFollows,
+    enabled: activeTab === 'abonnements' && authReady && !!user?.id && hasActiveFollows,
   });
   const videos = videosData ?? EMPTY_ITEMS;
 
@@ -299,15 +320,15 @@ export default function Home() {
   const mainFeedItems = useMemo(
     () =>
       extractMainFeedVideoItems(feedItems, {
-        userHydrated,
+        userHydrated: authReady,
         log: import.meta.env.DEV,
       }),
-    [feedItems, userHydrated]
+    [feedItems, authReady]
   );
   const isLoading =
     activeTab === 'pourtoi'
-      ? feedLoading || !userHydrated
-      : videosLoading || !userHydrated;
+      ? feedLoading || !authReady
+      : videosLoading || !authReady;
 
   const PULL_THRESHOLD = 55;
   const MAX_PULL = 80;
@@ -330,25 +351,61 @@ export default function Home() {
 
   const handlePullEnd = useCallback(() => {
     const currentPull = pullDistanceRef.current;
-    if (currentPull >= PULL_THRESHOLD) {
-      setIsRefreshing(true);
+    if (currentPull < PULL_THRESHOLD) {
       setPullDistance(0);
       pullDistanceRef.current = 0;
-      const refreshTasks =
-        activeTab === 'pourtoi'
-          ? [refetchFeed()]
-          : !!user?.id && hasActiveFollows
-            ? [refetchVideos()]
-            : [];
-      Promise.all(refreshTasks)
-        .catch(() => {})
-        .finally(() => setIsRefreshing(false));
-    } else {
-      setPullDistance(0);
-      pullDistanceRef.current = 0;
+      touchStartYRef.current = 0;
+      return;
     }
+
+    setIsRefreshing(true);
+    setPullDistance(0);
+    pullDistanceRef.current = 0;
     touchStartYRef.current = 0;
-  }, [activeTab, hasActiveFollows, refetchFeed, refetchVideos, user?.id]);
+
+    const run = async () => {
+      try {
+        if (activeTab === 'pourtoi') {
+          if (!isOnline) {
+            toast.message('Hors ligne', { description: 'Connexion requise pour rafraîchir le fil.' });
+            return;
+          }
+          // URL unique : évite le cache SW (StaleWhileRevalidate ~10 min sur /api/feed) et le cache API (~45 s).
+          // `_` est lu côté API comme refreshNonce : rotation page 1 pour une nouvelle tête de liste.
+          const result = await api.feed.list({
+            page: 1,
+            limit: FEED_PAGE_SIZE,
+            _: Date.now(),
+          });
+          const items = Array.isArray(result?.items) ? result.items : [];
+          queryClient.setQueryData(queryKeyFeed(user?.id), {
+            pages: [items],
+            pageParams: [1],
+          });
+          setFeedPullScrollSeq((s) => s + 1);
+        } else if (user?.id && hasActiveFollows) {
+          if (!isOnline) {
+            toast.message('Hors ligne', { description: 'Connexion requise pour rafraîchir.' });
+            return;
+          }
+          const vRes = await api.videos.list({
+            page: 1,
+            limit: FEED_PAGE_SIZE,
+            _: Date.now(),
+          });
+          const vids = Array.isArray(vRes?.videos) ? vRes.videos : [];
+          queryClient.setQueryData(queryKeyVideos(user?.id), vids);
+          setFeedPullScrollSeq((s) => s + 1);
+        }
+      } catch {
+        toast.error('Impossible de rafraîchir le fil.');
+      } finally {
+        setIsRefreshing(false);
+      }
+    };
+
+    void run();
+  }, [activeTab, hasActiveFollows, isOnline, queryClient, user?.id]);
 
   // Invalider feed/videos seulement si l’utilisateur **change** (A→B), pas au premier id après /me (sinon 2× fetch lourd).
   useEffect(() => {
@@ -360,8 +417,8 @@ export default function Home() {
     const prev = feedInvalidatePrevUserIdRef.current;
     feedInvalidatePrevUserIdRef.current = id;
     if (prev == null || prev === id) return;
-    queryClient.invalidateQueries({ queryKey: ['videos'] });
-    queryClient.invalidateQueries({ queryKey: ['feed'] });
+    queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_VIDEOS_PREFIX });
+    queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_FEED_PREFIX });
   }, [queryClient, user?.id]);
 
   const { data: commentsData, isLoading: commentsLoading, isError: commentsError, refetch: refetchComments } = useQuery({
@@ -399,7 +456,7 @@ export default function Home() {
     ...homeCacheStrategy,
     queryFn: () => api.me.getSuggestedFollows(18),
     // Après hydratation + feed : évite la course (query feed désactivée ⇒ feedLoading faux au tout début).
-    enabled: !!user?.id && userHydrated && !mainFeedLoading,
+    enabled: !!user?.id && authReady && !mainFeedLoading,
   });
   const suggestedWonderers = suggestedWonderersData ?? EMPTY_ITEMS;
 
@@ -422,14 +479,24 @@ export default function Home() {
     [preparedFeedVideos]
   );
   const shouldUseOfflinePreparedFeed = activeTab === 'pourtoi' && !isOnline && offlinePreparedVideos.length > 0;
-  const forYouFeedVideos = useMemo(
-    () => (
-      shouldUseOfflinePreparedFeed
-        ? offlinePreparedVideos
-        : mainFeedItems.map((item) => item?.video).filter(Boolean)
-    ),
-    [mainFeedItems, offlinePreparedVideos, shouldUseOfflinePreparedFeed]
-  );
+  const forYouFeedVideos = useMemo(() => {
+    if (shouldUseOfflinePreparedFeed) return offlinePreparedVideos;
+    if (
+      !isOnline
+      && offlinePreparedVideos.length === 0
+      && mainFeedItems.length === 0
+      && idbOfflineFeedVideos.length > 0
+    ) {
+      return idbOfflineFeedVideos;
+    }
+    return mainFeedItems.map((item) => item?.video).filter(Boolean);
+  }, [
+    shouldUseOfflinePreparedFeed,
+    isOnline,
+    offlinePreparedVideos,
+    mainFeedItems,
+    idbOfflineFeedVideos,
+  ]);
   const activeFeedVideos = useMemo(
     () => (activeTab === 'pourtoi' ? forYouFeedVideos : followingVideos),
     [activeTab, followingVideos, forYouFeedVideos]
@@ -440,6 +507,63 @@ export default function Home() {
   const safeCurrentIndex = feedLength > 0
     ? Math.max(0, Math.min(Number.isFinite(currentIndex) ? currentIndex : 0, feedLength - 1))
     : 0;
+
+  const activeFeedVideoIdsKey = useMemo(
+    () => activeFeedVideos.map((v) => String(v?.id || '')).filter(Boolean).join('|'),
+    [activeFeedVideos]
+  );
+
+  useEffect(() => {
+    if (isOnline) {
+      setIdbOfflineFeedVideos(EMPTY_ITEMS);
+      return;
+    }
+    let cancelled = false;
+    listOfflineFeedVideos()
+      .then((list) => {
+        if (!cancelled && Array.isArray(list)) setIdbOfflineFeedVideos(list);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isOnline]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const ids = activeFeedVideos.map((v) => String(v?.id || '')).filter(Boolean);
+      if (ids.length === 0) {
+        if (!cancelled) setDiskBlobUrlByVideoId({});
+        return;
+      }
+      const cached = await listCachedVideoIds();
+      const next = /** @type {Record<string, string>} */ ({});
+      await Promise.all(
+        ids.map(async (id) => {
+          if (!cached.has(id)) return;
+          const url = await getPlaybackObjectUrl(id);
+          if (url) next[id] = url;
+        })
+      );
+      if (!cancelled) setDiskBlobUrlByVideoId(next);
+    };
+    void run();
+    const onCached = () => void run();
+    window.addEventListener(APP_EVENTS.OFFLINE_VIDEO_CACHED, onCached);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(APP_EVENTS.OFFLINE_VIDEO_CACHED, onCached);
+    };
+  }, [activeFeedVideoIdsKey]);
+
+  const showPourtoiOfflineHint =
+    !isOnline
+    && activeTab === 'pourtoi'
+    && (shouldUseOfflinePreparedFeed
+      || (offlinePreparedVideos.length === 0
+        && mainFeedItems.length === 0
+        && idbOfflineFeedVideos.length > 0));
 
   // Charger la page suivante quand l'utilisateur est à 3 vidéos de la fin.
   useEffect(() => {
@@ -585,6 +709,32 @@ export default function Home() {
     });
     return Array.from(merged.values());
   }, [activeFeedVideos, feedWarmAssetCount, isOnline, isSlowConnection, safeCurrentIndex, shouldConserveOfflineData, viewedFeedCatalog]);
+
+  useEffect(() => {
+    if (!isOnline) return;
+    const t = window.setTimeout(() => {
+      schedulePrefetchNextVideos(activeFeedVideos, safeCurrentIndex, FEED_DISK_PREFETCH_NEXT, {
+        isSlowConnection,
+        isOnline,
+        prefs: { feedPrefetchOnMobileData, feedPrefetchWifiOnly },
+      });
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [
+    activeFeedVideos,
+    safeCurrentIndex,
+    isOnline,
+    isSlowConnection,
+    feedPrefetchOnMobileData,
+    feedPrefetchWifiOnly,
+  ]);
+
+  const currentFeedVideoForCache = activeFeedVideos[safeCurrentIndex];
+  useEffect(() => {
+    if (!isOnline || !currentFeedVideoForCache?.id) return;
+    scheduleActiveVideoMirrorToCache(currentFeedVideoForCache, isSlowConnection);
+  }, [isOnline, isSlowConnection, currentFeedVideoForCache?.id]);
+
   const preparedFeedVideoIds = useMemo(
     () => new Set(preparedFeedVideos.map((video) => String(video.id))),
     [preparedFeedVideos]
@@ -598,7 +748,7 @@ export default function Home() {
     [feedWarmTargetIds, preparedFeedVideoIds]
   );
   const { data: feedVideoStates } = useQuery({
-    queryKey: ['feed-video-states', user?.id ?? 'guest', visibleFeedVideoIds.join(',')],
+    queryKey: queryKeyFeedVideoStates(user?.id, visibleFeedVideoIds.join(',')),
     ...homeCacheStrategy,
     queryFn: () => api.me.getFeedVideoStates(visibleFeedVideoIds),
     enabled: !!user?.id && visibleFeedVideoIds.length > 0,
@@ -1030,7 +1180,16 @@ export default function Home() {
   }, [incrementVideoShares]);
 
   const showHomeLoading = isLoading && feedLength === 0;
-  const showInitialFeedCurtain = showHomeLoading || (feedLength > 0 && !initialFeedVisualReady);
+  /** Pas de rideau logo au tirer-pour-rafraîchir ni pendant un refetch quand le feed est déjà affiché. */
+  const suppressStartupCurtainForRefresh =
+    isRefreshing ||
+    (initialFeedVisualReady &&
+      feedLength > 0 &&
+      ((activeTab === 'pourtoi' && feedFetching) ||
+        (activeTab === 'abonnements' && videosFetching)));
+  const showInitialFeedCurtain =
+    !suppressStartupCurtainForRefresh &&
+    (showHomeLoading || (feedLength > 0 && !initialFeedVisualReady));
 
   useEffect(() => {
     if (!startupVideoId) {
@@ -1107,6 +1266,24 @@ export default function Home() {
     });
   }, [updateIndexFromScroll]);
 
+  useLayoutEffect(() => {
+    if (feedPullScrollSeq === 0) return;
+    const container = containerRef.current;
+    if (!container) return;
+    container.scrollTop = 0;
+    try {
+      container.scrollTo({ top: 0, behavior: 'instant' });
+    } catch {
+      /* certains navigateurs */
+    }
+    currentIndexRef.current = 0;
+    setCurrentIndex(0);
+    const id = requestAnimationFrame(() => {
+      scheduleIndexSyncFromScroll();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [feedPullScrollSeq, scheduleIndexSyncFromScroll]);
+
   const handleScroll = useCallback(() => {
     scheduleIndexSyncFromScroll();
   }, [scheduleIndexSyncFromScroll]);
@@ -1172,6 +1349,7 @@ export default function Home() {
           Ne pas revenir à une largeur dépendante d'un parent flex ambigu, sinon Firefox/WebView
           peut réduire la slide et donner l'impression d'un player "noir". */}
       <div
+        data-afw-feed-column="1"
         className="relative mx-auto flex h-full min-h-0 flex-col bg-[#050816]"
         style={{
           width: FEED_FULLSCREEN_WIDTH,
@@ -1226,8 +1404,6 @@ export default function Home() {
             followingCount={followingCount}
             fixed={false}
             feedMode={true}
-            title={undefined}
-            onToggleDarkMode={undefined}
           />
         </div>
 
@@ -1289,6 +1465,7 @@ export default function Home() {
             WebkitOverflowScrolling: 'touch',
             scrollBehavior: 'auto',
             touchAction: 'pan-y',
+            overscrollBehaviorY: 'contain',
             backgroundColor: 'rgb(3 7 18)',
             zIndex: 1,
             // isolate + <video> en calque GPU peut donner son OK / image noire (Firefox, Chrome Android, WebView).
@@ -1300,11 +1477,11 @@ export default function Home() {
           pullDistance={pullDistance}
           threshold={PULL_THRESHOLD}
         />
-        {shouldUseOfflinePreparedFeed && (
+        {showPourtoiOfflineHint && (
           <div className="sticky top-0 z-20 flex justify-center px-3 pt-3">
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-500/12 px-3 py-2 text-xs font-semibold text-emerald-50 shadow-[0_10px_30px_rgba(16,185,129,0.12)] backdrop-blur-md">
               <CloudOff className="h-4 w-4" />
-              <span>Mode hors connexion: lecture des vidéos déjà préparées</span>
+              <span>Mode hors connexion — lecture depuis le cache</span>
             </div>
           </div>
         )}
@@ -1326,7 +1503,11 @@ export default function Home() {
             title={feedError ? 'Connexion au serveur impossible' : "Aucune video pour l'instant"}
             description={
               feedError
-                ? 'Verifie ta connexion puis reessaie. Le feed restera en attente tant que le serveur ne repond pas.'
+                ? `Verifie ta connexion puis reessaie. Le feed restera en attente tant que le serveur ne repond pas.${
+                    import.meta.env.DEV
+                      ? ' En developpement, l API doit ecouter sur http://127.0.0.1:3000 (ex. npm run dev a la racine du depot).'
+                      : ''
+                  }`
                 : 'Le feed est pret pour du nouveau contenu. Publie une premiere video pour lancer la dynamique.'
             }
             actionLabel={
@@ -1354,8 +1535,15 @@ export default function Home() {
                 hideVideoHud={hideVideoHud}
                 hideVideoActions={hideVideoActions}
                 slide={slide}
-                offlineReady={preparedFeedVideoIds.has(String(slide.id))}
-                showOfflineBadge={SHOW_FEED_OFFLINE_BADGES}
+                offlineReady={
+                  preparedFeedVideoIds.has(String(slide.id))
+                  || !!diskBlobUrlByVideoId[String(slide.id)]
+                }
+                showOfflineBadge={
+                  SHOW_FEED_OFFLINE_BADGES
+                  || (!!diskBlobUrlByVideoId[String(slide.id)] && !isOnline)
+                }
+                offlineBlobUrl={diskBlobUrlByVideoId[String(slide.id)] || ''}
                 isMuted={isMuted}
                 isLiked={likedVideos.has(slide.video.id)}
                 isSaved={savedVideos.has(slide.video.id)}
@@ -1571,11 +1759,11 @@ export default function Home() {
           if (selectedVideo) {
             try {
               await api.videos.share(selectedVideo.id);
-              queryClient.setQueryData(['videos', user?.id ?? 'guest'], (oldData) => {
+              queryClient.setQueryData(queryKeyVideos(user?.id), (oldData) => {
                 if (!Array.isArray(oldData)) return oldData;
                 return oldData.map(incrementVideoShares);
               });
-              queryClient.setQueryData(['feed', user?.id ?? 'guest'], (oldData) => {
+              queryClient.setQueryData(queryKeyFeed(user?.id), (oldData) => {
                 if (!Array.isArray(oldData)) return oldData;
                 return oldData.map(incrementFeedItemShares);
               });

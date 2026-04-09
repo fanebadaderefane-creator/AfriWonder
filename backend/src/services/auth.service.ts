@@ -1,4 +1,5 @@
 // AfriWonder full review PR - CodeRabbit
+import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import speakeasy from 'speakeasy';
@@ -639,8 +640,9 @@ class AuthService {
     const expiresIn = process.env.JWT_EXPIRES_IN || '15m';
     const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '30d';
 
+    const jti = randomUUID();
     const accessToken = jwt.sign(
-      { userId, email },
+      { userId, email, jti },
       jwtSecret,
       { expiresIn } as SignOptions
     );

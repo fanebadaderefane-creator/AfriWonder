@@ -322,14 +322,20 @@ export default function Lives() {
       const res = await api.live.list(params);
       return res?.streams ?? res?.data?.streams ?? [];
     },
-    refetchInterval: 10000
+    refetchInterval: 10000,
+    networkMode: 'offlineFirst',
+    retry: 1,
+    staleTime: 2 * 60 * 1000,
   });
 
   const { data: recommendations = [] } = useQuery({
     queryKey: ['live-recommendations', user?.id],
     queryFn: () => api.live.getRecommendations({ limit: 5 }),
     enabled: !!user,
-    refetchInterval: 30000
+    refetchInterval: 30000,
+    networkMode: 'offlineFirst',
+    retry: 1,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: discoveryData } = useQuery({
@@ -349,7 +355,10 @@ export default function Lives() {
       };
     },
     enabled: true,
-    refetchInterval: 15000
+    refetchInterval: 15000,
+    networkMode: 'offlineFirst',
+    retry: 1,
+    staleTime: 2 * 60 * 1000,
   });
 
   const liveStreams = listResult ?? [];

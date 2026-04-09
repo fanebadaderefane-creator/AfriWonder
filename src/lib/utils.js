@@ -286,3 +286,48 @@ export function getVideoPlaybackUrl(videoUrl) {
   const c = getVideoPlaybackUrlCandidates(videoUrl);
   return c[0] || '';
 }
+
+/**
+ * URL pour `fetch` (préchargement disque, mode `cors`) : un CDN sans
+ * `Access-Control-Allow-Origin` renvoie une réponse opaque / bloquée alors que
+ * `<video src>` peut encore lire. Quand la vidéo n’est pas same-origin avec la page,
+ * préférer le proxy API (même schéma que buildProxyMediaUrl).
+ */
+export function getVideoPrefetchFetchUrl(videoUrl) {
+  if (!videoUrl || typeof videoUrl !== 'string') return '';
+  const absoluteUrl = toAbsoluteBackendUrl(videoUrl);
+  if (!absoluteUrl) return '';
+
+  const forceProxy =
+    import.meta.env.VITE_FORCE_VIDEO_PROXY === 'true' ||
+    import.meta.env.VITE_FORCE_VIDEO_PROXY === '1';
+  const forceDirect =
+    import.meta.env.VITE_DIRECT_VIDEO_PLAYBACK === 'true' ||
+    import.meta.env.VITE_DIRECT_VIDEO_PLAYBACK === '1';
+
+  const apiBase = getResolvedApiBase();
+  let u;
+  let apiUrl;
+  try {
+    u = new URL(absoluteUrl);
+    apiUrl = new URL(apiBase);
+  } catch {
+    return absoluteUrl;
+  }
+
+  const proxy = buildProxyMediaUrl(absoluteUrl, apiBase);
+
+  if (forceDirect) return absoluteUrl;
+  if (forceProxy) return proxy;
+
+  if (u.origin === apiUrl.origin) return absoluteUrl;
+
+  if (typeof window === 'undefined') {
+    return proxy;
+  }
+
+  const pageOrigin = window.location.origin;
+  if (u.origin === pageOrigin) return absoluteUrl;
+
+  return proxy;
+}

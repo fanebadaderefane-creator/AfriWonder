@@ -127,8 +127,10 @@ class NotificationService {
 
     if (t.includes('call') && rid) {
       const caller = typeof d.callerId === 'string' && d.callerId ? d.callerId : '';
+      const callType = typeof d.type === 'string' && d.type ? d.type : '';
       const q = new URLSearchParams({ mode: 'incoming', callId: rid });
       if (caller) q.set('callerId', caller);
+      if (callType) q.set('type', callType);
       return toAbs(`/DirectCall?${q.toString()}`);
     }
 
@@ -263,6 +265,7 @@ class NotificationService {
       body: message,
       tag: category,
       data: dataObj,
+      actions: Array.isArray(dataObj.actions) ? dataObj.actions : [],
       icon: '/icon-192.png',
       badge: '/icon-192.png',
     });

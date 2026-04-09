@@ -7,6 +7,7 @@ import { emit } from '../events/eventBus.js';
 import { containsBannedWord } from './bannedWord.service.js';
 import notificationService from './notification.service.js';
 import { scheduleCompatTranscodeAfterPublish } from './videoCompatTranscode.service.js';
+import { scheduleLowQualityRenditionAfterPublish } from './videoLowQualityRendition.service.js';
 
 interface ListOptions {
   page: number;
@@ -169,7 +170,7 @@ class VideoService {
       const skipVal = shouldGetAll ? 0 : (skip ?? 0);
       // Colonnes explicites (+ reste du modèle) : en secours Prisma, le client doit recevoir hls_url & media_type pour le fallback HLS (Firefox / WebView).
       const rows = await prisma.$queryRawUnsafe<any[]>(
-        `SELECT v.id, v.title, v.description, v.video_url, v.hls_url, v.thumbnail_url, v.creator_id, v.visibility, v.category, v.views, v.likes, v.comments_count, v.shares, v.saves, v.duration, v.created_at, v.updated_at, v.hashtags, v.music_title, v.is_featured, v.algo_tier, v.avg_retention_pct, v.qualified_views_count, v.media_type, v.remix_of_id, v.subtitle_url, v.download_allowed, v.is_premium, v.trim_start_sec, v.trim_end_sec, v.filter_id, v.comments_disabled, v.comment_visibility, v.hide_likes, v.scheduled_at,
+        `SELECT v.id, v.title, v.description, v.video_url, v.low_quality_url, v.hls_url, v.thumbnail_url, v.creator_id, v.visibility, v.category, v.views, v.likes, v.comments_count, v.shares, v.saves, v.duration, v.created_at, v.updated_at, v.hashtags, v.music_title, v.is_featured, v.algo_tier, v.avg_retention_pct, v.qualified_views_count, v.media_type, v.remix_of_id, v.subtitle_url, v.download_allowed, v.is_premium, v.trim_start_sec, v.trim_end_sec, v.filter_id, v.comments_disabled, v.comment_visibility, v.hide_likes, v.scheduled_at,
                 u.username, u.full_name as "creator_name", u.profile_image as "creator_avatar"
          FROM "Video" v
          JOIN "User" u ON u.id = v.creator_id
@@ -209,6 +210,7 @@ class VideoService {
       }
       return {
         ...videoData,
+        low_quality_playback_url: videoData.low_quality_url ?? null,
         // URLs lues directement depuis la base - aucune transformation
         creator_id: creator?.id || video.creator_id,
         creator_name: creator?.full_name || creator?.username || '',
@@ -312,6 +314,7 @@ class VideoService {
     // IMPORTANT: Ne JAMAIS modifier les URLs ici - elles doivent être stables pour React
     const formattedVideo: any = {
       ...video,
+      low_quality_playback_url: video.low_quality_url ?? null,
       // URLs lues directement depuis la base - aucune transformation
       creator_id: video.creator.id,
       creator_name: video.creator.full_name || video.creator.username,
@@ -605,6 +608,7 @@ class VideoService {
 
     if ((video.media_type || 'video') === 'video' && video.video_url) {
       scheduleCompatTranscodeAfterPublish(video.id, video.video_url);
+      scheduleLowQualityRenditionAfterPublish(video.id);
     }
 
     GamificationEngine.onVideoUpload(data.creator_id).catch((e) =>

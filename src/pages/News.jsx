@@ -269,6 +269,9 @@ export default function News() {
     queryKey: ['news-preferences'],
     queryFn: () => api.news.getPreferences(),
     enabled: !!user,
+    networkMode: 'offlineFirst',
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
   });
 
   React.useEffect(() => {
@@ -324,6 +327,9 @@ export default function News() {
     },
     initialPageParam: 1,
     enabled: useFeed ? !!user : true,
+    networkMode: 'offlineFirst',
+    staleTime: 2 * 60 * 1000,
+    retry: 1,
   });
 
   const apiArticles = listQuery.data?.pages?.flatMap((p) => p.articles ?? []) ?? [];
@@ -346,11 +352,17 @@ export default function News() {
   const { data: breaking = [] } = useQuery({
     queryKey: ['news-breaking'],
     queryFn: () => api.news.getBreaking(),
+    networkMode: 'offlineFirst',
+    staleTime: 2 * 60 * 1000,
+    retry: 1,
   });
 
   const { data: apiTrending = [] } = useQuery({
     queryKey: ['news-trending'],
     queryFn: () => api.news.getTrending(10),
+    networkMode: 'offlineFirst',
+    staleTime: 2 * 60 * 1000,
+    retry: 1,
   });
 
   const trendingToShow = useMock ? MOCK_TRENDING : apiTrending.slice(0, 5);

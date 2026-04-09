@@ -1,9 +1,10 @@
 // src/sw-custom.js — Workbox professionnel AfriWonder
-import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
+import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching';
 import { registerRoute, NavigationRoute } from 'workbox-routing';
 import {
   NetworkFirst, StaleWhileRevalidate, CacheFirst, NetworkOnly
 } from 'workbox-strategies';
+import { getOfflineVideoResponseForRequest } from '@/lib/offlineVideoIdbCore.js';
 import { BackgroundSyncPlugin } from 'workbox-background-sync';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
@@ -27,25 +28,37 @@ precacheAndRoute(self.__WB_MANIFEST || []);
 cleanupOutdatedCaches();
 
 // ─── Navigation (SPA) ────────────────────────────────────────────────────────
-// NetworkFirst pour HTML avec fallback vers /offline.html si hors ligne
-const networkFirstStrategy = new NetworkFirst({
-  cacheName: CACHE.APP_SHELL,
-  networkTimeoutSeconds: 5,
-  plugins: [
-    new CacheableResponsePlugin({ statuses: [200] }),
-  ],
-});
+// index.html depuis le precache : ouverture instantanée + navigation hors-ligne après 1ère visite
+// (réseaux faibles type 3G au Mali : ne pas attendre un HTML réseau qui time-out).
+let navigationHandler = null;
+try {
+  navigationHandler = createHandlerBoundToURL('/index.html');
+} catch {
+  navigationHandler = null;
+}
 
-registerRoute(
-  new NavigationRoute(async ({ event }) => {
-    // Utilise la réponse preloadée si dispo (Fix 10)
-    try {
-      const preloadResponse = await event.preloadResponse;
-      if (preloadResponse) return preloadResponse;
-    } catch {}
-    return networkFirstStrategy.handle({ event });
-  }, { allowlist: [/^(?!\/(api|socket\.io))/] })
-);
+if (navigationHandler) {
+  registerRoute(
+    new NavigationRoute(navigationHandler, {
+      denylist: [/^\/api\/?/, /^\/socket\.io/],
+    })
+  );
+} else {
+  const networkFirstStrategy = new NetworkFirst({
+    cacheName: CACHE.APP_SHELL,
+    networkTimeoutSeconds: 2,
+    plugins: [new CacheableResponsePlugin({ statuses: [200] })],
+  });
+  registerRoute(
+    new NavigationRoute(async ({ event }) => {
+      try {
+        const preloadResponse = await event.preloadResponse;
+        if (preloadResponse) return preloadResponse;
+      } catch {}
+      return networkFirstStrategy.handle({ event });
+    })
+  );
+}
 
 // ─── Fonts ───────────────────────────────────────────────────────────────────
 registerRoute(
@@ -82,7 +95,35 @@ registerRoute(
   })
 );
 
+// ─── Manifest PWA : repli hors-ligne pour installation / relance shell ───────
+registerRoute(
+  ({ url, request }) =>
+    request.method === 'GET' && /\/manifest\.json$/i.test(url.pathname),
+  new StaleWhileRevalidate({
+    cacheName: CACHE.STATIC,
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [200] }),
+      new ExpirationPlugin({ maxEntries: 2, maxAgeSeconds: 7 * 24 * 60 * 60 }),
+    ],
+  })
+);
+
+// ─── /config.json (prod sans VITE_API_URL) — dernier JSON valide si réseau capricieux (Mali) ───
+registerRoute(
+  ({ url, request }) =>
+    request.method === 'GET' && /\/config\.json$/i.test(url.pathname),
+  new NetworkFirst({
+    cacheName: CACHE.API,
+    networkTimeoutSeconds: 4,
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [200] }),
+      new ExpirationPlugin({ maxEntries: 4, maxAgeSeconds: 7 * 24 * 60 * 60 }),
+    ],
+  })
+);
+
 // ─── API Feed (StaleWhileRevalidate — rapide même hors ligne) ─────────────────
+// Le client envoie afwScope sur GET personnalisés (/api/feed, /api/me/*, /api/cart, etc.) — pas de fuite entre comptes.
 registerRoute(
   ({ url, request }) =>
     url.pathname.startsWith('/api/feed') && request.method === 'GET',
@@ -90,22 +131,25 @@ registerRoute(
     cacheName: CACHE.FEED,
     plugins: [
       new CacheableResponsePlugin({ statuses: [200] }),
-      new ExpirationPlugin({ maxEntries: 10, maxAgeSeconds: 10 * 60 }), // 10 min
+      // Hors ligne prolongée (Mali) : garder un dernier feed exploitable un peu plus longtemps
+      new ExpirationPlugin({ maxEntries: 24, maxAgeSeconds: 25 * 60 }),
     ],
   })
 );
 
-// ─── API REST générale (NetworkFirst — fallback cache) ────────────────────────
+// ─── API REST générale (NetworkFirst — repli cache rapide si réseau saturé) ────
 registerRoute(
   ({ url, request }) =>
     url.pathname.startsWith('/api/') && request.method === 'GET'
     && !url.pathname.startsWith('/api/feed'),
   new NetworkFirst({
     cacheName: CACHE.API,
+    // Latence satellite / 3G : éviter de basculer trop tôt sur le cache alors que le réseau répond encore
     networkTimeoutSeconds: 8,
     plugins: [
       new CacheableResponsePlugin({ statuses: [200] }),
-      new ExpirationPlugin({ maxEntries: 50, maxAgeSeconds: 5 * 60 }),
+      // afwScope + nombre de routes perso → plus d’entrées distinctes par compte
+      new ExpirationPlugin({ maxEntries: 160, maxAgeSeconds: 15 * 60 }),
     ],
   })
 );
@@ -126,19 +170,65 @@ registerRoute(
   'POST'
 );
 
-// ─── Vidéos HLS / MP4 ────────────────────────────────────────────────────────
-registerRoute(
-  ({ url }) =>
-    /\.(m3u8|ts|mp4|webm)(\?|$)/i.test(url.pathname) ||
+// ─── Vidéos HLS / MP4 — hors ligne : IndexedDB (blobs MP4 préchargés) ; en ligne : Cache Storage
+const videoCacheFirst = new CacheFirst({
+  cacheName: CACHE.VIDEO,
+  plugins: [
+    new CacheableResponsePlugin({ statuses: [0, 200, 206] }),
+    // Plusieurs lectures hors ligne / réseau instable : un peu plus d’entrées + fenêtre un peu plus longue
+    new ExpirationPlugin({ maxEntries: 120, maxAgeSeconds: 8 * 60 * 60 }),
+  ],
+});
+
+function isVideoAssetRequest(url, request) {
+  if (request.method !== 'GET') return false;
+  return (
+    /\.(m3u8|ts|mp4|webm|m4s)(\?|$)/i.test(url.pathname) ||
     url.hostname.includes('cloudflare') ||
-    url.hostname.includes('r2.dev'),
-  new CacheFirst({
-    cacheName: CACHE.VIDEO,
-    plugins: [
-      new CacheableResponsePlugin({ statuses: [0, 200, 206] }),
-      new ExpirationPlugin({ maxEntries: 60, maxAgeSeconds: 2 * 60 * 60 }),
-    ],
-  })
+    url.hostname.includes('r2.dev')
+  );
+}
+
+// Vidéo : cache réseau d’abord, puis repli IndexedDB (MP4 préchargés) si échec / statut invalide.
+// Réseaux instables : onLine peut rester true alors que fetch timeout — même logique que Flutter (fallback local avant échec final).
+registerRoute(
+  ({ url, request }) => isVideoAssetRequest(url, request),
+  async ({ request, event }) => {
+    const tryIdb = async () => {
+      try {
+        return await getOfflineVideoResponseForRequest(request);
+      } catch {
+        return null;
+      }
+    };
+
+    if (self.navigator && self.navigator.onLine === false) {
+      const offlineFirst = await tryIdb();
+      if (offlineFirst) return offlineFirst;
+    }
+
+    try {
+      const res = await videoCacheFirst.handle({ event, request });
+      // opaque (no-cors) : ok est false alors que le navigateur peut lire la ressource en cache.
+      const usable =
+        res &&
+        (res.ok ||
+          res.status === 206 ||
+          (res.type === 'opaque' && res.status === 0));
+      if (usable) return res;
+    } catch {
+      /* cache miss + réseau KO */
+    }
+
+    const blobFallback = await tryIdb();
+    if (blobFallback) return blobFallback;
+
+    try {
+      return await videoCacheFirst.handle({ event, request });
+    } catch {
+      return new Response('', { status: 503, statusText: 'Video unavailable' });
+    }
+  }
 );
 
 // ─── Cycle de vie ────────────────────────────────────────────────────────────
@@ -189,7 +279,7 @@ async function prefetchFeedAssets(assets) {
   const cache = await caches.open(CACHE.VIDEO);
   const imgCache = await caches.open(CACHE.IMAGES);
   await Promise.allSettled(
-    assets.slice(0, 8).map(async (asset) => {
+    assets.slice(0, 20).map(async (asset) => {
       if (asset.posterUrl) {
         const req = new Request(asset.posterUrl, { mode: 'no-cors' });
         const cached = await imgCache.match(req);
@@ -246,7 +336,17 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  let url = event.notification.data?.url || '/';
+  const data = event.notification.data || {};
+  const action = event.action || '';
+  const actionUrls = (data.actionUrls && typeof data.actionUrls === 'object') ? data.actionUrls : {};
+  let url = data.url || '/';
+  if (action === 'answer-audio' && typeof actionUrls.answerAudio === 'string') {
+    url = actionUrls.answerAudio;
+  } else if (action === 'answer-video' && typeof actionUrls.answerVideo === 'string') {
+    url = actionUrls.answerVideo;
+  } else if (action === 'send-message' && typeof actionUrls.message === 'string') {
+    url = actionUrls.message;
+  }
   if (typeof url !== 'string' || !url.trim()) url = '/';
   url = url.trim();
   if (url.startsWith('/')) {

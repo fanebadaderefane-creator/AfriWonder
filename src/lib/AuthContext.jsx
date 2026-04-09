@@ -12,6 +12,7 @@ import {
   setCachedAuthUser,
 } from '@/lib/secureTokenStorage';
 import { setGuestExplore } from '@/lib/guestExplore';
+import { setFeedRequestScope } from '@/lib/feedRequestScope';
 
 const AuthContext = createContext({
   user: null,
@@ -42,6 +43,7 @@ export const AuthProvider = ({ children }) => {
       const refreshToken = await getRefreshToken();
 
       if (!token && !refreshToken) {
+        setFeedRequestScope(null);
         setUser(null);
         setIsAuthenticated(false);
         await setCachedAuthUser(null);
@@ -55,12 +57,14 @@ export const AuthProvider = ({ children }) => {
           await setRefreshToken(data.data.refreshToken);
           const currentUser = await api.auth.me();
           setGuestExplore(false);
+          setFeedRequestScope(currentUser?.id);
           setUser(currentUser);
           setIsAuthenticated(true);
           await setCachedAuthUser(currentUser);
         } catch {
           await clearTokens();
           await setCachedAuthUser(null);
+          setFeedRequestScope(null);
           setUser(null);
           setIsAuthenticated(false);
         }
@@ -70,6 +74,7 @@ export const AuthProvider = ({ children }) => {
       try {
         const currentUser = await api.auth.me();
         setGuestExplore(false);
+        setFeedRequestScope(currentUser?.id);
         setUser(currentUser);
         setIsAuthenticated(true);
         await setCachedAuthUser(currentUser);
@@ -81,16 +86,19 @@ export const AuthProvider = ({ children }) => {
             await setRefreshToken(data.data.refreshToken);
             const currentUser = await api.auth.me();
             setGuestExplore(false);
+            setFeedRequestScope(currentUser?.id);
             setUser(currentUser);
             setIsAuthenticated(true);
             await setCachedAuthUser(currentUser);
           } catch {
             await clearTokens();
             await setCachedAuthUser(null);
+            setFeedRequestScope(null);
             setUser(null);
             setIsAuthenticated(false);
           }
         } else {
+          setFeedRequestScope(null);
           setUser(null);
           setIsAuthenticated(false);
           await setCachedAuthUser(null);
@@ -98,6 +106,7 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (_error) {
       logger.error('User auth check failed', _error, { context: 'checkAuth' });
+      setFeedRequestScope(null);
       setUser(null);
       setIsAuthenticated(false);
       await setCachedAuthUser(null);
@@ -106,6 +115,10 @@ export const AuthProvider = ({ children }) => {
       isCheckingAuthRef.current = false;
     }
   }, []);
+
+  useEffect(() => {
+    setFeedRequestScope(user?.id);
+  }, [user?.id]);
 
   useEffect(() => {
     // Persister le code parrainage pour l'inscription (au cas où l'utilisateur navigue avant de s'inscrire)
@@ -125,6 +138,7 @@ export const AuthProvider = ({ children }) => {
     (async () => {
       const cachedUser = await getCachedAuthUser();
       if (cachedUser) {
+        setFeedRequestScope(cachedUser?.id);
         setUser(cachedUser);
         setIsAuthenticated(true);
       }
@@ -138,6 +152,7 @@ export const AuthProvider = ({ children }) => {
         checkAuth();
       } else if (e.key === 'access_token' && !e.newValue) {
         // Le token a été supprimé
+        setFeedRequestScope(null);
         setUser(null);
         setIsAuthenticated(false);
       }
@@ -164,6 +179,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const userData = await api.auth.login(email, password);
       setGuestExplore(false);
+      setFeedRequestScope(userData?.id);
       setUser(userData);
       setIsAuthenticated(true);
       setAuthError(null);
@@ -198,6 +214,7 @@ export const AuthProvider = ({ children }) => {
         } catch (_e) {}
       }
       setGuestExplore(false);
+      setFeedRequestScope(newUser?.id);
       setUser(newUser);
       setIsAuthenticated(true);
       setAuthError(null);
@@ -224,6 +241,7 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     api.auth.logout();
     setGuestExplore(false);
+    setFeedRequestScope(null);
     setCachedAuthUser(null);
     setUser(null);
     setIsAuthenticated(false);

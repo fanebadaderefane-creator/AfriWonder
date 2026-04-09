@@ -2,8 +2,8 @@
  * Socket.IO client pour Live Streaming : chat, gifts, tips, viewers, likes en temps réel.
  */
 import { useEffect, useRef, useCallback } from 'react';
-import { io } from 'socket.io-client';
-import { getSocketBaseUrl, getSocketIoTransports } from '@/lib/getSocketBaseUrl';
+import { getSocketBaseUrl } from '@/lib/getSocketBaseUrl';
+import { createSocket } from '@/lib/socketConfig';
 
 /**
  * Hook pour écouter les événements temps réel d'un live (chat,礼物, tips, viewers, like).
@@ -42,11 +42,7 @@ export function useLiveSocket(options) {
     if (!streamId || !streamId.trim()) return;
 
     const base = getSocketBaseUrl();
-    const socket = io(base, {
-      path: '/socket.io',
-      transports: getSocketIoTransports(),
-      withCredentials: true,
-    });
+    const socket = createSocket(base);
     socketRef.current = socket;
 
     socket.on('connect', () => {

@@ -6,6 +6,8 @@ import { invalidateUserFeedCaches } from '../services/feedCache.service.js';
 
 import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+import privacyService from '../services/privacy.service.js';
+import { privacyDeleteAccountSchema } from '../schemas/highRiskBodies.js';
 
 const router = Router();
 
@@ -30,6 +32,38 @@ router.get('/username/:username', optionalAuth, async (req: AuthRequest, res, ne
     const requesterId = req.user?.id;
     const user = await userService.getByUsername(username, requesterId);
     res.json({ success: true, data: user });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/users/me/export — export JSON immédiat (RGPD art. 20), avant /:id pour ne pas matcher "me"
+router.get('/me/export', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const payload = await privacyService.exportUserData(req.user!.id);
+    res.json({ success: true, data: payload });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// DELETE /api/users/me — demande de suppression de compte (RGPD art. 17), même logique que POST /api/privacy/delete-account
+router.delete('/me', authenticate, validateBody(privacyDeleteAccountSchema), async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const { reason } = req.body || {};
+    const ip_address = req.ip || req.connection.remoteAddress || 'unknown';
+    const deletionRequest = await privacyService.requestAccountDeletion({
+      userId,
+      reason,
+      ipAddress: ip_address,
+    });
+    res.json({
+      success: true,
+      data: deletionRequest,
+      message:
+        'Demande de suppression enregistrée. Compte définitivement supprimé après le délai légal; annulation possible via le lien fourni par email (quand disponible).',
+    });
   } catch (error: any) {
     next(error);
   }

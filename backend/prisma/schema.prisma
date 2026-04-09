@@ -625,6 +625,8 @@ model Video {
   title                 String
   description           String?
   video_url             String
+  /// Rendu MP4 léger (≈480p) pour réseaux faibles ; miroir client `low_quality_playback_url`.
+  low_quality_url       String?
   hls_url               String?
   thumbnail_url         String?
   creator_id            String

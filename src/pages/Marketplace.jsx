@@ -19,6 +19,9 @@ export default function MarketplacePage() {
       } catch (_) {}
       return [];
     },
+    networkMode: 'offlineFirst',
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
   });
 
   const { data: providersData } = useQuery({
@@ -29,6 +32,9 @@ export default function MarketplacePage() {
       const list = Array.isArray(raw) ? raw : [];
       return list.filter((p) => p.is_active !== false).slice(0, 12);
     },
+    networkMode: 'offlineFirst',
+    staleTime: 2 * 60 * 1000,
+    retry: 1,
   });
 
   const fromApi = providersData ?? [];

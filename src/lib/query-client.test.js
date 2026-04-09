@@ -7,9 +7,10 @@ describe('query-client', () => {
     expect(typeof queryClientInstance.getQueryData).toBe('function');
     expect(typeof queryClientInstance.setQueryData).toBe('function');
   });
-  it('has defaultOptions with refetchOnWindowFocus true and retry configured', () => {
+  it('has defaultOptions with refetchOnWindowFocus false (offline-first) and retry configured', () => {
     const opts = queryClientInstance.getDefaultOptions?.() ?? queryClientInstance.defaultOptions;
-    expect(opts?.queries?.refetchOnWindowFocus).toBe(true);
+    expect(opts?.queries?.refetchOnWindowFocus).toBe(false);
+    expect(opts?.queries?.refetchOnReconnect).toBe(false);
     expect(typeof opts?.queries?.retry).toBe('function');
   });
   it('has gcTime 48h for persistence (offline usage)', () => {

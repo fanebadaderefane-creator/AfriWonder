@@ -1,3 +1,5 @@
+import { API_URL } from '@/lib/apiBaseUrl.js';
+
 /**
  * Origin HTTP(S) pour socket.io-client (path `/socket.io`).
  * En dev sous Vite (5173), on utilise l’origine du front pour que Socket.IO passe par le proxy Vite
@@ -33,7 +35,10 @@ export function getSocketBaseUrl() {
     }
   }
 
-  const api = import.meta.env.VITE_API_URL || '';
+  let api = import.meta.env.VITE_API_URL || '';
+  if (!api && API_URL && /^https?:\/\//i.test(API_URL)) {
+    api = API_URL;
+  }
   if (api) {
     const stripped = api.replace(/\/api\/?$/, '');
     if (stripped) return stripped;

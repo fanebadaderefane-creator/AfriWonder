@@ -1,15 +1,29 @@
 // AfriWonder full review PR - CodeRabbit
 import { Router } from 'express';
 import { authService } from '../services/auth.service.js';
-import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { authenticate, AuthRequest, getAccessTokenFromRequest } from '../middleware/auth.js';
 import { logger } from '../utils/logger.js';
 import { clearAuthCookies, setAuthCookies } from '../utils/authCookies.js';
 import { z } from 'zod';
 import { validateBody } from '../utils/zodValidation.js';
 import jwt from 'jsonwebtoken';
 import { revokeRefreshToken } from '../services/refreshTokenBlacklist.service.js';
+import { revokeAccessToken } from '../services/accessTokenBlacklist.service.js';
 
 const router = Router();
+
+/** Message utilisateur quand JWT n’est pas configuré (détail complet seulement hors prod). */
+function userFacingJwtConfigMessage(context: 'login' | 'register'): string {
+  if (process.env.NODE_ENV === 'production') {
+    return context === 'register'
+      ? 'Inscription temporairement indisponible. Réessayez plus tard ou contactez le support.'
+      : 'Connexion temporairement indisponible. Réessayez plus tard ou contactez le support.';
+  }
+  return (
+    'Configuration serveur manquante (JWT). Dans backend/.env, définissez JWT_SECRET et JWT_REFRESH_SECRET ' +
+    '(chaîne aléatoire d’au moins 64 caractères chacune, secrets différents), puis redémarrez l’API.'
+  );
+}
 
 const registerSchema = z.object({
   email: z.string().email().optional(),
@@ -105,9 +119,7 @@ router.post('/register', validateBody(registerSchema), async (req, res, next) =>
       return res.status(err.statusCode).json({
         success: false,
         error: {
-          message: isJwt
-            ? 'Configuration serveur : ajoutez JWT_SECRET et JWT_REFRESH_SECRET dans backend/.env puis redémarrez l’API.'
-            : msg,
+          message: isJwt ? userFacingJwtConfigMessage('register') : msg,
           code: err.code,
         },
       });
@@ -161,9 +173,7 @@ router.post('/login', validateBody(loginSchema), async (req, res, next) => {
       return res.status(error.statusCode).json({
         success: false,
         error: {
-          message: isConfigError
-            ? 'Configuration serveur manquante (JWT). Vérifiez backend/.env avec JWT_SECRET et JWT_REFRESH_SECRET.'
-            : error.message,
+          message: isConfigError ? userFacingJwtConfigMessage('login') : error.message,
           code: error.code,
         },
       });
@@ -203,6 +213,18 @@ router.post('/refresh', validateBody(refreshSchema), async (req, res, next) => {
 // POST /api/auth/logout
 router.post('/logout', authenticate, validateBody(logoutSchema), async (req, res, next) => {
   try {
+    const access = getAccessTokenFromRequest(req);
+    if (access && process.env.JWT_SECRET) {
+      try {
+        const dec = jwt.verify(access, process.env.JWT_SECRET) as { jti?: string; exp?: number };
+        if (dec.jti && dec.exp) {
+          await revokeAccessToken(dec.jti, dec.exp);
+        }
+      } catch {
+        // access token invalide ou expiré : on poursuit la déconnexion
+      }
+    }
+
     const { refreshToken, refresh_token } = req.body || {};
     const token = refreshToken || refresh_token || req.cookies?.refresh_token;
 

@@ -8,6 +8,10 @@ import { api } from '@/api/expressClient';
 import { toast } from "sonner";
 import { useQueryClient } from '@tanstack/react-query';
 import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
+import {
+  QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX,
+  QUERY_INVALIDATE_VIDEOS_PREFIX,
+} from '@/lib/persistence-registry.js';
 
 export default function ProfileHeader({ 
   user, 
@@ -50,8 +54,8 @@ export default function ProfileHeader({
         const file_url = result?.file_url || result?.data?.file_url;
         if (!file_url) throw new Error('Pas d\'URL reçue');
         await api.auth.updateMe({ profile_cover_url: file_url });
-        queryClient.invalidateQueries({ queryKey: ['videos'] });
-        queryClient.invalidateQueries({ queryKey: ['profile-videos'] });
+        queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_VIDEOS_PREFIX });
+        queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX });
         window.location.reload();
       } catch (_err) {
         console.error('Upload cover error', _err);
@@ -76,8 +80,8 @@ export default function ProfileHeader({
           await api.auth.updateMe({ profile_image: file_url });
           
           // Invalider le cache des vidéos pour recharger avec la nouvelle photo
-          queryClient.invalidateQueries({ queryKey: ['videos'] });
-          queryClient.invalidateQueries({ queryKey: ['profile-videos'] });
+          queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_VIDEOS_PREFIX });
+          queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX });
           
           window.location.reload();
         } catch (_error) {

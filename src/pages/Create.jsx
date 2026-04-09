@@ -41,6 +41,10 @@ import { readGuestExplore, GUEST_EXPLORE_EVENT, setGuestExplore } from '@/lib/gu
 import BottomNav from '../components/navigation/BottomNav';
 
 import { FILE_ACCEPT_IMAGES, FILE_ACCEPT_VIDEOS, FILE_ACCEPT_MUSIC } from '@/lib/fileAccept';
+import {
+  QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX,
+  QUERY_INVALIDATE_VIDEOS_PREFIX,
+} from '@/lib/persistence-registry.js';
 
 import VideoEditor from '../components/video/VideoEditor';
 
@@ -1149,9 +1153,9 @@ export default function Create() {
 
         setUploadProgress(100);
 
-        queryClient.invalidateQueries({ queryKey: ['videos'] });
+        queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_VIDEOS_PREFIX });
 
-        queryClient.invalidateQueries({ queryKey: ['profile-videos'] });
+        queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX });
 
         queryClient.invalidateQueries({ queryKey: ['video', editingVideoId] });
 

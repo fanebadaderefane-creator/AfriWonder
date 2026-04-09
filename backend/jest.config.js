@@ -8,9 +8,9 @@ export default {
   transform: {
     '^.+\\.ts$': ['ts-jest', {
       useESM: true,
-      isolatedModules: true,
       tsconfig: {
         rootDir: '.',
+        isolatedModules: true,
         strict: false,
         noUnusedLocals: false,
         noUnusedParameters: false,
@@ -44,10 +44,10 @@ export default {
   // Cible long terme : 80 % une fois les services Video, Payment et Notification couverts.
   coverageThreshold: {
     global: {
-      statements: 50,
-      branches: 30,
-      functions: 50,
-      lines: 50,
+      statements: 55,
+      branches: 32,
+      functions: 52,
+      lines: 55,
     },
   },
   // Désactivé en CI pour éviter exit code 1 quand des handles (ex. pool PG)

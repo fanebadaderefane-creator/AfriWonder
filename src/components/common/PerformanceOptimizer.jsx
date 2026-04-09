@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import { isEffectiveConnectionSlow } from '@/lib/networkHints';
 
 export const useNetworkStatus = () => {
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
-  const [isSlowConnection, setIsSlowConnection] = useState(false);
+  const [isSlowConnection, setIsSlowConnection] = useState(() =>
+    typeof navigator !== 'undefined' ? isEffectiveConnectionSlow() : false
+  );
 
   useEffect(() => {
     const onOnline = () => setIsOnline(true);
@@ -16,12 +19,10 @@ export const useNetworkStatus = () => {
     let connectionCleanup;
     if (typeof navigator !== 'undefined' && 'connection' in navigator) {
       const connection = /** @type {any} */ (/** @type {any} */ (navigator).connection);
-      const isSlowType = ['slow-2g', '2g', '3g'].includes(connection.effectiveType);
-      setIsSlowConnection(isSlowType || connection.saveData);
+      setIsSlowConnection(isEffectiveConnectionSlow());
 
       const onConnectionChange = () => {
-        const slow = ['slow-2g', '2g', '3g'].includes(connection.effectiveType) || connection.saveData;
-        setIsSlowConnection(slow);
+        setIsSlowConnection(isEffectiveConnectionSlow());
       };
       connection.addEventListener('change', onConnectionChange);
       connectionCleanup = () => connection.removeEventListener('change', onConnectionChange);
@@ -69,14 +70,15 @@ export const initializeServiceWorker = () => {
 // Cache Strategy for API Calls (TanStack Query v5: gcTime remplace cacheTime)
 export const getCacheStrategy = (isSlowConnection) => {
   return {
-    staleTime: isSlowConnection ? 60000 : 30000,
-    gcTime: isSlowConnection ? 600000 : 300000,
+    // 2G/3G/saveData : moins de « refetch » inutiles ; données persistées (TanStack) servent la navigation offline
+    staleTime: isSlowConnection ? 5 * 60 * 1000 : 30000,
+    gcTime: isSlowConnection ? 60 * 60 * 1000 : 300000,
     refetchOnWindowFocus: !isSlowConnection,
-    retry: isSlowConnection ? 3 : 1,
+    retry: isSlowConnection ? 4 : 1,
     retryDelay: (attempt) => {
       // Connexions lentes : backoff plus long pour laisser le temps au réseau de revenir
       if (isSlowConnection) {
-        return Math.min(2000 * (attempt + 1), 5000);
+        return Math.min(2500 * (attempt + 1), 12000);
       }
       return 500 * (attempt + 1);
     },
@@ -116,6 +118,7 @@ export const useIntersectionObserver = (ref, callback, options = {}) => {
 // Estimate network speed
 export const estimateNetworkSpeed = async () => {
   try {
+    if (isEffectiveConnectionSlow()) return 'slow';
     const _nav = /** @type {any} */ (navigator);
     const connection = _nav.connection || _nav.mozConnection || _nav.webkitConnection;
     if (!connection) return 'high';

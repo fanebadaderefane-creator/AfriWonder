@@ -1,7 +1,7 @@
 import React, { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
-import App from '@/App.jsx'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
+import { initExpressClientRuntime } from '@/api/expressClient.js'
 import { initPosthog } from '@/lib/posthogClient.js'
 import '@/index.css'
 
@@ -81,16 +81,14 @@ if (!React || !React.useState) {
   throw new Error('React is not properly loaded');
 }
 
-// En production, VITE_API_URL doit être défini (sinon les appels API ciblent localhost)
-if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) {
-  console.error('⚠️ VITE_API_URL n\'est pas défini en production. Définir la variable d\'environnement pour pointer vers l\'API.');
-}
+async function bootstrapReactApp() {
+  await initExpressClientRuntime()
+  const { default: App } = await import('@/App.jsx')
 
-// Vérifier que le root existe avant de rendre
-const rootElement = document.getElementById('root');
-if (!rootElement) {
-  console.error('❌ Élément root introuvable!');
-  document.body.innerHTML = `
+  const rootElement = document.getElementById('root')
+  if (!rootElement) {
+    console.error('❌ Élément root introuvable!')
+    document.body.innerHTML = `
     <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; text-align: center; font-family: system-ui;">
       <h1 style="color: #2563eb; margin-bottom: 16px;">Erreur de chargement</h1>
       <p style="color: #666; margin-bottom: 24px;">L'application n'a pas pu se charger correctement.</p>
@@ -98,24 +96,24 @@ if (!rootElement) {
         Recharger la page
       </button>
     </div>
-  `;
-} else {
+  `
+    return
+  }
   try {
     ReactDOM.createRoot(rootElement).render(
       <StrictMode>
         <ErrorBoundary>
           <App />
         </ErrorBoundary>
-      </StrictMode>
-    );
-    // Cache le loader de demarrage apres hydratation
-    const loader = document.getElementById('app-loader');
+      </StrictMode>,
+    )
+    const loader = document.getElementById('app-loader')
     if (loader) {
-      loader.classList.add('hidden');
-      setTimeout(() => loader.remove(), 350);
+      loader.classList.add('hidden')
+      setTimeout(() => loader.remove(), 350)
     }
   } catch (error) {
-    console.error('❌ Erreur lors du rendu de React:', error);
+    console.error('❌ Erreur lors du rendu de React:', error)
     rootElement.innerHTML = `
       <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; text-align: center; font-family: system-ui;">
         <h1 style="color: #2563eb; margin-bottom: 16px;">Erreur de chargement</h1>
@@ -124,9 +122,19 @@ if (!rootElement) {
           Recharger la page
         </button>
       </div>
-    `;
+    `
   }
 }
+
+if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) {
+  console.info(
+    'ℹ️ Production sans VITE_API_URL au build : charge /config.json (apiBaseUrl) puis repli sur /api même origine.',
+  )
+}
+
+bootstrapReactApp().catch((err) => {
+  console.error('Bootstrap AfriWonder:', err)
+})
 
 // Register Service Worker PWA (vite-plugin-pwa en production)
 if ('serviceWorker' in navigator && import.meta.env.PROD) {

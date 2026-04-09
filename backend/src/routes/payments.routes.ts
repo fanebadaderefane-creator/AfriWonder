@@ -782,6 +782,13 @@ router.post('/orange-money/webhook', async (req, res, next) => {
         await shippingService.confirmShippingPayment(orderId);
         logger.info('Paiement shipping confirmé via webhook', { orderId });
       } catch (error) {}
+
+      // 17. Live wallet recharge (order_id = transaction UUID wallet_recharge)
+      try {
+        const liveService = (await import('../services/live.service.js')).default;
+        await liveService.confirmWalletRecharge(orderId);
+        logger.info('Recharge wallet live confirmée via webhook', { orderId });
+      } catch (error) {}
     }
 
     logWebhookProcessed('orange_money', orderId, 'processed');

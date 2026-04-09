@@ -8,6 +8,7 @@ import { logger } from '../utils/logger.js';
 import platformRevenueService from './platformRevenue.service.js';
 import notificationService from './notification.service.js';
 import paymentService from './payment.service.js';
+import { normalizeOrangeMoneySubscriberMl } from '../utils/orangeMoneyPhone.js';
 import crypto from 'crypto';
 import commissionService from './commission.service.js';
 // Cadeaux live : 50% partagé (25% créateur, 25% plateforme) — modèle AfriWonder
@@ -1388,28 +1389,76 @@ class LiveService {
     const merchantId = process.env.ORANGE_MONEY_MERCHANT_ID || process.env.VITE_ORANGE_MERCHANT_ID;
     const apiKey = process.env.ORANGE_MONEY_API_KEY || process.env.VITE_ORANGE_API_KEY;
     const useMock = !merchantId || !apiKey;
+    // Hors production : sans clés Orange, simulation (NODE_ENV absent ex. tsx watch n’est pas toujours "development").
+    const allowMockWithoutOrange =
+      process.env.NODE_ENV !== 'production' || process.env.ORANGE_MONEY_MOCK === 'true';
 
-    if (useMock && (process.env.NODE_ENV === 'development' || process.env.ORANGE_MONEY_MOCK === 'true')) {
+    if (useMock && allowMockWithoutOrange) {
       logger.info('Recharge wallet en mode simulation (Orange Money non configuré)', { userId, amount, transactionId: tx.id });
-      return { transaction_id: tx.id, payment_url: returnUrl, amount };
+      const mockReturnUrl = `${baseUrl}/RechargeWallet?transactionId=${tx.id}&mockOrange=1`;
+      return { transaction_id: tx.id, payment_url: mockReturnUrl, amount, mock: true };
     }
 
     if (useMock) {
       throw new Error('Orange Money Mali non configuré. Vérifiez ORANGE_MONEY_MERCHANT_ID et ORANGE_MONEY_API_KEY');
     }
 
+    const phoneNorm = normalizeOrangeMoneySubscriberMl(phone || '') || String(phone || '').replace(/\D/g, '');
     const result = await paymentService.initiateOrangeMoneyPayment(userId, tx.id, {
       amount,
-      phone: phone || '',
+      phone: phoneNorm,
       returnUrl,
     });
-    return { transaction_id: tx.id, payment_url: result.paymentUrl, amount };
+    const paymentUrl = result.paymentUrl;
+    if (!paymentUrl || typeof paymentUrl !== 'string') {
+      throw new Error(
+        "Orange Money n'a pas renvoyé d'URL de paiement. Vérifie la configuration marchande et l'API Orange.",
+      );
+    }
+    return { transaction_id: tx.id, payment_url: paymentUrl, amount, mock: false };
   }
 
-  /** B: Confirmer recharge (après retour Orange Money ou webhook) */
-  async confirmWalletRecharge(transactionId: string) {
+  /**
+   * Hors prod (ou ORANGE_MONEY_MOCK) : après saisie d'un code à l'écran (simulation du secret Orange).
+   * En production réelle, le PIN est demandé par Orange (page web / USSD), pas par cette route.
+   */
+  async confirmWalletRechargeAfterMockOrangePin(userId: string, transactionId: string, _pin: string) {
+    const allow =
+      process.env.NODE_ENV !== 'production' || process.env.ORANGE_MONEY_MOCK === 'true';
+    if (!allow) {
+      throw new Error('Confirmation simulée non disponible en production');
+    }
+    if (!/^\d{4,6}$/.test(_pin)) {
+      throw new Error('Code invalide (4 à 6 chiffres)');
+    }
     const tx = await prisma.transaction.findFirst({
-      where: { id: transactionId, type: 'wallet_recharge', status: 'pending' },
+      where: { id: transactionId, user_id: userId, type: 'wallet_recharge', status: 'pending' },
+    });
+    if (!tx) throw new Error('Transaction introuvable ou déjà traitée');
+    return this.confirmWalletRecharge(transactionId, userId);
+  }
+
+  /** Statut d’une recharge (polling après retour Orange ; crédit via webhook en prod). */
+  async getWalletRechargeStatus(userId: string, transactionId: string) {
+    const tx = await prisma.transaction.findFirst({
+      where: { id: transactionId, user_id: userId, type: 'wallet_recharge' },
+      select: { status: true, amount: true, id: true },
+    });
+    if (!tx) return null;
+    return { status: tx.status, amount: tx.amount, transaction_id: tx.id };
+  }
+
+  /** B: Confirmer recharge (webhook, mock, ou fallback dev — voir allowReturnConfirm) */
+  async confirmWalletRecharge(transactionId: string, userId?: string) {
+    const where: { id: string; type: 'wallet_recharge'; status: 'pending'; user_id?: string } = {
+      id: transactionId,
+      type: 'wallet_recharge',
+      status: 'pending',
+    };
+    if (userId) where.user_id = userId;
+
+    const tx = await prisma.transaction.findFirst({
+      where,
     });
     if (!tx) throw new Error('Transaction non trouvée ou déjà traitée');
     const wallet = await getOrCreateWallet(tx.user_id);

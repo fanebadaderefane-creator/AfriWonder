@@ -22,6 +22,9 @@ export function useConversationSocket(options) {
   const [presence, setPresence] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [showReconnectBanner, setShowReconnectBanner] = useState(false);
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === 'undefined' ? true : navigator.onLine !== false
+  );
   const typingTimeoutRef = useRef(null);
   const recordingTimeoutRef = useRef(null);
   const onNewMessageRef = useRef(onNewMessage);
@@ -115,14 +118,30 @@ export function useConversationSocket(options) {
   }, [socket, userId, conversationId, peerId]);
 
   useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     if (isConnected) {
+      setShowReconnectBanner(false);
+      return undefined;
+    }
+    if (!isOnline) {
+      // Hors ligne : éviter le faux message "reconnexion..." du socket.
       setShowReconnectBanner(false);
       return undefined;
     }
     const delayMs = socketEverConnectedRef.current ? 2800 : 12_000;
     const id = window.setTimeout(() => setShowReconnectBanner(true), delayMs);
     return () => window.clearTimeout(id);
-  }, [isConnected]);
+  }, [isConnected, isOnline]);
 
   const emitTypingStart = useCallback(() => {
     if (socket?.connected && conversationId && userId && userName) {
@@ -157,6 +176,7 @@ export function useConversationSocket(options) {
     emitRecordingStart,
     emitRecordingStop,
     isConnected,
+    isOnline,
     showReconnectBanner,
   };
 }

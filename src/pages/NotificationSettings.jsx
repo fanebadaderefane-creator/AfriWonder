@@ -8,12 +8,14 @@ import { createPageUrl } from '@/utils';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import PushNotificationService from '@/components/common/PushNotificationService';
+import { loadPreferences, savePreferences } from '@/lib/preferences';
 import BottomNav from '../components/navigation/BottomNav';
 
 export default function NotificationSettings() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [callDataSaver, setCallDataSaver] = useState(() => !!loadPreferences().callDataSaver);
   const [preferences, setPreferences] = useState({
     push_enabled: true,
     email_enabled: true,
@@ -31,6 +33,7 @@ export default function NotificationSettings() {
       try {
         const u = await api.auth.me();
         setUser(u);
+        setCallDataSaver(!!u?.data_saver_mode || !!loadPreferences().callDataSaver);
         try {
           await loadPreferences(u.id);
         } catch (_prefErr) {
@@ -85,6 +88,18 @@ export default function NotificationSettings() {
       }
     } catch (_error) {
       toast.error('Erreur lors de l\'activation des notifications');
+    }
+  };
+
+  const handleToggleCallDataSaver = async () => {
+    const next = !callDataSaver;
+    setCallDataSaver(next);
+    savePreferences({ callDataSaver: next });
+    try {
+      if (user?.id) await api.auth.updateMe({ data_saver_mode: next });
+      toast.success(next ? 'Mode économie de données pour appels activé' : 'Mode économie de données pour appels désactivé');
+    } catch {
+      toast.error('Préférence locale mise à jour, mais synchronisation serveur échouée');
     }
   };
 
@@ -207,6 +222,29 @@ export default function NotificationSettings() {
             </motion.div>
           );
         })}
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="bg-white rounded-2xl overflow-hidden shadow-sm"
+        >
+          <div className="px-4 py-4 border-b border-gray-100 flex items-center gap-3">
+            <Smartphone className="w-5 h-5 text-blue-600" />
+            <h2 className="font-semibold text-gray-800">Appels</h2>
+          </div>
+          <div className="px-4 py-4 flex items-center justify-between">
+            <div className="flex-1">
+              <p className="font-medium text-gray-800">Mode économie de données (appels)</p>
+              <p className="text-sm text-gray-500">Priorise la stabilité audio et réduit la vidéo sur réseau faible.</p>
+            </div>
+            <Switch
+              checked={callDataSaver}
+              onChange={handleToggleCallDataSaver}
+              className="ml-4"
+            />
+          </div>
+        </motion.div>
 
         {/* Save Button */}
         <motion.div

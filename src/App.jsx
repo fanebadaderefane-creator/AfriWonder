@@ -1,9 +1,10 @@
 // AfriWonder full review PR - CodeRabbit
-import { MotionConfig } from 'framer-motion';
 import { Toaster } from "@/components/ui/toaster"
+import AppMotionShell from '@/components/common/AppMotionShell';
 import { AfriWonderThemeProvider } from '@/lib/afriwonder-theme'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { queryClientInstance, queryPersister } from '@/lib/query-client'
+import { shouldDehydrateQueryForOfflinePersist } from '@/lib/query-persist-dehydrate.js'
 import NavigationTracker from '@/lib/NavigationTracker'
 import { pagesConfig, preloadPages } from './pages.config.glob'
 import { BrowserRouter as Router, Route, Routes, useNavigate, useLocation, Navigate } from 'react-router-dom';
@@ -240,20 +241,25 @@ const AuthenticatedApp = () => {
 function App() {
   useEffect(() => {
     const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-    const shouldSkipPreload = !!connection?.saveData || ['slow-2g', '2g'].includes(connection?.effectiveType);
+    const ect = connection?.effectiveType;
+    const shouldSkipPreload = !!connection?.saveData || ect === 'slow-2g' || ect === '2g';
     if (shouldSkipPreload) return;
 
     const warmRoutes = () => {
       preloadPages(CORE_ROUTE_PRELOADS).catch(() => {});
     };
+    // 3G / réseaux instables : retarder un peu pour laisser priorité au bundle + premier écran
+    const idleTimeout = ect === '3g' ? 5200 : 2500;
+    const deferMs = ect === '3g' ? 2800 : 1200;
+
     if ('requestIdleCallback' in window) {
-      const id = window.requestIdleCallback(warmRoutes, { timeout: 2500 });
+      const id = window.requestIdleCallback(warmRoutes, { timeout: idleTimeout });
       return () => {
         window.cancelIdleCallback?.(id);
       };
     }
 
-    const timer = window.setTimeout(warmRoutes, 1200);
+    const timer = window.setTimeout(warmRoutes, deferMs);
     return () => {
       window.clearTimeout(timer);
     };
@@ -262,7 +268,8 @@ function App() {
   // Préchargement secondaire — pages populaires après que l'app est prête
   useEffect(() => {
     const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-    if (!!connection?.saveData || ['slow-2g', '2g'].includes(connection?.effectiveType)) return;
+    const ect = connection?.effectiveType;
+    if (!!connection?.saveData || ect === 'slow-2g' || ect === '2g' || ect === '3g') return;
 
     const timer = window.setTimeout(() => {
       preloadPages(SECONDARY_ROUTE_PRELOADS).catch(() => {});
@@ -271,12 +278,18 @@ function App() {
   }, []);
 
   return (
-    <MotionConfig reducedMotion="user">
+    <AppMotionShell>
     <AfriWonderThemeProvider defaultTheme="system" storageKey="afriwonder-theme">
       <AuthProvider>
         <PersistQueryClientProvider
           client={queryClientInstance}
-          persistOptions={{ persister: queryPersister, maxAge: 1000 * 60 * 60 * 48, buster: 'v2-infinite' }}
+          persistOptions={{
+            persister: queryPersister,
+            maxAge: 1000 * 60 * 60 * 48,
+            buster: 'v2-infinite',
+            // Moins de sérialisation / quota : exclut les grosses queries admin du snapshot localStorage
+            dehydrateOptions: { shouldDehydrateQuery: shouldDehydrateQueryForOfflinePersist },
+          }}
         >
           <MessageSocketBridge>
           <FeatureFlagsProvider>
@@ -304,7 +317,7 @@ function App() {
         </PersistQueryClientProvider>
       </AuthProvider>
     </AfriWonderThemeProvider>
-    </MotionConfig>
+    </AppMotionShell>
   )
 }
 

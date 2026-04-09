@@ -11,7 +11,7 @@
     "test:db:prepare": "node scripts/migrate-test-db.js",
     "test": "npm run test:db:prepare && cross-env NODE_ENV=test NODE_OPTIONS=--max-old-space-size=4096 node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js",
     "test:watch": "cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js --watch",
-    "test:coverage": "npm run test:db:prepare && cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js --coverage --runInBand",
+    "test:coverage": "npm run test:db:prepare && cross-env NODE_ENV=test NODE_OPTIONS=--max-old-space-size=8192 node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js --coverage --runInBand",
     "setup:env": "node create-env.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -28,10 +28,12 @@
     "test:db:resolve": "cross-env NODE_ENV=test node scripts/resolve-test-migration.js",
     "test:smoke": "cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js --testPathPattern=smoke.critical-path --runInBand",
     "test:ads": "npm run test:db:prepare && cross-env NODE_ENV=test JWT_SECRET=test_secret_key_for_jest_tests_only JWT_REFRESH_SECRET=test_refresh_secret_key_for_jest_tests node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js --testPathPattern=__tests__/ads --runInBand",
+    "test:webhooks": "cross-env NODE_ENV=test ORANGE_MONEY_ENV=production ORANGE_MONEY_WEBHOOK_SECRET=ci-webhook-secret node --experimental-vm-modules node_modules/jest/bin/jest.js src/payments/__tests__/orange-money.webhook.test.ts --config jest.config.js --runInBand && cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js src/payments/__tests__/stripe.webhook.test.ts --config jest.config.js --runInBand",
     "check:prod-env": "node scripts/check-prod-env.js",
     "load-test": "node scripts/load-test-node.js",
     "load-test:1000rps": "cross-env LOAD_TARGET_RPS=1000 LOAD_REQUESTS=20000 LOAD_CONCURRENT=300 node scripts/load-test-node.js",
     "transcode:one": "tsx scripts/run-transcode-one.ts",
+    "wallet:zero-local": "tsx scripts/reset-user-wallet-zero.ts",
     "backfill:video-web-compat": "tsx scripts/backfill-video-web-compat.ts"
   },
   "dependencies": {

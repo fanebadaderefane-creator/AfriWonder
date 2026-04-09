@@ -5,6 +5,7 @@ import axios from 'axios';
 import crypto from 'crypto';
 import fraudCheck from './fraudCheck.service.js';
 import ledgerService from './ledger.service.js';
+import { normalizeOrangeMoneySubscriberMl } from '../utils/orangeMoneyPhone.js';
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2025-02-24.acacia' })
@@ -266,6 +267,11 @@ class PaymentService {
     }
 
     const orangeMoneyBaseUrl = resolveOrangeMoneyApiBaseUrl();
+    const region = (process.env.ORANGE_MONEY_REGION || process.env.APP_COUNTRY || 'ML').toUpperCase();
+    const subscriberNumber =
+      region === 'ML'
+        ? normalizeOrangeMoneySubscriberMl(data.phone)
+        : String(data.phone || '').replace(/\D/g, '');
 
     try {
       const paymentResponse = await axios.post(
@@ -276,7 +282,7 @@ class PaymentService {
           currency: 'XOF',
           order_id: orderId,
           amount: data.amount,
-          subscriber_number: data.phone,
+          subscriber_number: subscriberNumber,
           return_url: data.returnUrl,
           cancel_url: data.returnUrl,
           notify_url: `${process.env.APP_URL || 'http://localhost:3000'}/api/payments/orange-money/webhook`,

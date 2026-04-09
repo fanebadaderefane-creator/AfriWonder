@@ -26,6 +26,16 @@ export const errorHandler = (
     ? 'Service temporairement indisponible. Réessayez dans quelques instants.'
     : rawMessage;
 
+  const isProduction = process.env.NODE_ENV === 'production';
+  const hideInternalDetails =
+    isProduction &&
+    effectiveStatusCode >= 500 &&
+    err.isOperational !== true &&
+    !isDbConnectionError;
+  const clientSafeMessage = hideInternalDetails
+    ? 'Une erreur interne est survenue. Réessayez plus tard.'
+    : message;
+
   logger.error(rawMessage, err, {
     path: req.path,
     method: req.method,
@@ -46,7 +56,7 @@ export const errorHandler = (
   res.status(effectiveStatusCode).json({
     success: false,
     error: {
-      message,
+      message: clientSafeMessage,
       ...(isDbConnectionError && { code: 'DATABASE_UNAVAILABLE' }),
       ...(process.env.NODE_ENV === 'development' && {
         stack: err.stack,

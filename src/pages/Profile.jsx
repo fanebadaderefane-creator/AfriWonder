@@ -37,6 +37,10 @@ import { useAppMenu } from '@/contexts/AppMenuContext';
 import { useAuth } from '@/lib/AuthContext';
 import { readGuestExplore } from '@/lib/guestExplore';
 import { getCachedProfile, cacheProfile } from '@/services/offlineProfilesMessages.service';
+import {
+  QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX,
+  QUERY_INVALIDATE_VIDEOS_PREFIX,
+} from '@/lib/persistence-registry.js';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 
@@ -155,7 +159,7 @@ export default function Profile() {
     hasNextPage,
     refetch: refetchVideos,
   } = useInfiniteQuery({
-    queryKey: ['profile-videos', profileUserId, user?.id],
+    queryKey: [...QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX, profileUserId, user?.id],
     queryFn: async ({ pageParam = 1 }) => {
       if (!profileUserId) return { videos: [], pagination: { page: 1, totalPages: 1 } };
       const ownProfile = user?.id === profileUserId;
@@ -187,8 +191,8 @@ export default function Profile() {
     if (!pendingDeleteVideo) return;
     try {
       await api.videos.delete(pendingDeleteVideo.id);
-      queryClient.invalidateQueries({ queryKey: ['videos'] });
-      queryClient.invalidateQueries({ queryKey: ['profile-videos', profileUserId] });
+      queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_VIDEOS_PREFIX });
+      queryClient.invalidateQueries({ queryKey: [...QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX, profileUserId] });
       await refetchVideos();
       toast.success('Video supprimee');
     } catch (err) {
@@ -1276,7 +1280,7 @@ export default function Profile() {
         currentFeaturedId={featuredVideo?.id}
 
         onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ['profile-videos', profileUserId] });
+          queryClient.invalidateQueries({ queryKey: [...QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX, profileUserId] });
           refetchVideos();
         }}
 

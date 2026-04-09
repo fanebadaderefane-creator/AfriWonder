@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react';
-import { io } from 'socket.io-client';
-import { getSocketBaseUrl, getSocketIoTransports } from '@/lib/getSocketBaseUrl';
+import { getSocketBaseUrl } from '@/lib/getSocketBaseUrl';
+import { createSocket } from '@/lib/socketConfig';
 
 export function useCallSocket({
   userId,
   onInvite,
   onAccept,
   onDecline,
+  onMissed,
   onEnd,
   onSignal,
   onGroupCallInvite,
@@ -16,6 +17,7 @@ export function useCallSocket({
   const inviteRef = useRef(onInvite);
   const acceptRef = useRef(onAccept);
   const declineRef = useRef(onDecline);
+  const missedRef = useRef(onMissed);
   const endRef = useRef(onEnd);
   const signalRef = useRef(onSignal);
   const groupCallInviteRef = useRef(onGroupCallInvite);
@@ -24,6 +26,7 @@ export function useCallSocket({
   inviteRef.current = onInvite;
   acceptRef.current = onAccept;
   declineRef.current = onDecline;
+  missedRef.current = onMissed;
   endRef.current = onEnd;
   signalRef.current = onSignal;
   groupCallInviteRef.current = onGroupCallInvite;
@@ -32,11 +35,7 @@ export function useCallSocket({
   useEffect(() => {
     if (!userId) return;
     const base = getSocketBaseUrl();
-    const socket = io(base, {
-      path: '/socket.io',
-      transports: getSocketIoTransports(),
-      withCredentials: true,
-    });
+    const socket = createSocket(base);
     socketRef.current = socket;
 
     socket.on('connect', () => {
@@ -45,6 +44,7 @@ export function useCallSocket({
     socket.on('call:invite', (payload) => inviteRef.current?.(payload));
     socket.on('call:accept', (payload) => acceptRef.current?.(payload));
     socket.on('call:decline', (payload) => declineRef.current?.(payload));
+    socket.on('call:missed', (payload) => missedRef.current?.(payload));
     socket.on('call:end', (payload) => endRef.current?.(payload));
     socket.on('call:signal', (payload) => signalRef.current?.(payload));
     socket.on('group:call-invite', (payload) => groupCallInviteRef.current?.(payload));

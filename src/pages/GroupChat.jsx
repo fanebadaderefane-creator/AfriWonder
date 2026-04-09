@@ -505,6 +505,9 @@ export default function GroupChat() {
     queryKey: ['group', groupId],
     queryFn: () => api.messages.getGroup(groupId),
     enabled: !!groupId,
+    networkMode: 'offlineFirst',
+    staleTime: 2 * 60 * 1000,
+    retry: 1,
   });
 
   const {
@@ -520,6 +523,9 @@ export default function GroupChat() {
     getNextPageParam: (lastPage) =>
       lastPage?.hasMore && lastPage?.nextCursor ? lastPage.nextCursor : undefined,
     enabled: !!groupId,
+    networkMode: 'offlineFirst',
+    retry: 1,
+    staleTime: 20 * 1000,
   });
 
   const messages = useMemo(
@@ -621,6 +627,9 @@ export default function GroupChat() {
     queryKey: ['group-add-member-search', addMemberSearchDebounced],
     queryFn: () => api.users.list({ search: addMemberSearchDebounced, limit: 24 }),
     enabled: !!groupId && isGroupAdmin && groupDetailsOpen && addMemberSearchDebounced.length >= 2,
+    networkMode: 'offlineFirst',
+    retry: 1,
+    staleTime: 30 * 1000,
   });
 
   const addMemberSearchResults = useMemo(
@@ -762,12 +771,18 @@ export default function GroupChat() {
         ...(eventSearchDebounced.length >= 2 ? { search: eventSearchDebounced } : {}),
       }),
     enabled: eventShareOpen,
+    networkMode: 'offlineFirst',
+    retry: 1,
+    staleTime: 2 * 60 * 1000,
   });
 
   const { data: myTicketsData, isPending: ticketsPending } = useQuery({
     queryKey: ['events-my-tickets', currentUser?.id],
     queryFn: () => api.events.getMyTickets(),
     enabled: eventShareOpen && !!currentUser?.id,
+    networkMode: 'offlineFirst',
+    retry: 1,
+    staleTime: 2 * 60 * 1000,
   });
 
   const ticketEvents = useMemo(() => {
@@ -1447,6 +1462,9 @@ export default function GroupChat() {
     queryKey: ['messages-groups', currentUser?.id],
     queryFn: () => api.messages.getGroups(1, 50),
     enabled: !!currentUser?.id && forwardDialogOpen,
+    networkMode: 'offlineFirst',
+    retry: 1,
+    staleTime: 2 * 60 * 1000,
   });
 
   const forwardTargetGroups = useMemo(() => {
@@ -1594,6 +1612,9 @@ export default function GroupChat() {
     queryKey: ['group-message-reactions-detail', groupId, reactionsDialogMessageId],
     queryFn: () => api.messages.getGroupMessageReactionsDetail(groupId, reactionsDialogMessageId),
     enabled: !!groupId && !!reactionsDialogMessageId && reactionsDialogOpen,
+    networkMode: 'offlineFirst',
+    retry: 1,
+    staleTime: 20 * 1000,
   });
   const reactionsDetailList = reactionsDetailData?.reactors ?? [];
 

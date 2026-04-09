@@ -249,6 +249,8 @@ export default function LiveStreamPage() {
     queryFn: () => api.live.getById(liveStream.id),
     enabled: !!liveStream?.id && step === 'streaming',
     refetchInterval: false,
+    networkMode: 'offlineFirst',
+    retry: 1,
     staleTime: Infinity,
   });
 
@@ -258,6 +260,8 @@ export default function LiveStreamPage() {
     queryFn: () => api.live.getPolls(liveStream.id),
     enabled: !!liveStream?.id && step === 'streaming',
     refetchInterval: false,
+    networkMode: 'offlineFirst',
+    retry: 1,
     staleTime: 60_000,
   });
 
@@ -325,12 +329,16 @@ export default function LiveStreamPage() {
     queryKey: ['live-token', liveStream?.id, 'host'],
     queryFn: () => api.live.getStreamToken(liveStream.id, 'host'),
     enabled: !!liveStream?.id && step === 'streaming',
+    networkMode: 'offlineFirst',
     retry: 1,
   });
   const { data: agoraStatus } = useQuery({
     queryKey: ['live-agora-status'],
     queryFn: () => api.live.getAgoraStatus(),
     enabled: step === 'streaming' && !!liveStream?.id && !!(hostTokenData && !hostTokenData?.appId),
+    networkMode: 'offlineFirst',
+    retry: 1,
+    staleTime: 2 * 60 * 1000,
   });
   const agoraToken = hostTokenData?.token != null ? hostTokenData : null;
   const { localVideoTrack, localAudioTrack: _localAudioTrack, leave: leaveAgora, error: agoraError, audioOnlyMode, retry: retryAgora } = useAgoraHost(agoraToken, localVideoRef);

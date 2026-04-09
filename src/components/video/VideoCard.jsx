@@ -134,6 +134,8 @@ function VideoCardContent({
   onInitialVisualReady,
   currentUser: currentUserProp = null,
   hideActions = false,
+  /** Blob URL locale (cache disque) — prioritaire hors-ligne pour éviter HLS sans segments */
+  offlineBlobUrl = '',
 }) {
   const videoRef = useRef(null);
   const poolContainerRef = useRef(null);
@@ -410,11 +412,13 @@ function VideoCardContent({
       }
     };
     pushUrl(manualPlaybackUrlOverride);
+    const diskOffline = !!(isOffline && offlineBlobUrl);
+    if (diskOffline) pushUrl(offlineBlobUrl);
     // Chrome / WebView : MP4 avant HLS (hls.js peut donner du son sans image sur certains GPU).
     // Firefox : souvent strict sur le MP4 progressif (HEVC, H.264 High 10…) — si un master HLS existe,
     // il est en général déjà en segments H.264 8 bits lisibles ; on le tente en premier.
     const hlsUrl = video.hls_playback_url || video.hls_url;
-    const preferHlsFirst = isOffline || (isFirefoxBrowser && !!hlsUrl);
+    const preferHlsFirst = !diskOffline && (isOffline || (isFirefoxBrowser && !!hlsUrl));
     if (preferHlsFirst) pushUrl(hlsUrl);
 
     if (slowConnection || isDataSaver) {
@@ -450,6 +454,7 @@ function VideoCardContent({
     isOffline,
     isFirefoxBrowser,
     manualPlaybackUrlOverride,
+    offlineBlobUrl,
   ]);
 
   const [sourceIndex, setSourceIndex] = useState(0);

@@ -3,8 +3,8 @@
  * et fin d’appel via `user:group-call-ended` (tous les participants) et `group:call-ended` (membres du salon groupe).
  */
 import { useEffect, useRef } from 'react';
-import { io } from 'socket.io-client';
-import { getSocketBaseUrl, getSocketIoTransports } from '@/lib/getSocketBaseUrl';
+import { getSocketBaseUrl } from '@/lib/getSocketBaseUrl';
+import { createSocket } from '@/lib/socketConfig';
 
 export function useGroupCallLobbySocket({ userId, groupId, callId, enabled, onCallEnded }) {
   const onCallEndedRef = useRef(onCallEnded);
@@ -14,11 +14,7 @@ export function useGroupCallLobbySocket({ userId, groupId, callId, enabled, onCa
     if (!enabled || !userId || !callId) return undefined;
 
     const base = getSocketBaseUrl();
-    const socket = io(base, {
-      path: '/socket.io',
-      transports: getSocketIoTransports(),
-      withCredentials: true,
-    });
+    const socket = createSocket(base);
 
     let endedHandled = false;
     const runEnded = () => {

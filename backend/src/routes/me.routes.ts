@@ -12,11 +12,22 @@ import * as internationalTransferService from '../services/internationalTransfer
 import * as paymentPreauthService from '../services/paymentPreauth.service.js';
 import * as creatorContractService from '../services/creatorContract.service.js';
 import { listMyCallHistory } from '../services/meCallHistory.service.js';
+import privacyService from '../services/privacy.service.js';
 
 import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 
 const router = Router();
+
+// GET /api/me/export — export JSON données personnelles (RGPD art. 20)
+router.get('/export', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const payload = await privacyService.exportUserData(req.user!.id);
+    res.json({ success: true, data: payload });
+  } catch (e) {
+    next(e);
+  }
+});
 
 // ——— Liste proches / close friends (CPO 1.18) ———
 // GET /api/me/close-friends

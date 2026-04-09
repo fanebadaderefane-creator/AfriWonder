@@ -24,6 +24,11 @@ import DataModeToggle from '../components/common/DataModeToggle';
 import { useAuth } from '@/lib/AuthContext';
 import { FILE_ACCEPT_IMAGES } from '@/lib/fileAccept';
 import { getLocalE2eeDeviceHealth, getLocalE2eeEventLog, repairLocalE2eeDevice } from '@/lib/e2eeClient';
+import { loadPreferences, savePreferences } from '@/lib/preferences';
+import {
+  QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX,
+  QUERY_INVALIDATE_VIDEOS_PREFIX,
+} from '@/lib/persistence-registry.js';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -54,6 +59,12 @@ export default function Settings() {
   const [e2eeDeviceHealth, setE2eeDeviceHealth] = useState(null);
   const [e2eeEventLog, setE2eeEventLog] = useState([]);
   const [e2eeDiagBusy, setE2eeDiagBusy] = useState(false);
+  const [callDataSaver, setCallDataSaver] = useState(() => !!loadPreferences().callDataSaver);
+  const prefs0 = loadPreferences();
+  const [feedPrefetchWifiOnly, setFeedPrefetchWifiOnly] = useState(() => !!prefs0.feedPrefetchWifiOnly);
+  const [feedPrefetchOnMobileData, setFeedPrefetchOnMobileData] = useState(
+    () => prefs0.feedPrefetchOnMobileData !== false
+  );
 
   useEffect(() => {
     const getUser = async () => {
@@ -72,6 +83,7 @@ export default function Settings() {
           ...u.settings,
           data_mode: u.data_saver_mode ? 'lite' : (settings.data_mode || 'auto')
         });
+        setCallDataSaver(!!u.data_saver_mode || !!loadPreferences().callDataSaver);
       } catch (_e) {
         navigate(createPageUrl('Home'));
       }
@@ -86,8 +98,8 @@ export default function Settings() {
       toast.success('Profil mis à jour');
       
       // Invalider le cache des vidéos pour recharger avec les nouvelles données du créateur
-      queryClient.invalidateQueries({ queryKey: ['videos'] });
-      queryClient.invalidateQueries({ queryKey: ['profile-videos'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_VIDEOS_PREFIX });
+      queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX });
       
       // Recharger les données utilisateur
       const updatedUser = await api.auth.me();
@@ -562,8 +574,8 @@ export default function Settings() {
                       await api.auth.updateMe({ profile_image: file_url });
                       
                       // Invalider les caches pour afficher la nouvelle photo partout
-                      queryClient.invalidateQueries({ queryKey: ['videos'] });
-                      queryClient.invalidateQueries({ queryKey: ['profile-videos'] });
+                      queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_VIDEOS_PREFIX });
+                      queryClient.invalidateQueries({ queryKey: QUERY_INVALIDATE_PROFILE_VIDEOS_PREFIX });
                       queryClient.invalidateQueries({ queryKey: ['auth'] });
                       queryClient.invalidateQueries({ queryKey: ['follow-stats'] });
                       
@@ -709,19 +721,66 @@ export default function Settings() {
           />
 
           <div className="mt-6 bg-white rounded-2xl p-4 space-y-4 text-gray-900">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Smartphone className="w-5 h-5 text-gray-500 shrink-0" />
-                  <span className="font-medium text-gray-900">Télécharger en WiFi uniquement</span>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <Smartphone className="w-5 h-5 text-gray-500 shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-900">Préchargement feed en Wi‑Fi uniquement</p>
+                  <p className="text-xs text-gray-500">Aucun téléchargement anticipé sur données cellulaires.</p>
                 </div>
-                <Switch className="data-[state=checked]:bg-blue-600 shrink-0" />
               </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
+              <Switch
+                className="data-[state=checked]:bg-blue-600 shrink-0"
+                checked={feedPrefetchWifiOnly}
+                onCheckedChange={(v) => {
+                  const next = !!v;
+                  setFeedPrefetchWifiOnly(next);
+                  savePreferences({ feedPrefetchWifiOnly: next });
+                  toast.success(next ? 'Préchargement limité au Wi‑Fi' : 'Préchargement selon le réseau');
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
                 <WifiOff className="w-5 h-5 text-gray-500 shrink-0" />
-                <span className="font-medium text-gray-900">Mode hors-ligne</span>
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-900">Précharger sur données mobiles</p>
+                  <p className="text-xs text-gray-500">Décoche pour ne précharger que sur Wi‑Fi / Ethernet (selon navigateur).</p>
+                </div>
               </div>
-              <Switch className="data-[state=checked]:bg-blue-600 shrink-0" />
+              <Switch
+                className="data-[state=checked]:bg-blue-600 shrink-0"
+                checked={feedPrefetchOnMobileData}
+                onCheckedChange={(v) => {
+                  const next = !!v;
+                  setFeedPrefetchOnMobileData(next);
+                  savePreferences({ feedPrefetchOnMobileData: next });
+                  toast.success(next ? 'Préchargement données mobiles activé' : 'Préchargement données mobiles désactivé');
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <MessageCircle className="w-5 h-5 text-gray-500 shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-900">Économie de données appels</p>
+                  <p className="text-xs text-gray-500">Priorise l’audio et réduit la vidéo si réseau faible.</p>
+                </div>
+              </div>
+              <Switch
+                checked={callDataSaver}
+                onCheckedChange={async (value) => {
+                  setCallDataSaver(!!value);
+                  savePreferences({ callDataSaver: !!value });
+                  try {
+                    await api.auth.updateMe({ data_saver_mode: !!value });
+                    toast.success(value ? 'Économie de données appels activée' : 'Économie de données appels désactivée');
+                  } catch {
+                    toast.error('Préférence locale mise à jour, mais synchronisation serveur échouée');
+                  }
+                }}
+                className="data-[state=checked]:bg-blue-600 shrink-0"
+              />
             </div>
           </div>
         </div>

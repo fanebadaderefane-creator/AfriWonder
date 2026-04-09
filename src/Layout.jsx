@@ -348,10 +348,18 @@ function LayoutContent({ children, currentPageName }) {
 
         /* Force portrait orientation on mobile - prevent rotation */
         @media screen and (max-width: 768px) {
-          /* EmpÃªcher le zoom et la rotation sur mobile */
           html {
-            -webkit-text-size-adjust: 100%;
-            -ms-text-size-adjust: 100%;
+            -moz-text-size-adjust: auto;
+          }
+          @supports (text-size-adjust: auto) {
+            html {
+              text-size-adjust: auto;
+            }
+          }
+          @supports (-webkit-text-size-adjust: 100%) {
+            html {
+              -webkit-text-size-adjust: 100%;
+            }
           }
           
           /* S'assurer que le body reste en portrait */

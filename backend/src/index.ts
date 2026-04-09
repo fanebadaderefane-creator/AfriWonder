@@ -10,6 +10,7 @@ import app from './app.js';
 import prisma from './config/database.js';
 import { logger } from './utils/logger.js';
 import { setMessageIo, broadcastPresence } from './services/message.service.js';
+import notificationService from './services/notification.service.js';
 import { startAccountDeletionJobs } from './jobs/accountDeletion.job.js';
 import { startDataRetentionJob, initializeRetentionPolicies } from './jobs/dataRetention.job.js';
 import { startAdsExpirationJob } from './jobs/adsExpiration.job.js';
@@ -20,6 +21,12 @@ import { startE2eeMonitoringAlertJob } from './jobs/e2eeMonitoringAlert.job.js';
 import { initRedis } from './utils/cache.js';
 
 const socketToUserId = new Map<string, string>();
+const pendingCallTimers = new Map<string, NodeJS.Timeout>();
+const pendingCallMeta = new Map<
+  string,
+  { toUserId: string; fromUserId: string; callId: string; type: 'audio' | 'video'; callerName?: string }
+>();
+const CALL_RING_TIMEOUT_MS = 30_000;
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 30000;
 
 function hasActiveSocketForUser(userId: string) {
@@ -27,6 +34,51 @@ function hasActiveSocketForUser(userId: string) {
     if (activeUserId === userId) return true;
   }
   return false;
+}
+
+function clearPendingCall(callId?: string) {
+  if (!callId) return;
+  const t = pendingCallTimers.get(callId);
+  if (t) {
+    clearTimeout(t);
+    pendingCallTimers.delete(callId);
+  }
+  pendingCallMeta.delete(callId);
+}
+
+async function upsertDirectCallState(
+  callId: string,
+  fromUserId: string,
+  toUserId: string,
+  status: 'pending' | 'active' | 'declined' | 'missed' | 'completed' | 'ended',
+) {
+  try {
+    const existing = await prisma.directCall.findUnique({ where: { id: callId } });
+    const now = new Date();
+    if (!existing) {
+      await prisma.directCall.create({
+        data: {
+          id: callId,
+          caller_id: fromUserId,
+          receiver_id: toUserId,
+          status,
+          started_at: status === 'active' ? now : null,
+          ended_at: ['declined', 'missed', 'completed', 'ended'].includes(status) ? now : null,
+        },
+      });
+      return;
+    }
+    await prisma.directCall.update({
+      where: { id: callId },
+      data: {
+        status,
+        started_at: status === 'active' && !existing.started_at ? now : existing.started_at,
+        ended_at: ['declined', 'missed', 'completed', 'ended'].includes(status) ? now : existing.ended_at,
+      },
+    });
+  } catch (err) {
+    logger.warn('upsertDirectCallState failed', { callId, status, err });
+  }
 }
 
 // Charger backend/.env en priorité (évite qu'un .env à la racine du projet n'écrase DATABASE_URL)
@@ -46,10 +98,15 @@ initSentry();
 
 const requiredEnv = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'];
 const missingEnv = requiredEnv.filter((k) => !process.env[k]?.trim());
+const missingProdObservability = !process.env.SENTRY_DSN?.trim();
 
 if (process.env.NODE_ENV === 'production') {
   if (missingEnv.length) {
     logger.error('Variables d’environnement manquantes en production: ' + missingEnv.join(', '));
+    process.exit(1);
+  }
+  if (missingProdObservability) {
+    logger.error('SENTRY_DSN est obligatoire en production (monitoring erreurs).');
     process.exit(1);
   }
 } else if (missingEnv.length) {
@@ -57,6 +114,13 @@ if (process.env.NODE_ENV === 'production') {
     'Variables manquantes (login renverra 500 tant qu’elles ne sont pas définies): ' + missingEnv.join(', ') +
     '. Copiez backend/.env.example vers backend/.env et renseignez les valeurs.'
   );
+}
+
+if (process.env.NODE_ENV === 'production' && !process.env.REDIS_URL?.trim()) {
+  logger.error(
+    'REDIS_URL est obligatoire en production (rate limiting partagé, révocation JWT, cache auth, Socket.io multi-nœuds).'
+  );
+  process.exit(1);
 }
 
 // Pays CEDEAO (optionnel) – APP_COUNTRY=ML|SN|CI|BF
@@ -257,23 +321,119 @@ io.on('connection', (socket) => {
   });
 
   // Direct call signaling (invite / accept / decline / end)
-  socket.on('call:invite', (payload: { toUserId: string; fromUserId: string; type?: 'audio' | 'video'; callerName?: string; callerAvatar?: string }) => {
+  socket.on('call:invite', async (payload: { toUserId: string; fromUserId: string; callId?: string; type?: 'audio' | 'video'; callerName?: string; callerAvatar?: string }) => {
     if (!payload?.toUserId || !payload?.fromUserId) return;
-    io.to(`user:${payload.toUserId}`).emit('call:invite', payload);
+    const callId = payload.callId || `call-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const callType: 'audio' | 'video' = payload.type === 'video' ? 'video' : 'audio';
+    io.to(`user:${payload.toUserId}`).emit('call:invite', { ...payload, callId, type: callType });
+    await upsertDirectCallState(callId, payload.fromUserId, payload.toUserId, 'pending');
+    clearPendingCall(callId);
+    pendingCallMeta.set(callId, {
+      toUserId: payload.toUserId,
+      fromUserId: payload.fromUserId,
+      callId,
+      type: callType,
+      callerName: payload.callerName,
+    });
+    pendingCallTimers.set(
+      callId,
+      setTimeout(async () => {
+        const meta = pendingCallMeta.get(callId);
+        clearPendingCall(callId);
+        if (!meta) return;
+        io.to(`user:${meta.fromUserId}`).emit('call:missed', {
+          callId: meta.callId,
+          fromUserId: meta.fromUserId,
+          toUserId: meta.toUserId,
+          type: meta.type,
+        });
+        io.to(`user:${meta.toUserId}`).emit('call:missed', {
+          callId: meta.callId,
+          fromUserId: meta.fromUserId,
+          toUserId: meta.toUserId,
+          type: meta.type,
+        });
+        await upsertDirectCallState(meta.callId, meta.fromUserId, meta.toUserId, 'missed');
+        try {
+          await notificationService.create(meta.fromUserId, {
+            type: 'call_missed',
+            title: 'Appel manqué',
+            message: `${meta.callerName || 'Votre contact'} n’a pas répondu`,
+            reference_type: 'direct_call',
+            reference_id: meta.callId,
+            data: { callId: meta.callId, callerId: meta.fromUserId, type: meta.type },
+          });
+          await notificationService.create(meta.toUserId, {
+            type: 'call_missed',
+            title: 'Appel manqué',
+            message: `Vous avez manqué un appel ${meta.type === 'video' ? 'vidéo' : 'audio'}`,
+            reference_type: 'direct_call',
+            reference_id: meta.callId,
+            data: { callId: meta.callId, callerId: meta.fromUserId, type: meta.type },
+          });
+        } catch (err) {
+          logger.warn('Missed call notifications failed', { callId: meta.callId, err });
+        }
+      }, CALL_RING_TIMEOUT_MS)
+    );
+    try {
+      const callKind = callType === 'video' ? 'vidéo' : 'audio';
+      const callerId = payload.fromUserId;
+      const actionUrls = {
+        answerAudio: `/DirectCall?mode=incoming&callId=${encodeURIComponent(callId)}&callerId=${encodeURIComponent(callerId)}&type=audio&autoAccept=1`,
+        answerVideo: `/DirectCall?mode=incoming&callId=${encodeURIComponent(callId)}&callerId=${encodeURIComponent(callerId)}&type=video&autoAccept=1`,
+        message: `/Chat?userId=${encodeURIComponent(callerId)}&source=incoming-call`,
+      };
+      await notificationService.create(payload.toUserId, {
+        type: 'call_incoming',
+        title: 'Appel entrant',
+        message: `${payload.callerName || 'Quelqu’un'} vous appelle (${callKind})`,
+        reference_type: 'direct_call',
+        reference_id: callId,
+        data: {
+          callId,
+          callerId,
+          type: payload.type || 'audio',
+          callerName: payload.callerName || '',
+          callerAvatar: payload.callerAvatar || '',
+          actions: [
+            { action: 'answer-audio', title: 'Répondre audio' },
+            { action: 'answer-video', title: 'Répondre vidéo' },
+            { action: 'send-message', title: 'Message' },
+          ],
+          actionUrls,
+        },
+      });
+    } catch (err) {
+      logger.warn('Incoming call notification failed from socket', {
+        toUserId: payload.toUserId,
+        fromUserId: payload.fromUserId,
+        callId: payload.callId,
+        err,
+      });
+    }
   });
 
-  socket.on('call:accept', (payload: { toUserId: string; fromUserId: string; type?: 'audio' | 'video' }) => {
+  socket.on('call:accept', async (payload: { toUserId: string; fromUserId: string; callId?: string; type?: 'audio' | 'video' }) => {
     if (!payload?.toUserId || !payload?.fromUserId) return;
+    clearPendingCall(payload.callId);
+    if (payload.callId) await upsertDirectCallState(payload.callId, payload.toUserId, payload.fromUserId, 'active');
     io.to(`user:${payload.toUserId}`).emit('call:accept', payload);
   });
 
-  socket.on('call:decline', (payload: { toUserId: string; fromUserId: string; reason?: string }) => {
+  socket.on('call:decline', async (payload: { toUserId: string; fromUserId: string; callId?: string; reason?: string }) => {
     if (!payload?.toUserId || !payload?.fromUserId) return;
+    clearPendingCall(payload.callId);
+    if (payload.callId) await upsertDirectCallState(payload.callId, payload.toUserId, payload.fromUserId, 'declined');
     io.to(`user:${payload.toUserId}`).emit('call:decline', payload);
   });
 
-  socket.on('call:end', (payload: { toUserId?: string; fromUserId?: string; endedBy?: string }) => {
+  socket.on('call:end', async (payload: { toUserId?: string; fromUserId?: string; callId?: string; endedBy?: string }) => {
     if (!payload) return;
+    clearPendingCall(payload.callId);
+    if (payload.callId && payload.fromUserId && payload.toUserId) {
+      await upsertDirectCallState(payload.callId, payload.fromUserId, payload.toUserId, 'completed');
+    }
     if (payload.toUserId) io.to(`user:${payload.toUserId}`).emit('call:end', payload);
     if (payload.fromUserId) io.to(`user:${payload.fromUserId}`).emit('call:end', payload);
   });

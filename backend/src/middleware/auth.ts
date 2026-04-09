@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import redisClient from '../config/redis.js';
+import { isAccessTokenRevoked } from '../services/accessTokenBlacklist.service.js';
 
 // Cache TTL: 30s — short enough to pick up suspensions quickly, long enough to cut DB load.
 const USER_CACHE_TTL_S = 30;
@@ -83,7 +84,15 @@ export const authenticate = async (
     const decoded = jwt.verify(token, process.env.JWT_SECRET) as {
       userId: string;
       email: string;
+      jti?: string;
     };
+
+    if (decoded.jti && (await isAccessTokenRevoked(decoded.jti))) {
+      return res.status(401).json({
+        success: false,
+        error: { message: 'Session révoquée. Reconnectez-vous.' },
+      });
+    }
 
     // Cache-first lookup: Redis (30s TTL) → DB. Avoids 1 DB query per authenticated request.
     let user: CachedUser | null = await getCachedUser(decoded.userId);
@@ -147,7 +156,12 @@ export const optionalAuth = async (
       try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET) as {
           userId: string;
+          jti?: string;
         };
+
+        if (decoded.jti && (await isAccessTokenRevoked(decoded.jti))) {
+          return next();
+        }
 
         // Cache-first lookup: mirrors authenticate() — avoids DB hit on every optional-auth route.
         let user: CachedUser | null = await getCachedUser(decoded.userId);

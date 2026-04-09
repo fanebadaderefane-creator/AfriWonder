@@ -22,6 +22,10 @@ router.get('/', optionalAuth, responseCache('feed:', { ttlMs: FEED_CACHE_TTL_MS,
   const cappedLimit = Math.min(Math.max(1, rawLimit), FEED_MAX_LIMIT);
   const mediaTypeFilter = mediaType === 'image' || mediaType === 'video' ? mediaType : undefined;
   const pageNum = parseInt(page as string) || 1;
+  const q = req.query as Record<string, unknown>;
+  const refreshRaw = q.refresh ?? q._;
+  const refreshNonce =
+    refreshRaw != null && String(refreshRaw).trim() !== '' ? String(refreshRaw) : undefined;
   try {
     const deviceId = (req.headers['x-device-id'] as string) || undefined;
     const country = (req.headers['x-country'] as string) || undefined;
@@ -35,11 +39,14 @@ router.get('/', optionalAuth, responseCache('feed:', { ttlMs: FEED_CACHE_TTL_MS,
       category: category as string,
       hashtag: hashtag as string,
       mediaType: mediaTypeFilter,
+      refreshNonce,
     });
 
     const durationMs = Date.now() - startedAt;
     // Avant res.json uniquement : après envoi, setHeader lève "Cannot set headers after they are sent" (crash du processus).
     res.setHeader('Server-Timing', `feed;dur=${durationMs}`);
+    // Clients mobiles / PWA: autorise un repli court sur cache intermédiaire côté navigateur/edge.
+    res.setHeader('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
     if (durationMs >= FEED_SLOW_REQUEST_MS) {
       logger.warn('Slow feed request', {
         userId,

@@ -3,6 +3,14 @@ import crypto from 'crypto';
 import speakeasy from 'speakeasy';
 import bcrypt from 'bcryptjs';
 import securityService from './security.service.js';
+import { logger } from '../utils/logger.js';
+
+/** Express/JSON ne sérialise pas les BigInt (ex. DataExportRequest.file_size) — conversion récursive. */
+function serializeForJsonResponse<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (_key, v) => (typeof v === 'bigint' ? v.toString() : v)),
+  ) as T;
+}
 
 class PrivacyService {
   // ==========================================
@@ -218,60 +226,96 @@ class PrivacyService {
    * Exporter toutes les données d'un utilisateur
    */
   async exportUserData(userId: string): Promise<any> {
-    // Récupérer toutes les données de l'utilisateur
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        videos: true,
-        products: true,
-        orders: true,
-        transactions: true,
-        wallets: true,
-        notifications: true,
-        follows: true,
-        following: true,
-        likes: true,
-        comments: true,
-        reviews: true,
-        messages_sent: {
-          select: {
-            id: true,
-            content: true,
-            created_at: true,
-            conversation_id: true,
+    const note =
+      'Ceci est un export complet de vos données personnelles conformément au RGPD Article 20.';
+    const exportDate = new Date().toISOString();
+
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          videos: true,
+          products: true,
+          orders: true,
+          transactions: true,
+          wallets: true,
+          notifications: true,
+          follows: true,
+          following: true,
+          likes: true,
+          comments: true,
+          reviews: true,
+          messages_sent: {
+            select: {
+              id: true,
+              content: true,
+              created_at: true,
+              conversation_id: true,
+            },
           },
-        },
-        live_streams: true,
-        subscriptions: true,
-        legal_acceptances: {
-          include: {
-            document: {
-              select: {
-                type: true,
-                version: true,
-                title: true,
+          live_streams: true,
+          subscriptions: true,
+          legal_acceptances: {
+            include: {
+              document: {
+                select: {
+                  type: true,
+                  version: true,
+                  title: true,
+                },
               },
             },
           },
+          cookie_preferences: true,
+          security_logs: true,
+          data_export_requests: true,
         },
-        cookie_preferences: true,
-        security_logs: true,
-        data_export_requests: true,
-      },
-    });
+      });
 
-    if (!user) {
-      throw new Error('User not found');
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const { password_hash, ...userData } = user;
+      return serializeForJsonResponse({
+        export_date: exportDate,
+        user_data: userData,
+        note,
+      });
+    } catch (err) {
+      logger.warn('exportUserData: include complet indisponible, repli minimal', {
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          full_name: true,
+          profile_image: true,
+          profile_cover_url: true,
+          role: true,
+          is_verified: true,
+          created_at: true,
+          updated_at: true,
+          country: true,
+          bio: true,
+          preferred_language: true,
+          theme: true,
+        },
+      });
+      if (!user) {
+        throw new Error('User not found');
+      }
+      return serializeForJsonResponse({
+        export_date: exportDate,
+        user_data: user,
+        note: `${note} (extrait partiel — voir logs serveur si l’export complet échoue.)`,
+        partial: true,
+      });
     }
-
-    // Nettoyer les données sensibles
-    const { password_hash, ...userData } = user;
-
-    return {
-      export_date: new Date().toISOString(),
-      user_data: userData,
-      note: 'Ceci est un export complet de vos données personnelles conformément au RGPD Article 20.',
-    };
   }
 
   // ==========================================

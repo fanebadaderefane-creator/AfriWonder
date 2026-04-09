@@ -29,6 +29,8 @@ export function PreferencesProvider({ children }) {
   const value = {
     isMuted: prefs.isMuted,
     language: prefs.language,
+    feedPrefetchOnMobileData: prefs.feedPrefetchOnMobileData !== false,
+    feedPrefetchWifiOnly: !!prefs.feedPrefetchWifiOnly,
     setMuted: (v) => updatePreferences({ isMuted: !!v }),
     setLanguage: (v) => updatePreferences({ language: v || 'fr' }),
     updatePreferences,
@@ -47,6 +49,8 @@ export function usePreferences() {
     return {
       isMuted: false,
       language: 'fr',
+      feedPrefetchOnMobileData: true,
+      feedPrefetchWifiOnly: false,
       setMuted: () => {},
       setLanguage: () => {},
       updatePreferences: () => {},

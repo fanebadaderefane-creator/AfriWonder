@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Edit, MessageCircle, ArrowLeft, Bell, BellOff, Filter, Users, Plus, Archive, ArchiveRestore, MoreVertical, Download, Star } from 'lucide-react';
+import { Search, Edit, MessageCircle, ArrowLeft, Bell, BellOff, Filter, Users, Plus, Archive, ArchiveRestore, MoreVertical, Download, Star, Phone, Video } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { motion } from 'framer-motion';
@@ -85,6 +85,7 @@ export default function Inbox() {
   const { user, isAuthenticated, isLoadingAuth } = useAuth();
   const conversationErrorToastShownRef = useRef(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState('chats'); // chats | calls
   const [activeFilter, setActiveFilter] = useState('all');
   const [showArchived, setShowArchived] = useState(false);
   const [showAllSuggested, setShowAllSuggested] = useState(false);
@@ -214,6 +215,9 @@ export default function Inbox() {
     queryKey: ['messages-conversations', user?.id],
     queryFn: () => api.messages.getConversations(1, 50, true),
     enabled: !!user?.id,
+    networkMode: 'offlineFirst',
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
     refetchInterval: refetchIntervalWhenVisible,
   });
 
@@ -227,9 +231,23 @@ export default function Inbox() {
     queryKey: ['messages-groups', user?.id],
     queryFn: () => api.messages.getGroups(1, 50),
     enabled: !!user?.id,
+    networkMode: 'offlineFirst',
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
     refetchInterval: refetchIntervalWhenVisible,
   });
   const groups = groupsData?.groups ?? [];
+
+  const { data: callHistoryData, isLoading: callsLoading, isError: callsError, refetch: refetchCalls } = useQuery({
+    queryKey: ['me-call-history', user?.id],
+    queryFn: () => api.me.getCallHistory(1, 40),
+    enabled: !!user?.id,
+    networkMode: 'offlineFirst',
+    staleTime: 2 * 60 * 1000,
+    retry: 1,
+    refetchInterval: refetchIntervalWhenVisible,
+  });
+  const callRows = callHistoryData?.items ?? [];
 
   useEffect(() => {
     if (isError && user?.id) {
@@ -343,6 +361,28 @@ export default function Inbox() {
     } catch {
       return '';
     }
+  };
+
+  const getCallStatusLabel = (status) => {
+    const s = String(status || '').toLowerCase();
+    if (s === 'pending' || s === 'missed') return 'Manqué';
+    if (s === 'declined' || s === 'rejected') return 'Refusé';
+    if (s === 'completed' || s === 'ended') return 'Terminé';
+    if (s === 'active') return 'En cours';
+    return status || 'Appel';
+  };
+
+  const getCallDurationLabel = (sec) => {
+    if (!Number.isFinite(Number(sec)) || Number(sec) <= 0) return '—';
+    const total = Math.floor(Number(sec));
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return m > 0 ? `${m}m ${s.toString().padStart(2, '0')}s` : `${s}s`;
+  };
+
+  const generateCallId = () => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+    return `call-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   };
 
   const handleCreateGroup = async () => {
@@ -480,8 +520,25 @@ export default function Inbox() {
           <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-2 pt-0.5 no-scrollbar overscroll-x-contain">
             <button
               type="button"
+              className={inboxFilterChipClass(viewMode === 'chats')}
+              onClick={() => setViewMode('chats')}
+            >
+              <MessageCircle className="h-4 w-4 shrink-0 opacity-80" />
+              Discussions
+            </button>
+            <button
+              type="button"
+              className={inboxFilterChipClass(viewMode === 'calls')}
+              onClick={() => setViewMode('calls')}
+            >
+              <Phone className="h-4 w-4 shrink-0 opacity-80" />
+              Appels
+            </button>
+            <button
+              type="button"
               className={inboxFilterChipClass(activeFilter === 'all')}
               onClick={() => setActiveFilter('all')}
+              disabled={viewMode === 'calls'}
             >
               <Filter className="h-4 w-4 shrink-0 opacity-80" />
               Tous
@@ -490,6 +547,7 @@ export default function Inbox() {
               type="button"
               className={inboxFilterChipClass(activeFilter === 'unread')}
               onClick={() => setActiveFilter('unread')}
+              disabled={viewMode === 'calls'}
             >
               Non lus ({totalUnreadThreads})
             </button>
@@ -497,6 +555,7 @@ export default function Inbox() {
               type="button"
               className={inboxFilterChipClass(showArchived)}
               onClick={() => setShowArchived((prev) => !prev)}
+              disabled={viewMode === 'calls'}
             >
               <Archive className="h-4 w-4 shrink-0 opacity-80" />
               Archivées
@@ -550,7 +609,7 @@ export default function Inbox() {
         )}
 
         {/* Groupes (CDC) */}
-        {(groups.length > 0 || user?.id) && (
+        {viewMode === 'chats' && (groups.length > 0 || user?.id) && (
           <div className={cn(INBOX_SECTION, 'p-2 sm:p-3')}>
             <div className="flex flex-wrap items-center justify-between gap-2 px-1 py-2 sm:px-2">
               <span className="flex items-center gap-2 text-[15px] font-semibold text-white">
@@ -615,6 +674,7 @@ export default function Inbox() {
           </div>
         )}
 
+        {viewMode === 'chats' && (
         <Dialog open={createGroupOpen} onOpenChange={setCreateGroupOpen}>
           <DialogContent className="max-w-md border-0 bg-[#0d1118] text-white shadow-[0_28px_90px_rgba(0,0,0,0.55)] ring-1 ring-white/[0.08]">
             <DialogHeader>
@@ -660,7 +720,9 @@ export default function Inbox() {
             </div>
           </DialogContent>
         </Dialog>
+        )}
 
+        {viewMode === 'chats' && (
         <div className={cn(INBOX_SECTION, 'p-2 sm:p-3')}>
           <div className="flex items-center gap-2 px-1 py-1 sm:px-2">
             <Users className="h-4 w-4 text-white/48" strokeWidth={1.75} />
@@ -691,7 +753,9 @@ export default function Inbox() {
             <p className="text-sm text-white/55 px-2 py-2">Aucun ami pour le moment.</p>
           )}
         </div>
+        )}
 
+        {viewMode === 'chats' && (
         <div className={cn(INBOX_SECTION, 'p-2 sm:p-3')}>
           <div className="flex items-center justify-between gap-2 px-1 py-1 sm:px-2">
             <p className="text-[15px] font-semibold text-white">Comptes suggérés</p>
@@ -734,10 +798,89 @@ export default function Inbox() {
             )}
           </div>
         </div>
+        )}
       </div>
 
       <div className="mx-auto mt-2 max-w-3xl px-2">
-        {isError ? (
+        {viewMode === 'calls' ? (
+          callsError ? (
+            <div className={cn(INBOX_SECTION, 'flex flex-col items-center justify-center px-4 py-24 text-center')}>
+              <p className="mb-3 font-medium text-white">Impossible de charger l’historique d’appels.</p>
+              <Button onClick={() => refetchCalls()} variant="outline" className="rounded-full border-0 bg-white/[0.08] text-white ring-1 ring-white/[0.12] hover:bg-white/[0.12]">
+                Réessayer
+              </Button>
+            </div>
+          ) : callsLoading ? (
+            <InboxLoadingSkeleton />
+          ) : callRows.length === 0 ? (
+            <div className={cn(INBOX_SECTION, 'flex flex-col items-center justify-center px-6 py-20 text-center')}>
+              <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-white/[0.06]">
+                <Phone className="h-10 w-10 text-white/45" strokeWidth={1.5} />
+              </div>
+              <h3 className="mb-2 text-lg font-semibold text-white">Aucun appel pour le moment</h3>
+              <p className="mb-6 max-w-[280px] text-sm leading-relaxed text-white/45">
+                Vos appels audio et vidéo apparaîtront ici, comme sur WhatsApp.
+              </p>
+            </div>
+          ) : (
+            <div className={cn(INBOX_SECTION, 'p-2 sm:p-3')}>
+              <div className="flex items-center justify-between px-2 pb-2 pt-1 sm:px-3">
+                <div>
+                  <p className="text-[15px] font-semibold text-white">Historique des appels</p>
+                  <p className="mt-0.5 text-[13px] text-white/42">{callRows.length} appel{callRows.length > 1 ? 's' : ''}</p>
+                </div>
+              </div>
+              {callRows.map((row, index) => {
+                const isGroup = row.channel === 'group';
+                const peerName = row.peer?.full_name || row.peer?.username || 'Contact';
+                const title = isGroup ? `Groupe · ${row.group?.name || 'Salon'}` : peerName;
+                const refDate = row.ended_at || row.started_at;
+                const status = getCallStatusLabel(row.status);
+                return (
+                  <motion.div
+                    key={row.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.02 }}
+                    className="mx-0.5 my-0.5 flex min-h-[72px] items-center gap-2 rounded-2xl px-2 py-2 transition-colors hover:bg-white/[0.04] active:bg-white/[0.08] sm:mx-1 sm:px-3 sm:py-3"
+                  >
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-white/80 ring-1 ring-white/10">
+                      <Phone className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold text-white">{title}</p>
+                      <p className="truncate text-sm text-white/62">
+                        {status} · {getCallDurationLabel(row.duration_sec)} · {formatTime(refDate)}
+                      </p>
+                    </div>
+                    {!isGroup && row.peer?.id ? (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-10 w-10 rounded-full bg-white/[0.06] text-white/80 ring-1 ring-white/[0.08] hover:bg-white/[0.10]"
+                          onClick={() => navigate(`${createPageUrl('DirectCall')}?mode=outgoing&receiverId=${row.peer.id}&type=audio&callId=${generateCallId()}`)}
+                          aria-label="Rappeler en audio"
+                        >
+                          <Phone className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-10 w-10 rounded-full bg-white/[0.06] text-white/80 ring-1 ring-white/[0.08] hover:bg-white/[0.10]"
+                          onClick={() => navigate(`${createPageUrl('DirectCall')}?mode=outgoing&receiverId=${row.peer.id}&type=video&callId=${generateCallId()}`)}
+                          aria-label="Rappeler en vidéo"
+                        >
+                          <Video className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : null}
+                  </motion.div>
+                );
+              })}
+            </div>
+          )
+        ) : isError ? (
           <div className={cn(INBOX_SECTION, 'flex flex-col items-center justify-center px-4 py-24 text-center')}>
             <p className="mb-3 font-medium text-white">Une erreur s&apos;est produite.</p>
             <Button

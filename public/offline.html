@@ -73,14 +73,19 @@
       <h1>Pas de connexion</h1>
     </div>
     <p>
-      AfriWonder a besoin d'internet pour charger les nouvelles videos.
-      Verifie ta connexion puis reessaie.
+      Pour les <strong>nouvelles</strong> vidéos, une connexion est nécessaire.
+      Les contenus déjà mis en cache sur ton appareil restent lisibles depuis l’accueil.
     </p>
-    <button class="btn" type="button" onclick="window.location.reload()" aria-label="Reessayer de charger AfriWonder">
-      Reessayer
-    </button>
-    <p style="font-size:0.75rem; color:rgba(255,255,255,0.25); margin-top:8px;">
-      Les videos deja preparees restent accessibles depuis l'accueil.
+    <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:4px;">
+      <a class="btn" href="/" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;" aria-label="Ouvrir l’accueil AfriWonder">
+        Ouvrir l’accueil
+      </a>
+      <button class="btn" type="button" style="background:#334155;" onclick="window.location.reload()" aria-label="Réessayer de charger la page">
+        Réessayer
+      </button>
+    </div>
+    <p style="font-size:0.75rem; color:rgba(255,255,255,0.35); margin-top:12px; max-width:320px;">
+      Astuce : ouvre l’app une fois en 4G/Wi‑Fi pour que le feed et les vidéos se préparent hors ligne.
     </p>
   </main>
 

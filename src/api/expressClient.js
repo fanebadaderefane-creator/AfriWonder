@@ -9,13 +9,15 @@ import {
   clearTokens,
   setCachedAuthUser,
 } from '@/lib/secureTokenStorage';
+import { API_URL, initApiBaseFromPublicConfig } from '@/lib/apiBaseUrl.js';
+import { isEffectiveConnectionSlow } from '@/lib/networkHints.js';
+import {
+  getAfwScopeParamForRequest,
+  normalizeRequestPathForScope,
+  shouldAttachAfwScopeToGetPath,
+} from '@/lib/feedRequestScope.js';
 
-const raw = import.meta.env.VITE_API_URL;
-const API_URL = raw
-  ? `${raw.replace(/\/api\/?$/, '')}/api`
-  : (import.meta.env.DEV ? '/api' : '/api');
-
-export { API_URL };
+export { API_URL, initApiBaseFromPublicConfig };
 
 const DEFAULT_TIMEOUT_MS = 30000;
 /** Inscription : peut attendre PostgreSQL / réseau local — évite faux timeout à 30 s */
@@ -23,8 +25,11 @@ const AUTH_REGISTER_TIMEOUT_MS = 90000;
 const UPLOAD_TIMEOUT_MS = 300000;
 /** E2EE : crypto WebCrypto + plusieurs allers-retours (register, prekeys) ; Supabase peut dépasser 30 s. */
 const E2EE_REQUEST_TIMEOUT_MS = 90000;
-const MAX_NETWORK_RETRIES = 2; // 2 retries = 3 attempts total (connexions difficiles Afrique)
-const RETRY_DELAYS_MS = [1000, 2000]; // backoff
+const MAX_NETWORK_RETRIES = 2; // défaut : 3 tentatives GET au total
+const RETRY_DELAYS_MS = [1000, 2000];
+/** 2G/3G/saveData : une tentative de plus + backoff plus long (instabilité Mali) */
+const SLOW_MAX_NETWORK_RETRIES = 3;
+const SLOW_RETRY_DELAYS_MS = [1500, 3500, 7000];
 
 function getDirectUploadThresholdBytes() {
   const mb = Number(import.meta?.env?.VITE_UPLOAD_DIRECT_THRESHOLD_MB ?? 18);
@@ -138,6 +143,12 @@ const axiosInstance = axios.create({
   },
 });
 
+/** Met à jour la base axios après chargement de /config.json (prod sans VITE_API_URL). */
+export async function initExpressClientRuntime() {
+  await initApiBaseFromPublicConfig();
+  axiosInstance.defaults.baseURL = API_URL;
+}
+
 axiosInstance.interceptors.request.use(async (config) => {
   const token = await getAccessToken();
   if (token) {
@@ -149,6 +160,18 @@ axiosInstance.interceptors.request.use(async (config) => {
       config.headers['X-Device-Id'] = deviceId;
     }
   } catch (_) {}
+  // GET/HEAD : timeout plus long sur liaison faible pour éviter d’abandonner avant la réponse utile
+  if (typeof navigator !== 'undefined' && isEffectiveConnectionSlow()) {
+    const m = String(config.method || 'get').toLowerCase();
+    if (m === 'get' || m === 'head') {
+      const base = Number(config.timeout);
+      config.timeout = Math.max(Number.isFinite(base) ? base : DEFAULT_TIMEOUT_MS, 55000);
+    }
+  }
+  const m = String(config.method || 'get').toLowerCase();
+  if (m === 'get' && shouldAttachAfwScopeToGetPath(normalizeRequestPathForScope(config.url))) {
+    config.params = { ...(config.params || {}), afwScope: await getAfwScopeParamForRequest() };
+  }
   return config;
 });
 
@@ -236,12 +259,35 @@ axiosInstance.interceptors.response.use(
     }
 
     // Retry automatique pour erreurs réseau / timeout (connexions lentes ou instables, ex. Afrique)
-    const isNetworkError = error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED' || error.message?.includes('timeout') || !error.response;
+    const status = error.response?.status;
+    const isTransientHttp =
+      status === 502 ||
+      status === 503 ||
+      status === 504;
+    const isNetworkError =
+      error.code === 'ERR_NETWORK' ||
+      error.code === 'ECONNABORTED' ||
+      error.message?.includes('timeout') ||
+      !error.response;
     const isRetryableMethod = originalRequest?.method && ['get', 'GET', 'head', 'HEAD'].includes(originalRequest.method);
     const retryCount = originalRequest?._networkRetryCount ?? 0;
-    if (isNetworkError && originalRequest && isRetryableMethod && retryCount < MAX_NETWORK_RETRIES) {
+    const slow = typeof navigator !== 'undefined' && isEffectiveConnectionSlow();
+    const maxNet = slow ? SLOW_MAX_NETWORK_RETRIES : MAX_NETWORK_RETRIES;
+    const delays = slow ? SLOW_RETRY_DELAYS_MS : RETRY_DELAYS_MS;
+    const canRetryTransient =
+      isTransientHttp &&
+      originalRequest &&
+      isRetryableMethod &&
+      retryCount < maxNet;
+    if (canRetryTransient) {
       originalRequest._networkRetryCount = retryCount + 1;
-      const delay = RETRY_DELAYS_MS[retryCount] ?? 2000;
+      const delay = delays[retryCount] ?? 2500;
+      await new Promise((r) => setTimeout(r, delay));
+      return axiosInstance(originalRequest);
+    }
+    if (isNetworkError && originalRequest && isRetryableMethod && retryCount < maxNet) {
+      originalRequest._networkRetryCount = retryCount + 1;
+      const delay = delays[retryCount] ?? 2500;
       await new Promise((r) => setTimeout(r, delay));
       return axiosInstance(originalRequest);
     }
@@ -290,6 +336,10 @@ function uploadConfig() {
   };
 }
 
+/**
+ * Surface API à garder alignée avec le client Flutter (Dio + interceptors JWT).
+ * Offline : React Query offlineFirst + persistance ; SW cache ; vidéos = IndexedDB + URLs proxy si besoin.
+ */
 export const api = {
   // Délégation directe pour les routes non encapsulées (legal, privacy, etc.)
   get: (url, config) => axiosInstance.get(url, config),
@@ -346,6 +396,25 @@ export const api = {
   platformFeedback: {
     async create(feedback) {
       const { data } = await axiosInstance.post('/platform-feedback', feedback);
+      return data.data;
+    },
+  },
+
+  calls: {
+    async ensureSession({ callId, peerUserId, role, status = 'pending' }) {
+      const { data } = await axiosInstance.post('/calls/session/upsert', {
+        callId,
+        peerUserId,
+        role,
+        status,
+      });
+      return data.data;
+    },
+    async updateSessionState(callId, { status, duration } = {}) {
+      const { data } = await axiosInstance.post(`/calls/${encodeURIComponent(callId)}/session-state`, {
+        status,
+        duration,
+      });
       return data.data;
     },
   },
@@ -2719,6 +2788,15 @@ export const api = {
     },
     async confirmWalletRecharge(transactionId) {
       const { data } = await axiosInstance.get('/live/wallet/recharge/confirm', { params: { transactionId } });
+      return data.data;
+    },
+    async getWalletRechargeStatus(transactionId) {
+      const { data } = await axiosInstance.get(`/live/wallet/recharge/status/${encodeURIComponent(transactionId)}`);
+      return data.data;
+    },
+    /** Simulation locale : code 4–6 chiffres (en prod le secret est demandé par Orange / USSD). */
+    async mockConfirmWalletRechargeOrange(payload) {
+      const { data } = await axiosInstance.post('/live/wallet/recharge/mock-orange-confirm', payload);
       return data.data;
     },
     async getCreatorLevel(userId) {

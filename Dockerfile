@@ -8,9 +8,8 @@ RUN npm ci
 
 COPY . .
 
-# Build (API URL depuis env au moment du build)
-ARG VITE_API_URL=https://api.afriwonder.com
-ENV VITE_API_URL=${VITE_API_URL}
+# Build frontend sans URL API hardcodée (12-factor).
+# L'URL runtime est injectée dans /usr/share/nginx/html/config.json au démarrage.
 RUN npm run build
 
 # Image de prod : nginx
@@ -18,7 +17,11 @@ FROM nginx:alpine
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker-entrypoint.sh /docker-entrypoint.d/40-runtime-config.sh
+RUN chmod +x /docker-entrypoint.d/40-runtime-config.sh \
+  && chown -R nginx:nginx /usr/share/nginx/html
 
-EXPOSE 80
+USER nginx
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

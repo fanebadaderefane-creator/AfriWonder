@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { useTranslation } from '@/components/common/useTranslation';
+import { useAuth } from '@/lib/AuthContext';
 
 const COIN_PACKAGES = [
   { coins: 100, label: 'Starter', priceFcfa: 500, popular: false },
@@ -25,6 +26,7 @@ const COIN_PACKAGES = [
 export default function WalletPage() {
   const { formatNumber } = useTranslation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [walletTab, setWalletTab] = useState('coins'); // 'coins' | 'history' | 'virtual-cards' | 'transfers'
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [withdrawData, setWithdrawData] = useState({
@@ -40,29 +42,45 @@ export default function WalletPage() {
   const queryClient = useQueryClient();
 
   const { data: walletSecurity } = useQuery({
-    queryKey: ['walletSecurity'],
-    queryFn: () => api.payments.getWalletSecurity()
+    queryKey: ['walletSecurity', user?.id],
+    queryFn: () => api.payments.getWalletSecurity(),
+    enabled: !!user?.id,
+    networkMode: 'offlineFirst',
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
   });
   const needsPin = walletSecurity?.has_pin && walletSecurity?.two_fa_required_for_withdrawal;
 
   const { data: wallet, isLoading, isError, refetch } = useQuery({
-    queryKey: ['wallet'],
+    queryKey: ['wallet', user?.id],
     queryFn: async () => {
       return await api.payments.getWallet();
-    }
+    },
+    enabled: !!user?.id,
+    networkMode: 'offlineFirst',
+    staleTime: 2 * 60 * 1000,
+    retry: 1,
   });
 
   const { data: transactions } = useQuery({
-    queryKey: ['transactions'],
+    queryKey: ['transactions', user?.id],
     queryFn: async () => {
       const result = await api.payments.getTransactions({ page: 1, limit: 20 });
       return result.transactions || [];
-    }
+    },
+    enabled: !!user?.id,
+    networkMode: 'offlineFirst',
+    staleTime: 2 * 60 * 1000,
+    retry: 1,
   });
 
   const { data: payoutsData } = useQuery({
-    queryKey: ['withdrawals'],
-    queryFn: () => api.withdrawals.list({ page: 1, limit: 20 })
+    queryKey: ['withdrawals', user?.id],
+    queryFn: () => api.withdrawals.list({ page: 1, limit: 20 }),
+    enabled: !!user?.id,
+    networkMode: 'offlineFirst',
+    staleTime: 2 * 60 * 1000,
+    retry: 1,
   });
   const payouts = payoutsData?.withdrawals ?? payoutsData?.data ?? (Array.isArray(payoutsData) ? payoutsData : []);
 
@@ -91,7 +109,9 @@ export default function WalletPage() {
       return true;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['wallet', 'withdrawals'] });
+      queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['withdrawals'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
       toast.success('Demande de retrait enregistrée. Traitement sous 24-48h.');
       setShowWithdrawModal(false);
       setWithdrawData({

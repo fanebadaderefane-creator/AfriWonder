@@ -45,6 +45,7 @@ export function extractMainFeedVideoItems(feedItems, { userHydrated = false, log
   return out;
 }
 
+/** Garde les champs low_quality_* pour lecture adaptative (ne pas les omettre côté API/Flutter). */
 export function normalizeFeedVideo(video) {
   if (!video) return null;
 

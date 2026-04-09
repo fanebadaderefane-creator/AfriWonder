@@ -84,6 +84,20 @@ jobs:
           FRAUD_MAX_PAYMENT_AMOUNT: "999999999"
           SUPER_ADMIN_EMAIL: admin@test.example.com
 
+      - name: Orange Money webhook integration test (sandbox path)
+        working-directory: backend
+        run: npx jest src/payments/__tests__/orange-money.webhook.test.ts --config jest.config.js --runInBand
+        env:
+          NODE_ENV: test
+          ORANGE_MONEY_ENV: production
+          ORANGE_MONEY_WEBHOOK_SECRET: ci-orange-webhook-secret
+
+      - name: Stripe webhook integration test
+        working-directory: backend
+        run: npx jest src/payments/__tests__/stripe.webhook.test.ts --config jest.config.js --runInBand
+        env:
+          NODE_ENV: test
+
       - name: Upload coverage
         if: always()
         uses: codecov/codecov-action@v3
@@ -96,7 +110,6 @@ jobs:
       - name: npm audit (backend)
         working-directory: backend
         run: npm audit --audit-level=high
-        continue-on-error: true
 
   test-frontend:
     runs-on: ubuntu-latest
@@ -118,6 +131,9 @@ jobs:
       - name: Run linter
         run: npm run lint
 
+      - name: Enforce root docs policy
+        run: npm run verify:root-docs
+
       - name: Run tests
         run: npm run test:ci:frontend
         env:
@@ -130,7 +146,6 @@ jobs:
 
       - name: npm audit (frontend)
         run: npm audit --audit-level=high
-        continue-on-error: true
 
   security-audit:
     runs-on: ubuntu-latest
@@ -147,7 +162,6 @@ jobs:
         run: npm ci
       - name: Security audit
         run: node scripts/security-audit.js
-        continue-on-error: true
 
   security-scan:
     runs-on: ubuntu-latest
@@ -155,7 +169,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run Snyk Security Scan
         uses: snyk/actions/node@master
-        continue-on-error: true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:

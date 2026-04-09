@@ -7,6 +7,8 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-blue.svg)](https://postgresql.org/)
 [![License](https://img.shields.io/badge/License-Propriétaire-orange.svg)](./LICENSE)
 
+Couverture backend: le workflow GitHub **CI/CD AfriWonder** exécute `npm run test:coverage` dans `backend/` et publie `lcov.info` vers Codecov si `CODECOV_TOKEN` est défini dans les secrets du dépôt.
+
 ---
 
 ## 📋 Table des matières
@@ -183,9 +185,12 @@ Créer `.env.local` à la racine à partir de `.env.example` :
 Éditer `.env.local` et remplir au minimum :
 
 ```env
-# API Backend (obligatoire)
+# API Backend (obligatoire en dev / recommandé au build)
 VITE_API_URL=http://localhost:3000/api
 VITE_WS_URL=ws://localhost:3000
+
+# Déploiement sans rebuild : si VITE_API_URL est absent au build, l’app charge
+# `public/config.json` (copié dans le bundle) avec { "apiBaseUrl": "https://votre-api.com/api" }.
 
 # Upload direct vers R2 (optionnel) — au-delà de ce seuil, l’app tente un PUT pré-signé (fallback automatique sinon)
 VITE_UPLOAD_DIRECT_THRESHOLD_MB=18
@@ -197,10 +202,10 @@ VITE_BASE44_APP_BASE_URL=https://your-app.base44.app
 # Optionnel
 VITE_STRIPE_PUBLISHABLE_KEY=pk_test_xxx
 
-# WebRTC Calls (recommande en production mobile)
-VITE_TURN_URL=turns://turn.afriwonder.com:5349?transport=tcp
-VITE_TURN_USERNAME=afriwonder
-VITE_TURN_CREDENTIAL=motdepassefort
+# WebRTC Calls
+# En production: credentials TURN temporaires fournis par l'API backend (/api/calls/turn-credentials)
+# En dev local uniquement (optionnel): VITE_TURN_URL peut être défini pour des tests STUN/TURN
+VITE_TURN_URL=turns://turn.example.com:5349?transport=tcp
 ```
 
 #### B. Backend (`backend/`)
@@ -233,7 +238,7 @@ FACEBOOK_APP_ID=
 FACEBOOK_APP_SECRET=
 FACEBOOK_REDIRECT_URI=http://localhost:3000/api/auth/facebook/callback
 
-# ========== Redis (optionnel, pour cache & rate limit) ==========
+# ========== Redis (obligatoire en production) ==========
 REDIS_URL=redis://localhost:6379
 
 # ========== Paiements (optionnel en dev) ==========
@@ -283,6 +288,18 @@ npm start
 npm run build
 npm run preview
 ```
+
+---
+
+## 🧱 Structure canonique (contribution)
+
+- Web: `src/`
+- API: `backend/src/`
+- Mobile: `flutter_app/`
+- Entités métier: `entities/`
+- Docs: `docs/`
+
+Détails et règles anti-duplication: [docs/REPO_CANONICAL_STRUCTURE.md](./docs/REPO_CANONICAL_STRUCTURE.md)
 
 ---
 

@@ -4,6 +4,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import compression from 'compression';
+import { logger } from './utils/logger.js';
 // Import middleware sécurité
 import { 
   generalLimiter, 
@@ -15,6 +16,7 @@ import {
 } from './middleware/rateLimiting.js';
 import { antiBotMiddleware, antiSpamMiddleware } from './middleware/antiBot.js';
 import { attachRequestId, httpMetricsMiddleware, apiRequestTimeoutMiddleware } from './middleware/observability.middleware.js';
+import { applyPerformanceMiddleware } from './middleware/performanceMiddleware.js';
 import { getPrometheusExposition } from './services/prometheusMetrics.service.js';
 import {
   cachePolicyMiddleware,
@@ -201,6 +203,7 @@ app.use(cors(corsOptions));
 app.use(attachRequestId);
 app.use(httpMetricsMiddleware);
 app.use(apiRequestTimeoutMiddleware); // 30s timeout API (hors upload/webhooks) — stabilité
+applyPerformanceMiddleware(app);
 
 // Commissions : chargement différé après $connect() (voir index.ts) pour éviter erreurs DB au boot
 
@@ -262,8 +265,22 @@ app.use(
     },
   })
 );
-// Compression gzip pour réduire bande passante et latence (charges massives)
-app.use(compression());
+// Compression HTTP adaptée aux réseaux lents (Mali) :
+// - seuil bas pour JSON/API
+// - éviter de compresser les flux déjà compressés (video/audio)
+app.use(
+  compression({
+    level: 5,
+    threshold: 1024,
+    filter: (req, res) => {
+      if (req.headers['x-no-compression']) return false;
+      const contentType = String(res.getHeader('Content-Type') || '').toLowerCase();
+      if (contentType.startsWith('video/') || contentType.startsWith('audio/')) return false;
+      if (req.path.includes('/stream') || req.path.includes('/manifest')) return false;
+      return compression.filter(req, res);
+    },
+  })
+);
 // Webhooks paiement exigent body brut pour vérification signature (avant express.json)
 app.use('/api/payments/stripe/webhook', express.raw({ type: 'application/json' }));
 app.use('/api/payments/orange-money/webhook', express.raw({ type: 'application/json' }));
@@ -430,9 +447,15 @@ app.use('/api/food-orders', foodOrdersRoutes);
 app.use('/api/airtime', airtimeRoutes);
 app.use('/api/bills', billsRoutes);
 app.use('/api/tickets', ticketsRoutes);
-app.use('/api/doctors', doctorsRoutes);
-app.use('/api/appointments', appointmentsRoutes);
-app.use('/api/pharmacies', pharmaciesRoutes);
+const telemedicineEnabled =
+  process.env.NODE_ENV !== 'production' || process.env.TELEMEDICINE_ENABLED === 'true';
+if (telemedicineEnabled) {
+  app.use('/api/doctors', doctorsRoutes);
+  app.use('/api/appointments', appointmentsRoutes);
+  app.use('/api/pharmacies', pharmaciesRoutes);
+} else {
+  logger.warn('Module telemedecine desactive en production (TELEMEDICINE_ENABLED=false)');
+}
 app.use('/api/properties', propertiesRoutes);
 app.use('/api/insurance', insuranceRoutes);
 app.use('/api/moderation', moderationRoutes);

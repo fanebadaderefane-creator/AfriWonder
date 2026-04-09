@@ -49,6 +49,9 @@ export default function Notifications() {
     queryKey: ['all-notifications', user?.id],
     queryFn: () => api.notifications.list({ limit: 100 }),
     enabled: !!user?.id,
+    networkMode: 'offlineFirst',
+    staleTime: 2 * 60 * 1000,
+    retry: 1,
   });
   const notifications = notificationsPayload?.notifications ?? [];
 

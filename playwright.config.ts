@@ -48,6 +48,13 @@ export default defineConfig({
         ...devices['iPhone 13'],
       },
     },
+    {
+      name: 'firefox-desktop',
+      use: {
+        ...devices['Desktop Firefox'],
+        viewport: { width: 1280, height: 720 },
+      },
+    },
   ],
 });
 

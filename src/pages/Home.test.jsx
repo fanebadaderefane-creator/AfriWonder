@@ -121,6 +121,19 @@ vi.mock('sonner', () => ({
   },
 }));
 
+vi.mock('@/lib/AuthContext', () => ({
+  useAuth: () => ({
+    user: null,
+    isAuthenticated: false,
+    isLoadingAuth: false,
+    authError: null,
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+    checkAuth: vi.fn(),
+  }),
+}));
+
 describe('Home page', () => {
   beforeEach(() => {
     videosLoading = true;

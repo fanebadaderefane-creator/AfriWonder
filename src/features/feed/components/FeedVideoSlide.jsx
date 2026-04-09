@@ -2,7 +2,10 @@ import React from 'react';
 import VideoCard from '@/components/video/VideoCard';
 import Download from 'lucide-react/icons/download';
 
-/** Ne monter le lecteur que pour la slide active ± N : évite 20+ <video preload="auto"> en parallèle (réseau saturé, aucune lecture). */
+/**
+ * Ne monter le lecteur que pour la slide active ± N : évite 20+ <video preload="auto"> en parallèle (réseau saturé, aucune lecture).
+ * Flutter : même rayon + `offlineBlobUrl` / `offlineReady` (voir `flutter-parity.js`). Streaming adaptatif web = HLS dans VideoCard ; mobile = lecteur HLS natif.
+ */
 const FEED_PLAYER_MOUNT_RADIUS = 2;
 
 export default function FeedVideoSlide({
@@ -28,6 +31,7 @@ export default function FeedVideoSlide({
   onInitialVisualReady,
   offlineReady = false,
   showOfflineBadge = true,
+  offlineBlobUrl = '',
 }) {
   const { video, slideBackgroundUrl } = slide;
   const distance = Math.abs(index - safeCurrentIndex);
@@ -103,6 +107,7 @@ export default function FeedVideoSlide({
         onRequireAuth={onRequireAuth}
         hideActions={hideVideoActions}
         compact
+        offlineBlobUrl={offlineBlobUrl}
       />
     </div>
   );

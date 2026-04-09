@@ -10,6 +10,18 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../config/database.js';
 import { cacheGet, cacheSet } from '../utils/cache.js';
+import { logger } from '../utils/logger.js';
+
+/** Colonne ou table absente (migrations non appliquées, drift). */
+function isSchemaColumnError(err: unknown): boolean {
+  const e = err as { code?: string; message?: string; name?: string };
+  if (e?.code === 'P2022') return true;
+  const msg = String(e?.message || '');
+  if (e?.name === 'PrismaClientKnownRequestError' && /does not exist|column|unknown column/i.test(msg)) {
+    return true;
+  }
+  return /column .* does not exist|42703/i.test(msg);
+}
 
 const FAVORED_DURATION_MIN = 8;
 const FAVORED_DURATION_MAX = 30;
@@ -43,16 +55,31 @@ export interface RecommendationOptions {
   category?: string;
   hashtag?: string;
   mediaType?: 'video' | 'image';
+  /** Présent sur tirer-pour-rafraîchir (`_` ou `refresh`) : permutation circulaire page 1 pour ne pas retomber sur la même tête de liste. */
+  refreshNonce?: string;
+}
+
+/** Décale la liste (page 1 uniquement) de façon reproductible depuis le nonce — sans casser le tri global. */
+function rotateListByRefreshNonce<T>(items: T[], nonce: string | undefined, page: number): T[] {
+  if (page !== 1 || !nonce || !String(nonce).trim() || items.length < 2) return items;
+  const s = String(nonce);
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  const off = Math.abs(h) % items.length;
+  if (off === 0) return items;
+  return [...items.slice(off), ...items.slice(0, off)];
 }
 
 /**
  * Score de contenu (engagement, rétention, durée, récence, tier) - même logique que feedAlgorithm
  */
 function contentScore(v: any): number {
-  const likes = v.likes ?? 0;
-  const comments = v.comments_count ?? 0;
-  const shares = v.shares ?? 0;
-  const views = Math.max(v.views, 1);
+  const likes = Number(v?.likes) || 0;
+  const comments = Number(v?.comments_count) || 0;
+  const shares = Number(v?.shares) || 0;
+  const views = Math.max(Number(v?.views) || 0, 1);
   const duration = v.duration ?? 60;
   const retentionPct = v.avg_retention_pct ?? 50;
 
@@ -73,73 +100,86 @@ function daysSince(d: Date): number {
   return (Date.now() - new Date(d).getTime()) / (1000 * 60 * 60 * 24);
 }
 
+function emptyUserPreferences(): UserPreferences {
+  return {
+    seenVideoIds: new Set(),
+    preferredCategories: new Map(),
+    preferredCreatorIds: new Set(),
+    likedVideoIds: new Set(),
+    savedVideoIds: new Set(),
+  };
+}
+
 /**
  * Charge les préférences utilisateur pour la personnalisation (categories, créateurs, vidéos déjà vues)
+ * En cas d'erreur Prisma / drift : retour vide pour ne pas faire échouer tout le feed (200 + trending).
  */
-async function loadUserPreferences(userId: string): Promise<{
-  seenVideoIds: Set<string>;
-  preferredCategories: Map<string, number>;
-  preferredCreatorIds: Set<string>;
-  likedVideoIds: Set<string>;
-  savedVideoIds: Set<string>;
-}> {
-  const [history, likes, saves, follows] = await Promise.all([
-    prisma.viewHistory.findMany({
-      where: { user_id: userId },
-      select: {
-        video_id: true,
-        category: true,
-        watch_percent: true,
-        video: { select: { creator_id: true, category: true } },
-      },
-      orderBy: { updated_at: 'desc' },
-      take: USER_SIGNAL_LIMIT,
-    }),
-    prisma.like.findMany({
-      where: { user_id: userId },
-      select: { video_id: true },
-      orderBy: { created_at: 'desc' },
-      take: USER_SIGNAL_LIMIT,
-    }),
-    prisma.save.findMany({
-      where: { user_id: userId },
-      select: { video_id: true },
-      orderBy: { created_at: 'desc' },
-      take: USER_SIGNAL_LIMIT,
-    }),
-    prisma.follow.findMany({
-      where: { follower_id: userId },
-      select: { following_id: true },
-      orderBy: { created_at: 'desc' },
-      take: USER_SIGNAL_LIMIT,
-    }),
-  ]);
+async function loadUserPreferences(userId: string): Promise<UserPreferences> {
+  try {
+    const [history, likes, saves, follows] = await Promise.all([
+      prisma.viewHistory.findMany({
+        where: { user_id: userId },
+        select: {
+          video_id: true,
+          category: true,
+          watch_percent: true,
+          video: { select: { creator_id: true, category: true } },
+        },
+        orderBy: { updated_at: 'desc' },
+        take: USER_SIGNAL_LIMIT,
+      }),
+      prisma.like.findMany({
+        where: { user_id: userId },
+        select: { video_id: true },
+        orderBy: { created_at: 'desc' },
+        take: USER_SIGNAL_LIMIT,
+      }),
+      prisma.save.findMany({
+        where: { user_id: userId },
+        select: { video_id: true },
+        orderBy: { created_at: 'desc' },
+        take: USER_SIGNAL_LIMIT,
+      }),
+      prisma.follow.findMany({
+        where: { follower_id: userId },
+        select: { following_id: true },
+        orderBy: { created_at: 'desc' },
+        take: USER_SIGNAL_LIMIT,
+      }),
+    ]);
 
-  const seenVideoIds = new Set(history.map((h) => h.video_id));
-  const preferredCategories = new Map<string, number>();
-  const preferredCreatorIds = new Set(follows.map((f) => f.following_id));
+    const seenVideoIds = new Set(history.map((h) => h.video_id));
+    const preferredCategories = new Map<string, number>();
+    const preferredCreatorIds = new Set(follows.map((f) => f.following_id));
 
-  for (const h of history) {
-    const cat = (h.video?.category ?? h.category) || null;
-    if (cat) {
-      const weight = (h.watch_percent ?? 50) / 100;
-      preferredCategories.set(cat, (preferredCategories.get(cat) ?? 0) + weight);
+    for (const h of history) {
+      const cat = (h.video?.category ?? h.category) || null;
+      if (cat) {
+        const weight = (h.watch_percent ?? 50) / 100;
+        preferredCategories.set(cat, (preferredCategories.get(cat) ?? 0) + weight);
+      }
+      if (h.video?.creator_id) {
+        preferredCreatorIds.add(h.video.creator_id);
+      }
     }
-    if (h.video?.creator_id) {
-      preferredCreatorIds.add(h.video.creator_id);
-    }
+
+    const likedVideoIds = new Set(likes.map((l) => l.video_id));
+    const savedVideoIds = new Set(saves.map((s) => s.video_id));
+
+    return {
+      seenVideoIds,
+      preferredCategories,
+      preferredCreatorIds,
+      likedVideoIds,
+      savedVideoIds,
+    };
+  } catch (err) {
+    logger.warn('loadUserPreferences: échec, personnalisation désactivée pour ce feed', {
+      userId,
+      message: String((err as Error)?.message || err),
+    });
+    return emptyUserPreferences();
   }
-
-  const likedVideoIds = new Set(likes.map((l) => l.video_id));
-  const savedVideoIds = new Set(saves.map((s) => s.video_id));
-
-  return {
-    seenVideoIds,
-    preferredCategories,
-    preferredCreatorIds,
-    likedVideoIds,
-    savedVideoIds,
-  };
 }
 
 function serializeUserPreferences(prefs: UserPreferences): SerializedUserPreferences {
@@ -164,9 +204,15 @@ function hydrateUserPreferences(raw: SerializedUserPreferences): UserPreferences
 
 async function loadUserPreferencesCached(userId: string): Promise<UserPreferences> {
   const cacheKey = `feed:prefs:v2:${userId}`;
-  const cached = await cacheGet<SerializedUserPreferences>(cacheKey);
-  if (cached) {
-    return hydrateUserPreferences(cached);
+  try {
+    const cached = await cacheGet<SerializedUserPreferences>(cacheKey);
+    if (cached) {
+      return hydrateUserPreferences(cached);
+    }
+  } catch (e) {
+    logger.warn('loadUserPreferencesCached: lecture cache Redis/indisponible', {
+      message: String((e as Error)?.message || e),
+    });
   }
 
   const prefs = await loadUserPreferences(userId);
@@ -175,7 +221,10 @@ async function loadUserPreferencesCached(userId: string): Promise<UserPreference
 }
 
 /** Colonnes Video de base (sans algo_tier, avg_retention_pct, qualified_views_count) pour fallback en cas de drift DB. Inclure hls_url + media_type : sinon le client ne peut pas basculer HLS si le MP4 principal est cassé. */
-const VIDEO_CORE_SELECT = `v.id, v.title, v.description, v.video_url, v.hls_url, v.thumbnail_url, v.creator_id, v.visibility, v.category, v.views, v.likes, v.comments_count, v.shares, v.saves, v.duration, v.created_at, v.updated_at, v.hashtags, v.music_title, v.is_featured, v.media_type`;
+const VIDEO_CORE_SELECT = `v.id, v.title, v.description, v.video_url, v.low_quality_url, v.hls_url, v.thumbnail_url, v.creator_id, v.visibility, v.category, v.views, v.likes, v.comments_count, v.shares, v.saves, v.duration, v.created_at, v.updated_at, v.hashtags, v.music_title, v.is_featured, v.media_type`;
+
+/** Même liste sans `low_quality_url` si la migration n'a pas été appliquée. */
+const VIDEO_CORE_SELECT_NO_LOW_Q = `v.id, v.title, v.description, v.video_url, v.hls_url, v.thumbnail_url, v.creator_id, v.visibility, v.category, v.views, v.likes, v.comments_count, v.shares, v.saves, v.duration, v.created_at, v.updated_at, v.hashtags, v.music_title, v.is_featured, v.media_type`;
 
 /**
  * Récupère un pool de vidéos via SQL brut (colonnes de base uniquement) quand prisma.video.findMany
@@ -192,6 +241,7 @@ async function getVideoPoolFallback(
     title: string;
     description: string | null;
     video_url: string;
+    low_quality_url?: string | null;
     hls_url: string | null;
     thumbnail_url: string | null;
     creator_id: string;
@@ -213,8 +263,26 @@ async function getVideoPoolFallback(
     creator_full_name: string | null;
     creator_profile_image: string | null;
   };
-  const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
-    SELECT ${Prisma.raw(VIDEO_CORE_SELECT)},
+
+  const mapRows = (rows: Row[]) =>
+    rows.map((r) => ({
+      ...r,
+      low_quality_url: r.low_quality_url ?? null,
+      algo_tier: 'test',
+      avg_retention_pct: null as number | null,
+      qualified_views_count: 0,
+      media_type: r.media_type || 'video',
+      creator: {
+        id: r.creator_id,
+        username: r.creator_username,
+        full_name: r.creator_full_name,
+        profile_image: r.creator_profile_image,
+      },
+    }));
+
+  const runSelect = async (cols: string): Promise<any[]> => {
+    const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
+    SELECT ${Prisma.raw(cols)},
       u.username AS "creator_username", u.full_name AS "creator_full_name", u.profile_image AS "creator_profile_image"
     FROM "Video" v
     INNER JOIN "User" u ON u.id = v.creator_id
@@ -225,19 +293,41 @@ async function getVideoPoolFallback(
     ORDER BY v.created_at DESC
     LIMIT ${poolSize}
   `);
-  return rows.map((r) => ({
-    ...r,
-    algo_tier: 'test',
-    avg_retention_pct: null as number | null,
-    qualified_views_count: 0,
-    media_type: r.media_type || 'video',
-    creator: {
-      id: r.creator_id,
-      username: r.creator_username,
-      full_name: r.creator_full_name,
-      profile_image: r.creator_profile_image,
-    },
-  }));
+    return mapRows(rows);
+  };
+
+  /** Dernier recours : sans scheduled_at / sans filtre hashtag (tables ou colonnes partielles). */
+  const runMinimalSelect = async (): Promise<any[]> => {
+    const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
+    SELECT ${Prisma.raw(VIDEO_CORE_SELECT_NO_LOW_Q)},
+      u.username AS "creator_username", u.full_name AS "creator_full_name", u.profile_image AS "creator_profile_image"
+    FROM "Video" v
+    INNER JOIN "User" u ON u.id = v.creator_id
+    WHERE v.visibility = 'public' AND (v.video_url NOT LIKE '%example.com%')
+      AND (${category ?? null}::text IS NULL OR v.category = ${category ?? null})
+    ORDER BY v.created_at DESC
+    LIMIT ${poolSize}
+  `);
+    return mapRows(rows);
+  };
+
+  try {
+    return await runSelect(VIDEO_CORE_SELECT);
+  } catch (err) {
+    if (!isSchemaColumnError(err)) throw err;
+    logger.warn('Feed fallback SQL: colonnes incomplètes, nouvel essai sans low_quality_url', {
+      message: (err as Error)?.message,
+    });
+    try {
+      return await runSelect(VIDEO_CORE_SELECT_NO_LOW_Q);
+    } catch (err2) {
+      if (!isSchemaColumnError(err2)) throw err2;
+      logger.warn('Feed fallback SQL: requête minimale (sans scheduled/hashtag)', {
+        message: (err2 as Error)?.message,
+      });
+      return await runMinimalSelect();
+    }
+  }
 }
 
 /**
@@ -252,6 +342,7 @@ export async function getPersonalizedFeed(options: RecommendationOptions): Promi
   const skip = (page - 1) * limit;
   const userId = options.userId;
 
+  try {
   const now = new Date();
   const where: any = {
     visibility: 'public',
@@ -281,8 +372,9 @@ export async function getPersonalizedFeed(options: RecommendationOptions): Promi
       take: poolSize,
     });
   } catch (err: any) {
-    // Drift schéma / base : colonnes manquantes (ex. algo_tier, avg_retention_pct)
-    if (err?.name === 'PrismaClientKnownRequestError' && /does not exist|column/i.test(String(err?.message || ''))) {
+    // Drift schéma / base : colonnes manquantes (ex. algo_tier, low_quality_url)
+    if (isSchemaColumnError(err)) {
+      logger.warn('Feed prisma.video.findMany: drift détecté, fallback SQL', { message: String(err?.message || '') });
       videos = await getVideoPoolFallback(poolSize, options.category, options.hashtag);
     } else {
       throw err;
@@ -293,7 +385,8 @@ export async function getPersonalizedFeed(options: RecommendationOptions): Promi
   if (!userId) {
     const scored = videos.map((v) => ({ ...v, _score: contentScore(v) }));
     scored.sort((a, b) => b._score - a._score);
-    const paged = scored.slice(skip, skip + limit);
+    const rotated = rotateListByRefreshNonce(scored, options.refreshNonce, page);
+    const paged = rotated.slice(skip, skip + limit);
     return formatResult(paged, videos.length, page, limit);
   }
 
@@ -362,8 +455,15 @@ export async function getPersonalizedFeed(options: RecommendationOptions): Promi
     }
   }
 
-  const paged = diversified.slice(skip, skip + limit);
+  const diversifiedForPage = rotateListByRefreshNonce(diversified, options.refreshNonce, page);
+  const paged = diversifiedForPage.slice(skip, skip + limit);
   return formatResult(paged, diversified.length, page, limit);
+  } catch (err) {
+    logger.error('getPersonalizedFeed: erreur inattendue — feed vide pour éviter HTTP 500', {
+      message: String((err as Error)?.message || err),
+    });
+    return formatResult([], 0, page, limit);
+  }
 }
 
 function formatResult(
@@ -385,6 +485,7 @@ function formatResult(
     if (!Array.isArray(hashtags)) hashtags = [];
     return {
       ...videoData,
+      low_quality_playback_url: videoData.low_quality_url ?? null,
       creator_id: creator?.id || video.creator_id,
       creator_name: creator?.full_name || creator?.username || '',
       creator_avatar: creator?.profile_image || '',

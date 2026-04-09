@@ -25,25 +25,42 @@ import { useTranslation } from "@/components/common/useTranslation";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
 import { usePageVisibility } from '@/hooks/usePageVisibility';
 
+/**
+ * @typedef {object} TopHeaderProps
+ * @property {string} [activeTab]
+ * @property {(tab: string) => void} onTabChange
+ * @property {boolean} [showTabs]
+ * @property {string} [title]
+ * @property {boolean} [isLowData]
+ * @property {number} [followingCount]
+ * @property {() => void} [onRefresh]
+ * @property {boolean} [showMenuButton]
+ * @property {() => void} [onMenuOpen]
+ * @property {boolean} [fixed]
+ * @property {boolean} [feedMode]
+ * @property {boolean} [isDarkMode] — compat parent, non utilisé
+ * @property {() => void} [onToggleDarkMode] — compat parent, non utilisé
+ * @property {number} [unreadNotifications] — compat parent, non utilisé
+ */
 
-
-export default function TopHeader({
-  activeTab = 'pourtoi',
-  onTabChange,
-  showTabs = true,
-  title,
-  isLowData = false,
-  followingCount = 0,
-  onRefresh = undefined,
-  showMenuButton = false,
-  onMenuOpen,
-  fixed = true,
-  feedMode = false,
-  // Props acceptées pour compatibilité descendante, non utilisées dans ce composant
-  isDarkMode: _isDarkMode,
-  onToggleDarkMode: _onToggleDarkMode,
-  unreadNotifications: _unreadNotifications,
-}) {
+/** @param {TopHeaderProps} props */
+export default function TopHeader(props) {
+  const {
+    activeTab = 'pourtoi',
+    onTabChange,
+    showTabs = true,
+    title,
+    isLowData = false,
+    followingCount = 0,
+    onRefresh = undefined,
+    showMenuButton = false,
+    onMenuOpen,
+    fixed = true,
+    feedMode = false,
+    isDarkMode: _isDarkMode,
+    onToggleDarkMode: _onToggleDarkMode,
+    unreadNotifications: _unreadNotifications,
+  } = props;
 
   const { user: authUser } = useAuth();
 

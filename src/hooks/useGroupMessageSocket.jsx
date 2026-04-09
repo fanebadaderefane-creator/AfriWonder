@@ -2,9 +2,9 @@
  * Socket.io — salon groupe : réactions, transcription, nouveaux messages, frappe.
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { io } from 'socket.io-client';
 import { toast } from 'sonner';
-import { getSocketBaseUrl, getSocketIoTransports } from '@/lib/getSocketBaseUrl';
+import { getSocketBaseUrl } from '@/lib/getSocketBaseUrl';
+import { createSocket } from '@/lib/socketConfig';
 
 export function useGroupMessageSocket({ userId, userName, groupId, queryClient, enabled = true }) {
   const socketRef = useRef(null);
@@ -20,11 +20,7 @@ export function useGroupMessageSocket({ userId, userName, groupId, queryClient, 
     if (!enabled || !userId || !groupId || !queryClient) return undefined;
 
     const base = getSocketBaseUrl();
-    const socket = io(base, {
-      path: '/socket.io',
-      transports: getSocketIoTransports(),
-      withCredentials: true,
-    });
+    const socket = createSocket(base);
     socketRef.current = socket;
 
     const onConnect = () => {

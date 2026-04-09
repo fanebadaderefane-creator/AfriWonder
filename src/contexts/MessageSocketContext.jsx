@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import { io } from 'socket.io-client';
-import { getSocketBaseUrl, getSocketIoTransports } from '@/lib/getSocketBaseUrl';
+import { getSocketBaseUrl } from '@/lib/getSocketBaseUrl';
+import { createSocket } from '@/lib/socketConfig';
 
 const MessageSocketContext = createContext(null);
 
@@ -18,11 +18,7 @@ export function MessageSocketProvider({ userId, children }) {
     }
 
     const base = getSocketBaseUrl();
-    const s = io(base, {
-      path: '/socket.io',
-      transports: getSocketIoTransports(),
-      withCredentials: true,
-    });
+    const s = createSocket(base);
 
     const onConnect = () => {
       s.emit('user:join', userId);

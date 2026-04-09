@@ -153,6 +153,12 @@ export const liveWalletRechargeSchema = z.object({
   phone: z.union([z.string().min(8).max(24), z.null()]).optional(),
 });
 
+/** Simulation locale Orange Money : code secret 4–6 chiffres (en prod le PIN est côté Orange / USSD uniquement). */
+export const liveWalletMockOrangeConfirmSchema = z.object({
+  transactionId: z.string().uuid(),
+  pin: z.string().regex(/^\d{4,6}$/),
+});
+
 export const liveCreatorSubscribeSchema = z.object({
   amount: z.coerce.number().positive().max(1e9).optional(),
 });

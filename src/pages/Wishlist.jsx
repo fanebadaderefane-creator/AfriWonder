@@ -52,7 +52,7 @@ export default function Wishlist() {
       await api.entities.Wishlist.update(wishlist.id, updates);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['wishlist']);
+      queryClient.invalidateQueries({ queryKey: ['wishlist'] });
     }
   });
 
@@ -62,7 +62,7 @@ export default function Wishlist() {
       await api.entities.Wishlist.update(wishlist.id, { products: updated });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['wishlist']);
+      queryClient.invalidateQueries({ queryKey: ['wishlist'] });
       toast.success('Produit retiré de la liste');
     }
   });

@@ -180,8 +180,18 @@
         height: 100%;
         background-color: #020617;
         color: #ffffff;
-        -webkit-text-size-adjust: 100%;
-        text-size-adjust: 100%;
+        -moz-text-size-adjust: auto;
+      }
+      @supports (text-size-adjust: auto) {
+        html, body {
+          text-size-adjust: auto;
+        }
+      }
+      /* WebKit : 100% — encapsulé pour éviter les avertissements Firefox sur la valeur */
+      @supports (-webkit-text-size-adjust: 100%) {
+        html, body {
+          -webkit-text-size-adjust: 100%;
+        }
       }
       #root {
         min-height: 100%;

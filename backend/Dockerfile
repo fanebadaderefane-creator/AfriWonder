@@ -31,6 +31,9 @@ COPY --from=builder /app/package*.json ./
 # Garder uniquement les dépendances de production
 RUN npm prune --production
 
+RUN chown -R node:node /app
+USER node
+
 EXPOSE 3000
 
 # Healthcheck (Node CJS -e)

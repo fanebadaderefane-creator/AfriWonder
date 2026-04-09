@@ -42,9 +42,29 @@ function formatDurationSec(sec) {
 function directStatusLabel(status) {
   const s = String(status || '').toLowerCase();
   if (s === 'completed') return 'Terminé';
-  if (s === 'pending') return 'En attente / manqué';
-  if (s === 'cancelled' || s === 'rejected') return 'Annulé';
+  if (s === 'pending' || s === 'missed') return 'Manqué';
+  if (s === 'declined' || s === 'rejected') return 'Refusé';
+  if (s === 'cancelled') return 'Annulé';
+  if (s === 'ended') return 'Terminé';
+  if (s === 'active') return 'En cours';
   return status || '—';
+}
+
+function statusTone(status) {
+  const s = String(status || '').toLowerCase();
+  if (s === 'pending' || s === 'missed' || s === 'declined' || s === 'rejected') {
+    return 'bg-rose-500/20 text-rose-200';
+  }
+  return 'bg-teal-500/20 text-teal-100';
+}
+
+function generateCallId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+    const rand = Math.floor(Math.random() * 16);
+    const value = char === 'x' ? rand : (rand & 0x3) | 0x8;
+    return value.toString(16);
+  });
 }
 
 export function MessagingCdcCallsPanel() {
@@ -153,7 +173,7 @@ export function MessagingCdcCallsPanel() {
             const d = refDate ? new Date(refDate) : null;
             const whenLabel =
               d && !Number.isNaN(d.getTime()) ? format(d, "d MMM yyyy 'à' HH:mm", { locale: fr }) : '—';
-            const isMissed = row.channel === 'dm' && String(row.status).toLowerCase() === 'pending';
+            const canRecallDm = row.channel === 'dm' && row.peer?.id;
             const title =
               row.channel === 'group'
                 ? `Groupe · ${row.group?.name || 'Salon'}`
@@ -165,9 +185,7 @@ export function MessagingCdcCallsPanel() {
                 className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.035] px-3.5 py-3"
               >
                 <div
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                    isMissed ? 'bg-rose-500/20 text-rose-200' : 'bg-teal-500/20 text-teal-100'
-                  }`}
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${statusTone(row.status)}`}
                 >
                   {row.channel === 'group' ? <Users className="h-5 w-5" /> : <Phone className="h-5 w-5" />}
                 </div>
@@ -177,6 +195,42 @@ export function MessagingCdcCallsPanel() {
                     {whenLabel} · {formatDurationSec(row.duration_sec)} · {sub}
                   </p>
                 </div>
+                {canRecallDm ? (
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-9 w-9 rounded-xl text-white/70 hover:bg-white/[0.09] hover:text-white"
+                      onClick={() =>
+                        navigate(
+                          `${createPageUrl('DirectCall')}?mode=outgoing&receiverId=${encodeURIComponent(
+                            row.peer.id
+                          )}&type=audio&callId=${generateCallId()}`
+                        )
+                      }
+                      aria-label="Rappeler en audio"
+                    >
+                      <Phone className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-9 w-9 rounded-xl text-white/70 hover:bg-white/[0.09] hover:text-white"
+                      onClick={() =>
+                        navigate(
+                          `${createPageUrl('DirectCall')}?mode=outgoing&receiverId=${encodeURIComponent(
+                            row.peer.id
+                          )}&type=video&callId=${generateCallId()}`
+                        )
+                      }
+                      aria-label="Rappeler en vidéo"
+                    >
+                      <Video className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : null}
               </li>
             );
           })}
