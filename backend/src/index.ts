@@ -117,10 +117,21 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 if (process.env.NODE_ENV === 'production' && !process.env.REDIS_URL?.trim()) {
-  logger.error(
-    'REDIS_URL est obligatoire en production (rate limiting partagé, révocation JWT, cache auth, Socket.io multi-nœuds).'
-  );
-  process.exit(1);
+  const allowSingleInstance =
+    process.env.ALLOW_NO_REDIS_IN_PRODUCTION === 'true' ||
+    process.env.ALLOW_NO_REDIS_IN_PRODUCTION === '1';
+  if (allowSingleInstance) {
+    logger.warn(
+      'REDIS_URL absent — démarrage en mode instance unique (rate limit / quotas en mémoire). ' +
+        'Ne pas utiliser avec plusieurs réplicas Render ni Socket.io cluster : définir REDIS_URL ou retirer ALLOW_NO_REDIS_IN_PRODUCTION.'
+    );
+  } else {
+    logger.error(
+      'REDIS_URL est obligatoire en production (rate limiting partagé, révocation JWT, cache auth, Socket.io multi-nœuds). ' +
+        'Instance unique sans Redis : définir ALLOW_NO_REDIS_IN_PRODUCTION=true sur Render (voir message warn au boot).'
+    );
+    process.exit(1);
+  }
 }
 
 // Pays CEDEAO (optionnel) – APP_COUNTRY=ML|SN|CI|BF

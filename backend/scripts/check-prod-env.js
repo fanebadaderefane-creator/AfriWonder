@@ -11,12 +11,16 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
+const allowNoRedis =
+  process.env.ALLOW_NO_REDIS_IN_PRODUCTION === 'true' ||
+  process.env.ALLOW_NO_REDIS_IN_PRODUCTION === '1';
+
 const required = [
   'NODE_ENV',
   'DATABASE_URL',
   'JWT_SECRET',
   'CORS_ORIGIN',
-  'REDIS_URL',
+  ...(allowNoRedis ? [] : ['REDIS_URL']),
 ];
 
 const recommended = [
@@ -46,6 +50,11 @@ required.forEach((key) => {
   console.log(ok ? '  OK' : '  MANQUE', key);
   if (!ok) failed++;
 });
+
+if (allowNoRedis) {
+  const redis = process.env.REDIS_URL && String(process.env.REDIS_URL).trim().length > 0;
+  console.log(redis ? '  OK' : '  (levée)', 'REDIS_URL', '(ALLOW_NO_REDIS_IN_PRODUCTION — instance unique)');
+}
 
 console.log('\n--- Recommandé ---');
 recommended.forEach((key) => {
