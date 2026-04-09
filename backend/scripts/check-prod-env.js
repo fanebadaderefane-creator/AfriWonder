@@ -14,13 +14,17 @@ dotenv.config({ path: path.join(__dirname, '..', '.env') });
 const allowNoRedis =
   process.env.ALLOW_NO_REDIS_IN_PRODUCTION === 'true' ||
   process.env.ALLOW_NO_REDIS_IN_PRODUCTION === '1';
+const renderLenientRedis =
+  process.env.RENDER === 'true' &&
+  process.env.FORCE_REDIS_IN_PRODUCTION !== 'true' &&
+  process.env.FORCE_REDIS_IN_PRODUCTION !== '1';
 
 const required = [
   'NODE_ENV',
   'DATABASE_URL',
   'JWT_SECRET',
   'CORS_ORIGIN',
-  ...(allowNoRedis ? [] : ['REDIS_URL']),
+  ...(allowNoRedis || renderLenientRedis ? [] : ['REDIS_URL']),
 ];
 
 const recommended = [
@@ -51,9 +55,10 @@ required.forEach((key) => {
   if (!ok) failed++;
 });
 
-if (allowNoRedis) {
+if (allowNoRedis || renderLenientRedis) {
   const redis = process.env.REDIS_URL && String(process.env.REDIS_URL).trim().length > 0;
-  console.log(redis ? '  OK' : '  (levée)', 'REDIS_URL', '(ALLOW_NO_REDIS_IN_PRODUCTION — instance unique)');
+  const tag = allowNoRedis ? 'ALLOW_NO_REDIS_IN_PRODUCTION' : 'RENDER (tolérance sans Redis)';
+  console.log(redis ? '  OK' : '  (levée)', 'REDIS_URL', `(${tag} — instance unique / une dyno)`);
 }
 
 console.log('\n--- Recommandé ---');

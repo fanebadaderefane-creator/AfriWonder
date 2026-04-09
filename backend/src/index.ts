@@ -117,18 +117,33 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 if (process.env.NODE_ENV === 'production' && !process.env.REDIS_URL?.trim()) {
-  const allowSingleInstance =
+  const forceRedis =
+    process.env.FORCE_REDIS_IN_PRODUCTION === 'true' ||
+    process.env.FORCE_REDIS_IN_PRODUCTION === '1';
+  const explicitNoRedis =
     process.env.ALLOW_NO_REDIS_IN_PRODUCTION === 'true' ||
     process.env.ALLOW_NO_REDIS_IN_PRODUCTION === '1';
-  if (allowSingleInstance) {
+  /** Render définit RENDER=true ; sans Redis, une seule dyno utilise encore des compteurs mémoire. */
+  const renderImpliedSingleInstance = process.env.RENDER === 'true' && !forceRedis;
+
+  if (forceRedis) {
+    logger.error(
+      'FORCE_REDIS_IN_PRODUCTION est activé mais REDIS_URL est absent — définir REDIS_URL (ex. add-on Render Redis / Upstash).',
+    );
+    process.exit(1);
+  }
+
+  if (explicitNoRedis || renderImpliedSingleInstance) {
     logger.warn(
-      'REDIS_URL absent — démarrage en mode instance unique (rate limit / quotas en mémoire). ' +
-        'Ne pas utiliser avec plusieurs réplicas Render ni Socket.io cluster : définir REDIS_URL ou retirer ALLOW_NO_REDIS_IN_PRODUCTION.'
+      explicitNoRedis
+        ? 'REDIS_URL absent — ALLOW_NO_REDIS_IN_PRODUCTION (quotas en mémoire, ne pas scaler sans Redis).'
+        : 'REDIS_URL absent sur Render — démarrage avec quotas en mémoire. ' +
+            'Avant plusieurs instances / Socket.io adaptateur Redis : ajouter REDIS_URL ou définir FORCE_REDIS_IN_PRODUCTION=1 pour échouer explicitement sans Redis.',
     );
   } else {
     logger.error(
-      'REDIS_URL est obligatoire en production (rate limiting partagé, révocation JWT, cache auth, Socket.io multi-nœuds). ' +
-        'Instance unique sans Redis : définir ALLOW_NO_REDIS_IN_PRODUCTION=true sur Render (voir message warn au boot).'
+      'REDIS_URL est obligatoire en production (rate limiting partagé, JWT, Socket.io multi-nœuds). ' +
+        'Instance unique : ALLOW_NO_REDIS_IN_PRODUCTION=true, ou déployez sur Render (RENDER=true) pour tolérance par défaut.',
     );
     process.exit(1);
   }
