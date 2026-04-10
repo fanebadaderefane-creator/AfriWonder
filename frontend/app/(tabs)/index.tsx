@@ -10,6 +10,7 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import ShareSheet from '../../src/components/ShareSheet';
 import ReportModal from '../../src/components/ReportModal';
+import { Audio } from 'expo-av';
 
 const { width, height } = Dimensions.get('window');
 
