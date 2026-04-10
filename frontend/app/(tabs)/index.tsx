@@ -343,10 +343,24 @@ const ShareModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ visib
 // Comments Modal
 const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: string; commentsCount: number }> = ({ visible, onClose, videoId, commentsCount }) => {
   const insets = useSafeAreaInsets();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
+  const [totalComments, setTotalComments] = useState(commentsCount);
+
+  const formatTimeAgo = (dateStr: string) => {
+    const now = new Date();
+    const date = new Date(dateStr);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'A l\'instant';
+    if (diffMin < 60) return `${diffMin} min`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return `${diffH}h`;
+    const diffD = Math.floor(diffH / 24);
+    return diffD < 30 ? `${diffD}j` : `${Math.floor(diffD / 30)} mois`;
+  };
 
   useEffect(() => {
     if (visible) loadComments();
@@ -356,24 +370,75 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
     setLoading(true);
     try {
       const response = await apiClient.get(`/videos/${videoId}/comments`);
-      setComments(response.data.comments || []);
+      const data = response.data?.data || response.data;
+      const backendComments = data?.comments || [];
+      if (backendComments.length > 0) {
+        const transformed: Comment[] = backendComments.map((c: any) => {
+          const nameParts = (c.user_name || c.user?.full_name || '').split(' ');
+          return {
+            id: c.id,
+            text: c.content || '',
+            likes: c.likes_count || 0,
+            isLiked: false,
+            user: {
+              id: c.user_id || c.user?.id || '',
+              firstName: nameParts[0] || '',
+              lastName: nameParts.slice(1).join(' ') || '',
+              avatar: c.user_avatar || c.user?.profile_image || 'https://i.pravatar.cc/150?img=50',
+            },
+            createdAt: formatTimeAgo(c.created_at),
+          };
+        });
+        setComments(transformed);
+        setTotalComments(data?.pagination?.total || backendComments.length);
+      } else {
+        setComments([]);
+        setTotalComments(0);
+      }
     } catch {
       setComments([
-        { id: '1', text: 'Super video! C\'est magnifique', likes: 24, isLiked: false, user: { id: 'u1', firstName: 'Aminata', lastName: 'D', avatar: 'https://i.pravatar.cc/150?img=1' }, createdAt: '2h' },
-        { id: '2', text: 'J\'adore la musique!', likes: 12, isLiked: true, user: { id: 'u2', firstName: 'Moussa', lastName: 'N', avatar: 'https://i.pravatar.cc/150?img=2' }, createdAt: '3h' },
-        { id: '3', text: 'Magnifique, le Mali est beau', likes: 45, isLiked: false, user: { id: 'u3', firstName: 'Awa', lastName: 'K', avatar: 'https://i.pravatar.cc/150?img=3' }, createdAt: '5h' },
-        { id: '4', text: 'Comment faire pareil? Tutoriel svp!', likes: 8, isLiked: false, user: { id: 'u4', firstName: 'Ibrahim', lastName: 'T', avatar: 'https://i.pravatar.cc/150?img=4' }, createdAt: '1j' },
-        { id: '5', text: 'Partage en Cote d\'Ivoire aussi', likes: 5, isLiked: false, user: { id: 'u5', firstName: 'Fanta', lastName: 'C', avatar: 'https://i.pravatar.cc/150?img=5' }, createdAt: '1j' },
+        { id: '1', text: 'Super video!', likes: 24, isLiked: false, user: { id: 'u1', firstName: 'Aminata', lastName: 'D', avatar: 'https://i.pravatar.cc/150?img=1' }, createdAt: '2h' },
       ]);
     } finally { setLoading(false); }
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!newComment.trim()) return;
-    const mock: Comment = { id: Date.now().toString(), text: newComment, likes: 0, isLiked: false, user: { id: 'me', firstName: 'Moi', lastName: '', avatar: 'https://i.pravatar.cc/150?img=10' }, createdAt: 'A l\'instant' };
-    setComments([mock, ...comments]);
+    const commentText = newComment.trim();
     setNewComment('');
+
+    // Optimistic add
+    const optimistic: Comment = {
+      id: Date.now().toString(),
+      text: commentText,
+      likes: 0,
+      isLiked: false,
+      user: {
+        id: user?.id || 'me',
+        firstName: user?.firstName || user?.full_name?.split(' ')[0] || 'Moi',
+        lastName: user?.lastName || '',
+        avatar: user?.avatar || user?.profile_image || 'https://i.pravatar.cc/150?img=10',
+      },
+      createdAt: 'A l\'instant',
+    };
+    setComments(prev => [optimistic, ...prev]);
+    setTotalComments(prev => prev + 1);
+
+    try {
+      const response = await apiClient.post(`/videos/${videoId}/comment`, { content: commentText });
+      const data = response.data?.data || response.data;
+      if (data?.id) {
+        // Replace optimistic with real
+        setComments(prev => prev.map(c => c.id === optimistic.id ? { ...c, id: data.id } : c));
+      }
+    } catch {
+      // Remove optimistic on failure
+      setComments(prev => prev.filter(c => c.id !== optimistic.id));
+      setTotalComments(prev => prev - 1);
+    }
   };
+
+  const userAvatar = user?.avatar || user?.profile_image || 'https://i.pravatar.cc/150?img=10';
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -381,12 +446,17 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.commentsContainer, { paddingBottom: insets.bottom }]}>
           <View style={styles.commentsHeader}>
             <View style={styles.shareHandle} />
-            <Text style={styles.commentsTitle}>{commentsCount} commentaires</Text>
+            <Text style={styles.commentsTitle}>{totalComments} commentaires</Text>
             <TouchableOpacity onPress={onClose}><Ionicons name="close" size={24} color={Colors.text} /></TouchableOpacity>
           </View>
           {loading ? <ActivityIndicator size="large" color={Colors.primary} style={{ padding: 40 }} /> : (
             <ScrollView style={styles.commentsList} showsVerticalScrollIndicator={false}>
-              {comments.map((c) => (
+              {comments.length === 0 ? (
+                <View style={{ alignItems: 'center', padding: 40 }}>
+                  <Ionicons name="chatbubble-outline" size={40} color={Colors.textMuted} />
+                  <Text style={{ color: Colors.textMuted, marginTop: 8 }}>Soyez le premier a commenter</Text>
+                </View>
+              ) : comments.map((c) => (
                 <View key={c.id} style={styles.commentItem}>
                   <Image source={{ uri: c.user.avatar }} style={styles.commentAvatar} />
                   <View style={styles.commentContent}>
@@ -406,7 +476,7 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
             </ScrollView>
           )}
           <View style={styles.commentInput}>
-            <Image source={{ uri: 'https://i.pravatar.cc/150?img=10' }} style={styles.commentInputAvatar} />
+            <Image source={{ uri: userAvatar }} style={styles.commentInputAvatar} />
             <TextInput style={styles.commentTextInput} placeholder="Ajouter un commentaire..." placeholderTextColor={Colors.textMuted} value={newComment} onChangeText={setNewComment} multiline />
             <TouchableOpacity style={[styles.commentSendBtn, !newComment.trim() && { opacity: 0.4 }]} onPress={handleSend} disabled={!newComment.trim()}>
               <Ionicons name="send" size={18} color={Colors.text} />
@@ -428,6 +498,9 @@ export default function FeedScreen() {
   const [selectedVideoId, setSelectedVideoId] = useState('');
   const [selectedVideoComments, setSelectedVideoComments] = useState(0);
   const insets = useSafeAreaInsets();
+
+  const videosRef = useRef<Video[]>(MOCK_VIDEOS);
+  useEffect(() => { videosRef.current = videos; }, [videos]);
 
   useEffect(() => { loadFeed(); }, []);
 
@@ -471,23 +544,54 @@ export default function FeedScreen() {
   };
 
   const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
-    if (viewableItems.length > 0) setCurrentIndex(viewableItems[0].index);
+    if (viewableItems.length > 0) {
+      const newIndex = viewableItems[0].index;
+      setCurrentIndex(newIndex);
+      // Track view on backend
+      const video = videosRef.current[newIndex];
+      if (video) {
+        apiClient.post(`/videos/${video.id}/view`).catch(() => {});
+      }
+    }
   }, []);
 
-  const handleLike = (videoId: string) => {
+  const handleLike = async (videoId: string) => {
+    // Optimistic update
     setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isLiked: !v.isLiked, likes: v.isLiked ? v.likes - 1 : v.likes + 1 } : v));
+    try {
+      const response = await apiClient.post(`/videos/${videoId}/like`);
+      const data = response.data?.data || response.data;
+      // Sync with server state
+      setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isLiked: data.liked } : v));
+    } catch { /* keep optimistic state */ }
   };
 
-  const handleDoubleTapLike = (videoId: string) => {
-    setVideos(prev => prev.map(v => v.id === videoId && !v.isLiked ? { ...v, isLiked: true, likes: v.likes + 1 } : v));
+  const handleDoubleTapLike = async (videoId: string) => {
+    const video = videos.find(v => v.id === videoId);
+    if (video && !video.isLiked) {
+      setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isLiked: true, likes: v.likes + 1 } : v));
+      try { await apiClient.post(`/videos/${videoId}/like`); } catch {}
+    }
   };
 
   const handleSave = (videoId: string) => {
+    // Local only - no backend endpoint
     setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isSaved: !v.isSaved } : v));
   };
 
-  const handleFollow = (userId: string) => {
+  const handleFollow = async (userId: string) => {
+    // Optimistic update
     setVideos(prev => prev.map(v => v.user.id === userId ? { ...v, user: { ...v.user, isFollowing: !v.user.isFollowing } } : v));
+    try {
+      const response = await apiClient.post(`/users/${userId}/follow`);
+      const data = response.data?.data || response.data;
+      setVideos(prev => prev.map(v => v.user.id === userId ? { ...v, user: { ...v.user, isFollowing: data.following } } : v));
+    } catch { /* keep optimistic state */ }
+  };
+
+  const handleShare = async (videoId: string) => {
+    setShareVisible(true);
+    try { await apiClient.post(`/videos/${videoId}/share`); } catch {}
   };
 
   const openComments = (videoId: string, count: number) => {
@@ -527,7 +631,7 @@ export default function FeedScreen() {
             onLike={() => handleLike(item.id)}
             onDoubleTapLike={() => handleDoubleTapLike(item.id)}
             onComment={() => openComments(item.id, item.comments)}
-            onShare={() => setShareVisible(true)}
+            onShare={() => handleShare(item.id)}
             onSave={() => handleSave(item.id)}
             onFollow={() => handleFollow(item.user.id)}
           />
