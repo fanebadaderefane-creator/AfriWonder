@@ -80,22 +80,12 @@ export default function ProjectDetailScreen() {
   };
 
   const handleContribute = (reward?: Reward) => {
-    const amount = reward ? reward.amount : 5000;
-    Alert.alert(
-      'Contribuer',
-      `Contribuer ${formatFullCFA(amount)} a ce projet ?\n\nChoisissez votre moyen de paiement :`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Orange Money',
-          onPress: () => router.push({ pathname: '/checkout/orange-money', params: { amount: String(amount) } }),
-        },
-        {
-          text: 'Wave',
-          onPress: () => router.push({ pathname: '/checkout/wave', params: { amount: String(amount) } }),
-        },
-      ]
-    );
+    const params: Record<string, string> = { projectId: project.id };
+    if (reward) {
+      params.rewardId = reward.id;
+      params.rewardAmount = String(reward.amount);
+    }
+    router.push({ pathname: '/crowdfunding/contribute' as any, params });
   };
 
   const TABS: { key: Tab; label: string; icon: string }[] = [
