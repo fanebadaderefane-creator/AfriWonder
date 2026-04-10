@@ -1408,6 +1408,198 @@ async def seed_monetization_data():
         for live in sample_lives:
             await db.mobile_lives.insert_one(live)
 
+
+# ==================== NOTIFICATIONS ====================
+
+class RegisterDeviceRequest(BaseModel):
+    push_token: str
+    platform: str = "expo"  # expo, ios, android
+
+@app.post("/api/mobile/notifications/register")
+async def register_device(data: RegisterDeviceRequest, user_id: str = Depends(verify_token)):
+    """Enregistrer le token push d'un appareil"""
+    await db.mobile_devices.update_one(
+        {"user_id": user_id},
+        {"$set": {"push_token": data.push_token, "platform": data.platform, "updated_at": datetime.utcnow().isoformat()}},
+        upsert=True
+    )
+    return {"success": True}
+
+@app.get("/api/mobile/notifications")
+async def get_notifications(user_id: str = Depends(verify_token), page: int = 1, limit: int = 30):
+    """Récupérer les notifications"""
+    skip = (page - 1) * limit
+    notifs = await db.mobile_notifications.find({"user_id": user_id}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    for n in notifs:
+        n.pop("_id", None)
+    unread = await db.mobile_notifications.count_documents({"user_id": user_id, "is_read": False})
+    return {"success": True, "data": {"notifications": notifs, "unread_count": unread}}
+
+@app.post("/api/mobile/notifications/read")
+async def mark_notifications_read(user_id: str = Depends(verify_token)):
+    """Marquer toutes les notifications comme lues"""
+    await db.mobile_notifications.update_many({"user_id": user_id, "is_read": False}, {"$set": {"is_read": True}})
+    return {"success": True}
+
+async def create_notification(user_id: str, notif_type: str, title: str, body: str, data: dict = None):
+    """Helper: créer une notification"""
+    notif = {
+        "id": str(uuid.uuid4()), "user_id": user_id, "type": notif_type,
+        "title": title, "body": body, "data": data or {},
+        "is_read": False, "created_at": datetime.utcnow().isoformat(),
+    }
+    await db.mobile_notifications.insert_one(notif)
+
+# ==================== RECHERCHE GLOBALE ====================
+
+@app.get("/api/mobile/search")
+async def global_search(q: str, user_id: str = Depends(verify_token), search_type: str = "all"):
+    """Recherche globale : utilisateurs, vidéos, produits, hashtags"""
+    results = {"users": [], "videos": [], "products": [], "hashtags": [], "posts": []}
+    query_lower = q.lower()
+
+    # Search PWA backend for users, videos, products
+    async with httpx.AsyncClient(timeout=15.0) as hc:
+        if search_type in ["all", "users"]:
+            try:
+                r = await hc.get(f"{PWA_API_BASE}/users?search={q}&limit=10", headers=PWA_ANTI_BOT_HEADERS)
+                if r.status_code == 200:
+                    data = r.json().get("data", {})
+                    results["users"] = data.get("users", [])[:10]
+            except: pass
+
+        if search_type in ["all", "videos"]:
+            try:
+                r = await hc.get(f"{PWA_API_BASE}/videos?search={q}&limit=10", headers=PWA_ANTI_BOT_HEADERS)
+                if r.status_code == 200:
+                    data = r.json().get("data", {})
+                    results["videos"] = data.get("videos", [])[:10]
+            except: pass
+
+        if search_type in ["all", "products"]:
+            try:
+                r = await hc.get(f"{PWA_API_BASE}/products?search={q}&limit=10", headers=PWA_ANTI_BOT_HEADERS)
+                if r.status_code == 200:
+                    data = r.json().get("data", {})
+                    results["products"] = data.get("products", [])[:10]
+            except: pass
+
+    # Search local posts
+    if search_type in ["all", "posts"]:
+        posts = await db.mobile_posts.find({"$or": [
+            {"text": {"$regex": q, "$options": "i"}},
+            {"title": {"$regex": q, "$options": "i"}},
+            {"hashtags": {"$regex": q, "$options": "i"}},
+        ]}).limit(10).to_list(10)
+        for p in posts:
+            p.pop("_id", None)
+        results["posts"] = posts
+
+    # Extract hashtags from results
+    all_tags = set()
+    for v in results.get("videos", []):
+        for tag in v.get("hashtags", []):
+            if query_lower in tag.lower():
+                all_tags.add(tag)
+    results["hashtags"] = list(all_tags)[:10]
+
+    return {"success": True, "data": results}
+
+# ==================== FOLLOW / ABONNÉS ====================
+
+@app.post("/api/mobile/follow/{target_id}")
+async def follow_user(target_id: str, user_id: str = Depends(verify_token)):
+    """Suivre un utilisateur"""
+    if target_id == user_id:
+        raise HTTPException(status_code=400, detail="Vous ne pouvez pas vous suivre vous-même")
+    existing = await db.mobile_follows.find_one({"follower_id": user_id, "following_id": target_id})
+    if existing:
+        raise HTTPException(status_code=400, detail="Déjà abonné")
+
+    await db.mobile_follows.insert_one({
+        "id": str(uuid.uuid4()), "follower_id": user_id, "following_id": target_id,
+        "created_at": datetime.utcnow().isoformat(),
+    })
+    # Notify
+    await create_notification(target_id, "follow", "Nouvel abonné", "Quelqu'un vous suit", {"follower_id": user_id})
+    return {"success": True, "data": {"following": True}}
+
+@app.delete("/api/mobile/follow/{target_id}")
+async def unfollow_user(target_id: str, user_id: str = Depends(verify_token)):
+    """Se désabonner d'un utilisateur"""
+    await db.mobile_follows.delete_one({"follower_id": user_id, "following_id": target_id})
+    return {"success": True, "data": {"following": False}}
+
+@app.get("/api/mobile/follow/{target_id}/status")
+async def follow_status(target_id: str, user_id: str = Depends(verify_token)):
+    """Vérifier si on suit un utilisateur"""
+    existing = await db.mobile_follows.find_one({"follower_id": user_id, "following_id": target_id})
+    return {"success": True, "data": {"following": bool(existing)}}
+
+@app.get("/api/mobile/followers/{target_id}")
+async def get_followers(target_id: str, user_id: str = Depends(verify_token)):
+    """Liste des abonnés"""
+    followers = await db.mobile_follows.find({"following_id": target_id}).to_list(100)
+    count = len(followers)
+    return {"success": True, "data": {"count": count, "followers": [f["follower_id"] for f in followers]}}
+
+@app.get("/api/mobile/following/{target_id}")
+async def get_following(target_id: str, user_id: str = Depends(verify_token)):
+    """Liste des abonnements"""
+    following = await db.mobile_follows.find({"follower_id": target_id}).to_list(100)
+    count = len(following)
+    return {"success": True, "data": {"count": count, "following": [f["following_id"] for f in following]}}
+
+# ==================== SIGNALER / BLOQUER ====================
+
+class ReportRequest(BaseModel):
+    target_type: str  # user, video, post, comment, message
+    target_id: str
+    reason: str  # spam, harassment, nudity, violence, scam, other
+    description: Optional[str] = None
+
+class BlockRequest(BaseModel):
+    blocked_user_id: str
+
+@app.post("/api/mobile/report")
+async def report_content(data: ReportRequest, user_id: str = Depends(verify_token)):
+    """Signaler du contenu inapproprié"""
+    report = {
+        "id": str(uuid.uuid4()), "reporter_id": user_id,
+        "target_type": data.target_type, "target_id": data.target_id,
+        "reason": data.reason, "description": data.description,
+        "status": "pending", "created_at": datetime.utcnow().isoformat(),
+    }
+    await db.mobile_reports.insert_one(report)
+    return {"success": True, "data": {"report_id": report["id"], "message": "Merci pour votre signalement. Notre équipe va examiner ce contenu."}}
+
+@app.post("/api/mobile/block")
+async def block_user(data: BlockRequest, user_id: str = Depends(verify_token)):
+    """Bloquer un utilisateur"""
+    if data.blocked_user_id == user_id:
+        raise HTTPException(status_code=400, detail="Action invalide")
+    await db.mobile_blocks.update_one(
+        {"blocker_id": user_id, "blocked_id": data.blocked_user_id},
+        {"$set": {"created_at": datetime.utcnow().isoformat()}},
+        upsert=True
+    )
+    # Auto unfollow
+    await db.mobile_follows.delete_one({"follower_id": user_id, "following_id": data.blocked_user_id})
+    await db.mobile_follows.delete_one({"follower_id": data.blocked_user_id, "following_id": user_id})
+    return {"success": True, "data": {"message": "Utilisateur bloqué"}}
+
+@app.delete("/api/mobile/block/{blocked_id}")
+async def unblock_user(blocked_id: str, user_id: str = Depends(verify_token)):
+    """Débloquer un utilisateur"""
+    await db.mobile_blocks.delete_one({"blocker_id": user_id, "blocked_id": blocked_id})
+    return {"success": True, "data": {"message": "Utilisateur débloqué"}}
+
+@app.get("/api/mobile/blocked")
+async def get_blocked_users(user_id: str = Depends(verify_token)):
+    """Liste des utilisateurs bloqués"""
+    blocks = await db.mobile_blocks.find({"blocker_id": user_id}).to_list(100)
+    return {"success": True, "data": [b["blocked_id"] for b in blocks]}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)
