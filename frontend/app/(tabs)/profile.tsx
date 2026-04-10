@@ -241,6 +241,7 @@ export default function ProfileScreen() {
             { icon: 'receipt', label: 'Commandes', route: '/orders', color: '#4ECDC4' },
             { icon: 'storefront', label: 'Ma boutique', route: '/seller', color: '#9B59B6' },
             { icon: 'gift', label: 'Parrainage', route: '/referrals', color: '#FF6B6B' },
+            { icon: 'language', label: 'Langue', route: '/settings/language', color: '#3498DB' },
           ].map((action, i) => (
             <TouchableOpacity key={i} style={styles.quickAction} onPress={() => router.push(action.route as any)}>
               <View style={[styles.quickActionIcon, { backgroundColor: action.color + '18' }]}>

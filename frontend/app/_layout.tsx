@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { OfflineBanner } from '../src/components/common/OfflineBanner';
 import { Colors } from '../src/theme/colors';
 import { View, StyleSheet } from 'react-native';
+import { LanguageProvider } from '../src/i18n/LanguageContext';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,7 +27,8 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={styles.container}>
-      <QueryClientProvider client={queryClient}>
+      <LanguageProvider>
+        <QueryClientProvider client={queryClient}>
         <View style={styles.container}>
           <StatusBar style="light" />
           <OfflineBanner />
@@ -73,6 +75,7 @@ export default function RootLayout() {
           </Stack>
         </View>
       </QueryClientProvider>
+      </LanguageProvider>
     </GestureHandlerRootView>
   );
 }
