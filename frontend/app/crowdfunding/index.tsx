@@ -48,13 +48,18 @@ export default function CrowdfundingHomeScreen() {
           shortDescription: p.description || '',
           fullDescription: p.description || '',
           category: p.category || 'general',
-          goalAmount: p.goal_amount || 0,
-          currentAmount: p.current_amount || 0,
+          goal: p.goal_amount || 0,
+          raised: p.current_amount || 0,
           currency: p.currency || 'XOF',
           backers: p.contributors_count || 0,
           daysLeft: Math.max(0, Math.ceil((new Date(p.end_date).getTime() - Date.now()) / 86400000)),
-          creatorName: p.creator_name || 'Créateur',
-          creatorAvatar: p.creator_avatar || `https://i.pravatar.cc/150?u=${p.creator_id}`,
+          creator: {
+            id: p.creator_id || '',
+            name: p.creator_name || 'Créateur AfriWonder',
+            avatar: p.creator_avatar || `https://i.pravatar.cc/150?u=${p.creator_id}`,
+            location: 'Bamako, Mali',
+            isVerified: true,
+          },
           image: p.image_url || 'https://picsum.photos/600/400?random=300',
           images: [p.image_url || 'https://picsum.photos/600/400?random=300'],
           isVerified: true,
@@ -90,7 +95,7 @@ export default function CrowdfundingHomeScreen() {
     return 0;
   });
 
-  const featuredProject = projects.find((p) => p.isSponsored && p.isVerified) || projects[0];
+  const featuredProject = projects.find((p) => p.isSponsored && p.isVerified) || (projects.length > 0 ? projects[0] : null);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -375,9 +380,9 @@ function ProjectCard({ project }: { project: CrowdfundingProject }) {
         {/* Footer */}
         <View style={styles.cardFooter}>
           <View style={styles.cardCreator}>
-            <Image source={{ uri: project.creator.avatar }} style={styles.cardCreatorAvatar} />
-            <Text style={styles.cardCreatorName} numberOfLines={1}>{project.creator.name}</Text>
-            {project.creator.isVerified && (
+            <Image source={{ uri: project.creator?.avatar || `https://i.pravatar.cc/150?u=${project.id}` }} style={styles.cardCreatorAvatar} />
+            <Text style={styles.cardCreatorName} numberOfLines={1}>{project.creator?.name || 'Créateur'}</Text>
+            {project.creator?.isVerified && (
               <Ionicons name="checkmark-circle" size={14} color={Colors.primary} />
             )}
           </View>
