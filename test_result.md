@@ -765,6 +765,126 @@ backend:
         agent: "testing"
         comment: "✅ GET /api/mobile/upload/{upload_id}/status working correctly. Returns upload status for chunked video uploads - handles complete, uploading, and not_found states."
 
+  - task: "Start Conversation with Real User"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ POST /api/mobile/conversations/start working correctly. Creates new conversations with real users and implements duplicate detection - returns existing conversation if one already exists between the same participants."
+
+  - task: "React to Message"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ POST /api/mobile/conversations/{conv_id}/messages/{msg_id}/react working correctly. Adds/removes emoji reactions to messages with toggle functionality."
+
+  - task: "Get Message Reactions"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ GET /api/mobile/conversations/{conv_id}/messages/{msg_id}/reactions working correctly. Returns all reactions for a specific message."
+
+  - task: "Delete Message"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ DELETE /api/mobile/conversations/{conv_id}/messages/{msg_id}?delete_for=me working correctly. Supports both 'delete for me' and 'delete for everyone' functionality."
+
+  - task: "Pin Message"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ POST /api/mobile/conversations/{conv_id}/messages/{msg_id}/pin working correctly. Pins/unpins messages with toggle functionality and 30-day expiration."
+
+  - task: "Star Message"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ POST /api/mobile/conversations/{conv_id}/messages/{msg_id}/star working correctly. Stars/unstars messages with toggle functionality for personal bookmarking."
+
+  - task: "Forward Message"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ POST /api/mobile/conversations/{conv_id}/messages/{msg_id}/forward working correctly. Forwards messages to other conversations while preserving original content and metadata."
+
+  - task: "Edit Message"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PUT /api/mobile/conversations/{conv_id}/messages/{msg_id} working correctly. Edits message content with 15-minute time limit enforcement."
+
+  - task: "Get Pinned Messages"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ GET /api/mobile/conversations/{conv_id}/pinned working correctly. Returns all pinned messages for a specific conversation."
+
+  - task: "Get Starred Messages"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ GET /api/mobile/starred-messages working correctly. Returns all starred messages across all conversations for the authenticated user."
+
 frontend:
   - task: "Login to Real Backend (AfriWonder Render)"
     implemented: true
@@ -900,13 +1020,13 @@ frontend:
 
 metadata:
   created_by: "testing_agent"
-  version: "1.3"
-  test_sequence: 4
+  version: "1.4"
+  test_sequence: 5
   run_ui: false
 
 test_plan:
   current_focus:
-    - "All 7 NEW pre-launch feature APIs tested and working correctly"
+    - "All 10 NEW AfriChat Enhanced API endpoints tested and working correctly"
   stuck_tasks: []
   test_all: true
   test_priority: "high_first"
@@ -928,3 +1048,7 @@ agent_communication:
     message: "NEW: Wired 6 pre-launch features into the app UI. New backend APIs to test: (1) GET /api/mobile/search?q=&type= - global search, (2) GET /api/mobile/notifications - user notifications, (3) POST /api/mobile/notifications/read-all - mark all notifications read, (4) POST /api/mobile/report - report content (requires 'target_type', 'target_id', 'reason'), (5) POST /api/mobile/block - block user (requires 'blocked_user_id'), (6) POST /api/mobile/interests - save user interests (requires 'interests' array), (7) GET /api/mobile/interests - get user interests. All require JWT auth. Frontend: ShareSheet, ReportModal, Search, Notifications pages are now wired into the app navigation."
   - agent: "testing"
     message: "🎉 PRE-LAUNCH FEATURES TESTING COMPLETE: Successfully tested ALL 7 new pre-launch feature API endpoints! Results: 11/11 PASS (100% success rate). ✅ WORKING: Global search API (all 5 search types: all, users, videos, products, posts), notifications API, mark notifications read API, report content API, block user API, save interests API, get interests API. MINOR FIXES APPLIED: (1) Fixed notifications/read endpoint response format to include proper 'data' field, (2) Added missing interests endpoints (POST/GET /api/mobile/interests) with MongoDB integration. All APIs use proper JWT authentication with real credentials (abdoulayefane813@gmail.com) and return standardized {'success': true, 'data': {...}} format. Pre-launch features are production-ready!"
+  - agent: "main"
+    message: "MAJOR: AfriChat complete rewrite. Removed ALL mock data from messages/index.tsx and messages/[id].tsx. Now fetches real users from PWA backend via /api/proxy/users. New backend APIs to test: (1) POST /api/mobile/conversations/start - start conversation with real user, (2) POST /api/mobile/conversations/{id}/messages/{msg_id}/react - react with emoji, (3) GET /api/mobile/conversations/{id}/messages/{msg_id}/reactions - get reactions, (4) DELETE /api/mobile/conversations/{id}/messages/{msg_id}?delete_for=me|everyone - delete message, (5) POST /api/mobile/conversations/{id}/messages/{msg_id}/pin - pin/unpin message, (6) POST /api/mobile/conversations/{id}/messages/{msg_id}/star - star/unstar message, (7) POST /api/mobile/conversations/{id}/messages/{msg_id}/forward - forward message, (8) PUT /api/mobile/conversations/{id}/messages/{msg_id} - edit message (15min limit), (9) GET /api/mobile/conversations/{id}/pinned - get pinned messages, (10) GET /api/mobile/starred-messages - get starred messages. Auth: abdoulayefane813@gmail.com / Mali@2025. Test login first via POST /api/proxy/auth/login."
+  - agent: "testing"
+    message: "🎉 AFRICHAT ENHANCED TESTING COMPLETE: Successfully tested ALL 10 new AfriChat Enhanced API endpoints! Results: 12/12 PASS (100% success rate including setup). ✅ WORKING: Start conversation with real user (with duplicate detection), message reactions (add/remove emoji), get reactions, pin/unpin messages (30-day expiration), star/unstar messages, forward messages, edit messages (15-min limit), get pinned messages, get starred messages, delete messages (for me/everyone). All APIs use proper JWT authentication with real credentials (abdoulayefane813@gmail.com) and return standardized {'success': true, 'data': {...}} format. Chat enhancement features are production-ready!"
