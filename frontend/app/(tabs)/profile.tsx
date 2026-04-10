@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Dimensions, FlatList } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ProfileSkeleton } from '../../src/components/SkeletonScreens';
+import apiClient from '../../src/api/client';
 
 const { width } = Dimensions.get('window');
 const GRID_SIZE = (width - 4) / 3;
@@ -52,11 +53,31 @@ export default function ProfileScreen() {
   const { user, isAuthenticated, logout } = useAuthStore();
   const [activeTab, setActiveTab] = useState<ContentTab>('posts');
   const [isLoading, setIsLoading] = useState(true);
+  const [realStats, setRealStats] = useState<{ posts: number; followers: number; following: number } | null>(null);
+  const [realBio, setRealBio] = useState<string | null>(null);
 
-  React.useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1200);
-    return () => clearTimeout(timer);
-  }, []);
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (isAuthenticated && user?.id) {
+        try {
+          const response = await apiClient.get(`/users/${user.id}`);
+          const data = response.data?.data || response.data;
+          if (data?._count) {
+            setRealStats({
+              posts: data._count.videos || 0,
+              followers: data._count.follows || 0,
+              following: data._count.following || 0,
+            });
+          }
+          if (data?.bio) setRealBio(data.bio);
+        } catch (err) {
+          console.log('Could not load full profile', err);
+        }
+      }
+      setIsLoading(false);
+    };
+    loadProfile();
+  }, [isAuthenticated, user?.id]);
 
   const profileData = isAuthenticated && user ? {
     ...MOCK_USER,
@@ -64,11 +85,12 @@ export default function ProfileScreen() {
     lastName: user.lastName || user.full_name?.split(' ').slice(1).join(' ') || MOCK_USER.lastName,
     username: user.username || MOCK_USER.username,
     avatar: user.avatar || user.profile_image || MOCK_USER.avatar,
-    bio: user.bio || MOCK_USER.bio,
+    bio: realBio || user.bio || MOCK_USER.bio,
+    isVerified: false,
     stats: {
-      posts: user.videosCount || MOCK_USER.stats.posts,
-      followers: user.followers || MOCK_USER.stats.followers,
-      following: user.following || MOCK_USER.stats.following,
+      posts: realStats?.posts ?? user.videosCount ?? MOCK_USER.stats.posts,
+      followers: realStats?.followers ?? user.followers ?? MOCK_USER.stats.followers,
+      following: realStats?.following ?? user.following ?? MOCK_USER.stats.following,
       likes: MOCK_USER.stats.likes,
     },
   } : MOCK_USER;
