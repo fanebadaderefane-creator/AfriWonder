@@ -4,8 +4,9 @@ Le backend PWA (afriwonder.onrender.com) gère: auth, vidéos, produits, notific
 Ce backend gère les fonctionnalités mobile-spécifiques: messaging, wallet, upload
 """
 
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, timedelta
@@ -14,6 +15,7 @@ import jwt
 import hashlib
 from dotenv import load_dotenv
 import os
+import aiofiles
 from motor.motor_asyncio import AsyncIOMotorClient
 
 load_dotenv()
@@ -32,6 +34,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Static files for uploads
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/api/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
@@ -302,6 +309,47 @@ async def get_transactions(user_id: str = Depends(verify_token), page: int = 1, 
     for t in txns:
         t["_id"] = str(t["_id"])
     return {"success": True, "data": {"transactions": txns, "page": page}}
+
+# ==================== FILE UPLOAD API (Complémentaire) ====================
+
+@app.post("/api/mobile/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    type: str = Form(default="video"),
+    user_id: str = Depends(verify_token)
+):
+    """Upload a video or image file, returns the URL"""
+    # Validate file type
+    allowed_video = [".mp4", ".mov", ".avi", ".webm", ".m4v"]
+    allowed_image = [".jpg", ".jpeg", ".png", ".webp", ".gif"]
+    allowed = allowed_video + allowed_image
+
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in allowed:
+        raise HTTPException(status_code=400, detail=f"Type de fichier non autorisé: {ext}")
+
+    # Generate unique filename
+    file_id = str(uuid.uuid4())[:12]
+    filename = f"{file_id}{ext}"
+    filepath = os.path.join(UPLOAD_DIR, filename)
+
+    # Save file
+    async with aiofiles.open(filepath, "wb") as f:
+        content = await file.read()
+        await f.write(content)
+
+    # Return URL (served via static files)
+    file_url = f"/api/uploads/{filename}"
+
+    return {
+        "success": True,
+        "data": {
+            "url": file_url,
+            "filename": filename,
+            "size": len(content),
+            "type": type,
+        }
+    }
 
 @app.post("/api/live/start")
 async def start_live(title: str, user_id: str = Depends(verify_token)):
