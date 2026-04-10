@@ -203,6 +203,75 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Achievement Badges */}
+          <View style={styles.badgesSection}>
+            <Text style={styles.badgesSectionTitle}>Badges</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.badgesRow}>
+              {[
+                { icon: 'star', label: 'Top Creator', color: '#FFD700', earned: true },
+                { icon: 'flame', label: '7j Streak', color: '#FF3D00', earned: true },
+                { icon: 'heart', label: '1K Likes', color: '#E91E63', earned: true },
+                { icon: 'trophy', label: 'Challenge', color: '#4CAF50', earned: true },
+                { icon: 'diamond', label: 'Premium', color: '#2196F3', earned: false },
+                { icon: 'rocket', label: 'Crowdfund', color: '#9C27B0', earned: false },
+              ].map((badge, i) => (
+                <View key={i} style={[styles.badgeItem, !badge.earned && styles.badgeItemLocked]}>
+                  <View style={[styles.badgeCircle, { backgroundColor: badge.earned ? badge.color + '20' : '#1A1A1A' }]}>
+                    <Ionicons name={badge.icon as any} size={18} color={badge.earned ? badge.color : '#444'} />
+                  </View>
+                  <Text style={[styles.badgeLabel, !badge.earned && { color: '#444' }]}>{badge.label}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Analytics Card */}
+          <TouchableOpacity style={styles.analyticsCard} activeOpacity={0.8}>
+            <View style={styles.analyticsHeader}>
+              <Ionicons name="stats-chart" size={16} color={Colors.primary} />
+              <Text style={styles.analyticsTitle}>Insights cette semaine</Text>
+              <Ionicons name="chevron-forward" size={16} color="#888" />
+            </View>
+            <View style={styles.analyticsGrid}>
+              <View style={styles.analyticsItem}>
+                <Text style={styles.analyticsValue}>12.5K</Text>
+                <Text style={styles.analyticsLabel}>Vues profil</Text>
+                <View style={[styles.analyticsChange, { backgroundColor: '#4CAF5020' }]}>
+                  <Ionicons name="trending-up" size={10} color="#4CAF50" />
+                  <Text style={[styles.analyticsChangeText, { color: '#4CAF50' }]}>+18%</Text>
+                </View>
+              </View>
+              <View style={styles.analyticsItem}>
+                <Text style={styles.analyticsValue}>8.2K</Text>
+                <Text style={styles.analyticsLabel}>Portee</Text>
+                <View style={[styles.analyticsChange, { backgroundColor: '#4CAF5020' }]}>
+                  <Ionicons name="trending-up" size={10} color="#4CAF50" />
+                  <Text style={[styles.analyticsChangeText, { color: '#4CAF50' }]}>+25%</Text>
+                </View>
+              </View>
+              <View style={styles.analyticsItem}>
+                <Text style={styles.analyticsValue}>340</Text>
+                <Text style={styles.analyticsLabel}>Interactions</Text>
+                <View style={[styles.analyticsChange, { backgroundColor: '#FF572220' }]}>
+                  <Ionicons name="trending-down" size={10} color="#FF5722" />
+                  <Text style={[styles.analyticsChangeText, { color: '#FF5722' }]}>-5%</Text>
+                </View>
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          {/* QR Code Card */}
+          <TouchableOpacity style={styles.qrCard} activeOpacity={0.8}>
+            <View style={styles.qrLeft}>
+              <Ionicons name="qr-code" size={32} color={Colors.primary} />
+            </View>
+            <View style={styles.qrInfo}>
+              <Text style={styles.qrTitle}>Mon QR Code</Text>
+              <Text style={styles.qrSubtitle}>Scannez pour me suivre sur AfriWonder</Text>
+            </View>
+            <Ionicons name="share-outline" size={20} color="#888" />
+          </TouchableOpacity>
+
           {/* Story Highlights */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.highlightsContainer} contentContainerStyle={styles.highlightsContent}>
             <TouchableOpacity style={styles.highlightItem}>
@@ -641,4 +710,37 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginVertical: Spacing.xxl,
   },
+
+  // Badges
+  badgesSection: { marginTop: 16, marginBottom: 8 },
+  badgesSectionTitle: { color: '#888', fontSize: 12, fontWeight: '600', marginBottom: 8, paddingHorizontal: 2 },
+  badgesRow: { gap: 12 },
+  badgeItem: { alignItems: 'center', width: 58 },
+  badgeItemLocked: { opacity: 0.4 },
+  badgeCircle: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  badgeLabel: { color: '#AAA', fontSize: 9, textAlign: 'center', fontWeight: '500' },
+
+  // Analytics
+  analyticsCard: {
+    backgroundColor: '#111', borderRadius: 14, padding: 14, marginTop: 12,
+    borderWidth: 1, borderColor: '#1A1A1A',
+  },
+  analyticsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
+  analyticsTitle: { color: '#FFF', fontSize: 13, fontWeight: '700', flex: 1 },
+  analyticsGrid: { flexDirection: 'row', justifyContent: 'space-between' },
+  analyticsItem: { flex: 1, alignItems: 'center' },
+  analyticsValue: { color: '#FFF', fontSize: 18, fontWeight: '800' },
+  analyticsLabel: { color: '#888', fontSize: 10, marginTop: 2, marginBottom: 4 },
+  analyticsChange: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  analyticsChangeText: { fontSize: 10, fontWeight: '700' },
+
+  // QR Card
+  qrCard: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#111', borderRadius: 14,
+    padding: 14, marginTop: 10, borderWidth: 1, borderColor: '#1A1A1A', gap: 12,
+  },
+  qrLeft: {},
+  qrInfo: { flex: 1 },
+  qrTitle: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+  qrSubtitle: { color: '#888', fontSize: 11, marginTop: 2 },
 });

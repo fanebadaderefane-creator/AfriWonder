@@ -184,6 +184,9 @@ export default function MessagesListScreen() {
           <TouchableOpacity style={styles.headerActionBtn} onPress={() => setSearchVisible(!searchVisible)}>
             <Ionicons name="search" size={22} color={Colors.text} />
           </TouchableOpacity>
+          <TouchableOpacity style={styles.headerActionBtn} onPress={() => router.push('/messages/new-group' as any)}>
+            <Ionicons name="people-circle" size={24} color={Colors.text} />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.headerActionBtn}>
             <Ionicons name="ellipsis-vertical" size={22} color={Colors.text} />
           </TouchableOpacity>

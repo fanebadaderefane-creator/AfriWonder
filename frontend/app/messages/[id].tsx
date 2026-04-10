@@ -210,10 +210,10 @@ export default function ChatScreen() {
             </Text>
           </View>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.headerAction}>
+        <TouchableOpacity style={styles.headerAction} onPress={() => router.push({ pathname: '/messages/call' as any, params: { name: contact.name, avatar: contact.avatar, type: 'video' } })}>
           <Ionicons name="videocam" size={22} color={Colors.text} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.headerAction}>
+        <TouchableOpacity style={styles.headerAction} onPress={() => router.push({ pathname: '/messages/call' as any, params: { name: contact.name, avatar: contact.avatar, type: 'audio' } })}>
           <Ionicons name="call" size={22} color={Colors.text} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.headerAction}>
