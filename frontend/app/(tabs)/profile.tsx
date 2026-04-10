@@ -11,8 +11,10 @@ const MENU_ITEMS = [
   { id: 'edit', icon: 'person', label: 'Modifier le profil', screen: 'editProfile' },
   { id: 'wallet', icon: 'wallet', label: 'Portefeuille', screen: 'wallet' },
   { id: 'orders', icon: 'receipt', label: 'Mes commandes', screen: 'orders' },
-  { id: 'saved', icon: 'bookmark', label: 'Vid\u00e9os sauvegard\u00e9es', screen: 'saved' },
-  { id: 'settings', icon: 'settings', label: 'Param\u00e8tres', screen: 'settings' },
+  { id: 'messages', icon: 'chatbubbles', label: 'Messages', screen: 'messages' },
+  { id: 'notifications', icon: 'notifications', label: 'Notifications', screen: 'notifications' },
+  { id: 'saved', icon: 'bookmark', label: 'Videos sauvegardees', screen: 'saved' },
+  { id: 'settings', icon: 'settings', label: 'Parametres', screen: 'settings' },
   { id: 'help', icon: 'help-circle', label: 'Aide & Support', screen: 'help' },
 ];
 
@@ -39,7 +41,22 @@ export default function ProfileScreen() {
   };
 
   const handleMenuPress = (screen: string) => {
-    Alert.alert('Info', `${screen} sera disponible prochainement`);
+    switch (screen) {
+      case 'wallet':
+        router.push('/wallet');
+        break;
+      case 'orders':
+        router.push('/cart');
+        break;
+      case 'messages':
+        router.push('/messages');
+        break;
+      case 'notifications':
+        router.push('/notifications');
+        break;
+      default:
+        Alert.alert('Info', `${screen} sera disponible prochainement`);
+    }
   };
 
   if (!isAuthenticated) {

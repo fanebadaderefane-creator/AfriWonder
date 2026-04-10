@@ -41,6 +41,13 @@ export default function RootLayout() {
             <Stack.Screen name="onboarding" />
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="live" />
+            <Stack.Screen name="services" />
+            <Stack.Screen name="product" />
+            <Stack.Screen name="cart" />
+            <Stack.Screen name="wallet" />
+            <Stack.Screen name="messages" />
+            <Stack.Screen name="notifications" />
           </Stack>
         </View>
       </QueryClientProvider>

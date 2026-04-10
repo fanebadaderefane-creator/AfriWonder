@@ -1,20 +1,64 @@
-import React, { useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, Dimensions, FlatList, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { View, Text, StyleSheet, Dimensions, FlatList, TouchableOpacity, ActivityIndicator, Image, TextInput, Modal, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuthStore } from '../../src/store/authStore';
+import apiClient from '../../src/api/client';
+import { router } from 'expo-router';
 
 const { width, height } = Dimensions.get('window');
 
-// Mock video data (simulating AfriWonder API)
-const MOCK_VIDEOS = [
+// Types
+interface VideoUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+  avatar: string;
+  isFollowing: boolean;
+}
+
+interface Video {
+  id: string;
+  title: string;
+  description: string;
+  videoUrl: string;
+  thumbnailUrl: string;
+  duration: number;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  isLiked: boolean;
+  isSaved: boolean;
+  hashtags: string[];
+  user: VideoUser;
+}
+
+interface Comment {
+  id: string;
+  text: string;
+  likes: number;
+  isLiked: boolean;
+  user: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    avatar: string;
+  };
+  createdAt: string;
+}
+
+// Mock video data (fallback)
+const MOCK_VIDEOS: Video[] = [
   {
     id: '1',
     title: 'Danse traditionnelle malienne',
     description: 'Magnifique danse au coucher du soleil #Mali #Culture #Danse',
     videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
     thumbnailUrl: 'https://picsum.photos/400/800?random=1',
+    duration: 45,
     views: 125000,
     likes: 8500,
     comments: 342,
@@ -33,9 +77,10 @@ const MOCK_VIDEOS = [
   {
     id: '2',
     title: 'Street food Dakar',
-    description: 'Les meilleurs thieboudienne de Dakar! \ud83c\udf5a #Senegal #Food #Dakar',
+    description: 'Les meilleurs thieboudienne de Dakar! #Senegal #Food #Dakar',
     videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
     thumbnailUrl: 'https://picsum.photos/400/800?random=2',
+    duration: 60,
     views: 89000,
     likes: 6200,
     comments: 178,
@@ -54,9 +99,10 @@ const MOCK_VIDEOS = [
   {
     id: '3',
     title: 'Mode africaine',
-    description: 'Nouvelle collection Bogolan \ud83c\udf1f #CoteDIvoire #Fashion #Bogolan',
+    description: 'Nouvelle collection Bogolan #CoteDIvoire #Fashion #Bogolan',
     videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
     thumbnailUrl: 'https://picsum.photos/400/800?random=3',
+    duration: 30,
     views: 234000,
     likes: 18900,
     comments: 892,
@@ -67,7 +113,7 @@ const MOCK_VIDEOS = [
     user: {
       id: 'u3',
       firstName: 'Awa',
-      lastName: 'Kon\u00e9',
+      lastName: 'Kone',
       avatar: 'https://i.pravatar.cc/150?img=3',
       isFollowing: false,
     },
@@ -75,7 +121,7 @@ const MOCK_VIDEOS = [
 ];
 
 interface VideoItemProps {
-  video: typeof MOCK_VIDEOS[0];
+  video: Video;
   isActive: boolean;
   onLike: () => void;
   onComment: () => void;
@@ -107,7 +153,7 @@ const VideoItem: React.FC<VideoItemProps> = ({
     }
   });
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (player) {
       if (isActive) {
         player.play();
@@ -117,7 +163,7 @@ const VideoItem: React.FC<VideoItemProps> = ({
     }
   }, [isActive, player]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (player) {
       player.muted = isMuted;
     }
@@ -216,7 +262,7 @@ const VideoItem: React.FC<VideoItemProps> = ({
           <Text style={styles.username}>@{video.user.firstName.toLowerCase()}{video.user.lastName.toLowerCase()}</Text>
           {video.user.isFollowing && (
             <View style={styles.followingBadge}>
-              <Text style={styles.followingText}>Abonn\u00e9</Text>
+              <Text style={styles.followingText}>Abonne</Text>
             </View>
           )}
         </View>
@@ -233,11 +279,170 @@ const VideoItem: React.FC<VideoItemProps> = ({
   );
 };
 
+// Comments Modal Component
+interface CommentsModalProps {
+  visible: boolean;
+  onClose: () => void;
+  videoId: string;
+  commentsCount: number;
+}
+
+const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, videoId, commentsCount }) => {
+  const insets = useSafeAreaInsets();
+  const { isAuthenticated } = useAuthStore();
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      loadComments();
+    }
+  }, [visible, videoId]);
+
+  const loadComments = async () => {
+    setLoading(true);
+    try {
+      const response = await apiClient.get(`/videos/${videoId}/comments`);
+      setComments(response.data.comments || []);
+    } catch (error) {
+      // Use mock comments
+      setComments([
+        { id: '1', text: 'Super video! 🔥', likes: 24, isLiked: false, user: { id: 'u1', firstName: 'Aminata', lastName: 'D', avatar: 'https://i.pravatar.cc/150?img=1' }, createdAt: new Date().toISOString() },
+        { id: '2', text: 'Jadore la danse!', likes: 12, isLiked: true, user: { id: 'u2', firstName: 'Moussa', lastName: 'N', avatar: 'https://i.pravatar.cc/150?img=2' }, createdAt: new Date().toISOString() },
+        { id: '3', text: 'Magnifique 👏', likes: 8, isLiked: false, user: { id: 'u3', firstName: 'Awa', lastName: 'K', avatar: 'https://i.pravatar.cc/150?img=3' }, createdAt: new Date().toISOString() },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendComment = async () => {
+    if (!newComment.trim()) return;
+    if (!isAuthenticated) {
+      onClose();
+      router.push('/(auth)/login');
+      return;
+    }
+
+    setSending(true);
+    try {
+      const response = await apiClient.post(`/videos/${videoId}/comment`, { text: newComment });
+      setComments([response.data, ...comments]);
+      setNewComment('');
+    } catch (error) {
+      // Add mock comment
+      const mockComment: Comment = {
+        id: Date.now().toString(),
+        text: newComment,
+        likes: 0,
+        isLiked: false,
+        user: { id: 'me', firstName: 'Moi', lastName: '', avatar: 'https://i.pravatar.cc/150?img=10' },
+        createdAt: new Date().toISOString(),
+      };
+      setComments([mockComment, ...comments]);
+      setNewComment('');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={[styles.commentsContainer, { paddingBottom: insets.bottom }]}
+        >
+          <View style={styles.commentsHeader}>
+            <Text style={styles.commentsTitle}>{commentsCount} commentaires</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={24} color={Colors.text} />
+            </TouchableOpacity>
+          </View>
+
+          {loading ? (
+            <ActivityIndicator size="large" color={Colors.primary} style={styles.loader} />
+          ) : (
+            <ScrollView style={styles.commentsList} showsVerticalScrollIndicator={false}>
+              {comments.map((comment) => (
+                <View key={comment.id} style={styles.commentItem}>
+                  <Image source={{ uri: comment.user.avatar }} style={styles.commentAvatar} />
+                  <View style={styles.commentContent}>
+                    <Text style={styles.commentUser}>{comment.user.firstName} {comment.user.lastName}</Text>
+                    <Text style={styles.commentText}>{comment.text}</Text>
+                    <View style={styles.commentActions}>
+                      <TouchableOpacity style={styles.commentLike}>
+                        <Ionicons 
+                          name={comment.isLiked ? "heart" : "heart-outline"} 
+                          size={16} 
+                          color={comment.isLiked ? Colors.like : Colors.textSecondary} 
+                        />
+                        <Text style={styles.commentLikeCount}>{comment.likes}</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.commentTime}>2h</Text>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+
+          <View style={styles.commentInput}>
+            <TextInput
+              style={styles.commentTextInput}
+              placeholder="Ajouter un commentaire..."
+              placeholderTextColor={Colors.textMuted}
+              value={newComment}
+              onChangeText={setNewComment}
+              multiline
+            />
+            <TouchableOpacity 
+              style={[styles.sendButton, !newComment.trim() && styles.sendButtonDisabled]}
+              onPress={handleSendComment}
+              disabled={!newComment.trim() || sending}
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color={Colors.text} />
+              ) : (
+                <Ionicons name="send" size={20} color={Colors.text} />
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
+  );
+};
+
 export default function FeedScreen() {
-  const [videos, setVideos] = useState(MOCK_VIDEOS);
+  const [videos, setVideos] = useState<Video[]>(MOCK_VIDEOS);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'following' | 'foryou'>('foryou');
+  const [commentsVisible, setCommentsVisible] = useState(false);
+  const [selectedVideoId, setSelectedVideoId] = useState<string>('');
+  const [selectedVideoComments, setSelectedVideoComments] = useState(0);
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    loadFeed();
+  }, []);
+
+  const loadFeed = async () => {
+    setLoading(true);
+    try {
+      const response = await apiClient.get('/videos/feed?page=1&limit=10');
+      if (response.data.videos && response.data.videos.length > 0) {
+        setVideos(response.data.videos);
+      }
+    } catch (error) {
+      console.log('Using mock videos');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
     if (viewableItems.length > 0) {
@@ -255,6 +460,7 @@ export default function FeedScreen() {
         ? { ...v, isLiked: !v.isLiked, likes: v.isLiked ? v.likes - 1 : v.likes + 1 }
         : v
     ));
+    apiClient.post(`/videos/${videoId}/like`).catch(() => {});
   };
 
   const handleSave = (videoId: string) => {
@@ -263,6 +469,7 @@ export default function FeedScreen() {
         ? { ...v, isSaved: !v.isSaved }
         : v
     ));
+    apiClient.post(`/videos/${videoId}/save`).catch(() => {});
   };
 
   const handleFollow = (userId: string) => {
@@ -273,12 +480,18 @@ export default function FeedScreen() {
     ));
   };
 
-  const renderVideo = ({ item, index }: { item: typeof MOCK_VIDEOS[0]; index: number }) => (
+  const handleOpenComments = (videoId: string, commentsCount: number) => {
+    setSelectedVideoId(videoId);
+    setSelectedVideoComments(commentsCount);
+    setCommentsVisible(true);
+  };
+
+  const renderVideo = ({ item, index }: { item: Video; index: number }) => (
     <VideoItem
       video={item}
       isActive={index === currentIndex}
       onLike={() => handleLike(item.id)}
-      onComment={() => console.log('Comment', item.id)}
+      onComment={() => handleOpenComments(item.id, item.comments)}
       onShare={() => console.log('Share', item.id)}
       onSave={() => handleSave(item.id)}
       onFollow={() => handleFollow(item.user.id)}
@@ -289,13 +502,19 @@ export default function FeedScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
-        <TouchableOpacity style={styles.headerTab}>
-          <Text style={styles.headerTabText}>Abonnés</Text>
+        <TouchableOpacity 
+          style={[styles.headerTab, activeTab === 'following' && styles.headerTabActive]}
+          onPress={() => setActiveTab('following')}
+        >
+          <Text style={[styles.headerTabText, activeTab === 'following' && styles.headerTabTextActive]}>Abonnes</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.headerTab, styles.headerTabActive]}>
-          <Text style={[styles.headerTabText, styles.headerTabTextActive]}>Pour toi</Text>
+        <TouchableOpacity 
+          style={[styles.headerTab, activeTab === 'foryou' && styles.headerTabActive]}
+          onPress={() => setActiveTab('foryou')}
+        >
+          <Text style={[styles.headerTabText, activeTab === 'foryou' && styles.headerTabTextActive]}>Pour toi</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.liveButton}>
+        <TouchableOpacity style={styles.liveButton} onPress={() => router.push('/live')}>
           <View style={styles.liveDot} />
           <Text style={styles.liveText}>LIVE</Text>
         </TouchableOpacity>
@@ -321,6 +540,13 @@ export default function FeedScreen() {
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
       )}
+
+      <CommentsModal
+        visible={commentsVisible}
+        onClose={() => setCommentsVisible(false)}
+        videoId={selectedVideoId}
+        commentsCount={selectedVideoComments}
+      />
     </View>
   );
 }
@@ -480,5 +706,109 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Comments Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  commentsContainer: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    maxHeight: height * 0.7,
+    minHeight: height * 0.5,
+  },
+  commentsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  commentsTitle: {
+    color: Colors.text,
+    fontSize: FontSizes.lg,
+    fontWeight: '600',
+  },
+  loader: {
+    padding: Spacing.xxl,
+  },
+  commentsList: {
+    flex: 1,
+    padding: Spacing.md,
+  },
+  commentItem: {
+    flexDirection: 'row',
+    marginBottom: Spacing.lg,
+  },
+  commentAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: Spacing.md,
+  },
+  commentContent: {
+    flex: 1,
+  },
+  commentUser: {
+    color: Colors.text,
+    fontSize: FontSizes.sm,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  commentText: {
+    color: Colors.text,
+    fontSize: FontSizes.md,
+    marginBottom: Spacing.xs,
+  },
+  commentActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  commentLike: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  commentLikeCount: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.xs,
+  },
+  commentTime: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.xs,
+  },
+  commentInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    gap: Spacing.sm,
+  },
+  commentTextInput: {
+    flex: 1,
+    backgroundColor: Colors.card,
+    borderRadius: BorderRadius.pill,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    color: Colors.text,
+    fontSize: FontSizes.md,
+    maxHeight: 100,
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendButtonDisabled: {
+    backgroundColor: Colors.border,
   },
 });

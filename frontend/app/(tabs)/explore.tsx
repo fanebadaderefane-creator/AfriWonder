@@ -3,11 +3,24 @@ import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, FlatLi
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 const VIDEO_SIZE = (width - Spacing.md * 4) / 3;
+const SERVICE_SIZE = (width - Spacing.xl * 2 - Spacing.md * 3) / 4;
 
-// Mock trending data
+// Services Grid (Super-app hub)
+const SERVICES = [
+  { id: 'food', name: 'Livraison', icon: 'fast-food', color: '#FF6B6B', route: '/services/food' },
+  { id: 'transport', name: 'Transport', icon: 'car', color: '#4ECDC4', route: '/services/transport' },
+  { id: 'health', name: 'Sante', icon: 'medkit', color: '#45B7D1', route: '/services/health' },
+  { id: 'wallet', name: 'Finance', icon: 'wallet', color: '#FF6B00', route: '/wallet' },
+  { id: 'realestate', name: 'Immobilier', icon: 'home', color: '#96CEB4', route: '/services/realestate' },
+  { id: 'events', name: 'Evenements', icon: 'calendar', color: '#DDA0DD', route: '/services/events' },
+  { id: 'jobs', name: 'Emploi', icon: 'briefcase', color: '#F7DC6F', route: '/services/jobs' },
+  { id: 'more', name: 'Plus', icon: 'grid', color: '#A0A0A0', route: '/services' },
+];
+
 const TRENDING_HASHTAGS = [
   { tag: 'MaliDance', count: '125K' },
   { tag: 'AfriFood', count: '98K' },
@@ -24,18 +37,9 @@ const EXPLORE_VIDEOS = Array.from({ length: 12 }, (_, i) => ({
   isLive: i === 2,
 }));
 
-const CATEGORIES = [
-  { id: 'all', name: 'Tout', icon: 'apps' },
-  { id: 'videos', name: 'Vidéos', icon: 'play-circle' },
-  { id: 'users', name: 'Comptes', icon: 'people' },
-  { id: 'products', name: 'Produits', icon: 'cart' },
-  { id: 'events', name: 'Événements', icon: 'calendar' },
-];
-
 export default function ExploreScreen() {
   const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState('all');
 
   const formatViews = (num: number) => {
     if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
@@ -59,13 +63,13 @@ export default function ExploreScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
+      {/* Header with search + icons */}
+      <View style={styles.headerRow}>
         <View style={styles.searchBar}>
           <Ionicons name="search" size={20} color={Colors.textSecondary} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Rechercher vidéos, comptes, produits..."
+            placeholder="Rechercher..."
             placeholderTextColor={Colors.textMuted}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -76,38 +80,44 @@ export default function ExploreScreen() {
             </TouchableOpacity>
           )}
         </View>
+        <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/messages')}>
+          <Ionicons name="chatbubble-ellipses" size={22} color={Colors.text} />
+          <View style={styles.badge}><Text style={styles.badgeText}>4</Text></View>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/notifications')}>
+          <Ionicons name="notifications" size={22} color={Colors.text} />
+          <View style={styles.badge}><Text style={styles.badgeText}>3</Text></View>
+        </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Categories */}
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          style={styles.categoriesContainer}
-        >
-          {CATEGORIES.map((category) => (
-            <TouchableOpacity
-              key={category.id}
-              style={[
-                styles.categoryChip,
-                activeCategory === category.id && styles.categoryChipActive,
-              ]}
-              onPress={() => setActiveCategory(category.id)}
-            >
-              <Ionicons 
-                name={category.icon as any} 
-                size={16} 
-                color={activeCategory === category.id ? Colors.text : Colors.textSecondary} 
-              />
-              <Text style={[
-                styles.categoryText,
-                activeCategory === category.id && styles.categoryTextActive,
-              ]}>
-                {category.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        {/* Services Grid - Super App Hub */}
+        <View style={styles.servicesSection}>
+          <View style={styles.servicesGrid}>
+            {SERVICES.map((service) => (
+              <TouchableOpacity
+                key={service.id}
+                style={styles.serviceItem}
+                onPress={() => router.push(service.route as any)}
+              >
+                <View style={[styles.serviceIcon, { backgroundColor: service.color }]}>
+                  <Ionicons name={service.icon as any} size={22} color="#FFFFFF" />
+                </View>
+                <Text style={styles.serviceName}>{service.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Promo Banner */}
+        <TouchableOpacity style={styles.promoBanner}>
+          <View style={styles.promoContent}>
+            <Text style={styles.promoLabel}>NOUVEAU</Text>
+            <Text style={styles.promoTitle}>Livraison gratuite</Text>
+            <Text style={styles.promoSubtitle}>Sur votre 1ere commande</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={24} color={Colors.text} />
+        </TouchableOpacity>
 
         {/* Trending Hashtags */}
         <View style={styles.section}>
@@ -129,7 +139,7 @@ export default function ExploreScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Ionicons name="compass" size={24} color={Colors.primary} />
-            <Text style={styles.sectionTitle}>Découvrir</Text>
+            <Text style={styles.sectionTitle}>Decouvrir</Text>
           </View>
           <FlatList
             data={EXPLORE_VIDEOS}
@@ -150,11 +160,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  searchContainer: {
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
+    gap: Spacing.sm,
   },
   searchBar: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.surface,
@@ -168,30 +182,84 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontSize: FontSizes.md,
   },
-  categoriesContainer: {
-    paddingHorizontal: Spacing.lg,
+  iconBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: 2,
+    right: 0,
+    backgroundColor: Colors.live,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    color: Colors.text,
+    fontSize: 9,
+    fontWeight: 'bold',
+  },
+  servicesSection: {
+    paddingHorizontal: Spacing.xl,
     marginBottom: Spacing.lg,
   },
-  categoryChip: {
+  servicesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.md,
+  },
+  serviceItem: {
+    width: SERVICE_SIZE,
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+  },
+  serviceIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.xs,
+  },
+  serviceName: {
+    color: Colors.text,
+    fontSize: FontSizes.xs,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  promoBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.pill,
-    marginRight: Spacing.sm,
-    gap: Spacing.xs,
-  },
-  categoryChipActive: {
+    justifyContent: 'space-between',
     backgroundColor: Colors.primary,
+    marginHorizontal: Spacing.xl,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    marginBottom: Spacing.xxl,
   },
-  categoryText: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.sm,
-    fontWeight: '500',
+  promoContent: {
+    flex: 1,
   },
-  categoryTextActive: {
+  promoLabel: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: FontSizes.xs,
+    fontWeight: 'bold',
+    marginBottom: Spacing.xs,
+  },
+  promoTitle: {
     color: Colors.text,
+    fontSize: FontSizes.xl,
+    fontWeight: 'bold',
+  },
+  promoSubtitle: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: FontSizes.sm,
   },
   section: {
     marginBottom: Spacing.xxl,
