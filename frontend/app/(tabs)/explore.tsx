@@ -155,7 +155,7 @@ export default function ExploreScreen() {
         </ScrollView>
 
         {/* Promo Banner */}
-        <TouchableOpacity style={styles.promoBanner} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.promoBanner} activeOpacity={0.8} onPress={() => router.push('/wallet')}>
           <LinearGradient colors={['#FF6B00', '#FF3D00']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.promoGradient}>
             <View style={styles.promoLeft}>
               <View style={styles.promoNewBadge}><Text style={styles.promoNewText}>NOUVEAU</Text></View>
@@ -163,6 +163,17 @@ export default function ExploreScreen() {
               <Text style={styles.promoSubtitle}>Envoyez de l'argent instantanement</Text>
             </View>
             <Ionicons name="wallet" size={40} color="rgba(255,255,255,0.3)" />
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {/* Moments Feed Banner */}
+        <TouchableOpacity style={styles.momentsBanner} activeOpacity={0.8} onPress={() => router.push('/feed')}>
+          <LinearGradient colors={['#667eea', '#764ba2']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.promoGradient}>
+            <View style={styles.promoLeft}>
+              <Text style={styles.promoTitle}>Moments</Text>
+              <Text style={styles.promoSubtitle}>Decouvrez ce que font vos amis</Text>
+            </View>
+            <Ionicons name="people" size={36} color="rgba(255,255,255,0.3)" />
           </LinearGradient>
         </TouchableOpacity>
 
@@ -276,7 +287,8 @@ const styles = StyleSheet.create({
   serviceName: { color: '#CCC', fontSize: 11, fontWeight: '500' as const, textAlign: 'center' as const },
 
   // Promo
-  promoBanner: { marginHorizontal: 16, marginBottom: 16, borderRadius: 16, overflow: 'hidden' },
+  promoBanner: { marginHorizontal: 16, marginBottom: 10, borderRadius: 16, overflow: 'hidden' },
+  momentsBanner: { marginHorizontal: 16, marginBottom: 16, borderRadius: 16, overflow: 'hidden' },
   promoGradient: { flexDirection: 'row', alignItems: 'center', padding: 16 },
   promoLeft: { flex: 1 },
   promoNewBadge: { backgroundColor: 'rgba(255,255,255,0.25)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, alignSelf: 'flex-start', marginBottom: 6 },
