@@ -1,310 +1,136 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, Dimensions, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Dimensions } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import apiClient from '../../src/api/client';
+import { LinearGradient } from 'expo-linear-gradient';
+import mobileApiClient from '../../src/api/mobileClient';
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - Spacing.xl * 2 - Spacing.md) / 2;
 
-interface LiveStream {
-  id: string;
-  title: string;
-  thumbnail: string;
-  viewers: number;
-  user: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    avatar: string;
-  };
-}
-
-const MOCK_STREAMS: LiveStream[] = [
-  {
-    id: 'live1',
-    title: 'Live Dance Mali',
-    thumbnail: 'https://picsum.photos/400/600?random=30',
-    viewers: 234,
-    user: { id: 'u1', firstName: 'Aminata', lastName: 'Diallo', avatar: 'https://i.pravatar.cc/150?img=1' },
-  },
-  {
-    id: 'live2',
-    title: 'Cuisine Senegalaise',
-    thumbnail: 'https://picsum.photos/400/600?random=31',
-    viewers: 189,
-    user: { id: 'u2', firstName: 'Moussa', lastName: 'Ndiaye', avatar: 'https://i.pravatar.cc/150?img=2' },
-  },
-  {
-    id: 'live3',
-    title: 'Mode Africaine Show',
-    thumbnail: 'https://picsum.photos/400/600?random=32',
-    viewers: 567,
-    user: { id: 'u3', firstName: 'Awa', lastName: 'Kone', avatar: 'https://i.pravatar.cc/150?img=3' },
-  },
-  {
-    id: 'live4',
-    title: 'Musique Live',
-    thumbnail: 'https://picsum.photos/400/600?random=33',
-    viewers: 891,
-    user: { id: 'u4', firstName: 'Ibrahim', lastName: 'Toure', avatar: 'https://i.pravatar.cc/150?img=4' },
-  },
-];
-
-export default function LiveListScreen() {
+export default function LiveHubScreen() {
   const insets = useSafeAreaInsets();
-  const [streams, setStreams] = useState<LiveStream[]>(MOCK_STREAMS);
-  const [refreshing, setRefreshing] = useState(false);
+  const [activeLives, setActiveLives] = useState<any[]>([]);
+  const [replays, setReplays] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const loadStreams = async () => {
+  useEffect(() => { loadData(); }, []);
+
+  const loadData = async () => {
     try {
-      const response = await apiClient.get('/live/streams');
-      if (response.data.streams) {
-        setStreams(response.data.streams);
-      }
-    } catch (error) {
-      console.log('Using mock streams');
-    }
+      const [liveRes, replayRes] = await Promise.all([
+        mobileApiClient.get('/mobile/live/active'),
+        mobileApiClient.get('/mobile/live/replays'),
+      ]);
+      setActiveLives(liveRes.data?.data || []);
+      setReplays(replayRes.data?.data || []);
+    } catch {} finally { setLoading(false); }
   };
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await loadStreams();
-    setRefreshing(false);
-  };
+  const formatDuration = (s: number) => { const h = Math.floor(s/3600); const m = Math.floor((s%3600)/60); return h > 0 ? `${h}h${m}m` : `${m}min`; };
+  const formatViewers = (n: number) => n >= 1000 ? (n/1000).toFixed(1) + 'K' : String(n);
 
-  useEffect(() => {
-    loadStreams();
-  }, []);
-
-  const formatViewers = (num: number) => {
-    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-    return num.toString();
-  };
-
-  const renderStream = ({ item }: { item: LiveStream }) => (
-    <TouchableOpacity 
-      style={styles.streamCard}
-      onPress={() => router.push(`/live/${item.id}`)}
-    >
-      <Image source={{ uri: item.thumbnail }} style={styles.streamThumbnail} />
-      
-      {/* Live badge */}
-      <View style={styles.liveBadge}>
-        <View style={styles.liveDot} />
-        <Text style={styles.liveText}>LIVE</Text>
-      </View>
-
-      {/* Viewers count */}
-      <View style={styles.viewersContainer}>
-        <Ionicons name="eye" size={14} color={Colors.text} />
-        <Text style={styles.viewersText}>{formatViewers(item.viewers)}</Text>
-      </View>
-
-      {/* Stream info */}
-      <View style={styles.streamInfo}>
-        <Image source={{ uri: item.user.avatar }} style={styles.streamerAvatar} />
-        <View style={styles.streamDetails}>
-          <Text style={styles.streamTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.streamerName}>{item.user.firstName} {item.user.lastName}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+  if (loading) return <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}><ActivityIndicator size="large" color={Colors.primary} /></View>;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color={Colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Lives en cours</Text>
-        <TouchableOpacity 
-          style={styles.startLiveButton}
-          onPress={() => router.push('/live/start')}
-        >
-          <Ionicons name="radio" size={20} color={Colors.text} />
-          <Text style={styles.startLiveText}>Go Live</Text>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Ionicons name="arrow-back" size={24} color={Colors.text} /></TouchableOpacity>
+        <Text style={styles.headerTitle}>Live & Replays</Text>
+        <TouchableOpacity style={styles.goLiveBtn} onPress={() => router.push('/live/stream' as any)}>
+          <Ionicons name="radio" size={18} color="#FFF" />
+          <Text style={styles.goLiveBtnText}>Go Live</Text>
         </TouchableOpacity>
       </View>
 
-      {streams.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="radio-outline" size={80} color={Colors.textSecondary} />
-          <Text style={styles.emptyTitle}>Aucun live en cours</Text>
-          <Text style={styles.emptySubtitle}>Soyez le premier a demarrer un live!</Text>
-          <TouchableOpacity 
-            style={styles.emptyButton}
-            onPress={() => router.push('/live/start')}
-          >
-            <Text style={styles.emptyButtonText}>Demarrer un live</Text>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Active Lives */}
+        {activeLives.length > 0 && (
+          <>
+            <View style={styles.sectionHeader}>
+              <View style={styles.liveDot} />
+              <Text style={styles.sectionTitle}>En direct maintenant</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.liveScroll}>
+              {activeLives.map(live => (
+                <TouchableOpacity key={live.id} style={styles.liveCard} onPress={() => router.push({ pathname: '/live/replay', params: { id: live.id } } as any)}>
+                  <Image source={{ uri: live.thumbnail_url }} style={styles.liveImage} />
+                  <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.liveOverlay}>
+                    <View style={styles.liveBadge}><View style={styles.liveBadgeDot} /><Text style={styles.liveBadgeText}>LIVE</Text></View>
+                    <Text style={styles.liveTitle} numberOfLines={1}>{live.title}</Text>
+                    <View style={styles.liveStats}>
+                      <Ionicons name="eye" size={12} color="#FFF" />
+                      <Text style={styles.liveStatText}>{formatViewers(live.viewer_count)}</Text>
+                      <Ionicons name="heart" size={12} color="#E91E63" />
+                      <Text style={styles.liveStatText}>{live.likes}</Text>
+                    </View>
+                  </LinearGradient>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
+        )}
+
+        {/* Replays */}
+        <Text style={[styles.sectionTitle, { paddingHorizontal: Spacing.xl, marginTop: Spacing.lg }]}>Replays</Text>
+        {replays.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="videocam-off-outline" size={50} color="rgba(255,255,255,0.3)" />
+            <Text style={styles.emptyText}>Aucun replay disponible</Text>
+          </View>
+        ) : replays.map(replay => (
+          <TouchableOpacity key={replay.id} style={styles.replayCard} onPress={() => router.push({ pathname: '/live/replay', params: { id: replay.id } } as any)}>
+            <Image source={{ uri: replay.thumbnail_url }} style={styles.replayThumb} />
+            <View style={styles.replayInfo}>
+              <Text style={styles.replayTitle} numberOfLines={2}>{replay.title}</Text>
+              <Text style={styles.replayMeta}>{formatDuration(replay.duration || 0)} • {formatViewers(replay.peak_viewers || 0)} spectateurs</Text>
+              <View style={styles.replayStats}>
+                <View style={styles.replayStatItem}><Ionicons name="heart" size={12} color="#E91E63" /><Text style={styles.replayStatText}>{replay.likes}</Text></View>
+                <View style={styles.replayStatItem}><Ionicons name="gift" size={12} color="#FF6B00" /><Text style={styles.replayStatText}>{(replay.tip_amount || 0).toLocaleString()} FCFA</Text></View>
+              </View>
+              {(replay.highlights || []).length > 0 && (
+                <View style={styles.highlightBadge}><Ionicons name="star" size={12} color="#FFEAA7" /><Text style={styles.highlightBadgeText}>{replay.highlights.length} moments forts</Text></View>
+              )}
+            </View>
           </TouchableOpacity>
-        </View>
-      ) : (
-        <FlatList
-          data={streams}
-          renderItem={renderStream}
-          keyExtractor={(item) => item.id}
-          numColumns={2}
-          contentContainerStyle={styles.streamsList}
-          columnWrapperStyle={styles.streamsRow}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={Colors.primary}
-            />
-          }
-        />
-      )}
+        ))}
+        <View style={{ height: 40 }} />
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.lg,
-  },
-  headerTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  startLiveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.live,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.pill,
-    gap: Spacing.xs,
-  },
-  startLiveText: {
-    color: Colors.text,
-    fontSize: FontSizes.sm,
-    fontWeight: '600',
-  },
-  streamsList: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.xxl,
-  },
-  streamsRow: {
-    justifyContent: 'space-between',
-    marginBottom: Spacing.md,
-  },
-  streamCard: {
-    width: CARD_WIDTH,
-    borderRadius: BorderRadius.md,
-    overflow: 'hidden',
-    backgroundColor: Colors.surface,
-  },
-  streamThumbnail: {
-    width: '100%',
-    height: CARD_WIDTH * 1.4,
-  },
-  liveBadge: {
-    position: 'absolute',
-    top: Spacing.sm,
-    left: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.live,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.sm,
-    gap: 4,
-  },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.text,
-  },
-  liveText: {
-    color: Colors.text,
-    fontSize: FontSizes.xs,
-    fontWeight: 'bold',
-  },
-  viewersContainer: {
-    position: 'absolute',
-    top: Spacing.sm,
-    right: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.sm,
-    gap: 4,
-  },
-  viewersText: {
-    color: Colors.text,
-    fontSize: FontSizes.xs,
-    fontWeight: '600',
-  },
-  streamInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.sm,
-    gap: Spacing.sm,
-  },
-  streamerAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-  },
-  streamDetails: {
-    flex: 1,
-  },
-  streamTitle: {
-    color: Colors.text,
-    fontSize: FontSizes.sm,
-    fontWeight: '600',
-  },
-  streamerName: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.xs,
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.xxl,
-  },
-  emptyTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginTop: Spacing.lg,
-  },
-  emptySubtitle: {
-    fontSize: FontSizes.md,
-    color: Colors.textSecondary,
-    marginTop: Spacing.sm,
-    textAlign: 'center',
-  },
-  emptyButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.xxl,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-    marginTop: Spacing.xl,
-  },
-  emptyButtonText: {
-    color: Colors.text,
-    fontSize: FontSizes.md,
-    fontWeight: '600',
-  },
+  container: { flex: 1, backgroundColor: Colors.background },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.xl, paddingVertical: Spacing.lg },
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: FontSizes.xl, fontWeight: 'bold', color: Colors.text },
+  goLiveBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E91E63', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, borderRadius: BorderRadius.pill, gap: 6 },
+  goLiveBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: FontSizes.sm },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.xl, marginTop: Spacing.md, gap: 8 },
+  liveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FF0000' },
+  sectionTitle: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: 'bold' },
+  liveScroll: { paddingHorizontal: Spacing.xl, gap: Spacing.md, paddingVertical: Spacing.md },
+  liveCard: { width: width * 0.6, height: width * 0.8, borderRadius: BorderRadius.xl, overflow: 'hidden' },
+  liveImage: { width: '100%', height: '100%' },
+  liveOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.lg },
+  liveBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FF0000', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, gap: 4, marginBottom: 6 },
+  liveBadgeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFF' },
+  liveBadgeText: { color: '#FFF', fontSize: 11, fontWeight: 'bold' },
+  liveTitle: { color: '#FFF', fontSize: FontSizes.md, fontWeight: 'bold' },
+  liveStats: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  liveStatText: { color: 'rgba(255,255,255,0.8)', fontSize: FontSizes.xs },
+  emptyState: { alignItems: 'center', paddingTop: 60, gap: 12 },
+  emptyText: { color: Colors.textSecondary, fontSize: FontSizes.md },
+  replayCard: { flexDirection: 'row', paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md, gap: Spacing.md },
+  replayThumb: { width: 120, height: 160, borderRadius: BorderRadius.md },
+  replayInfo: { flex: 1, justifyContent: 'center', gap: 4 },
+  replayTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: 'bold' },
+  replayMeta: { color: Colors.textSecondary, fontSize: FontSizes.xs },
+  replayStats: { flexDirection: 'row', gap: Spacing.lg, marginTop: 4 },
+  replayStatItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  replayStatText: { color: Colors.textSecondary, fontSize: FontSizes.xs },
+  highlightBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,234,167,0.15)', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginTop: 4 },
+  highlightBadgeText: { color: '#FFEAA7', fontSize: FontSizes.xs },
 });

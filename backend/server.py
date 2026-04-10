@@ -739,6 +739,542 @@ async def seed_demo_crowdfunding(user_id: str):
         }
         await crowdfunding_col.insert_one(project)
 
+
+# ==================== PHASE 1: MONETISATION CREATEURS ====================
+
+class TipRequest(BaseModel):
+    creator_id: str
+    amount: float
+    payment_method: str = "orange-money"  # orange-money, wave, moov-money
+    message: Optional[str] = None
+    video_id: Optional[str] = None
+
+class WithdrawRequest(BaseModel):
+    amount: float
+    payment_method: str = "orange-money"
+    phone: str
+    full_name: Optional[str] = None
+
+@app.post("/api/mobile/tips")
+async def send_tip(data: TipRequest, user_id: str = Depends(verify_token)):
+    """Envoyer un pourboire à un créateur"""
+    if data.amount < 100:
+        raise HTTPException(status_code=400, detail="Montant minimum: 100 FCFA")
+    if data.amount > 500000:
+        raise HTTPException(status_code=400, detail="Montant maximum: 500,000 FCFA")
+
+    db = client[DB_NAME]
+    # Debit viewer wallet
+    viewer_wallet = await db.mobile_wallet.find_one({"user_id": user_id})
+    if not viewer_wallet or viewer_wallet.get("balance", 0) < data.amount:
+        raise HTTPException(status_code=400, detail="Solde insuffisant")
+
+    tip_id = str(uuid.uuid4())
+    platform_fee = data.amount * 0.05  # 5% commission plateforme
+    creator_amount = data.amount - platform_fee
+
+    tip = {
+        "id": tip_id,
+        "sender_id": user_id,
+        "creator_id": data.creator_id,
+        "amount": data.amount,
+        "creator_amount": creator_amount,
+        "platform_fee": platform_fee,
+        "payment_method": data.payment_method,
+        "message": data.message,
+        "video_id": data.video_id,
+        "status": "completed",
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    await db.mobile_tips.insert_one(tip)
+
+    # Debit viewer
+    await db.mobile_wallet.update_one(
+        {"user_id": user_id},
+        {"$inc": {"balance": -data.amount}}
+    )
+
+    # Credit creator earnings
+    await db.creator_earnings.update_one(
+        {"user_id": data.creator_id},
+        {
+            "$inc": {"total_earned": creator_amount, "available_balance": creator_amount, "total_tips": 1},
+            "$set": {"updated_at": datetime.utcnow().isoformat()},
+            "$setOnInsert": {"user_id": data.creator_id, "total_withdrawn": 0, "created_at": datetime.utcnow().isoformat()}
+        },
+        upsert=True
+    )
+
+    # Record transaction for viewer
+    await db.mobile_transactions.insert_one({
+        "id": str(uuid.uuid4()), "user_id": user_id, "type": "tip_sent",
+        "amount": -data.amount, "description": f"Pourboire envoyé",
+        "recipient_id": data.creator_id, "status": "completed",
+        "created_at": datetime.utcnow().isoformat()
+    })
+
+    return {"success": True, "data": {"tip_id": tip_id, "amount": data.amount, "creator_amount": creator_amount, "fee": platform_fee}}
+
+@app.get("/api/mobile/creator/earnings")
+async def get_creator_earnings(user_id: str = Depends(verify_token)):
+    """Dashboard revenus du créateur"""
+    db = client[DB_NAME]
+    earnings = await db.creator_earnings.find_one({"user_id": user_id})
+    if not earnings:
+        earnings = {"user_id": user_id, "total_earned": 0, "available_balance": 0, "total_withdrawn": 0, "total_tips": 0}
+
+    # Recent tips received
+    recent_tips = await db.mobile_tips.find(
+        {"creator_id": user_id}
+    ).sort("created_at", -1).limit(20).to_list(20)
+    for t in recent_tips:
+        t.pop("_id", None)
+
+    # Monthly stats
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_tips = await db.mobile_tips.find(
+        {"creator_id": user_id, "created_at": {"$gte": month_start.isoformat()}}
+    ).to_list(1000)
+    monthly_earned = sum(t.get("creator_amount", 0) for t in month_tips)
+
+    return {"success": True, "data": {
+        "total_earned": earnings.get("total_earned", 0),
+        "available_balance": earnings.get("available_balance", 0),
+        "total_withdrawn": earnings.get("total_withdrawn", 0),
+        "total_tips": earnings.get("total_tips", 0),
+        "monthly_earned": monthly_earned,
+        "monthly_tips": len(month_tips),
+        "recent_tips": recent_tips,
+    }}
+
+@app.post("/api/mobile/creator/withdraw")
+async def creator_withdraw(data: WithdrawRequest, user_id: str = Depends(verify_token)):
+    """Retrait vers Mobile Money"""
+    if data.amount < 500:
+        raise HTTPException(status_code=400, detail="Montant minimum de retrait: 500 FCFA")
+
+    db = client[DB_NAME]
+    earnings = await db.creator_earnings.find_one({"user_id": user_id})
+    if not earnings or earnings.get("available_balance", 0) < data.amount:
+        raise HTTPException(status_code=400, detail="Solde créateur insuffisant")
+
+    withdrawal_id = str(uuid.uuid4())
+    withdrawal_fee = data.amount * 0.02  # 2% frais de retrait
+    net_amount = data.amount - withdrawal_fee
+
+    withdrawal = {
+        "id": withdrawal_id, "user_id": user_id, "amount": data.amount,
+        "net_amount": net_amount, "fee": withdrawal_fee,
+        "payment_method": data.payment_method, "phone": data.phone,
+        "full_name": data.full_name, "status": "completed",
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    await db.mobile_withdrawals.insert_one(withdrawal)
+
+    await db.creator_earnings.update_one(
+        {"user_id": user_id},
+        {"$inc": {"available_balance": -data.amount, "total_withdrawn": data.amount}}
+    )
+
+    return {"success": True, "data": {
+        "withdrawal_id": withdrawal_id, "amount": data.amount,
+        "net_amount": net_amount, "fee": withdrawal_fee,
+        "method": data.payment_method, "phone": data.phone,
+        "status": "completed"
+    }}
+
+@app.get("/api/mobile/creator/transactions")
+async def get_creator_transactions(user_id: str = Depends(verify_token), page: int = 1, limit: int = 20):
+    """Historique des transactions créateur"""
+    db = client[DB_NAME]
+    skip = (page - 1) * limit
+    tips = await db.mobile_tips.find({"creator_id": user_id}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    withdrawals = await db.mobile_withdrawals.find({"user_id": user_id}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+
+    transactions = []
+    for t in tips:
+        t.pop("_id", None)
+        transactions.append({**t, "tx_type": "tip_received"})
+    for w in withdrawals:
+        w.pop("_id", None)
+        transactions.append({**w, "tx_type": "withdrawal"})
+
+    transactions.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return {"success": True, "data": {"transactions": transactions[:limit], "page": page}}
+
+# ==================== PHASE 2: PUBLICITE PAYANTE (AFRIWONDER ADS) ====================
+
+class CreateAdRequest(BaseModel):
+    title: str
+    description: str
+    media_url: Optional[str] = None
+    video_id: Optional[str] = None
+    target_audience: Optional[dict] = None  # {region, age_min, age_max, interests}
+    budget: float
+    duration_days: int = 7
+    payment_method: str = "orange-money"
+    cta_text: Optional[str] = "En savoir plus"
+    cta_url: Optional[str] = None
+
+@app.post("/api/mobile/ads/create")
+async def create_ad(data: CreateAdRequest, user_id: str = Depends(verify_token)):
+    """Créer une publicité payante"""
+    if data.budget < 1000:
+        raise HTTPException(status_code=400, detail="Budget minimum: 1,000 FCFA")
+    if data.duration_days < 1 or data.duration_days > 90:
+        raise HTTPException(status_code=400, detail="Durée: entre 1 et 90 jours")
+
+    db = client[DB_NAME]
+    ad_id = str(uuid.uuid4())
+    daily_budget = data.budget / data.duration_days
+
+    ad = {
+        "id": ad_id, "advertiser_id": user_id,
+        "title": data.title, "description": data.description,
+        "media_url": data.media_url, "video_id": data.video_id,
+        "target_audience": data.target_audience or {"region": "Mali", "age_min": 18, "age_max": 65},
+        "budget": data.budget, "spent": 0, "daily_budget": daily_budget,
+        "duration_days": data.duration_days,
+        "start_date": datetime.utcnow().isoformat(),
+        "end_date": (datetime.utcnow() + timedelta(days=data.duration_days)).isoformat(),
+        "payment_method": data.payment_method,
+        "cta_text": data.cta_text, "cta_url": data.cta_url,
+        "status": "active",
+        "impressions": 0, "clicks": 0, "engagement_rate": 0,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    await db.mobile_ads.insert_one(ad)
+    ad.pop("_id", None)
+
+    return {"success": True, "data": ad}
+
+@app.get("/api/mobile/ads/my")
+async def get_my_ads(user_id: str = Depends(verify_token)):
+    """Mes publicités"""
+    db = client[DB_NAME]
+    ads = await db.mobile_ads.find({"advertiser_id": user_id}).sort("created_at", -1).to_list(50)
+    for a in ads:
+        a.pop("_id", None)
+    return {"success": True, "data": ads}
+
+@app.get("/api/mobile/ads/feed")
+async def get_feed_ads(user_id: str = Depends(verify_token)):
+    """Publicités à injecter dans le feed"""
+    db = client[DB_NAME]
+    active_ads = await db.mobile_ads.find({"status": "active"}).to_list(10)
+    for a in active_ads:
+        a.pop("_id", None)
+        # Increment impressions
+        await db.mobile_ads.update_one({"id": a["id"]}, {"$inc": {"impressions": 1}})
+    return {"success": True, "data": active_ads}
+
+@app.post("/api/mobile/ads/{ad_id}/click")
+async def record_ad_click(ad_id: str, user_id: str = Depends(verify_token)):
+    """Enregistrer un clic sur une pub"""
+    db = client[DB_NAME]
+    await db.mobile_ads.update_one({"id": ad_id}, {"$inc": {"clicks": 1}})
+    return {"success": True}
+
+# ==================== PHASE 3: LIVE STREAMING ====================
+
+class StartLiveRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+
+class ClipHighlightRequest(BaseModel):
+    live_id: str
+    start_time: float  # seconds
+    end_time: float    # seconds
+    title: Optional[str] = None
+
+@app.post("/api/mobile/live/start")
+async def start_live(data: StartLiveRequest, user_id: str = Depends(verify_token)):
+    """Démarrer un live"""
+    db = client[DB_NAME]
+    live_id = str(uuid.uuid4())
+
+    live = {
+        "id": live_id, "creator_id": user_id,
+        "title": data.title, "description": data.description or "",
+        "category": data.category or "general",
+        "thumbnail_url": data.thumbnail_url or f"https://i.pravatar.cc/600?u={live_id}",
+        "status": "live",
+        "viewer_count": 0, "peak_viewers": 0,
+        "total_tips": 0, "tip_amount": 0,
+        "likes": 0, "comments_count": 0,
+        "recording_url": None,
+        "duration": 0,
+        "started_at": datetime.utcnow().isoformat(),
+        "ended_at": None,
+        "highlights": [],
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    await db.mobile_lives.insert_one(live)
+
+    return {"success": True, "data": {"live_id": live_id, "status": "live", "stream_key": f"afri-{live_id[:8]}"}}
+
+@app.post("/api/mobile/live/{live_id}/end")
+async def end_live(live_id: str, user_id: str = Depends(verify_token)):
+    """Terminer un live — le replay reste enregistré"""
+    db = client[DB_NAME]
+    live = await db.mobile_lives.find_one({"id": live_id, "creator_id": user_id})
+    if not live:
+        raise HTTPException(status_code=404, detail="Live non trouvé")
+
+    started = datetime.fromisoformat(live["started_at"])
+    duration = (datetime.utcnow() - started).total_seconds()
+    recording_url = f"https://cdn.afriwonder.com/lives/{live_id}/replay.mp4"
+
+    await db.mobile_lives.update_one(
+        {"id": live_id},
+        {"$set": {
+            "status": "ended", "ended_at": datetime.utcnow().isoformat(),
+            "duration": duration, "recording_url": recording_url,
+        }}
+    )
+
+    return {"success": True, "data": {"live_id": live_id, "status": "ended", "duration": duration, "recording_url": recording_url}}
+
+@app.get("/api/mobile/live/active")
+async def get_active_lives(user_id: str = Depends(verify_token)):
+    """Lives en cours"""
+    db = client[DB_NAME]
+    lives = await db.mobile_lives.find({"status": "live"}).sort("started_at", -1).to_list(20)
+    for l in lives:
+        l.pop("_id", None)
+    return {"success": True, "data": lives}
+
+@app.get("/api/mobile/live/replays")
+async def get_live_replays(user_id: str = Depends(verify_token)):
+    """Replays de lives terminés"""
+    db = client[DB_NAME]
+    replays = await db.mobile_lives.find({"status": "ended"}).sort("ended_at", -1).to_list(30)
+    for r in replays:
+        r.pop("_id", None)
+    return {"success": True, "data": replays}
+
+@app.get("/api/mobile/live/{live_id}")
+async def get_live_details(live_id: str, user_id: str = Depends(verify_token)):
+    """Détails d'un live"""
+    db = client[DB_NAME]
+    live = await db.mobile_lives.find_one({"id": live_id})
+    if not live:
+        raise HTTPException(status_code=404, detail="Live non trouvé")
+    live.pop("_id", None)
+    return {"success": True, "data": live}
+
+@app.post("/api/mobile/live/{live_id}/highlight")
+async def create_highlight(live_id: str, data: ClipHighlightRequest, user_id: str = Depends(verify_token)):
+    """Découper un moment fort du live pour le reposter"""
+    db = client[DB_NAME]
+    live = await db.mobile_lives.find_one({"id": live_id, "creator_id": user_id})
+    if not live:
+        raise HTTPException(status_code=404, detail="Live non trouvé")
+    if live.get("status") != "ended":
+        raise HTTPException(status_code=400, detail="Le live doit être terminé pour créer un highlight")
+
+    clip_id = str(uuid.uuid4())
+    clip_url = f"https://cdn.afriwonder.com/lives/{live_id}/clips/{clip_id}.mp4"
+
+    highlight = {
+        "id": clip_id, "live_id": live_id, "creator_id": user_id,
+        "title": data.title or f"Moment fort - {live.get('title', '')}",
+        "start_time": data.start_time, "end_time": data.end_time,
+        "duration": data.end_time - data.start_time,
+        "clip_url": clip_url,
+        "views": 0, "likes": 0,
+        "status": "ready",
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    await db.mobile_highlights.insert_one(highlight)
+    highlight.pop("_id", None)
+    await db.mobile_lives.update_one(
+        {"id": live_id},
+        {"$push": {"highlights": {"id": clip_id, "title": highlight["title"], "clip_url": clip_url}}}
+    )
+
+    return {"success": True, "data": highlight}
+
+@app.post("/api/mobile/live/{live_id}/tip")
+async def tip_during_live(live_id: str, data: TipRequest, user_id: str = Depends(verify_token)):
+    """Envoyer un pourboire pendant un live"""
+    db = client[DB_NAME]
+    live = await db.mobile_lives.find_one({"id": live_id})
+    if not live:
+        raise HTTPException(status_code=404, detail="Live non trouvé")
+
+    # Use existing tip logic
+    data.creator_id = live["creator_id"]
+    data.video_id = live_id
+    result = await send_tip(data, user_id)
+
+    # Update live tip stats
+    await db.mobile_lives.update_one(
+        {"id": live_id},
+        {"$inc": {"total_tips": 1, "tip_amount": data.amount}}
+    )
+
+    return result
+
+# ==================== PHASE 4: UPLOAD VIDEOS LONGUES ====================
+
+@app.post("/api/mobile/upload/chunk")
+async def upload_chunk(
+    chunk: UploadFile = File(...),
+    upload_id: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...),
+    filename: str = Form("video.mp4"),
+    user_id: str = Depends(verify_token),
+):
+    """Upload vidéo par morceaux (chunked) pour les vidéos longues"""
+    upload_dir = f"/app/backend/uploads/chunks/{upload_id}"
+    os.makedirs(upload_dir, exist_ok=True)
+
+    chunk_path = os.path.join(upload_dir, f"chunk_{chunk_index:04d}")
+    async with aiofiles.open(chunk_path, "wb") as f:
+        content = await chunk.read()
+        await f.write(content)
+
+    # Check if all chunks are uploaded
+    uploaded_chunks = len([f for f in os.listdir(upload_dir) if f.startswith("chunk_")])
+
+    if uploaded_chunks >= total_chunks:
+        # Assemble all chunks
+        final_dir = "/app/backend/uploads/videos"
+        os.makedirs(final_dir, exist_ok=True)
+        ext = filename.rsplit(".", 1)[-1] if "." in filename else "mp4"
+        final_path = f"{final_dir}/{upload_id}.{ext}"
+
+        async with aiofiles.open(final_path, "wb") as out_f:
+            for i in range(total_chunks):
+                cp = os.path.join(upload_dir, f"chunk_{i:04d}")
+                if os.path.exists(cp):
+                    async with aiofiles.open(cp, "rb") as cf:
+                        await out_f.write(await cf.read())
+
+        # Cleanup chunks
+        import shutil
+        shutil.rmtree(upload_dir, ignore_errors=True)
+
+        file_size = os.path.getsize(final_path)
+        return {
+            "success": True,
+            "data": {
+                "upload_id": upload_id,
+                "status": "complete",
+                "file_url": f"/api/uploads/videos/{upload_id}.{ext}",
+                "file_size": file_size,
+                "chunks_received": total_chunks,
+            }
+        }
+
+    return {
+        "success": True,
+        "data": {
+            "upload_id": upload_id,
+            "status": "uploading",
+            "chunks_received": uploaded_chunks,
+            "total_chunks": total_chunks,
+            "progress": round(uploaded_chunks / total_chunks * 100, 1),
+        }
+    }
+
+@app.get("/api/mobile/upload/{upload_id}/status")
+async def get_upload_status(upload_id: str, user_id: str = Depends(verify_token)):
+    """Vérifier le statut d'un upload chunked"""
+    upload_dir = f"/app/backend/uploads/chunks/{upload_id}"
+    final_dir = "/app/backend/uploads/videos"
+
+    # Check if complete
+    for ext in ["mp4", "mov", "avi"]:
+        fp = f"{final_dir}/{upload_id}.{ext}"
+        if os.path.exists(fp):
+            return {"success": True, "data": {"upload_id": upload_id, "status": "complete", "file_url": f"/api/uploads/videos/{upload_id}.{ext}"}}
+
+    # Check chunks progress
+    if os.path.exists(upload_dir):
+        chunks = len([f for f in os.listdir(upload_dir) if f.startswith("chunk_")])
+        return {"success": True, "data": {"upload_id": upload_id, "status": "uploading", "chunks_received": chunks}}
+
+    return {"success": True, "data": {"upload_id": upload_id, "status": "not_found"}}
+
+# ==================== SEED DATA FOR NEW FEATURES ====================
+
+@app.on_event("startup")
+async def seed_monetization_data():
+    """Seed demo data for monetization, ads, lives"""
+    db = client[DB_NAME]
+
+    # Seed sample ads
+    ad_count = await db.mobile_ads.count_documents({})
+    if ad_count == 0:
+        sample_ads = [
+            {
+                "id": str(uuid.uuid4()), "advertiser_id": "demo-advertiser-1",
+                "title": "Orange Money Mali", "description": "Envoyez et recevez de l'argent partout au Mali avec Orange Money. Simple, rapide et sécurisé.",
+                "media_url": "https://picsum.photos/800/450?random=ad1", "video_id": None,
+                "target_audience": {"region": "Mali", "age_min": 18, "age_max": 55, "interests": ["finance", "mobile"]},
+                "budget": 500000, "spent": 125000, "daily_budget": 25000,
+                "duration_days": 20, "start_date": datetime.utcnow().isoformat(),
+                "end_date": (datetime.utcnow() + timedelta(days=20)).isoformat(),
+                "payment_method": "orange-money", "cta_text": "Télécharger", "cta_url": "https://orangemoney.ml",
+                "status": "active", "impressions": 45200, "clicks": 2340, "engagement_rate": 5.2,
+                "created_at": datetime.utcnow().isoformat(),
+            },
+            {
+                "id": str(uuid.uuid4()), "advertiser_id": "demo-advertiser-2",
+                "title": "Marché AfriWonder", "description": "Découvrez les meilleurs produits artisanaux africains. Mode, décoration, cuisine - tout est sur AfriWonder Market.",
+                "media_url": "https://picsum.photos/800/450?random=ad2", "video_id": None,
+                "target_audience": {"region": "Afrique de l'Ouest", "age_min": 16, "age_max": 45, "interests": ["shopping", "mode"]},
+                "budget": 250000, "spent": 80000, "daily_budget": 15000,
+                "duration_days": 14, "start_date": datetime.utcnow().isoformat(),
+                "end_date": (datetime.utcnow() + timedelta(days=14)).isoformat(),
+                "payment_method": "wave", "cta_text": "Explorer", "cta_url": None,
+                "status": "active", "impressions": 28500, "clicks": 1820, "engagement_rate": 6.4,
+                "created_at": datetime.utcnow().isoformat(),
+            },
+        ]
+        for ad in sample_ads:
+            await db.mobile_ads.insert_one(ad)
+
+    # Seed sample live replays
+    live_count = await db.mobile_lives.count_documents({})
+    if live_count == 0:
+        sample_lives = [
+            {
+                "id": str(uuid.uuid4()), "creator_id": "demo-creator-1",
+                "title": "Cours de danse Mandingue", "description": "Apprenez les pas de base de la danse Mandingue avec Aminata",
+                "category": "culture", "thumbnail_url": "https://picsum.photos/400/600?random=live1",
+                "status": "ended", "viewer_count": 0, "peak_viewers": 1250,
+                "total_tips": 45, "tip_amount": 67500, "likes": 3200, "comments_count": 890,
+                "recording_url": "https://cdn.afriwonder.com/lives/demo1/replay.mp4",
+                "duration": 3600, "started_at": (datetime.utcnow() - timedelta(hours=5)).isoformat(),
+                "ended_at": (datetime.utcnow() - timedelta(hours=4)).isoformat(),
+                "highlights": [
+                    {"id": "h1", "title": "Pas de base Mandingue", "clip_url": "https://cdn.afriwonder.com/lives/demo1/clips/h1.mp4"},
+                    {"id": "h2", "title": "Freestyle final", "clip_url": "https://cdn.afriwonder.com/lives/demo1/clips/h2.mp4"},
+                ],
+                "created_at": (datetime.utcnow() - timedelta(hours=5)).isoformat(),
+            },
+            {
+                "id": str(uuid.uuid4()), "creator_id": "demo-creator-2",
+                "title": "Concert live - Salif Keita tribute", "description": "Hommage au maestro de la musique malienne",
+                "category": "musique", "thumbnail_url": "https://picsum.photos/400/600?random=live2",
+                "status": "live", "viewer_count": 342, "peak_viewers": 342,
+                "total_tips": 12, "tip_amount": 25000, "likes": 890, "comments_count": 234,
+                "recording_url": None, "duration": 0,
+                "started_at": (datetime.utcnow() - timedelta(minutes=45)).isoformat(),
+                "ended_at": None, "highlights": [],
+                "created_at": (datetime.utcnow() - timedelta(minutes=45)).isoformat(),
+            },
+        ]
+        for live in sample_lives:
+            await db.mobile_lives.insert_one(live)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

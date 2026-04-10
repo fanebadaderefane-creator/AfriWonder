@@ -291,6 +291,14 @@ const VideoItem: React.FC<VideoItemProps> = ({
           <Text style={styles.actionText}>{video.isSaved ? 'Sauve' : 'Sauver'}</Text>
         </TouchableOpacity>
 
+        {/* Tip / Soutenir */}
+        <TouchableOpacity style={styles.actionButton} onPress={() => {
+          router.push({ pathname: '/tip', params: { creatorId: video.user.id, creatorName: video.user.firstName, videoId: video.id } } as any);
+        }}>
+          <Ionicons name="gift" size={28} color="#FF6B00" />
+          <Text style={styles.actionText}>Soutenir</Text>
+        </TouchableOpacity>
+
         {/* Share */}
         <TouchableOpacity style={styles.actionButton} onPress={onShare}>
           <Ionicons name="arrow-redo" size={28} color="#FFF" />
