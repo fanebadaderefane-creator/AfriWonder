@@ -6,7 +6,7 @@ Ce document fige les chemins de référence pour éviter les doublons et les err
 
 - Frontend web: `src/`
 - Backend API: `backend/src/`
-- Mobile: `flutter_app/`
+- Mobile (Expo / React Native): `frontend/`
 - Entités JSON métier: `entities/` (ASCII uniquement)
 - Documentation: `docs/`
 
@@ -21,5 +21,5 @@ Ce document fige les chemins de référence pour éviter les doublons et les err
 - `entities/` existe.
 - `entités/` n'existe pas dans cette copie.
 - `mobile/`, `mobile-afriwonder/`, `mobile_flutter/` n'existent pas dans cette copie.
-- Le code mobile présent est `flutter_app/`.
+- Le code mobile présent est `frontend/` (Expo Router).
 

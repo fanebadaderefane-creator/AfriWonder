@@ -10,7 +10,7 @@ Document unique listant **toutes** les clés utilisées dans le projet (backend 
 |--------|------|
 | **`.env.example`** (racine) | Template **frontend** (Vite) — copier en `.env` ou `.env.local` |
 | **`backend/.env.example`** | Template **backend** — copier en `backend/.env` |
-| **`flutter_app/.env.example`** | Rappel **dart-define** pour l’app Flutter (pas de `.env` Vite) |
+| **`frontend/.env.example`** | Template **Expo (React Native)** — copier en `frontend/.env` ; variables `EXPO_PUBLIC_*` |
 | **`sdk/afriwonder-miniapp-sdk/.env.example`** | URL API publique pour tests locaux du package SDK |
 | **`backend/ENV_TEMPLATE.txt`** | Liste détaillée backend avec commentaires |
 | **`env.local.CONFIGURER`** / **`TEMPLATE_ENV.txt`** | Anciens templates / config |
@@ -259,16 +259,15 @@ Toutes les variables exposées au client doivent être préfixées par **`VITE_`
 
 ---
 
-## 3. Flutter & SDK mini-app
+## 3. Mobile Expo & SDK mini-app
 
-Ces projets **ne lisent pas** les `.env` Vite de la racine. Utiliser les exemples dédiés.
+L’app Expo dans **`frontend/`** utilise des variables **`EXPO_PUBLIC_*`** (voir **`frontend/.env.example`**), pas le `.env` Vite de la PWA racine.
 
-### Application mobile (`flutter_app/`)
+### Application mobile (`frontend/` — Expo)
 
-- Fichier de référence : **`flutter_app/.env.example`** (commentaires uniquement ; pas de chargement automatique).
-- En pratique : passer l’URL API au build ou au run, par ex.  
-  `flutter run --dart-define=API_BASE_URL=https://votre-backend.onrender.com/api`  
-  (émulateur Android : souvent `http://10.0.2.2:3000/api` vers un backend local).
+- Fichier de référence : **`frontend/.env.example`**.
+- Démarrage : `cd frontend` puis `npm run start` (voir `frontend/package.json`).
+- Émulateur Android vers backend local : souvent `http://10.0.2.2:3000` dans l’URL API configurée pour l’app.
 
 ### Package `@afriwonder/miniapp-sdk` (`sdk/afriwonder-miniapp-sdk/`)
 

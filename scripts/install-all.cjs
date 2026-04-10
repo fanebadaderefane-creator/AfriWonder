@@ -16,7 +16,7 @@ function run(cmd, cwd, optional = false) {
 
 run('npm install', root);
 run('npm install', path.join(root, 'backend'));
-const flutterAppDir = path.join(root, 'flutter_app');
-if (fs.existsSync(path.join(flutterAppDir, 'pubspec.yaml'))) {
-  run('flutter pub get', flutterAppDir, true);
+const frontendDir = path.join(root, 'frontend');
+if (fs.existsSync(path.join(frontendDir, 'package.json'))) {
+  run('npm install', frontendDir, true);
 }

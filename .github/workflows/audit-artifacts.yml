@@ -1,7 +1,7 @@
-# Vérifications alignement audits (dépôt + Flutter) — workflow séparé de la CI principale.
-# Ne pas l’ajouter comme check obligatoire dans Branch protection si vous voulez merger sans Flutter installé ;
+# Vérifications alignement audits (dépôt + mobile Expo) — workflow séparé de la CI principale.
+# Ne pas l’ajouter comme check obligatoire dans Branch protection si vous voulez merger sans install mobile ;
 # sinon, gardez uniquement « CI/CD AfriWonder » comme requis.
-name: Audit artifacts (Flutter + dépôt)
+name: Audit artifacts (Expo + dépôt)
 
 on:
   push:
@@ -29,20 +29,20 @@ jobs:
       - name: Vérifier artefacts audits (dépôt)
         run: node scripts/verify-audit-repo.mjs
 
-  flutter-ci:
+  expo-mobile-ci:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: actions/setup-node@v4
         with:
-          channel: stable
-      - name: Pub get, analyze, test
-        working-directory: flutter_app
-        run: |
-          flutter pub get
-          flutter analyze --no-fatal-infos
-          flutter test
+          node-version: '20'
+      - name: Install frontend (Expo)
+        working-directory: frontend
+        run: npm install
+      - name: Lint (Expo)
+        working-directory: frontend
+        run: npm run lint
 
   # Cible audit ~70 % front : rapport seulement (seuils Vitest inchangés dans la CI principale).
   frontend-coverage-informational:
