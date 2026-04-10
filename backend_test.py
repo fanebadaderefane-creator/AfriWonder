@@ -1,393 +1,265 @@
 #!/usr/bin/env python3
 """
-AfriWonder Backend API Test Suite
-Tests all backend endpoints as specified in the review request
+AfriWonder Mobile Backend API Testing
+Tests the new complementary APIs added to the backend
 """
 
 import requests
 import json
-import sys
-from typing import Dict, Any, Optional
+import uuid
+from datetime import datetime
 
-# Backend URL from environment
-BACKEND_URL = "https://afriwonder-preview.preview.emergentagent.com/api"
+# Configuration
+BASE_URL = "https://afriwonder-preview.preview.emergentagent.com"
+JWT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoidGVzdC11c2VyLTQ1NiIsImV4cCI6MTc3NTkyMDQ0MH0.6Qzr4lHbmpfS7KWFvfYG03pWP9cUsQQINginXQgpfPE"
 
-class AfriWonderAPITester:
-    def __init__(self):
-        self.base_url = BACKEND_URL
-        self.session = requests.Session()
-        self.access_token = None
-        self.refresh_token = None
-        self.test_results = []
-        
-    def log_test(self, test_name: str, success: bool, details: str = "", response_data: Any = None):
-        """Log test results"""
-        status = "✅ PASS" if success else "❌ FAIL"
-        print(f"{status} {test_name}")
-        if details:
-            print(f"   Details: {details}")
-        if response_data and not success:
-            print(f"   Response: {response_data}")
-        print()
-        
-        self.test_results.append({
-            "test": test_name,
-            "success": success,
-            "details": details,
-            "response": response_data
-        })
+headers = {
+    "Authorization": f"Bearer {JWT_TOKEN}",
+    "Content-Type": "application/json"
+}
+
+def test_api(method, endpoint, data=None, expected_status=200, description=""):
+    """Helper function to test API endpoints"""
+    url = f"{BASE_URL}{endpoint}"
+    print(f"\n🧪 Testing {method} {endpoint}")
+    print(f"   Description: {description}")
     
-    def make_request(self, method: str, endpoint: str, data: Dict = None, headers: Dict = None, params: Dict = None) -> tuple:
-        """Make HTTP request and return (success, response_data, status_code)"""
-        url = f"{self.base_url}{endpoint}"
+    try:
+        if method == "GET":
+            response = requests.get(url, headers=headers)
+        elif method == "POST":
+            response = requests.post(url, headers=headers, json=data)
+        elif method == "PUT":
+            response = requests.put(url, headers=headers, json=data)
+        else:
+            print(f"❌ Unsupported method: {method}")
+            return False
+            
+        print(f"   Status: {response.status_code}")
         
-        # Add auth header if token available
-        if self.access_token and headers is None:
-            headers = {}
-        if self.access_token:
-            headers = headers or {}
-            headers["Authorization"] = f"Bearer {self.access_token}"
-        
+        if response.status_code != expected_status:
+            print(f"❌ Expected {expected_status}, got {response.status_code}")
+            print(f"   Response: {response.text}")
+            return False
+            
         try:
-            if method.upper() == "GET":
-                response = self.session.get(url, headers=headers, params=params, timeout=30)
-            elif method.upper() == "POST":
-                response = self.session.post(url, json=data, headers=headers, params=params, timeout=30)
-            elif method.upper() == "PUT":
-                response = self.session.put(url, json=data, headers=headers, params=params, timeout=30)
-            elif method.upper() == "DELETE":
-                response = self.session.delete(url, headers=headers, params=params, timeout=30)
+            json_response = response.json()
+            print(f"   Response format: {'✅ Valid JSON' if json_response else '❌ Invalid JSON'}")
+            
+            # Check if response has expected format
+            if "success" in json_response and "data" in json_response:
+                print(f"   Format check: ✅ Has success/data structure")
+                if json_response.get("success"):
+                    print(f"   Success: ✅ {json_response['success']}")
+                else:
+                    print(f"   Success: ❌ {json_response['success']}")
+                    return False
             else:
-                return False, f"Unsupported method: {method}", 0
+                print(f"   Format check: ❌ Missing success/data structure")
+                print(f"   Response keys: {list(json_response.keys())}")
+                
+            return True
             
-            try:
-                response_data = response.json()
-            except:
-                response_data = response.text
+        except json.JSONDecodeError:
+            print(f"❌ Invalid JSON response: {response.text}")
+            return False
             
-            return response.status_code < 400, response_data, response.status_code
-            
-        except requests.exceptions.RequestException as e:
-            return False, str(e), 0
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Request failed: {e}")
+        return False
+
+def main():
+    print("🚀 Starting AfriWonder Mobile Backend API Tests")
+    print(f"   Base URL: {BASE_URL}")
+    print(f"   JWT Token: {JWT_TOKEN[:50]}...")
     
-    def test_health_check(self):
-        """Test health check endpoint"""
-        success, data, status = self.make_request("GET", "/health")
-        
-        if success and isinstance(data, dict) and data.get("status") == "ok":
-            self.log_test("Health Check", True, f"Status: {status}, Service: {data.get('service', 'Unknown')}")
+    results = {}
+    
+    # Test 1: Health Check (no auth required)
+    print("\n" + "="*60)
+    print("TESTING EXISTING APIs")
+    print("="*60)
+    
+    results["health_check"] = test_api(
+        "GET", "/api/health", 
+        description="Health check endpoint (no auth required)"
+    )
+    
+    # Test 2: Mobile Conversations (existing)
+    results["mobile_conversations"] = test_api(
+        "GET", "/api/mobile/conversations",
+        description="Get user conversations (existing API)"
+    )
+    
+    # Test 3: Mobile Wallet (existing)
+    results["mobile_wallet"] = test_api(
+        "GET", "/api/mobile/wallet",
+        description="Get user wallet (existing API)"
+    )
+    
+    # NEW APIs Testing
+    print("\n" + "="*60)
+    print("TESTING NEW PROFILE APIs")
+    print("="*60)
+    
+    # Test 4: Get Profile (new)
+    results["get_profile"] = test_api(
+        "GET", "/api/mobile/profile",
+        description="Get user extended profile (NEW API)"
+    )
+    
+    # Test 5: Update Profile (new)
+    profile_data = {
+        "full_name": "Test User AfriWonder",
+        "bio": "Testing the new profile API from automated tests",
+        "city": "Bamako",
+        "country": "Mali",
+        "phone": "+223 70 12 34 56"
+    }
+    results["update_profile"] = test_api(
+        "PUT", "/api/mobile/profile",
+        data=profile_data,
+        description="Update user profile (NEW API)"
+    )
+    
+    print("\n" + "="*60)
+    print("TESTING NEW STORIES APIs")
+    print("="*60)
+    
+    # Test 6: Get Stories (new)
+    results["get_stories"] = test_api(
+        "GET", "/api/mobile/stories",
+        description="Get active stories with auto-seeding (NEW API)"
+    )
+    
+    # Test 7: Create Story (new)
+    story_data = {
+        "media_url": "https://picsum.photos/400/700?random=999",
+        "type": "image",
+        "caption": "Test story from automated testing",
+        "duration": 7
+    }
+    results["create_story"] = test_api(
+        "POST", "/api/mobile/stories",
+        data=story_data,
+        description="Create new story (NEW API)"
+    )
+    
+    print("\n" + "="*60)
+    print("TESTING NEW CROWDFUNDING APIs")
+    print("="*60)
+    
+    # Test 8: Get Crowdfunding Projects (new)
+    results["get_crowdfunding"] = test_api(
+        "GET", "/api/mobile/crowdfunding",
+        description="List crowdfunding projects with auto-seeding (NEW API)"
+    )
+    
+    # Test 9: Create Crowdfunding Project (new)
+    project_data = {
+        "title": "Test Project - Automated Testing",
+        "description": "This is a test project created by automated testing to verify the crowdfunding API functionality.",
+        "goal_amount": 100000,
+        "category": "education",
+        "currency": "XOF",
+        "image_url": "https://picsum.photos/600/400?random=888"
+    }
+    results["create_crowdfunding"] = test_api(
+        "POST", "/api/mobile/crowdfunding",
+        data=project_data,
+        description="Create crowdfunding project (NEW API)"
+    )
+    
+    # Test 10: Get My Crowdfunding Projects (new)
+    results["get_my_crowdfunding"] = test_api(
+        "GET", "/api/mobile/crowdfunding/my/projects",
+        description="Get user's own crowdfunding projects (NEW API)"
+    )
+    
+    # Test 11: Get Project Details (new) - We'll use a demo project ID
+    # First, let's get the projects to find a valid project ID
+    print("\n🔍 Getting project ID for detailed testing...")
+    try:
+        response = requests.get(f"{BASE_URL}/api/mobile/crowdfunding", headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success") and data.get("data", {}).get("projects"):
+                project_id = data["data"]["projects"][0]["id"]
+                print(f"   Found project ID: {project_id}")
+                
+                # Test project details
+                results["get_project_details"] = test_api(
+                    "GET", f"/api/mobile/crowdfunding/{project_id}",
+                    description=f"Get project details for ID: {project_id} (NEW API)"
+                )
+                
+                # Test contribution
+                contribution_data = {
+                    "amount": 5000,
+                    "payment_method": "orange-money",
+                    "anonymous": False
+                }
+                results["contribute_to_project"] = test_api(
+                    "POST", f"/api/mobile/crowdfunding/{project_id}/contribute",
+                    data=contribution_data,
+                    description=f"Contribute to project {project_id} (NEW API)"
+                )
+            else:
+                print("❌ No projects found for detailed testing")
+                results["get_project_details"] = False
+                results["contribute_to_project"] = False
         else:
-            self.log_test("Health Check", False, f"Status: {status}", data)
+            print(f"❌ Failed to get projects: {response.status_code}")
+            results["get_project_details"] = False
+            results["contribute_to_project"] = False
+    except Exception as e:
+        print(f"❌ Error getting project details: {e}")
+        results["get_project_details"] = False
+        results["contribute_to_project"] = False
     
-    def test_register(self):
-        """Test user registration"""
-        register_data = {
-            "firstName": "Test",
-            "lastName": "User",
-            "email": "test@afriwonder.com",
-            "phone": "+22370000000",
-            "password": "test123456",
-            "country": "ML"
-        }
-        
-        success, data, status = self.make_request("POST", "/auth/register", register_data)
-        
-        if success and isinstance(data, dict) and "user" in data and "accessToken" in data:
-            self.log_test("User Registration", True, f"Status: {status}, User ID: {data['user'].get('id', 'Unknown')}")
-            # Store tokens for later tests
-            self.access_token = data.get("accessToken")
-            self.refresh_token = data.get("refreshToken")
-        else:
-            self.log_test("User Registration", False, f"Status: {status}", data)
+    # Summary
+    print("\n" + "="*60)
+    print("TEST RESULTS SUMMARY")
+    print("="*60)
     
-    def test_login(self):
-        """Test user login with mock user"""
-        login_data = {
-            "email": "aminata@afriwonder.com",
-            "password": "password123"
-        }
-        
-        success, data, status = self.make_request("POST", "/auth/login", login_data)
-        
-        if success and isinstance(data, dict) and "user" in data and "accessToken" in data:
-            self.log_test("User Login", True, f"Status: {status}, User: {data['user'].get('firstName', 'Unknown')}")
-            # Store tokens for authenticated tests
-            self.access_token = data.get("accessToken")
-            self.refresh_token = data.get("refreshToken")
-        else:
-            self.log_test("User Login", False, f"Status: {status}", data)
+    passed = sum(1 for result in results.values() if result)
+    total = len(results)
     
-    def test_get_me(self):
-        """Test get current user endpoint"""
-        if not self.access_token:
-            self.log_test("Get Current User", False, "No access token available")
-            return
-        
-        success, data, status = self.make_request("GET", "/auth/me")
-        
-        if success and isinstance(data, dict) and "id" in data:
-            self.log_test("Get Current User", True, f"Status: {status}, User: {data.get('firstName', 'Unknown')} {data.get('lastName', '')}")
-        else:
-            self.log_test("Get Current User", False, f"Status: {status}", data)
+    print(f"\n📊 Overall Results: {passed}/{total} tests passed")
     
-    def test_refresh_token(self):
-        """Test token refresh"""
-        if not self.refresh_token:
-            self.log_test("Refresh Token", False, "No refresh token available")
-            return
-        
-        refresh_data = {
-            "refreshToken": self.refresh_token
-        }
-        
-        success, data, status = self.make_request("POST", "/auth/refresh", refresh_data)
-        
-        if success and isinstance(data, dict) and "accessToken" in data:
-            self.log_test("Refresh Token", True, f"Status: {status}, New token received")
-            self.access_token = data.get("accessToken")
-            self.refresh_token = data.get("refreshToken", self.refresh_token)
-        else:
-            self.log_test("Refresh Token", False, f"Status: {status}", data)
+    print("\n📋 Detailed Results:")
+    for test_name, result in results.items():
+        status = "✅ PASS" if result else "❌ FAIL"
+        print(f"   {test_name}: {status}")
     
-    def test_video_feed(self):
-        """Test video feed endpoint"""
-        success, data, status = self.make_request("GET", "/videos/feed", params={"page": 1, "limit": 10})
-        
-        if success and isinstance(data, dict) and "videos" in data:
-            videos_count = len(data["videos"])
-            self.log_test("Video Feed", True, f"Status: {status}, Videos: {videos_count}")
-        else:
-            self.log_test("Video Feed", False, f"Status: {status}", data)
+    # Categorize results
+    existing_apis = ["health_check", "mobile_conversations", "mobile_wallet"]
+    profile_apis = ["get_profile", "update_profile"]
+    stories_apis = ["get_stories", "create_story"]
+    crowdfunding_apis = ["get_crowdfunding", "create_crowdfunding", "get_my_crowdfunding", 
+                        "get_project_details", "contribute_to_project"]
     
-    def test_get_video(self):
-        """Test get specific video"""
-        video_id = "v1"  # From mock data
-        success, data, status = self.make_request("GET", f"/videos/{video_id}")
-        
-        if success and isinstance(data, dict) and "id" in data:
-            self.log_test("Get Video", True, f"Status: {status}, Video: {data.get('title', 'Unknown')}")
-        else:
-            self.log_test("Get Video", False, f"Status: {status}", data)
+    print(f"\n📈 Results by Category:")
     
-    def test_like_video(self):
-        """Test like video endpoint (requires auth)"""
-        if not self.access_token:
-            self.log_test("Like Video", False, "No access token available")
-            return
-        
-        video_id = "v1"
-        success, data, status = self.make_request("POST", f"/videos/{video_id}/like")
-        
-        if success and isinstance(data, dict) and "liked" in data:
-            self.log_test("Like Video", True, f"Status: {status}, Likes: {data.get('likes', 0)}")
-        else:
-            self.log_test("Like Video", False, f"Status: {status}", data)
+    existing_passed = sum(1 for api in existing_apis if results.get(api, False))
+    print(f"   Existing APIs: {existing_passed}/{len(existing_apis)} passed")
     
-    def test_get_comments(self):
-        """Test get video comments"""
-        video_id = "v1"
-        success, data, status = self.make_request("GET", f"/videos/{video_id}/comments")
-        
-        if success and isinstance(data, dict) and "comments" in data:
-            comments_count = len(data["comments"])
-            self.log_test("Get Comments", True, f"Status: {status}, Comments: {comments_count}")
-        else:
-            self.log_test("Get Comments", False, f"Status: {status}", data)
+    profile_passed = sum(1 for api in profile_apis if results.get(api, False))
+    print(f"   Profile APIs: {profile_passed}/{len(profile_apis)} passed")
     
-    def test_add_comment(self):
-        """Test add comment endpoint (requires auth)"""
-        if not self.access_token:
-            self.log_test("Add Comment", False, "No access token available")
-            return
-        
-        video_id = "v1"
-        comment_data = {
-            "text": "Super vidéo!"
-        }
-        
-        success, data, status = self.make_request("POST", f"/videos/{video_id}/comment", comment_data)
-        
-        if success and isinstance(data, dict) and "text" in data:
-            self.log_test("Add Comment", True, f"Status: {status}, Comment: {data.get('text', '')}")
-        else:
-            self.log_test("Add Comment", False, f"Status: {status}", data)
+    stories_passed = sum(1 for api in stories_apis if results.get(api, False))
+    print(f"   Stories APIs: {stories_passed}/{len(stories_apis)} passed")
     
-    def test_trending_videos(self):
-        """Test trending videos endpoint"""
-        success, data, status = self.make_request("GET", "/videos/trending")
-        
-        if success and isinstance(data, dict) and "hashtags" in data and "videos" in data:
-            hashtags_count = len(data["hashtags"])
-            videos_count = len(data["videos"])
-            self.log_test("Trending Videos", True, f"Status: {status}, Hashtags: {hashtags_count}, Videos: {videos_count}")
-        else:
-            self.log_test("Trending Videos", False, f"Status: {status}", data)
+    crowdfunding_passed = sum(1 for api in crowdfunding_apis if results.get(api, False))
+    print(f"   Crowdfunding APIs: {crowdfunding_passed}/{len(crowdfunding_apis)} passed")
     
-    def test_search_videos(self):
-        """Test search videos"""
-        success, data, status = self.make_request("GET", "/search", params={"q": "mali", "type": "videos"})
-        
-        if success and isinstance(data, dict) and "results" in data:
-            results_count = len(data["results"])
-            self.log_test("Search Videos", True, f"Status: {status}, Results: {results_count}")
-        else:
-            self.log_test("Search Videos", False, f"Status: {status}", data)
-    
-    def test_search_users(self):
-        """Test search users"""
-        success, data, status = self.make_request("GET", "/search", params={"q": "aminata", "type": "users"})
-        
-        if success and isinstance(data, dict) and "results" in data:
-            results_count = len(data["results"])
-            self.log_test("Search Users", True, f"Status: {status}, Results: {results_count}")
-        else:
-            self.log_test("Search Users", False, f"Status: {status}", data)
-    
-    def test_marketplace_products(self):
-        """Test get marketplace products"""
-        success, data, status = self.make_request("GET", "/marketplace/products")
-        
-        if success and isinstance(data, dict) and "products" in data:
-            products_count = len(data["products"])
-            self.log_test("Marketplace Products", True, f"Status: {status}, Products: {products_count}")
-        else:
-            self.log_test("Marketplace Products", False, f"Status: {status}", data)
-    
-    def test_get_product(self):
-        """Test get specific product"""
-        product_id = "p1"  # From mock data
-        success, data, status = self.make_request("GET", f"/marketplace/products/{product_id}")
-        
-        if success and isinstance(data, dict) and "id" in data:
-            self.log_test("Get Product", True, f"Status: {status}, Product: {data.get('name', 'Unknown')}")
-        else:
-            self.log_test("Get Product", False, f"Status: {status}", data)
-    
-    def test_get_cart(self):
-        """Test get cart (requires auth)"""
-        if not self.access_token:
-            self.log_test("Get Cart", False, "No access token available")
-            return
-        
-        success, data, status = self.make_request("GET", "/marketplace/cart")
-        
-        if success and isinstance(data, dict):
-            items_count = len(data.get("items", []))
-            self.log_test("Get Cart", True, f"Status: {status}, Items: {items_count}")
-        else:
-            self.log_test("Get Cart", False, f"Status: {status}", data)
-    
-    def test_add_to_cart(self):
-        """Test add to cart (requires auth)"""
-        if not self.access_token:
-            self.log_test("Add to Cart", False, "No access token available")
-            return
-        
-        cart_data = {
-            "productId": "p1",
-            "quantity": 2
-        }
-        
-        success, data, status = self.make_request("POST", "/marketplace/cart/add", cart_data)
-        
-        if success and isinstance(data, dict) and "items" in data:
-            items_count = len(data["items"])
-            total = data.get("total", 0)
-            self.log_test("Add to Cart", True, f"Status: {status}, Items: {items_count}, Total: {total}")
-        else:
-            self.log_test("Add to Cart", False, f"Status: {status}", data)
-    
-    def test_orange_money_payment(self):
-        """Test Orange Money payment initiation (requires auth)"""
-        if not self.access_token:
-            self.log_test("Orange Money Payment", False, "No access token available")
-            return
-        
-        # Note: The endpoint expects individual parameters, not a JSON body
-        payment_data = {
-            "phone": "+22370123456",
-            "amount": 25000,
-            "order_id": "TEST001"
-        }
-        
-        success, data, status = self.make_request("POST", "/payments/orange-money/initiate", params=payment_data)
-        
-        if success and isinstance(data, dict) and "transactionId" in data:
-            self.log_test("Orange Money Payment", True, f"Status: {status}, Transaction ID: {data.get('transactionId', 'Unknown')}")
-        else:
-            self.log_test("Orange Money Payment", False, f"Status: {status}", data)
-    
-    def run_all_tests(self):
-        """Run all API tests"""
-        print("🚀 Starting AfriWonder Backend API Tests")
-        print(f"Backend URL: {self.base_url}")
-        print("=" * 60)
-        
-        # Health check
-        self.test_health_check()
-        
-        # Authentication tests
-        print("🔐 Authentication Tests")
-        print("-" * 30)
-        self.test_register()
-        self.test_login()  # This will set tokens for subsequent tests
-        self.test_get_me()
-        self.test_refresh_token()
-        
-        # Video tests
-        print("🎥 Video Tests")
-        print("-" * 30)
-        self.test_video_feed()
-        self.test_get_video()
-        self.test_like_video()
-        self.test_get_comments()
-        self.test_add_comment()
-        self.test_trending_videos()
-        
-        # Search tests
-        print("🔍 Search Tests")
-        print("-" * 30)
-        self.test_search_videos()
-        self.test_search_users()
-        
-        # Marketplace tests
-        print("🛒 Marketplace Tests")
-        print("-" * 30)
-        self.test_marketplace_products()
-        self.test_get_product()
-        self.test_get_cart()
-        self.test_add_to_cart()
-        
-        # Payment tests
-        print("💳 Payment Tests")
-        print("-" * 30)
-        self.test_orange_money_payment()
-        
-        # Summary
-        print("=" * 60)
-        self.print_summary()
-    
-    def print_summary(self):
-        """Print test summary"""
-        total_tests = len(self.test_results)
-        passed_tests = sum(1 for result in self.test_results if result["success"])
-        failed_tests = total_tests - passed_tests
-        
-        print(f"📊 Test Summary")
-        print(f"Total Tests: {total_tests}")
-        print(f"✅ Passed: {passed_tests}")
-        print(f"❌ Failed: {failed_tests}")
-        print(f"Success Rate: {(passed_tests/total_tests)*100:.1f}%")
-        
-        if failed_tests > 0:
-            print("\n❌ Failed Tests:")
-            for result in self.test_results:
-                if not result["success"]:
-                    print(f"   - {result['test']}: {result['details']}")
-        
-        return failed_tests == 0
+    if passed == total:
+        print(f"\n🎉 All tests passed! The AfriWonder Mobile backend is working correctly.")
+        return True
+    else:
+        print(f"\n⚠️  {total - passed} test(s) failed. Please check the failed endpoints.")
+        return False
 
 if __name__ == "__main__":
-    tester = AfriWonderAPITester()
-    success = tester.run_all_tests()
-    sys.exit(0 if success else 1)
+    success = main()
+    exit(0 if success else 1)

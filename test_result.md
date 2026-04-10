@@ -444,6 +444,114 @@ backend:
         agent: "testing"
         comment: "GET /api/mobile/wallet/transactions working correctly. Returns paginated transaction history for user."
 
+  - task: "Get User Profile"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/mobile/profile working correctly. Returns user extended profile data with proper format."
+
+  - task: "Update User Profile"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "PUT /api/mobile/profile working correctly. Updates user profile (full_name, bio, city, country, phone) and returns updated data."
+
+  - task: "Get Stories"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/mobile/stories working correctly. Auto-seeds demo stories and returns active stories grouped by user."
+
+  - task: "Create Story"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "POST /api/mobile/stories working correctly. Creates new story with media_url, type, caption, and duration."
+
+  - task: "Get Crowdfunding Projects"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/mobile/crowdfunding working correctly. Auto-seeds demo projects and returns paginated project list."
+
+  - task: "Create Crowdfunding Project"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "POST /api/mobile/crowdfunding working correctly. Creates new crowdfunding project with title, description, goal_amount, and category."
+
+  - task: "Get My Crowdfunding Projects"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/mobile/crowdfunding/my/projects working correctly. Returns user's own crowdfunding projects."
+
+  - task: "Get Crowdfunding Project Details"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/mobile/crowdfunding/{project_id} working correctly. Returns project details with contributions list."
+
+  - task: "Contribute to Crowdfunding Project"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "POST /api/mobile/crowdfunding/{project_id}/contribute working correctly. Processes contribution and updates project amounts."
+
 frontend:
   - task: "Login to Real Backend (AfriWonder Render)"
     implemented: true
@@ -495,13 +603,13 @@ frontend:
 
 metadata:
   created_by: "testing_agent"
-  version: "1.1"
-  test_sequence: 2
+  version: "1.2"
+  test_sequence: 3
   run_ui: false
 
 test_plan:
   current_focus:
-    - "All mobile API endpoints tested"
+    - "All new complementary mobile APIs tested successfully"
   stuck_tasks: []
   test_all: true
   test_priority: "high_first"
@@ -511,3 +619,5 @@ agent_communication:
     message: "Completed comprehensive testing of all AfriWonder backend API endpoints. All 18 tests passed successfully after fixing route ordering issue for trending videos endpoint. Backend is fully functional with proper authentication, video management, search, marketplace, and payment features."
   - agent: "testing"
     message: "Completed testing of new AfriWonder Mobile APIs with MongoDB integration. All 9 mobile API endpoints tested successfully: health check, authentication, conversations (get/create/messages/send), wallet (get/topup/transfer/transactions). MongoDB storage working correctly with proper data persistence. JWT authentication functioning properly. All mobile APIs respond with correct format: {'success': true, 'data': {...}}."
+  - agent: "testing"
+    message: "Completed testing of NEW complementary AfriWonder Mobile APIs. All 12 tests passed successfully: 3 existing APIs (health, conversations, wallet), 2 profile APIs (get/update), 2 stories APIs (get/create with auto-seeding), 5 crowdfunding APIs (list/create/my-projects/details/contribute). All new APIs require JWT authentication and return proper {'success': true, 'data': {...}} format. MongoDB integration working correctly with auto-seeding for demo data. Profile updates, story creation, and crowdfunding contributions all persist correctly."

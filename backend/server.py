@@ -360,6 +360,261 @@ async def start_live(title: str, user_id: str = Depends(verify_token)):
         "status": "ready"
     }
 
+# ==================== PROFILE UPDATE API (Complémentaire) ====================
+
+profiles_col = db["profiles"]
+
+class ProfileUpdateRequest(BaseModel):
+    full_name: Optional[str] = None
+    bio: Optional[str] = None
+    phone: Optional[str] = None
+    country: Optional[str] = None
+    city: Optional[str] = None
+    website: Optional[str] = None
+
+@app.put("/api/mobile/profile")
+async def update_profile(data: ProfileUpdateRequest, user_id: str = Depends(verify_token)):
+    """Mettre à jour le profil utilisateur"""
+    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    update_data["updated_at"] = datetime.utcnow().isoformat()
+
+    await profiles_col.update_one(
+        {"user_id": user_id},
+        {"$set": update_data},
+        upsert=True
+    )
+    profile = await profiles_col.find_one({"user_id": user_id})
+    if profile:
+        profile["_id"] = str(profile["_id"])
+    return {"success": True, "data": profile}
+
+@app.get("/api/mobile/profile")
+async def get_profile(user_id: str = Depends(verify_token)):
+    """Récupérer le profil étendu"""
+    profile = await profiles_col.find_one({"user_id": user_id})
+    if profile:
+        profile["_id"] = str(profile["_id"])
+    return {"success": True, "data": profile or {"user_id": user_id}}
+
+# ==================== STORIES API (Complémentaire) ====================
+
+stories_col = db["stories"]
+
+class StoryCreateRequest(BaseModel):
+    media_url: str
+    type: str = "image"
+    caption: Optional[str] = None
+    duration: int = 5
+
+@app.get("/api/mobile/stories")
+async def get_stories(user_id: str = Depends(verify_token)):
+    """Récupérer les stories actives (< 24h)"""
+    cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+    stories = await stories_col.find(
+        {"created_at": {"$gte": cutoff}}
+    ).sort("created_at", -1).to_list(50)
+
+    if not stories:
+        await seed_demo_stories(user_id)
+        stories = await stories_col.find(
+            {"created_at": {"$gte": cutoff}}
+        ).sort("created_at", -1).to_list(50)
+
+    # Group by user
+    users_stories = {}
+    for s in stories:
+        s["_id"] = str(s["_id"])
+        uid = s.get("user_id", "unknown")
+        if uid not in users_stories:
+            users_stories[uid] = {
+                "user_id": uid,
+                "user_name": s.get("user_name", "Utilisateur"),
+                "user_avatar": s.get("user_avatar", f"https://i.pravatar.cc/150?u={uid}"),
+                "stories": [],
+                "has_unseen": True,
+            }
+        users_stories[uid]["stories"].append(s)
+
+    return {"success": True, "data": list(users_stories.values())}
+
+@app.post("/api/mobile/stories")
+async def create_story(data: StoryCreateRequest, user_id: str = Depends(verify_token)):
+    """Créer une story"""
+    story = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "user_name": "Moi",
+        "user_avatar": f"https://i.pravatar.cc/150?u={user_id}",
+        "media_url": data.media_url,
+        "type": data.type,
+        "caption": data.caption,
+        "duration": data.duration,
+        "views": 0,
+        "created_at": datetime.utcnow().isoformat(),
+        "expires_at": (datetime.utcnow() + timedelta(hours=24)).isoformat(),
+    }
+    await stories_col.insert_one(story)
+    story["_id"] = str(story.get("_id", ""))
+    return {"success": True, "data": story}
+
+async def seed_demo_stories(user_id: str):
+    """Seed demo stories"""
+    demo_stories = [
+        {"user_id": "story-aminata", "user_name": "Aminata", "user_avatar": "https://i.pravatar.cc/150?img=1",
+         "media_url": "https://picsum.photos/400/700?random=201", "type": "image", "caption": "Belle journée à Bamako ☀️"},
+        {"user_id": "story-moussa", "user_name": "Moussa", "user_avatar": "https://i.pravatar.cc/150?img=2",
+         "media_url": "https://picsum.photos/400/700?random=202", "type": "image", "caption": "Au marché 🛍️"},
+        {"user_id": "story-awa", "user_name": "Awa", "user_avatar": "https://i.pravatar.cc/150?img=3",
+         "media_url": "https://picsum.photos/400/700?random=203", "type": "image", "caption": "Danse traditionnelle 💃"},
+        {"user_id": "story-ibrahim", "user_name": "Ibrahim", "user_avatar": "https://i.pravatar.cc/150?img=4",
+         "media_url": "https://picsum.photos/400/700?random=204", "type": "image", "caption": "Concert live 🎵"},
+        {"user_id": "story-fanta", "user_name": "Fanta", "user_avatar": "https://i.pravatar.cc/150?img=5",
+         "media_url": "https://picsum.photos/400/700?random=205", "type": "image", "caption": "Nouvelle coiffure ✨"},
+    ]
+    for s in demo_stories:
+        story = {
+            **s, "id": str(uuid.uuid4()), "duration": 5, "views": 0,
+            "created_at": (datetime.utcnow() - timedelta(hours=1)).isoformat(),
+            "expires_at": (datetime.utcnow() + timedelta(hours=23)).isoformat(),
+        }
+        await stories_col.insert_one(story)
+
+# ==================== CROWDFUNDING API (Complémentaire) ====================
+
+crowdfunding_col = db["crowdfunding"]
+contributions_col = db["contributions"]
+
+class CrowdfundingCreateRequest(BaseModel):
+    title: str
+    description: str
+    goal_amount: float
+    currency: str = "XOF"
+    category: str = "general"
+    end_date: Optional[str] = None
+    image_url: Optional[str] = None
+
+class ContributionRequest(BaseModel):
+    amount: float
+    payment_method: str = "orange-money"
+    anonymous: bool = False
+
+@app.get("/api/mobile/crowdfunding")
+async def get_crowdfunding_projects(user_id: str = Depends(verify_token), page: int = 1, limit: int = 20):
+    """Lister les projets de crowdfunding"""
+    skip = (page - 1) * limit
+    projects = await crowdfunding_col.find(
+        {"status": {"$in": ["active", "funded"]}}
+    ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+
+    if not projects:
+        await seed_demo_crowdfunding(user_id)
+        projects = await crowdfunding_col.find(
+            {"status": {"$in": ["active", "funded"]}}
+        ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+
+    total = await crowdfunding_col.count_documents({"status": {"$in": ["active", "funded"]}})
+    for p in projects:
+        p["_id"] = str(p["_id"])
+
+    return {"success": True, "data": {"projects": projects, "pagination": {"page": page, "total": total}}}
+
+@app.post("/api/mobile/crowdfunding")
+async def create_crowdfunding(data: CrowdfundingCreateRequest, user_id: str = Depends(verify_token)):
+    """Créer un projet de crowdfunding"""
+    project = {
+        "id": str(uuid.uuid4()),
+        "creator_id": user_id,
+        "title": data.title,
+        "description": data.description,
+        "goal_amount": data.goal_amount,
+        "current_amount": 0,
+        "currency": data.currency,
+        "category": data.category,
+        "image_url": data.image_url or "https://picsum.photos/600/400?random=300",
+        "contributors_count": 0,
+        "status": "active",
+        "end_date": data.end_date or (datetime.utcnow() + timedelta(days=30)).isoformat(),
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    await crowdfunding_col.insert_one(project)
+    project["_id"] = str(project.get("_id", ""))
+    return {"success": True, "data": project}
+
+@app.get("/api/mobile/crowdfunding/{project_id}")
+async def get_crowdfunding_project(project_id: str):
+    """Détail d'un projet"""
+    project = await crowdfunding_col.find_one({"id": project_id})
+    if not project:
+        raise HTTPException(status_code=404, detail="Projet non trouvé")
+    project["_id"] = str(project["_id"])
+    contribs = await contributions_col.find({"project_id": project_id}).sort("created_at", -1).to_list(20)
+    for c in contribs:
+        c["_id"] = str(c["_id"])
+    return {"success": True, "data": {"project": project, "contributions": contribs}}
+
+@app.post("/api/mobile/crowdfunding/{project_id}/contribute")
+async def contribute_to_project(project_id: str, data: ContributionRequest, user_id: str = Depends(verify_token)):
+    """Contribuer à un projet"""
+    project = await crowdfunding_col.find_one({"id": project_id})
+    if not project:
+        raise HTTPException(status_code=404, detail="Projet non trouvé")
+
+    contribution = {
+        "id": str(uuid.uuid4()),
+        "project_id": project_id,
+        "user_id": user_id,
+        "amount": data.amount,
+        "payment_method": data.payment_method,
+        "anonymous": data.anonymous,
+        "status": "completed",
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    await contributions_col.insert_one(contribution)
+
+    new_amount = project["current_amount"] + data.amount
+    new_count = project["contributors_count"] + 1
+    new_status = "funded" if new_amount >= project["goal_amount"] else "active"
+
+    await crowdfunding_col.update_one(
+        {"id": project_id},
+        {"$set": {"current_amount": new_amount, "contributors_count": new_count, "status": new_status}}
+    )
+    contribution["_id"] = str(contribution.get("_id", ""))
+    return {"success": True, "data": {"contribution": contribution, "project_current_amount": new_amount}}
+
+@app.get("/api/mobile/crowdfunding/my/projects")
+async def get_my_crowdfunding(user_id: str = Depends(verify_token)):
+    """Mes projets de crowdfunding"""
+    projects = await crowdfunding_col.find({"creator_id": user_id}).sort("created_at", -1).to_list(20)
+    for p in projects:
+        p["_id"] = str(p["_id"])
+    return {"success": True, "data": {"projects": projects}}
+
+async def seed_demo_crowdfunding(user_id: str):
+    """Seed demo crowdfunding projects"""
+    projects = [
+        {"title": "École pour les enfants de Sikasso", "description": "Construction d'une école primaire pour 200 enfants dans le village de Sikasso.",
+         "goal_amount": 5000000, "current_amount": 3200000, "category": "education",
+         "image_url": "https://picsum.photos/seed/school/600/400", "contributors_count": 45},
+        {"title": "Atelier de couture pour femmes", "description": "Équipement d'un atelier de couture pour former 50 femmes à la confection.",
+         "goal_amount": 2000000, "current_amount": 800000, "category": "social",
+         "image_url": "https://picsum.photos/seed/sewing/600/400", "contributors_count": 23},
+        {"title": "Puits d'eau à Mopti", "description": "Forage d'un puits d'eau potable pour le quartier de Sévaré à Mopti.",
+         "goal_amount": 3500000, "current_amount": 3500000, "category": "sante",
+         "image_url": "https://picsum.photos/seed/water/600/400", "contributors_count": 78},
+        {"title": "Festival culturel Dogon", "description": "Organisation du festival culturel annuel du pays Dogon.",
+         "goal_amount": 1500000, "current_amount": 600000, "category": "culture",
+         "image_url": "https://picsum.photos/seed/festival/600/400", "contributors_count": 34},
+    ]
+    for p in projects:
+        project = {
+            **p, "id": str(uuid.uuid4()), "creator_id": f"demo-{p['category']}",
+            "currency": "XOF", "status": "funded" if p["current_amount"] >= p["goal_amount"] else "active",
+            "end_date": (datetime.utcnow() + timedelta(days=30)).isoformat(),
+            "created_at": (datetime.utcnow() - timedelta(days=10)).isoformat(),
+        }
+        await crowdfunding_col.insert_one(project)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

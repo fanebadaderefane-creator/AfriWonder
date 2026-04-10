@@ -134,12 +134,40 @@ export default function MarketScreen() {
   const displayProducts = realProducts.length > 0 ? realProducts : PRODUCTS;
 
   const filteredProducts = displayProducts.filter((p: any) => {
-    if (activeFilter === 'new') return p.isNew;
-    if (activeFilter === 'best') return p.isBestseller;
-    if (activeFilter === 'promo') return p.oldPrice !== null;
-    if (activeFilter === 'free') return p.freeDelivery;
-    return true;
+    const matchesFilter = activeFilter === 'all' ||
+      (activeFilter === 'new' && p.isNew) ||
+      (activeFilter === 'best' && p.isBestseller) ||
+      (activeFilter === 'promo' && p.oldPrice !== null) ||
+      (activeFilter === 'free' && p.freeDelivery);
+    const matchesSearch = !searchQuery || p.name?.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesFilter && matchesSearch;
   });
+
+  // Real-time search on backend
+  useEffect(() => {
+    if (searchQuery.length >= 2) {
+      const timer = setTimeout(async () => {
+        try {
+          const res = await apiClient.get(`/products?search=${encodeURIComponent(searchQuery)}`);
+          const data = res.data?.data || res.data;
+          const results = data?.products || [];
+          if (results.length > 0) {
+            const transformed = results.map((p: any) => ({
+              id: p.id, name: p.name || '', price: p.price || 0, oldPrice: null,
+              image: p.images?.[0] || 'https://picsum.photos/300/400', rating: p.seller?.seller_profile?.rating || 4.5,
+              reviews: p.seller?.seller_profile?.total_sales || 0, seller: p.seller?.full_name || 'Vendeur',
+              sellerVerified: p.seller?.seller_profile?.is_verified || false, freeDelivery: false,
+              isNew: false, isBestseller: false, wishlisted: false,
+            }));
+            setRealProducts(transformed);
+          }
+        } catch {}
+      }, 500);
+      return () => clearTimeout(timer);
+    } else if (searchQuery.length === 0) {
+      fetchProducts();
+    }
+  }, [searchQuery]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>

@@ -7,6 +7,7 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ExploreGridSkeleton } from '../../src/components/SkeletonScreens';
 import apiClient from '../../src/api/client';
+import mobileApiClient from '../../src/api/mobileClient';
 
 const GRID_GAP = 2;
 
@@ -66,6 +67,7 @@ export default function ExploreScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const [exploreItems, setExploreItems] = useState(EXPLORE_ITEMS);
   const [isLoading, setIsLoading] = useState(true);
+  const [stories, setStories] = useState(STORIES);
 
   const tileSize = Math.floor((screenWidth - GRID_GAP * 2) / 3);
   const tileHeight = Math.floor(tileSize * 1.35);
@@ -73,7 +75,29 @@ export default function ExploreScreen() {
   // Load real videos for explore grid
   useEffect(() => {
     loadExploreVideos();
+    loadStories();
   }, []);
+
+  const loadStories = async () => {
+    try {
+      const response = await mobileApiClient.get('/mobile/stories');
+      const data = response.data?.data || response.data;
+      if (Array.isArray(data) && data.length > 0) {
+        const transformed = [
+          { id: 'add', name: 'Votre Story', avatar: 'https://i.pravatar.cc/150?img=10', isAdd: true, hasNew: false, isLive: false },
+          ...data.map((s: any) => ({
+            id: s.user_id,
+            name: s.user_name || 'Utilisateur',
+            avatar: s.user_avatar || `https://i.pravatar.cc/150?u=${s.user_id}`,
+            isAdd: false,
+            hasNew: s.has_unseen || true,
+            isLive: false,
+          })),
+        ];
+        setStories(transformed);
+      }
+    } catch { /* keep mock stories */ }
+  };
 
   const loadExploreVideos = async () => {
     setIsLoading(true);
@@ -160,7 +184,7 @@ export default function ExploreScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Stories */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storiesContent}>
-          {STORIES.map((story) => (
+          {stories.map((story) => (
             <TouchableOpacity key={story.id} style={styles.storyItem} onPress={() => router.push('/stories')}>
               {story.isAdd ? (
                 <View style={styles.storyAddContainer}>
