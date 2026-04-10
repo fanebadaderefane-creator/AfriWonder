@@ -158,17 +158,23 @@ const VideoItem: React.FC<VideoItemProps> = ({
   const player = useVideoPlayer(video.videoUrl, (p) => {
     p.loop = true;
     p.muted = false;
-    // Don't auto-play in init — let the useEffect handle it
-    p.pause();
+    // Auto-play immediately if this is the active video
+    if (isActiveRef.current) {
+      p.play();
+    }
   });
 
   // CRITICAL: Play/Pause based on visibility
   useEffect(() => {
     if (!player) return;
-    if (isActive && !isPaused) {
-      player.play();
-    } else {
-      player.pause();
+    try {
+      if (isActive && !isPaused) {
+        player.play();
+      } else {
+        player.pause();
+      }
+    } catch (e) {
+      console.log('Player play/pause error:', e);
     }
   }, [isActive, isPaused, player]);
 

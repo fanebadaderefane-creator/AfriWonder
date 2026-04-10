@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Image, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Image, useWindowDimensions, Platform } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,8 +8,61 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ExploreGridSkeleton } from '../../src/components/SkeletonScreens';
 import apiClient from '../../src/api/client';
 import mobileApiClient from '../../src/api/mobileClient';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 
 const GRID_GAP = 2;
+
+// Helper: check if URL is a video
+const isVideoUrl = (url: string) => {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  return lower.endsWith('.mp4') || lower.endsWith('.mov') || lower.endsWith('.avi') || lower.endsWith('.webm') || lower.includes('/videos/');
+};
+
+// Component for smart thumbnail (handles video URLs)
+const SmartThumbnail = ({ uri, videoUrl, fallbackImage, style, tileSize, tileHeight }: { uri: string; videoUrl?: string; fallbackImage?: string; style: any; tileSize: number; tileHeight: number }) => {
+  const [thumbUri, setThumbUri] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!isVideoUrl(uri)) {
+      setThumbUri(uri);
+      return;
+    }
+    // For video URLs, try to generate thumbnail on native
+    const generateThumb = async () => {
+      if (Platform.OS !== 'web') {
+        try {
+          const sourceUrl = videoUrl || uri;
+          const { uri: thumbImage } = await VideoThumbnails.getThumbnailAsync(sourceUrl, { time: 1000, quality: 0.5 });
+          setThumbUri(thumbImage);
+          return;
+        } catch {}
+      }
+      // Fallback: use creator avatar if available
+      if (fallbackImage) {
+        setThumbUri(fallbackImage);
+        return;
+      }
+      setThumbUri(null);
+      setError(true);
+    };
+    generateThumb();
+  }, [uri, videoUrl, fallbackImage]);
+
+  if (error || !thumbUri) {
+    // Colorful gradient placeholder for video
+    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#E91E63', '#FF6B00'];
+    const idx = Math.abs(uri.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % colors.length;
+    return (
+      <View style={[style, { backgroundColor: colors[idx], alignItems: 'center', justifyContent: 'center' }]}>
+        <Ionicons name="play-circle" size={Math.min(tileSize, tileHeight) * 0.35} color="rgba(255,255,255,0.7)" />
+      </View>
+    );
+  }
+
+  return <Image source={{ uri: thumbUri }} style={style} resizeMode="cover" />;
+};
 
 // Stories
 const STORIES = [
@@ -109,6 +162,7 @@ export default function ExploreScreen() {
         const transformed = backendVideos.map((v: any, i: number) => ({
           id: v.id || `e${i}`,
           image: v.thumbnail_url || v.video_url || `https://picsum.photos/300/400?random=${i + 20}`,
+          videoUrl: v.video_url || v.thumbnail_url || '',
           type: (v.media_type === 'video' ? (i % 4 === 0 ? 'reel' as const : 'photo' as const) : 'photo' as const),
           views: v.views || 0,
           likes: v.likes || 0,
@@ -296,10 +350,13 @@ export default function ExploreScreen() {
                     overflow: 'hidden',
                   }}
                 >
-                  <Image
-                    source={{ uri: item.image }}
+                  <SmartThumbnail
+                    uri={item.image}
+                    videoUrl={(item as any).videoUrl}
+                    fallbackImage={(item as any).creator_avatar}
                     style={{ width: tileSize, height: tileHeight }}
-                    resizeMode="cover"
+                    tileSize={tileSize}
+                    tileHeight={tileHeight}
                   />
                   {item.type === 'reel' && (
                     <View style={styles.reelBadge}>
