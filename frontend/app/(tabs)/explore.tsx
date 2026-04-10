@@ -64,16 +64,9 @@ const SmartThumbnail = ({ uri, videoUrl, fallbackImage, style, tileSize, tileHei
   return <Image source={{ uri: thumbUri }} style={style} resizeMode="cover" />;
 };
 
-// Stories
-const STORIES = [
-  { id: 'add', name: 'Votre Story', avatar: 'https://i.pravatar.cc/150?img=10', isAdd: true, hasNew: false, isLive: false },
-  { id: 's1', name: 'Aminata', avatar: 'https://i.pravatar.cc/150?img=1', isAdd: false, hasNew: true, isLive: true },
-  { id: 's2', name: 'Moussa', avatar: 'https://i.pravatar.cc/150?img=2', isAdd: false, hasNew: true, isLive: false },
-  { id: 's3', name: 'Awa', avatar: 'https://i.pravatar.cc/150?img=3', isAdd: false, hasNew: true, isLive: false },
-  { id: 's4', name: 'Ibrahim', avatar: 'https://i.pravatar.cc/150?img=4', isAdd: false, hasNew: true, isLive: false },
-  { id: 's5', name: 'Fanta', avatar: 'https://i.pravatar.cc/150?img=5', isAdd: false, hasNew: false, isLive: false },
-  { id: 's6', name: 'Boubacar', avatar: 'https://i.pravatar.cc/150?img=7', isAdd: false, hasNew: true, isLive: false },
-  { id: 's7', name: 'Mariam', avatar: 'https://i.pravatar.cc/150?img=6', isAdd: false, hasNew: false, isLive: false },
+// Stories - will be loaded from real backend data
+const DEFAULT_STORIES = [
+  { id: 'add', name: 'Votre Story', avatar: '', isAdd: true, hasNew: false, isLive: false },
 ];
 
 // Categories
@@ -120,7 +113,7 @@ export default function ExploreScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const [exploreItems, setExploreItems] = useState(EXPLORE_ITEMS);
   const [isLoading, setIsLoading] = useState(true);
-  const [stories, setStories] = useState(STORIES);
+  const [stories, setStories] = useState(DEFAULT_STORIES);
 
   const tileSize = Math.floor((screenWidth - GRID_GAP * 2) / 3);
   const tileHeight = Math.floor(tileSize * 1.35);
@@ -128,28 +121,66 @@ export default function ExploreScreen() {
   // Load real videos for explore grid
   useEffect(() => {
     loadExploreVideos();
-    loadStories();
+    loadRealCreatorsAsStories();
   }, []);
 
-  const loadStories = async () => {
+  const loadRealCreatorsAsStories = async () => {
     try {
-      const response = await mobileApiClient.get('/mobile/stories');
-      const data = response.data?.data || response.data;
-      if (Array.isArray(data) && data.length > 0) {
-        const transformed = [
-          { id: 'add', name: 'Votre Story', avatar: 'https://i.pravatar.cc/150?img=10', isAdd: true, hasNew: false, isLive: false },
-          ...data.map((s: any) => ({
-            id: s.user_id,
-            name: s.user_name || 'Utilisateur',
-            avatar: s.user_avatar || `https://i.pravatar.cc/150?u=${s.user_id}`,
+      // Fetch creators from videos (works without auth through proxy)
+      const videosRes = await apiClient.get('/videos?page=1&limit=30');
+      const videos = videosRes.data?.data?.videos || [];
+
+      // Extract unique creators from videos (these have real avatars)
+      const creatorMap = new Map<string, any>();
+      for (const v of videos) {
+        if (v.creator_id && !creatorMap.has(v.creator_id)) {
+          const name = v.creator_name || '';
+          const firstName = name.split(' ')[0] || 'Créateur';
+          const avatar = v.creator_avatar || '';
+          if (avatar) { // Only add creators with real avatars
+            creatorMap.set(v.creator_id, {
+              id: v.creator_id,
+              name: firstName,
+              avatar: avatar,
+            });
+          }
+        }
+      }
+
+      // Also try to get registered users with profile images
+      try {
+        const usersRes = await apiClient.get('/users?limit=30');
+        const usersData = usersRes.data?.data?.users || [];
+        for (const u of usersData) {
+          if (u.profile_image && !creatorMap.has(u.id)) {
+            creatorMap.set(u.id, {
+              id: u.id,
+              name: (u.full_name || u.username || 'User').split(' ')[0],
+              avatar: u.profile_image,
+            });
+          }
+        }
+      } catch { /* users endpoint optional */ }
+
+      const creators = Array.from(creatorMap.values()).slice(0, 15);
+
+      if (creators.length > 0) {
+        const storyList = [
+          { id: 'add', name: 'Moi', avatar: creators[0]?.avatar || '', isAdd: true, hasNew: false, isLive: false },
+          ...creators.map((c, i) => ({
+            id: c.id,
+            name: c.name,
+            avatar: c.avatar,
             isAdd: false,
-            hasNew: s.has_unseen || true,
-            isLive: false,
+            hasNew: i < 5,
+            isLive: i === 0,
           })),
         ];
-        setStories(transformed);
+        setStories(storyList);
       }
-    } catch { /* keep mock stories */ }
+    } catch (err) {
+      console.log('Failed to load real creators:', err);
+    }
   };
 
   const loadExploreVideos = async () => {
