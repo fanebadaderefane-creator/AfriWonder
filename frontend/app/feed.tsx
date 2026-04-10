@@ -6,6 +6,8 @@ import { router } from 'expo-router';
 import { Colors, Spacing, BorderRadius } from '../src/theme/colors';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ReactionsBar, ReactionType } from '../src/components/Reactions';
+import { useOfflineData } from '../src/hooks/useOfflineData';
+import { FeedSkeleton } from '../src/components/SkeletonScreens';
 
 const GRID_GAP = 2;
 
@@ -110,9 +112,33 @@ export default function FeedScreen() {
   const [postReactions, setPostReactions] = useState<Record<string, ReactionType>>({});
   const [newPostText, setNewPostText] = useState('');
 
+  // Offline-first with skeleton
+  const { data: feedData, isLoading, isOffline } = useOfflineData({
+    cacheKey: 'moments_feed',
+    fallbackData: { posts: MOCK_POSTS, loaded: true },
+    ttl: 1000 * 60 * 10,
+  });
+
   const handleReaction = useCallback((postId: string, reaction: ReactionType) => {
     setPostReactions(prev => ({ ...prev, [postId]: reaction }));
   }, []);
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
+            <Ionicons name="arrow-back" size={24} color="#FFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Moments</Text>
+          <View style={styles.headerRight}>
+            <View style={{ width: 40 }} />
+          </View>
+        </View>
+        <FeedSkeleton />
+      </View>
+    );
+  }
 
   const renderImages = (images: string[], postId: string) => {
     if (images.length === 0) return null;
@@ -183,6 +209,14 @@ export default function FeedScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Offline Banner */}
+      {isOffline && (
+        <View style={styles.offlineBanner}>
+          <Ionicons name="cloud-offline" size={16} color="#FFF" />
+          <Text style={styles.offlineText}>Mode hors ligne — donnees en cache</Text>
+        </View>
+      )}
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Stories */}
@@ -292,6 +326,10 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 20, fontWeight: '800', color: '#FFF' },
   headerRight: { flexDirection: 'row', gap: 4 },
   notifDot: { position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF3D00', borderWidth: 1.5, borderColor: '#000' },
+
+  // Offline banner
+  offlineBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#333', paddingVertical: 8, gap: 8 },
+  offlineText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
 
   // Stories
   storiesContent: { paddingHorizontal: 16, gap: 16, paddingBottom: 12 },

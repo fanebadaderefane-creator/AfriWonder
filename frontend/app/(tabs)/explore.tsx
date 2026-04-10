@@ -5,6 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useOfflineData } from '../../src/hooks/useOfflineData';
+import { ExploreGridSkeleton } from '../../src/components/SkeletonScreens';
 
 const GRID_GAP = 2;
 
@@ -65,6 +67,21 @@ export default function ExploreScreen() {
 
   const tileSize = Math.floor((screenWidth - GRID_GAP * 2) / 3);
   const tileHeight = Math.floor(tileSize * 1.35);
+
+  // Offline-first data loading with skeleton
+  const { data: exploreData, isLoading, isOffline } = useOfflineData({
+    cacheKey: 'explore_feed',
+    fallbackData: { items: EXPLORE_ITEMS, loaded: true },
+    ttl: 1000 * 60 * 15,
+  });
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <ExploreGridSkeleton />
+      </View>
+    );
+  }
 
   const renderServiceRow = (services: typeof SERVICES_ROW1) => (
     <View style={{ flexDirection: 'row', marginBottom: 8, width: '100%' }}>
