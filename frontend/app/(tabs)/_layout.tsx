@@ -1,9 +1,10 @@
+import React from 'react';
 import { Tabs } from 'expo-router';
-import { View, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Platform, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../../src/theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
@@ -13,19 +14,22 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: Colors.secondary,
-          borderTopColor: Colors.border,
-          borderTopWidth: 1,
-          height: 60 + insets.bottom,
+          backgroundColor: '#0A0A0A',
+          borderTopWidth: 0.5,
+          borderTopColor: 'rgba(255,255,255,0.08)',
+          height: 65 + insets.bottom,
           paddingBottom: insets.bottom,
-          paddingTop: Spacing.sm,
+          paddingTop: 6,
+          elevation: 0,
+          shadowOpacity: 0,
         },
-        tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.textSecondary,
+        tabBarActiveTintColor: '#FFFFFF',
+        tabBarInactiveTintColor: '#666666',
         tabBarShowLabel: true,
         tabBarLabelStyle: {
           fontSize: 10,
-          fontWeight: '500',
+          fontWeight: '600',
+          marginTop: 2,
         },
       }}
     >
@@ -33,17 +37,31 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Accueil',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home" size={24} color={color} />
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.tabIconContainer}>
+              <Ionicons
+                name={focused ? 'home' : 'home-outline'}
+                size={24}
+                color={focused ? '#FFFFFF' : '#666666'}
+              />
+              {focused && <View style={styles.activeIndicator} />}
+            </View>
           ),
         }}
       />
       <Tabs.Screen
         name="explore"
         options={{
-          title: 'Explorer',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="search" size={24} color={color} />
+          title: 'Decouvrir',
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.tabIconContainer}>
+              <Ionicons
+                name={focused ? 'compass' : 'compass-outline'}
+                size={24}
+                color={focused ? '#FFFFFF' : '#666666'}
+              />
+              {focused && <View style={styles.activeIndicator} />}
+            </View>
           ),
         }}
       />
@@ -51,19 +69,37 @@ export default function TabsLayout() {
         name="create"
         options={{
           title: '',
-          tabBarIcon: ({ color }) => (
-            <View style={styles.createButton}>
-              <Ionicons name="add" size={28} color={Colors.text} />
+          tabBarIcon: () => (
+            <View style={styles.createWrapper}>
+              <LinearGradient
+                colors={['#FF6B00', '#FF3D00', '#FF006E']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.createGradient}
+              >
+                <View style={styles.createInner}>
+                  <Ionicons name="add" size={30} color="#FFFFFF" />
+                </View>
+              </LinearGradient>
             </View>
           ),
+          tabBarLabel: () => null,
         }}
       />
       <Tabs.Screen
         name="market"
         options={{
           title: 'Market',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cart" size={24} color={color} />
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.tabIconContainer}>
+              <Ionicons
+                name={focused ? 'bag' : 'bag-outline'}
+                size={24}
+                color={focused ? '#FFFFFF' : '#666666'}
+              />
+              {focused && <View style={styles.activeIndicator} />}
+              <View style={styles.badgeDot} />
+            </View>
           ),
         }}
       />
@@ -71,8 +107,16 @@ export default function TabsLayout() {
         name="profile"
         options={{
           title: 'Profil',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" size={24} color={color} />
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.tabIconContainer}>
+              <View style={[styles.profileIconRing, focused && styles.profileIconRingActive]}>
+                <Ionicons
+                  name={focused ? 'person' : 'person-outline'}
+                  size={20}
+                  color={focused ? '#FFFFFF' : '#666666'}
+                />
+              </View>
+            </View>
           ),
         }}
       />
@@ -81,13 +125,64 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
-  createButton: {
-    width: 48,
-    height: 32,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.sm,
+  tabIconContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -Spacing.xs,
+    position: 'relative',
+  },
+  activeIndicator: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.primary,
+    marginTop: 3,
+  },
+  createWrapper: {
+    marginTop: -18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createGradient: {
+    width: 50,
+    height: 50,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#FF6B00',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  createInner: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeDot: {
+    position: 'absolute',
+    top: -2,
+    right: -6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF3D00',
+    borderWidth: 1.5,
+    borderColor: '#0A0A0A',
+  },
+  profileIconRing: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1.5,
+    borderColor: '#444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileIconRingActive: {
+    borderColor: Colors.primary,
+    borderWidth: 2,
   },
 });
