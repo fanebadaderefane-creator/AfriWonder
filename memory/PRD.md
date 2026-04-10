@@ -63,7 +63,15 @@ Super-application mobile pour l'Afrique de l'Ouest (Mali, Senegal, Cote d'Ivoire
 - [x] Live (/live) + Stream (/live/[id]) + Demarrer live (/live/start)
 
 ### Engagement
-- [x] Crowdfunding (/crowdfunding) - Campagnes, progression
+- [x] Crowdfunding (/crowdfunding) - Module complet avec:
+  - Ecran decouverte avec stats, projet vedette, categories, recherche
+  - 9 categories (Agriculture, Business, Education, Tech, Sante, Culture, Environnement, Immobilier)
+  - 8 projets mock avec createurs, recompenses, progression
+  - Page detail projet avec onglets (A propos, Recompenses, Actus, Avis)
+  - Badges "Verifie" et "Sponsorise"
+  - Bouton "Signaler" anti-arnaque
+  - Flux de contribution vers Orange Money / Wave
+  - Lien depuis page Explore (service "Projets" + banniere)
 - [x] Civique (/civic) - Petitions, projets communautaires
 - [x] Defis (/challenges) - Quotidiens, hebdomadaires, points
 - [x] Parrainage (/referrals) - Code, niveaux, recompenses

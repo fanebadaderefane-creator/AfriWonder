@@ -218,6 +218,46 @@ export function WalletSkeleton() {
   );
 }
 
+// Crowdfunding Skeleton
+export function CrowdfundingSkeleton() {
+  return (
+    <View style={styles.container}>
+      <View style={styles.searchSkeleton}>
+        <ShimmerRect width="100%" height={44} borderRadius={12} />
+      </View>
+      {/* Stats banner */}
+      <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+        <ShimmerRect width="100%" height={100} borderRadius={16} />
+      </View>
+      {/* Featured */}
+      <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+        <ShimmerRect width="100%" height={240} borderRadius={16} />
+      </View>
+      {/* Categories */}
+      <View style={styles.categoriesRow}>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <ShimmerRect key={i} width={90} height={34} borderRadius={20} />
+        ))}
+      </View>
+      {/* Project cards */}
+      {Array.from({ length: 3 }).map((_, i) => (
+        <View key={i} style={{ paddingHorizontal: 16, marginBottom: 14 }}>
+          <ShimmerRect width="100%" height={160} borderRadius={16} />
+          <View style={{ padding: 14 }}>
+            <ShimmerLine width="40%" height={12} />
+            <ShimmerLine width="90%" height={16} style={{ marginTop: 8 }} />
+            <ShimmerLine width="100%" height={6} style={{ marginTop: 12 }} />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+              <ShimmerLine width={100} height={14} />
+              <ShimmerLine width={40} height={18} />
+            </View>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
 

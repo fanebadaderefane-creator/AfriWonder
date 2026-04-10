@@ -43,8 +43,8 @@ const SERVICES_ROW1 = [
 ];
 const SERVICES_ROW2 = [
   { id: 'education', name: 'Cours', icon: 'school', color: '#82E0AA', route: '/courses' },
+  { id: 'crowdfunding', name: 'Projets', icon: 'rocket', color: '#E91E63', route: '/crowdfunding' },
   { id: 'news', name: 'Actus', icon: 'newspaper', color: '#E67E22', route: '/news' },
-  { id: 'voyage', name: 'Voyage', icon: 'airplane', color: '#3498DB', route: '/services/voyage' },
   { id: 'more', name: 'Tout', icon: 'apps', color: '#9B59B6', route: '/services' },
 ];
 
@@ -191,6 +191,18 @@ export default function ExploreScreen() {
               <Text style={styles.promoSubtitle}>Decouvrez ce que font vos amis</Text>
             </View>
             <Ionicons name="people" size={36} color="rgba(255,255,255,0.3)" />
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {/* Crowdfunding Banner */}
+        <TouchableOpacity style={styles.momentsBanner} activeOpacity={0.8} onPress={() => router.push('/crowdfunding' as any)}>
+          <LinearGradient colors={['#E91E63', '#FF5722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.promoGradient}>
+            <View style={styles.promoLeft}>
+              <View style={styles.promoNewBadge}><Text style={styles.promoNewText}>NOUVEAU</Text></View>
+              <Text style={styles.promoTitle}>Crowdfunding</Text>
+              <Text style={styles.promoSubtitle}>Financez des projets africains</Text>
+            </View>
+            <Ionicons name="rocket" size={36} color="rgba(255,255,255,0.3)" />
           </LinearGradient>
         </TouchableOpacity>
 
