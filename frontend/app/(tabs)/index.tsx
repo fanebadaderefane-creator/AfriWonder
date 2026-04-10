@@ -37,6 +37,7 @@ interface Video {
   hashtags: string[];
   user: VideoUser;
   music: string;
+  isSponsored?: boolean;
 }
 
 interface Comment {
@@ -263,6 +264,14 @@ const VideoItem: React.FC<VideoItemProps> = ({
       {/* Gradient overlays */}
       <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent']} style={styles.topGradient} />
       <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.bottomGradient} />
+
+      {/* Sponsored badge */}
+      {video.isSponsored && (
+        <View style={styles.sponsoredBadge}>
+          <Ionicons name="megaphone" size={12} color="#FFF" />
+          <Text style={styles.sponsoredText}>Sponsorise</Text>
+        </View>
+      )}
 
       {/* Right side actions */}
       <View style={[styles.actions, { bottom: 100 }]}>
@@ -560,6 +569,7 @@ export default function FeedScreen() {
         isFollowing: false,
       },
       music: v.music_title || 'Son original',
+      isSponsored: v.is_sponsored || v.isSponsored || false,
     };
   };
 
@@ -758,6 +768,8 @@ const styles = StyleSheet.create({
   heartAnimation: { position: 'absolute', alignSelf: 'center', top: '35%' },
   topGradient: { position: 'absolute', top: 0, left: 0, right: 0, height: 120 },
   bottomGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 250 },
+  sponsoredBadge: { position: 'absolute', top: 70, left: Spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,107,0,0.85)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: BorderRadius.pill },
+  sponsoredText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
   actions: { position: 'absolute', right: 10, alignItems: 'center', gap: 16 },
   avatarContainer: { marginBottom: 8 },
   avatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: '#FFF' },
