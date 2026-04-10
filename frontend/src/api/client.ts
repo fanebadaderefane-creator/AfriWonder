@@ -1,25 +1,33 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
 import { secureStorage } from '../utils/secureStorage';
+import Constants from 'expo-constants';
 
-// AfriWonder Production Backend on Render
-const API_BASE_URL = 'https://afriwonder.onrender.com';
+// ALL API calls now go through the local FastAPI proxy which adds anti-bot headers
+// The proxy forwards requests to https://afriwonder.onrender.com/api with proper headers
+const getProxyBaseUrl = () => {
+  const backendUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL
+    || process.env.EXPO_PUBLIC_BACKEND_URL
+    || '';
 
-// On native (mobile), we add headers to bypass bot detection
-// On web, browsers handle these headers automatically
-const nativeHeaders = Platform.OS !== 'web' ? {
-  'User-Agent': 'AfriWonder-Mobile/1.0 (React Native; Expo)',
-  'Origin': 'https://afriwonder.onrender.com',
-  'Referer': 'https://afriwonder.onrender.com/',
-} : {};
+  if (backendUrl) {
+    return backendUrl;
+  }
+
+  // Fallback for web preview
+  if (Platform.OS === 'web') {
+    return '';  // Same origin, proxied via /api
+  }
+
+  return 'http://localhost:8001';
+};
 
 const apiClient = axios.create({
-  baseURL: `${API_BASE_URL}/api`,
+  baseURL: `${getProxyBaseUrl()}/api/proxy`,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
-    ...nativeHeaders,
   },
 });
 
@@ -52,13 +60,14 @@ apiClient.interceptors.response.use(
       try {
         const refreshToken = await secureStorage.getItem('refreshToken');
         if (refreshToken) {
-          const response = await axios.post(`${API_BASE_URL}/api/auth/refresh`, {
+          // Use proxy for token refresh too
+          const proxyBase = `${getProxyBaseUrl()}/api/proxy`;
+          const response = await axios.post(`${proxyBase}/auth/refresh`, {
             refreshToken,
           }, {
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
-              ...nativeHeaders,
             },
           });
 

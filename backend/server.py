@@ -2,9 +2,10 @@
 AfriWonder Backend - APIs Complémentaires Mobile
 Le backend PWA (afriwonder.onrender.com) gère: auth, vidéos, produits, notifications, users
 Ce backend gère les fonctionnalités mobile-spécifiques: messaging, wallet, upload
++ Proxy auth pour contourner la détection anti-bot depuis les appareils mobiles
 """
 
-from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
@@ -16,6 +17,7 @@ import hashlib
 from dotenv import load_dotenv
 import os
 import aiofiles
+import httpx
 from motor.motor_asyncio import AsyncIOMotorClient
 
 load_dotenv()
@@ -76,6 +78,128 @@ def verify_token(authorization: Optional[str] = Header(None)):
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok", "service": "AfriWonder Mobile API", "version": "2.0.0"}
+
+# ==================== AUTH PROXY (Anti-bot bypass) ====================
+# Le backend PWA détecte les requêtes depuis les appareils mobiles comme "bot"
+# Ce proxy ajoute les headers nécessaires côté serveur pour contourner la détection
+
+PWA_API_BASE = "https://afriwonder.onrender.com/api"
+PWA_ANTI_BOT_HEADERS = {
+    "User-Agent": "AfriWonder-Mobile/1.0 (React Native; Expo)",
+    "Origin": "https://afriwonder.onrender.com",
+    "Referer": "https://afriwonder.onrender.com/",
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+}
+
+class ProxyLoginRequest(BaseModel):
+    identifier: str
+    password: str
+
+class ProxyRegisterRequest(BaseModel):
+    username: str
+    password: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    full_name: Optional[str] = None
+    referral_code: Optional[str] = None
+
+@app.post("/api/proxy/auth/login")
+async def proxy_auth_login(data: ProxyLoginRequest):
+    """Proxy login vers le backend PWA avec anti-bot headers"""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as hc:
+            response = await hc.post(
+                f"{PWA_API_BASE}/auth/login",
+                json={"identifier": data.identifier, "password": data.password},
+                headers=PWA_ANTI_BOT_HEADERS,
+            )
+            result = response.json()
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail=result.get("error", result.get("message", "Erreur de connexion")))
+            return result
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Service PWA indisponible: {str(e)}")
+
+@app.post("/api/proxy/auth/register")
+async def proxy_auth_register(data: ProxyRegisterRequest):
+    """Proxy register vers le backend PWA avec anti-bot headers"""
+    try:
+        payload = {"username": data.username, "password": data.password}
+        if data.email: payload["email"] = data.email
+        if data.phone: payload["phone"] = data.phone
+        if data.full_name: payload["full_name"] = data.full_name
+        if data.referral_code: payload["referral_code"] = data.referral_code
+        async with httpx.AsyncClient(timeout=30.0) as hc:
+            response = await hc.post(
+                f"{PWA_API_BASE}/auth/register",
+                json=payload,
+                headers=PWA_ANTI_BOT_HEADERS,
+            )
+            result = response.json()
+            if response.status_code != 200 and response.status_code != 201:
+                raise HTTPException(status_code=response.status_code, detail=result.get("error", result.get("message", "Erreur d'inscription")))
+            return result
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Service PWA indisponible: {str(e)}")
+
+@app.post("/api/proxy/auth/refresh")
+async def proxy_auth_refresh(request: Request):
+    """Proxy refresh token vers le backend PWA"""
+    try:
+        body = await request.json()
+        async with httpx.AsyncClient(timeout=30.0) as hc:
+            response = await hc.post(
+                f"{PWA_API_BASE}/auth/refresh",
+                json=body,
+                headers=PWA_ANTI_BOT_HEADERS,
+            )
+            result = response.json()
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail=result.get("error", "Erreur de refresh"))
+            return result
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Service PWA indisponible: {str(e)}")
+
+@app.get("/api/proxy/auth/me")
+async def proxy_auth_me(authorization: Optional[str] = Header(None)):
+    """Proxy /auth/me vers le backend PWA"""
+    try:
+        headers = {**PWA_ANTI_BOT_HEADERS}
+        if authorization:
+            headers["Authorization"] = authorization
+        async with httpx.AsyncClient(timeout=30.0) as hc:
+            response = await hc.get(f"{PWA_API_BASE}/auth/me", headers=headers)
+            result = response.json()
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail=result.get("error", "Erreur"))
+            return result
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Service PWA indisponible: {str(e)}")
+
+@app.api_route("/api/proxy/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy_generic(path: str, request: Request):
+    """Proxy générique vers le backend PWA pour toutes les autres routes API"""
+    try:
+        headers = {**PWA_ANTI_BOT_HEADERS}
+        auth_header = request.headers.get("authorization")
+        if auth_header:
+            headers["Authorization"] = auth_header
+        body = None
+        if request.method in ["POST", "PUT", "PATCH"]:
+            body = await request.body()
+        async with httpx.AsyncClient(timeout=30.0) as hc:
+            response = await hc.request(
+                method=request.method,
+                url=f"{PWA_API_BASE}/{path}",
+                headers=headers,
+                content=body,
+                params=dict(request.query_params),
+            )
+            return response.json()
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Service PWA indisponible: {str(e)}")
+
 
 # ==================== MESSAGING API (Complémentaire) ====================
 
