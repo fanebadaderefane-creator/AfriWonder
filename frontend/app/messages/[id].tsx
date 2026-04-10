@@ -10,6 +10,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
+import socketService from '../../src/services/socketService';
 
 const { width } = Dimensions.get('window');
 
@@ -79,7 +80,67 @@ export default function ChatScreen() {
   // Ephemeral messages
   const [ephemeralMode, setEphemeralMode] = useState<'off' | '24h' | '7d' | '90d'>('off');
 
+  // Typing indicator
+  const [isContactTyping, setIsContactTyping] = useState(false);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const flatListRef = useRef<FlatList>(null);
+
+  // Socket.IO real-time connection
+  useEffect(() => {
+    const token = user?.token || '';
+    if (token) {
+      socketService.connect(token);
+      socketService.joinConversation(conversationId);
+      socketService.markRead(conversationId);
+    }
+
+    // Listen for new messages
+    const unsubMsg = socketService.on('new_message', (msg: any) => {
+      if (msg.conversation_id === conversationId && msg.sender_id !== currentUserId) {
+        const newMsg: Message = {
+          id: msg.id,
+          text: msg.content || '',
+          isMine: false,
+          time: new Date(msg.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+          status: 'read',
+          type: (msg.type || 'text') as any,
+          replyTo: msg.reply_to,
+          forwarded: !!msg.forwarded_from,
+        };
+        setMessages(prev => [...prev, newMsg]);
+        socketService.markRead(conversationId);
+      }
+    });
+
+    // Listen for typing
+    const unsubTyping = socketService.on('user_typing', (data: any) => {
+      if (data.conversation_id === conversationId) {
+        setIsContactTyping(true);
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => setIsContactTyping(false), 3000);
+      }
+    });
+
+    const unsubStopTyping = socketService.on('user_stop_typing', (data: any) => {
+      if (data.conversation_id === conversationId) setIsContactTyping(false);
+    });
+
+    // Listen for read receipts
+    const unsubRead = socketService.on('messages_read', (data: any) => {
+      if (data.conversation_id === conversationId) {
+        setMessages(prev => prev.map(m => m.isMine ? { ...m, status: 'read' } : m));
+      }
+    });
+
+    return () => {
+      unsubMsg();
+      unsubTyping();
+      unsubStopTyping();
+      unsubRead();
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
+  }, [conversationId, currentUserId]);
 
   useEffect(() => { loadMessages(); }, [conversationId]);
 
@@ -606,7 +667,7 @@ export default function ChatScreen() {
           <Image source={{ uri: contact.avatar }} style={styles.headerAvatar} />
           <View style={styles.headerInfo}>
             <Text style={styles.headerName} numberOfLines={1}>{contact.name}</Text>
-            <Text style={styles.headerStatus}>{contact.online ? 'En ligne' : 'AfriChat'}</Text>
+            <Text style={styles.headerStatus}>{isContactTyping ? 'En train d\'ecrire...' : contact.online ? 'En ligne' : 'AfriChat'}</Text>
           </View>
         </TouchableOpacity>
         <TouchableOpacity style={styles.headerAction} onPress={() => router.push({ pathname: '/messages/call' as any, params: { name: contact.name, avatar: contact.avatar, type: 'video' } })}>
@@ -700,7 +761,12 @@ export default function ChatScreen() {
                 placeholder="Message"
                 placeholderTextColor={Colors.textMuted}
                 value={newMessage}
-                onChangeText={(text) => { setNewMessage(text); setShowAttach(false); }}
+                onChangeText={(text) => {
+                  setNewMessage(text);
+                  setShowAttach(false);
+                  if (text.length > 0) socketService.startTyping(conversationId);
+                  else socketService.stopTyping(conversationId);
+                }}
                 multiline
                 maxLength={2000}
               />

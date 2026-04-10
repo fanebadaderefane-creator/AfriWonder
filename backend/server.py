@@ -19,8 +19,12 @@ import os
 import aiofiles
 import httpx
 from motor.motor_asyncio import AsyncIOMotorClient
+import socketio
 
 load_dotenv()
+
+# Socket.IO server
+sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*', logger=False)
 
 app = FastAPI(
     title="AfriWonder Mobile API",
@@ -530,6 +534,20 @@ async def set_ephemeral_mode(conversation_id: str, data: dict, user_id: str = De
         {"$set": {"ephemeral_mode": mode, "updated_at": datetime.utcnow().isoformat()}}
     )
     return {"success": True, "data": {"ephemeral_mode": mode}}
+
+@app.post("/api/mobile/push-token")
+async def register_push_token(data: dict, user_id: str = Depends(verify_token)):
+    """Enregistrer le token de notification push"""
+    token = data.get("token", "")
+    platform = data.get("platform", "unknown")
+    if not token:
+        raise HTTPException(status_code=400, detail="Token requis")
+    await db["push_tokens"].update_one(
+        {"user_id": user_id},
+        {"$set": {"token": token, "platform": platform, "updated_at": datetime.utcnow().isoformat()}},
+        upsert=True
+    )
+    return {"success": True, "data": {"registered": True}}
 
 # ==================== WALLET API (Complémentaire) ====================
 
@@ -1818,6 +1836,140 @@ async def get_user_interests(user_id: str = Depends(verify_token)):
         interests = []
     return {"success": True, "data": {"interests": interests}}
 
+# ==================== SOCKET.IO REAL-TIME CHAT ====================
+
+# Track connected users: {user_id: sid}
+connected_users = {}
+
+@sio.event
+async def connect(sid, environ):
+    """Client connected"""
+    print(f"[Socket.IO] Client connected: {sid}")
+
+@sio.event
+async def disconnect(sid):
+    """Client disconnected"""
+    # Remove from connected users
+    user_to_remove = None
+    for uid, s in connected_users.items():
+        if s == sid:
+            user_to_remove = uid
+            break
+    if user_to_remove:
+        del connected_users[user_to_remove]
+    print(f"[Socket.IO] Client disconnected: {sid}")
+
+@sio.event
+async def authenticate(sid, data):
+    """Authenticate user and join their rooms"""
+    token = data.get("token", "")
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        user_id = payload.get("user_id", payload.get("sub", ""))
+        if user_id:
+            connected_users[user_id] = sid
+            # Join user's personal room
+            await sio.enter_room(sid, f"user_{user_id}")
+            # Join all conversation rooms
+            user_convos = await conversations_col.find({"participant_ids": user_id}).to_list(100)
+            for conv in user_convos:
+                await sio.enter_room(sid, f"conv_{conv['id']}")
+            await sio.emit("authenticated", {"user_id": user_id, "conversations": len(user_convos)}, room=sid)
+            print(f"[Socket.IO] User {user_id} authenticated, joined {len(user_convos)} rooms")
+    except Exception as e:
+        await sio.emit("auth_error", {"error": str(e)}, room=sid)
+
+@sio.event
+async def join_conversation(sid, data):
+    """Join a specific conversation room"""
+    conv_id = data.get("conversation_id", "")
+    if conv_id:
+        await sio.enter_room(sid, f"conv_{conv_id}")
+
+@sio.event
+async def send_message(sid, data):
+    """Send a real-time message"""
+    conv_id = data.get("conversation_id", "")
+    content = data.get("content", "")
+    msg_type = data.get("type", "text")
+    reply_to = data.get("reply_to")
+
+    # Find sender
+    sender_id = None
+    for uid, s in connected_users.items():
+        if s == sid:
+            sender_id = uid
+            break
+    if not sender_id or not conv_id:
+        return
+
+    msg = {
+        "id": str(uuid.uuid4()),
+        "conversation_id": conv_id,
+        "sender_id": sender_id,
+        "content": content,
+        "type": msg_type,
+        "is_read": False,
+        "reply_to": reply_to,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    await messages_col.insert_one(msg)
+    msg["_id"] = str(msg.get("_id", ""))
+
+    # Update conversation
+    await conversations_col.update_one(
+        {"id": conv_id},
+        {"$set": {"last_message": content, "last_message_at": datetime.utcnow().isoformat()},
+         "$inc": {"unread_count": 1}}
+    )
+
+    # Broadcast to all participants in the conversation room
+    await sio.emit("new_message", msg, room=f"conv_{conv_id}")
+
+@sio.event
+async def typing(sid, data):
+    """Broadcast typing indicator"""
+    conv_id = data.get("conversation_id", "")
+    sender_id = None
+    for uid, s in connected_users.items():
+        if s == sid:
+            sender_id = uid
+            break
+    if sender_id and conv_id:
+        await sio.emit("user_typing", {"user_id": sender_id, "conversation_id": conv_id}, room=f"conv_{conv_id}", skip_sid=sid)
+
+@sio.event
+async def stop_typing(sid, data):
+    """Broadcast stop typing"""
+    conv_id = data.get("conversation_id", "")
+    sender_id = None
+    for uid, s in connected_users.items():
+        if s == sid:
+            sender_id = uid
+            break
+    if sender_id and conv_id:
+        await sio.emit("user_stop_typing", {"user_id": sender_id, "conversation_id": conv_id}, room=f"conv_{conv_id}", skip_sid=sid)
+
+@sio.event
+async def mark_read(sid, data):
+    """Mark messages as read"""
+    conv_id = data.get("conversation_id", "")
+    reader_id = None
+    for uid, s in connected_users.items():
+        if s == sid:
+            reader_id = uid
+            break
+    if reader_id and conv_id:
+        await messages_col.update_many(
+            {"conversation_id": conv_id, "sender_id": {"$ne": reader_id}, "is_read": False},
+            {"$set": {"is_read": True}}
+        )
+        await conversations_col.update_one({"id": conv_id}, {"$set": {"unread_count": 0}})
+        await sio.emit("messages_read", {"conversation_id": conv_id, "reader_id": reader_id}, room=f"conv_{conv_id}", skip_sid=sid)
+
+# Mount Socket.IO on the FastAPI app
+socket_app = socketio.ASGIApp(sio, app)
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(socket_app, host="0.0.0.0", port=8001)

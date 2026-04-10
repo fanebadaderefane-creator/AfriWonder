@@ -1,13 +1,15 @@
-import { Stack } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { Stack, router } from 'expo-router';
+import React, { useEffect, useState, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '../src/store/authStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { OfflineBanner } from '../src/components/common/OfflineBanner';
 import { Colors } from '../src/theme/colors';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { LanguageProvider } from '../src/i18n/LanguageContext';
+import notificationService from '../src/services/notificationService';
+import * as Notifications from 'expo-notifications';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,9 +22,29 @@ const queryClient = new QueryClient({
 
 export default function RootLayout() {
   const { loadStoredAuth, isLoading } = useAuthStore();
+  const notificationResponseRef = useRef<Notifications.Subscription | null>(null);
 
   useEffect(() => {
     loadStoredAuth();
+
+    // Initialize push notifications
+    notificationService.initialize();
+
+    // Handle notification taps (navigate to correct screen)
+    notificationResponseRef.current = notificationService.onNotificationResponse((response) => {
+      const data = response.notification.request.content.data;
+      if (data?.type === 'message' && data?.conversationId) {
+        router.push({ pathname: '/messages/[id]', params: { id: data.conversationId } });
+      } else if (data?.type === 'like' || data?.type === 'follow' || data?.type === 'comment') {
+        router.push('/notifications');
+      }
+    });
+
+    return () => {
+      if (notificationResponseRef.current) {
+        Notifications.removeNotificationSubscription(notificationResponseRef.current);
+      }
+    };
   }, []);
 
   return (
