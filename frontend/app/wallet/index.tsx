@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, RefreshControl, Alert } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -91,7 +91,9 @@ export default function WalletScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+      >
         {/* Balance Card */}
         <View style={styles.balanceCard}>
           <View style={styles.balanceHeader}>
@@ -116,6 +118,9 @@ export default function WalletScreen() {
           {QUICK_ACTIONS.map((action) => (
             <TouchableOpacity key={action.id} style={styles.quickAction} onPress={() => {
               if (action.id === 'topup') router.push('/wallet/recharge');
+              if (action.id === 'send') router.push('/wallet/transfer');
+              if (action.id === 'receive') Alert.alert('Recevoir', 'Partagez votre numéro pour recevoir un paiement');
+              if (action.id === 'withdraw') Alert.alert('Retrait', 'Fonctionnalité de retrait bientôt disponible');
             }}>
               <View style={[styles.quickActionIcon, { backgroundColor: action.color }]}>
                 <Ionicons name={action.icon as any} size={22} color="#FFFFFF" />

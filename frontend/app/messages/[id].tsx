@@ -1,9 +1,11 @@
-import React, { useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, KeyboardAvoidingView, Platform, Animated, Dimensions } from 'react-native';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, KeyboardAvoidingView, Platform, Animated, Dimensions, ActivityIndicator } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import mobileApiClient from '../../src/api/mobileClient';
+import { useAuthStore } from '../../src/store/authStore';
 
 const { width } = Dimensions.get('window');
 
@@ -20,7 +22,8 @@ interface Message {
   date?: string;
 }
 
-const CONTACTS: Record<string, { name: string; avatar: string; online: boolean; lastSeen: string }> = {
+// Fallback contacts for legacy/mock conversation IDs
+const FALLBACK_CONTACTS: Record<string, { name: string; avatar: string; online: boolean; lastSeen: string }> = {
   c1: { name: 'Aminata Diallo', avatar: 'https://i.pravatar.cc/150?img=1', online: true, lastSeen: '' },
   c2: { name: 'Moussa Ndiaye', avatar: 'https://i.pravatar.cc/150?img=2', online: true, lastSeen: '' },
   c3: { name: 'Famille Bamako', avatar: 'https://i.pravatar.cc/150?img=10', online: false, lastSeen: '12 membres' },
@@ -33,72 +36,106 @@ const CONTACTS: Record<string, { name: string; avatar: string; online: boolean; 
   c10: { name: 'Boubacar Diallo', avatar: 'https://i.pravatar.cc/150?img=7', online: false, lastSeen: 'Vu samedi' },
 };
 
-const INITIAL_MESSAGES: Message[] = [
-  { id: 'd1', text: '', isMine: false, time: '', status: 'read', type: 'text', date: 'Aujourd\'hui' },
-  { id: '1', text: 'Salut! Comment tu vas?', isMine: false, time: '14:00', status: 'read', type: 'text' },
-  { id: '2', text: 'Salut! Je vais bien, merci! Et toi?', isMine: true, time: '14:02', status: 'read', type: 'text' },
-  { id: '3', text: 'Super bien! Tu as vu ma nouvelle video sur AfriWonder? J\'ai fait une danse traditionnelle mandingue', isMine: false, time: '14:03', status: 'read', type: 'text' },
-  { id: '4', text: '', isMine: false, time: '14:04', status: 'read', type: 'image', imageUri: 'https://picsum.photos/300/400?random=300' },
-  { id: '5', text: 'Waow! Elle est geniale, j\'ai adore la danse! Le decor est magnifique aussi', isMine: true, time: '14:05', status: 'read', type: 'text' },
-  { id: '6', text: '', isMine: false, time: '14:06', status: 'read', type: 'voice', voiceDuration: '0:23' },
-  { id: '7', text: 'Merci beaucoup! J\'en prepare une autre pour demain. Tu veux y participer?', isMine: false, time: '14:07', status: 'read', type: 'text' },
-  { id: '8', text: 'Oui avec plaisir! On se retrouve a quelle heure?', isMine: true, time: '14:08', status: 'read', type: 'text' },
-  { id: '9', text: 'Vers 16h au studio. Je t\'envoie la localisation', isMine: false, time: '14:09', status: 'read', type: 'text' },
-  { id: '10', text: 'J\'ai hate de la voir!', isMine: true, time: '14:10', status: 'delivered', type: 'text' },
-];
-
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams();
-  const contactId = (id as string) || 'c1';
-  const contact = CONTACTS[contactId] || CONTACTS.c1;
-  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
+  const { id, name: paramName, avatar: paramAvatar } = useLocalSearchParams();
+  const conversationId = id as string;
+  const { user } = useAuthStore();
+  const currentUserId = user?.id || user?._id || '';
+
+  // Contact info: from route params, fallback map, or defaults
+  const fallback = FALLBACK_CONTACTS[conversationId];
+  const [contact, setContact] = useState({
+    name: (paramName as string) || fallback?.name || 'Contact',
+    avatar: (paramAvatar as string) || fallback?.avatar || `https://i.pravatar.cc/150?u=${conversationId}`,
+    online: fallback?.online || false,
+    lastSeen: fallback?.lastSeen || '',
+  });
+
+  const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [showAttach, setShowAttach] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
-  const sendMessage = useCallback(() => {
-    if (!newMessage.trim()) return;
+  useEffect(() => { loadMessages(); }, [conversationId]);
+
+  const loadMessages = async () => {
+    try {
+      const response = await mobileApiClient.get(`/mobile/conversations/${conversationId}/messages`);
+      const data = response.data?.data || response.data;
+      const backendMsgs = data?.messages || [];
+      if (backendMsgs.length > 0) {
+        const transformed: Message[] = [];
+        let lastDate = '';
+        backendMsgs.forEach((m: any) => {
+          const msgDate = new Date(m.created_at);
+          const dateStr = formatDateLabel(msgDate);
+          if (dateStr !== lastDate) {
+            transformed.push({ id: `date-${m.id}`, text: '', isMine: false, time: '', status: 'read', type: 'text', date: dateStr });
+            lastDate = dateStr;
+          }
+          transformed.push({
+            id: m.id,
+            text: m.content || '',
+            isMine: m.sender_id === currentUserId,
+            time: msgDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+            status: m.is_read ? 'read' : 'delivered',
+            type: (m.type || 'text') as any,
+          });
+        });
+        setMessages(transformed);
+      } else {
+        // No messages yet - show a welcome date separator
+        setMessages([{ id: 'd1', text: '', isMine: false, time: '', status: 'read', type: 'text', date: "Aujourd'hui" }]);
+      }
+    } catch (err) {
+      console.log('Error loading messages, using empty state', err);
+      setMessages([{ id: 'd1', text: '', isMine: false, time: '', status: 'read', type: 'text', date: "Aujourd'hui" }]);
+    } finally { setLoading(false); }
+  };
+
+  const formatDateLabel = (date: Date) => {
+    const now = new Date();
+    const diffH = Math.floor((now.getTime() - date.getTime()) / 3600000);
+    if (diffH < 24) return "Aujourd'hui";
+    if (diffH < 48) return 'Hier';
+    return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
+  };
+
+  const sendMessage = useCallback(async () => {
+    if (!newMessage.trim() || sending) return;
+    const tempId = Date.now().toString();
+    const msgText = newMessage.trim();
     const msg: Message = {
-      id: Date.now().toString(),
-      text: newMessage,
+      id: tempId,
+      text: msgText,
       isMine: true,
       time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
       status: 'sent',
       type: 'text',
     };
+    // Optimistic UI update
     setMessages(prev => [...prev, msg]);
     setNewMessage('');
+    setSending(true);
 
-    // Update to delivered
-    setTimeout(() => {
-      setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, status: 'delivered' } : m));
-    }, 1000);
-
-    // Simulate reply
-    setTimeout(() => {
-      const replies = [
-        'D\'accord, ca marche!',
-        'Super idee!',
-        'Je vais verifier et je te dis',
-        'Merci beaucoup!',
-        'Pas de probleme',
-        'On en reparle demain',
-      ];
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        text: replies[Math.floor(Math.random() * replies.length)],
-        isMine: false,
-        time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-        status: 'read',
+    try {
+      const response = await mobileApiClient.post(`/mobile/conversations/${conversationId}/messages`, {
+        content: msgText,
         type: 'text',
-      }]);
-
-      // Mark my messages as read
-      setMessages(prev => prev.map(m => m.isMine ? { ...m, status: 'read' } : m));
-    }, 2500);
-  }, [newMessage]);
+      });
+      const sentMsg = response.data?.data;
+      // Update with server-confirmed message
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: sentMsg?.id || tempId, status: 'delivered' } : m));
+    } catch (err) {
+      console.log('Send message error:', err);
+      // Mark as failed but keep in UI
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'sent' } : m));
+    } finally { setSending(false); }
+  }, [newMessage, conversationId, sending]);
 
   const renderStatus = (status: string) => {
     switch (status) {
@@ -223,15 +260,22 @@ export default function ChatScreen() {
 
       {/* Chat Background + Messages */}
       <View style={styles.chatArea}>
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          renderItem={renderMessage}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.messagesList}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-        />
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loadingText}>Chargement des messages...</Text>
+          </View>
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            renderItem={renderMessage}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.messagesList}
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          />
+        )}
       </View>
 
       {/* Attachment Panel */}
@@ -303,6 +347,8 @@ const styles = StyleSheet.create({
   headerStatus: { color: Colors.success, fontSize: FontSizes.xs },
   headerAction: { width: 38, height: 44, alignItems: 'center', justifyContent: 'center' },
   chatArea: { flex: 1, backgroundColor: '#0B141A' },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingText: { color: 'rgba(255,255,255,0.5)', fontSize: 13 },
   messagesList: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.md, paddingBottom: Spacing.lg },
   dateSeparator: { alignItems: 'center', marginVertical: Spacing.md },
   dateBadge: { backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: Spacing.md, paddingVertical: 4, borderRadius: BorderRadius.sm },

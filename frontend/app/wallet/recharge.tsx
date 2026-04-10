@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import mobileApiClient from '../../src/api/mobileClient';
 
 const AMOUNTS = [1000, 2000, 5000, 10000, 20000, 50000];
 const METHODS = [
@@ -18,6 +19,37 @@ export default function RechargeWalletScreen() {
   const [amount, setAmount] = useState('');
   const [selectedMethod, setSelectedMethod] = useState('orange');
   const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleRecharge = async () => {
+    const numAmount = parseFloat(amount);
+    if (!numAmount || numAmount <= 0) {
+      Alert.alert('Erreur', 'Veuillez saisir un montant valide');
+      return;
+    }
+    if (selectedMethod !== 'card' && !phone.trim()) {
+      Alert.alert('Erreur', 'Veuillez saisir votre numéro de téléphone');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await mobileApiClient.post('/mobile/wallet/topup', {
+        amount: numAmount,
+        phone: phone.trim() || '00000000',
+        provider: selectedMethod === 'orange' ? 'orange-money' : selectedMethod === 'wave' ? 'wave' : selectedMethod === 'moov' ? 'moov-money' : 'card',
+      });
+      const data = response.data?.data;
+      Alert.alert(
+        'Recharge réussie !',
+        `Votre portefeuille a été rechargé de ${numAmount.toLocaleString()} FCFA.\nNouveau solde : ${(data?.balance || 0).toLocaleString()} FCFA`,
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
+    } catch (error: any) {
+      const msg = error.response?.data?.detail || error.message || 'Erreur lors de la recharge';
+      Alert.alert('Erreur', msg);
+    } finally { setLoading(false); }
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -83,10 +115,15 @@ export default function RechargeWalletScreen() {
         )}
 
         <TouchableOpacity
-          style={[styles.rechargeBtn, !amount && styles.rechargeBtnDisabled]}
-          onPress={() => Alert.alert('Recharge', `Recharge de ${amount} FCFA initiee`)}
+          style={[styles.rechargeBtn, (!amount || loading) && styles.rechargeBtnDisabled]}
+          onPress={handleRecharge}
+          disabled={!amount || loading}
         >
-          <Text style={styles.rechargeBtnText}>Recharger maintenant</Text>
+          {loading ? (
+            <ActivityIndicator size="small" color="#FFF" />
+          ) : (
+            <Text style={styles.rechargeBtnText}>Recharger maintenant</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </View>

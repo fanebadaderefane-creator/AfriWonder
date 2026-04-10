@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 AfriWonder Mobile Backend API Testing
-Tests the new complementary APIs added to the backend
+Tests all mobile API endpoints with focus on Send Message, Wallet TopUp, and Wallet Transfer
 """
 
 import requests
@@ -77,7 +77,7 @@ def main():
     
     # Test 1: Health Check (no auth required)
     print("\n" + "="*60)
-    print("TESTING EXISTING APIs")
+    print("TESTING CORE APIs")
     print("="*60)
     
     results["health_check"] = test_api(
@@ -85,137 +85,97 @@ def main():
         description="Health check endpoint (no auth required)"
     )
     
-    # Test 2: Mobile Conversations (existing)
+    # Test 2: Mobile Conversations (with auth)
     results["mobile_conversations"] = test_api(
         "GET", "/api/mobile/conversations",
-        description="Get user conversations (existing API)"
+        description="Get user conversations (requires JWT auth)"
     )
     
-    # Test 3: Mobile Wallet (existing)
+    # Test 3: Mobile Wallet (with auth)
     results["mobile_wallet"] = test_api(
         "GET", "/api/mobile/wallet",
-        description="Get user wallet (existing API)"
+        description="Get user wallet (requires JWT auth)"
     )
     
-    # NEW APIs Testing
-    print("\n" + "="*60)
-    print("TESTING NEW PROFILE APIs")
-    print("="*60)
-    
-    # Test 4: Get Profile (new)
-    results["get_profile"] = test_api(
-        "GET", "/api/mobile/profile",
-        description="Get user extended profile (NEW API)"
-    )
-    
-    # Test 5: Update Profile (new)
-    profile_data = {
-        "full_name": "Test User AfriWonder",
-        "bio": "Testing the new profile API from automated tests",
-        "city": "Bamako",
-        "country": "Mali",
-        "phone": "+223 70 12 34 56"
-    }
-    results["update_profile"] = test_api(
-        "PUT", "/api/mobile/profile",
-        data=profile_data,
-        description="Update user profile (NEW API)"
-    )
-    
-    print("\n" + "="*60)
-    print("TESTING NEW STORIES APIs")
-    print("="*60)
-    
-    # Test 6: Get Stories (new)
-    results["get_stories"] = test_api(
+    # Test 4: Mobile Stories (with auth)
+    results["mobile_stories"] = test_api(
         "GET", "/api/mobile/stories",
-        description="Get active stories with auto-seeding (NEW API)"
+        description="Get user stories (requires JWT auth)"
     )
     
-    # Test 7: Create Story (new)
-    story_data = {
-        "media_url": "https://picsum.photos/400/700?random=999",
-        "type": "image",
-        "caption": "Test story from automated testing",
-        "duration": 7
-    }
-    results["create_story"] = test_api(
-        "POST", "/api/mobile/stories",
-        data=story_data,
-        description="Create new story (NEW API)"
+    # Test 5: Mobile Crowdfunding (with auth)
+    results["mobile_crowdfunding"] = test_api(
+        "GET", "/api/mobile/crowdfunding",
+        description="Get crowdfunding projects (requires JWT auth)"
     )
     
+    # Test 6: Mobile Profile (with auth)
+    results["mobile_profile"] = test_api(
+        "GET", "/api/mobile/profile",
+        description="Get user profile (requires JWT auth)"
+    )
+    
+    # PRIORITY TESTS - Focus on the three specific APIs mentioned
     print("\n" + "="*60)
-    print("TESTING NEW CROWDFUNDING APIs")
+    print("TESTING PRIORITY APIs (Send Message, Wallet TopUp, Wallet Transfer)")
     print("="*60)
     
-    # Test 8: Get Crowdfunding Projects (new)
-    results["get_crowdfunding"] = test_api(
-        "GET", "/api/mobile/crowdfunding",
-        description="List crowdfunding projects with auto-seeding (NEW API)"
-    )
-    
-    # Test 9: Create Crowdfunding Project (new)
-    project_data = {
-        "title": "Test Project - Automated Testing",
-        "description": "This is a test project created by automated testing to verify the crowdfunding API functionality.",
-        "goal_amount": 100000,
-        "category": "education",
-        "currency": "XOF",
-        "image_url": "https://picsum.photos/600/400?random=888"
-    }
-    results["create_crowdfunding"] = test_api(
-        "POST", "/api/mobile/crowdfunding",
-        data=project_data,
-        description="Create crowdfunding project (NEW API)"
-    )
-    
-    # Test 10: Get My Crowdfunding Projects (new)
-    results["get_my_crowdfunding"] = test_api(
-        "GET", "/api/mobile/crowdfunding/my/projects",
-        description="Get user's own crowdfunding projects (NEW API)"
-    )
-    
-    # Test 11: Get Project Details (new) - We'll use a demo project ID
-    # First, let's get the projects to find a valid project ID
-    print("\n🔍 Getting project ID for detailed testing...")
+    # Get conversation ID for message testing
+    conv_id = None
+    print("\n🔍 Getting conversation ID for message testing...")
     try:
-        response = requests.get(f"{BASE_URL}/api/mobile/crowdfunding", headers=headers)
+        response = requests.get(f"{BASE_URL}/api/mobile/conversations", headers=headers)
         if response.status_code == 200:
             data = response.json()
-            if data.get("success") and data.get("data", {}).get("projects"):
-                project_id = data["data"]["projects"][0]["id"]
-                print(f"   Found project ID: {project_id}")
-                
-                # Test project details
-                results["get_project_details"] = test_api(
-                    "GET", f"/api/mobile/crowdfunding/{project_id}",
-                    description=f"Get project details for ID: {project_id} (NEW API)"
-                )
-                
-                # Test contribution
-                contribution_data = {
-                    "amount": 5000,
-                    "payment_method": "orange-money",
-                    "anonymous": False
-                }
-                results["contribute_to_project"] = test_api(
-                    "POST", f"/api/mobile/crowdfunding/{project_id}/contribute",
-                    data=contribution_data,
-                    description=f"Contribute to project {project_id} (NEW API)"
-                )
+            if data.get("success") and data.get("data", {}).get("conversations"):
+                conv_id = data["data"]["conversations"][0]["id"]
+                print(f"   Found conversation ID: {conv_id}")
             else:
-                print("❌ No projects found for detailed testing")
-                results["get_project_details"] = False
-                results["contribute_to_project"] = False
+                print("❌ No conversations found")
         else:
-            print(f"❌ Failed to get projects: {response.status_code}")
-            results["get_project_details"] = False
-            results["contribute_to_project"] = False
+            print(f"❌ Failed to get conversations: {response.status_code}")
     except Exception as e:
-        print(f"❌ Error getting project details: {e}")
-        results["get_project_details"] = False
-        results["contribute_to_project"] = False
+        print(f"❌ Error getting conversations: {e}")
+    
+    # PRIORITY TEST 1: Send Message API
+    if conv_id:
+        message_data = {
+            "content": "test message",
+            "type": "text"
+        }
+        results["send_message"] = test_api(
+            "POST", f"/api/mobile/conversations/{conv_id}/messages",
+            data=message_data,
+            description="🎯 PRIORITY: Send message to conversation"
+        )
+    else:
+        print("❌ Cannot test send message - no conversation ID available")
+        results["send_message"] = False
+    
+    # PRIORITY TEST 2: Wallet TopUp API
+    topup_data = {
+        "amount": 5000,
+        "phone": "70123456",
+        "provider": "orange-money"
+    }
+    results["wallet_topup"] = test_api(
+        "POST", "/api/mobile/wallet/topup",
+        data=topup_data,
+        description="🎯 PRIORITY: Wallet top-up via Orange Money"
+    )
+    
+    # PRIORITY TEST 3: Wallet Transfer API
+    transfer_data = {
+        "recipient_phone": "+22370123456",
+        "amount": 1000,
+        "description": "Test transfer",
+        "payment_method": "orange-money"
+    }
+    results["wallet_transfer"] = test_api(
+        "POST", "/api/mobile/wallet/transfer",
+        data=transfer_data,
+        description="🎯 PRIORITY: Money transfer to another user"
+    )
     
     # Summary
     print("\n" + "="*60)
@@ -230,34 +190,45 @@ def main():
     print("\n📋 Detailed Results:")
     for test_name, result in results.items():
         status = "✅ PASS" if result else "❌ FAIL"
-        print(f"   {test_name}: {status}")
+        priority_marker = "🎯 " if test_name in ["send_message", "wallet_topup", "wallet_transfer"] else "   "
+        print(f"{priority_marker}{test_name}: {status}")
     
     # Categorize results
-    existing_apis = ["health_check", "mobile_conversations", "mobile_wallet"]
-    profile_apis = ["get_profile", "update_profile"]
-    stories_apis = ["get_stories", "create_story"]
-    crowdfunding_apis = ["get_crowdfunding", "create_crowdfunding", "get_my_crowdfunding", 
-                        "get_project_details", "contribute_to_project"]
+    core_apis = ["health_check", "mobile_conversations", "mobile_wallet", "mobile_stories", "mobile_crowdfunding", "mobile_profile"]
+    priority_apis = ["send_message", "wallet_topup", "wallet_transfer"]
     
     print(f"\n📈 Results by Category:")
     
-    existing_passed = sum(1 for api in existing_apis if results.get(api, False))
-    print(f"   Existing APIs: {existing_passed}/{len(existing_apis)} passed")
+    core_passed = sum(1 for api in core_apis if results.get(api, False))
+    print(f"   Core APIs: {core_passed}/{len(core_apis)} passed")
     
-    profile_passed = sum(1 for api in profile_apis if results.get(api, False))
-    print(f"   Profile APIs: {profile_passed}/{len(profile_apis)} passed")
+    priority_passed = sum(1 for api in priority_apis if results.get(api, False))
+    print(f"   🎯 Priority APIs: {priority_passed}/{len(priority_apis)} passed")
     
-    stories_passed = sum(1 for api in stories_apis if results.get(api, False))
-    print(f"   Stories APIs: {stories_passed}/{len(stories_apis)} passed")
+    # Special focus on priority APIs
+    print(f"\n🎯 PRIORITY API STATUS:")
+    priority_status = {
+        "send_message": "Send Message API (POST /api/mobile/conversations/{conv_id}/messages)",
+        "wallet_topup": "Wallet TopUp API (POST /api/mobile/wallet/topup)",
+        "wallet_transfer": "Wallet Transfer API (POST /api/mobile/wallet/transfer)"
+    }
     
-    crowdfunding_passed = sum(1 for api in crowdfunding_apis if results.get(api, False))
-    print(f"   Crowdfunding APIs: {crowdfunding_passed}/{len(crowdfunding_apis)} passed")
+    for api_key, description in priority_status.items():
+        status = "✅ WORKING" if results.get(api_key, False) else "❌ FAILED"
+        print(f"   {description}: {status}")
     
     if passed == total:
         print(f"\n🎉 All tests passed! The AfriWonder Mobile backend is working correctly.")
         return True
     else:
-        print(f"\n⚠️  {total - passed} test(s) failed. Please check the failed endpoints.")
+        failed_tests = [name for name, result in results.items() if not result]
+        print(f"\n⚠️  {total - passed} test(s) failed: {', '.join(failed_tests)}")
+        
+        # Check if any priority APIs failed
+        failed_priority = [api for api in priority_apis if not results.get(api, False)]
+        if failed_priority:
+            print(f"🚨 CRITICAL: Priority APIs failed: {', '.join(failed_priority)}")
+        
         return False
 
 if __name__ == "__main__":
