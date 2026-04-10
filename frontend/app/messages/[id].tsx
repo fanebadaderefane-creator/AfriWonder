@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, KeyboardAvoidingView, Platform, Dimensions, ActivityIndicator, Modal, Alert, Pressable } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, KeyboardAvoidingView, Platform, Dimensions, ActivityIndicator, Modal, Alert, Pressable, Animated } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,6 +7,9 @@ import { router, useLocalSearchParams } from 'expo-router';
 import mobileApiClient from '../../src/api/mobileClient';
 import { useAuthStore } from '../../src/store/authStore';
 import * as Clipboard from 'expo-clipboard';
+import { Audio } from 'expo-av';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 
 const { width } = Dimensions.get('window');
 
@@ -60,6 +63,21 @@ export default function ChatScreen() {
   // Forward modal
   const [forwardModalVisible, setForwardModalVisible] = useState(false);
   const [conversations, setConversations] = useState<any[]>([]);
+
+  // Voice recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingAnim = useRef(new Animated.Value(1)).current;
+
+  // Audio playback state
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const [audioProgress, setAudioProgress] = useState(0);
+  const soundRef = useRef<Audio.Sound | null>(null);
+
+  // Ephemeral messages
+  const [ephemeralMode, setEphemeralMode] = useState<'off' | '24h' | '7d' | '90d'>('off');
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -141,6 +159,183 @@ export default function ChatScreen() {
       console.log('Send error:', err);
     } finally { setSending(false); }
   }, [newMessage, conversationId, sending, replyingTo, contact.name]);
+
+  // ===== VOICE RECORDING =====
+
+  const formatDuration = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const startRecording = async () => {
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission', 'Autorisez le microphone pour envoyer des vocaux');
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      recordingRef.current = recording;
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      // Pulse animation
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(recordingAnim, { toValue: 1.3, duration: 600, useNativeDriver: true }),
+          Animated.timing(recordingAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ])
+      ).start();
+
+      // Timer
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.log('Recording error:', err);
+      Alert.alert('Erreur', 'Impossible de demarrer l\'enregistrement');
+    }
+  };
+
+  const stopRecording = async () => {
+    if (!recordingRef.current) return;
+    try {
+      setIsRecording(false);
+      recordingAnim.stopAnimation();
+      recordingAnim.setValue(1);
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+
+      await recordingRef.current.stopAndUnloadAsync();
+      const uri = recordingRef.current.getURI();
+      const duration = recordingDuration;
+      recordingRef.current = null;
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+
+      if (uri && duration >= 1) {
+        const tempId = Date.now().toString();
+        const voiceMsg: Message = {
+          id: tempId,
+          text: `Vocal ${formatDuration(duration)}`,
+          isMine: true,
+          time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+          status: 'sent',
+          type: 'voice',
+          voiceDuration: formatDuration(duration),
+          imageUri: uri,
+        };
+        setMessages(prev => [...prev, voiceMsg]);
+
+        try {
+          await mobileApiClient.post(`/mobile/conversations/${conversationId}/messages`, {
+            content: `Vocal ${formatDuration(duration)}`,
+            type: 'voice',
+            media_url: uri,
+            duration: duration,
+          });
+          setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'delivered' } : m));
+        } catch {}
+      }
+    } catch (err) {
+      console.log('Stop recording error:', err);
+    }
+  };
+
+  const cancelRecording = async () => {
+    if (!recordingRef.current) return;
+    try {
+      setIsRecording(false);
+      recordingAnim.stopAnimation();
+      recordingAnim.setValue(1);
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      await recordingRef.current.stopAndUnloadAsync();
+      recordingRef.current = null;
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+    } catch {}
+  };
+
+  // ===== AUDIO PLAYBACK =====
+
+  const playAudio = async (msg: Message) => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+      if (playingAudioId === msg.id) {
+        setPlayingAudioId(null);
+        return;
+      }
+      const uri = msg.imageUri;
+      if (!uri) return;
+      const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true }, (status) => {
+        if (status.isLoaded) {
+          if (status.durationMillis) {
+            setAudioProgress(status.positionMillis / status.durationMillis);
+          }
+          if (status.didJustFinish) {
+            setPlayingAudioId(null);
+            setAudioProgress(0);
+          }
+        }
+      });
+      soundRef.current = sound;
+      setPlayingAudioId(msg.id);
+    } catch (err) {
+      console.log('Playback error:', err);
+    }
+  };
+
+  // ===== IMAGE/VIDEO PICKER =====
+
+  const pickImage = async (useCamera: boolean = false) => {
+    setShowAttach(false);
+    try {
+      let result;
+      if (useCamera) {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) { Alert.alert('Permission', 'Autorisez la camera'); return; }
+        result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images', 'videos'], quality: 0.7 });
+      } else {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) { Alert.alert('Permission', 'Autorisez la galerie'); return; }
+        result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], quality: 0.7, allowsMultipleSelection: false });
+      }
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        const isVideo = asset.type === 'video';
+        const tempId = Date.now().toString();
+        const mediaMsg: Message = {
+          id: tempId,
+          text: isVideo ? 'Video' : 'Photo',
+          isMine: true,
+          time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+          status: 'sent',
+          type: 'image',
+          imageUri: asset.uri,
+        };
+        setMessages(prev => [...prev, mediaMsg]);
+
+        try {
+          await mobileApiClient.post(`/mobile/conversations/${conversationId}/messages`, {
+            content: isVideo ? 'Video' : 'Photo',
+            type: isVideo ? 'video' : 'image',
+            media_url: asset.uri,
+          });
+          setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'delivered' } : m));
+        } catch {}
+      }
+    } catch (err) {
+      console.log('Picker error:', err);
+    }
+  };
 
   // ===== CONTEXT MENU ACTIONS =====
 
@@ -342,6 +537,26 @@ export default function ChatScreen() {
               <Ionicons name="ban-outline" size={14} color="rgba(255,255,255,0.4)" />
               <Text style={styles.deletedText}>{item.text}</Text>
             </View>
+          ) : item.type === 'voice' ? (
+            <TouchableOpacity style={styles.voiceBubble} onPress={() => playAudio(item)} activeOpacity={0.7}>
+              <Ionicons name={playingAudioId === item.id ? 'pause' : 'play'} size={28} color="#FFF" />
+              <View style={styles.voiceWaveContainer}>
+                <View style={styles.voiceWaveTrack}>
+                  <View style={[styles.voiceWaveProgress, { width: playingAudioId === item.id ? `${audioProgress * 100}%` : '0%' }]} />
+                </View>
+                <Text style={styles.voiceDurationText}>{item.voiceDuration || '0:00'}</Text>
+              </View>
+              <View style={[styles.voiceMicBadge, { backgroundColor: item.isMine ? '#005C4B' : '#1F2C34' }]}>
+                <Ionicons name="mic" size={14} color={Colors.primary} />
+              </View>
+            </TouchableOpacity>
+          ) : item.type === 'image' && item.imageUri ? (
+            <View style={styles.imageBubble}>
+              <Image source={{ uri: item.imageUri }} style={styles.chatImage} resizeMode="cover" />
+              {item.text && item.text !== 'Photo' && item.text !== 'Video' && (
+                <Text style={[styles.messageText, item.isMine && styles.messageTextMine]}>{item.text}</Text>
+              )}
+            </View>
           ) : (
             <Text style={[styles.messageText, item.isMine && styles.messageTextMine]}>{item.text}</Text>
           )}
@@ -362,12 +577,12 @@ export default function ChatScreen() {
   };
 
   const ATTACHMENT_OPTIONS = [
-    { icon: 'camera', label: 'Camera', color: '#FF6B6B' },
-    { icon: 'images', label: 'Galerie', color: '#4ECDC4' },
-    { icon: 'document', label: 'Document', color: '#45B7D1' },
-    { icon: 'location', label: 'Position', color: '#FF6B00' },
-    { icon: 'person', label: 'Contact', color: '#96CEB4' },
-    { icon: 'musical-notes', label: 'Audio', color: '#DDA0DD' },
+    { icon: 'camera', label: 'Camera', color: '#FF6B6B', action: () => pickImage(true) },
+    { icon: 'images', label: 'Galerie', color: '#4ECDC4', action: () => pickImage(false) },
+    { icon: 'document', label: 'Document', color: '#45B7D1', action: () => setShowAttach(false) },
+    { icon: 'location', label: 'Position', color: '#FF6B00', action: () => setShowAttach(false) },
+    { icon: 'person', label: 'Contact', color: '#96CEB4', action: () => setShowAttach(false) },
+    { icon: 'musical-notes', label: 'Audio', color: '#DDA0DD', action: () => setShowAttach(false) },
   ];
 
   const CONTEXT_MENU_ITEMS = [
@@ -427,7 +642,7 @@ export default function ChatScreen() {
         <View style={styles.attachPanel}>
           <View style={styles.attachGrid}>
             {ATTACHMENT_OPTIONS.map((opt, i) => (
-              <TouchableOpacity key={i} style={styles.attachOption} onPress={() => setShowAttach(false)}>
+              <TouchableOpacity key={i} style={styles.attachOption} onPress={opt.action}>
                 <View style={[styles.attachIcon, { backgroundColor: opt.color }]}>
                   <Ionicons name={opt.icon as any} size={22} color="#FFF" />
                 </View>
@@ -454,36 +669,60 @@ export default function ChatScreen() {
 
       {/* Input Bar */}
       <View style={[styles.inputContainer, { paddingBottom: insets.bottom + Spacing.xs }]}>
-        <View style={styles.inputRow}>
-          <TouchableOpacity style={styles.emojiBtn}>
-            <Ionicons name="happy-outline" size={24} color={Colors.textSecondary} />
-          </TouchableOpacity>
-          <TextInput
-            style={styles.textInput}
-            placeholder="Message"
-            placeholderTextColor={Colors.textMuted}
-            value={newMessage}
-            onChangeText={(text) => { setNewMessage(text); setShowAttach(false); }}
-            multiline
-            maxLength={2000}
-          />
-          <TouchableOpacity onPress={() => setShowAttach(!showAttach)}>
-            <Ionicons name="attach" size={24} color={Colors.textSecondary} style={{ transform: [{ rotate: '45deg' }] }} />
-          </TouchableOpacity>
-          {!newMessage.trim() && (
-            <TouchableOpacity style={styles.cameraInlineBtn}>
-              <Ionicons name="camera" size={22} color={Colors.textSecondary} />
+        {isRecording ? (
+          /* Recording Mode */
+          <View style={styles.recordingBar}>
+            <TouchableOpacity onPress={cancelRecording} style={styles.cancelRecBtn}>
+              <Ionicons name="trash-outline" size={22} color={Colors.error} />
             </TouchableOpacity>
-          )}
-        </View>
-        {newMessage.trim() ? (
-          <TouchableOpacity style={styles.sendBtn} onPress={sendMessage}>
-            <Ionicons name="send" size={20} color="#FFF" />
-          </TouchableOpacity>
+            <Animated.View style={[styles.recordingIndicator, { transform: [{ scale: recordingAnim }] }]}>
+              <View style={styles.recordDot} />
+            </Animated.View>
+            <Text style={styles.recordingTime}>{formatDuration(recordingDuration)}</Text>
+            <View style={styles.recordingWaves}>
+              {[...Array(12)].map((_, i) => (
+                <View key={i} style={[styles.waveBar, { height: 8 + Math.random() * 16 }]} />
+              ))}
+            </View>
+            <TouchableOpacity onPress={stopRecording} style={styles.stopRecBtn}>
+              <Ionicons name="send" size={20} color="#FFF" />
+            </TouchableOpacity>
+          </View>
         ) : (
-          <TouchableOpacity style={styles.sendBtn}>
-            <Ionicons name="mic" size={22} color="#FFF" />
-          </TouchableOpacity>
+          /* Normal Input Mode */
+          <>
+            <View style={styles.inputRow}>
+              <TouchableOpacity style={styles.emojiBtn}>
+                <Ionicons name="happy-outline" size={24} color={Colors.textSecondary} />
+              </TouchableOpacity>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Message"
+                placeholderTextColor={Colors.textMuted}
+                value={newMessage}
+                onChangeText={(text) => { setNewMessage(text); setShowAttach(false); }}
+                multiline
+                maxLength={2000}
+              />
+              <TouchableOpacity onPress={() => setShowAttach(!showAttach)}>
+                <Ionicons name="attach" size={24} color={Colors.textSecondary} style={{ transform: [{ rotate: '45deg' }] }} />
+              </TouchableOpacity>
+              {!newMessage.trim() && (
+                <TouchableOpacity style={styles.cameraInlineBtn} onPress={() => pickImage(true)}>
+                  <Ionicons name="camera" size={22} color={Colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
+            {newMessage.trim() ? (
+              <TouchableOpacity style={styles.sendBtn} onPress={sendMessage}>
+                <Ionicons name="send" size={20} color="#FFF" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.sendBtn} onPress={startRecording} onLongPress={startRecording}>
+                <Ionicons name="mic" size={22} color="#FFF" />
+              </TouchableOpacity>
+            )}
+          </>
         )}
       </View>
 
@@ -656,4 +895,23 @@ const styles = StyleSheet.create({
   forwardItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, gap: Spacing.md },
   forwardAvatar: { width: 44, height: 44, borderRadius: 22 },
   forwardName: { flex: 1, color: Colors.text, fontSize: FontSizes.md },
+  // Voice bubble
+  voiceBubble: { flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 200 },
+  voiceWaveContainer: { flex: 1 },
+  voiceWaveTrack: { height: 4, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 2, overflow: 'hidden' },
+  voiceWaveProgress: { height: '100%', backgroundColor: Colors.primary, borderRadius: 2 },
+  voiceDurationText: { color: 'rgba(255,255,255,0.5)', fontSize: 11, marginTop: 3 },
+  voiceMicBadge: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  // Image bubble
+  imageBubble: { marginBottom: 2 },
+  chatImage: { width: 220, height: 220, borderRadius: 8, marginBottom: 4 },
+  // Recording bar
+  recordingBar: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8 },
+  cancelRecBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  recordingIndicator: { width: 12, height: 12, borderRadius: 6, overflow: 'hidden' },
+  recordDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#FF3D00' },
+  recordingTime: { color: '#FF3D00', fontSize: FontSizes.md, fontWeight: '600', minWidth: 40 },
+  recordingWaves: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 2, height: 32 },
+  waveBar: { width: 3, backgroundColor: Colors.primary, borderRadius: 1.5, opacity: 0.6 },
+  stopRecBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
 });

@@ -487,7 +487,7 @@ async def get_starred_messages(user_id: str = Depends(verify_token)):
 
 @app.post("/api/mobile/conversations/start")
 async def start_conversation_with_user(data: dict, user_id: str = Depends(verify_token)):
-    """Démarrer une conversation avec un utilisateur réel"""
+    """Demarrer une conversation avec un utilisateur reel"""
     target_id = data.get("target_user_id", "")
     target_name = data.get("target_name", "")
     target_avatar = data.get("target_avatar", "")
@@ -511,12 +511,25 @@ async def start_conversation_with_user(data: dict, user_id: str = Depends(verify
         "last_message": None,
         "last_message_at": datetime.utcnow().isoformat(),
         "unread_count": 0,
+        "ephemeral_mode": "off",
         "created_at": datetime.utcnow().isoformat(),
         "updated_at": datetime.utcnow().isoformat(),
     }
     await conversations_col.insert_one(conv)
     conv["_id"] = str(conv.get("_id", ""))
     return {"success": True, "data": conv}
+
+@app.put("/api/mobile/conversations/{conversation_id}/ephemeral")
+async def set_ephemeral_mode(conversation_id: str, data: dict, user_id: str = Depends(verify_token)):
+    """Activer/desactiver les messages ephemeres"""
+    mode = data.get("mode", "off")
+    if mode not in ["off", "24h", "7d", "90d"]:
+        raise HTTPException(status_code=400, detail="Mode invalide. Utiliser: off, 24h, 7d, 90d")
+    await conversations_col.update_one(
+        {"id": conversation_id},
+        {"$set": {"ephemeral_mode": mode, "updated_at": datetime.utcnow().isoformat()}}
+    )
+    return {"success": True, "data": {"ephemeral_mode": mode}}
 
 # ==================== WALLET API (Complémentaire) ====================
 
