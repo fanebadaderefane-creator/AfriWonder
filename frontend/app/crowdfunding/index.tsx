@@ -67,9 +67,17 @@ export default function CrowdfundingHomeScreen() {
           <Ionicons name="rocket" size={20} color={Colors.primary} />
           <Text style={styles.headerTitle}>Crowdfunding</Text>
         </View>
-        <TouchableOpacity style={styles.headerBtn} onPress={() => router.push('/crowdfunding/create' as any)}>
-          <Ionicons name="add-circle" size={26} color={Colors.primary} />
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => router.push('/crowdfunding/history' as any)}>
+            <Ionicons name="time" size={22} color="#AAA" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => router.push('/crowdfunding/dashboard' as any)}>
+            <Ionicons name="stats-chart" size={22} color="#AAA" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => router.push('/crowdfunding/create' as any)}>
+            <Ionicons name="add-circle" size={26} color={Colors.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Search */}
@@ -358,8 +366,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  headerBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  headerBtn: { width: 40, height: 44, alignItems: 'center', justifyContent: 'center' },
   headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerRight: { flexDirection: 'row', alignItems: 'center' },
   headerTitle: { fontSize: 20, fontWeight: '800', color: '#FFF' },
 
   // Search

@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/store/authStore';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { ProfileSkeleton } from '../../src/components/SkeletonScreens';
 
 const { width } = Dimensions.get('window');
 const GRID_SIZE = (width - 4) / 3;
@@ -50,12 +51,26 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated, logout } = useAuthStore();
   const [activeTab, setActiveTab] = useState<ContentTab>('posts');
+  const [isLoading, setIsLoading] = useState(true);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 1200);
+    return () => clearTimeout(timer);
+  }, []);
 
   const profileData = isAuthenticated && user ? {
     ...MOCK_USER,
     firstName: user.firstName || MOCK_USER.firstName,
     lastName: user.lastName || MOCK_USER.lastName,
   } : MOCK_USER;
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <ProfileSkeleton />
+      </View>
+    );
+  }
 
   const handleLogout = () => {
     Alert.alert('Deconnexion', 'Etes-vous sur de vouloir vous deconnecter ?', [

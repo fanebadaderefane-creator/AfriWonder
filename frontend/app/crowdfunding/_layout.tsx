@@ -15,6 +15,8 @@ export default function CrowdfundingLayout() {
       <Stack.Screen name="[id]" />
       <Stack.Screen name="create" />
       <Stack.Screen name="contribute" />
+      <Stack.Screen name="dashboard" />
+      <Stack.Screen name="history" />
     </Stack>
   );
 }
