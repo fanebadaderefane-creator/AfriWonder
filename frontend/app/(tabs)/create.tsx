@@ -15,9 +15,11 @@ import mobileApiClient from '../../src/api/mobileClient';
 export default function CreateScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, user } = useAuthStore();
-  const [selectedMedia, setSelectedMedia] = useState<{ uri: string; type: string } | null>(null);
+  const [selectedMedia, setSelectedMedia] = useState<{ uri: string; type: string }[]>([]);
+  const [contentType, setContentType] = useState<'video' | 'photo' | 'text' | 'article'>('video');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [articleBody, setArticleBody] = useState('');
   const [hashtags, setHashtags] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -47,7 +49,8 @@ export default function CreateScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      setSelectedMedia({ uri: result.assets[0].uri, type: 'video' });
+      setSelectedMedia([{ uri: result.assets[0].uri, type: 'video' }]);
+      setContentType('video');
       setStep('details');
     }
   };
@@ -61,11 +64,13 @@ export default function CreateScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
+      allowsMultipleSelection: true,
       quality: 0.8,
+      selectionLimit: 10,
     });
-    if (!result.canceled && result.assets[0]) {
-      setSelectedMedia({ uri: result.assets[0].uri, type: 'image' });
+    if (!result.canceled && result.assets.length > 0) {
+      setSelectedMedia(result.assets.map(a => ({ uri: a.uri, type: 'image' })));
+      setContentType('photo');
       setStep('details');
     }
   };
@@ -81,74 +86,104 @@ export default function CreateScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
       allowsEditing: true,
       quality: 0.8,
-      videoMaxDuration: 60,
+      // Pas de limite de durée pour les vidéos longues
     });
     if (!result.canceled && result.assets[0]) {
-      setSelectedMedia({ uri: result.assets[0].uri, type: 'video' });
+      setSelectedMedia([{ uri: result.assets[0].uri, type: 'video' }]);
+      setContentType('video');
       setStep('details');
     }
   };
 
+  const handleTextPost = () => {
+    if (!requireAuth('publier un texte')) return;
+    setContentType('text');
+    setSelectedMedia([]);
+    setStep('details');
+  };
+
+  const handleArticlePost = () => {
+    if (!requireAuth('publier un article')) return;
+    setContentType('article');
+    setSelectedMedia([]);
+    setStep('details');
+  };
+
   const handlePublish = async () => {
-    if (!selectedMedia) return;
-    if (!title.trim()) {
-      Alert.alert('Titre requis', 'Veuillez ajouter un titre à votre vidéo');
-      return;
+    if (contentType === 'text' || contentType === 'article') {
+      if (!description.trim() && contentType === 'text') { Alert.alert('Contenu requis', 'Écrivez quelque chose'); return; }
+      if (!title.trim() && contentType === 'article') { Alert.alert('Titre requis', 'Ajoutez un titre à votre article'); return; }
+    } else {
+      if (selectedMedia.length === 0) return;
+      if (!title.trim()) { Alert.alert('Titre requis', 'Ajoutez un titre'); return; }
     }
 
     setUploading(true);
     setUploadProgress(0);
 
     try {
-      // Step 1: Upload file to FastAPI backend
-      setUploadProgress(20);
-      const formData = new FormData();
-      const ext = selectedMedia.uri.split('.').pop() || (selectedMedia.type === 'video' ? 'mp4' : 'jpg');
-      formData.append('file', {
-        uri: selectedMedia.uri,
-        name: `upload.${ext}`,
-        type: selectedMedia.type === 'video' ? `video/${ext}` : `image/${ext}`,
-      } as any);
-      formData.append('type', selectedMedia.type);
+      const hashtagArray = hashtags.split(/[,#\s]+/).filter(h => h.trim()).map(h => h.trim());
+      let mediaUrls: string[] = [];
+      let videoUrl: string | undefined;
 
-      const uploadRes = await mobileApiClient.post('/mobile/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 120000,
-      });
-      const uploadData = uploadRes.data?.data || uploadRes.data;
-      const fileUrl = uploadData.url;
+      // Upload media files if any
+      if (selectedMedia.length > 0) {
+        setUploadProgress(10);
+        for (let i = 0; i < selectedMedia.length; i++) {
+          const media = selectedMedia[i];
+          const formData = new FormData();
+          const ext = media.uri.split('.').pop() || (media.type === 'video' ? 'mp4' : 'jpg');
+          formData.append('file', { uri: media.uri, name: `upload_${i}.${ext}`, type: media.type === 'video' ? `video/${ext}` : `image/${ext}` } as any);
+          formData.append('type', media.type);
+
+          const uploadRes = await mobileApiClient.post('/mobile/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 300000, // 5 min pour les vidéos longues
+          });
+          const fileUrl = uploadRes.data?.data?.url || '';
+          if (media.type === 'video') videoUrl = fileUrl;
+          else mediaUrls.push(fileUrl);
+
+          setUploadProgress(10 + Math.round((i + 1) / selectedMedia.length * 40));
+        }
+      }
+
       setUploadProgress(60);
 
-      // Step 2: Create video entry on PWA backend
-      const hashtagArray = hashtags
-        .split(/[,#\s]+/)
-        .filter(h => h.trim())
-        .map(h => h.trim());
-
-      const videoRes = await apiClient.post('/videos', {
-        title: title.trim(),
-        description: description.trim() || title.trim(),
-        video_url: fileUrl,
-        thumbnail_url: fileUrl,
+      // Publier via l'API complémentaire (mobile posts)
+      await mobileApiClient.post('/mobile/posts', {
+        content_type: contentType,
+        title: title.trim() || (contentType === 'text' ? undefined : undefined),
+        text: contentType === 'article' ? articleBody.trim() : description.trim(),
+        media_urls: mediaUrls,
+        video_url: videoUrl,
         hashtags: hashtagArray,
-        media_type: selectedMedia.type,
       });
+
+      setUploadProgress(80);
+
+      // Si c'est une vidéo, aussi publier sur le backend PWA pour le feed vidéo
+      if (contentType === 'video' && videoUrl) {
+        try {
+          await apiClient.post('/videos', {
+            title: title.trim(),
+            description: description.trim() || title.trim(),
+            video_url: videoUrl,
+            thumbnail_url: videoUrl,
+            hashtags: hashtagArray,
+            media_type: 'video',
+          });
+        } catch (e) { console.log('PWA video post failed (non-critical):', e); }
+      }
+
       setUploadProgress(100);
 
-      const videoData = videoRes.data?.data || videoRes.data;
-
-      Alert.alert(
-        'Publié !',
-        'Votre contenu a été publié avec succès',
-        [{ text: 'OK', onPress: () => {
-          setStep('select');
-          setSelectedMedia(null);
-          setTitle('');
-          setDescription('');
-          setHashtags('');
+      Alert.alert('Publié !', `Votre ${contentType === 'text' ? 'publication' : contentType === 'article' ? 'article' : contentType === 'photo' ? 'photo' : 'vidéo'} a été publié(e) avec succès`, [{
+        text: 'OK', onPress: () => {
+          resetSelection();
           router.replace('/(tabs)');
-        }}]
-      );
+        }
+      }]);
     } catch (error: any) {
       console.error('Publish error:', error);
       const msg = error.response?.data?.error?.message || error.response?.data?.detail || error.message || 'Erreur lors de la publication';
@@ -161,13 +196,19 @@ export default function CreateScreen() {
 
   const resetSelection = () => {
     setStep('select');
-    setSelectedMedia(null);
+    setSelectedMedia([]);
+    setContentType('video');
     setTitle('');
     setDescription('');
+    setArticleBody('');
     setHashtags('');
   };
 
-  if (step === 'details' && selectedMedia) {
+  if (step === 'details') {
+    const hasMedia = selectedMedia.length > 0;
+    const isTextBased = contentType === 'text' || contentType === 'article';
+    const canPublish = isTextBased ? (contentType === 'text' ? description.trim() : title.trim() && articleBody.trim()) : (hasMedia && title.trim());
+
     return (
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -177,11 +218,13 @@ export default function CreateScreen() {
           <TouchableOpacity onPress={resetSelection} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color={Colors.text} />
           </TouchableOpacity>
-          <Text style={styles.title}>Publier</Text>
+          <Text style={styles.title}>
+            {contentType === 'text' ? 'Publication' : contentType === 'article' ? 'Article' : contentType === 'photo' ? 'Photo' : 'Vidéo'}
+          </Text>
           <TouchableOpacity
-            style={[styles.publishBtn, (!title.trim() || uploading) && styles.publishBtnDisabled]}
+            style={[styles.publishBtn, (!canPublish || uploading) && styles.publishBtnDisabled]}
             onPress={handlePublish}
-            disabled={!title.trim() || uploading}
+            disabled={!canPublish || uploading}
           >
             {uploading ? (
               <ActivityIndicator size="small" color="#FFF" />
@@ -192,76 +235,101 @@ export default function CreateScreen() {
         </View>
 
         <ScrollView style={styles.detailsContent} showsVerticalScrollIndicator={false}>
-          {/* Preview */}
-          <View style={styles.previewContainer}>
-            <Image source={{ uri: selectedMedia.uri }} style={styles.preview} />
-            <TouchableOpacity style={styles.changeMediaBtn} onPress={resetSelection}>
-              <Ionicons name="refresh" size={16} color="#FFF" />
-              <Text style={styles.changeMediaText}>Changer</Text>
-            </TouchableOpacity>
-            {selectedMedia.type === 'video' && (
-              <View style={styles.videoIndicator}>
-                <Ionicons name="videocam" size={14} color="#FFF" />
-                <Text style={styles.videoIndicatorText}>Vidéo</Text>
-              </View>
-            )}
-          </View>
+          {/* Media Preview (for photo/video) */}
+          {hasMedia && (
+            <View style={styles.previewContainer}>
+              <Image source={{ uri: selectedMedia[0].uri }} style={styles.preview} />
+              {selectedMedia.length > 1 && (
+                <View style={styles.multiMediaBadge}>
+                  <Text style={styles.multiMediaText}>{selectedMedia.length} photos</Text>
+                </View>
+              )}
+              <TouchableOpacity style={styles.changeMediaBtn} onPress={resetSelection}>
+                <Ionicons name="refresh" size={16} color="#FFF" />
+                <Text style={styles.changeMediaText}>Changer</Text>
+              </TouchableOpacity>
+              {contentType === 'video' && (
+                <View style={styles.videoIndicator}>
+                  <Ionicons name="videocam" size={14} color="#FFF" />
+                  <Text style={styles.videoIndicatorText}>Vidéo</Text>
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Form */}
           <View style={styles.formContainer}>
-            <Text style={styles.formLabel}>Titre *</Text>
-            <TextInput
-              style={styles.formInput}
-              placeholder="Donnez un titre à votre vidéo..."
-              placeholderTextColor={Colors.textMuted}
-              value={title}
-              onChangeText={setTitle}
-              maxLength={100}
-            />
+            {contentType !== 'text' && (
+              <>
+                <Text style={styles.formLabel}>Titre {isTextBased ? '' : '*'}</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder={contentType === 'article' ? "Titre de l'article..." : "Titre de votre contenu..."}
+                  placeholderTextColor={Colors.textMuted}
+                  value={title}
+                  onChangeText={setTitle}
+                  maxLength={150}
+                />
+              </>
+            )}
 
-            <Text style={styles.formLabel}>Description</Text>
+            <Text style={styles.formLabel}>
+              {contentType === 'text' ? "Quoi de neuf ?" : contentType === 'article' ? 'Contenu de l\'article' : 'Description'}
+            </Text>
             <TextInput
-              style={[styles.formInput, styles.formTextArea]}
-              placeholder="Décrivez votre vidéo..."
+              style={[styles.formInput, contentType === 'text' || contentType === 'article' ? styles.formTextAreaLarge : styles.formTextArea]}
+              placeholder={contentType === 'text' ? "Partagez vos pensées..." : contentType === 'article' ? "Rédigez votre article ici..." : "Décrivez votre contenu..."}
               placeholderTextColor={Colors.textMuted}
-              value={description}
-              onChangeText={setDescription}
+              value={contentType === 'article' ? articleBody : description}
+              onChangeText={contentType === 'article' ? setArticleBody : setDescription}
               multiline
-              numberOfLines={3}
-              maxLength={500}
+              numberOfLines={contentType === 'text' || contentType === 'article' ? 8 : 3}
+              maxLength={contentType === 'article' ? 5000 : 2000}
             />
+            {contentType === 'article' && (
+              <Text style={styles.charCount}>{articleBody.length}/5000</Text>
+            )}
+
+            {/* Option d'ajouter des photos au texte/article */}
+            {isTextBased && (
+              <TouchableOpacity style={styles.addMediaBtn} onPress={async () => {
+                const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                if (status !== 'granted') return;
+                const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsMultipleSelection: true, quality: 0.8, selectionLimit: 5 });
+                if (!result.canceled && result.assets.length > 0) {
+                  setSelectedMedia(result.assets.map(a => ({ uri: a.uri, type: 'image' })));
+                }
+              }}>
+                <Ionicons name="image-outline" size={20} color={Colors.primary} />
+                <Text style={styles.addMediaBtnText}>{selectedMedia.length > 0 ? `${selectedMedia.length} photo(s) ajoutée(s)` : 'Ajouter des photos'}</Text>
+              </TouchableOpacity>
+            )}
 
             <Text style={styles.formLabel}>Hashtags</Text>
             <TextInput
               style={styles.formInput}
-              placeholder="#mali #culture #danse"
+              placeholder="#mali #culture #afriwonder"
               placeholderTextColor={Colors.textMuted}
               value={hashtags}
               onChangeText={setHashtags}
             />
 
-            {/* Suggested hashtags */}
             <View style={styles.suggestedTags}>
               {['AfriWonder', 'Mali', 'Afrique', 'Culture', 'Danse', 'Food'].map(tag => (
-                <TouchableOpacity
-                  key={tag}
-                  style={styles.tagChip}
-                  onPress={() => setHashtags(prev => prev ? `${prev} #${tag}` : `#${tag}`)}
-                >
+                <TouchableOpacity key={tag} style={styles.tagChip} onPress={() => setHashtags(prev => prev ? `${prev} #${tag}` : `#${tag}`)}>
                   <Text style={styles.tagChipText}>#{tag}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
 
-          {/* Upload progress */}
           {uploading && (
             <View style={styles.progressContainer}>
               <View style={styles.progressBar}>
                 <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
               </View>
               <Text style={styles.progressText}>
-                {uploadProgress < 50 ? 'Upload en cours...' : uploadProgress < 90 ? 'Création de la vidéo...' : 'Finalisation...'}
+                {uploadProgress < 30 ? 'Upload en cours...' : uploadProgress < 70 ? 'Traitement...' : 'Finalisation...'}
               </Text>
             </View>
           )}
@@ -292,7 +360,7 @@ export default function CreateScreen() {
               <Ionicons name="film" size={40} color={Colors.text} />
             </View>
             <Text style={styles.optionTitle}>Vidéo</Text>
-            <Text style={styles.optionSubtitle}>Depuis la galerie</Text>
+            <Text style={styles.optionSubtitle}>Courte ou longue</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.optionCard} onPress={handlePickImage}>
@@ -300,28 +368,55 @@ export default function CreateScreen() {
               <Ionicons name="images" size={40} color={Colors.text} />
             </View>
             <Text style={styles.optionTitle}>Photo</Text>
-            <Text style={styles.optionSubtitle}>Publier une image</Text>
+            <Text style={styles.optionSubtitle}>Plusieurs images</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.optionCard} onPress={handleTextPost}>
+            <View style={[styles.optionIcon, { backgroundColor: '#9C27B0' }]}>
+              <Ionicons name="chatbubble-ellipses" size={40} color={Colors.text} />
+            </View>
+            <Text style={styles.optionTitle}>Texte</Text>
+            <Text style={styles.optionSubtitle}>Publication rapide</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.optionCard} onPress={handleArticlePost}>
+            <View style={[styles.optionIcon, { backgroundColor: '#00BCD4' }]}>
+              <Ionicons name="document-text" size={40} color={Colors.text} />
+            </View>
+            <Text style={styles.optionTitle}>Article</Text>
+            <Text style={styles.optionSubtitle}>Rédiger un article</Text>
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.liveCard} onPress={() => Alert.alert('Live', 'Fonctionnalité live bientôt disponible!')}>
+        <TouchableOpacity style={styles.liveCard} onPress={() => router.push('/live/stream' as any)}>
           <View style={styles.liveIcon}>
             <Ionicons name="radio" size={28} color="#FFF" />
           </View>
           <View style={styles.liveInfo}>
             <Text style={styles.liveTitle}>Démarrer un Live</Text>
-            <Text style={styles.liveSubtitle}>Diffusez en direct à votre communauté</Text>
+            <Text style={styles.liveSubtitle}>Diffusez en direct, le replay sera enregistré</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={24} color={Colors.textSecondary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.liveCard, { borderLeftColor: '#FFEAA7', borderLeftWidth: 3 }]} onPress={() => router.push('/live' as any)}>
+          <View style={[styles.liveIcon, { backgroundColor: '#FFEAA7' }]}>
+            <Ionicons name="play-circle" size={28} color="#333" />
+          </View>
+          <View style={styles.liveInfo}>
+            <Text style={styles.liveTitle}>Mes Lives & Replays</Text>
+            <Text style={styles.liveSubtitle}>Voir, découper et republier vos lives</Text>
           </View>
           <Ionicons name="chevron-forward" size={24} color={Colors.textSecondary} />
         </TouchableOpacity>
 
         <View style={styles.tipsContainer}>
-          <Text style={styles.tipsTitle}>Conseils pour de bonnes vidéos</Text>
+          <Text style={styles.tipsTitle}>Conseils</Text>
           {[
             { icon: 'bulb', text: 'Utilisez une bonne lumière naturelle' },
-            { icon: 'time', text: 'Vidéos courtes (15-60 secondes)' },
+            { icon: 'film', text: 'Les vidéos longues sont maintenant supportées' },
             { icon: 'musical-notes', text: 'Ajoutez de la musique tendance' },
-            { icon: 'pricetag', text: 'Utilisez des hashtags populaires' },
+            { icon: 'document-text', text: 'Partagez vos idées en articles' },
           ].map((tip, i) => (
             <View key={i} style={styles.tipItem}>
               <Ionicons name={tip.icon as any} size={20} color={Colors.accent} />
@@ -402,6 +497,12 @@ const styles = StyleSheet.create({
     color: Colors.text, fontSize: FontSizes.md, borderWidth: 1, borderColor: Colors.border,
   },
   formTextArea: { height: 80, textAlignVertical: 'top' },
+  formTextAreaLarge: { height: 200, textAlignVertical: 'top' },
+  charCount: { color: Colors.textMuted, fontSize: FontSizes.xs, textAlign: 'right', marginTop: 2 },
+  multiMediaBadge: { position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  multiMediaText: { color: '#FFF', fontSize: FontSizes.xs, fontWeight: '600' },
+  addMediaBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.surface, padding: Spacing.md, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.primary, borderStyle: 'dashed', marginTop: Spacing.sm },
+  addMediaBtnText: { color: Colors.primary, fontSize: FontSizes.sm },
   suggestedTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: Spacing.sm },
   tagChip: {
     backgroundColor: Colors.surface, borderRadius: BorderRadius.full,

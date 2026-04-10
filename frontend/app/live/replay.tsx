@@ -74,6 +74,19 @@ export default function ReplayScreen() {
           <View style={styles.stat}><Ionicons name="gift" size={16} color="#FF6B00" /><Text style={styles.statText}>{(live.tip_amount || 0).toLocaleString()}</Text></View>
         </View>
 
+        {/* Republish full live */}
+        {live.status === 'ended' && (
+          <TouchableOpacity style={styles.republishBtn} onPress={async () => {
+            try {
+              await mobileApiClient.post(`/mobile/live/${id}/republish`);
+              Alert.alert('Republié !', 'Le replay complet a été publié dans votre feed.');
+            } catch (e: any) { Alert.alert('Erreur', e.response?.data?.detail || 'Erreur'); }
+          }}>
+            <Ionicons name="share-social" size={20} color="#FFF" />
+            <Text style={styles.republishBtnText}>Republier le live complet</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Clip Highlights Button */}
         {live.status === 'ended' && (
           <TouchableOpacity style={styles.clipBtn} onPress={() => setShowClip(!showClip)}>
@@ -143,6 +156,8 @@ const styles = StyleSheet.create({
   stat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   statText: { color: Colors.textSecondary, fontSize: FontSizes.sm },
   clipBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,234,167,0.15)', borderRadius: BorderRadius.md, padding: Spacing.lg, gap: 8 },
+  republishBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primary, borderRadius: BorderRadius.md, padding: Spacing.lg, gap: 8, marginBottom: Spacing.md },
+  republishBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: FontSizes.md },
   clipBtnText: { color: '#FFEAA7', fontWeight: 'bold', fontSize: FontSizes.md },
   clipForm: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.lg, marginTop: Spacing.md },
   clipLabel: { color: Colors.textSecondary, fontSize: FontSizes.sm, marginBottom: 4 },

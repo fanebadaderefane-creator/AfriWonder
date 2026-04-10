@@ -53,6 +53,14 @@ conversations_col = db["conversations"]
 messages_col = db["messages"]
 wallet_col = db["wallets"]
 transactions_col = db["transactions"]
+# New collections for monetization features
+tips_col = db["mobile_tips"]
+earnings_col = db["creator_earnings"]
+withdrawals_col = db["mobile_withdrawals"]
+ads_col = db["mobile_ads"]
+lives_col = db["mobile_lives"]
+highlights_col = db["mobile_highlights"]
+posts_col = db["mobile_posts"]
 
 # JWT Configuration (matches PWA backend for token verification)
 JWT_SECRET = os.getenv("JWT_SECRET", "afriwonder-secret-key-change-in-production")
@@ -740,6 +748,132 @@ async def seed_demo_crowdfunding(user_id: str):
         await crowdfunding_col.insert_one(project)
 
 
+# ==================== POSTS MULTI-TYPES (Photo, Texte, Article, Republication Live) ====================
+
+posts_col = db["mobile_posts"]
+
+class CreatePostRequest(BaseModel):
+    content_type: str = "text"  # text, photo, article, video, live_replay, highlight
+    text: Optional[str] = None
+    title: Optional[str] = None  # Pour les articles
+    media_urls: Optional[List[str]] = None
+    video_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    live_id: Optional[str] = None
+    highlight_id: Optional[str] = None
+    hashtags: Optional[List[str]] = None
+    location: Optional[str] = None
+
+@app.post("/api/mobile/posts")
+async def create_post(data: CreatePostRequest, user_id: str = Depends(verify_token)):
+    """Créer un post (texte, photo, article, vidéo, republication live/highlight)"""
+    post_id = str(uuid.uuid4())
+    
+    post = {
+        "id": post_id,
+        "creator_id": user_id,
+        "content_type": data.content_type,
+        "text": data.text or "",
+        "title": data.title,
+        "media_urls": data.media_urls or [],
+        "video_url": data.video_url,
+        "thumbnail_url": data.thumbnail_url,
+        "live_id": data.live_id,
+        "highlight_id": data.highlight_id,
+        "hashtags": data.hashtags or [],
+        "location": data.location,
+        "likes": 0,
+        "comments": 0,
+        "shares": 0,
+        "views": 0,
+        "status": "published",
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    
+    # Si c'est une republication de live replay, récupérer les infos du live
+    if data.content_type == "live_replay" and data.live_id:
+        live = await db.mobile_lives.find_one({"id": data.live_id})
+        if live:
+            post["video_url"] = live.get("recording_url")
+            post["thumbnail_url"] = live.get("thumbnail_url")
+            post["title"] = post.get("title") or live.get("title")
+            post["text"] = post.get("text") or f"Replay: {live.get('title', '')}"
+    
+    # Si c'est un highlight/moment fort, récupérer les infos
+    if data.content_type == "highlight" and data.highlight_id:
+        highlight = await db.mobile_highlights.find_one({"id": data.highlight_id})
+        if highlight:
+            post["video_url"] = highlight.get("clip_url")
+            post["title"] = post.get("title") or highlight.get("title")
+            post["text"] = post.get("text") or f"Moment fort: {highlight.get('title', '')}"
+    
+    await posts_col.insert_one(post)
+    post.pop("_id", None)
+    
+    return {"success": True, "data": post}
+
+@app.get("/api/mobile/posts")
+async def get_posts(user_id: str = Depends(verify_token), page: int = 1, limit: int = 20, content_type: Optional[str] = None):
+    """Récupérer les posts (tous types ou filtré)"""
+    query = {}
+    if content_type:
+        query["content_type"] = content_type
+    
+    skip = (page - 1) * limit
+    posts_list = await posts_col.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    for p in posts_list:
+        p.pop("_id", None)
+    
+    total = await posts_col.count_documents(query)
+    return {"success": True, "data": {"posts": posts_list, "pagination": {"page": page, "total": total}}}
+
+@app.get("/api/mobile/posts/my")
+async def get_my_posts(user_id: str = Depends(verify_token), page: int = 1, limit: int = 20):
+    """Mes posts"""
+    skip = (page - 1) * limit
+    posts_list = await posts_col.find({"creator_id": user_id}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    for p in posts_list:
+        p.pop("_id", None)
+    return {"success": True, "data": {"posts": posts_list}}
+
+@app.post("/api/mobile/posts/{post_id}/like")
+async def like_post(post_id: str, user_id: str = Depends(verify_token)):
+    """Liker un post"""
+    await posts_col.update_one({"id": post_id}, {"$inc": {"likes": 1}})
+    return {"success": True}
+
+@app.post("/api/mobile/live/{live_id}/republish")
+async def republish_live(live_id: str, user_id: str = Depends(verify_token)):
+    """Republier un live complet comme post dans le feed"""
+    live = await db.mobile_lives.find_one({"id": live_id, "creator_id": user_id})
+    if not live:
+        raise HTTPException(status_code=404, detail="Live non trouvé")
+    if live.get("status") != "ended":
+        raise HTTPException(status_code=400, detail="Le live doit être terminé")
+    
+    post_id = str(uuid.uuid4())
+    post = {
+        "id": post_id,
+        "creator_id": user_id,
+        "content_type": "live_replay",
+        "title": live.get("title", ""),
+        "text": f"Replay de mon live: {live.get('title', '')}",
+        "video_url": live.get("recording_url"),
+        "thumbnail_url": live.get("thumbnail_url"),
+        "live_id": live_id,
+        "media_urls": [],
+        "hashtags": ["live", "replay", live.get("category", "")],
+        "likes": 0, "comments": 0, "shares": 0, "views": 0,
+        "status": "published",
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    await posts_col.insert_one(post)
+    post.pop("_id", None)
+    
+    return {"success": True, "data": post}
+
+
+
 # ==================== PHASE 1: MONETISATION CREATEURS ====================
 
 class TipRequest(BaseModel):
@@ -763,9 +897,8 @@ async def send_tip(data: TipRequest, user_id: str = Depends(verify_token)):
     if data.amount > 500000:
         raise HTTPException(status_code=400, detail="Montant maximum: 500,000 FCFA")
 
-    db = client[DB_NAME]
     # Debit viewer wallet
-    viewer_wallet = await db.mobile_wallet.find_one({"user_id": user_id})
+    viewer_wallet = await wallet_col.find_one({"user_id": user_id})
     if not viewer_wallet or viewer_wallet.get("balance", 0) < data.amount:
         raise HTTPException(status_code=400, detail="Solde insuffisant")
 
@@ -786,16 +919,16 @@ async def send_tip(data: TipRequest, user_id: str = Depends(verify_token)):
         "status": "completed",
         "created_at": datetime.utcnow().isoformat(),
     }
-    await db.mobile_tips.insert_one(tip)
+    await tips_col.insert_one(tip)
 
     # Debit viewer
-    await db.mobile_wallet.update_one(
+    await wallet_col.update_one(
         {"user_id": user_id},
         {"$inc": {"balance": -data.amount}}
     )
 
     # Credit creator earnings
-    await db.creator_earnings.update_one(
+    await earnings_col.update_one(
         {"user_id": data.creator_id},
         {
             "$inc": {"total_earned": creator_amount, "available_balance": creator_amount, "total_tips": 1},
@@ -806,7 +939,7 @@ async def send_tip(data: TipRequest, user_id: str = Depends(verify_token)):
     )
 
     # Record transaction for viewer
-    await db.mobile_transactions.insert_one({
+    await transactions_col.insert_one({
         "id": str(uuid.uuid4()), "user_id": user_id, "type": "tip_sent",
         "amount": -data.amount, "description": f"Pourboire envoyé",
         "recipient_id": data.creator_id, "status": "completed",
