@@ -17,7 +17,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import {
-  MOCK_PROJECTS,
+  SEED_PROJECTS,
   CROWDFUNDING_CATEGORIES,
   formatCFA,
   formatFullCFA,
@@ -36,7 +36,7 @@ export default function ProjectDetailScreen() {
   const [liked, setLiked] = useState(false);
   const scrollX = useRef(new Animated.Value(0)).current;
 
-  const project = MOCK_PROJECTS.find((p) => p.id === id);
+  const project = SEED_PROJECTS.find((p) => p.id === id);
   if (!project) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>

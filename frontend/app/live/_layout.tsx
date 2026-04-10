@@ -1,18 +1,11 @@
 import { Stack } from 'expo-router';
-import { Colors } from '../../src/theme/colors';
 
 export default function LiveLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: Colors.background },
-        animation: 'slide_from_right',
-      }}
-    >
+    <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
       <Stack.Screen name="index" />
-      <Stack.Screen name="start" />
-      <Stack.Screen name="[id]" />
+      <Stack.Screen name="stream" />
+      <Stack.Screen name="replay" />
     </Stack>
   );
 }

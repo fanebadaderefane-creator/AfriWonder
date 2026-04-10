@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Dimensions, FlatList } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,37 +7,29 @@ import { useAuthStore } from '../../src/store/authStore';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ProfileSkeleton } from '../../src/components/SkeletonScreens';
+import apiClient from '../../src/api/client';
 
 const { width } = Dimensions.get('window');
 const GRID_SIZE = (width - 4) / 3;
 
-// Mock user data
-const MOCK_USER = {
-  firstName: 'Aminata',
-  lastName: 'Diallo',
-  username: 'aminata.diallo',
-  avatar: 'https://i.pravatar.cc/300?img=1',
-  coverImage: 'https://picsum.photos/800/400?random=cover',
-  bio: 'Creatrice de contenu Bamako | Mode & Culture africaine | Ambassadrice AfriWonder',
-  website: 'afriwonder.com/aminata',
-  location: 'Bamako, Mali',
-  isVerified: true,
+// Default user data (used when API data not loaded yet)
+const DEFAULT_USER = {
+  firstName: '',
+  lastName: '',
+  username: '',
+  avatar: '',
+  coverImage: '',
+  bio: '',
+  website: '',
+  location: '',
+  isVerified: false,
   stats: {
-    posts: 234,
-    followers: 45200,
-    following: 890,
-    likes: 1200000,
+    posts: 0,
+    followers: 0,
+    following: 0,
+    likes: 0,
   },
 };
-
-const MOCK_POSTS = Array.from({ length: 18 }, (_, i) => ({
-  id: `p${i}`,
-  image: `https://picsum.photos/300/300?random=${i + 50}`,
-  isVideo: i % 3 === 0,
-  views: Math.floor(Math.random() * 100000) + 5000,
-  likes: Math.floor(Math.random() * 10000) + 100,
-  isPinned: i < 2,
-}));
 
 const formatNumber = (num: number) => {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -47,22 +39,75 @@ const formatNumber = (num: number) => {
 
 type ContentTab = 'posts' | 'reels' | 'saved' | 'tagged';
 
+type PostItem = { id: string; image: string; isVideo: boolean; views: number; likes: number; isPinned: boolean };
+
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated, logout } = useAuthStore();
   const [activeTab, setActiveTab] = useState<ContentTab>('posts');
   const [isLoading, setIsLoading] = useState(true);
+  const [realStats, setRealStats] = useState<{ posts: number; followers: number; following: number } | null>(null);
+  const [realBio, setRealBio] = useState<string | null>(null);
+  const [userPosts, setUserPosts] = useState<PostItem[]>([]);
 
-  React.useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1200);
-    return () => clearTimeout(timer);
-  }, []);
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (isAuthenticated && user?.id) {
+        try {
+          const response = await apiClient.get(`/users/${user.id}`);
+          const data = response.data?.data || response.data;
+          if (data?._count) {
+            setRealStats({
+              posts: data._count.videos || 0,
+              followers: data._count.follows || 0,
+              following: data._count.following || 0,
+            });
+          }
+          if (data?.bio) setRealBio(data.bio);
+        } catch (err) {
+          console.log('Could not load full profile', err);
+        }
+
+        // Load user's videos for post grid
+        try {
+          const videosRes = await apiClient.get(`/videos?creator_id=${user.id}&page=1&limit=30`);
+          const vData = videosRes.data?.data || videosRes.data;
+          const videos = vData?.videos || [];
+          if (videos.length > 0) {
+            const realPosts: PostItem[] = videos.map((v: any, i: number) => ({
+              id: v.id,
+              image: v.thumbnail_url || v.video_url || `https://picsum.photos/300/300?random=${i + 50}`,
+              isVideo: v.media_type === 'video',
+              views: v.views || 0,
+              likes: v.likes || 0,
+              isPinned: v.is_featured || false,
+            }));
+            setUserPosts(realPosts);
+          }
+        } catch (err) {
+          console.log('Could not load user videos', err);
+        }
+      }
+      setIsLoading(false);
+    };
+    loadProfile();
+  }, [isAuthenticated, user?.id]);
 
   const profileData = isAuthenticated && user ? {
-    ...MOCK_USER,
-    firstName: user.firstName || MOCK_USER.firstName,
-    lastName: user.lastName || MOCK_USER.lastName,
-  } : MOCK_USER;
+    ...DEFAULT_USER,
+    firstName: user.firstName || user.full_name?.split(' ')[0] || DEFAULT_USER.firstName,
+    lastName: user.lastName || user.full_name?.split(' ').slice(1).join(' ') || DEFAULT_USER.lastName,
+    username: user.username || DEFAULT_USER.username,
+    avatar: user.avatar || user.profile_image || DEFAULT_USER.avatar,
+    bio: realBio || user.bio || DEFAULT_USER.bio,
+    isVerified: false,
+    stats: {
+      posts: realStats?.posts ?? user.videosCount ?? DEFAULT_USER.stats.posts,
+      followers: realStats?.followers ?? user.followers ?? DEFAULT_USER.stats.followers,
+      following: realStats?.following ?? user.following ?? DEFAULT_USER.stats.following,
+      likes: DEFAULT_USER.stats.likes,
+    },
+  } : DEFAULT_USER;
 
   if (isLoading) {
     return (
@@ -110,7 +155,7 @@ export default function ProfileScreen() {
     { key: 'tagged', icon: 'pricetag-outline', iconActive: 'pricetag' },
   ];
 
-  const renderGridItem = ({ item }: { item: typeof MOCK_POSTS[0] }) => (
+  const renderGridItem = ({ item }: { item: PostItem }) => (
     <TouchableOpacity style={styles.gridItem} activeOpacity={0.8}>
       <Image source={{ uri: item.image }} style={styles.gridImage} />
       {item.isVideo && (
@@ -310,22 +355,30 @@ export default function ProfileScreen() {
 
         {/* Content Grid */}
         <FlatList
-          data={MOCK_POSTS}
+          data={userPosts}
           renderItem={renderGridItem}
           keyExtractor={(item) => item.id}
           numColumns={3}
           scrollEnabled={false}
           columnWrapperStyle={styles.gridRow}
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center', padding: 40 }}>
+              <Ionicons name="videocam-outline" size={40} color={Colors.textMuted} />
+              <Text style={{ color: Colors.textMuted, marginTop: 8 }}>Aucune publication</Text>
+            </View>
+          }
         />
 
         {/* Quick Actions */}
         <View style={styles.quickActions}>
           {[
             { icon: 'wallet', label: 'Portefeuille', route: '/wallet', color: '#FF6B00' },
-            { icon: 'receipt', label: 'Commandes', route: '/orders', color: '#4ECDC4' },
-            { icon: 'storefront', label: 'Ma boutique', route: '/seller', color: '#9B59B6' },
-            { icon: 'gift', label: 'Parrainage', route: '/referrals', color: '#FF6B6B' },
-            { icon: 'language', label: 'Langue', route: '/settings/language', color: '#3498DB' },
+            { icon: 'cash', label: 'Mes Revenus', route: '/creator/earnings', color: '#4ECDC4' },
+            { icon: 'megaphone', label: 'Publicité', route: '/creator/ads', color: '#667eea' },
+            { icon: 'radio', label: 'Live & Replays', route: '/live', color: '#E91E63' },
+            { icon: 'receipt', label: 'Commandes', route: '/orders', color: '#9B59B6' },
+            { icon: 'storefront', label: 'Ma boutique', route: '/seller', color: '#FF6B6B' },
+            { icon: 'gift', label: 'Parrainage', route: '/referrals', color: '#3498DB' },
           ].map((action, i) => (
             <TouchableOpacity key={i} style={styles.quickAction} onPress={() => router.push(action.route as any)}>
               <View style={[styles.quickActionIcon, { backgroundColor: action.color + '18' }]}>

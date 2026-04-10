@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,13 +17,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import {
   CROWDFUNDING_CATEGORIES,
-  MOCK_PROJECTS,
+  SEED_PROJECTS,
   PLATFORM_STATS,
   formatCFA,
   formatFullCFA,
   getProgressPercent,
 } from '../../src/data/crowdfunding';
 import type { CrowdfundingProject } from '../../src/data/crowdfunding';
+import mobileApiClient from '../../src/api/mobileClient';
 
 export default function CrowdfundingHomeScreen() {
   const insets = useSafeAreaInsets();
@@ -31,14 +32,54 @@ export default function CrowdfundingHomeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [projects, setProjects] = useState<CrowdfundingProject[]>(SEED_PROJECTS);
+
+  useEffect(() => { loadProjects(); }, []);
+
+  const loadProjects = async () => {
+    try {
+      const response = await mobileApiClient.get('/mobile/crowdfunding');
+      const data = response.data?.data || response.data;
+      const backendProjects = data?.projects || [];
+      if (backendProjects.length > 0) {
+        const transformed: CrowdfundingProject[] = backendProjects.map((p: any) => ({
+          id: p.id,
+          title: p.title || '',
+          shortDescription: p.description || '',
+          fullDescription: p.description || '',
+          category: p.category || 'general',
+          goal: p.goal_amount || 0,
+          raised: p.current_amount || 0,
+          currency: p.currency || 'XOF',
+          backers: p.contributors_count || 0,
+          daysLeft: Math.max(0, Math.ceil((new Date(p.end_date).getTime() - Date.now()) / 86400000)),
+          creator: {
+            id: p.creator_id || '',
+            name: p.creator_name || 'Créateur AfriWonder',
+            avatar: p.creator_avatar || `https://i.pravatar.cc/150?u=${p.creator_id}`,
+            location: 'Bamako, Mali',
+            isVerified: true,
+          },
+          image: p.image_url || 'https://picsum.photos/600/400?random=300',
+          images: [p.image_url || 'https://picsum.photos/600/400?random=300'],
+          isVerified: true,
+          isSponsored: false,
+          isFeatured: p.status === 'funded',
+          createdAt: p.created_at || new Date().toISOString(),
+          updates: 0,
+        }));
+        setProjects(transformed);
+      }
+    } catch { /* keep mock */ }
+  };
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1500);
+    loadProjects().finally(() => setRefreshing(false));
   }, []);
 
   // Filter projects
-  const filteredProjects = MOCK_PROJECTS.filter((p) => {
+  const filteredProjects = projects.filter((p) => {
     const matchesCategory = activeCategory === 'all' || p.category === activeCategory;
     const matchesSearch =
       !searchQuery ||
@@ -54,7 +95,7 @@ export default function CrowdfundingHomeScreen() {
     return 0;
   });
 
-  const featuredProject = MOCK_PROJECTS.find((p) => p.isSponsored && p.isVerified);
+  const featuredProject = projects.find((p) => p.isSponsored && p.isVerified) || (projects.length > 0 ? projects[0] : null);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -339,9 +380,9 @@ function ProjectCard({ project }: { project: CrowdfundingProject }) {
         {/* Footer */}
         <View style={styles.cardFooter}>
           <View style={styles.cardCreator}>
-            <Image source={{ uri: project.creator.avatar }} style={styles.cardCreatorAvatar} />
-            <Text style={styles.cardCreatorName} numberOfLines={1}>{project.creator.name}</Text>
-            {project.creator.isVerified && (
+            <Image source={{ uri: project.creator?.avatar || `https://i.pravatar.cc/150?u=${project.id}` }} style={styles.cardCreatorAvatar} />
+            <Text style={styles.cardCreatorName} numberOfLines={1}>{project.creator?.name || 'Créateur'}</Text>
+            {project.creator?.isVerified && (
               <Ionicons name="checkmark-circle" size={14} color={Colors.primary} />
             )}
           </View>

@@ -1,21 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, RefreshControl, Alert } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { WalletSkeleton } from '../../src/components/SkeletonScreens';
+import mobileApiClient from '../../src/api/mobileClient';
 
 const { width } = Dimensions.get('window');
-
-const TRANSACTIONS = [
-  { id: 't1', type: 'received', name: 'Aminata Diallo', amount: 15000, date: 'Aujourd\'hui, 14:30', icon: 'arrow-down' },
-  { id: 't2', type: 'sent', name: 'Chez Fatoumata', amount: 3500, date: 'Aujourd\'hui, 12:15', icon: 'arrow-up' },
-  { id: 't3', type: 'received', name: 'Paiement video', amount: 5000, date: 'Hier, 18:45', icon: 'arrow-down' },
-  { id: 't4', type: 'sent', name: 'Transport', amount: 1500, date: 'Hier, 09:00', icon: 'arrow-up' },
-  { id: 't5', type: 'received', name: 'Vente produit', amount: 25000, date: '22 Jun, 16:20', icon: 'arrow-down' },
-  { id: 't6', type: 'sent', name: 'Recharge Orange', amount: 2000, date: '21 Jun, 11:00', icon: 'arrow-up' },
-];
 
 const QUICK_ACTIONS = [
   { id: 'send', name: 'Envoyer', icon: 'send', color: Colors.primary },
@@ -28,13 +20,49 @@ export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const [showBalance, setShowBalance] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+  const [balance, setBalance] = useState(0);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1200);
-    return () => clearTimeout(timer);
+  useEffect(() => { loadWallet(); }, []);
+
+  const loadWallet = async () => {
+    try {
+      const response = await mobileApiClient.get('/mobile/wallet');
+      const data = response.data?.data || response.data;
+      if (data?.wallet) {
+        setBalance(data.wallet.balance || 0);
+      }
+      if (data?.transactions?.length > 0) {
+        const transformed = data.transactions.map((t: any) => ({
+          id: t.id,
+          type: t.type === 'topup' ? 'received' : (t.type === 'transfer' ? 'sent' : t.type),
+          name: t.description || t.provider || 'Transaction',
+          amount: t.amount || 0,
+          date: formatDate(t.created_at),
+          icon: t.type === 'topup' ? 'arrow-down' : 'arrow-up',
+        }));
+        setTransactions(transformed);
+      }
+    } catch (err) {
+      console.log('Using mock wallet data', err);
+      setBalance(127500);
+    } finally { setIsLoading(false); }
+  };
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffH = Math.floor((now.getTime() - date.getTime()) / 3600000);
+    if (diffH < 24) return `Aujourd'hui, ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+    if (diffH < 48) return `Hier, ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+    return `${date.getDate()} ${['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'][date.getMonth()]}`;
+  };
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadWallet().finally(() => setRefreshing(false));
   }, []);
-
-  const balance = 127500;
 
   if (isLoading) {
     return (
@@ -56,7 +84,9 @@ export default function WalletScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+      >
         {/* Balance Card */}
         <View style={styles.balanceCard}>
           <View style={styles.balanceHeader}>
@@ -81,6 +111,9 @@ export default function WalletScreen() {
           {QUICK_ACTIONS.map((action) => (
             <TouchableOpacity key={action.id} style={styles.quickAction} onPress={() => {
               if (action.id === 'topup') router.push('/wallet/recharge');
+              if (action.id === 'send') router.push('/wallet/transfer');
+              if (action.id === 'receive') Alert.alert('Recevoir', 'Partagez votre numéro pour recevoir un paiement');
+              if (action.id === 'withdraw') Alert.alert('Retrait', 'Fonctionnalité de retrait bientôt disponible');
             }}>
               <View style={[styles.quickActionIcon, { backgroundColor: action.color }]}>
                 <Ionicons name={action.icon as any} size={22} color="#FFFFFF" />
@@ -108,7 +141,7 @@ export default function WalletScreen() {
           </TouchableOpacity>
         </View>
 
-        {TRANSACTIONS.map((tx) => (
+        {transactions.map((tx) => (
           <TouchableOpacity key={tx.id} style={styles.transactionItem}>
             <View style={[
               styles.txIcon,

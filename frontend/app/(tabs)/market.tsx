@@ -1,13 +1,14 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image,
-  RefreshControl, useWindowDimensions, Animated,
+  RefreshControl, useWindowDimensions, Animated, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
+import apiClient from '../../src/api/client';
 
 // --- MOCK DATA ---
 const CATEGORIES = [
@@ -56,6 +57,8 @@ export default function MarketScreen() {
   const [wishlist, setWishlist] = useState<Record<string, boolean>>({});
   const [activeFilter, setActiveFilter] = useState('all');
   const flashAnim = useRef(new Animated.Value(1)).current;
+  const [realProducts, setRealProducts] = useState<any[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
 
   const productWidth = (screenWidth - 48) / 2;
 
@@ -71,9 +74,48 @@ export default function MarketScreen() {
     return () => pulse.stop();
   }, []);
 
+  // Load products from real backend
+  useEffect(() => { fetchProducts(); }, []);
+
+  const fetchProducts = async () => {
+    setLoadingProducts(true);
+    try {
+      const response = await apiClient.get('/products');
+      const data = response.data?.data || response.data;
+      const backendProducts = data?.products || [];
+      if (backendProducts.length > 0) {
+        const transformed = backendProducts.map((p: any) => ({
+          id: p.id,
+          name: p.name || '',
+          price: p.price || 0,
+          oldPrice: null,
+          image: p.images?.[0] || 'https://picsum.photos/300/400?random=99',
+          rating: p.seller?.seller_profile?.rating || 4.5,
+          reviews: p.seller?.seller_profile?.total_sales || 0,
+          seller: p.seller?.full_name || p.seller?.username || 'Vendeur',
+          sellerVerified: p.seller?.seller_profile?.is_verified || false,
+          freeDelivery: false,
+          isNew: new Date(p.created_at).getTime() > Date.now() - 30 * 24 * 60 * 60 * 1000,
+          isBestseller: (p.seller?.seller_profile?.total_sales || 0) > 20,
+          wishlisted: false,
+          description: p.description || '',
+          category: p.category || '',
+          currency: p.currency || 'XOF',
+          stock: p.stock || 0,
+          city: p.seller?.seller_profile?.city || '',
+        }));
+        setRealProducts(transformed);
+      }
+    } catch (err) {
+      console.log('Using mock products for marketplace', err);
+    } finally {
+      setLoadingProducts(false);
+    }
+  };
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1500);
+    fetchProducts().finally(() => setRefreshing(false));
   }, []);
 
   const toggleWishlist = (id: string) => {
@@ -88,13 +130,44 @@ export default function MarketScreen() {
     { id: 'free', label: 'Livr. gratuite', icon: 'car' },
   ];
 
-  const filteredProducts = PRODUCTS.filter(p => {
-    if (activeFilter === 'new') return p.isNew;
-    if (activeFilter === 'best') return p.isBestseller;
-    if (activeFilter === 'promo') return p.oldPrice !== null;
-    if (activeFilter === 'free') return p.freeDelivery;
-    return true;
+  // Use real products if loaded, fallback to mock
+  const displayProducts = realProducts.length > 0 ? realProducts : PRODUCTS;
+
+  const filteredProducts = displayProducts.filter((p: any) => {
+    const matchesFilter = activeFilter === 'all' ||
+      (activeFilter === 'new' && p.isNew) ||
+      (activeFilter === 'best' && p.isBestseller) ||
+      (activeFilter === 'promo' && p.oldPrice !== null) ||
+      (activeFilter === 'free' && p.freeDelivery);
+    const matchesSearch = !searchQuery || p.name?.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesFilter && matchesSearch;
   });
+
+  // Real-time search on backend
+  useEffect(() => {
+    if (searchQuery.length >= 2) {
+      const timer = setTimeout(async () => {
+        try {
+          const res = await apiClient.get(`/products?search=${encodeURIComponent(searchQuery)}`);
+          const data = res.data?.data || res.data;
+          const results = data?.products || [];
+          if (results.length > 0) {
+            const transformed = results.map((p: any) => ({
+              id: p.id, name: p.name || '', price: p.price || 0, oldPrice: null,
+              image: p.images?.[0] || 'https://picsum.photos/300/400', rating: p.seller?.seller_profile?.rating || 4.5,
+              reviews: p.seller?.seller_profile?.total_sales || 0, seller: p.seller?.full_name || 'Vendeur',
+              sellerVerified: p.seller?.seller_profile?.is_verified || false, freeDelivery: false,
+              isNew: false, isBestseller: false, wishlisted: false,
+            }));
+            setRealProducts(transformed);
+          }
+        } catch {}
+      }, 500);
+      return () => clearTimeout(timer);
+    } else if (searchQuery.length === 0) {
+      fetchProducts();
+    }
+  }, [searchQuery]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>

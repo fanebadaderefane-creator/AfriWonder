@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions, FlatList, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Image, TextInput, Modal, KeyboardAvoidingView, Platform, ScrollView, Animated } from 'react-native';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { View, Text, StyleSheet, Dimensions, FlatList, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Image, TextInput, Modal, KeyboardAvoidingView, Platform, ScrollView, Animated, ViewToken } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,9 @@ import { useAuthStore } from '../../src/store/authStore';
 import apiClient from '../../src/api/client';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import ShareSheet from '../../src/components/ShareSheet';
+import ReportModal from '../../src/components/ReportModal';
+import { Audio } from 'expo-av';
 
 const { width, height } = Dimensions.get('window');
 
@@ -35,6 +38,7 @@ interface Video {
   hashtags: string[];
   user: VideoUser;
   music: string;
+  isSponsored?: boolean;
 }
 
 interface Comment {
@@ -46,88 +50,8 @@ interface Comment {
   createdAt: string;
 }
 
-const MOCK_VIDEOS: Video[] = [
-  {
-    id: '1', title: 'Danse traditionnelle malienne',
-    description: 'Magnifique danse au coucher du soleil sur le fleuve Niger',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    thumbnailUrl: 'https://picsum.photos/400/800?random=1',
-    duration: 45, views: 125000, likes: 8500, comments: 342, shares: 89,
-    isLiked: false, isSaved: false, hashtags: ['Mali', 'Culture', 'Danse'],
-    user: { id: 'u1', firstName: 'Aminata', lastName: 'Diallo', avatar: 'https://i.pravatar.cc/150?img=1', isFollowing: false },
-    music: 'Salif Keita - Africa',
-  },
-  {
-    id: '2', title: 'Street food Dakar',
-    description: 'Les meilleurs thieboudienne de Dakar! Venez gouter',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-    thumbnailUrl: 'https://picsum.photos/400/800?random=2',
-    duration: 60, views: 89000, likes: 6200, comments: 178, shares: 45,
-    isLiked: true, isSaved: false, hashtags: ['Senegal', 'Food', 'Dakar'],
-    user: { id: 'u2', firstName: 'Moussa', lastName: 'Ndiaye', avatar: 'https://i.pravatar.cc/150?img=2', isFollowing: true },
-    music: 'Youssou N\'Dour - 7 Seconds',
-  },
-  {
-    id: '3', title: 'Mode africaine',
-    description: 'Nouvelle collection Bogolan 2025, faite main a Bamako',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    thumbnailUrl: 'https://picsum.photos/400/800?random=3',
-    duration: 30, views: 234000, likes: 18900, comments: 892, shares: 234,
-    isLiked: false, isSaved: true, hashtags: ['CoteDIvoire', 'Fashion', 'Bogolan'],
-    user: { id: 'u3', firstName: 'Awa', lastName: 'Kone', avatar: 'https://i.pravatar.cc/150?img=3', isFollowing: false },
-    music: 'Tiken Jah Fakoly - Africa',
-  },
-  {
-    id: '4', title: 'Recette Mafe',
-    description: 'Comment preparer le meilleur mafe malien etape par etape',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-    thumbnailUrl: 'https://picsum.photos/400/800?random=4',
-    duration: 90, views: 456000, likes: 32100, comments: 1200, shares: 567,
-    isLiked: false, isSaved: false, hashtags: ['Cuisine', 'Mafe', 'Recette'],
-    user: { id: 'u4', firstName: 'Fatoumata', lastName: 'Traore', avatar: 'https://i.pravatar.cc/150?img=9', isFollowing: false },
-    music: 'Son original - Fatoumata',
-  },
-  {
-    id: '5', title: 'Bamako Night Life',
-    description: 'Les meilleurs spots nocturnes de Bamako, capitale du Mali',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
-    thumbnailUrl: 'https://picsum.photos/400/800?random=5',
-    duration: 40, views: 67000, likes: 4500, comments: 230, shares: 78,
-    isLiked: true, isSaved: false, hashtags: ['Bamako', 'NightLife', 'Vibes'],
-    user: { id: 'u5', firstName: 'Ibrahim', lastName: 'Sangare', avatar: 'https://i.pravatar.cc/150?img=4', isFollowing: true },
-    music: 'Sidiki Diabate - Fais moi confiance',
-  },
-  {
-    id: '6', title: 'Artisanat malien',
-    description: 'L\'art du tissage bogolan, un savoir-faire ancestral malien',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
-    thumbnailUrl: 'https://picsum.photos/400/800?random=6',
-    duration: 55, views: 178000, likes: 12800, comments: 456, shares: 189,
-    isLiked: false, isSaved: false, hashtags: ['Artisanat', 'Bogolan', 'Culture'],
-    user: { id: 'u6', firstName: 'Mariam', lastName: 'Coulibaly', avatar: 'https://i.pravatar.cc/150?img=5', isFollowing: false },
-    music: 'Amadou & Mariam - Sabali',
-  },
-  {
-    id: '7', title: 'Football au Mali',
-    description: 'Les Aigles du Mali, match epique au stade du 26 Mars',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
-    thumbnailUrl: 'https://picsum.photos/400/800?random=7',
-    duration: 35, views: 320000, likes: 25600, comments: 2100, shares: 890,
-    isLiked: false, isSaved: false, hashtags: ['Football', 'Mali', 'Aigles'],
-    user: { id: 'u7', firstName: 'Boubacar', lastName: 'Keita', avatar: 'https://i.pravatar.cc/150?img=7', isFollowing: true },
-    music: 'Commentaire sportif - RFM',
-  },
-  {
-    id: '8', title: 'Teinture Bazin',
-    description: 'Le processus magique de teinture du Bazin riche malien',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
-    thumbnailUrl: 'https://picsum.photos/400/800?random=8',
-    duration: 70, views: 95000, likes: 7800, comments: 345, shares: 123,
-    isLiked: false, isSaved: false, hashtags: ['Bazin', 'Teinture', 'Mode'],
-    user: { id: 'u8', firstName: 'Kadiatou', lastName: 'Diarra', avatar: 'https://i.pravatar.cc/150?img=6', isFollowing: false },
-    music: 'Oumou Sangare - Moussolou',
-  },
-];
+// Fallback vide - les videos sont chargees depuis l'API
+const FALLBACK_VIDEOS: Video[] = [];
 
 interface VideoItemProps {
   video: Video;
@@ -138,41 +62,69 @@ interface VideoItemProps {
   onShare: () => void;
   onSave: () => void;
   onFollow: () => void;
+  onReport: () => void;
 }
 
 const VideoItem: React.FC<VideoItemProps> = ({
-  video, isActive, onLike, onDoubleTapLike, onComment, onShare, onSave, onFollow,
+  video, isActive, onLike, onDoubleTapLike, onComment, onShare, onSave, onFollow, onReport,
 }) => {
   const insets = useSafeAreaInsets();
   const [isMuted, setIsMuted] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [isPaused, setIsPaused] = useState(false);
   const [showHeart, setShowHeart] = useState(false);
   const heartAnim = useRef(new Animated.Value(0)).current;
   const discAnim = useRef(new Animated.Value(0)).current;
   const lastTap = useRef(0);
+  const isActiveRef = useRef(isActive);
+
+  // Keep ref in sync
+  useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
 
   const player = useVideoPlayer(video.videoUrl, (p) => {
     p.loop = true;
-    p.muted = isMuted;
-    if (isActive) p.play(); else p.pause();
+    p.muted = false;
+    // Auto-play immediately if this is the active video
+    if (isActiveRef.current) {
+      p.play();
+    }
   });
 
+  // CRITICAL: Play/Pause based on visibility
   useEffect(() => {
-    if (player) { isActive ? player.play() : player.pause(); }
-  }, [isActive, player]);
+    if (!player) return;
+    try {
+      if (isActive && !isPaused) {
+        player.play();
+      } else {
+        player.pause();
+      }
+    } catch (e) {
+      console.log('Player play/pause error:', e);
+    }
+  }, [isActive, isPaused, player]);
 
+  // Mute control
   useEffect(() => { if (player) player.muted = isMuted; }, [isMuted, player]);
+
+  // CRITICAL: Cleanup on unmount — pause video to stop background audio
+  useEffect(() => {
+    return () => {
+      try { player?.pause(); } catch {}
+    };
+  }, [player]);
 
   // Rotating disc animation
   useEffect(() => {
-    if (isActive) {
+    if (isActive && !isPaused) {
       const rotate = Animated.loop(
         Animated.timing(discAnim, { toValue: 1, duration: 4000, useNativeDriver: true })
       );
       rotate.start();
       return () => rotate.stop();
+    } else {
+      discAnim.setValue(0);
     }
-  }, [isActive]);
+  }, [isActive, isPaused]);
 
   const discRotation = discAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
@@ -193,10 +145,9 @@ const VideoItem: React.FC<VideoItemProps> = ({
         Animated.timing(heartAnim, { toValue: 0, duration: 400, delay: 200, useNativeDriver: true }),
       ]).start(() => setShowHeart(false));
     } else {
-      // Single tap - toggle play
-      if (player) {
-        if (isPlaying) player.pause(); else player.play();
-        setIsPlaying(!isPlaying);
+      // Single tap - toggle pause (only for active video)
+      if (isActive) {
+        setIsPaused(prev => !prev);
       }
     }
     lastTap.current = now;
@@ -211,7 +162,7 @@ const VideoItem: React.FC<VideoItemProps> = ({
           <VideoView style={styles.video} player={player} contentFit="cover" nativeControls={false} />
 
           {/* Pause icon */}
-          {!isPlaying && (
+          {isPaused && isActive && (
             <View style={styles.pauseOverlay}>
               <View style={styles.pauseCircle}>
                 <Ionicons name="play" size={40} color="#FFF" />
@@ -234,6 +185,14 @@ const VideoItem: React.FC<VideoItemProps> = ({
       {/* Gradient overlays */}
       <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent']} style={styles.topGradient} />
       <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.bottomGradient} />
+
+      {/* Sponsored badge */}
+      {video.isSponsored && (
+        <View style={styles.sponsoredBadge}>
+          <Ionicons name="megaphone" size={12} color="#FFF" />
+          <Text style={styles.sponsoredText}>Sponsorise</Text>
+        </View>
+      )}
 
       {/* Right side actions */}
       <View style={[styles.actions, { bottom: 100 }]}>
@@ -265,10 +224,23 @@ const VideoItem: React.FC<VideoItemProps> = ({
           <Text style={styles.actionText}>{video.isSaved ? 'Sauve' : 'Sauver'}</Text>
         </TouchableOpacity>
 
+        {/* Tip / Soutenir */}
+        <TouchableOpacity style={styles.actionButton} onPress={() => {
+          router.push({ pathname: '/tip', params: { creatorId: video.user.id, creatorName: video.user.firstName, videoId: video.id } } as any);
+        }}>
+          <Ionicons name="gift" size={28} color="#FF6B00" />
+          <Text style={styles.actionText}>Soutenir</Text>
+        </TouchableOpacity>
+
         {/* Share */}
         <TouchableOpacity style={styles.actionButton} onPress={onShare}>
           <Ionicons name="arrow-redo" size={28} color="#FFF" />
           <Text style={styles.actionText}>{formatNumber(video.shares)}</Text>
+        </TouchableOpacity>
+
+        {/* More / Report */}
+        <TouchableOpacity style={styles.actionButton} onPress={onReport}>
+          <Ionicons name="ellipsis-horizontal" size={24} color="#FFF" />
         </TouchableOpacity>
 
         {/* Rotating disc */}
@@ -305,48 +277,27 @@ const VideoItem: React.FC<VideoItemProps> = ({
   );
 };
 
-// Share Modal
-const ShareModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ visible, onClose }) => {
-  const insets = useSafeAreaInsets();
-  const options = [
-    { icon: 'paper-plane', label: 'Message', color: Colors.primary },
-    { icon: 'logo-whatsapp', label: 'WhatsApp', color: '#25D366' },
-    { icon: 'logo-facebook', label: 'Facebook', color: '#1877F2' },
-    { icon: 'logo-instagram', label: 'Instagram', color: '#E4405F' },
-    { icon: 'copy', label: 'Copier lien', color: Colors.textSecondary },
-    { icon: 'download', label: 'Telecharger', color: Colors.info },
-    { icon: 'flag', label: 'Signaler', color: Colors.error },
-  ];
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
-        <View style={[styles.shareContainer, { paddingBottom: insets.bottom + Spacing.md }]}>
-          <View style={styles.shareHandle} />
-          <Text style={styles.shareTitle}>Partager</Text>
-          <View style={styles.shareGrid}>
-            {options.map((opt, i) => (
-              <TouchableOpacity key={i} style={styles.shareOption}>
-                <View style={[styles.shareIcon, { backgroundColor: opt.color }]}>
-                  <Ionicons name={opt.icon as any} size={24} color="#FFF" />
-                </View>
-                <Text style={styles.shareLabel}>{opt.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-      </TouchableOpacity>
-    </Modal>
-  );
-};
-
 // Comments Modal
 const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: string; commentsCount: number }> = ({ visible, onClose, videoId, commentsCount }) => {
   const insets = useSafeAreaInsets();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
+  const [totalComments, setTotalComments] = useState(commentsCount);
+
+  const formatTimeAgo = (dateStr: string) => {
+    const now = new Date();
+    const date = new Date(dateStr);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'A l\'instant';
+    if (diffMin < 60) return `${diffMin} min`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return `${diffH}h`;
+    const diffD = Math.floor(diffH / 24);
+    return diffD < 30 ? `${diffD}j` : `${Math.floor(diffD / 30)} mois`;
+  };
 
   useEffect(() => {
     if (visible) loadComments();
@@ -356,24 +307,75 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
     setLoading(true);
     try {
       const response = await apiClient.get(`/videos/${videoId}/comments`);
-      setComments(response.data.comments || []);
+      const data = response.data?.data || response.data;
+      const backendComments = data?.comments || [];
+      if (backendComments.length > 0) {
+        const transformed: Comment[] = backendComments.map((c: any) => {
+          const nameParts = (c.user_name || c.user?.full_name || '').split(' ');
+          return {
+            id: c.id,
+            text: c.content || '',
+            likes: c.likes_count || 0,
+            isLiked: false,
+            user: {
+              id: c.user_id || c.user?.id || '',
+              firstName: nameParts[0] || '',
+              lastName: nameParts.slice(1).join(' ') || '',
+              avatar: c.user_avatar || c.user?.profile_image || 'https://i.pravatar.cc/150?img=50',
+            },
+            createdAt: formatTimeAgo(c.created_at),
+          };
+        });
+        setComments(transformed);
+        setTotalComments(data?.pagination?.total || backendComments.length);
+      } else {
+        setComments([]);
+        setTotalComments(0);
+      }
     } catch {
       setComments([
-        { id: '1', text: 'Super video! C\'est magnifique', likes: 24, isLiked: false, user: { id: 'u1', firstName: 'Aminata', lastName: 'D', avatar: 'https://i.pravatar.cc/150?img=1' }, createdAt: '2h' },
-        { id: '2', text: 'J\'adore la musique!', likes: 12, isLiked: true, user: { id: 'u2', firstName: 'Moussa', lastName: 'N', avatar: 'https://i.pravatar.cc/150?img=2' }, createdAt: '3h' },
-        { id: '3', text: 'Magnifique, le Mali est beau', likes: 45, isLiked: false, user: { id: 'u3', firstName: 'Awa', lastName: 'K', avatar: 'https://i.pravatar.cc/150?img=3' }, createdAt: '5h' },
-        { id: '4', text: 'Comment faire pareil? Tutoriel svp!', likes: 8, isLiked: false, user: { id: 'u4', firstName: 'Ibrahim', lastName: 'T', avatar: 'https://i.pravatar.cc/150?img=4' }, createdAt: '1j' },
-        { id: '5', text: 'Partage en Cote d\'Ivoire aussi', likes: 5, isLiked: false, user: { id: 'u5', firstName: 'Fanta', lastName: 'C', avatar: 'https://i.pravatar.cc/150?img=5' }, createdAt: '1j' },
+        { id: '1', text: 'Super video!', likes: 24, isLiked: false, user: { id: 'u1', firstName: 'Aminata', lastName: 'D', avatar: 'https://i.pravatar.cc/150?img=1' }, createdAt: '2h' },
       ]);
     } finally { setLoading(false); }
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!newComment.trim()) return;
-    const mock: Comment = { id: Date.now().toString(), text: newComment, likes: 0, isLiked: false, user: { id: 'me', firstName: 'Moi', lastName: '', avatar: 'https://i.pravatar.cc/150?img=10' }, createdAt: 'A l\'instant' };
-    setComments([mock, ...comments]);
+    const commentText = newComment.trim();
     setNewComment('');
+
+    // Optimistic add
+    const optimistic: Comment = {
+      id: Date.now().toString(),
+      text: commentText,
+      likes: 0,
+      isLiked: false,
+      user: {
+        id: user?.id || 'me',
+        firstName: user?.firstName || user?.full_name?.split(' ')[0] || 'Moi',
+        lastName: user?.lastName || '',
+        avatar: user?.avatar || user?.profile_image || 'https://i.pravatar.cc/150?img=10',
+      },
+      createdAt: 'A l\'instant',
+    };
+    setComments(prev => [optimistic, ...prev]);
+    setTotalComments(prev => prev + 1);
+
+    try {
+      const response = await apiClient.post(`/videos/${videoId}/comment`, { content: commentText });
+      const data = response.data?.data || response.data;
+      if (data?.id) {
+        // Replace optimistic with real
+        setComments(prev => prev.map(c => c.id === optimistic.id ? { ...c, id: data.id } : c));
+      }
+    } catch {
+      // Remove optimistic on failure
+      setComments(prev => prev.filter(c => c.id !== optimistic.id));
+      setTotalComments(prev => prev - 1);
+    }
   };
+
+  const userAvatar = user?.avatar || user?.profile_image || 'https://i.pravatar.cc/150?img=10';
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -381,12 +383,17 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.commentsContainer, { paddingBottom: insets.bottom }]}>
           <View style={styles.commentsHeader}>
             <View style={styles.shareHandle} />
-            <Text style={styles.commentsTitle}>{commentsCount} commentaires</Text>
+            <Text style={styles.commentsTitle}>{totalComments} commentaires</Text>
             <TouchableOpacity onPress={onClose}><Ionicons name="close" size={24} color={Colors.text} /></TouchableOpacity>
           </View>
           {loading ? <ActivityIndicator size="large" color={Colors.primary} style={{ padding: 40 }} /> : (
             <ScrollView style={styles.commentsList} showsVerticalScrollIndicator={false}>
-              {comments.map((c) => (
+              {comments.length === 0 ? (
+                <View style={{ alignItems: 'center', padding: 40 }}>
+                  <Ionicons name="chatbubble-outline" size={40} color={Colors.textMuted} />
+                  <Text style={{ color: Colors.textMuted, marginTop: 8 }}>Soyez le premier a commenter</Text>
+                </View>
+              ) : comments.map((c) => (
                 <View key={c.id} style={styles.commentItem}>
                   <Image source={{ uri: c.user.avatar }} style={styles.commentAvatar} />
                   <View style={styles.commentContent}>
@@ -406,7 +413,7 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
             </ScrollView>
           )}
           <View style={styles.commentInput}>
-            <Image source={{ uri: 'https://i.pravatar.cc/150?img=10' }} style={styles.commentInputAvatar} />
+            <Image source={{ uri: userAvatar }} style={styles.commentInputAvatar} />
             <TextInput style={styles.commentTextInput} placeholder="Ajouter un commentaire..." placeholderTextColor={Colors.textMuted} value={newComment} onChangeText={setNewComment} multiline />
             <TouchableOpacity style={[styles.commentSendBtn, !newComment.trim() && { opacity: 0.4 }]} onPress={handleSend} disabled={!newComment.trim()}>
               <Ionicons name="send" size={18} color={Colors.text} />
@@ -419,45 +426,163 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
 };
 
 export default function FeedScreen() {
-  const [videos, setVideos] = useState<Video[]>(MOCK_VIDEOS);
+  const [videos, setVideos] = useState<Video[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'following' | 'foryou'>('foryou');
   const [commentsVisible, setCommentsVisible] = useState(false);
   const [shareVisible, setShareVisible] = useState(false);
+  const [reportVisible, setReportVisible] = useState(false);
+  const [reportTarget, setReportTarget] = useState({ type: 'video', id: '' });
+  const [shareData, setShareData] = useState({ title: '', message: '', url: '' });
   const [selectedVideoId, setSelectedVideoId] = useState('');
   const [selectedVideoComments, setSelectedVideoComments] = useState(0);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const insets = useSafeAreaInsets();
 
-  useEffect(() => { loadFeed(); }, []);
+  const videosRef = useRef<Video[]>([]);
+  useEffect(() => { videosRef.current = videos; }, [videos]);
 
-  const loadFeed = async () => {
-    setLoading(true);
-    try {
-      const response = await apiClient.get('/videos/feed?page=1&limit=10');
-      if (response.data.videos?.length > 0) setVideos(response.data.videos);
-    } catch { console.log('Using mock videos'); }
-    finally { setLoading(false); }
+  useEffect(() => { loadFeed(1, true); }, []);
+
+  // Stable refs for FlatList viewability (MUST be refs to avoid FlatList re-mount)
+  const viewabilityConfigRef = useRef({
+    itemVisiblePercentThreshold: 50,
+    minimumViewTime: 100,
+  });
+
+  const onViewableItemsChangedRef = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    if (viewableItems.length > 0) {
+      const newIndex = viewableItems[0].index ?? 0;
+      setCurrentIndex(newIndex);
+      // Track view on backend
+      const video = videosRef.current[newIndex];
+      if (video) {
+        apiClient.post(`/videos/${video.id}/view`).catch(() => {});
+      }
+    }
+  });
+
+  const transformVideo = (v: any): Video => {
+    const nameParts = (v.creator_name || '').split(' ');
+    return {
+      id: v.id,
+      title: v.title || '',
+      description: v.description || '',
+      videoUrl: v.video_url || '',
+      thumbnailUrl: v.thumbnail_url || v.video_url || '',
+      duration: v.duration || 0,
+      views: v.views || 0,
+      likes: v.likes || 0,
+      comments: v.comments_count || 0,
+      shares: v.shares || 0,
+      isLiked: false,
+      isSaved: false,
+      hashtags: v.hashtags || [],
+      user: {
+        id: v.creator_id || '',
+        firstName: nameParts[0] || 'Utilisateur',
+        lastName: nameParts.slice(1).join(' ') || '',
+        avatar: v.creator_avatar || 'https://i.pravatar.cc/150?img=1',
+        isFollowing: false,
+      },
+      music: v.music_title || 'Son original',
+      isSponsored: v.is_sponsored || v.isSponsored || false,
+    };
   };
 
-  const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
-    if (viewableItems.length > 0) setCurrentIndex(viewableItems[0].index);
+  const loadFeed = async (pageNum: number = 1, reset: boolean = false) => {
+    if (reset) setLoading(true);
+    else setLoadingMore(true);
+    try {
+      const response = await apiClient.get(`/videos?page=${pageNum}&limit=10`);
+      const data = response.data?.data || response.data;
+      const backendVideos = data?.videos || [];
+      const pagination = data?.pagination;
+      if (backendVideos.length > 0) {
+        const transformed = backendVideos.map(transformVideo);
+        if (reset) {
+          setVideos(transformed);
+        } else {
+          setVideos(prev => [...prev, ...transformed]);
+        }
+        setPage(pageNum);
+        setHasMore(pagination ? pageNum < pagination.totalPages : backendVideos.length >= 10);
+      } else if (reset) {
+        setVideos(FALLBACK_VIDEOS);
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.log('Using mock videos', err);
+      if (reset) setVideos(FALLBACK_VIDEOS);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  const loadMore = () => {
+    if (!loadingMore && hasMore) {
+      loadFeed(page + 1, false);
+    }
+  };
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadFeed(1, true).finally(() => setRefreshing(false));
   }, []);
 
-  const handleLike = (videoId: string) => {
+  const handleLike = async (videoId: string) => {
+    // Optimistic update
     setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isLiked: !v.isLiked, likes: v.isLiked ? v.likes - 1 : v.likes + 1 } : v));
+    try {
+      const response = await apiClient.post(`/videos/${videoId}/like`);
+      const data = response.data?.data || response.data;
+      // Sync with server state
+      setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isLiked: data.liked } : v));
+    } catch { /* keep optimistic state */ }
   };
 
-  const handleDoubleTapLike = (videoId: string) => {
-    setVideos(prev => prev.map(v => v.id === videoId && !v.isLiked ? { ...v, isLiked: true, likes: v.likes + 1 } : v));
+  const handleDoubleTapLike = async (videoId: string) => {
+    const video = videos.find(v => v.id === videoId);
+    if (video && !video.isLiked) {
+      setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isLiked: true, likes: v.likes + 1 } : v));
+      try { await apiClient.post(`/videos/${videoId}/like`); } catch {}
+    }
   };
 
   const handleSave = (videoId: string) => {
+    // Local only - no backend endpoint
     setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isSaved: !v.isSaved } : v));
   };
 
-  const handleFollow = (userId: string) => {
+  const handleFollow = async (userId: string) => {
+    // Optimistic update
     setVideos(prev => prev.map(v => v.user.id === userId ? { ...v, user: { ...v.user, isFollowing: !v.user.isFollowing } } : v));
+    try {
+      const response = await apiClient.post(`/users/${userId}/follow`);
+      const data = response.data?.data || response.data;
+      setVideos(prev => prev.map(v => v.user.id === userId ? { ...v, user: { ...v.user, isFollowing: data.following } } : v));
+    } catch { /* keep optimistic state */ }
+  };
+
+  const handleShare = async (videoId: string) => {
+    const video = videos.find(v => v.id === videoId);
+    setShareData({
+      title: video?.title || 'Vidéo AfriWonder',
+      message: video?.description || 'Regarde cette vidéo sur AfriWonder !',
+      url: `https://afriwonder.onrender.com/video/${videoId}`,
+    });
+    setShareVisible(true);
+    try { await apiClient.post(`/videos/${videoId}/share`); } catch {}
+  };
+
+  const handleReport = (videoId: string) => {
+    setReportTarget({ type: 'video', id: videoId });
+    setReportVisible(true);
   };
 
   const openComments = (videoId: string, count: number) => {
@@ -470,7 +595,7 @@ export default function FeedScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity onPress={() => router.push('/discover')} style={styles.headerSearchBtn}>
+        <TouchableOpacity onPress={() => router.push('/search')} style={styles.headerSearchBtn}>
           <Ionicons name="search" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={styles.headerTabs}>
@@ -482,10 +607,16 @@ export default function FeedScreen() {
             <Text style={[styles.headerTabText, activeTab === 'foryou' && styles.headerTabTextActive]}>Pour toi</Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.headerLiveBtn} onPress={() => router.push('/live')}>
-          <View style={styles.liveDot} />
-          <Text style={styles.liveText}>LIVE</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => router.push('/notifications')}>
+            <Ionicons name="notifications-outline" size={22} color="#FFF" />
+            <View style={styles.headerNotifDot} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => router.push('/live')}>
+            <View style={styles.liveDot} />
+            <Text style={styles.liveText}>LIVE</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
@@ -497,9 +628,10 @@ export default function FeedScreen() {
             onLike={() => handleLike(item.id)}
             onDoubleTapLike={() => handleDoubleTapLike(item.id)}
             onComment={() => openComments(item.id, item.comments)}
-            onShare={() => setShareVisible(true)}
+            onShare={() => handleShare(item.id)}
             onSave={() => handleSave(item.id)}
             onFollow={() => handleFollow(item.user.id)}
+            onReport={() => handleReport(item.id)}
           />
         )}
         keyExtractor={(item) => item.id}
@@ -507,17 +639,29 @@ export default function FeedScreen() {
         showsVerticalScrollIndicator={false}
         snapToInterval={height - 60 - insets.bottom}
         decelerationRate="fast"
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={{ itemVisiblePercentThreshold: 80 }}
+        onViewableItemsChanged={onViewableItemsChangedRef.current}
+        viewabilityConfig={viewabilityConfigRef.current}
         initialNumToRender={2}
-        maxToRenderPerBatch={3}
-        windowSize={5}
+        maxToRenderPerBatch={2}
+        windowSize={3}
+        removeClippedSubviews={Platform.OS !== 'web'}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        ListEmptyComponent={loading ? null : (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: height - 100 }}>
+            <Ionicons name="videocam-outline" size={60} color="rgba(255,255,255,0.3)" />
+            <Text style={{ color: 'rgba(255,255,255,0.5)', marginTop: 16, fontSize: 16 }}>Aucune vidéo disponible</Text>
+          </View>
+        )}
       />
 
       {loading && <View style={styles.loadingOverlay}><ActivityIndicator size="large" color={Colors.primary} /></View>}
 
       <CommentsModal visible={commentsVisible} onClose={() => setCommentsVisible(false)} videoId={selectedVideoId} commentsCount={selectedVideoComments} />
-      <ShareModal visible={shareVisible} onClose={() => setShareVisible(false)} />
+      <ShareSheet visible={shareVisible} onClose={() => setShareVisible(false)} title={shareData.title} message={shareData.message} url={shareData.url} />
+      <ReportModal visible={reportVisible} onClose={() => setReportVisible(false)} targetType={reportTarget.type} targetId={reportTarget.id} />
     </View>
   );
 }
@@ -532,8 +676,10 @@ const styles = StyleSheet.create({
   headerTabActive: { },
   headerTabText: { color: 'rgba(255,255,255,0.6)', fontSize: FontSizes.lg, fontWeight: '600' },
   headerTabTextActive: { color: '#FFF', fontWeight: 'bold' },
-  headerLiveBtn: { position: 'absolute', right: Spacing.lg, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,0,0,0.25)', paddingHorizontal: Spacing.md, paddingVertical: 5, borderRadius: BorderRadius.pill },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.live || '#FF0000', marginRight: 4 },
+  headerRight: { position: 'absolute', right: Spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerIconBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 5 },
+  headerNotifDot: { position: 'absolute', top: 2, right: 2, width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#FF3D00', borderWidth: 1, borderColor: '#000' },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF0000', marginRight: 4 },
   liveText: { color: '#FF4444', fontSize: FontSizes.xs, fontWeight: 'bold' },
   videoContainer: { width, position: 'relative', backgroundColor: '#000' },
   videoWrapper: { flex: 1 },
@@ -543,6 +689,8 @@ const styles = StyleSheet.create({
   heartAnimation: { position: 'absolute', alignSelf: 'center', top: '35%' },
   topGradient: { position: 'absolute', top: 0, left: 0, right: 0, height: 120 },
   bottomGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 250 },
+  sponsoredBadge: { position: 'absolute', top: 70, left: Spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,107,0,0.85)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: BorderRadius.pill },
+  sponsoredText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
   actions: { position: 'absolute', right: 10, alignItems: 'center', gap: 16 },
   avatarContainer: { marginBottom: 8 },
   avatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: '#FFF' },
@@ -566,13 +714,7 @@ const styles = StyleSheet.create({
   loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
   // Modals
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  shareContainer: { backgroundColor: Colors.surface || '#1a1a2e', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: Spacing.md },
   shareHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.border, alignSelf: 'center', marginBottom: Spacing.md },
-  shareTitle: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: 'bold', textAlign: 'center', marginBottom: Spacing.lg },
-  shareGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: Spacing.xl, justifyContent: 'flex-start' },
-  shareOption: { alignItems: 'center', width: (width - Spacing.xl * 2) / 4, marginBottom: Spacing.lg },
-  shareIcon: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  shareLabel: { color: Colors.textSecondary, fontSize: FontSizes.xs },
   commentsContainer: { backgroundColor: Colors.surface || '#1a1a2e', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: height * 0.7, minHeight: height * 0.5 },
   commentsHeader: { alignItems: 'center', padding: Spacing.lg, borderBottomWidth: 1, borderBottomColor: Colors.border },
   commentsTitle: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: '600', marginTop: Spacing.sm },

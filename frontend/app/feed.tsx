@@ -35,7 +35,7 @@ interface Post {
   location?: string;
 }
 
-const MOCK_POSTS: Post[] = [
+const FEED_POSTS: Post[] = [
   {
     id: 'p1',
     user: { name: 'Aminata Diallo', avatar: 'https://i.pravatar.cc/150?img=1', verified: true },
@@ -115,7 +115,7 @@ export default function FeedScreen() {
   // Offline-first with skeleton
   const { data: feedData, isLoading, isOffline } = useOfflineData({
     cacheKey: 'moments_feed',
-    fallbackData: { posts: MOCK_POSTS, loaded: true },
+    fallbackData: { posts: FEED_POSTS, loaded: true },
     ttl: 1000 * 60 * 10,
   });
 
@@ -263,7 +263,7 @@ export default function FeedScreen() {
         </View>
 
         {/* Posts */}
-        {MOCK_POSTS.map((post) => (
+        {FEED_POSTS.map((post) => (
           <View key={post.id} style={styles.postCard}>
             {/* Post Header */}
             <View style={styles.postHeader}>

@@ -1,108 +1,110 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ActivityIndicator, RefreshControl } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import mobileApiClient from '../../src/api/mobileClient';
 
-const NOTIFICATIONS = [
-  {
-    id: 'n1',
-    type: 'like',
-    title: 'Aminata a aime votre video',
-    subtitle: 'Danse traditionnelle malienne',
-    avatar: 'https://i.pravatar.cc/150?img=1',
-    time: '2 min',
-    read: false,
-  },
-  {
-    id: 'n2',
-    type: 'follow',
-    title: 'Moussa vous suit maintenant',
-    subtitle: 'Suivez-le aussi pour decouvrir son contenu',
-    avatar: 'https://i.pravatar.cc/150?img=2',
-    time: '15 min',
-    read: false,
-  },
-  {
-    id: 'n3',
-    type: 'comment',
-    title: 'Awa a commente votre video',
-    subtitle: '"Magnifique!"',
-    avatar: 'https://i.pravatar.cc/150?img=3',
-    time: '1h',
-    read: false,
-  },
-  {
-    id: 'n4',
-    type: 'order',
-    title: 'Commande expediee',
-    subtitle: 'Votre Robe Bogolan est en route',
-    avatar: 'https://i.pravatar.cc/150?img=50',
-    time: '3h',
-    read: true,
-  },
-  {
-    id: 'n5',
-    type: 'live',
-    title: 'Ibrahim est en live',
-    subtitle: 'Musique Live - Rejoignez maintenant!',
-    avatar: 'https://i.pravatar.cc/150?img=4',
-    time: '5h',
-    read: true,
-  },
-  {
-    id: 'n6',
-    type: 'promo',
-    title: 'Offre speciale!',
-    subtitle: '-30% sur la mode africaine ce weekend',
-    avatar: 'https://i.pravatar.cc/150?img=50',
-    time: '1j',
-    read: true,
-  },
-  {
-    id: 'n7',
-    type: 'payment',
-    title: 'Paiement recu',
-    subtitle: '15 000 FCFA de Aminata Diallo',
-    avatar: 'https://i.pravatar.cc/150?img=1',
-    time: '2j',
-    read: true,
-  },
-];
+interface Notification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+  from_user_name?: string | null;
+  from_user_id?: string | null;
+  reference_type?: string;
+  avatar?: string;
+}
 
 const getNotificationIcon = (type: string) => {
   switch (type) {
     case 'like': return { name: 'heart', color: Colors.like };
-    case 'follow': return { name: 'person-add', color: Colors.info };
+    case 'follow': case 'new_wonder': return { name: 'person-add', color: Colors.info };
     case 'comment': return { name: 'chatbubble', color: Colors.success };
     case 'order': return { name: 'cube', color: Colors.primary };
-    case 'live': return { name: 'radio', color: Colors.live };
+    case 'live': case 'live_started': return { name: 'radio', color: Colors.live || '#FF0000' };
     case 'promo': return { name: 'pricetag', color: Colors.accent };
     case 'payment': return { name: 'wallet', color: Colors.success };
+    case 'message_new': return { name: 'chatbubble-ellipses', color: Colors.primary };
     default: return { name: 'notifications', color: Colors.textSecondary };
   }
 };
 
+const formatTimeAgo = (dateStr: string) => {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return 'A l\'instant';
+  if (diffMin < 60) return `${diffMin} min`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}h`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD < 30) return `${diffD}j`;
+  return `${Math.floor(diffD / 30)} mois`;
+};
+
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const renderNotification = ({ item }: { item: typeof NOTIFICATIONS[0] }) => {
+  useEffect(() => { loadNotifications(); }, []);
+
+  const loadNotifications = async () => {
+    try {
+      const response = await mobileApiClient.get('/mobile/notifications');
+      const data = response.data?.data || response.data;
+      const backendNotifs = data?.notifications || [];
+      setNotifications(backendNotifs.map((n: any) => ({
+        id: n.id,
+        type: n.type,
+        title: n.title || '',
+        message: n.message || '',
+        is_read: n.is_read,
+        created_at: n.created_at,
+        from_user_name: n.from_user_name,
+        from_user_id: n.from_user_id,
+        reference_type: n.reference_type,
+        avatar: n.from_user_id ? `https://i.pravatar.cc/150?u=${n.from_user_id}` : undefined,
+      })));
+    } catch {
+      setNotifications([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadNotifications().finally(() => setRefreshing(false));
+  }, []);
+
+  const markAllRead = async () => {
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    try { await mobileApiClient.post('/mobile/notifications/read-all'); } catch {}
+  };
+
+  const renderNotification = ({ item }: { item: Notification }) => {
     const icon = getNotificationIcon(item.type);
     return (
-      <TouchableOpacity style={[styles.notifItem, !item.read && styles.notifUnread]}>
+      <TouchableOpacity style={[styles.notifItem, !item.is_read && styles.notifUnread]}>
         <View style={styles.notifLeft}>
-          <Image source={{ uri: item.avatar }} style={styles.notifAvatar} />
+          <Image source={{ uri: item.avatar || 'https://i.pravatar.cc/150?img=50' }} style={styles.notifAvatar} />
           <View style={[styles.notifIconBadge, { backgroundColor: icon.color }]}>
             <Ionicons name={icon.name as any} size={12} color="#FFFFFF" />
           </View>
         </View>
         <View style={styles.notifContent}>
           <Text style={styles.notifTitle}>{item.title}</Text>
-          <Text style={styles.notifSubtitle} numberOfLines={1}>{item.subtitle}</Text>
-          <Text style={styles.notifTime}>{item.time}</Text>
+          <Text style={styles.notifSubtitle} numberOfLines={1}>{item.message}</Text>
+          <Text style={styles.notifTime}>{formatTimeAgo(item.created_at)}</Text>
         </View>
-        {!item.read && <View style={styles.unreadDot} />}
+        {!item.is_read && <View style={styles.unreadDot} />}
       </TouchableOpacity>
     );
   };
@@ -114,18 +116,23 @@ export default function NotificationsScreen() {
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
-        <TouchableOpacity>
+        <TouchableOpacity onPress={markAllRead}>
           <Text style={styles.markAll}>Tout lire</Text>
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={NOTIFICATIONS}
-        renderItem={renderNotification}
-        keyExtractor={(item) => item.id}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.notifList}
-      />
+      {loading ? (
+        <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 40 }} />
+      ) : (
+        <FlatList
+          data={notifications}
+          renderItem={renderNotification}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.notifList}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        />
+      )}
     </View>
   );
 }

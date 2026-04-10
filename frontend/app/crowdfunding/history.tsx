@@ -14,7 +14,7 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../../src/theme/colors';
 import {
-  MOCK_PROJECTS,
+  SEED_PROJECTS,
   CROWDFUNDING_CATEGORIES,
   formatCFA,
   formatFullCFA,
@@ -25,9 +25,9 @@ import {
 const MY_CONTRIBUTIONS = [
   {
     id: 'mc1',
-    project: MOCK_PROJECTS[0],
+    project: SEED_PROJECTS[0],
     amount: 25000,
-    reward: MOCK_PROJECTS[0].rewards[1],
+    reward: SEED_PROJECTS[0].rewards[1],
     paymentMethod: 'Orange Money',
     paymentColor: '#FF6600',
     date: '10 Juin 2025, 14:30',
@@ -36,9 +36,9 @@ const MY_CONTRIBUTIONS = [
   },
   {
     id: 'mc2',
-    project: MOCK_PROJECTS[1],
+    project: SEED_PROJECTS[1],
     amount: 50000,
-    reward: MOCK_PROJECTS[1].rewards[1],
+    reward: SEED_PROJECTS[1].rewards[1],
     paymentMethod: 'Wave',
     paymentColor: '#1DC2F3',
     date: '8 Juin 2025, 10:15',
@@ -47,9 +47,9 @@ const MY_CONTRIBUTIONS = [
   },
   {
     id: 'mc3',
-    project: MOCK_PROJECTS[3],
+    project: SEED_PROJECTS[3],
     amount: 25000,
-    reward: MOCK_PROJECTS[3].rewards[1],
+    reward: SEED_PROJECTS[3].rewards[1],
     paymentMethod: 'MTN Money',
     paymentColor: '#FFCB05',
     date: '5 Juin 2025, 16:45',
@@ -58,9 +58,9 @@ const MY_CONTRIBUTIONS = [
   },
   {
     id: 'mc4',
-    project: MOCK_PROJECTS[5],
+    project: SEED_PROJECTS[5],
     amount: 5000,
-    reward: MOCK_PROJECTS[5].rewards[0],
+    reward: SEED_PROJECTS[5].rewards[0],
     paymentMethod: 'Orange Money',
     paymentColor: '#FF6600',
     date: '1 Juin 2025, 09:00',
@@ -69,9 +69,9 @@ const MY_CONTRIBUTIONS = [
   },
   {
     id: 'mc5',
-    project: MOCK_PROJECTS[7],
+    project: SEED_PROJECTS[7],
     amount: 2500,
-    reward: MOCK_PROJECTS[7].rewards[0],
+    reward: SEED_PROJECTS[7].rewards[0],
     paymentMethod: 'Wave',
     paymentColor: '#1DC2F3',
     date: '28 Mai 2025, 11:20',

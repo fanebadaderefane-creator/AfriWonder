@@ -80,19 +80,19 @@ export default function RegisterScreen() {
     
     setLoading(true);
     try {
-      const identifier = registerMethod === 'email' ? formData.email : `${selectedCountry.dial}${formData.phone}`;
+      const username = `${formData.firstName}${formData.lastName}`.toLowerCase().replace(/\s/g, '');
+      const full_name = `${formData.firstName} ${formData.lastName}`.trim();
       const response = await authApi.register({
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: registerMethod === 'email' ? formData.email : '',
-        phone: registerMethod === 'phone' ? `${selectedCountry.dial}${formData.phone}` : '',
+        username,
         password: formData.password,
-        country: selectedCountry.code,
+        email: registerMethod === 'email' ? formData.email : undefined,
+        phone: registerMethod === 'phone' ? `${selectedCountry.dial}${formData.phone}` : undefined,
+        full_name,
       });
       await setAuth(response.user, response.accessToken, response.refreshToken);
       router.replace('/(tabs)');
     } catch (error: any) {
-      const message = error.response?.data?.message || "Erreur lors de l'inscription";
+      const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || "Erreur lors de l'inscription";
       Alert.alert('Erreur', message);
     } finally {
       setLoading(false);

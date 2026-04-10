@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Image,
-  TextInput, RefreshControl, useWindowDimensions,
+  TextInput, RefreshControl, useWindowDimensions, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
+import apiClient from '../src/api/client';
 
 // --- MOCK DATA ---
 const TRENDING_HASHTAGS = [
@@ -59,8 +60,60 @@ export default function DiscoverScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [trendingVideos, setTrendingVideos] = useState(TRENDING_VIDEOS);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   const videoWidth = (screenWidth - 48) / 3;
+
+  // Load real trending videos
+  useEffect(() => { loadTrendingVideos(); }, []);
+
+  const loadTrendingVideos = async () => {
+    try {
+      const response = await apiClient.get('/videos?page=1&limit=8');
+      const data = response.data?.data || response.data;
+      const backendVideos = data?.videos || [];
+      if (backendVideos.length > 0) {
+        const transformed = backendVideos.map((v: any) => ({
+          id: v.id,
+          thumbnail: v.thumbnail_url || v.video_url || 'https://picsum.photos/200/350?random=120',
+          views: formatViewCount(v.views || 0),
+          author: v.creator_name || 'Utilisateur',
+          likes: formatViewCount(v.likes || 0),
+        }));
+        setTrendingVideos(transformed);
+      }
+    } catch { /* fallback to mock */ }
+  };
+
+  const formatViewCount = (n: number) => {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return String(n);
+  };
+
+  // Real search
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+    if (query.length < 2) { setSearchResults([]); return; }
+    setIsSearching(true);
+    try {
+      const response = await apiClient.get(`/search?q=${encodeURIComponent(query)}&type=all`);
+      const data = response.data?.data || response.data;
+      const results: any[] = [];
+      if (data?.videos?.length) data.videos.forEach((v: any) => results.push({ ...v, resultType: 'video' }));
+      if (data?.users?.length) data.users.forEach((u: any) => results.push({ ...u, resultType: 'user' }));
+      if (data?.products?.length) data.products.forEach((p: any) => results.push({ ...p, resultType: 'product' }));
+      setSearchResults(results);
+    } catch { setSearchResults([]); }
+    finally { setIsSearching(false); }
+  };
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadTrendingVideos().finally(() => setRefreshing(false));
+  }, []);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -84,7 +137,7 @@ export default function DiscoverScreen() {
             placeholder="Rechercher videos, sons, hashtags..."
             placeholderTextColor="#666"
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={handleSearch}
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
           />
@@ -113,7 +166,7 @@ export default function DiscoverScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); setTimeout(() => setRefreshing(false), 1500); }} tintColor={Colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
       >
         {/* Trending Hashtags */}
         <View style={styles.section}>
@@ -150,7 +203,7 @@ export default function DiscoverScreen() {
             <TouchableOpacity><Text style={styles.seeAll}>Voir tout</Text></TouchableOpacity>
           </View>
           <View style={styles.videoGrid}>
-            {TRENDING_VIDEOS.map(video => (
+            {trendingVideos.map(video => (
               <TouchableOpacity
                 key={video.id}
                 style={[styles.videoCard, { width: videoWidth, height: videoWidth * 1.6 }]}

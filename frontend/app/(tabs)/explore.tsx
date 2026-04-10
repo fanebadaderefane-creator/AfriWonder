@@ -1,25 +1,72 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Image, useWindowDimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, useWindowDimensions, Platform } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useOfflineData } from '../../src/hooks/useOfflineData';
 import { ExploreGridSkeleton } from '../../src/components/SkeletonScreens';
+import apiClient from '../../src/api/client';
+import mobileApiClient from '../../src/api/mobileClient';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 
 const GRID_GAP = 2;
 
-// Stories
-const STORIES = [
-  { id: 'add', name: 'Votre Story', avatar: 'https://i.pravatar.cc/150?img=10', isAdd: true, hasNew: false, isLive: false },
-  { id: 's1', name: 'Aminata', avatar: 'https://i.pravatar.cc/150?img=1', isAdd: false, hasNew: true, isLive: true },
-  { id: 's2', name: 'Moussa', avatar: 'https://i.pravatar.cc/150?img=2', isAdd: false, hasNew: true, isLive: false },
-  { id: 's3', name: 'Awa', avatar: 'https://i.pravatar.cc/150?img=3', isAdd: false, hasNew: true, isLive: false },
-  { id: 's4', name: 'Ibrahim', avatar: 'https://i.pravatar.cc/150?img=4', isAdd: false, hasNew: true, isLive: false },
-  { id: 's5', name: 'Fanta', avatar: 'https://i.pravatar.cc/150?img=5', isAdd: false, hasNew: false, isLive: false },
-  { id: 's6', name: 'Boubacar', avatar: 'https://i.pravatar.cc/150?img=7', isAdd: false, hasNew: true, isLive: false },
-  { id: 's7', name: 'Mariam', avatar: 'https://i.pravatar.cc/150?img=6', isAdd: false, hasNew: false, isLive: false },
+// Helper: check if URL is a video
+const isVideoUrl = (url: string) => {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  return lower.endsWith('.mp4') || lower.endsWith('.mov') || lower.endsWith('.avi') || lower.endsWith('.webm') || lower.includes('/videos/');
+};
+
+// Component for smart thumbnail (handles video URLs)
+const SmartThumbnail = ({ uri, videoUrl, fallbackImage, style, tileSize, tileHeight }: { uri: string; videoUrl?: string; fallbackImage?: string; style: any; tileSize: number; tileHeight: number }) => {
+  const [thumbUri, setThumbUri] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!isVideoUrl(uri)) {
+      setThumbUri(uri);
+      return;
+    }
+    // For video URLs, try to generate thumbnail on native
+    const generateThumb = async () => {
+      if (Platform.OS !== 'web') {
+        try {
+          const sourceUrl = videoUrl || uri;
+          const { uri: thumbImage } = await VideoThumbnails.getThumbnailAsync(sourceUrl, { time: 1000, quality: 0.5 });
+          setThumbUri(thumbImage);
+          return;
+        } catch {}
+      }
+      // Fallback: use creator avatar if available
+      if (fallbackImage) {
+        setThumbUri(fallbackImage);
+        return;
+      }
+      setThumbUri(null);
+      setError(true);
+    };
+    generateThumb();
+  }, [uri, videoUrl, fallbackImage]);
+
+  if (error || !thumbUri) {
+    // Colorful gradient placeholder for video
+    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#E91E63', '#FF6B00'];
+    const idx = Math.abs(uri.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % colors.length;
+    return (
+      <View style={[style, { backgroundColor: colors[idx], alignItems: 'center', justifyContent: 'center' }]}>
+        <Ionicons name="play-circle" size={Math.min(tileSize, tileHeight) * 0.35} color="rgba(255,255,255,0.7)" />
+      </View>
+    );
+  }
+
+  return <Image source={{ uri: thumbUri }} style={style} resizeMode="cover" />;
+};
+
+// Stories - will be loaded from real backend data
+const DEFAULT_STORIES = [
+  { id: 'add', name: 'Votre Story', avatar: '', isAdd: true, hasNew: false, isLive: false },
 ];
 
 // Categories
@@ -61,19 +108,106 @@ const formatNum = (n: number) => n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' :
 
 export default function ExploreScreen() {
   const insets = useSafeAreaInsets();
-  const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const { width: screenWidth } = useWindowDimensions();
+  const [exploreItems, setExploreItems] = useState(EXPLORE_ITEMS);
+  const [isLoading, setIsLoading] = useState(true);
+  const [stories, setStories] = useState(DEFAULT_STORIES);
 
   const tileSize = Math.floor((screenWidth - GRID_GAP * 2) / 3);
   const tileHeight = Math.floor(tileSize * 1.35);
 
-  // Offline-first data loading with skeleton
-  const { data: exploreData, isLoading, isOffline } = useOfflineData({
-    cacheKey: 'explore_feed',
-    fallbackData: { items: EXPLORE_ITEMS, loaded: true },
-    ttl: 1000 * 60 * 15,
-  });
+  // Load real videos for explore grid
+  useEffect(() => {
+    loadExploreVideos();
+    loadRealCreatorsAsStories();
+  }, []);
+
+  const loadRealCreatorsAsStories = async () => {
+    try {
+      // Fetch creators from videos (works without auth through proxy)
+      const videosRes = await apiClient.get('/videos?page=1&limit=30');
+      const videos = videosRes.data?.data?.videos || [];
+
+      // Extract unique creators from videos (these have real avatars)
+      const creatorMap = new Map<string, any>();
+      for (const v of videos) {
+        if (v.creator_id && !creatorMap.has(v.creator_id)) {
+          const name = v.creator_name || '';
+          const firstName = name.split(' ')[0] || 'Créateur';
+          const avatar = v.creator_avatar || '';
+          if (avatar) { // Only add creators with real avatars
+            creatorMap.set(v.creator_id, {
+              id: v.creator_id,
+              name: firstName,
+              avatar: avatar,
+            });
+          }
+        }
+      }
+
+      // Also try to get registered users with profile images
+      try {
+        const usersRes = await apiClient.get('/users?limit=30');
+        const usersData = usersRes.data?.data?.users || [];
+        for (const u of usersData) {
+          if (u.profile_image && !creatorMap.has(u.id)) {
+            creatorMap.set(u.id, {
+              id: u.id,
+              name: (u.full_name || u.username || 'User').split(' ')[0],
+              avatar: u.profile_image,
+            });
+          }
+        }
+      } catch { /* users endpoint optional */ }
+
+      const creators = Array.from(creatorMap.values()).slice(0, 15);
+
+      if (creators.length > 0) {
+        const storyList = [
+          { id: 'add', name: 'Moi', avatar: creators[0]?.avatar || '', isAdd: true, hasNew: false, isLive: false },
+          ...creators.map((c, i) => ({
+            id: c.id,
+            name: c.name,
+            avatar: c.avatar,
+            isAdd: false,
+            hasNew: i < 5,
+            isLive: i === 0,
+          })),
+        ];
+        setStories(storyList);
+      }
+    } catch (err) {
+      console.log('Failed to load real creators:', err);
+    }
+  };
+
+  const loadExploreVideos = async () => {
+    setIsLoading(true);
+    try {
+      const response = await apiClient.get('/videos?page=1&limit=24');
+      const data = response.data?.data || response.data;
+      const backendVideos = data?.videos || [];
+      if (backendVideos.length > 0) {
+        const transformed = backendVideos.map((v: any, i: number) => ({
+          id: v.id || `e${i}`,
+          image: v.thumbnail_url || v.video_url || `https://picsum.photos/300/400?random=${i + 20}`,
+          videoUrl: v.video_url || v.thumbnail_url || '',
+          type: (v.media_type === 'video' ? (i % 4 === 0 ? 'reel' as const : 'photo' as const) : 'photo' as const),
+          views: v.views || 0,
+          likes: v.likes || 0,
+          title: v.title || '',
+          creator_name: v.creator_name || '',
+          creator_avatar: v.creator_avatar || '',
+        }));
+        setExploreItems(transformed);
+      }
+    } catch (err) {
+      console.log('Using mock explore data', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -98,8 +232,8 @@ export default function ExploreScreen() {
 
   // Build grid rows (3 items per row)
   const gridRows: (typeof EXPLORE_ITEMS)[] = [];
-  for (let i = 0; i < EXPLORE_ITEMS.length; i += 3) {
-    gridRows.push(EXPLORE_ITEMS.slice(i, i + 3));
+  for (let i = 0; i < exploreItems.length; i += 3) {
+    gridRows.push(exploreItems.slice(i, i + 3));
   }
 
   return (
@@ -120,21 +254,20 @@ export default function ExploreScreen() {
       </View>
 
       {/* Search */}
-      <View style={styles.searchContainer}>
+      <TouchableOpacity style={styles.searchContainer} activeOpacity={0.8} onPress={() => router.push('/search')}>
         <View style={styles.searchBar}>
           <Ionicons name="search" size={18} color="#888" />
-          <TextInput style={styles.searchInput} placeholder="Rechercher personnes, videos, sons..." placeholderTextColor="#666" value={searchQuery} onChangeText={setSearchQuery} />
-          {searchQuery.length > 0 && <TouchableOpacity onPress={() => setSearchQuery('')}><Ionicons name="close-circle" size={18} color="#666" /></TouchableOpacity>}
+          <Text style={styles.searchPlaceholder}>Rechercher personnes, videos, sons...</Text>
         </View>
-        <TouchableOpacity style={styles.qrBtn}>
+        <View style={styles.qrBtn}>
           <Ionicons name="qr-code-outline" size={22} color="#FFF" />
-        </TouchableOpacity>
-      </View>
+        </View>
+      </TouchableOpacity>
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Stories */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storiesContent}>
-          {STORIES.map((story) => (
+          {stories.map((story) => (
             <TouchableOpacity key={story.id} style={styles.storyItem} onPress={() => router.push('/stories')}>
               {story.isAdd ? (
                 <View style={styles.storyAddContainer}>
@@ -246,10 +379,13 @@ export default function ExploreScreen() {
                     overflow: 'hidden',
                   }}
                 >
-                  <Image
-                    source={{ uri: item.image }}
+                  <SmartThumbnail
+                    uri={item.image}
+                    videoUrl={(item as any).videoUrl}
+                    fallbackImage={(item as any).creator_avatar}
                     style={{ width: tileSize, height: tileHeight }}
-                    resizeMode="cover"
+                    tileSize={tileSize}
+                    tileHeight={tileHeight}
                   />
                   {item.type === 'reel' && (
                     <View style={styles.reelBadge}>
@@ -295,6 +431,7 @@ const styles = StyleSheet.create({
   searchContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
   searchBar: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#1A1A1A', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
   searchInput: { flex: 1, color: '#FFF', fontSize: 14 },
+  searchPlaceholder: { flex: 1, color: '#666', fontSize: 14 },
   qrBtn: { width: 42, height: 42, backgroundColor: '#1A1A1A', borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 
   // Stories

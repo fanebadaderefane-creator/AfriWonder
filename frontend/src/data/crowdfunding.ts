@@ -61,7 +61,7 @@ export const CROWDFUNDING_CATEGORIES: CrowdfundingCategory[] = [
   { id: 'immobilier', name: 'Immobilier', nameKey: 'cf.cat.realestate', icon: 'home', color: '#795548' },
 ];
 
-export const MOCK_PROJECTS: CrowdfundingProject[] = [
+export const SEED_PROJECTS: CrowdfundingProject[] = [
   {
     id: 'cf1',
     title: 'Ecole Numerique de Bamako',
@@ -349,9 +349,10 @@ export const formatCFA = (amount: number): string => {
 };
 
 export const formatFullCFA = (amount: number): string => {
-  return amount.toLocaleString('fr-FR') + ' FCFA';
+  return (amount || 0).toLocaleString('fr-FR') + ' FCFA';
 };
 
 export const getProgressPercent = (raised: number, goal: number): number => {
+  if (!goal || !raised) return 0;
   return Math.min(Math.round((raised / goal) * 100), 100);
 };

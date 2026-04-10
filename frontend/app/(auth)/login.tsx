@@ -66,11 +66,11 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const identifier = loginMethod === 'email' ? email : `${selectedCountry.dial}${phone}`;
-      const response = await authApi.login({ email: identifier, password });
+      const response = await authApi.login({ identifier, password });
       await setAuth(response.user, response.accessToken, response.refreshToken);
       router.replace('/(tabs)');
     } catch (error: any) {
-      const message = error.response?.data?.message || 'Erreur de connexion';
+      const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'Erreur de connexion';
       Alert.alert('Erreur', message);
     } finally {
       setLoading(false);

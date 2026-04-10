@@ -29,6 +29,7 @@ export default function SettingsScreen() {
         { icon: 'moon', label: 'Mode sombre', toggle: true, value: darkMode, onToggle: setDarkMode },
         { icon: 'cellular', label: 'Economie de donnees', toggle: true, value: dataEconomy, onToggle: setDataEconomy },
         { icon: 'play-circle', label: 'Lecture auto', toggle: true, value: autoplay, onToggle: setAutoplay },
+        { icon: 'heart', label: 'Centres d\'interet', route: '/interests' },
         { icon: 'language', label: 'Langue', detail: 'Francais' },
       ],
     },
