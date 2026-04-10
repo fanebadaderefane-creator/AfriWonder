@@ -434,9 +434,39 @@ export default function FeedScreen() {
   const loadFeed = async () => {
     setLoading(true);
     try {
-      const response = await apiClient.get('/videos/feed?page=1&limit=10');
-      if (response.data.videos?.length > 0) setVideos(response.data.videos);
-    } catch { console.log('Using mock videos'); }
+      const response = await apiClient.get('/videos?page=1&limit=10');
+      const data = response.data?.data || response.data;
+      const backendVideos = data?.videos || [];
+      if (backendVideos.length > 0) {
+        const transformed: Video[] = backendVideos.map((v: any) => {
+          const nameParts = (v.creator_name || '').split(' ');
+          return {
+            id: v.id,
+            title: v.title || '',
+            description: v.description || '',
+            videoUrl: v.video_url || '',
+            thumbnailUrl: v.thumbnail_url || v.video_url || '',
+            duration: v.duration || 0,
+            views: v.views || 0,
+            likes: v.likes || 0,
+            comments: v.comments_count || 0,
+            shares: v.shares || 0,
+            isLiked: false,
+            isSaved: false,
+            hashtags: v.hashtags || [],
+            user: {
+              id: v.creator_id || '',
+              firstName: nameParts[0] || 'Utilisateur',
+              lastName: nameParts.slice(1).join(' ') || '',
+              avatar: v.creator_avatar || 'https://i.pravatar.cc/150?img=1',
+              isFollowing: false,
+            },
+            music: v.music_title || 'Son original',
+          };
+        });
+        setVideos(transformed);
+      }
+    } catch (err) { console.log('Using mock videos', err); }
     finally { setLoading(false); }
   };
 

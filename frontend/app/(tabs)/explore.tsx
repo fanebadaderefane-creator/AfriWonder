@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Image, useWindowDimensions } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useOfflineData } from '../../src/hooks/useOfflineData';
 import { ExploreGridSkeleton } from '../../src/components/SkeletonScreens';
+import apiClient from '../../src/api/client';
 
 const GRID_GAP = 2;
 
@@ -64,16 +64,42 @@ export default function ExploreScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const { width: screenWidth } = useWindowDimensions();
+  const [exploreItems, setExploreItems] = useState(EXPLORE_ITEMS);
+  const [isLoading, setIsLoading] = useState(true);
 
   const tileSize = Math.floor((screenWidth - GRID_GAP * 2) / 3);
   const tileHeight = Math.floor(tileSize * 1.35);
 
-  // Offline-first data loading with skeleton
-  const { data: exploreData, isLoading, isOffline } = useOfflineData({
-    cacheKey: 'explore_feed',
-    fallbackData: { items: EXPLORE_ITEMS, loaded: true },
-    ttl: 1000 * 60 * 15,
-  });
+  // Load real videos for explore grid
+  useEffect(() => {
+    loadExploreVideos();
+  }, []);
+
+  const loadExploreVideos = async () => {
+    setIsLoading(true);
+    try {
+      const response = await apiClient.get('/videos?page=1&limit=24');
+      const data = response.data?.data || response.data;
+      const backendVideos = data?.videos || [];
+      if (backendVideos.length > 0) {
+        const transformed = backendVideos.map((v: any, i: number) => ({
+          id: v.id || `e${i}`,
+          image: v.thumbnail_url || v.video_url || `https://picsum.photos/300/400?random=${i + 20}`,
+          type: (v.media_type === 'video' ? (i % 4 === 0 ? 'reel' as const : 'photo' as const) : 'photo' as const),
+          views: v.views || 0,
+          likes: v.likes || 0,
+          title: v.title || '',
+          creator_name: v.creator_name || '',
+          creator_avatar: v.creator_avatar || '',
+        }));
+        setExploreItems(transformed);
+      }
+    } catch (err) {
+      console.log('Using mock explore data', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -98,8 +124,8 @@ export default function ExploreScreen() {
 
   // Build grid rows (3 items per row)
   const gridRows: (typeof EXPLORE_ITEMS)[] = [];
-  for (let i = 0; i < EXPLORE_ITEMS.length; i += 3) {
-    gridRows.push(EXPLORE_ITEMS.slice(i, i + 3));
+  for (let i = 0; i < exploreItems.length; i += 3) {
+    gridRows.push(exploreItems.slice(i, i + 3));
   }
 
   return (
