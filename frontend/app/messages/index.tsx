@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, Dimensions } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, Dimensions, ActivityIndicator, RefreshControl } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import mobileApiClient from '../../src/api/mobileClient';
 
 const { width } = Dimensions.get('window');
 
@@ -74,10 +75,67 @@ export default function MessagesListScreen() {
   const [activeTab, setActiveTab] = useState(0);
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [conversations, setConversations] = useState(CONVERSATIONS);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => { loadConversations(); }, []);
+
+  const loadConversations = async () => {
+    try {
+      const response = await mobileApiClient.get('/mobile/conversations');
+      const data = response.data?.data || response.data;
+      const backendConvos = data?.conversations || [];
+      if (backendConvos.length > 0) {
+        const transformed = backendConvos.map((c: any) => {
+          const participantInfo = c.participant_info || {};
+          // Get the first participant info entry (the other user)
+          const otherInfoKey = Object.keys(participantInfo)[0];
+          const otherInfo = otherInfoKey ? participantInfo[otherInfoKey] : {};
+          const timeStr = c.last_message_at ? formatTimeAgo(c.last_message_at) : '';
+          return {
+            id: c.id,
+            name: c.name || otherInfo.name || 'Contact',
+            avatar: otherInfo.avatar || `https://i.pravatar.cc/150?u=${otherInfoKey || c.id}`,
+            lastMessage: c.last_message || '',
+            time: timeStr,
+            unread: c.unread_count || 0,
+            online: false,
+            isTyping: false,
+            lastMsgType: 'text',
+            isRead: c.unread_count === 0,
+            isMine: false,
+            isGroup: c.is_group || false,
+          };
+        });
+        setConversations(transformed);
+      }
+    } catch (err) {
+      console.log('Using mock conversations', err);
+    } finally { setLoading(false); }
+  };
+
+  const formatTimeAgo = (dateStr: string) => {
+    const now = new Date();
+    const date = new Date(dateStr);
+    const diffMs = now.getTime() - date.getTime();
+    const diffH = Math.floor(diffMs / 3600000);
+    if (diffH < 1) return 'Maintenant';
+    if (diffH < 24) return `${diffH}h`;
+    const diffD = Math.floor(diffH / 24);
+    if (diffD === 1) return 'Hier';
+    if (diffD < 7) return ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'][date.getDay()];
+    return `${date.getDate()}/${date.getMonth() + 1}`;
+  };
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadConversations().finally(() => setRefreshing(false));
+  }, []);
 
   const filteredConversations = searchQuery
-    ? CONVERSATIONS.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : CONVERSATIONS;
+    ? conversations.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : conversations;
 
   const renderReadReceipt = (item: typeof CONVERSATIONS[0]) => {
     if (!item.isMine) return null;
