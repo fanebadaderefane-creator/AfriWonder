@@ -10,17 +10,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const COUNTRIES = [
-  { code: 'ML', name: 'Mali', dial: '+223' },
-  { code: 'SN', name: 'Sénégal', dial: '+221' },
-  { code: 'CI', name: "Côte d'Ivoire", dial: '+225' },
-  { code: 'BF', name: 'Burkina Faso', dial: '+226' },
-  { code: 'GN', name: 'Guinée', dial: '+224' },
-  { code: 'NE', name: 'Niger', dial: '+227' },
+  { code: 'ML', name: 'Mali', flag: '🇲🇱', dial: '+223' },
+  { code: 'SN', name: 'Senegal', flag: '🇸🇳', dial: '+221' },
+  { code: 'CI', name: "Cote d'Ivoire", flag: '🇨🇮', dial: '+225' },
+  { code: 'BF', name: 'Burkina Faso', flag: '🇧🇫', dial: '+226' },
+  { code: 'GN', name: 'Guinee', flag: '🇬🇳', dial: '+224' },
+  { code: 'NE', name: 'Niger', flag: '🇳🇪', dial: '+227' },
 ];
+
+type RegisterMethod = 'phone' | 'email';
 
 export default function RegisterScreen() {
   const insets = useSafeAreaInsets();
   const { setAuth } = useAuthStore();
+  const [registerMethod, setRegisterMethod] = useState<RegisterMethod>('phone');
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -28,30 +31,37 @@ export default function RegisterScreen() {
     phone: '',
     password: '',
     confirmPassword: '',
-    country: 'ML',
   });
   const [loading, setLoading] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
+  const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[0]);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const selectedCountry = COUNTRIES.find(c => c.code === formData.country);
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
     
-    if (!formData.firstName) newErrors.firstName = 'Prénom requis';
+    if (!formData.firstName) newErrors.firstName = 'Prenom requis';
     if (!formData.lastName) newErrors.lastName = 'Nom requis';
-    if (!formData.email) {
-      newErrors.email = 'Email requis';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Email invalide';
+
+    if (registerMethod === 'email') {
+      if (!formData.email) {
+        newErrors.identifier = 'Email requis';
+      } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+        newErrors.identifier = 'Email invalide';
+      }
+    } else {
+      if (!formData.phone) {
+        newErrors.identifier = 'Numero de telephone requis';
+      } else if (formData.phone.length < 8) {
+        newErrors.identifier = 'Numero invalide';
+      }
     }
-    if (!formData.phone) newErrors.phone = 'Téléphone requis';
+
     if (!formData.password) {
       newErrors.password = 'Mot de passe requis';
     } else if (formData.password.length < 6) {
-      newErrors.password = 'Minimum 6 caractères';
+      newErrors.password = 'Minimum 6 caracteres';
     }
     if (formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = 'Les mots de passe ne correspondent pas';
@@ -69,13 +79,14 @@ export default function RegisterScreen() {
     
     setLoading(true);
     try {
+      const identifier = registerMethod === 'email' ? formData.email : `${selectedCountry.dial}${formData.phone}`;
       const response = await authApi.register({
         firstName: formData.firstName,
         lastName: formData.lastName,
-        email: formData.email,
-        phone: `${selectedCountry?.dial}${formData.phone}`,
+        email: registerMethod === 'email' ? formData.email : '',
+        phone: registerMethod === 'phone' ? `${selectedCountry.dial}${formData.phone}` : '',
         password: formData.password,
-        country: formData.country,
+        country: selectedCountry.code,
       });
       await setAuth(response.user, response.accessToken, response.refreshToken);
       router.replace('/(tabs)');
@@ -85,6 +96,10 @@ export default function RegisterScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSocialRegister = (provider: string) => {
+    Alert.alert('Info', `Inscription ${provider} bientot disponible`);
   };
 
   return (
@@ -100,19 +115,43 @@ export default function RegisterScreen() {
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
 
+        {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Créer un compte</Text>
-          <Text style={styles.subtitle}>Rejoignez la communauté AfriWonder</Text>
+          <View style={styles.logoCircle}>
+            <Ionicons name="person-add" size={28} color="#FFF" />
+          </View>
+          <Text style={styles.title}>Creer un compte</Text>
+          <Text style={styles.subtitle}>Rejoignez la communaute AfriWonder</Text>
         </View>
 
+        {/* Method Toggle */}
+        <View style={styles.methodToggle}>
+          <TouchableOpacity
+            style={[styles.methodTab, registerMethod === 'phone' && styles.methodTabActive]}
+            onPress={() => { setRegisterMethod('phone'); setErrors({}); }}
+          >
+            <Ionicons name="call" size={18} color={registerMethod === 'phone' ? '#FFF' : Colors.textSecondary} />
+            <Text style={[styles.methodTabText, registerMethod === 'phone' && styles.methodTabTextActive]}>Telephone</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.methodTab, registerMethod === 'email' && styles.methodTabActive]}
+            onPress={() => { setRegisterMethod('email'); setErrors({}); }}
+          >
+            <Ionicons name="mail" size={18} color={registerMethod === 'email' ? '#FFF' : Colors.textSecondary} />
+            <Text style={[styles.methodTabText, registerMethod === 'email' && styles.methodTabTextActive]}>Email</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Form */}
         <View style={styles.form}>
+          {/* Name Row */}
           <View style={styles.row}>
             <View style={styles.halfInput}>
               <Input
-                label="Prénom"
-                placeholder="Votre prénom"
+                label="Prenom"
+                placeholder="Votre prenom"
                 value={formData.firstName}
-                onChangeText={(text) => setFormData({ ...formData, firstName: text })}
+                onChangeText={(text) => { setFormData({ ...formData, firstName: text }); setErrors({}); }}
                 autoCapitalize="words"
                 error={errors.firstName}
               />
@@ -122,72 +161,79 @@ export default function RegisterScreen() {
                 label="Nom"
                 placeholder="Votre nom"
                 value={formData.lastName}
-                onChangeText={(text) => setFormData({ ...formData, lastName: text })}
+                onChangeText={(text) => { setFormData({ ...formData, lastName: text }); setErrors({}); }}
                 autoCapitalize="words"
                 error={errors.lastName}
               />
             </View>
           </View>
 
-          <Input
-            label="Email"
-            placeholder="votre@email.com"
-            value={formData.email}
-            onChangeText={(text) => setFormData({ ...formData, email: text })}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            icon="mail"
-            error={errors.email}
-          />
+          {/* Conditional: Phone or Email */}
+          {registerMethod === 'phone' ? (
+            <>
+              {/* Country Selector */}
+              <Text style={styles.label}>Pays</Text>
+              <TouchableOpacity
+                style={styles.countrySelector}
+                onPress={() => setShowCountryPicker(!showCountryPicker)}
+              >
+                <Text style={styles.countryFlag}>{selectedCountry.flag}</Text>
+                <Text style={styles.countryName}>{selectedCountry.name}</Text>
+                <Text style={styles.countryDial}>{selectedCountry.dial}</Text>
+                <Ionicons name={showCountryPicker ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.textSecondary} />
+              </TouchableOpacity>
 
-          <Text style={styles.label}>Pays</Text>
-          <TouchableOpacity 
-            style={styles.countrySelector}
-            onPress={() => setShowCountryPicker(!showCountryPicker)}
-          >
-            <Text style={styles.countryText}>
-              {selectedCountry?.name} ({selectedCountry?.dial})
-            </Text>
-            <Ionicons name="chevron-down" size={20} color={Colors.textSecondary} />
-          </TouchableOpacity>
+              {showCountryPicker && (
+                <View style={styles.countryList}>
+                  {COUNTRIES.map((country) => (
+                    <TouchableOpacity
+                      key={country.code}
+                      style={[styles.countryItem, country.code === selectedCountry.code && styles.countryItemActive]}
+                      onPress={() => { setSelectedCountry(country); setShowCountryPicker(false); }}
+                    >
+                      <Text style={styles.countryItemFlag}>{country.flag}</Text>
+                      <Text style={styles.countryItemName}>{country.name}</Text>
+                      <Text style={styles.countryItemDial}>{country.dial}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
-          {showCountryPicker && (
-            <View style={styles.countryList}>
-              {COUNTRIES.map((country) => (
-                <TouchableOpacity
-                  key={country.code}
-                  style={[
-                    styles.countryItem,
-                    country.code === formData.country && styles.countryItemActive,
-                  ]}
-                  onPress={() => {
-                    setFormData({ ...formData, country: country.code });
-                    setShowCountryPicker(false);
-                  }}
-                >
-                  <Text style={styles.countryItemText}>
-                    {country.name} ({country.dial})
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+              {/* Phone Input */}
+              <Text style={styles.label}>Numero de telephone</Text>
+              <View style={[styles.phoneInputContainer, errors.identifier && styles.inputError]}>
+                <View style={styles.phonePrefix}>
+                  <Text style={styles.phonePrefixText}>{selectedCountry.dial}</Text>
+                </View>
+                <View style={styles.phoneDivider} />
+                <Input
+                  placeholder="XX XX XX XX"
+                  value={formData.phone}
+                  onChangeText={(text) => { setFormData({ ...formData, phone: text }); setErrors({}); }}
+                  keyboardType="phone-pad"
+                  style={styles.phoneInput}
+                />
+              </View>
+              {errors.identifier && <Text style={styles.errorText}>{errors.identifier}</Text>}
+            </>
+          ) : (
+            <Input
+              label="Email"
+              placeholder="votre@email.com"
+              value={formData.email}
+              onChangeText={(text) => { setFormData({ ...formData, email: text }); setErrors({}); }}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              icon="mail"
+              error={errors.identifier}
+            />
           )}
 
           <Input
-            label="Téléphone"
-            placeholder="XX XX XX XX"
-            value={formData.phone}
-            onChangeText={(text) => setFormData({ ...formData, phone: text })}
-            keyboardType="phone-pad"
-            icon="call"
-            error={errors.phone}
-          />
-
-          <Input
             label="Mot de passe"
-            placeholder="Minimum 6 caractères"
+            placeholder="Minimum 6 caracteres"
             value={formData.password}
-            onChangeText={(text) => setFormData({ ...formData, password: text })}
+            onChangeText={(text) => { setFormData({ ...formData, password: text }); setErrors({}); }}
             secureTextEntry
             icon="lock-closed"
             error={errors.password}
@@ -197,7 +243,7 @@ export default function RegisterScreen() {
             label="Confirmer le mot de passe"
             placeholder="Confirmez votre mot de passe"
             value={formData.confirmPassword}
-            onChangeText={(text) => setFormData({ ...formData, confirmPassword: text })}
+            onChangeText={(text) => { setFormData({ ...formData, confirmPassword: text }); setErrors({}); }}
             secureTextEntry
             icon="lock-closed"
             error={errors.confirmPassword}
@@ -208,11 +254,11 @@ export default function RegisterScreen() {
             onPress={() => setAcceptTerms(!acceptTerms)}
           >
             <View style={[styles.checkbox, acceptTerms && styles.checkboxChecked]}>
-              {acceptTerms && <Ionicons name="checkmark" size={16} color={Colors.text} />}
+              {acceptTerms && <Ionicons name="checkmark" size={16} color="#FFF" />}
             </View>
             <Text style={styles.termsText}>
               J'accepte les{' '}
-              <Text style={styles.termsLink}>Conditions Générales d'Utilisation</Text>
+              <Text style={styles.termsLink}>Conditions Generales d'Utilisation</Text>
             </Text>
           </TouchableOpacity>
           {errors.terms && <Text style={styles.errorText}>{errors.terms}</Text>}
@@ -226,8 +272,35 @@ export default function RegisterScreen() {
           />
         </View>
 
+        {/* Divider */}
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>ou continuer avec</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        {/* Social Login */}
+        <View style={styles.socialButtons}>
+          <TouchableOpacity
+            style={[styles.socialButton, { backgroundColor: '#DB4437' }]}
+            onPress={() => handleSocialRegister('Google')}
+          >
+            <Ionicons name="logo-google" size={22} color="#FFF" />
+            <Text style={styles.socialButtonText}>Google</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.socialButton, { backgroundColor: '#4267B2' }]}
+            onPress={() => handleSocialRegister('Facebook')}
+          >
+            <Ionicons name="logo-facebook" size={22} color="#FFF" />
+            <Text style={styles.socialButtonText}>Facebook</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Footer */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Déjà un compte ?</Text>
+          <Text style={styles.footerText}>Deja un compte ?</Text>
           <TouchableOpacity onPress={() => router.back()}>
             <Text style={styles.footerLink}> Se connecter</Text>
           </TouchableOpacity>
@@ -248,21 +321,68 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   backButton: {
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+
+  // Header
   header: {
+    alignItems: 'center',
     marginBottom: Spacing.xxl,
+  },
+  logoCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.lg,
   },
   title: {
     fontSize: FontSizes.xxxl,
     fontWeight: 'bold',
     color: Colors.text,
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
   },
   subtitle: {
     fontSize: FontSizes.md,
     color: Colors.textSecondary,
   },
+
+  // Method toggle
+  methodToggle: {
+    flexDirection: 'row',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    padding: 4,
+    marginBottom: Spacing.xxl,
+  },
+  methodTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.sm,
+  },
+  methodTabActive: {
+    backgroundColor: Colors.primary,
+  },
+  methodTabText: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.md,
+    fontWeight: '600',
+  },
+  methodTabTextActive: {
+    color: '#FFF',
+  },
+
+  // Form
   form: {
     marginBottom: Spacing.xxl,
   },
@@ -279,10 +399,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: Spacing.sm,
   },
+
+  // Country selector
   countrySelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
@@ -290,10 +411,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
     marginBottom: Spacing.lg,
+    gap: Spacing.sm,
   },
-  countryText: {
+  countryFlag: {
+    fontSize: 22,
+  },
+  countryName: {
+    flex: 1,
     color: Colors.text,
     fontSize: FontSizes.md,
+  },
+  countryDial: {
+    color: Colors.primary,
+    fontSize: FontSizes.md,
+    fontWeight: '600',
   },
   countryList: {
     backgroundColor: Colors.surface,
@@ -301,21 +432,69 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     marginBottom: Spacing.lg,
+    marginTop: -Spacing.sm,
     overflow: 'hidden',
   },
   countryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+    gap: Spacing.md,
   },
   countryItemActive: {
-    backgroundColor: Colors.primary + '20',
+    backgroundColor: Colors.primary + '15',
   },
-  countryItemText: {
+  countryItemFlag: {
+    fontSize: 20,
+  },
+  countryItemName: {
+    flex: 1,
     color: Colors.text,
     fontSize: FontSizes.md,
   },
+  countryItemDial: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.md,
+  },
+
+  // Phone input
+  phoneInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: Spacing.sm,
+    overflow: 'hidden',
+  },
+  inputError: {
+    borderColor: Colors.error,
+  },
+  phonePrefix: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.border + '40',
+  },
+  phonePrefixText: {
+    color: Colors.primary,
+    fontSize: FontSizes.md,
+    fontWeight: 'bold',
+  },
+  phoneDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: Colors.border,
+  },
+  phoneInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+
+  // Terms
   termsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -351,6 +530,46 @@ const styles = StyleSheet.create({
   registerButton: {
     width: '100%',
   },
+
+  // Divider
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.xxl,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.border,
+  },
+  dividerText: {
+    color: Colors.textSecondary,
+    paddingHorizontal: Spacing.md,
+    fontSize: FontSizes.sm,
+  },
+
+  // Social
+  socialButtons: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginBottom: Spacing.xxxl,
+  },
+  socialButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.sm,
+  },
+  socialButtonText: {
+    color: '#FFF',
+    fontSize: FontSizes.md,
+    fontWeight: '600',
+  },
+
+  // Footer
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
