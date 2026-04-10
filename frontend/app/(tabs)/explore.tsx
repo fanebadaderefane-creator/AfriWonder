@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Image, useWindowDimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, useWindowDimensions, Platform } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -108,7 +108,6 @@ const formatNum = (n: number) => n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' :
 
 export default function ExploreScreen() {
   const insets = useSafeAreaInsets();
-  const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const { width: screenWidth } = useWindowDimensions();
   const [exploreItems, setExploreItems] = useState(EXPLORE_ITEMS);
@@ -255,16 +254,15 @@ export default function ExploreScreen() {
       </View>
 
       {/* Search */}
-      <View style={styles.searchContainer}>
+      <TouchableOpacity style={styles.searchContainer} activeOpacity={0.8} onPress={() => router.push('/search')}>
         <View style={styles.searchBar}>
           <Ionicons name="search" size={18} color="#888" />
-          <TextInput style={styles.searchInput} placeholder="Rechercher personnes, videos, sons..." placeholderTextColor="#666" value={searchQuery} onChangeText={setSearchQuery} />
-          {searchQuery.length > 0 && <TouchableOpacity onPress={() => setSearchQuery('')}><Ionicons name="close-circle" size={18} color="#666" /></TouchableOpacity>}
+          <Text style={styles.searchPlaceholder}>Rechercher personnes, videos, sons...</Text>
         </View>
-        <TouchableOpacity style={styles.qrBtn}>
+        <View style={styles.qrBtn}>
           <Ionicons name="qr-code-outline" size={22} color="#FFF" />
-        </TouchableOpacity>
-      </View>
+        </View>
+      </TouchableOpacity>
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Stories */}
@@ -433,6 +431,7 @@ const styles = StyleSheet.create({
   searchContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
   searchBar: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#1A1A1A', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
   searchInput: { flex: 1, color: '#FFF', fontSize: 14 },
+  searchPlaceholder: { flex: 1, color: '#666', fontSize: 14 },
   qrBtn: { width: 42, height: 42, backgroundColor: '#1A1A1A', borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 
   // Stories

@@ -8,6 +8,8 @@ import { useAuthStore } from '../../src/store/authStore';
 import apiClient from '../../src/api/client';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import ShareSheet from '../../src/components/ShareSheet';
+import ReportModal from '../../src/components/ReportModal';
 
 const { width, height } = Dimensions.get('window');
 
@@ -138,10 +140,11 @@ interface VideoItemProps {
   onShare: () => void;
   onSave: () => void;
   onFollow: () => void;
+  onReport: () => void;
 }
 
 const VideoItem: React.FC<VideoItemProps> = ({
-  video, isActive, onLike, onDoubleTapLike, onComment, onShare, onSave, onFollow,
+  video, isActive, onLike, onDoubleTapLike, onComment, onShare, onSave, onFollow, onReport,
 }) => {
   const insets = useSafeAreaInsets();
   const [isMuted, setIsMuted] = useState(false);
@@ -305,6 +308,11 @@ const VideoItem: React.FC<VideoItemProps> = ({
           <Text style={styles.actionText}>{formatNumber(video.shares)}</Text>
         </TouchableOpacity>
 
+        {/* More / Report */}
+        <TouchableOpacity style={styles.actionButton} onPress={onReport}>
+          <Ionicons name="ellipsis-horizontal" size={24} color="#FFF" />
+        </TouchableOpacity>
+
         {/* Rotating disc */}
         <Animated.View style={[styles.musicDisc, { transform: [{ rotate: discRotation }] }]}>
           <Image source={{ uri: video.user.avatar }} style={styles.musicDiscImage} />
@@ -336,41 +344,6 @@ const VideoItem: React.FC<VideoItemProps> = ({
         </View>
       </View>
     </View>
-  );
-};
-
-// Share Modal
-const ShareModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ visible, onClose }) => {
-  const insets = useSafeAreaInsets();
-  const options = [
-    { icon: 'paper-plane', label: 'Message', color: Colors.primary },
-    { icon: 'logo-whatsapp', label: 'WhatsApp', color: '#25D366' },
-    { icon: 'logo-facebook', label: 'Facebook', color: '#1877F2' },
-    { icon: 'logo-instagram', label: 'Instagram', color: '#E4405F' },
-    { icon: 'copy', label: 'Copier lien', color: Colors.textSecondary },
-    { icon: 'download', label: 'Telecharger', color: Colors.info },
-    { icon: 'flag', label: 'Signaler', color: Colors.error },
-  ];
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
-        <View style={[styles.shareContainer, { paddingBottom: insets.bottom + Spacing.md }]}>
-          <View style={styles.shareHandle} />
-          <Text style={styles.shareTitle}>Partager</Text>
-          <View style={styles.shareGrid}>
-            {options.map((opt, i) => (
-              <TouchableOpacity key={i} style={styles.shareOption}>
-                <View style={[styles.shareIcon, { backgroundColor: opt.color }]}>
-                  <Ionicons name={opt.icon as any} size={24} color="#FFF" />
-                </View>
-                <Text style={styles.shareLabel}>{opt.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-      </TouchableOpacity>
-    </Modal>
   );
 };
 
@@ -529,6 +502,9 @@ export default function FeedScreen() {
   const [activeTab, setActiveTab] = useState<'following' | 'foryou'>('foryou');
   const [commentsVisible, setCommentsVisible] = useState(false);
   const [shareVisible, setShareVisible] = useState(false);
+  const [reportVisible, setReportVisible] = useState(false);
+  const [reportTarget, setReportTarget] = useState({ type: 'video', id: '' });
+  const [shareData, setShareData] = useState({ title: '', message: '', url: '' });
   const [selectedVideoId, setSelectedVideoId] = useState('');
   const [selectedVideoComments, setSelectedVideoComments] = useState(0);
   const [page, setPage] = useState(1);
@@ -663,8 +639,19 @@ export default function FeedScreen() {
   };
 
   const handleShare = async (videoId: string) => {
+    const video = videos.find(v => v.id === videoId);
+    setShareData({
+      title: video?.title || 'Vidéo AfriWonder',
+      message: video?.description || 'Regarde cette vidéo sur AfriWonder !',
+      url: `https://afriwonder.onrender.com/video/${videoId}`,
+    });
     setShareVisible(true);
     try { await apiClient.post(`/videos/${videoId}/share`); } catch {}
+  };
+
+  const handleReport = (videoId: string) => {
+    setReportTarget({ type: 'video', id: videoId });
+    setReportVisible(true);
   };
 
   const openComments = (videoId: string, count: number) => {
@@ -677,7 +664,7 @@ export default function FeedScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity onPress={() => router.push('/discover')} style={styles.headerSearchBtn}>
+        <TouchableOpacity onPress={() => router.push('/search')} style={styles.headerSearchBtn}>
           <Ionicons name="search" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={styles.headerTabs}>
@@ -689,10 +676,16 @@ export default function FeedScreen() {
             <Text style={[styles.headerTabText, activeTab === 'foryou' && styles.headerTabTextActive]}>Pour toi</Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.headerLiveBtn} onPress={() => router.push('/live')}>
-          <View style={styles.liveDot} />
-          <Text style={styles.liveText}>LIVE</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => router.push('/notifications')}>
+            <Ionicons name="notifications-outline" size={22} color="#FFF" />
+            <View style={styles.headerNotifDot} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => router.push('/live')}>
+            <View style={styles.liveDot} />
+            <Text style={styles.liveText}>LIVE</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
@@ -707,6 +700,7 @@ export default function FeedScreen() {
             onShare={() => handleShare(item.id)}
             onSave={() => handleSave(item.id)}
             onFollow={() => handleFollow(item.user.id)}
+            onReport={() => handleReport(item.id)}
           />
         )}
         keyExtractor={(item) => item.id}
@@ -735,7 +729,8 @@ export default function FeedScreen() {
       {loading && <View style={styles.loadingOverlay}><ActivityIndicator size="large" color={Colors.primary} /></View>}
 
       <CommentsModal visible={commentsVisible} onClose={() => setCommentsVisible(false)} videoId={selectedVideoId} commentsCount={selectedVideoComments} />
-      <ShareModal visible={shareVisible} onClose={() => setShareVisible(false)} />
+      <ShareSheet visible={shareVisible} onClose={() => setShareVisible(false)} title={shareData.title} message={shareData.message} url={shareData.url} />
+      <ReportModal visible={reportVisible} onClose={() => setReportVisible(false)} targetType={reportTarget.type} targetId={reportTarget.id} />
     </View>
   );
 }
@@ -750,8 +745,10 @@ const styles = StyleSheet.create({
   headerTabActive: { },
   headerTabText: { color: 'rgba(255,255,255,0.6)', fontSize: FontSizes.lg, fontWeight: '600' },
   headerTabTextActive: { color: '#FFF', fontWeight: 'bold' },
-  headerLiveBtn: { position: 'absolute', right: Spacing.lg, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,0,0,0.25)', paddingHorizontal: Spacing.md, paddingVertical: 5, borderRadius: BorderRadius.pill },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.live || '#FF0000', marginRight: 4 },
+  headerRight: { position: 'absolute', right: Spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerIconBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 5 },
+  headerNotifDot: { position: 'absolute', top: 2, right: 2, width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#FF3D00', borderWidth: 1, borderColor: '#000' },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF0000', marginRight: 4 },
   liveText: { color: '#FF4444', fontSize: FontSizes.xs, fontWeight: 'bold' },
   videoContainer: { width, position: 'relative', backgroundColor: '#000' },
   videoWrapper: { flex: 1 },
@@ -784,13 +781,7 @@ const styles = StyleSheet.create({
   loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
   // Modals
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  shareContainer: { backgroundColor: Colors.surface || '#1a1a2e', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: Spacing.md },
   shareHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.border, alignSelf: 'center', marginBottom: Spacing.md },
-  shareTitle: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: 'bold', textAlign: 'center', marginBottom: Spacing.lg },
-  shareGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: Spacing.xl, justifyContent: 'flex-start' },
-  shareOption: { alignItems: 'center', width: (width - Spacing.xl * 2) / 4, marginBottom: Spacing.lg },
-  shareIcon: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  shareLabel: { color: Colors.textSecondary, fontSize: FontSizes.xs },
   commentsContainer: { backgroundColor: Colors.surface || '#1a1a2e', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: height * 0.7, minHeight: height * 0.5 },
   commentsHeader: { alignItems: 'center', padding: Spacing.lg, borderBottomWidth: 1, borderBottomColor: Colors.border },
   commentsTitle: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: '600', marginTop: Spacing.sm },

@@ -1438,8 +1438,8 @@ async def get_notifications(user_id: str = Depends(verify_token), page: int = 1,
 @app.post("/api/mobile/notifications/read")
 async def mark_notifications_read(user_id: str = Depends(verify_token)):
     """Marquer toutes les notifications comme lues"""
-    await db.mobile_notifications.update_many({"user_id": user_id, "is_read": False}, {"$set": {"is_read": True}})
-    return {"success": True}
+    result = await db.mobile_notifications.update_many({"user_id": user_id, "is_read": False}, {"$set": {"is_read": True}})
+    return {"success": True, "data": {"message": "Toutes les notifications ont été marquées comme lues", "updated_count": result.modified_count}}
 
 async def create_notification(user_id: str, notif_type: str, title: str, body: str, data: dict = None):
     """Helper: créer une notification"""
@@ -1599,6 +1599,31 @@ async def get_blocked_users(user_id: str = Depends(verify_token)):
     """Liste des utilisateurs bloqués"""
     blocks = await db.mobile_blocks.find({"blocker_id": user_id}).to_list(100)
     return {"success": True, "data": [b["blocked_id"] for b in blocks]}
+
+# ==================== USER INTERESTS ====================
+class InterestsRequest(BaseModel):
+    interests: List[str]
+
+@app.post("/api/mobile/interests")
+async def save_user_interests(data: InterestsRequest, user_id: str = Depends(verify_token)):
+    """Sauvegarder les centres d'intérêt de l'utilisateur"""
+    await db.mobile_user_interests.update_one(
+        {"user_id": user_id},
+        {"$set": {"interests": data.interests, "updated_at": datetime.utcnow().isoformat()}},
+        upsert=True
+    )
+    return {"success": True, "data": {"message": "Centres d'intérêt sauvegardés", "interests": data.interests}}
+
+@app.get("/api/mobile/interests")
+async def get_user_interests(user_id: str = Depends(verify_token)):
+    """Récupérer les centres d'intérêt de l'utilisateur"""
+    user_interests = await db.mobile_user_interests.find_one({"user_id": user_id})
+    if user_interests:
+        interests = user_interests.get("interests", [])
+    else:
+        # Default interests if none saved
+        interests = []
+    return {"success": True, "data": {"interests": interests}}
 
 if __name__ == "__main__":
     import uvicorn

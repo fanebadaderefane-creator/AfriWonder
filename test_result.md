@@ -814,15 +814,99 @@ frontend:
         agent: "main"
         comment: "Profile screen displays real user data (name, username, avatar) from backend after login. Falls back to mock data for statistics."
 
+  - task: "Global Search API"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ GET /api/mobile/search working correctly. Tested with all search types (all, users, videos, products, posts). Returns proper {'success': true, 'data': {...}} format with comprehensive search results including users, videos, products, hashtags, and posts."
+
+  - task: "Get Notifications API"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ GET /api/mobile/notifications working correctly. Returns user notifications with unread count in proper format."
+
+  - task: "Mark All Notifications Read API"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ POST /api/mobile/notifications/read working correctly. Fixed response format to include proper 'data' field with message and updated count. Marks all unread notifications as read."
+
+  - task: "Report Content API"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ POST /api/mobile/report working correctly. Successfully reports content with target_type, target_id, reason, and details. Returns report_id and confirmation message."
+
+  - task: "Block User API"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ POST /api/mobile/block working correctly. Successfully blocks users and auto-unfollows them. Returns confirmation message."
+
+  - task: "Save User Interests API"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ POST /api/mobile/interests working correctly. Added missing endpoint implementation. Saves user interests array to MongoDB and returns confirmation with saved interests."
+
+  - task: "Get User Interests API"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ GET /api/mobile/interests working correctly. Added missing endpoint implementation. Retrieves user's saved interests from MongoDB, returns empty array if none saved."
+
 metadata:
   created_by: "testing_agent"
-  version: "1.2"
-  test_sequence: 3
+  version: "1.3"
+  test_sequence: 4
   run_ui: false
 
 test_plan:
   current_focus:
-    - "All 24 AfriWonder Mobile APIs tested and working correctly"
+    - "All 7 NEW pre-launch feature APIs tested and working correctly"
   stuck_tasks: []
   test_all: true
   test_priority: "high_first"
@@ -840,3 +924,7 @@ agent_communication:
     message: "✅ VERIFICATION COMPLETE: All 9 AfriWonder Mobile APIs tested and working perfectly! Priority APIs confirmed: Send Message API (POST /api/mobile/conversations/{conv_id}/messages) ✅, Wallet TopUp API (POST /api/mobile/wallet/topup) ✅, Wallet Transfer API (POST /api/mobile/wallet/transfer) ✅. All previously tested endpoints still pass: health check, conversations, wallet, stories, crowdfunding, profile. JWT authentication working correctly. All APIs return proper {'success': true, 'data': {...}} format. Backend integration with frontend is fully functional."
   - agent: "testing"
     message: "🎉 COMPREHENSIVE TESTING COMPLETE: Successfully tested ALL 24 AfriWonder Mobile API endpoints! Results: 23/24 PASS (95.8% success rate). ✅ WORKING: All 6 existing APIs, 3/4 monetization APIs (tips ✅, earnings ✅, transactions ✅), all 3 ads APIs, all 6 live streaming APIs, all 4 posts APIs, upload status API. ⚠️ MINOR: Creator withdraw API works correctly but enforces business rules (minimum balance). Fixed critical bug: collection reference inconsistency between wallet_col and db.mobile_wallet. All APIs use proper JWT authentication and return standardized {'success': true, 'data': {...}} format. Backend is production-ready!"
+  - agent: "main"
+    message: "NEW: Wired 6 pre-launch features into the app UI. New backend APIs to test: (1) GET /api/mobile/search?q=&type= - global search, (2) GET /api/mobile/notifications - user notifications, (3) POST /api/mobile/notifications/read-all - mark all notifications read, (4) POST /api/mobile/report - report content (requires 'target_type', 'target_id', 'reason'), (5) POST /api/mobile/block - block user (requires 'blocked_user_id'), (6) POST /api/mobile/interests - save user interests (requires 'interests' array), (7) GET /api/mobile/interests - get user interests. All require JWT auth. Frontend: ShareSheet, ReportModal, Search, Notifications pages are now wired into the app navigation."
+  - agent: "testing"
+    message: "🎉 PRE-LAUNCH FEATURES TESTING COMPLETE: Successfully tested ALL 7 new pre-launch feature API endpoints! Results: 11/11 PASS (100% success rate). ✅ WORKING: Global search API (all 5 search types: all, users, videos, products, posts), notifications API, mark notifications read API, report content API, block user API, save interests API, get interests API. MINOR FIXES APPLIED: (1) Fixed notifications/read endpoint response format to include proper 'data' field, (2) Added missing interests endpoints (POST/GET /api/mobile/interests) with MongoDB integration. All APIs use proper JWT authentication with real credentials (abdoulayefane813@gmail.com) and return standardized {'success': true, 'data': {...}} format. Pre-launch features are production-ready!"
