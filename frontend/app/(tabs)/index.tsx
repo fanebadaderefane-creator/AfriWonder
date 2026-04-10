@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions, FlatList, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Image, TextInput, Modal, KeyboardAvoidingView, Platform, ScrollView, Animated } from 'react-native';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { View, Text, StyleSheet, Dimensions, FlatList, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Image, TextInput, Modal, KeyboardAvoidingView, Platform, ScrollView, Animated, ViewToken } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -145,34 +145,55 @@ const VideoItem: React.FC<VideoItemProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const [isMuted, setIsMuted] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [isPaused, setIsPaused] = useState(false);
   const [showHeart, setShowHeart] = useState(false);
   const heartAnim = useRef(new Animated.Value(0)).current;
   const discAnim = useRef(new Animated.Value(0)).current;
   const lastTap = useRef(0);
+  const isActiveRef = useRef(isActive);
+
+  // Keep ref in sync
+  useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
 
   const player = useVideoPlayer(video.videoUrl, (p) => {
     p.loop = true;
-    p.muted = isMuted;
-    if (isActive) p.play(); else p.pause();
+    p.muted = false;
+    // Don't auto-play in init — let the useEffect handle it
+    p.pause();
   });
 
+  // CRITICAL: Play/Pause based on visibility
   useEffect(() => {
-    if (player) { isActive ? player.play() : player.pause(); }
-  }, [isActive, player]);
+    if (!player) return;
+    if (isActive && !isPaused) {
+      player.play();
+    } else {
+      player.pause();
+    }
+  }, [isActive, isPaused, player]);
 
+  // Mute control
   useEffect(() => { if (player) player.muted = isMuted; }, [isMuted, player]);
+
+  // CRITICAL: Cleanup on unmount — pause video to stop background audio
+  useEffect(() => {
+    return () => {
+      try { player?.pause(); } catch {}
+    };
+  }, [player]);
 
   // Rotating disc animation
   useEffect(() => {
-    if (isActive) {
+    if (isActive && !isPaused) {
       const rotate = Animated.loop(
         Animated.timing(discAnim, { toValue: 1, duration: 4000, useNativeDriver: true })
       );
       rotate.start();
       return () => rotate.stop();
+    } else {
+      discAnim.setValue(0);
     }
-  }, [isActive]);
+  }, [isActive, isPaused]);
 
   const discRotation = discAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
@@ -193,10 +214,9 @@ const VideoItem: React.FC<VideoItemProps> = ({
         Animated.timing(heartAnim, { toValue: 0, duration: 400, delay: 200, useNativeDriver: true }),
       ]).start(() => setShowHeart(false));
     } else {
-      // Single tap - toggle play
-      if (player) {
-        if (isPlaying) player.pause(); else player.play();
-        setIsPlaying(!isPlaying);
+      // Single tap - toggle pause (only for active video)
+      if (isActive) {
+        setIsPaused(prev => !prev);
       }
     }
     lastTap.current = now;
@@ -211,7 +231,7 @@ const VideoItem: React.FC<VideoItemProps> = ({
           <VideoView style={styles.video} player={player} contentFit="cover" nativeControls={false} />
 
           {/* Pause icon */}
-          {!isPlaying && (
+          {isPaused && isActive && (
             <View style={styles.pauseOverlay}>
               <View style={styles.pauseCircle}>
                 <Ionicons name="play" size={40} color="#FFF" />
@@ -508,6 +528,24 @@ export default function FeedScreen() {
 
   useEffect(() => { loadFeed(1, true); }, []);
 
+  // Stable refs for FlatList viewability (MUST be refs to avoid FlatList re-mount)
+  const viewabilityConfigRef = useRef({
+    itemVisiblePercentThreshold: 50,
+    minimumViewTime: 100,
+  });
+
+  const onViewableItemsChangedRef = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    if (viewableItems.length > 0) {
+      const newIndex = viewableItems[0].index ?? 0;
+      setCurrentIndex(newIndex);
+      // Track view on backend
+      const video = videosRef.current[newIndex];
+      if (video) {
+        apiClient.post(`/videos/${video.id}/view`).catch(() => {});
+      }
+    }
+  });
+
   const transformVideo = (v: any): Video => {
     const nameParts = (v.creator_name || '').split(' ');
     return {
@@ -574,18 +612,6 @@ export default function FeedScreen() {
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadFeed(1, true).finally(() => setRefreshing(false));
-  }, []);
-
-  const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
-    if (viewableItems.length > 0) {
-      const newIndex = viewableItems[0].index;
-      setCurrentIndex(newIndex);
-      // Track view on backend
-      const video = videosRef.current[newIndex];
-      if (video) {
-        apiClient.post(`/videos/${video.id}/view`).catch(() => {});
-      }
-    }
   }, []);
 
   const handleLike = async (videoId: string) => {
@@ -674,11 +700,12 @@ export default function FeedScreen() {
         showsVerticalScrollIndicator={false}
         snapToInterval={height - 60 - insets.bottom}
         decelerationRate="fast"
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={{ itemVisiblePercentThreshold: 80 }}
+        onViewableItemsChanged={onViewableItemsChangedRef.current}
+        viewabilityConfig={viewabilityConfigRef.current}
         initialNumToRender={2}
-        maxToRenderPerBatch={3}
-        windowSize={5}
+        maxToRenderPerBatch={2}
+        windowSize={3}
+        removeClippedSubviews={Platform.OS !== 'web'}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
         refreshing={refreshing}
