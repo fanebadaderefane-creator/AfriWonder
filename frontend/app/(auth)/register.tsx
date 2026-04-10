@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Alert, TextInput, FlatList, Modal } from 'react-native';
 import { router } from 'expo-router';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Input } from '../../src/components/common/Input';
@@ -8,15 +8,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import { authApi } from '../../src/api/auth';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-const COUNTRIES = [
-  { code: 'ML', name: 'Mali', flag: '🇲🇱', dial: '+223' },
-  { code: 'SN', name: 'Senegal', flag: '🇸🇳', dial: '+221' },
-  { code: 'CI', name: "Cote d'Ivoire", flag: '🇨🇮', dial: '+225' },
-  { code: 'BF', name: 'Burkina Faso', flag: '🇧🇫', dial: '+226' },
-  { code: 'GN', name: 'Guinee', flag: '🇬🇳', dial: '+224' },
-  { code: 'NE', name: 'Niger', flag: '🇳🇪', dial: '+227' },
-];
+import { COUNTRIES } from '../../src/data/countries';
 
 type RegisterMethod = 'phone' | 'email';
 
@@ -36,7 +28,16 @@ export default function RegisterScreen() {
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[0]);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [countrySearch, setCountrySearch] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const filteredCountries = useMemo(() => {
+    if (!countrySearch.trim()) return COUNTRIES;
+    const q = countrySearch.toLowerCase();
+    return COUNTRIES.filter(
+      (c) => c.name.toLowerCase().includes(q) || c.dial.includes(q) || c.code.toLowerCase().includes(q)
+    );
+  }, [countrySearch]);
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
@@ -175,29 +176,66 @@ export default function RegisterScreen() {
               <Text style={styles.label}>Pays</Text>
               <TouchableOpacity
                 style={styles.countrySelector}
-                onPress={() => setShowCountryPicker(!showCountryPicker)}
+                onPress={() => { setShowCountryPicker(true); setCountrySearch(''); }}
               >
                 <Text style={styles.countryFlag}>{selectedCountry.flag}</Text>
                 <Text style={styles.countryName}>{selectedCountry.name}</Text>
                 <Text style={styles.countryDial}>{selectedCountry.dial}</Text>
-                <Ionicons name={showCountryPicker ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.textSecondary} />
+                <Ionicons name="chevron-down" size={18} color={Colors.textSecondary} />
               </TouchableOpacity>
 
-              {showCountryPicker && (
-                <View style={styles.countryList}>
-                  {COUNTRIES.map((country) => (
-                    <TouchableOpacity
-                      key={country.code}
-                      style={[styles.countryItem, country.code === selectedCountry.code && styles.countryItemActive]}
-                      onPress={() => { setSelectedCountry(country); setShowCountryPicker(false); }}
-                    >
-                      <Text style={styles.countryItemFlag}>{country.flag}</Text>
-                      <Text style={styles.countryItemName}>{country.name}</Text>
-                      <Text style={styles.countryItemDial}>{country.dial}</Text>
-                    </TouchableOpacity>
-                  ))}
+              {/* Country Picker Modal */}
+              <Modal visible={showCountryPicker} animationType="slide" transparent>
+                <View style={styles.modalOverlay}>
+                  <View style={styles.modalContainer}>
+                    <View style={styles.modalHeader}>
+                      <Text style={styles.modalTitle}>Choisir un pays</Text>
+                      <TouchableOpacity onPress={() => setShowCountryPicker(false)} style={styles.modalClose}>
+                        <Ionicons name="close" size={26} color={Colors.text} />
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.searchContainer}>
+                      <Ionicons name="search" size={20} color={Colors.textSecondary} />
+                      <TextInput
+                        style={styles.searchInput}
+                        placeholder="Rechercher un pays..."
+                        placeholderTextColor={Colors.textSecondary}
+                        value={countrySearch}
+                        onChangeText={setCountrySearch}
+                      />
+                      {countrySearch.length > 0 && (
+                        <TouchableOpacity onPress={() => setCountrySearch('')}>
+                          <Ionicons name="close-circle" size={20} color={Colors.textSecondary} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <FlatList
+                      data={filteredCountries}
+                      keyExtractor={(item) => item.code}
+                      keyboardShouldPersistTaps="handled"
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={[styles.countryItem, item.code === selectedCountry.code && styles.countryItemActive]}
+                          onPress={() => { setSelectedCountry(item); setShowCountryPicker(false); }}
+                        >
+                          <Text style={styles.countryItemFlag}>{item.flag}</Text>
+                          <Text style={styles.countryItemName}>{item.name}</Text>
+                          <Text style={styles.countryItemDial}>{item.dial}</Text>
+                          {item.code === selectedCountry.code && (
+                            <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />
+                          )}
+                        </TouchableOpacity>
+                      )}
+                      ListEmptyComponent={
+                        <View style={styles.emptyList}>
+                          <Ionicons name="globe-outline" size={40} color={Colors.textSecondary} />
+                          <Text style={styles.emptyListText}>Aucun pays trouve</Text>
+                        </View>
+                      }
+                    />
+                  </View>
                 </View>
-              )}
+              </Modal>
 
               {/* Phone Input */}
               <Text style={styles.label}>Numero de telephone</Text>
@@ -426,20 +464,58 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.md,
     fontWeight: '600',
   },
-  countryList: {
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    backgroundColor: Colors.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '80%',
+    paddingBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  modalClose: {
+    padding: 4,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: Spacing.lg,
-    marginTop: -Spacing.sm,
-    overflow: 'hidden',
+    marginHorizontal: Spacing.xl,
+    marginVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    color: Colors.text,
+    fontSize: FontSizes.md,
+    paddingVertical: Spacing.md,
   },
   countryItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.xl,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
     gap: Spacing.md,
@@ -448,7 +524,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary + '15',
   },
   countryItemFlag: {
-    fontSize: 20,
+    fontSize: 24,
   },
   countryItemName: {
     flex: 1,
@@ -458,6 +534,17 @@ const styles = StyleSheet.create({
   countryItemDial: {
     color: Colors.textSecondary,
     fontSize: FontSizes.md,
+    marginRight: Spacing.sm,
+  },
+  emptyList: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyListText: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.md,
+    marginTop: Spacing.md,
   },
 
   // Phone input
