@@ -48,6 +48,28 @@ export default function RootLayout() {
             <Stack.Screen name="wallet" />
             <Stack.Screen name="messages" />
             <Stack.Screen name="notifications" />
+            <Stack.Screen name="checkout" />
+            <Stack.Screen name="orders" />
+            <Stack.Screen name="wishlist" />
+            <Stack.Screen name="settings" />
+            <Stack.Screen name="communities" />
+            <Stack.Screen name="courses" />
+            <Stack.Screen name="news" />
+            <Stack.Screen name="search" />
+            <Stack.Screen name="discover" />
+            <Stack.Screen name="about" />
+            <Stack.Screen name="faq" />
+            <Stack.Screen name="support-page" />
+            <Stack.Screen name="terms" />
+            <Stack.Screen name="privacy-policy" />
+            <Stack.Screen name="referrals" />
+            <Stack.Screen name="stories" />
+            <Stack.Screen name="crowdfunding" />
+            <Stack.Screen name="seller" />
+            <Stack.Screen name="civic" />
+            <Stack.Screen name="challenges" />
+            <Stack.Screen name="miniapps" />
+            <Stack.Screen name="assistant" />
           </Stack>
         </View>
       </QueryClientProvider>

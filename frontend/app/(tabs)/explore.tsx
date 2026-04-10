@@ -15,9 +15,9 @@ const SERVICES = [
   { id: 'transport', name: 'Transport', icon: 'car', color: '#4ECDC4', route: '/services/transport' },
   { id: 'health', name: 'Sante', icon: 'medkit', color: '#45B7D1', route: '/services/health' },
   { id: 'wallet', name: 'Finance', icon: 'wallet', color: '#FF6B00', route: '/wallet' },
-  { id: 'realestate', name: 'Immobilier', icon: 'home', color: '#96CEB4', route: '/services/realestate' },
-  { id: 'events', name: 'Evenements', icon: 'calendar', color: '#DDA0DD', route: '/services/events' },
-  { id: 'jobs', name: 'Emploi', icon: 'briefcase', color: '#F7DC6F', route: '/services/jobs' },
+  { id: 'education', name: 'Formations', icon: 'school', color: '#82E0AA', route: '/courses' },
+  { id: 'news', name: 'Actualites', icon: 'newspaper', color: '#E67E22', route: '/news' },
+  { id: 'voyage', name: 'Voyage', icon: 'airplane', color: '#3498DB', route: '/services/voyage' },
   { id: 'more', name: 'Plus', icon: 'grid', color: '#A0A0A0', route: '/services' },
 ];
 

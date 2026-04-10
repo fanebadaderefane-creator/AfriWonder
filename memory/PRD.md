@@ -1,51 +1,90 @@
-# AfriWonder - Product Requirements Document
+# AfriWonder - Super-App Africaine (Expo Mobile)
 
-## Overview
-AfriWonder is a comprehensive super-app for the African market (Mali, Senegal, Ivory Coast) built with Expo React Native.
+## Vue d'ensemble
+Super-application mobile pour l'Afrique de l'Ouest (Mali, Senegal, Cote d'Ivoire) replicant la PWA AfriWonder.
 
-## Architecture
-- **Frontend**: Expo (React Native), Expo Router, Zustand, Axios
-- **Backend**: External production backend at `https://afri-wonder.vercel.app/api`
-- **Database**: External (managed by production backend)
+## Statut: FRONTEND MOCKEE (Backend sera connecte par l'utilisateur)
 
-## Screens Built (46 files)
+## Ecrans implementes (74 fichiers)
 
-### Core Navigation
-- Splash screen with animation
-- Onboarding (3 slides)
-- Auth (Login, Register with country picker)
-- Bottom Tabs (Feed, Explore, Create, Market, Profile)
+### Navigation principale (Tabs)
+- [x] Accueil - Feed video TikTok-style
+- [x] Explorer - Hub services + recherche
+- [x] Creer - Creation de contenu
+- [x] Market - Marketplace e-commerce
+- [x] Profil - Profil utilisateur avec navigation complete
 
-### Services Ecosystem
-- Services Hub (`/services`) - Grid of all services
-- Food Delivery (`/services/food`) - Restaurants, categories, search
-- Transport (`/services/transport`) - Vehicle types, booking
-- Health/Telemedicine (`/services/health`) - Doctors, teleconsultation
-- Real Estate (`/services/realestate`) - Properties, filters
-- Events (`/services/events`) - Festivals, concerts, tech meetups
-- Jobs (`/services/jobs`) - Job listings with filters
+### Auth
+- [x] Onboarding
+- [x] Login
+- [x] Register
 
-### Commerce
-- Marketplace (tab) - Product grid
-- Product Detail (`/product/[id]`) - Full product page with sizes, colors, seller
-- Cart/Checkout (`/cart`) - Cart with Orange Money, Wave, MTN MoMo payments
+### E-commerce
+- [x] Produit detail (/product/[id])
+- [x] Panier (/cart)
+- [x] Checkout/Paiement (/checkout) - Orange Money, Wave, Moov Money
+- [x] Commandes (/orders) - Historique + filtres
+- [x] Detail commande (/orders/[id]) - Suivi livraison timeline
+- [x] Favoris/Wishlist (/wishlist)
 
 ### Finance
-- Wallet (`/wallet`) - Balance, transactions, microcredit, send/receive
+- [x] Portefeuille (/wallet)
+- [x] Microcredit (/wallet/microcredit) - Score credit, tiers de pret
+- [x] Recharge wallet (/wallet/recharge) - Orange Money, Wave, carte
 
-### Social & Communication
-- Video Feed (TikTok-style swipe)
-- Live Streams listing (`/live`)
-- Live Stream Viewer (`/live/[id]`) - Real-time chat, gifts
-- Start Live (`/live/start`) - Camera preview, categories
-- Messages List (`/messages`) - Online users, conversations
-- Chat (`/messages/[id]`) - Real-time messaging
-- Notifications (`/notifications`) - All notification types
+### Services
+- [x] Hub services (/services) - 18 services
+- [x] Livraison repas (/services/food)
+- [x] Transport (/services/transport)
+- [x] Sante/Telemedecine (/services/health)
+- [x] Immobilier (/services/realestate)
+- [x] Evenements (/services/events)
+- [x] Emploi (/services/jobs)
+- [x] Covoiturage (/services/covoiturage)
+- [x] Location vehicules (/services/vehicle-rental)
+- [x] Garde enfants (/services/childcare)
+- [x] Voyage (/services/voyage)
 
-### Content Creation
-- Create Tab - Record video, pick from gallery, start live
+### Social
+- [x] Messages (/messages) + Chat (/messages/[id])
+- [x] Notifications (/notifications)
+- [x] Communautes (/communities) + Detail (/communities/[id])
+- [x] Stories (/stories) - Vue + lecteur plein ecran
+- [x] Decouvrir (/discover) - Sujets, createurs, stories
+- [x] Recherche (/search) - Comptes, videos, categories
 
-## Status
-- **Frontend**: COMPLETE with mock data (user handles backend connection)
-- **Backend connection**: User responsibility
-- **Mock data**: YES - all screens use local mock data
+### Education
+- [x] Formations (/courses) - Cours avec categories
+- [x] Detail cours (/courses/[id]) - Modules, progression
+
+### Contenu
+- [x] Actualites (/news) - Articles par categorie
+- [x] Detail article (/news/[id])
+- [x] Live (/live) + Stream (/live/[id]) + Demarrer live (/live/start)
+
+### Engagement
+- [x] Crowdfunding (/crowdfunding) - Campagnes, progression
+- [x] Civique (/civic) - Petitions, projets communautaires
+- [x] Defis (/challenges) - Quotidiens, hebdomadaires, points
+- [x] Parrainage (/referrals) - Code, niveaux, recompenses
+
+### Vendeur
+- [x] Dashboard vendeur (/seller)
+
+### Outils
+- [x] Mini-Apps Store (/miniapps)
+- [x] Assistant IA (/assistant) - Chat simule
+
+### Informations
+- [x] Parametres (/settings) - Complet avec toggles
+- [x] A propos (/about)
+- [x] FAQ (/faq) - Accordeon
+- [x] Support (/support-page) - Chat, email, tel
+- [x] Conditions d'utilisation (/terms)
+- [x] Politique de confidentialite (/privacy-policy)
+
+## Architecture technique
+- Framework: Expo + React Native + Expo Router
+- Theme: Dark mode avec couleurs AfriWonder (orange #FF6B00)
+- Donnees: 100% mockees en frontend
+- Backend: Non connecte (utilisateur s'en charge)

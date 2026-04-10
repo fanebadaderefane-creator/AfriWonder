@@ -64,7 +64,9 @@ export default function WalletScreen() {
         {/* Quick Actions */}
         <View style={styles.quickActions}>
           {QUICK_ACTIONS.map((action) => (
-            <TouchableOpacity key={action.id} style={styles.quickAction}>
+            <TouchableOpacity key={action.id} style={styles.quickAction} onPress={() => {
+              if (action.id === 'topup') router.push('/wallet/recharge');
+            }}>
               <View style={[styles.quickActionIcon, { backgroundColor: action.color }]}>
                 <Ionicons name={action.icon as any} size={22} color="#FFFFFF" />
               </View>
@@ -74,7 +76,7 @@ export default function WalletScreen() {
         </View>
 
         {/* Microcredit Section */}
-        <TouchableOpacity style={styles.microcreditBanner}>
+        <TouchableOpacity style={styles.microcreditBanner} onPress={() => router.push('/wallet/microcredit')}>
           <View style={styles.microcreditContent}>
             <Text style={styles.microcreditTitle}>Microcredit</Text>
             <Text style={styles.microcreditSubtitle}>Empruntez jusqu'a 100 000 FCFA</Text>

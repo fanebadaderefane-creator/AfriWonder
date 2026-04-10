@@ -11,9 +11,12 @@ const MENU_ITEMS = [
   { id: 'edit', icon: 'person', label: 'Modifier le profil', screen: 'editProfile' },
   { id: 'wallet', icon: 'wallet', label: 'Portefeuille', screen: 'wallet' },
   { id: 'orders', icon: 'receipt', label: 'Mes commandes', screen: 'orders' },
+  { id: 'wishlist', icon: 'heart', label: 'Favoris', screen: 'wishlist' },
   { id: 'messages', icon: 'chatbubbles', label: 'Messages', screen: 'messages' },
   { id: 'notifications', icon: 'notifications', label: 'Notifications', screen: 'notifications' },
-  { id: 'saved', icon: 'bookmark', label: 'Videos sauvegardees', screen: 'saved' },
+  { id: 'seller', icon: 'storefront', label: 'Espace vendeur', screen: 'seller' },
+  { id: 'referrals', icon: 'gift', label: 'Parrainage', screen: 'referrals' },
+  { id: 'challenges', icon: 'trophy', label: 'Defis & Recompenses', screen: 'challenges' },
   { id: 'settings', icon: 'settings', label: 'Parametres', screen: 'settings' },
   { id: 'help', icon: 'help-circle', label: 'Aide & Support', screen: 'help' },
 ];
@@ -46,13 +49,31 @@ export default function ProfileScreen() {
         router.push('/wallet');
         break;
       case 'orders':
-        router.push('/cart');
+        router.push('/orders');
+        break;
+      case 'wishlist':
+        router.push('/wishlist');
         break;
       case 'messages':
         router.push('/messages');
         break;
       case 'notifications':
         router.push('/notifications');
+        break;
+      case 'settings':
+        router.push('/settings');
+        break;
+      case 'seller':
+        router.push('/seller');
+        break;
+      case 'referrals':
+        router.push('/referrals');
+        break;
+      case 'challenges':
+        router.push('/challenges');
+        break;
+      case 'help':
+        router.push('/support-page');
         break;
       default:
         Alert.alert('Info', `${screen} sera disponible prochainement`);

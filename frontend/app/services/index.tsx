@@ -16,8 +16,17 @@ const SERVICES = [
   { id: 'events', name: 'Evenements', icon: 'calendar', color: '#DDA0DD', route: '/services/events' },
   { id: 'jobs', name: 'Emploi', icon: 'briefcase', color: '#F7DC6F', route: '/services/jobs' },
   { id: 'wallet', name: 'Finance', icon: 'wallet', color: '#FF6B00', route: '/wallet' },
-  { id: 'education', name: 'Education', icon: 'school', color: '#82E0AA', route: '/services/index' },
+  { id: 'education', name: 'Formations', icon: 'school', color: '#82E0AA', route: '/courses' },
   { id: 'market', name: 'Market', icon: 'cart', color: '#E74C3C', route: '/(tabs)/market' },
+  { id: 'covoiturage', name: 'Covoiturage', icon: 'people', color: '#9B59B6', route: '/services/covoiturage' },
+  { id: 'rental', name: 'Location', icon: 'key', color: '#1ABC9C', route: '/services/vehicle-rental' },
+  { id: 'childcare', name: 'Garde enfant', icon: 'happy', color: '#E91E63', route: '/services/childcare' },
+  { id: 'voyage', name: 'Voyage', icon: 'airplane', color: '#3498DB', route: '/services/voyage' },
+  { id: 'news', name: 'Actualites', icon: 'newspaper', color: '#E67E22', route: '/news' },
+  { id: 'communities', name: 'Communautes', icon: 'chatbubbles', color: '#2ECC71', route: '/communities' },
+  { id: 'crowdfunding', name: 'Crowdfunding', icon: 'heart', color: '#E74C3C', route: '/crowdfunding' },
+  { id: 'civic', name: 'Civique', icon: 'flag', color: '#34495E', route: '/civic' },
+  { id: 'miniapps', name: 'Mini-Apps', icon: 'grid', color: '#8E44AD', route: '/miniapps' },
 ];
 
 const PROMOS = [
