@@ -489,59 +489,92 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
 };
 
 export default function FeedScreen() {
-  const [videos, setVideos] = useState<Video[]>(MOCK_VIDEOS);
+  const [videos, setVideos] = useState<Video[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'following' | 'foryou'>('foryou');
   const [commentsVisible, setCommentsVisible] = useState(false);
   const [shareVisible, setShareVisible] = useState(false);
   const [selectedVideoId, setSelectedVideoId] = useState('');
   const [selectedVideoComments, setSelectedVideoComments] = useState(0);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const insets = useSafeAreaInsets();
 
-  const videosRef = useRef<Video[]>(MOCK_VIDEOS);
+  const videosRef = useRef<Video[]>([]);
   useEffect(() => { videosRef.current = videos; }, [videos]);
 
-  useEffect(() => { loadFeed(); }, []);
+  useEffect(() => { loadFeed(1, true); }, []);
 
-  const loadFeed = async () => {
-    setLoading(true);
+  const transformVideo = (v: any): Video => {
+    const nameParts = (v.creator_name || '').split(' ');
+    return {
+      id: v.id,
+      title: v.title || '',
+      description: v.description || '',
+      videoUrl: v.video_url || '',
+      thumbnailUrl: v.thumbnail_url || v.video_url || '',
+      duration: v.duration || 0,
+      views: v.views || 0,
+      likes: v.likes || 0,
+      comments: v.comments_count || 0,
+      shares: v.shares || 0,
+      isLiked: false,
+      isSaved: false,
+      hashtags: v.hashtags || [],
+      user: {
+        id: v.creator_id || '',
+        firstName: nameParts[0] || 'Utilisateur',
+        lastName: nameParts.slice(1).join(' ') || '',
+        avatar: v.creator_avatar || 'https://i.pravatar.cc/150?img=1',
+        isFollowing: false,
+      },
+      music: v.music_title || 'Son original',
+    };
+  };
+
+  const loadFeed = async (pageNum: number = 1, reset: boolean = false) => {
+    if (reset) setLoading(true);
+    else setLoadingMore(true);
     try {
-      const response = await apiClient.get('/videos?page=1&limit=10');
+      const response = await apiClient.get(`/videos?page=${pageNum}&limit=10`);
       const data = response.data?.data || response.data;
       const backendVideos = data?.videos || [];
+      const pagination = data?.pagination;
       if (backendVideos.length > 0) {
-        const transformed: Video[] = backendVideos.map((v: any) => {
-          const nameParts = (v.creator_name || '').split(' ');
-          return {
-            id: v.id,
-            title: v.title || '',
-            description: v.description || '',
-            videoUrl: v.video_url || '',
-            thumbnailUrl: v.thumbnail_url || v.video_url || '',
-            duration: v.duration || 0,
-            views: v.views || 0,
-            likes: v.likes || 0,
-            comments: v.comments_count || 0,
-            shares: v.shares || 0,
-            isLiked: false,
-            isSaved: false,
-            hashtags: v.hashtags || [],
-            user: {
-              id: v.creator_id || '',
-              firstName: nameParts[0] || 'Utilisateur',
-              lastName: nameParts.slice(1).join(' ') || '',
-              avatar: v.creator_avatar || 'https://i.pravatar.cc/150?img=1',
-              isFollowing: false,
-            },
-            music: v.music_title || 'Son original',
-          };
-        });
-        setVideos(transformed);
+        const transformed = backendVideos.map(transformVideo);
+        if (reset) {
+          setVideos(transformed);
+        } else {
+          setVideos(prev => [...prev, ...transformed]);
+        }
+        setPage(pageNum);
+        setHasMore(pagination ? pageNum < pagination.totalPages : backendVideos.length >= 10);
+      } else if (reset) {
+        setVideos(MOCK_VIDEOS);
+        setHasMore(false);
       }
-    } catch (err) { console.log('Using mock videos', err); }
-    finally { setLoading(false); }
+    } catch (err) {
+      console.log('Using mock videos', err);
+      if (reset) setVideos(MOCK_VIDEOS);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
   };
+
+  const loadMore = () => {
+    if (!loadingMore && hasMore) {
+      loadFeed(page + 1, false);
+    }
+  };
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadFeed(1, true).finally(() => setRefreshing(false));
+  }, []);
 
   const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
     if (viewableItems.length > 0) {
@@ -646,6 +679,16 @@ export default function FeedScreen() {
         initialNumToRender={2}
         maxToRenderPerBatch={3}
         windowSize={5}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        ListEmptyComponent={loading ? null : (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: height - 100 }}>
+            <Ionicons name="videocam-outline" size={60} color="rgba(255,255,255,0.3)" />
+            <Text style={{ color: 'rgba(255,255,255,0.5)', marginTop: 16, fontSize: 16 }}>Aucune vidéo disponible</Text>
+          </View>
+        )}
       />
 
       {loading && <View style={styles.loadingOverlay}><ActivityIndicator size="large" color={Colors.primary} /></View>}

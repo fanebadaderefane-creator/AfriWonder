@@ -48,6 +48,8 @@ const formatNumber = (num: number) => {
 
 type ContentTab = 'posts' | 'reels' | 'saved' | 'tagged';
 
+type PostItem = { id: string; image: string; isVideo: boolean; views: number; likes: number; isPinned: boolean };
+
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated, logout } = useAuthStore();
@@ -55,6 +57,7 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [realStats, setRealStats] = useState<{ posts: number; followers: number; following: number } | null>(null);
   const [realBio, setRealBio] = useState<string | null>(null);
+  const [userPosts, setUserPosts] = useState<PostItem[]>(MOCK_POSTS);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -72,6 +75,26 @@ export default function ProfileScreen() {
           if (data?.bio) setRealBio(data.bio);
         } catch (err) {
           console.log('Could not load full profile', err);
+        }
+
+        // Load user's videos for post grid
+        try {
+          const videosRes = await apiClient.get(`/videos?creator_id=${user.id}&page=1&limit=30`);
+          const vData = videosRes.data?.data || videosRes.data;
+          const videos = vData?.videos || [];
+          if (videos.length > 0) {
+            const realPosts: PostItem[] = videos.map((v: any, i: number) => ({
+              id: v.id,
+              image: v.thumbnail_url || v.video_url || `https://picsum.photos/300/300?random=${i + 50}`,
+              isVideo: v.media_type === 'video',
+              views: v.views || 0,
+              likes: v.likes || 0,
+              isPinned: v.is_featured || false,
+            }));
+            setUserPosts(realPosts);
+          }
+        } catch (err) {
+          console.log('Could not load user videos', err);
         }
       }
       setIsLoading(false);
@@ -141,7 +164,7 @@ export default function ProfileScreen() {
     { key: 'tagged', icon: 'pricetag-outline', iconActive: 'pricetag' },
   ];
 
-  const renderGridItem = ({ item }: { item: typeof MOCK_POSTS[0] }) => (
+  const renderGridItem = ({ item }: { item: PostItem }) => (
     <TouchableOpacity style={styles.gridItem} activeOpacity={0.8}>
       <Image source={{ uri: item.image }} style={styles.gridImage} />
       {item.isVideo && (
@@ -341,12 +364,18 @@ export default function ProfileScreen() {
 
         {/* Content Grid */}
         <FlatList
-          data={MOCK_POSTS}
+          data={userPosts}
           renderItem={renderGridItem}
           keyExtractor={(item) => item.id}
           numColumns={3}
           scrollEnabled={false}
           columnWrapperStyle={styles.gridRow}
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center', padding: 40 }}>
+              <Ionicons name="videocam-outline" size={40} color={Colors.textMuted} />
+              <Text style={{ color: Colors.textMuted, marginTop: 8 }}>Aucune publication</Text>
+            </View>
+          }
         />
 
         {/* Quick Actions */}
