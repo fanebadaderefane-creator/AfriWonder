@@ -38,7 +38,7 @@ const DURATION_OPTIONS = [
   { label: '90 jours', value: 90 },
 ];
 
-const MOCK_IMAGES = Array.from({ length: 6 }, (_, i) => ({
+const PLACEHOLDER_IMAGES = Array.from({ length: 6 }, (_, i) => ({
   id: `img${i}`,
   uri: `https://picsum.photos/400/300?random=${300 + i}`,
 }));
@@ -251,7 +251,7 @@ export default function CreateProjectScreen() {
               <Text style={styles.sectionSubtitle}>Selectionnez 1 a 5 images pour illustrer votre projet</Text>
 
               <View style={styles.imageGrid}>
-                {MOCK_IMAGES.map(img => {
+                {PLACEHOLDER_IMAGES.map(img => {
                   const isSelected = selectedImages.includes(img.uri);
                   return (
                     <TouchableOpacity

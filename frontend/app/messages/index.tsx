@@ -42,14 +42,25 @@ export default function MessagesListScreen() {
 
   const loadRealUsers = async () => {
     try {
-      const response = await apiClient.get('/users?limit=30');
-      const data = response.data?.data || response.data;
-      const users = data?.users || data || [];
-      if (Array.isArray(users)) {
-        setRealUsers(users.filter((u: any) => u && (u.username || u.full_name)));
+      const response = await apiClient.get('/users?limit=50');
+      const rawData = response.data;
+      const data = rawData?.data || rawData;
+      let users = data?.users || data || [];
+      if (!Array.isArray(users)) users = [];
+      const filtered = users.filter((u: any) => u && (u.username || u.full_name));
+      setRealUsers(filtered);
+    } catch (err: any) {
+      console.log('Could not load real users, trying direct:', err?.message);
+      // Fallback: try mobileClient proxy directly
+      try {
+        const res2 = await mobileApiClient.get('/proxy/users?limit=50');
+        const d = res2.data?.data || res2.data;
+        let u2 = d?.users || d || [];
+        if (!Array.isArray(u2)) u2 = [];
+        setRealUsers(u2.filter((u: any) => u && (u.username || u.full_name)));
+      } catch (err2) {
+        console.log('Fallback also failed:', err2);
       }
-    } catch (err) {
-      console.log('Could not load real users:', err);
     }
   };
 

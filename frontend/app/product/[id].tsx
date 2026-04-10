@@ -1,36 +1,28 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, Share } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, Share, ActivityIndicator } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import apiClient from '../../src/api/client';
 
 const { width } = Dimensions.get('window');
 
-const MOCK_PRODUCT = {
-  id: 'p1',
-  name: 'Robe Bogolan Premium',
-  description: 'Magnifique robe en tissu Bogolan fait main par des artisans maliens. Chaque piece est unique avec des motifs traditionnels. Parfaite pour les ceremonies et evenements.',
-  price: 25000,
-  originalPrice: 35000,
-  images: [
-    'https://picsum.photos/400/500?random=80',
-    'https://picsum.photos/400/500?random=81',
-    'https://picsum.photos/400/500?random=82',
-  ],
-  rating: 4.8,
-  reviews: 124,
-  sold: 456,
-  seller: {
-    name: 'Awa Mode Bamako',
-    avatar: 'https://i.pravatar.cc/150?img=5',
-    rating: 4.9,
-    products: 89,
-  },
-  sizes: ['S', 'M', 'L', 'XL'],
-  colors: ['#8B4513', '#2F4F4F', '#800020'],
-  inStock: true,
-};
+interface Product {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  originalPrice: number;
+  images: string[];
+  rating: number;
+  reviews: number;
+  sold: number;
+  seller: { name: string; avatar: string; rating: number; products: number };
+  sizes: string[];
+  colors: string[];
+  inStock: boolean;
+}
 
 export default function ProductDetailScreen() {
   const insets = useSafeAreaInsets();
@@ -40,9 +32,72 @@ export default function ProductDetailScreen() {
   const [selectedImage, setSelectedImage] = useState(0);
   const [isFavorite, setIsFavorite] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const product = MOCK_PRODUCT;
-  const discount = Math.round((1 - product.price / product.originalPrice) * 100);
+  useEffect(() => {
+    const loadProduct = async () => {
+      try {
+        const response = await apiClient.get(`/products/${id}`);
+        const data = response.data?.data || response.data;
+        if (data) {
+          setProduct({
+            id: data.id || (id as string),
+            name: data.name || data.title || '',
+            description: data.description || '',
+            price: data.price || 0,
+            originalPrice: data.original_price || data.price || 0,
+            images: data.images || (data.image ? [data.image] : [`https://picsum.photos/400/500?random=${id}`]),
+            rating: data.rating || 4.5,
+            reviews: data.reviews_count || 0,
+            sold: data.sold_count || 0,
+            seller: {
+              name: data.seller?.name || data.seller_name || 'Vendeur',
+              avatar: data.seller?.avatar || `https://i.pravatar.cc/150?u=${data.seller_id || id}`,
+              rating: data.seller?.rating || 4.5,
+              products: data.seller?.products_count || 0,
+            },
+            sizes: data.sizes || ['S', 'M', 'L', 'XL'],
+            colors: data.colors || ['#8B4513'],
+            inStock: data.in_stock !== false,
+          });
+        }
+      } catch (err) {
+        console.log('Error loading product:', err);
+        // Use basic product from params
+        setProduct({
+          id: id as string,
+          name: 'Produit',
+          description: '',
+          price: 0,
+          originalPrice: 0,
+          images: [`https://picsum.photos/400/500?random=${id}`],
+          rating: 0,
+          reviews: 0,
+          sold: 0,
+          seller: { name: 'Vendeur', avatar: `https://i.pravatar.cc/150?u=${id}`, rating: 0, products: 0 },
+          sizes: ['S', 'M', 'L', 'XL'],
+          colors: ['#8B4513'],
+          inStock: true,
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadProduct();
+  }, [id]);
+
+  if (loading || !product) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      </View>
+    );
+  }
+
+  const discount = product.originalPrice > product.price ? Math.round((1 - product.price / product.originalPrice) * 100) : 0;
 
   const handleShare = async () => {
     await Share.share({

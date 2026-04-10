@@ -17,7 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import {
   CROWDFUNDING_CATEGORIES,
-  MOCK_PROJECTS,
+  SEED_PROJECTS,
   PLATFORM_STATS,
   formatCFA,
   formatFullCFA,
@@ -32,7 +32,7 @@ export default function CrowdfundingHomeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [refreshing, setRefreshing] = useState(false);
-  const [projects, setProjects] = useState<CrowdfundingProject[]>(MOCK_PROJECTS);
+  const [projects, setProjects] = useState<CrowdfundingProject[]>(SEED_PROJECTS);
 
   useEffect(() => { loadProjects(); }, []);
 

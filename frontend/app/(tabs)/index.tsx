@@ -49,88 +49,8 @@ interface Comment {
   createdAt: string;
 }
 
-const MOCK_VIDEOS: Video[] = [
-  {
-    id: '1', title: 'Danse traditionnelle malienne',
-    description: 'Magnifique danse au coucher du soleil sur le fleuve Niger',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    thumbnailUrl: 'https://picsum.photos/400/800?random=1',
-    duration: 45, views: 125000, likes: 8500, comments: 342, shares: 89,
-    isLiked: false, isSaved: false, hashtags: ['Mali', 'Culture', 'Danse'],
-    user: { id: 'u1', firstName: 'Aminata', lastName: 'Diallo', avatar: 'https://i.pravatar.cc/150?img=1', isFollowing: false },
-    music: 'Salif Keita - Africa',
-  },
-  {
-    id: '2', title: 'Street food Dakar',
-    description: 'Les meilleurs thieboudienne de Dakar! Venez gouter',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-    thumbnailUrl: 'https://picsum.photos/400/800?random=2',
-    duration: 60, views: 89000, likes: 6200, comments: 178, shares: 45,
-    isLiked: true, isSaved: false, hashtags: ['Senegal', 'Food', 'Dakar'],
-    user: { id: 'u2', firstName: 'Moussa', lastName: 'Ndiaye', avatar: 'https://i.pravatar.cc/150?img=2', isFollowing: true },
-    music: 'Youssou N\'Dour - 7 Seconds',
-  },
-  {
-    id: '3', title: 'Mode africaine',
-    description: 'Nouvelle collection Bogolan 2025, faite main a Bamako',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    thumbnailUrl: 'https://picsum.photos/400/800?random=3',
-    duration: 30, views: 234000, likes: 18900, comments: 892, shares: 234,
-    isLiked: false, isSaved: true, hashtags: ['CoteDIvoire', 'Fashion', 'Bogolan'],
-    user: { id: 'u3', firstName: 'Awa', lastName: 'Kone', avatar: 'https://i.pravatar.cc/150?img=3', isFollowing: false },
-    music: 'Tiken Jah Fakoly - Africa',
-  },
-  {
-    id: '4', title: 'Recette Mafe',
-    description: 'Comment preparer le meilleur mafe malien etape par etape',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-    thumbnailUrl: 'https://picsum.photos/400/800?random=4',
-    duration: 90, views: 456000, likes: 32100, comments: 1200, shares: 567,
-    isLiked: false, isSaved: false, hashtags: ['Cuisine', 'Mafe', 'Recette'],
-    user: { id: 'u4', firstName: 'Fatoumata', lastName: 'Traore', avatar: 'https://i.pravatar.cc/150?img=9', isFollowing: false },
-    music: 'Son original - Fatoumata',
-  },
-  {
-    id: '5', title: 'Bamako Night Life',
-    description: 'Les meilleurs spots nocturnes de Bamako, capitale du Mali',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
-    thumbnailUrl: 'https://picsum.photos/400/800?random=5',
-    duration: 40, views: 67000, likes: 4500, comments: 230, shares: 78,
-    isLiked: true, isSaved: false, hashtags: ['Bamako', 'NightLife', 'Vibes'],
-    user: { id: 'u5', firstName: 'Ibrahim', lastName: 'Sangare', avatar: 'https://i.pravatar.cc/150?img=4', isFollowing: true },
-    music: 'Sidiki Diabate - Fais moi confiance',
-  },
-  {
-    id: '6', title: 'Artisanat malien',
-    description: 'L\'art du tissage bogolan, un savoir-faire ancestral malien',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
-    thumbnailUrl: 'https://picsum.photos/400/800?random=6',
-    duration: 55, views: 178000, likes: 12800, comments: 456, shares: 189,
-    isLiked: false, isSaved: false, hashtags: ['Artisanat', 'Bogolan', 'Culture'],
-    user: { id: 'u6', firstName: 'Mariam', lastName: 'Coulibaly', avatar: 'https://i.pravatar.cc/150?img=5', isFollowing: false },
-    music: 'Amadou & Mariam - Sabali',
-  },
-  {
-    id: '7', title: 'Football au Mali',
-    description: 'Les Aigles du Mali, match epique au stade du 26 Mars',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
-    thumbnailUrl: 'https://picsum.photos/400/800?random=7',
-    duration: 35, views: 320000, likes: 25600, comments: 2100, shares: 890,
-    isLiked: false, isSaved: false, hashtags: ['Football', 'Mali', 'Aigles'],
-    user: { id: 'u7', firstName: 'Boubacar', lastName: 'Keita', avatar: 'https://i.pravatar.cc/150?img=7', isFollowing: true },
-    music: 'Commentaire sportif - RFM',
-  },
-  {
-    id: '8', title: 'Teinture Bazin',
-    description: 'Le processus magique de teinture du Bazin riche malien',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
-    thumbnailUrl: 'https://picsum.photos/400/800?random=8',
-    duration: 70, views: 95000, likes: 7800, comments: 345, shares: 123,
-    isLiked: false, isSaved: false, hashtags: ['Bazin', 'Teinture', 'Mode'],
-    user: { id: 'u8', firstName: 'Kadiatou', lastName: 'Diarra', avatar: 'https://i.pravatar.cc/150?img=6', isFollowing: false },
-    music: 'Oumou Sangare - Moussolou',
-  },
-];
+// Fallback vide - les videos sont chargees depuis l'API
+const FALLBACK_VIDEOS: Video[] = [];
 
 interface VideoItemProps {
   video: Video;
@@ -591,12 +511,12 @@ export default function FeedScreen() {
         setPage(pageNum);
         setHasMore(pagination ? pageNum < pagination.totalPages : backendVideos.length >= 10);
       } else if (reset) {
-        setVideos(MOCK_VIDEOS);
+        setVideos(FALLBACK_VIDEOS);
         setHasMore(false);
       }
     } catch (err) {
       console.log('Using mock videos', err);
-      if (reset) setVideos(MOCK_VIDEOS);
+      if (reset) setVideos(FALLBACK_VIDEOS);
     } finally {
       setLoading(false);
       setLoadingMore(false);

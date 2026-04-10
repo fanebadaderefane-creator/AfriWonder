@@ -16,7 +16,7 @@ interface LiveMessage {
   };
 }
 
-const MOCK_MESSAGES: LiveMessage[] = [
+const INITIAL_MESSAGES: LiveMessage[] = [
   { id: '1', text: 'Super live!', user: { name: 'Aminata', avatar: 'https://i.pravatar.cc/150?img=1' } },
   { id: '2', text: 'Magnifique danse', user: { name: 'Moussa', avatar: 'https://i.pravatar.cc/150?img=2' } },
   { id: '3', text: 'Bravo!', user: { name: 'Awa', avatar: 'https://i.pravatar.cc/150?img=3' } },
@@ -27,7 +27,7 @@ const MOCK_MESSAGES: LiveMessage[] = [
 export default function LiveStreamViewerScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams();
-  const [messages, setMessages] = useState<LiveMessage[]>(MOCK_MESSAGES);
+  const [messages, setMessages] = useState<LiveMessage[]>(INITIAL_MESSAGES);
   const [newMessage, setNewMessage] = useState('');
   const [viewers, setViewers] = useState(234);
   const [isFollowing, setIsFollowing] = useState(false);

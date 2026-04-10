@@ -61,7 +61,7 @@ export const CROWDFUNDING_CATEGORIES: CrowdfundingCategory[] = [
   { id: 'immobilier', name: 'Immobilier', nameKey: 'cf.cat.realestate', icon: 'home', color: '#795548' },
 ];
 
-export const MOCK_PROJECTS: CrowdfundingProject[] = [
+export const SEED_PROJECTS: CrowdfundingProject[] = [
   {
     id: 'cf1',
     title: 'Ecole Numerique de Bamako',

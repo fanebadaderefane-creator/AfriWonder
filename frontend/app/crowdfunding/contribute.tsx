@@ -18,7 +18,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, BorderRadius, FontSizes } from '../../src/theme/colors';
 import {
-  MOCK_PROJECTS,
+  SEED_PROJECTS,
   CROWDFUNDING_CATEGORIES,
   formatFullCFA,
   getProgressPercent,
@@ -59,7 +59,7 @@ export default function ContributeScreen() {
   const otpRefs = useRef<(TextInput | null)[]>([]);
   const successScale = useRef(new Animated.Value(0)).current;
 
-  const project = MOCK_PROJECTS.find(p => p.id === projectId);
+  const project = SEED_PROJECTS.find(p => p.id === projectId);
   const reward = project?.rewards.find(r => r.id === rewardId);
   const paymentMethod = PAYMENT_METHODS.find(p => p.id === selectedPayment);
 

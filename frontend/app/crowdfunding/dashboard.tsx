@@ -14,7 +14,7 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../../src/theme/colors';
 import {
-  MOCK_PROJECTS,
+  SEED_PROJECTS,
   CROWDFUNDING_CATEGORIES,
   formatCFA,
   formatFullCFA,
@@ -22,12 +22,12 @@ import {
 } from '../../src/data/crowdfunding';
 
 // Mock creator's own projects (first 3)
-const MY_PROJECTS = MOCK_PROJECTS.slice(0, 3);
+const MY_PROJECTS = SEED_PROJECTS.slice(0, 3);
 const TOTAL_RAISED = MY_PROJECTS.reduce((sum, p) => sum + p.raised, 0);
 const TOTAL_BACKERS = MY_PROJECTS.reduce((sum, p) => sum + p.backers, 0);
 
 // Mock contributors
-const MOCK_CONTRIBUTORS = [
+const RECENT_CONTRIBUTORS = [
   { id: 'c1', name: 'Seydou Keita', avatar: 'https://i.pravatar.cc/100?img=30', amount: 100000, date: 'Il y a 2h', reward: 'Bienfaiteur', project: 'Ecole Numerique de Bamako' },
   { id: 'c2', name: 'Mariam Diarra', avatar: 'https://i.pravatar.cc/100?img=31', amount: 25000, date: 'Il y a 5h', reward: 'Parrain Digital', project: 'Ecole Numerique de Bamako' },
   { id: 'c3', name: 'Boubacar Traore', avatar: 'https://i.pravatar.cc/100?img=32', amount: 50000, date: 'Hier', reward: 'Pilier Sante', project: 'Centre de Sante Communautaire Sikasso' },
@@ -162,7 +162,7 @@ export default function CreatorDashboardScreen() {
             {/* Recent contributors */}
             <View style={styles.recentSection}>
               <Text style={styles.recentTitle}>Derniers contributeurs</Text>
-              {MOCK_CONTRIBUTORS.slice(0, 4).map(contrib => (
+              {RECENT_CONTRIBUTORS.slice(0, 4).map(contrib => (
                 <View key={contrib.id} style={styles.contributorRow}>
                   <Image source={{ uri: contrib.avatar }} style={styles.contributorAvatar} />
                   <View style={styles.contributorInfo}>
@@ -186,7 +186,7 @@ export default function CreatorDashboardScreen() {
               <Ionicons name="people" size={24} color={Colors.primary} />
               <Text style={styles.contributorSummaryText}>{TOTAL_BACKERS} contributeurs au total</Text>
             </View>
-            {MOCK_CONTRIBUTORS.map(contrib => (
+            {RECENT_CONTRIBUTORS.map(contrib => (
               <View key={contrib.id} style={styles.contributorCard}>
                 <Image source={{ uri: contrib.avatar }} style={styles.contributorCardAvatar} />
                 <View style={styles.contributorCardInfo}>

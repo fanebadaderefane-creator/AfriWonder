@@ -9,13 +9,6 @@ import mobileApiClient from '../../src/api/mobileClient';
 
 const { width } = Dimensions.get('window');
 
-const MOCK_TRANSACTIONS = [
-  { id: 't1', type: 'received', name: 'Aminata Diallo', amount: 15000, date: 'Aujourd\'hui, 14:30', icon: 'arrow-down' },
-  { id: 't2', type: 'sent', name: 'Chez Fatoumata', amount: 3500, date: 'Aujourd\'hui, 12:15', icon: 'arrow-up' },
-  { id: 't3', type: 'received', name: 'Paiement video', amount: 5000, date: 'Hier, 18:45', icon: 'arrow-down' },
-  { id: 't4', type: 'sent', name: 'Transport', amount: 1500, date: 'Hier, 09:00', icon: 'arrow-up' },
-];
-
 const QUICK_ACTIONS = [
   { id: 'send', name: 'Envoyer', icon: 'send', color: Colors.primary },
   { id: 'receive', name: 'Recevoir', icon: 'download', color: Colors.success },
@@ -28,7 +21,7 @@ export default function WalletScreen() {
   const [showBalance, setShowBalance] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [balance, setBalance] = useState(0);
-  const [transactions, setTransactions] = useState(MOCK_TRANSACTIONS);
+  const [transactions, setTransactions] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => { loadWallet(); }, []);

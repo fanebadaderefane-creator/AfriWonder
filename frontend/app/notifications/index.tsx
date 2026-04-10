@@ -4,7 +4,7 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import apiClient from '../../src/api/client';
+import mobileApiClient from '../../src/api/mobileClient';
 
 interface Notification {
   id: string;
@@ -18,11 +18,6 @@ interface Notification {
   reference_type?: string;
   avatar?: string;
 }
-
-const MOCK_NOTIFICATIONS = [
-  { id: 'n1', type: 'like', title: 'Aminata a aime votre video', message: 'Danse traditionnelle malienne', is_read: false, created_at: new Date().toISOString(), avatar: 'https://i.pravatar.cc/150?img=1' },
-  { id: 'n2', type: 'follow', title: 'Moussa vous suit maintenant', message: 'Suivez-le aussi', is_read: false, created_at: new Date().toISOString(), avatar: 'https://i.pravatar.cc/150?img=2' },
-];
 
 const getNotificationIcon = (type: string) => {
   switch (type) {
@@ -62,27 +57,23 @@ export default function NotificationsScreen() {
 
   const loadNotifications = async () => {
     try {
-      const response = await apiClient.get('/notifications');
+      const response = await mobileApiClient.get('/mobile/notifications');
       const data = response.data?.data || response.data;
       const backendNotifs = data?.notifications || [];
-      if (backendNotifs.length > 0) {
-        setNotifications(backendNotifs.map((n: any) => ({
-          id: n.id,
-          type: n.type,
-          title: n.title || '',
-          message: n.message || '',
-          is_read: n.is_read,
-          created_at: n.created_at,
-          from_user_name: n.from_user_name,
-          from_user_id: n.from_user_id,
-          reference_type: n.reference_type,
-          avatar: n.from_user_id ? `https://i.pravatar.cc/150?u=${n.from_user_id}` : undefined,
-        })));
-      } else {
-        setNotifications(MOCK_NOTIFICATIONS);
-      }
+      setNotifications(backendNotifs.map((n: any) => ({
+        id: n.id,
+        type: n.type,
+        title: n.title || '',
+        message: n.message || '',
+        is_read: n.is_read,
+        created_at: n.created_at,
+        from_user_name: n.from_user_name,
+        from_user_id: n.from_user_id,
+        reference_type: n.reference_type,
+        avatar: n.from_user_id ? `https://i.pravatar.cc/150?u=${n.from_user_id}` : undefined,
+      })));
     } catch {
-      setNotifications(MOCK_NOTIFICATIONS);
+      setNotifications([]);
     } finally {
       setLoading(false);
     }
@@ -95,7 +86,7 @@ export default function NotificationsScreen() {
 
   const markAllRead = async () => {
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-    try { await apiClient.post('/notifications/read-all'); } catch {}
+    try { await mobileApiClient.post('/mobile/notifications/read-all'); } catch {}
   };
 
   const renderNotification = ({ item }: { item: Notification }) => {

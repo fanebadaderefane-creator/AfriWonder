@@ -12,33 +12,24 @@ import apiClient from '../../src/api/client';
 const { width } = Dimensions.get('window');
 const GRID_SIZE = (width - 4) / 3;
 
-// Mock user data
-const MOCK_USER = {
-  firstName: 'Aminata',
-  lastName: 'Diallo',
-  username: 'aminata.diallo',
-  avatar: 'https://i.pravatar.cc/300?img=1',
-  coverImage: 'https://picsum.photos/800/400?random=cover',
-  bio: 'Creatrice de contenu Bamako | Mode & Culture africaine | Ambassadrice AfriWonder',
-  website: 'afriwonder.com/aminata',
-  location: 'Bamako, Mali',
-  isVerified: true,
+// Default user data (used when API data not loaded yet)
+const DEFAULT_USER = {
+  firstName: '',
+  lastName: '',
+  username: '',
+  avatar: '',
+  coverImage: '',
+  bio: '',
+  website: '',
+  location: '',
+  isVerified: false,
   stats: {
-    posts: 234,
-    followers: 45200,
-    following: 890,
-    likes: 1200000,
+    posts: 0,
+    followers: 0,
+    following: 0,
+    likes: 0,
   },
 };
-
-const MOCK_POSTS = Array.from({ length: 18 }, (_, i) => ({
-  id: `p${i}`,
-  image: `https://picsum.photos/300/300?random=${i + 50}`,
-  isVideo: i % 3 === 0,
-  views: Math.floor(Math.random() * 100000) + 5000,
-  likes: Math.floor(Math.random() * 10000) + 100,
-  isPinned: i < 2,
-}));
 
 const formatNumber = (num: number) => {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -57,7 +48,7 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [realStats, setRealStats] = useState<{ posts: number; followers: number; following: number } | null>(null);
   const [realBio, setRealBio] = useState<string | null>(null);
-  const [userPosts, setUserPosts] = useState<PostItem[]>(MOCK_POSTS);
+  const [userPosts, setUserPosts] = useState<PostItem[]>([]);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -103,20 +94,20 @@ export default function ProfileScreen() {
   }, [isAuthenticated, user?.id]);
 
   const profileData = isAuthenticated && user ? {
-    ...MOCK_USER,
-    firstName: user.firstName || user.full_name?.split(' ')[0] || MOCK_USER.firstName,
-    lastName: user.lastName || user.full_name?.split(' ').slice(1).join(' ') || MOCK_USER.lastName,
-    username: user.username || MOCK_USER.username,
-    avatar: user.avatar || user.profile_image || MOCK_USER.avatar,
-    bio: realBio || user.bio || MOCK_USER.bio,
+    ...DEFAULT_USER,
+    firstName: user.firstName || user.full_name?.split(' ')[0] || DEFAULT_USER.firstName,
+    lastName: user.lastName || user.full_name?.split(' ').slice(1).join(' ') || DEFAULT_USER.lastName,
+    username: user.username || DEFAULT_USER.username,
+    avatar: user.avatar || user.profile_image || DEFAULT_USER.avatar,
+    bio: realBio || user.bio || DEFAULT_USER.bio,
     isVerified: false,
     stats: {
-      posts: realStats?.posts ?? user.videosCount ?? MOCK_USER.stats.posts,
-      followers: realStats?.followers ?? user.followers ?? MOCK_USER.stats.followers,
-      following: realStats?.following ?? user.following ?? MOCK_USER.stats.following,
-      likes: MOCK_USER.stats.likes,
+      posts: realStats?.posts ?? user.videosCount ?? DEFAULT_USER.stats.posts,
+      followers: realStats?.followers ?? user.followers ?? DEFAULT_USER.stats.followers,
+      following: realStats?.following ?? user.following ?? DEFAULT_USER.stats.following,
+      likes: DEFAULT_USER.stats.likes,
     },
-  } : MOCK_USER;
+  } : DEFAULT_USER;
 
   if (isLoading) {
     return (
