@@ -150,7 +150,7 @@ export default function MarketScreen() {
 
         {/* Categories */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Cat\u00e9gories</Text>
+          <Text style={styles.sectionTitle}>Catégories</Text>
           <FlatList
             data={CATEGORIES}
             renderItem={renderCategory}

@@ -65,7 +65,7 @@ export default function ExploreScreen() {
           <Ionicons name="search" size={20} color={Colors.textSecondary} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Rechercher vid\u00e9os, comptes, produits..."
+            placeholder="Rechercher vidéos, comptes, produits..."
             placeholderTextColor={Colors.textMuted}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -129,7 +129,7 @@ export default function ExploreScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Ionicons name="compass" size={24} color={Colors.primary} />
-            <Text style={styles.sectionTitle}>D\u00e9couvrir</Text>
+            <Text style={styles.sectionTitle}>Découvrir</Text>
           </View>
           <FlatList
             data={EXPLORE_VIDEOS}
