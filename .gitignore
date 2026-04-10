@@ -50,3 +50,6 @@ android/*.jks
 # Lighthouse CI — rapports lhr-* régénérés (ne pas versionner les exports locaux/CI)
 .lighthouseci/lhr-*.html
 .lighthouseci/lhr-*.json
+
+# React Native / Metro — cache local (ne jamais commiter)
+**/.metro-cache/
