@@ -4,16 +4,21 @@ import { secureStorage } from '../utils/secureStorage';
 export interface User {
   id: string;
   email: string;
-  firstName: string;
-  lastName: string;
+  username?: string;
+  full_name?: string;
+  profile_image?: string;
+  role?: string;
   phone?: string;
-  avatar?: string;
-  country: string;
   bio?: string;
-  followers: number;
-  following: number;
-  videosCount: number;
-  createdAt: string;
+  country?: string;
+  followers?: number;
+  following?: number;
+  videosCount?: number;
+  createdAt?: string;
+  // Computed convenience getters
+  firstName?: string;
+  lastName?: string;
+  avatar?: string;
 }
 
 interface AuthState {

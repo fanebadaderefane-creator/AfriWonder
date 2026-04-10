@@ -3,7 +3,10 @@
 ## Vue d'ensemble
 Super-application mobile pour l'Afrique de l'Ouest (Mali, Senegal, Cote d'Ivoire) replicant la PWA AfriWonder.
 
-## Statut: FRONTEND MOCKEE (Backend sera connecte par l'utilisateur)
+## Statut: BACKEND CONNECTE (Authentification)
+- Backend reel: https://afriwonder.onrender.com/api
+- Stack backend: Node.js/Express + Prisma + PostgreSQL + JWT
+- Frontend: Expo React Native avec navigation complète
 
 ## Ecrans implementes (74 fichiers)
 

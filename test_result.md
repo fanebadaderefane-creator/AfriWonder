@@ -325,7 +325,53 @@ backend:
         comment: "Orange Money payment initiation endpoint working correctly with authentication. Returns transaction ID."
 
 frontend:
-  # No frontend tasks tested in this session
+  - task: "Login to Real Backend (AfriWonder Render)"
+    implemented: true
+    working: true
+    file: "/app/frontend/app/(auth)/login.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Login connected to real backend at afriwonder.onrender.com. JWT auth with identifier+password, token stored via SecureStore. Tested successfully with real credentials."
+
+  - task: "Register to Real Backend"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/(auth)/register.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Register form updated to match backend schema (username, full_name, email/phone, password). Needs testing with real account creation."
+
+  - task: "API Client pointing to Real Backend"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/api/client.ts"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "API client now points to afriwonder.onrender.com with platform-aware anti-bot headers. Token refresh interceptor updated."
+
+  - task: "User Profile shows real data"
+    implemented: true
+    working: true
+    file: "/app/frontend/app/(tabs)/profile.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Profile screen displays real user data (name, username, avatar) from backend after login. Falls back to mock data for statistics."
 
 metadata:
   created_by: "testing_agent"

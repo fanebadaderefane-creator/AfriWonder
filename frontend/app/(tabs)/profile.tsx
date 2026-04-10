@@ -60,8 +60,17 @@ export default function ProfileScreen() {
 
   const profileData = isAuthenticated && user ? {
     ...MOCK_USER,
-    firstName: user.firstName || MOCK_USER.firstName,
-    lastName: user.lastName || MOCK_USER.lastName,
+    firstName: user.firstName || user.full_name?.split(' ')[0] || MOCK_USER.firstName,
+    lastName: user.lastName || user.full_name?.split(' ').slice(1).join(' ') || MOCK_USER.lastName,
+    username: user.username || MOCK_USER.username,
+    avatar: user.avatar || user.profile_image || MOCK_USER.avatar,
+    bio: user.bio || MOCK_USER.bio,
+    stats: {
+      posts: user.videosCount || MOCK_USER.stats.posts,
+      followers: user.followers || MOCK_USER.stats.followers,
+      following: user.following || MOCK_USER.stats.following,
+      likes: MOCK_USER.stats.likes,
+    },
   } : MOCK_USER;
 
   if (isLoading) {
