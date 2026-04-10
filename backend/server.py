@@ -61,6 +61,10 @@ ads_col = db["mobile_ads"]
 lives_col = db["mobile_lives"]
 highlights_col = db["mobile_highlights"]
 posts_col = db["mobile_posts"]
+# Chat collections
+reactions_col = db["message_reactions"]
+pinned_col = db["pinned_messages"]
+starred_col = db["starred_messages"]
 
 # JWT Configuration (matches PWA backend for token verification)
 JWT_SECRET = os.getenv("JWT_SECRET", "afriwonder-secret-key-change-in-production")
@@ -337,6 +341,182 @@ async def seed_demo_conversations(user_id: str):
                 "created_at": (datetime.utcnow() - timedelta(hours=i + 1, minutes=30 - j * 10)).isoformat(),
             }
             await messages_col.insert_one(msg)
+
+# ==================== CHAT ENHANCED APIs ====================
+
+class ReactionRequest(BaseModel):
+    emoji: str
+
+class DeleteMessageRequest(BaseModel):
+    delete_for: str = "me"  # "me" or "everyone"
+
+class ForwardRequest(BaseModel):
+    target_conversation_id: str
+
+class EditMessageRequest(BaseModel):
+    content: str
+
+@app.post("/api/mobile/conversations/{conversation_id}/messages/{message_id}/react")
+async def react_to_message(conversation_id: str, message_id: str, data: ReactionRequest, user_id: str = Depends(verify_token)):
+    """Ajouter/retirer une réaction emoji à un message"""
+    existing = await reactions_col.find_one({"message_id": message_id, "user_id": user_id, "emoji": data.emoji})
+    if existing:
+        await reactions_col.delete_one({"_id": existing["_id"]})
+        return {"success": True, "data": {"action": "removed", "emoji": data.emoji}}
+    reaction = {
+        "id": str(uuid.uuid4()),
+        "message_id": message_id,
+        "conversation_id": conversation_id,
+        "user_id": user_id,
+        "emoji": data.emoji,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    await reactions_col.insert_one(reaction)
+    return {"success": True, "data": {"action": "added", "emoji": data.emoji}}
+
+@app.get("/api/mobile/conversations/{conversation_id}/messages/{message_id}/reactions")
+async def get_reactions(conversation_id: str, message_id: str, user_id: str = Depends(verify_token)):
+    """Obtenir les réactions d'un message"""
+    reactions = await reactions_col.find({"message_id": message_id}).to_list(100)
+    for r in reactions:
+        r["_id"] = str(r["_id"])
+    return {"success": True, "data": {"reactions": reactions}}
+
+@app.delete("/api/mobile/conversations/{conversation_id}/messages/{message_id}")
+async def delete_message(conversation_id: str, message_id: str, delete_for: str = "me", user_id: str = Depends(verify_token)):
+    """Supprimer un message"""
+    msg = await messages_col.find_one({"id": message_id, "conversation_id": conversation_id})
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message non trouvé")
+    if delete_for == "everyone" and msg.get("sender_id") == user_id:
+        await messages_col.update_one({"id": message_id}, {"$set": {"content": "Ce message a été supprimé", "deleted": True, "deleted_at": datetime.utcnow().isoformat()}})
+    else:
+        await messages_col.update_one({"id": message_id}, {"$addToSet": {"deleted_for": user_id}})
+    return {"success": True, "data": {"deleted": True, "delete_for": delete_for}}
+
+@app.post("/api/mobile/conversations/{conversation_id}/messages/{message_id}/pin")
+async def pin_message(conversation_id: str, message_id: str, user_id: str = Depends(verify_token)):
+    """Épingler/désépingler un message"""
+    existing = await pinned_col.find_one({"message_id": message_id, "conversation_id": conversation_id})
+    if existing:
+        await pinned_col.delete_one({"_id": existing["_id"]})
+        return {"success": True, "data": {"pinned": False}}
+    pin = {
+        "id": str(uuid.uuid4()),
+        "message_id": message_id,
+        "conversation_id": conversation_id,
+        "pinned_by": user_id,
+        "pinned_at": datetime.utcnow().isoformat(),
+        "expires_at": (datetime.utcnow() + timedelta(days=30)).isoformat(),
+    }
+    await pinned_col.insert_one(pin)
+    return {"success": True, "data": {"pinned": True}}
+
+@app.post("/api/mobile/conversations/{conversation_id}/messages/{message_id}/star")
+async def star_message(conversation_id: str, message_id: str, user_id: str = Depends(verify_token)):
+    """Marquer/démarquer un message comme important"""
+    existing = await starred_col.find_one({"message_id": message_id, "user_id": user_id})
+    if existing:
+        await starred_col.delete_one({"_id": existing["_id"]})
+        return {"success": True, "data": {"starred": False}}
+    star = {
+        "id": str(uuid.uuid4()),
+        "message_id": message_id,
+        "conversation_id": conversation_id,
+        "user_id": user_id,
+        "starred_at": datetime.utcnow().isoformat(),
+    }
+    await starred_col.insert_one(star)
+    return {"success": True, "data": {"starred": True}}
+
+@app.post("/api/mobile/conversations/{conversation_id}/messages/{message_id}/forward")
+async def forward_message(conversation_id: str, message_id: str, data: ForwardRequest, user_id: str = Depends(verify_token)):
+    """Transférer un message à une autre conversation"""
+    original = await messages_col.find_one({"id": message_id})
+    if not original:
+        raise HTTPException(status_code=404, detail="Message non trouvé")
+    fwd_msg = {
+        "id": str(uuid.uuid4()),
+        "conversation_id": data.target_conversation_id,
+        "sender_id": user_id,
+        "content": original.get("content", ""),
+        "type": original.get("type", "text"),
+        "is_read": False,
+        "forwarded_from": message_id,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    await messages_col.insert_one(fwd_msg)
+    await conversations_col.update_one(
+        {"id": data.target_conversation_id},
+        {"$set": {"last_message": original.get("content", ""), "last_message_at": datetime.utcnow().isoformat(), "updated_at": datetime.utcnow().isoformat()}}
+    )
+    fwd_msg["_id"] = str(fwd_msg.get("_id", ""))
+    return {"success": True, "data": fwd_msg}
+
+@app.put("/api/mobile/conversations/{conversation_id}/messages/{message_id}")
+async def edit_message(conversation_id: str, message_id: str, data: EditMessageRequest, user_id: str = Depends(verify_token)):
+    """Modifier un message (max 15 min après envoi)"""
+    msg = await messages_col.find_one({"id": message_id, "sender_id": user_id})
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message non trouvé ou non autorisé")
+    created = datetime.fromisoformat(msg["created_at"])
+    if (datetime.utcnow() - created).total_seconds() > 900:
+        raise HTTPException(status_code=400, detail="Modification impossible après 15 minutes")
+    await messages_col.update_one({"id": message_id}, {"$set": {"content": data.content, "edited": True, "edited_at": datetime.utcnow().isoformat()}})
+    return {"success": True, "data": {"edited": True, "content": data.content}}
+
+@app.get("/api/mobile/conversations/{conversation_id}/pinned")
+async def get_pinned_messages(conversation_id: str, user_id: str = Depends(verify_token)):
+    """Obtenir les messages épinglés d'une conversation"""
+    pins = await pinned_col.find({"conversation_id": conversation_id}).to_list(20)
+    msg_ids = [p["message_id"] for p in pins]
+    msgs = await messages_col.find({"id": {"$in": msg_ids}}).to_list(20)
+    for m in msgs:
+        m["_id"] = str(m["_id"])
+    return {"success": True, "data": {"messages": msgs}}
+
+@app.get("/api/mobile/starred-messages")
+async def get_starred_messages(user_id: str = Depends(verify_token)):
+    """Obtenir tous les messages importants de l'utilisateur"""
+    stars = await starred_col.find({"user_id": user_id}).to_list(100)
+    msg_ids = [s["message_id"] for s in stars]
+    msgs = await messages_col.find({"id": {"$in": msg_ids}}).to_list(100)
+    for m in msgs:
+        m["_id"] = str(m["_id"])
+    return {"success": True, "data": {"messages": msgs}}
+
+@app.post("/api/mobile/conversations/start")
+async def start_conversation_with_user(data: dict, user_id: str = Depends(verify_token)):
+    """Démarrer une conversation avec un utilisateur réel"""
+    target_id = data.get("target_user_id", "")
+    target_name = data.get("target_name", "")
+    target_avatar = data.get("target_avatar", "")
+    if not target_id:
+        raise HTTPException(status_code=400, detail="target_user_id requis")
+    existing = await conversations_col.find_one({
+        "participant_ids": {"$all": [user_id, target_id]},
+        "is_group": False
+    })
+    if existing:
+        existing["_id"] = str(existing["_id"])
+        return {"success": True, "data": existing}
+    conv = {
+        "id": str(uuid.uuid4()),
+        "participant_ids": [user_id, target_id],
+        "participant_info": {
+            target_id: {"name": target_name, "avatar": target_avatar},
+        },
+        "name": None,
+        "is_group": False,
+        "last_message": None,
+        "last_message_at": datetime.utcnow().isoformat(),
+        "unread_count": 0,
+        "created_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    await conversations_col.insert_one(conv)
+    conv["_id"] = str(conv.get("_id", ""))
+    return {"success": True, "data": conv}
 
 # ==================== WALLET API (Complémentaire) ====================
 

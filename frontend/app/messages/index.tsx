@@ -1,85 +1,57 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, Dimensions, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, Dimensions, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import mobileApiClient from '../../src/api/mobileClient';
+import apiClient from '../../src/api/client';
 
 const { width } = Dimensions.get('window');
-
 const TABS = ['Discussions', 'Statuts', 'Appels'];
 
-const CONVERSATIONS = [
-  {
-    id: 'c1', name: 'Aminata Diallo', avatar: 'https://i.pravatar.cc/150?img=1',
-    lastMessage: 'Salut! Tu as vu ma nouvelle video?', time: '14:32', unread: 3, online: true,
-    isTyping: false, lastMsgType: 'text', isRead: false, isMine: false,
-  },
-  {
-    id: 'c2', name: 'Moussa Ndiaye', avatar: 'https://i.pravatar.cc/150?img=2',
-    lastMessage: 'Merci pour la commande!', time: '13:45', unread: 1, online: true,
-    isTyping: true, lastMsgType: 'text', isRead: false, isMine: false,
-  },
-  {
-    id: 'c3', name: 'Famille Bamako', avatar: 'https://i.pravatar.cc/150?img=10',
-    lastMessage: 'Fanta: Photos du mariage', time: '12:20', unread: 15, online: false,
-    isTyping: false, lastMsgType: 'image', isRead: false, isMine: false, isGroup: true, groupMembers: 12,
-  },
-  {
-    id: 'c4', name: 'Awa Kone', avatar: 'https://i.pravatar.cc/150?img=3',
-    lastMessage: 'Le colis est en route', time: '11:05', unread: 0, online: false,
-    isTyping: false, lastMsgType: 'text', isRead: true, isMine: true,
-  },
-  {
-    id: 'c5', name: 'Ibrahim Toure', avatar: 'https://i.pravatar.cc/150?img=4',
-    lastMessage: 'On se retrouve demain?', time: '09:30', unread: 0, online: false,
-    isTyping: false, lastMsgType: 'text', isRead: true, isMine: true,
-  },
-  {
-    id: 'c6', name: 'Fatoumata Diarra', avatar: 'https://i.pravatar.cc/150?img=9',
-    lastMessage: "J'adore ta collection!", time: 'Hier', unread: 0, online: true,
-    isTyping: false, lastMsgType: 'text', isRead: false, isMine: false,
-  },
-  {
-    id: 'c7', name: 'Vendeurs AfriWonder', avatar: 'https://i.pravatar.cc/150?img=12',
-    lastMessage: 'Moussa: Nouveau stock disponible', time: 'Hier', unread: 5, online: false,
-    isTyping: false, lastMsgType: 'text', isRead: false, isMine: false, isGroup: true, groupMembers: 45,
-  },
-  {
-    id: 'c8', name: 'Support AfriWonder', avatar: 'https://i.pravatar.cc/150?img=50',
-    lastMessage: "Bienvenue sur AfriWonder!", time: 'Lun', unread: 0, online: true,
-    isTyping: false, lastMsgType: 'text', isRead: true, isMine: true,
-  },
-  {
-    id: 'c9', name: 'Mariam Sangare', avatar: 'https://i.pravatar.cc/150?img=5',
-    lastMessage: '', time: 'Dim', unread: 0, online: false,
-    isTyping: false, lastMsgType: 'voice', isRead: true, isMine: true, voiceDuration: '0:34',
-  },
-  {
-    id: 'c10', name: 'Boubacar Diallo', avatar: 'https://i.pravatar.cc/150?img=7',
-    lastMessage: 'Photo', time: 'Sam', unread: 0, online: false,
-    isTyping: false, lastMsgType: 'image', isRead: false, isMine: true,
-  },
-];
-
-const CALL_HISTORY = [
-  { id: 'call1', name: 'Aminata Diallo', avatar: 'https://i.pravatar.cc/150?img=1', type: 'incoming', isVideo: false, time: 'Aujourd\'hui, 10:30', missed: false },
-  { id: 'call2', name: 'Moussa Ndiaye', avatar: 'https://i.pravatar.cc/150?img=2', type: 'outgoing', isVideo: true, time: 'Hier, 18:00', missed: false },
-  { id: 'call3', name: 'Ibrahim Toure', avatar: 'https://i.pravatar.cc/150?img=4', type: 'incoming', isVideo: false, time: 'Hier, 15:22', missed: true },
-  { id: 'call4', name: 'Fatoumata Diarra', avatar: 'https://i.pravatar.cc/150?img=9', type: 'outgoing', isVideo: false, time: 'Lun, 09:15', missed: false },
-];
+interface Conversation {
+  id: string;
+  name: string;
+  avatar: string;
+  lastMessage: string;
+  time: string;
+  unread: number;
+  online: boolean;
+  isTyping: boolean;
+  lastMsgType: string;
+  isRead: boolean;
+  isMine: boolean;
+  isGroup?: boolean;
+  groupMembers?: number;
+  voiceDuration?: string;
+}
 
 export default function MessagesListScreen() {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState(0);
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [conversations, setConversations] = useState(CONVERSATIONS);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [realUsers, setRealUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showContacts, setShowContacts] = useState(false);
 
-  useEffect(() => { loadConversations(); }, []);
+  useEffect(() => { loadConversations(); loadRealUsers(); }, []);
+
+  const loadRealUsers = async () => {
+    try {
+      const response = await apiClient.get('/users?limit=30');
+      const data = response.data?.data || response.data;
+      const users = data?.users || data || [];
+      if (Array.isArray(users)) {
+        setRealUsers(users.filter((u: any) => u && (u.username || u.full_name)));
+      }
+    } catch (err) {
+      console.log('Could not load real users:', err);
+    }
+  };
 
   const loadConversations = async () => {
     try {
@@ -87,9 +59,8 @@ export default function MessagesListScreen() {
       const data = response.data?.data || response.data;
       const backendConvos = data?.conversations || [];
       if (backendConvos.length > 0) {
-        const transformed = backendConvos.map((c: any) => {
+        const transformed: Conversation[] = backendConvos.map((c: any) => {
           const participantInfo = c.participant_info || {};
-          // Get the first participant info entry (the other user)
           const otherInfoKey = Object.keys(participantInfo)[0];
           const otherInfo = otherInfoKey ? participantInfo[otherInfoKey] : {};
           const timeStr = c.last_message_at ? formatTimeAgo(c.last_message_at) : '';
@@ -111,7 +82,7 @@ export default function MessagesListScreen() {
         setConversations(transformed);
       }
     } catch (err) {
-      console.log('Using mock conversations', err);
+      console.log('Error loading conversations:', err);
     } finally { setLoading(false); }
   };
 
@@ -128,31 +99,51 @@ export default function MessagesListScreen() {
     return `${date.getDate()}/${date.getMonth() + 1}`;
   };
 
+  const startConversation = async (user: any) => {
+    try {
+      const userId = user._id || user.id;
+      const userName = user.full_name || user.username || 'Utilisateur';
+      const userAvatar = user.avatar || user.profile_image || `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=FF6B00&color=fff`;
+      const response = await mobileApiClient.post('/mobile/conversations/start', {
+        target_user_id: userId,
+        target_name: userName,
+        target_avatar: userAvatar,
+      });
+      const conv = response.data?.data;
+      if (conv) {
+        setShowContacts(false);
+        router.push({ pathname: '/messages/[id]', params: { id: conv.id, name: userName, avatar: userAvatar } });
+      }
+    } catch (err) {
+      console.log('Error starting conversation:', err);
+      Alert.alert('Erreur', 'Impossible de démarrer la conversation');
+    }
+  };
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    loadConversations().finally(() => setRefreshing(false));
+    Promise.all([loadConversations(), loadRealUsers()]).finally(() => setRefreshing(false));
   }, []);
 
+  const totalUnread = conversations.reduce((sum, c) => sum + c.unread, 0);
   const filteredConversations = searchQuery
     ? conversations.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : conversations;
 
-  const renderReadReceipt = (item: typeof CONVERSATIONS[0]) => {
+  const filteredUsers = searchQuery
+    ? realUsers.filter(u => {
+        const name = (u.full_name || u.username || '').toLowerCase();
+        return name.includes(searchQuery.toLowerCase());
+      })
+    : realUsers;
+
+  const renderReadReceipt = (item: Conversation) => {
     if (!item.isMine) return null;
-    return (
-      <Ionicons
-        name="checkmark-done"
-        size={16}
-        color={item.isRead ? '#53BDEB' : Colors.textMuted}
-        style={{ marginRight: 2 }}
-      />
-    );
+    return <Ionicons name="checkmark-done" size={16} color={item.isRead ? '#53BDEB' : Colors.textMuted} style={{ marginRight: 2 }} />;
   };
 
-  const renderLastMessage = (item: typeof CONVERSATIONS[0]) => {
-    if (item.isTyping) {
-      return <Text style={styles.typingText}>En train d'ecrire...</Text>;
-    }
+  const renderLastMessage = (item: Conversation) => {
+    if (item.isTyping) return <Text style={styles.typingText}>En train d'ecrire...</Text>;
     if (item.lastMsgType === 'voice') {
       return (
         <View style={styles.lastMsgRow}>
@@ -174,15 +165,15 @@ export default function MessagesListScreen() {
     return (
       <View style={styles.lastMsgRow}>
         {renderReadReceipt(item)}
-        <Text style={styles.lastMessage} numberOfLines={1}>{item.lastMessage}</Text>
+        <Text style={styles.lastMessage} numberOfLines={1}>{item.lastMessage || 'Aucun message'}</Text>
       </View>
     );
   };
 
-  const renderConversation = ({ item }: { item: typeof CONVERSATIONS[0] }) => (
+  const renderConversation = ({ item }: { item: Conversation }) => (
     <TouchableOpacity
       style={styles.conversationItem}
-      onPress={() => router.push(`/messages/${item.id}`)}
+      onPress={() => router.push({ pathname: '/messages/[id]', params: { id: item.id, name: item.name, avatar: item.avatar } })}
       activeOpacity={0.7}
     >
       <View style={styles.avatarContainer}>
@@ -191,15 +182,11 @@ export default function MessagesListScreen() {
       </View>
       <View style={styles.conversationInfo}>
         <View style={styles.conversationHeader}>
-          <Text style={[styles.conversationName, item.unread > 0 && styles.nameUnread]}>{item.name}</Text>
-          <Text style={[styles.conversationTime, item.unread > 0 && styles.timeUnread]}>
-            {item.time}
-          </Text>
+          <Text style={[styles.conversationName, item.unread > 0 && styles.nameUnread]} numberOfLines={1}>{item.name}</Text>
+          <Text style={[styles.conversationTime, item.unread > 0 && styles.timeUnread]}>{item.time}</Text>
         </View>
         <View style={styles.conversationFooter}>
-          <View style={styles.lastMsgContainer}>
-            {renderLastMessage(item)}
-          </View>
+          <View style={styles.lastMsgContainer}>{renderLastMessage(item)}</View>
           {item.unread > 0 && (
             <View style={styles.unreadBadge}>
               <Text style={styles.unreadText}>{item.unread}</Text>
@@ -210,17 +197,27 @@ export default function MessagesListScreen() {
     </TouchableOpacity>
   );
 
-  const renderCallItem = ({ item }: { item: typeof CALL_HISTORY[0] }) => (
+  const renderContactItem = ({ item }: { item: any }) => {
+    const name = item.full_name || item.username || 'Utilisateur';
+    const avatar = item.avatar || item.profile_image || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=FF6B00&color=fff`;
+    return (
+      <TouchableOpacity style={styles.contactItem} onPress={() => startConversation(item)} activeOpacity={0.7}>
+        <Image source={{ uri: avatar }} style={styles.contactAvatar} />
+        <View style={styles.contactInfo}>
+          <Text style={styles.contactName}>{name}</Text>
+          <Text style={styles.contactBio} numberOfLines={1}>{item.bio || item.username || ''}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderCallItem = ({ item }: { item: any }) => (
     <TouchableOpacity style={styles.callItem}>
       <Image source={{ uri: item.avatar }} style={styles.callAvatar} />
       <View style={styles.callInfo}>
         <Text style={[styles.callName, item.missed && styles.callMissed]}>{item.name}</Text>
         <View style={styles.callMetaRow}>
-          <Ionicons
-            name={item.type === 'incoming' ? 'arrow-down-left' : 'arrow-up-right'}
-            size={14}
-            color={item.missed ? Colors.error : Colors.success}
-          />
+          <Ionicons name={item.type === 'incoming' ? 'arrow-down-left' : 'arrow-up-right'} size={14} color={item.missed ? Colors.error : Colors.success} />
           <Text style={styles.callTime}>{item.time}</Text>
         </View>
       </View>
@@ -229,6 +226,46 @@ export default function MessagesListScreen() {
       </TouchableOpacity>
     </TouchableOpacity>
   );
+
+  // Contacts overlay
+  if (showContacts) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => setShowContacts(false)} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color={Colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Nouvelle discussion</Text>
+          <View style={styles.headerActions} />
+        </View>
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={18} color={Colors.textSecondary} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Rechercher un contact..."
+            placeholderTextColor={Colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoFocus
+          />
+        </View>
+        {realUsers.length === 0 ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.emptyText}>Chargement des contacts...</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredUsers}
+            renderItem={renderContactItem}
+            keyExtractor={(item) => item._id || item.id || Math.random().toString()}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.conversationsList}
+          />
+        )}
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -251,7 +288,6 @@ export default function MessagesListScreen() {
         </View>
       </View>
 
-      {/* Search Bar */}
       {searchVisible && (
         <View style={styles.searchBar}>
           <Ionicons name="search" size={18} color={Colors.textSecondary} />
@@ -274,79 +310,73 @@ export default function MessagesListScreen() {
       {/* Tabs */}
       <View style={styles.tabsContainer}>
         {TABS.map((tab, index) => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tab, activeTab === index && styles.tabActive]}
-            onPress={() => setActiveTab(index)}
-          >
+          <TouchableOpacity key={tab} style={[styles.tab, activeTab === index && styles.tabActive]} onPress={() => setActiveTab(index)}>
             <Text style={[styles.tabText, activeTab === index && styles.tabTextActive]}>{tab}</Text>
-            {index === 0 && CONVERSATIONS.reduce((sum, c) => sum + c.unread, 0) > 0 && (
+            {index === 0 && totalUnread > 0 && (
               <View style={styles.tabBadge}>
-                <Text style={styles.tabBadgeText}>{CONVERSATIONS.reduce((sum, c) => sum + c.unread, 0)}</Text>
+                <Text style={styles.tabBadgeText}>{totalUnread}</Text>
               </View>
             )}
           </TouchableOpacity>
         ))}
       </View>
 
-      {/* Content based on tab */}
+      {/* Content */}
       {activeTab === 0 && (
-        <FlatList
-          data={filteredConversations}
-          renderItem={renderConversation}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.conversationsList}
-        />
+        loading ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.emptyText}>Chargement...</Text>
+          </View>
+        ) : filteredConversations.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="chatbubbles-outline" size={64} color={Colors.textMuted} />
+            <Text style={styles.emptyTitle}>Aucune conversation</Text>
+            <Text style={styles.emptyText}>Appuyez sur le bouton ci-dessous pour commencer une discussion</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredConversations}
+            renderItem={renderConversation}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.conversationsList}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+          />
+        )
       )}
 
       {activeTab === 1 && (
         <View style={styles.statusContainer}>
-          {/* My Status */}
           <TouchableOpacity style={styles.myStatusCard}>
             <View style={styles.myStatusAvatar}>
               <Image source={{ uri: 'https://i.pravatar.cc/150?img=8' }} style={styles.statusAvatarImg} />
-              <View style={styles.addStatusBadge}>
-                <Ionicons name="add" size={14} color="#FFF" />
-              </View>
+              <View style={styles.addStatusBadge}><Ionicons name="add" size={14} color="#FFF" /></View>
             </View>
             <View>
               <Text style={styles.myStatusTitle}>Mon statut</Text>
               <Text style={styles.myStatusSubtitle}>Appuyez pour ajouter un statut</Text>
             </View>
           </TouchableOpacity>
-          <Text style={styles.statusSectionTitle}>Mises a jour recentes</Text>
-          {CONVERSATIONS.filter(c => c.online).slice(0, 4).map((contact) => (
-            <TouchableOpacity key={contact.id} style={styles.statusItem}>
-              <View style={styles.statusRing}>
-                <Image source={{ uri: contact.avatar }} style={styles.statusAvatar} />
-              </View>
-              <View>
-                <Text style={styles.statusName}>{contact.name}</Text>
-                <Text style={styles.statusTime}>Aujourd'hui, 10:30</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
         </View>
       )}
 
       {activeTab === 2 && (
-        <FlatList
-          data={CALL_HISTORY}
-          renderItem={renderCallItem}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.conversationsList}
-        />
+        <View style={styles.emptyState}>
+          <Ionicons name="call-outline" size={64} color={Colors.textMuted} />
+          <Text style={styles.emptyTitle}>Appels</Text>
+          <Text style={styles.emptyText}>Vos appels apparaitront ici</Text>
+        </View>
       )}
 
       {/* FAB */}
-      <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 20 }]}>
-        <Ionicons
-          name={activeTab === 0 ? 'chatbubble' : activeTab === 1 ? 'camera' : 'call'}
-          size={24}
-          color="#FFF"
-        />
+      <TouchableOpacity
+        style={[styles.fab, { bottom: insets.bottom + 20 }]}
+        onPress={() => {
+          if (activeTab === 0) setShowContacts(true);
+        }}
+      >
+        <Ionicons name={activeTab === 0 ? 'chatbubble' : activeTab === 1 ? 'camera' : 'call'} size={24} color="#FFF" />
       </TouchableOpacity>
     </View>
   );
@@ -375,7 +405,7 @@ const styles = StyleSheet.create({
   onlineDot: { position: 'absolute', bottom: 1, right: 1, width: 14, height: 14, borderRadius: 7, backgroundColor: Colors.success, borderWidth: 2, borderColor: Colors.background },
   conversationInfo: { flex: 1 },
   conversationHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
-  conversationName: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '500' },
+  conversationName: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '500', flex: 1, marginRight: 8 },
   nameUnread: { fontWeight: 'bold' },
   conversationTime: { color: Colors.textMuted, fontSize: FontSizes.xs },
   timeUnread: { color: Colors.primary, fontWeight: '600' },
@@ -386,7 +416,17 @@ const styles = StyleSheet.create({
   typingText: { color: Colors.primary, fontSize: FontSizes.sm, fontStyle: 'italic' },
   unreadBadge: { backgroundColor: Colors.primary, minWidth: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   unreadText: { color: '#FFF', fontSize: FontSizes.xs, fontWeight: 'bold' },
-  // Status tab
+  // Contacts
+  contactItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, gap: Spacing.md },
+  contactAvatar: { width: 48, height: 48, borderRadius: 24 },
+  contactInfo: { flex: 1 },
+  contactName: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600' },
+  contactBio: { color: Colors.textSecondary, fontSize: FontSizes.sm, marginTop: 2 },
+  // Empty state
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
+  emptyTitle: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: 'bold', marginTop: 16 },
+  emptyText: { color: Colors.textSecondary, fontSize: FontSizes.sm, textAlign: 'center', marginTop: 8 },
+  // Status
   statusContainer: { flex: 1, paddingTop: Spacing.md },
   myStatusCard: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, gap: Spacing.md },
   myStatusAvatar: { position: 'relative' },
@@ -394,13 +434,7 @@ const styles = StyleSheet.create({
   addStatusBadge: { position: 'absolute', bottom: 0, right: 0, width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.background },
   myStatusTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600' },
   myStatusSubtitle: { color: Colors.textSecondary, fontSize: FontSizes.sm },
-  statusSectionTitle: { color: Colors.textSecondary, fontSize: FontSizes.sm, fontWeight: '600', paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg, paddingBottom: Spacing.sm },
-  statusItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, gap: Spacing.md },
-  statusRing: { width: 54, height: 54, borderRadius: 27, borderWidth: 2, borderColor: Colors.primary, padding: 2 },
-  statusAvatar: { width: '100%', height: '100%', borderRadius: 24 },
-  statusName: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '500' },
-  statusTime: { color: Colors.textSecondary, fontSize: FontSizes.sm },
-  // Calls tab
+  // Calls
   callItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, gap: Spacing.md },
   callAvatar: { width: 48, height: 48, borderRadius: 24 },
   callInfo: { flex: 1 },
