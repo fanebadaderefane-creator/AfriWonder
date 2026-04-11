@@ -166,6 +166,15 @@ app.set('etag', 'strong');
 const defaultOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
+  /** Expo (Metro / dev server web) — origine navigateur ≠ API (:3000) */
+  'http://localhost:8081',
+  'http://localhost:8082',
+  'http://localhost:19000',
+  'http://localhost:19006',
+  'http://127.0.0.1:8081',
+  'http://127.0.0.1:8082',
+  'http://127.0.0.1:19000',
+  'http://127.0.0.1:19006',
   'https://afri-wonder.vercel.app',
   'https://afriwonder.vercel.app',
   'https://afri-wonder.app',
@@ -305,6 +314,11 @@ app.use('/api/auth/login', authLimiter); // 5 req/15min
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/forgot-password', authLimiter);
 app.use('/api/auth/supabase', authLimiter);
+// Même contrat que l’ancien proxy Python / client mobile : /api/proxy/auth/*
+app.use('/api/proxy/auth/login', authLimiter);
+app.use('/api/proxy/auth/register', authLimiter);
+app.use('/api/proxy/auth/forgot-password', authLimiter);
+app.use('/api/proxy/auth/supabase', authLimiter);
 app.use('/api/payments', paymentLimiter); // 10 req/h
 app.use('/api/upload', uploadLimiter); // 20 req/h
 app.use('/api/admin', adminLimiter); // 30 req/min
@@ -365,6 +379,8 @@ if (process.env.NODE_ENV !== 'test') {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+/** Alias mobile / Expo : même router que /api/auth (le routeur proxy Node ne gérait que /media). */
+app.use('/api/proxy/auth', authRoutes);
 app.use('/api/videos', videoRoutes);
 app.use('/api/proxy', proxyRoutes);
 app.use('/api/comments', commentsRoutes);
