@@ -1,15 +1,13 @@
 import { io, Socket } from 'socket.io-client';
-import { Platform } from 'react-native';
 import { getBackendOrigin, DEFAULT_BACKEND_ORIGIN } from '../config/backendBase';
 
-// Aligné PWA : `VITE_WS_URL` / même hôte que l’API (port 3000 en dev).
-const BACKEND_URL = Platform.OS === 'web'
-  ? '/api'
-  : `${getBackendOrigin()}/api`;
-
-const SOCKET_URL = Platform.OS === 'web'
-  ? BACKEND_URL.replace(/\/api\/?$/, '') || (typeof window !== 'undefined' ? window.location.origin : '')
-  : getBackendOrigin() || DEFAULT_BACKEND_ORIGIN;
+// Même hôte que l’API (en dev web : localhost:3000, pas le port Metro).
+const SOCKET_URL = (() => {
+  const o = getBackendOrigin();
+  if (o) return o;
+  if (typeof window !== 'undefined') return window.location.origin;
+  return DEFAULT_BACKEND_ORIGIN;
+})();
 
 class SocketService {
   private socket: Socket | null = null;

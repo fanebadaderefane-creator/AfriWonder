@@ -3,13 +3,8 @@ import { Platform } from 'react-native';
 import { secureStorage } from '../utils/secureStorage';
 import { getBackendOrigin } from '../config/backendBase';
 
-// Même route que la PWA : `/api/proxy` sur l’origine backend (Express + Vite en dev).
-const getProxyBaseUrl = () => {
-  if (Platform.OS === 'web') {
-    return '';
-  }
-  return getBackendOrigin();
-};
+// Même route que la PWA : `/api/proxy` sur l’origine backend (Express, port 3000 en dev).
+const getProxyBaseUrl = () => getBackendOrigin();
 
 const apiClient = axios.create({
   baseURL: `${getProxyBaseUrl()}/api/proxy`,

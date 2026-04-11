@@ -4,12 +4,7 @@ import { secureStorage } from '../utils/secureStorage';
 import { getBackendOrigin } from '../config/backendBase';
 
 // Routes `/api/mobile/*` : même backend Express que la PWA (`VITE_API_URL`).
-const getMobileApiBaseUrl = () => {
-  if (Platform.OS === 'web') {
-    return '';
-  }
-  return getBackendOrigin();
-};
+const getMobileApiBaseUrl = () => getBackendOrigin();
 
 const mobileApiClient = axios.create({
   baseURL: `${getMobileApiBaseUrl()}/api`,

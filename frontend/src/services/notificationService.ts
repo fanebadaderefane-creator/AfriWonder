@@ -33,6 +33,12 @@ class NotificationService {
         return null;
       }
 
+      // Web : Expo exige `notification.vapidPublicKey` dans app.json — sinon erreur ; on skip en dev.
+      if (Platform.OS === 'web') {
+        console.log('[Notifications] Web: push distant ignoré (ajoutez notification.vapidPublicKey dans app.json pour activer).');
+        return null;
+      }
+
       // Get push token
       const tokenData = await Notifications.getExpoPushTokenAsync({
         projectId: Constants.expoConfig?.extra?.eas?.projectId,
