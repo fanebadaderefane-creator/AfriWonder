@@ -382,6 +382,11 @@ app.use('/api/auth', authRoutes);
 /** Alias mobile / Expo : même router que /api/auth (le routeur proxy Node ne gérait que /media). */
 app.use('/api/proxy/auth', authRoutes);
 app.use('/api/videos', videoRoutes);
+/** Client Expo / `apiClient` (baseURL `…/api/proxy`) — alias des routes API réelles (hors /media CDN). */
+app.use('/api/proxy/videos', videoRoutes);
+app.use('/api/proxy/users', userRoutes);
+app.use('/api/proxy/products', productRoutes);
+app.use('/api/proxy/search', searchRoutes);
 app.use('/api/proxy', proxyRoutes);
 app.use('/api/comments', commentsRoutes);
 app.use('/api/users', userRoutes);
