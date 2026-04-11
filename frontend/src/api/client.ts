@@ -1,25 +1,14 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
 import { secureStorage } from '../utils/secureStorage';
-import Constants from 'expo-constants';
+import { getBackendOrigin } from '../config/backendBase';
 
-// ALL API calls now go through the local FastAPI proxy which adds anti-bot headers
-// The proxy forwards requests to https://afriwonder.onrender.com/api with proper headers
+// Même route que la PWA : `/api/proxy` sur l’origine backend (Express + Vite en dev).
 const getProxyBaseUrl = () => {
-  const backendUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL
-    || process.env.EXPO_PUBLIC_BACKEND_URL
-    || '';
-
-  if (backendUrl) {
-    return backendUrl;
-  }
-
-  // Fallback for web preview
   if (Platform.OS === 'web') {
-    return '';  // Same origin, proxied via /api
+    return '';
   }
-
-  return 'http://localhost:8001';
+  return getBackendOrigin();
 };
 
 const apiClient = axios.create({

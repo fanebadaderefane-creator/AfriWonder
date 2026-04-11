@@ -1,13 +1,15 @@
 import { io, Socket } from 'socket.io-client';
-import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { getBackendOrigin, DEFAULT_BACKEND_ORIGIN } from '../config/backendBase';
 
+// Aligné PWA : `VITE_WS_URL` / même hôte que l’API (port 3000 en dev).
 const BACKEND_URL = Platform.OS === 'web'
   ? '/api'
-  : (Constants.expoConfig?.extra?.EXPO_BACKEND_URL || process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:8001/api');
+  : `${getBackendOrigin()}/api`;
 
-// Strip /api suffix for socket connection - Socket.IO connects to root
-const SOCKET_URL = BACKEND_URL.replace(/\/api\/?$/, '');
+const SOCKET_URL = Platform.OS === 'web'
+  ? BACKEND_URL.replace(/\/api\/?$/, '') || (typeof window !== 'undefined' ? window.location.origin : '')
+  : getBackendOrigin() || DEFAULT_BACKEND_ORIGIN;
 
 class SocketService {
   private socket: Socket | null = null;
