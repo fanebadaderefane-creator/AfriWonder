@@ -21,6 +21,8 @@ Une demande est **terminée** seulement si **toutes** les conditions applicables
 npm run verify:delivery
 ```
 
+`verify:delivery` enchaîne désormais : `verify:audit`, tests Vitest **PWA** (`src/`), puis **`verify:delivery:expo`** (lint + typecheck + tests unitaires dans `frontend/`). Pour vérifier **uniquement** l’app Expo : `npm run verify:delivery:expo`.
+
 Par défaut, le script définit **`CI=true`** si la variable `CI` n’est pas déjà définie (aligné avec `vitest.config.js` : exclusion des smoke tests lourds). Pour forcer **tous** les tests front y compris smoke / `Landing.test`, lancer avec `CI=false` ou `CI=` vide selon votre shell.
 
 Sur une machine où la suite Vitest complète manque de mémoire (Windows / gros repo) :

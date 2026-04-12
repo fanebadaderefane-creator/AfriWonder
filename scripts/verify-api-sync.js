@@ -78,13 +78,40 @@ if (existsSync(join(process.cwd(), 'src')) &&
   console.log('   ✅ WebSocket (Socket.io) utilisé côté frontend');
 }
 
-// Vérifier CORS backend
+// Vérifier CORS backend + montures proxy Expo (alignées PWA)
 const appPath = join(process.cwd(), 'backend', 'src', 'app.ts');
 if (existsSync(appPath)) {
   const appContent = readFileSync(appPath, 'utf8');
   if (appContent.includes('cors') || appContent.includes('CORS')) {
     console.log('   ✅ CORS configuré backend');
   }
+  const expoProxyMounts = [
+    ["/api/proxy/feed", "Expo `apiClient` GET /feed (Pour toi)"],
+    ["/api/proxy/notifications", "Expo `apiClient` GET/PUT /notifications"],
+    ["/api/proxy/payments", "Expo `apiClient` wallet / transactions"],
+    ["/api/proxy/messages", "Expo `apiClient` messagerie"],
+    ["/api/proxy/crowdfunding", "Expo `apiClient` crowdfunding"],
+    ["/api/proxy/live", "Expo `apiClient` live"],
+    ["/api/proxy/ads", "Expo `apiClient` campagnes pub"],
+    ["/api/proxy/creator-dashboard", "Expo `apiClient` dashboard créateur"],
+    ["/api/proxy/withdrawals", "Expo `apiClient` retraits"],
+    ["/api/proxy/posts", "Expo `apiClient` posts"],
+    ["/api/proxy/moderation", "Expo `apiClient` signalements"],
+    ["/api/proxy/saves", "Expo `apiClient` sauvegardes vidéo"],
+  ];
+  for (const [needle, label] of expoProxyMounts) {
+    if (appContent.includes(`'${needle}'`) || appContent.includes(`"${needle}"`)) {
+      console.log(`   ✅ ${label} → ${needle}`);
+    } else {
+      console.log(`   ⚠️ Monture manquante: ${needle} (${label})`);
+      fail = 1;
+    }
+  }
+}
+
+const expoClientPath = join(process.cwd(), 'frontend', 'src', 'api', 'client.ts');
+if (existsSync(expoClientPath)) {
+  console.log('   ✅ Client Expo (frontend/src/api/client.ts) présent');
 }
 
 // Health checks
@@ -102,4 +129,4 @@ console.log('   - WebSocket: Socket.io (live, messages, notifications)');
 console.log('   - Health: /health, /health/ready');
 console.log('   - CORS configuré');
 console.log('');
-process.exit(0);
+process.exit(fail);

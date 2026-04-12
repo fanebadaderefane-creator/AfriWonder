@@ -887,6 +887,8 @@ model Comment {
   video_id    String
   user_id     String
   content     String
+  /// URL du commentaire vocal (upload `/api/upload/audio`), optionnel
+  audio_url   String?
   parent_id   String?
   user_name   String?
   user_avatar String?

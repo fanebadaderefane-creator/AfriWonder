@@ -4,7 +4,7 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import mobileApiClient from '../../src/api/mobileClient';
+import apiClient from '../../src/api/client';
 import { useAuthStore } from '../../src/store/authStore';
 import * as Clipboard from 'expo-clipboard';
 import { Audio } from 'expo-av';
@@ -35,12 +35,31 @@ interface Message {
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
+async function appendUploadFile(formData: globalThis.FormData, uri: string, index: number, kind: 'image' | 'video' | 'audio') {
+  if (Platform.OS === 'web') {
+    const res = await fetch(uri);
+    const blob = await res.blob();
+    let mime = String(blob.type || '').toLowerCase().trim();
+    if (!mime || mime === 'application/octet-stream') {
+      mime = kind === 'video' ? 'video/mp4' : kind === 'audio' ? 'audio/m4a' : 'image/jpeg';
+    }
+    const ext = mime.includes('png') ? 'png' : mime.includes('webm') ? 'webm' : mime.includes('m4a') ? 'm4a' : kind === 'video' ? 'mp4' : kind === 'audio' ? 'm4a' : 'jpg';
+    formData.append('file', new File([blob], `upload_${index}.${ext}`, { type: mime }));
+    return;
+  }
+  const raw = (uri.split('.').pop() || '').split('?')[0] || '';
+  const ext = raw.replace(/[^a-z0-9]/gi, '').slice(0, 8) || (kind === 'video' ? 'mp4' : kind === 'audio' ? 'm4a' : 'jpg');
+  const mimeType =
+    kind === 'video' ? 'video/mp4' : kind === 'audio' ? 'audio/m4a' : 'image/jpeg';
+  formData.append('file', { uri, name: `upload_${index}.${ext}`, type: mimeType } as any);
+}
+
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
-  const { id, name: paramName, avatar: paramAvatar } = useLocalSearchParams();
+  const { id, name: paramName, avatar: paramAvatar, otherUserId: paramOtherUserId } = useLocalSearchParams();
   const conversationId = id as string;
-  const { user } = useAuthStore();
-  const currentUserId = user?.id || user?._id || '';
+  const { user, accessToken } = useAuthStore();
+  const currentUserId = user?.id || '';
 
   const [contact, setContact] = useState({
     name: (paramName as string) || 'Contact',
@@ -64,6 +83,7 @@ export default function ChatScreen() {
   // Forward modal
   const [forwardModalVisible, setForwardModalVisible] = useState(false);
   const [conversations, setConversations] = useState<any[]>([]);
+  const [recipientUserId, setRecipientUserId] = useState<string>(typeof paramOtherUserId === 'string' ? paramOtherUserId : '');
 
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -88,7 +108,7 @@ export default function ChatScreen() {
 
   // Socket.IO real-time connection
   useEffect(() => {
-    const token = user?.token || '';
+    const token = accessToken || '';
     if (token) {
       socketService.connect(token);
       socketService.joinConversation(conversationId);
@@ -144,9 +164,39 @@ export default function ChatScreen() {
 
   useEffect(() => { loadMessages(); }, [conversationId]);
 
+  useEffect(() => {
+    const p = typeof paramOtherUserId === 'string' ? paramOtherUserId : '';
+    if (p) setRecipientUserId(p);
+  }, [paramOtherUserId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const resolveRecipient = async () => {
+      if (recipientUserId || !conversationId || !currentUserId) return;
+      try {
+        const res = await apiClient.get(`/messages/conversations/id/${encodeURIComponent(conversationId)}`);
+        const conv = res.data?.data;
+        if (!conv || cancelled) return;
+        const other = conv.user1_id === currentUserId ? conv.user2 : conv.user1;
+        if (other?.id) setRecipientUserId(other.id);
+        if (other && (other.full_name || other.username)) {
+          setContact((c) => ({
+            ...c,
+            name: other.full_name || other.username || c.name,
+            avatar: other.profile_image || c.avatar,
+          }));
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    void resolveRecipient();
+    return () => { cancelled = true; };
+  }, [conversationId, currentUserId, recipientUserId]);
+
   const loadMessages = async () => {
     try {
-      const response = await mobileApiClient.get(`/mobile/conversations/${conversationId}/messages`);
+      const response = await apiClient.get(`/messages/${encodeURIComponent(conversationId)}`, { params: { limit: 40 } });
       const data = response.data?.data || response.data;
       const backendMsgs = data?.messages || [];
       if (backendMsgs.length > 0) {
@@ -159,17 +209,21 @@ export default function ChatScreen() {
             transformed.push({ id: `date-${m.id}`, text: '', isMine: false, time: '', status: 'read', type: 'text', date: dateStr });
             lastDate = dateStr;
           }
+          const rt = m.reply_to;
+          const replyName = rt?.sender?.full_name || rt?.sender?.username || '';
+          const isDeleted = !!m.is_deleted || !!m.deleted_for_all_at;
           transformed.push({
             id: m.id,
-            text: m.deleted ? 'Ce message a ete supprime' : (m.content || ''),
+            text: isDeleted ? 'Ce message a ete supprime' : (m.content || ''),
             isMine: m.sender_id === currentUserId,
             time: msgDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-            status: m.is_read ? 'read' : 'delivered',
+            status: String(m.status || '').toLowerCase() === 'read' ? 'read' : 'delivered',
             type: (m.type || 'text') as any,
-            replyTo: m.reply_to ? { id: m.reply_to.id, name: m.reply_to.name || '', text: m.reply_to.text || '' } : undefined,
-            forwarded: !!m.forwarded_from,
-            edited: !!m.edited,
-            deleted: !!m.deleted,
+            imageUri: m.media_url || undefined,
+            replyTo: rt ? { id: rt.id, name: replyName, text: rt.content || '' } : undefined,
+            forwarded: !!m.forwarded_from_message_id,
+            edited: !!m.is_edited,
+            deleted: isDeleted,
           });
         });
         setMessages(transformed);
@@ -192,6 +246,10 @@ export default function ChatScreen() {
 
   const sendMessage = useCallback(async () => {
     if (!newMessage.trim() || sending) return;
+    if (!recipientUserId) {
+      Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
+      return;
+    }
     const tempId = Date.now().toString();
     const msgText = newMessage.trim();
     const msg: Message = {
@@ -209,17 +267,21 @@ export default function ChatScreen() {
     setSending(true);
 
     try {
-      const body: any = { content: msgText, type: 'text' };
-      if (replyingTo) {
-        body.reply_to = { id: replyingTo.id, name: replyingTo.isMine ? 'Vous' : contact.name, text: replyingTo.text };
+      const body: Record<string, unknown> = {
+        recipientId: recipientUserId,
+        content: msgText,
+        type: 'text',
+      };
+      if (replyingTo && replyingTo.id && !String(replyingTo.id).startsWith('date-')) {
+        body.reply_to_message_id = replyingTo.id;
       }
-      const response = await mobileApiClient.post(`/mobile/conversations/${conversationId}/messages`, body);
+      const response = await apiClient.post('/messages/send', body);
       const sentMsg = response.data?.data;
       setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: sentMsg?.id || tempId, status: 'delivered' } : m));
     } catch (err) {
       console.log('Send error:', err);
     } finally { setSending(false); }
-  }, [newMessage, conversationId, sending, replyingTo, contact.name]);
+  }, [newMessage, conversationId, sending, replyingTo, contact.name, recipientUserId]);
 
   // ===== VOICE RECORDING =====
 
@@ -292,11 +354,18 @@ export default function ChatScreen() {
         setMessages(prev => [...prev, voiceMsg]);
 
         try {
-          await mobileApiClient.post(`/mobile/conversations/${conversationId}/messages`, {
+          if (!recipientUserId) return;
+          const formData = new FormData();
+          await appendUploadFile(formData, uri, 0, 'audio');
+          const uploadRes = await apiClient.post('/upload/audio', formData, { timeout: 120000, maxBodyLength: Infinity, maxContentLength: Infinity });
+          const ud = uploadRes.data?.data;
+          const mediaUrl = ud?.file_url || ud?.url || '';
+          if (!mediaUrl) return;
+          await apiClient.post('/messages/send', {
+            recipientId: recipientUserId,
             content: `Vocal ${formatDuration(duration)}`,
             type: 'voice',
-            media_url: uri,
-            duration: duration,
+            media_url: mediaUrl,
           });
           setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'delivered' } : m));
         } catch {}
@@ -385,10 +454,20 @@ export default function ChatScreen() {
         setMessages(prev => [...prev, mediaMsg]);
 
         try {
-          await mobileApiClient.post(`/mobile/conversations/${conversationId}/messages`, {
+          if (!recipientUserId) return;
+          const formData = new FormData();
+          await appendUploadFile(formData, asset.uri, 0, isVideo ? 'video' : 'image');
+          const path = isVideo ? '/upload/video' : '/upload/image';
+          const uploadRes = await apiClient.post(path, formData, { timeout: 300000, maxBodyLength: Infinity, maxContentLength: Infinity });
+          const ud = uploadRes.data?.data;
+          const mediaUrl = ud?.file_url || ud?.url || '';
+          if (!mediaUrl) return;
+          await apiClient.post('/messages/send', {
+            recipientId: recipientUserId,
             content: isVideo ? 'Video' : 'Photo',
             type: isVideo ? 'video' : 'image',
-            media_url: asset.uri,
+            media_url: mediaUrl,
+            thumbnail_url: ud?.thumbnail_url,
           });
           setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'delivered' } : m));
         } catch {}
@@ -443,7 +522,7 @@ export default function ChatScreen() {
       return m;
     }));
     try {
-      await mobileApiClient.post(`/mobile/conversations/${conversationId}/messages/${selectedMessage.id}/react`, { emoji });
+      await apiClient.post(`/messages/message/${encodeURIComponent(selectedMessage.id)}/reaction`, { emoji });
     } catch {}
   };
 
@@ -466,9 +545,12 @@ export default function ChatScreen() {
   const doDelete = async (deleteFor: string) => {
     if (!selectedMessage) return;
     try {
-      await mobileApiClient.delete(`/mobile/conversations/${conversationId}/messages/${selectedMessage.id}?delete_for=${deleteFor}`);
-      if (deleteFor === 'everyone') {
+      if (deleteFor === 'everyone' && selectedMessage.isMine) {
+        await apiClient.post(`/messages/message/${encodeURIComponent(selectedMessage.id)}/delete-for-all`, {});
         setMessages(prev => prev.map(m => m.id === selectedMessage.id ? { ...m, text: 'Ce message a ete supprime', deleted: true } : m));
+      } else if (selectedMessage.isMine) {
+        await apiClient.delete(`/messages/message/${encodeURIComponent(selectedMessage.id)}`);
+        setMessages(prev => prev.filter(m => m.id !== selectedMessage.id));
       } else {
         setMessages(prev => prev.filter(m => m.id !== selectedMessage.id));
       }
@@ -481,10 +563,15 @@ export default function ChatScreen() {
     if (!selectedMessage) return;
     setContextMenuVisible(false);
     try {
-      const res = await mobileApiClient.post(`/mobile/conversations/${conversationId}/messages/${selectedMessage.id}/pin`);
-      const pinned = res.data?.data?.pinned;
-      setMessages(prev => prev.map(m => m.id === selectedMessage.id ? { ...m, pinned } : m));
-      Alert.alert(pinned ? 'Epingle' : 'Desepingle', pinned ? 'Message epingle pour 30 jours' : 'Message desepingle');
+      if (selectedMessage.pinned) {
+        await apiClient.delete(`/messages/conversations/${encodeURIComponent(conversationId)}/pin`);
+        setMessages(prev => prev.map(m => m.id === selectedMessage.id ? { ...m, pinned: false } : m));
+        Alert.alert('Désépinglé', 'Message désépinglé');
+      } else {
+        await apiClient.post(`/messages/conversations/${encodeURIComponent(conversationId)}/pin`, { messageId: selectedMessage.id });
+        setMessages(prev => prev.map(m => m.id === selectedMessage.id ? { ...m, pinned: true } : m));
+        Alert.alert('Épinglé', 'Message épinglé sur la conversation');
+      }
     } catch {}
   };
 
@@ -492,9 +579,9 @@ export default function ChatScreen() {
     if (!selectedMessage) return;
     setContextMenuVisible(false);
     try {
-      const res = await mobileApiClient.post(`/mobile/conversations/${conversationId}/messages/${selectedMessage.id}/star`);
-      const starred = res.data?.data?.starred;
-      setMessages(prev => prev.map(m => m.id === selectedMessage.id ? { ...m, starred } : m));
+      const nextStar = !selectedMessage.starred;
+      await apiClient.patch(`/messages/message/${encodeURIComponent(selectedMessage.id)}/meta`, { is_important: nextStar });
+      setMessages(prev => prev.map(m => m.id === selectedMessage.id ? { ...m, starred: nextStar } : m));
     } catch {}
   };
 
@@ -502,7 +589,7 @@ export default function ChatScreen() {
     if (!selectedMessage) return;
     setContextMenuVisible(false);
     try {
-      const res = await mobileApiClient.get('/mobile/conversations');
+      const res = await apiClient.get('/messages/conversations', { params: { page: 1, limit: 50 } });
       const convos = res.data?.data?.conversations || [];
       setConversations(convos);
       setForwardModalVisible(true);
@@ -515,8 +602,17 @@ export default function ChatScreen() {
     if (!selectedMessage) return;
     setForwardModalVisible(false);
     try {
-      await mobileApiClient.post(`/mobile/conversations/${conversationId}/messages/${selectedMessage.id}/forward`, {
-        target_conversation_id: targetConvId,
+      const res = await apiClient.get(`/messages/conversations/id/${encodeURIComponent(targetConvId)}`);
+      const conv = res.data?.data;
+      if (!conv || !currentUserId) throw new Error('no conv');
+      const other = conv.user1_id === currentUserId ? conv.user2 : conv.user1;
+      const targetRecipientId = other?.id;
+      if (!targetRecipientId) throw new Error('no recipient');
+      const fwdText = selectedMessage.text ? `[Transféré] ${selectedMessage.text}` : '[Transféré]';
+      await apiClient.post('/messages/send', {
+        recipientId: targetRecipientId,
+        content: fwdText,
+        type: 'text',
       });
       Alert.alert('Transfere', 'Message transfere avec succes');
     } catch {
@@ -848,10 +944,11 @@ export default function ChatScreen() {
             data={conversations}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => {
-              const info = item.participant_info || {};
-              const key = Object.keys(info)[0];
-              const name = info[key]?.name || item.name || 'Contact';
-              const avatar = info[key]?.avatar || `https://i.pravatar.cc/150?u=${item.id}`;
+              const other = item.other || {};
+              const name = item.is_group ? (item.group_name || 'Groupe') : (other.full_name || other.username || 'Contact');
+              const avatar = item.is_group
+                ? (item.group_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}`)
+                : (other.profile_image || `https://i.pravatar.cc/150?u=${other.id || item.id}`);
               return (
                 <TouchableOpacity style={styles.forwardItem} onPress={() => doForward(item.id)}>
                   <Image source={{ uri: avatar }} style={styles.forwardAvatar} />

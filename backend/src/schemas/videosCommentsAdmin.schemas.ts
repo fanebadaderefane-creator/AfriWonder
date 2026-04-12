@@ -69,10 +69,24 @@ export const videoReactionTypeBodySchema = z.object({
   type: z.string().max(32).optional().default('like'),
 });
 
-export const videoAddCommentBodySchema = z.object({
-  content: z.string().min(1).max(10000),
-  parent_id: z.string().max(64).optional().nullable(),
-});
+const audioUrlSchema = z
+  .string()
+  .trim()
+  .max(2048)
+  .refine((s) => /^https?:\/\//i.test(s), { message: 'audio_url doit être une URL http(s)' })
+  .optional()
+  .nullable();
+
+/** Texte et/ou vocal : au moins l’un des deux est requis. */
+export const videoAddCommentBodySchema = z
+  .object({
+    content: z.string().max(10000).optional().default(''),
+    audio_url: audioUrlSchema,
+    parent_id: z.string().max(64).optional().nullable(),
+  })
+  .refine((d) => Boolean(String(d.content || '').trim()) || Boolean(d.audio_url?.trim()), {
+    message: 'Contenu texte ou audio_url requis',
+  });
 
 export const videoTipBodySchema = z.object({
   amount: z.coerce.number().min(50).max(1e9),

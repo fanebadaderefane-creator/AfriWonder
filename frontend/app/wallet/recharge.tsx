@@ -4,7 +4,7 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import mobileApiClient from '../../src/api/mobileClient';
+import apiClient from '../../src/api/client';
 
 const AMOUNTS = [1000, 2000, 5000, 10000, 20000, 50000];
 const METHODS = [
@@ -34,10 +34,9 @@ export default function RechargeWalletScreen() {
 
     setLoading(true);
     try {
-      const response = await mobileApiClient.post('/mobile/wallet/topup', {
+      const response = await apiClient.post('/payments/wallet/deposit', {
         amount: numAmount,
-        phone: phone.trim() || '00000000',
-        provider: selectedMethod === 'orange' ? 'orange-money' : selectedMethod === 'wave' ? 'wave' : selectedMethod === 'moov' ? 'moov-money' : 'card',
+        description: `Recharge ${selectedMethod === 'orange' ? 'Orange Money' : selectedMethod === 'wave' ? 'Wave' : selectedMethod === 'moov' ? 'Moov' : 'carte'} ${phone.trim() || ''}`.trim(),
       });
       const data = response.data?.data;
       Alert.alert(

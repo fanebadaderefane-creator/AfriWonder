@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import mobileApiClient from '../../src/api/mobileClient';
+import apiClient from '../../src/api/client';
 
 const formatMoney = (n: number) => n.toLocaleString('fr-FR') + ' FCFA';
 
@@ -17,8 +17,29 @@ export default function CreatorEarningsScreen() {
 
   const loadEarnings = async () => {
     try {
-      const res = await mobileApiClient.get('/mobile/creator/earnings');
-      setEarnings(res.data?.data || res.data);
+      const [dashRes, wdRes] = await Promise.all([
+        apiClient.get('/creator-dashboard'),
+        apiClient.get('/withdrawals', { params: { page: 1, limit: 100 } }).catch(() => ({ data: {} })),
+      ]);
+      const d = dashRes.data?.data || dashRes.data;
+      const rev = d?.revenues || {};
+      const wdData = wdRes.data?.data || wdRes.data;
+      const wdList = wdData?.withdrawals || wdData?.items || [];
+      const totalWithdrawn = Array.isArray(wdList)
+        ? wdList.filter((w: any) => String(w.status || '').toLowerCase() === 'completed' || String(w.status || '').toLowerCase() === 'paid')
+          .reduce((s: number, w: any) => s + (Number(w.amount) || 0), 0)
+        : 0;
+      const total = Number(rev.total_fcfa) || 0;
+      const tips = Number(rev.donations_fcfa) || 0;
+      setEarnings({
+        total_earned: total,
+        available_balance: Math.max(0, total - totalWithdrawn),
+        total_withdrawn: totalWithdrawn,
+        total_tips: tips,
+        monthly_earned: Number(rev.video_fcfa) || 0,
+        monthly_tips: tips,
+        recent_tips: [],
+      });
     } catch (e) {
       setEarnings({ total_earned: 0, available_balance: 0, total_withdrawn: 0, total_tips: 0, monthly_earned: 0, monthly_tips: 0, recent_tips: [] });
     } finally { setLoading(false); }

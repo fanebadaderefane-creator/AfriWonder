@@ -5,6 +5,35 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
+type SettingsRow = {
+  icon: string;
+  label: string;
+  route?: string;
+  toggle?: boolean;
+  value?: boolean;
+  onToggle?: (v: boolean) => void;
+  detail?: string;
+};
+
+type SettingsSection = { title: string; items: SettingsRow[] };
+
+function SettingTrailing({ item }: { item: SettingsRow }) {
+  if (item.toggle && typeof item.value === 'boolean' && item.onToggle) {
+    return (
+      <Switch
+        value={item.value}
+        onValueChange={item.onToggle}
+        trackColor={{ false: Colors.border, true: Colors.primary }}
+        thumbColor={Colors.text}
+      />
+    );
+  }
+  if (item.detail != null) {
+    return <Text style={styles.settingDetail}>{item.detail}</Text>;
+  }
+  return <Ionicons name="chevron-forward" size={20} color={Colors.textSecondary} />;
+}
+
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const [notifications, setNotifications] = useState(true);
@@ -12,11 +41,11 @@ export default function SettingsScreen() {
   const [dataEconomy, setDataEconomy] = useState(false);
   const [autoplay, setAutoplay] = useState(true);
 
-  const settingsSections = [
+  const settingsSections: SettingsSection[] = [
     {
       title: 'Compte',
       items: [
-        { icon: 'person', label: 'Modifier le profil', route: '/profile' },
+        { icon: 'person', label: 'Modifier le profil', route: '/profile-edit' },
         { icon: 'lock-closed', label: 'Confidentialite', route: '/privacy' },
         { icon: 'shield-checkmark', label: 'Securite', route: '/settings' },
         { icon: 'location', label: 'Adresses', route: '/settings' },
@@ -78,18 +107,7 @@ export default function SettingsScreen() {
                     <Ionicons name={item.icon as any} size={22} color={Colors.primary} />
                     <Text style={styles.settingLabel}>{item.label}</Text>
                   </View>
-                  {item.toggle ? (
-                    <Switch
-                      value={item.value}
-                      onValueChange={item.onToggle}
-                      trackColor={{ false: Colors.border, true: Colors.primary }}
-                      thumbColor={Colors.text}
-                    />
-                  ) : item.detail ? (
-                    <Text style={styles.settingDetail}>{item.detail}</Text>
-                  ) : (
-                    <Ionicons name="chevron-forward" size={20} color={Colors.textSecondary} />
-                  )}
+                  <SettingTrailing item={item} />
                 </TouchableOpacity>
               ))}
             </View>

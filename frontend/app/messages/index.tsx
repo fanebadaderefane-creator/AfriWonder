@@ -4,7 +4,6 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import mobileApiClient from '../../src/api/mobileClient';
 import apiClient from '../../src/api/client';
 
 const { width } = Dimensions.get('window');
@@ -25,6 +24,7 @@ interface Conversation {
   isGroup?: boolean;
   groupMembers?: number;
   voiceDuration?: string;
+  otherUserId?: string;
 }
 
 export default function MessagesListScreen() {
@@ -51,43 +51,38 @@ export default function MessagesListScreen() {
       setRealUsers(filtered);
     } catch (err: any) {
       console.log('Could not load real users, trying direct:', err?.message);
-      // Fallback: try mobileClient proxy directly
-      try {
-        const res2 = await mobileApiClient.get('/proxy/users?limit=50');
-        const d = res2.data?.data || res2.data;
-        let u2 = d?.users || d || [];
-        if (!Array.isArray(u2)) u2 = [];
-        setRealUsers(u2.filter((u: any) => u && (u.username || u.full_name)));
-      } catch (err2) {
-        console.log('Fallback also failed:', err2);
-      }
     }
   };
 
   const loadConversations = async () => {
     try {
-      const response = await mobileApiClient.get('/mobile/conversations');
+      const response = await apiClient.get('/messages/conversations', { params: { page: 1, limit: 40 } });
       const data = response.data?.data || response.data;
       const backendConvos = data?.conversations || [];
       if (backendConvos.length > 0) {
         const transformed: Conversation[] = backendConvos.map((c: any) => {
-          const participantInfo = c.participant_info || {};
-          const otherInfoKey = Object.keys(participantInfo)[0];
-          const otherInfo = otherInfoKey ? participantInfo[otherInfoKey] : {};
+          const other = c.other || {};
           const timeStr = c.last_message_at ? formatTimeAgo(c.last_message_at) : '';
+          const displayName = c.is_group
+            ? (c.group_name || 'Groupe')
+            : (other.full_name || other.username || 'Contact');
+          const avatar = c.is_group
+            ? (c.group_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=333&color=fff`)
+            : (other.profile_image || `https://i.pravatar.cc/150?u=${other.id || c.id}`);
           return {
             id: c.id,
-            name: c.name || otherInfo.name || 'Contact',
-            avatar: otherInfo.avatar || `https://i.pravatar.cc/150?u=${otherInfoKey || c.id}`,
-            lastMessage: c.last_message || '',
+            name: displayName,
+            avatar,
+            lastMessage: c.last_message_text || '',
             time: timeStr,
             unread: c.unread_count || 0,
             online: false,
             isTyping: false,
             lastMsgType: 'text',
-            isRead: c.unread_count === 0,
+            isRead: (c.unread_count || 0) === 0,
             isMine: false,
-            isGroup: c.is_group || false,
+            isGroup: !!c.is_group,
+            otherUserId: c.is_group ? undefined : other.id,
           };
         });
         setConversations(transformed);
@@ -115,15 +110,14 @@ export default function MessagesListScreen() {
       const userId = user._id || user.id;
       const userName = user.full_name || user.username || 'Utilisateur';
       const userAvatar = user.avatar || user.profile_image || `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=FF6B00&color=fff`;
-      const response = await mobileApiClient.post('/mobile/conversations/start', {
-        target_user_id: userId,
-        target_name: userName,
-        target_avatar: userAvatar,
-      });
+      const response = await apiClient.get(`/messages/conversation/${encodeURIComponent(userId)}`);
       const conv = response.data?.data;
-      if (conv) {
+      if (conv?.id) {
         setShowContacts(false);
-        router.push({ pathname: '/messages/[id]', params: { id: conv.id, name: userName, avatar: userAvatar } });
+        router.push({
+          pathname: '/messages/[id]',
+          params: { id: conv.id, name: userName, avatar: userAvatar, otherUserId: userId },
+        });
       }
     } catch (err) {
       console.log('Error starting conversation:', err);
@@ -184,7 +178,15 @@ export default function MessagesListScreen() {
   const renderConversation = ({ item }: { item: Conversation }) => (
     <TouchableOpacity
       style={styles.conversationItem}
-      onPress={() => router.push({ pathname: '/messages/[id]', params: { id: item.id, name: item.name, avatar: item.avatar } })}
+      onPress={() => router.push({
+        pathname: '/messages/[id]',
+        params: {
+          id: item.id,
+          name: item.name,
+          avatar: item.avatar,
+          ...(item.otherUserId ? { otherUserId: item.otherUserId } : {}),
+        },
+      })}
       activeOpacity={0.7}
     >
       <View style={styles.avatarContainer}>
@@ -228,7 +230,11 @@ export default function MessagesListScreen() {
       <View style={styles.callInfo}>
         <Text style={[styles.callName, item.missed && styles.callMissed]}>{item.name}</Text>
         <View style={styles.callMetaRow}>
-          <Ionicons name={item.type === 'incoming' ? 'arrow-down-left' : 'arrow-up-right'} size={14} color={item.missed ? Colors.error : Colors.success} />
+          <Ionicons
+            name={(item.type === 'incoming' ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline') as React.ComponentProps<typeof Ionicons>['name']}
+            size={14}
+            color={item.missed ? Colors.error : Colors.success}
+          />
           <Text style={styles.callTime}>{item.time}</Text>
         </View>
       </View>

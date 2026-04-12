@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, ScrollView, TextInput } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import mobileApiClient from '../src/api/mobileClient';
+import apiClient from '../src/api/client';
 
 const TIP_AMOUNTS = [100, 500, 1000, 2000, 5000, 10000];
 const METHODS = [
@@ -19,22 +19,37 @@ export default function TipScreen() {
   const { creatorId, creatorName, videoId } = useLocalSearchParams();
   const [amount, setAmount] = useState(500);
   const [method, setMethod] = useState('wallet');
+  const [mmPhone, setMmPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
 
   const handleTip = async () => {
+    const vid = videoId ? String(videoId) : '';
+    if (!vid.trim()) {
+      Alert.alert('Erreur', 'Ouvrez le pourboire depuis une vidéo (identifiant vidéo requis).');
+      return;
+    }
+    if (method !== 'wallet' && !mmPhone.trim()) {
+      Alert.alert('Erreur', 'Indiquez le numéro Mobile Money pour ce mode de paiement.');
+      return;
+    }
     setLoading(true);
     try {
-      await mobileApiClient.post('/mobile/tips', {
-        creator_id: creatorId,
-        amount,
-        payment_method: method,
-        video_id: videoId || undefined,
-        message: `Pourboire de ${amount} FCFA`,
-      });
+      if (method === 'wallet') {
+        await apiClient.post(`/videos/${encodeURIComponent(vid)}/tip-wallet`, {
+          amount,
+          message: `Pourboire de ${amount} FCFA`,
+        });
+      } else {
+        await apiClient.post(`/videos/${encodeURIComponent(vid)}/tip`, {
+          amount,
+          phone: mmPhone.trim(),
+          message: `Pourboire de ${amount} FCFA`,
+        });
+      }
       setSent(true);
     } catch (e: any) {
-      const msg = e.response?.data?.detail || 'Erreur lors de l\'envoi';
+      const msg = e.response?.data?.error?.message || e.response?.data?.detail || 'Erreur lors de l\'envoi';
       Alert.alert('Erreur', msg);
     } finally { setLoading(false); }
   };
@@ -100,6 +115,20 @@ export default function TipScreen() {
           </TouchableOpacity>
         ))}
 
+        {method !== 'wallet' ? (
+          <View style={{ marginTop: Spacing.md }}>
+            <Text style={styles.label}>Numéro Mobile Money</Text>
+            <TextInput
+              style={styles.phoneInput}
+              placeholder="Ex: 70 12 34 56"
+              placeholderTextColor={Colors.textMuted}
+              keyboardType="phone-pad"
+              value={mmPhone}
+              onChangeText={setMmPhone}
+            />
+          </View>
+        ) : null}
+
         {/* Send Button */}
         <TouchableOpacity
           style={[styles.sendBtn, loading && { opacity: 0.6 }]}
@@ -145,6 +174,14 @@ const styles = StyleSheet.create({
   sendBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FF6B00', borderRadius: BorderRadius.md, padding: Spacing.lg, marginTop: Spacing.xxl, gap: 8 },
   sendBtnText: { color: '#FFF', fontSize: FontSizes.lg, fontWeight: 'bold' },
   feeNote: { color: Colors.textMuted, fontSize: FontSizes.xs, textAlign: 'center', marginTop: Spacing.md },
+  phoneInput: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    color: Colors.text,
+    fontSize: FontSizes.md,
+  },
   successIcon: { marginBottom: Spacing.lg },
   successTitle: { color: Colors.text, fontSize: 28, fontWeight: 'bold', marginBottom: 8 },
   successText: { color: Colors.textSecondary, fontSize: FontSizes.md, textAlign: 'center', marginBottom: Spacing.xxl },

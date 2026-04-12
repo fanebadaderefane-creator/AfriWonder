@@ -1,25 +1,58 @@
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import mobileApiClient from '../api/mobileClient';
+import apiClient from '../api/client';
 
-// Configure notification handler
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+type ExpoNotifications = typeof import('expo-notifications');
+
+const isExpoGo = Constants.appOwnership === 'expo';
 
 class NotificationService {
   private expoPushToken: string | null = null;
+  private handlerConfigured = false;
+  private notificationsMod: ExpoNotifications | null = null;
+
+  /** Ne charge pas expo-notifications dans Expo Go (SDK 53+ : push retiré + erreurs au chargement du module). */
+  private async loadNotifications(): Promise<ExpoNotifications | null> {
+    if (isExpoGo && Platform.OS !== 'web') {
+      return null;
+    }
+    if (this.notificationsMod) return this.notificationsMod;
+    const mod = await import('expo-notifications');
+    this.notificationsMod = mod;
+    if (!this.handlerConfigured) {
+      mod.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+          shouldShowBanner: true,
+          shouldShowList: true,
+        }),
+      });
+      this.handlerConfigured = true;
+    }
+    return mod;
+  }
 
   async initialize() {
     try {
-      // Request permissions
+      if (Platform.OS === 'web') {
+        console.log(
+          '[Notifications] Web: push distant ignoré (ajoutez notification.vapidPublicKey dans app.json pour activer).',
+        );
+        return null;
+      }
+
+      if (isExpoGo) {
+        console.log(
+          '[Notifications] Expo Go: push distant désactivé (SDK 53+). Utilisez un development build pour FCM / projectId.',
+        );
+        return null;
+      }
+
+      const Notifications = await this.loadNotifications();
+      if (!Notifications) return null;
+
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
 
@@ -33,23 +66,18 @@ class NotificationService {
         return null;
       }
 
-      // Web : Expo exige `notification.vapidPublicKey` dans app.json — sinon erreur ; on skip en dev.
-      if (Platform.OS === 'web') {
-        console.log('[Notifications] Web: push distant ignoré (ajoutez notification.vapidPublicKey dans app.json pour activer).');
-        return null;
+      const projectId =
+        Constants.expoConfig?.extra?.eas?.projectId ??
+        (Constants as { easConfig?: { projectId?: string } }).easConfig?.projectId;
+      if (!projectId) {
+        console.log('[Notifications] Pas de projectId (extra.eas.projectId) — skip token Expo Push.');
+      } else {
+        const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+        this.expoPushToken = tokenData.data;
+        console.log('[Notifications] Push token:', this.expoPushToken);
+        await this.registerToken(this.expoPushToken);
       }
 
-      // Get push token
-      const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: Constants.expoConfig?.extra?.eas?.projectId,
-      });
-      this.expoPushToken = tokenData.data;
-      console.log('[Notifications] Push token:', this.expoPushToken);
-
-      // Register token with backend
-      await this.registerToken(this.expoPushToken);
-
-      // Configure Android channel
       if (Platform.OS === 'android') {
         await Notifications.setNotificationChannelAsync('default', {
           name: 'AfriWonder',
@@ -76,15 +104,16 @@ class NotificationService {
 
   async registerToken(token: string) {
     try {
-      await mobileApiClient.post('/mobile/push-token', { token, platform: Platform.OS });
+      await apiClient.post('/notifications/device-token', { token, platform: Platform.OS });
     } catch (err) {
       console.log('[Notifications] Token registration error:', err);
     }
   }
 
-  // Schedule a local notification
   async scheduleLocal(title: string, body: string, data?: any, seconds: number = 0) {
     try {
+      const Notifications = await this.loadNotifications();
+      if (!Notifications) return;
       await Notifications.scheduleNotificationAsync({
         content: {
           title,
@@ -92,62 +121,58 @@ class NotificationService {
           data: data || {},
           sound: 'default',
         },
-        trigger: seconds > 0 ? { seconds, type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL } : null,
+        trigger:
+          seconds > 0 ? { seconds, type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL } : null,
       });
     } catch (err) {
       console.log('[Notifications] Schedule error:', err);
     }
   }
 
-  // Show notification for new message
   async notifyNewMessage(senderName: string, message: string, conversationId: string) {
-    await this.scheduleLocal(
-      senderName,
-      message,
-      { type: 'message', conversationId },
-    );
+    await this.scheduleLocal(senderName, message, { type: 'message', conversationId });
   }
 
-  // Show notification for like
   async notifyLike(userName: string, contentType: string) {
-    await this.scheduleLocal(
-      'Nouveau j\'aime',
-      `${userName} a aime votre ${contentType}`,
-      { type: 'like' },
-    );
+    await this.scheduleLocal('Nouveau j\'aime', `${userName} a aime votre ${contentType}`, { type: 'like' });
   }
 
-  // Show notification for follow
   async notifyFollow(userName: string) {
-    await this.scheduleLocal(
-      'Nouvel abonne',
-      `${userName} vous suit maintenant`,
-      { type: 'follow' },
-    );
+    await this.scheduleLocal('Nouvel abonne', `${userName} vous suit maintenant`, { type: 'follow' });
   }
 
-  // Get badge count
   async getBadgeCount(): Promise<number> {
+    const Notifications = await this.loadNotifications();
+    if (!Notifications) return 0;
     return await Notifications.getBadgeCountAsync();
   }
 
-  // Set badge count
   async setBadgeCount(count: number) {
+    const Notifications = await this.loadNotifications();
+    if (!Notifications) return;
     await Notifications.setBadgeCountAsync(count);
   }
 
-  // Clear all notifications
   async clearAll() {
+    const Notifications = await this.loadNotifications();
+    if (!Notifications) return;
     await Notifications.dismissAllNotificationsAsync();
     await this.setBadgeCount(0);
   }
 
-  // Add notification listeners
-  onNotificationReceived(callback: (notification: Notifications.Notification) => void) {
+  async onNotificationReceived(
+    callback: (notification: import('expo-notifications').Notification) => void,
+  ): Promise<{ remove: () => void }> {
+    const Notifications = await this.loadNotifications();
+    if (!Notifications) return { remove: () => {} };
     return Notifications.addNotificationReceivedListener(callback);
   }
 
-  onNotificationResponse(callback: (response: Notifications.NotificationResponse) => void) {
+  async onNotificationResponse(
+    callback: (response: import('expo-notifications').NotificationResponse) => void,
+  ): Promise<{ remove: () => void }> {
+    const Notifications = await this.loadNotifications();
+    if (!Notifications) return { remove: () => {} };
     return Notifications.addNotificationResponseReceivedListener(callback);
   }
 

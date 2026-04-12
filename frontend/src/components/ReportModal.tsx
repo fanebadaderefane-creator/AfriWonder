@@ -1,14 +1,18 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator, Platform,
+} from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
-import mobileApiClient from '../api/mobileClient';
+import apiClient from '../api/client';
 
 interface ReportModalProps {
   visible: boolean;
   onClose: () => void;
   targetType: string;
   targetId: string;
+  /** Si true : `POST /moderation/report` (Express + Prisma). Sinon : `POST /mobile/report` (legacy). */
+  useModerationEndpoint?: boolean;
 }
 
 const REASONS = [
@@ -20,21 +24,87 @@ const REASONS = [
   { id: 'other', label: 'Autre raison', icon: 'ellipsis-horizontal' },
 ];
 
-export default function ReportModal({ visible, onClose, targetType, targetId }: ReportModalProps) {
+function severityForReason(reason: string): string {
+  if (['harassment', 'nudity', 'violence'].includes(reason)) return 'high';
+  if (reason === 'scam') return 'high';
+  return 'medium';
+}
+
+function alertCompat(title: string, message?: string, onOk?: () => void) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.alert === 'function') {
+    window.alert(message ? `${title}\n\n${message}` : title);
+    onOk?.();
+    return;
+  }
+  if (onOk && message != null) {
+    Alert.alert(title, message, [{ text: 'OK', onPress: onOk }]);
+    return;
+  }
+  Alert.alert(title, message ?? '');
+}
+
+export default function ReportModal({
+  visible,
+  onClose,
+  targetType,
+  targetId,
+  useModerationEndpoint = false,
+}: ReportModalProps) {
   const [reason, setReason] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (!visible) {
+      setReason('');
+      setDescription('');
+      setLoading(false);
+    }
+  }, [visible]);
+
   const handleReport = async () => {
-    if (!reason) { Alert.alert('Erreur', 'Sélectionnez une raison'); return; }
+    if (!reason) {
+      alertCompat('Erreur', 'Sélectionnez une raison');
+      return;
+    }
+    if (reason === 'other' && !description.trim()) {
+      alertCompat('Erreur', 'Décrivez le problème pour « Autre raison ».');
+      return;
+    }
+    if (!targetId?.trim()) {
+      alertCompat('Erreur', 'Cible de signalement invalide.');
+      return;
+    }
     setLoading(true);
     try {
-      await mobileApiClient.post('/mobile/report', { target_type: targetType, target_id: targetId, reason, description: description.trim() || undefined });
-      Alert.alert('Signalement envoyé', 'Merci pour votre signalement. Notre équipe va examiner ce contenu.', [{ text: 'OK', onPress: onClose }]);
-      setReason(''); setDescription('');
-    } catch { Alert.alert('Erreur', 'Impossible d\'envoyer le signalement'); }
-    finally { setLoading(false); }
+      const desc = description.trim() || undefined;
+      await apiClient.post('/moderation/report', {
+        contentType: targetType,
+        contentId: targetId.trim(),
+        reason,
+        description: desc,
+        severity: severityForReason(reason),
+      });
+      alertCompat(
+        'Signalement envoyé',
+        'Merci pour votre signalement. Notre équipe va examiner ce contenu.',
+        () => {
+          setReason('');
+          setDescription('');
+          onClose();
+        }
+      );
+    } catch {
+      alertCompat('Erreur', 'Impossible d\'envoyer le signalement.');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const canSubmit =
+    Boolean(reason)
+    && Boolean(targetId?.trim())
+    && (reason !== 'other' || Boolean(description.trim()));
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -50,10 +120,17 @@ export default function ReportModal({ visible, onClose, targetType, targetId }: 
               {reason === r.id && <Ionicons name="checkmark" size={18} color={Colors.primary} />}
             </TouchableOpacity>
           ))}
-          {reason === 'other' && (
-            <TextInput style={styles.descInput} placeholder="Décrivez le problème..." placeholderTextColor={Colors.textMuted} value={description} onChangeText={setDescription} multiline />
+          {!!reason && (
+            <TextInput
+              style={styles.descInput}
+              placeholder={reason === 'other' ? 'Décrivez le problème (obligatoire)…' : 'Précisions (optionnel)…'}
+              placeholderTextColor={Colors.textMuted}
+              value={description}
+              onChangeText={setDescription}
+              multiline
+            />
           )}
-          <TouchableOpacity style={[styles.reportBtn, (!reason || loading) && { opacity: 0.5 }]} onPress={handleReport} disabled={!reason || loading}>
+          <TouchableOpacity style={[styles.reportBtn, (!canSubmit || loading) && { opacity: 0.5 }]} onPress={handleReport} disabled={!canSubmit || loading}>
             {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.reportBtnText}>Envoyer le signalement</Text>}
           </TouchableOpacity>
         </View>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Colors } from '../theme/colors';
 
 export type ReactionType = 'like' | 'love' | 'haha' | 'wow' | 'sad' | 'angry' | null;
@@ -18,9 +18,20 @@ interface ReactionsProps {
   onReact: (reaction: ReactionType) => void;
   counts: Record<string, number>;
   totalCount: number;
+  /** Si défini : tap sur « Commenter » (Moments / feed). */
+  onCommentPress?: () => void;
+  /** Si défini : tap sur « Partager ». */
+  onSharePress?: () => void;
 }
 
-export function ReactionsBar({ currentReaction, onReact, counts, totalCount }: ReactionsProps) {
+export function ReactionsBar({
+  currentReaction,
+  onReact,
+  counts,
+  totalCount,
+  onCommentPress,
+  onSharePress,
+}: ReactionsProps) {
   const [showPicker, setShowPicker] = useState(false);
 
   const getReactionDisplay = () => {
@@ -78,6 +89,7 @@ export function ReactionsBar({ currentReaction, onReact, counts, totalCount }: R
       <View style={styles.actionBar}>
         <TouchableOpacity
           style={styles.actionBtn}
+          activeOpacity={0.65}
           onPress={() => {
             if (currentReaction) {
               onReact(null);
@@ -87,21 +99,38 @@ export function ReactionsBar({ currentReaction, onReact, counts, totalCount }: R
           }}
           onLongPress={() => setShowPicker(true)}
           delayLongPress={300}
+          accessibilityRole="button"
+          accessibilityLabel="Réagir"
         >
           <Text style={[styles.actionEmoji, { fontSize: currentReaction ? 18 : 16 }]}>
             {currentReaction ? display.emoji : '👍'}
           </Text>
-          <Text style={[styles.actionLabel, { color: currentReaction ? Colors.primary : '#888' }]}>
+          <Text
+            style={[styles.actionLabel, { color: currentReaction ? Colors.primary : '#888' }]}
+            numberOfLines={1}
+          >
             {display.label}
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionBtn}>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          activeOpacity={0.65}
+          onPress={() => onCommentPress?.()}
+          accessibilityRole="button"
+          accessibilityLabel="Commenter"
+        >
           <Text style={styles.actionIcon}>💬</Text>
-          <Text style={styles.actionLabel}>Commenter</Text>
+          <Text style={styles.actionLabel} numberOfLines={1}>Commenter</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionBtn}>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          activeOpacity={0.65}
+          onPress={() => onSharePress?.()}
+          accessibilityRole="button"
+          accessibilityLabel="Partager"
+        >
           <Text style={styles.actionIcon}>↗️</Text>
           <Text style={styles.actionLabel}>Partager</Text>
         </TouchableOpacity>
@@ -149,7 +178,7 @@ const styles = StyleSheet.create({
   summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     gap: 6,
   },
@@ -168,14 +197,17 @@ const styles = StyleSheet.create({
     borderTopWidth: 0.5,
     borderTopColor: '#222',
     paddingVertical: 4,
+    paddingHorizontal: 8,
   },
   actionBtn: {
     flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
-    gap: 6,
+    paddingHorizontal: 2,
+    gap: 4,
   },
   actionEmoji: {
     fontSize: 16,
@@ -185,7 +217,8 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     color: '#888',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
+    flexShrink: 1,
   },
 });

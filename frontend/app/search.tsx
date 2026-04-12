@@ -1,17 +1,24 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import mobileApiClient from '../src/api/mobileClient';
+import { router, useLocalSearchParams } from 'expo-router';
+import apiClient from '../src/api/client';
 
 const TABS = ['Tous', 'Utilisateurs', 'Vidéos', 'Produits', 'Posts'];
 const TAB_TYPES: Record<string, string> = { 'Tous': 'all', 'Utilisateurs': 'users', 'Vidéos': 'videos', 'Produits': 'products', 'Posts': 'posts' };
 const TRENDING = ['#AfriWonder', '#Mali', '#Bamako', '#DanseMandingue', '#CuisineMalienne', '#ModaAfricaine', '#MusicAfrique', '#Football'];
 
+function normParam(v: string | string[] | undefined) {
+  if (v == null) return '';
+  return (Array.isArray(v) ? v[0] : v) || '';
+}
+
 export default function SearchScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ q?: string | string[] }>();
+  const paramQ = useMemo(() => normParam(params.q), [params.q]);
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState('Tous');
   const [results, setResults] = useState<any>(null);
@@ -21,11 +28,33 @@ export default function SearchScreen() {
     if (!q.trim()) { setResults(null); return; }
     setLoading(true);
     try {
-      const res = await mobileApiClient.get(`/mobile/search?q=${encodeURIComponent(q.trim())}&search_type=${TAB_TYPES[tab]}`);
+      if (tab === 'Posts') {
+        const res = await apiClient.get('/posts', { params: { page: 1, limit: 50 } });
+        const inner = res.data?.data || res.data;
+        const allPosts = inner?.posts || [];
+        const qLower = q.trim().toLowerCase();
+        const posts = allPosts.filter((p: any) =>
+          String(p.text || '').toLowerCase().includes(qLower) ||
+          String(p.user?.username || '').toLowerCase().includes(qLower) ||
+          String(p.user?.full_name || '').toLowerCase().includes(qLower)
+        );
+        setResults({ users: [], videos: [], products: [], posts });
+        return;
+      }
+      const typeParam = TAB_TYPES[tab];
+      const res = await apiClient.get('/search', { params: { q: q.trim(), type: typeParam } });
       setResults(res.data?.data);
     } catch { setResults(null); }
     finally { setLoading(false); }
   }, [tab]);
+
+  useEffect(() => {
+    if (!paramQ) return;
+    setQuery(paramQ);
+    void search(paramQ);
+    // Intentionnel : éviter une boucle quand `search` change d’identité (tab).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramQ]);
 
   const renderUser = ({ item }: any) => (
     <TouchableOpacity style={styles.userRow}>
@@ -54,6 +83,16 @@ export default function SearchScreen() {
       <View style={{ flex: 1 }}>
         <Text style={styles.videoTitle} numberOfLines={2}>{item.name || 'Produit'}</Text>
         <Text style={[styles.videoMeta, { color: '#FF6B00' }]}>{(item.price || 0).toLocaleString()} FCFA</Text>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const renderPost = ({ item }: any) => (
+    <TouchableOpacity style={styles.videoRow}>
+      <Image source={{ uri: item.user?.profile_image || `https://i.pravatar.cc/100?u=${item.user_id || item.id}` }} style={styles.userAvatar} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.userName} numberOfLines={1}>{item.user?.full_name || item.user?.username || 'Publication'}</Text>
+        <Text style={styles.videoMeta} numberOfLines={2}>{item.text || '—'}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -96,8 +135,13 @@ export default function SearchScreen() {
             ...(results.users || []).map((u: any) => ({ ...u, _type: 'user' })),
             ...(results.videos || []).map((v: any) => ({ ...v, _type: 'video' })),
             ...(results.products || []).map((p: any) => ({ ...p, _type: 'product' })),
+            ...(results.posts || []).map((p: any) => ({ ...p, _type: 'post' })),
           ]}
-          renderItem={({ item }) => item._type === 'user' ? renderUser({ item }) : item._type === 'video' ? renderVideo({ item }) : renderProduct({ item })}
+          renderItem={({ item }) =>
+            item._type === 'user' ? renderUser({ item })
+              : item._type === 'video' ? renderVideo({ item })
+                : item._type === 'post' ? renderPost({ item })
+                  : renderProduct({ item })}
           keyExtractor={(item, i) => `${item._type}-${item.id || i}`}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 40 }}

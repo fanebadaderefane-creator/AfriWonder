@@ -4,7 +4,7 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import mobileApiClient from '../../src/api/mobileClient';
+import apiClient from '../../src/api/client';
 
 interface Notification {
   id: string;
@@ -57,7 +57,7 @@ export default function NotificationsScreen() {
 
   const loadNotifications = async () => {
     try {
-      const response = await mobileApiClient.get('/mobile/notifications');
+      const response = await apiClient.get('/notifications', { params: { page: 1, limit: 50 } });
       const data = response.data?.data || response.data;
       const backendNotifs = data?.notifications || [];
       setNotifications(backendNotifs.map((n: any) => ({
@@ -66,7 +66,7 @@ export default function NotificationsScreen() {
         title: n.title || '',
         message: n.message || '',
         is_read: n.is_read,
-        created_at: n.created_at,
+        created_at: typeof n.created_at === 'string' ? n.created_at : (n.created_at ? new Date(n.created_at).toISOString() : ''),
         from_user_name: n.from_user_name,
         from_user_id: n.from_user_id,
         reference_type: n.reference_type,
@@ -86,7 +86,7 @@ export default function NotificationsScreen() {
 
   const markAllRead = async () => {
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-    try { await mobileApiClient.post('/mobile/notifications/read-all'); } catch {}
+    try { await apiClient.put('/notifications/read-all', {}); } catch {}
   };
 
   const renderNotification = ({ item }: { item: Notification }) => {

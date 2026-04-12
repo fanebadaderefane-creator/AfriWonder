@@ -3,6 +3,30 @@ import prisma from '../config/database.js';
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
 
+/** Normalise le champ `images` (tableau d’URLs) — évite perte si format inattendu côté client. */
+function normalizeImageUrlsInput(images: unknown): string[] {
+  if (images == null) return [];
+  if (Array.isArray(images)) {
+    return images.map((u) => String(u).trim()).filter((u) => u.length > 0);
+  }
+  if (typeof images === 'string') {
+    const s = images.trim();
+    if (!s) return [];
+    if (s.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(s) as unknown;
+        if (Array.isArray(parsed)) {
+          return parsed.map((u) => String(u).trim()).filter((u) => u.length > 0);
+        }
+      } catch {
+        /* une seule URL en chaîne */
+      }
+    }
+    return [s];
+  }
+  return [];
+}
+
 export async function createPost(userId: string, data: {
   text?: string;
   image_url?: string;
@@ -14,7 +38,7 @@ export async function createPost(userId: string, data: {
 }) {
   const visibility = data.visibility && ['public', 'private', 'archived', 'close_friends'].includes(data.visibility) ? data.visibility : 'public';
   const scheduledAt = data.scheduled_at ? new Date(data.scheduled_at) : null;
-  const imageUrls = Array.isArray(data.images) ? data.images.map((u) => String(u).trim()).filter(Boolean) : [];
+  const imageUrls = normalizeImageUrlsInput(data.images);
   const firstImage = imageUrls.length > 0 ? imageUrls[0] : (data.image_url?.trim() || null);
   const post = await prisma.post.create({
     data: {
@@ -218,7 +242,7 @@ export async function updatePost(postId: string, userId: string, data: {
   if (!post) return null;
   const visibility = data.visibility && ['public', 'private', 'archived', 'close_friends'].includes(data.visibility) ? data.visibility : undefined;
   const scheduledAt = data.scheduled_at !== undefined ? (data.scheduled_at ? new Date(data.scheduled_at) : null) : undefined;
-  const imageUrls = Array.isArray(data.images) ? data.images.map((u) => String(u).trim()).filter(Boolean) : null;
+  const imageUrls = data.images !== undefined ? normalizeImageUrlsInput(data.images) : null;
 
   if (imageUrls !== null) {
     await prisma.postImage.deleteMany({ where: { post_id: postId } });

@@ -1,11 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 const { width } = Dimensions.get('window');
+
+function firstParam(v: string | string[] | undefined): string {
+  if (v == null) return '';
+  return typeof v === 'string' ? v.trim() : String(v[0] || '').trim();
+}
 
 const STORIES_DATA = [
   { id: 's1', user: 'Vous', avatar: 'https://picsum.photos/60/60?random=200', isOwn: true, stories: [] },
@@ -17,8 +22,55 @@ const STORIES_DATA = [
 
 export default function StoriesScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ userId?: string; userName?: string; userAvatar?: string; previewUrl?: string }>();
+  const externalUserId = useMemo(() => firstParam(params.userId), [params.userId]);
+  const externalName = useMemo(() => firstParam(params.userName) || 'Créateur', [params.userName]);
+  const externalAvatar = useMemo(() => firstParam(params.userAvatar), [params.userAvatar]);
+  const externalPreview = useMemo(() => {
+    const raw = firstParam(params.previewUrl);
+    if (!raw) return '';
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  }, [params.previewUrl]);
+
   const [viewingStory, setViewingStory] = useState<string | null>(null);
   const currentStory = STORIES_DATA.find(s => s.id === viewingStory);
+
+  /** Ouverture depuis Moments : afficher tout de suite l’aperçu (image du moment ou avatar). */
+  if (externalUserId) {
+    const bgUri = externalPreview || externalAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(externalName)}&background=222&color=fff&size=512`;
+    return (
+      <View style={[styles.storyViewer, { paddingTop: insets.top }]}>
+        <Image source={{ uri: bgUri }} style={styles.storyFullImage} resizeMode="cover" />
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.35)' }]} />
+        <View style={styles.storyHeader}>
+          <View style={styles.storyProgress}><View style={styles.storyProgressFill} /></View>
+          <View style={styles.storyUserRow}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.storyBackBtn}
+              accessibilityLabel="Retour"
+            >
+              <Ionicons name="arrow-back" size={24} color="#FFF" />
+            </TouchableOpacity>
+            <Image source={{ uri: externalAvatar || bgUri }} style={styles.storyUserAvatar} />
+            <Text style={styles.storyUserName}>{externalName}</Text>
+            <Text style={styles.storyTime}>Moments</Text>
+          </View>
+        </View>
+        <View style={[styles.externalCaptionWrap, { paddingBottom: insets.bottom + Spacing.xl }]}>
+          <Text style={styles.externalCaption}>
+            {externalPreview
+              ? 'Aperçu depuis le fil Moments. Les stories dédiées arriveront ici bientôt.'
+              : 'Pas d’image publique sur ce moment — profil du créateur.'}
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   if (viewingStory && currentStory && currentStory.stories.length > 0) {
     return (
@@ -110,7 +162,10 @@ const styles = StyleSheet.create({
   storyUserName: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600' },
   storyTime: { color: 'rgba(255,255,255,0.7)', fontSize: FontSizes.sm, flex: 1 },
   storyClose: { padding: 4 },
+  storyBackBtn: { padding: 4, marginRight: 4 },
   storyActions: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, gap: Spacing.md },
+  externalCaptionWrap: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: Spacing.lg },
+  externalCaption: { color: 'rgba(255,255,255,0.92)', fontSize: FontSizes.sm, textAlign: 'center', lineHeight: 20 },
   storyReply: { flex: 1, borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)', borderRadius: BorderRadius.pill, paddingVertical: Spacing.md, paddingHorizontal: Spacing.lg },
   storyReplyText: { color: 'rgba(255,255,255,0.7)', fontSize: FontSizes.md },
 });

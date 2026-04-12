@@ -87,7 +87,8 @@ router.get('/:id/followers', optionalAuth, async (req: AuthRequest, res, next) =
     const userId = param(req, 'id');
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
-    const result = await userService.getFollowers(userId, page, limit);
+    const viewerId = req.user?.id ?? null;
+    const result = await userService.getFollowers(userId, page, limit, viewerId);
     res.json({ success: true, data: result });
   } catch (error: any) {
     next(error);
@@ -100,7 +101,8 @@ router.get('/:id/following', optionalAuth, async (req: AuthRequest, res, next) =
     const userId = param(req, 'id');
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
-    const result = await userService.getFollowing(userId, page, limit);
+    const viewerId = req.user?.id ?? null;
+    const result = await userService.getFollowing(userId, page, limit, viewerId);
     res.json({ success: true, data: result });
   } catch (error: any) {
     next(error);

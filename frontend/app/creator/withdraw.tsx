@@ -4,7 +4,7 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import mobileApiClient from '../../src/api/mobileClient';
+import apiClient from '../../src/api/client';
 
 const METHODS = [
   { id: 'orange-money', name: 'Orange Money', icon: 'phone-portrait', color: '#FF6600', prefix: '+223 7' },
@@ -31,9 +31,16 @@ export default function CreatorWithdrawScreen() {
       { text: 'Confirmer', onPress: async () => {
         setLoading(true);
         try {
-          const res = await mobileApiClient.post('/mobile/creator/withdraw', { amount: num, payment_method: method, phone: phone.trim(), full_name: fullName.trim() || undefined });
+          const payment_method =
+            method === 'wave' ? 'wave' : method === 'moov-money' ? 'mtn_money' : 'orange_money';
+          const res = await apiClient.post('/withdrawals/request', {
+            amount: num,
+            payment_method,
+            phone: phone.trim(),
+            orange_money_phone: phone.trim(),
+          });
           const data = res.data?.data;
-          Alert.alert('Retrait réussi!', `${data?.net_amount?.toLocaleString()} FCFA envoyés vers ${phone}`, [{ text: 'OK', onPress: () => router.back() }]);
+          Alert.alert('Demande enregistrée', `${(data?.amount ?? num).toLocaleString()} FCFA — traitement sous 24–48h vers ${phone}`, [{ text: 'OK', onPress: () => router.back() }]);
         } catch (e: any) { Alert.alert('Erreur', e.response?.data?.detail || 'Erreur de retrait'); }
         finally { setLoading(false); }
       }}

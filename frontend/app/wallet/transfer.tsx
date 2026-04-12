@@ -4,8 +4,6 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import mobileApiClient from '../../src/api/mobileClient';
-
 const QUICK_CONTACTS = [
   { id: '1', name: 'Aminata', phone: '+223 70 12 34 56', avatar: 'https://i.pravatar.cc/150?img=1' },
   { id: '2', name: 'Moussa', phone: '+223 76 98 76 54', avatar: 'https://i.pravatar.cc/150?img=2' },
@@ -42,21 +40,11 @@ export default function TransferScreen() {
           onPress: async () => {
             setLoading(true);
             try {
-              const response = await mobileApiClient.post('/mobile/wallet/transfer', {
-                recipient_phone: recipientPhone.trim(),
-                amount: numAmount,
-                description: description.trim() || undefined,
-                payment_method: 'orange-money',
-              });
-              const data = response.data?.data;
               Alert.alert(
-                'Transfert réussi !',
-                `${numAmount.toLocaleString()} FCFA envoyés à ${recipientPhone}.\nNouveau solde : ${(data?.balance || 0).toLocaleString()} FCFA`,
-                [{ text: 'OK', onPress: () => router.back() }]
+                'Transfert P2P',
+                'L’API Node n’expose pas encore d’endpoint « envoyer à un numéro » depuis le portefeuille. Utilisez le retrait (Mobile Money) ou un paiement via marketplace / pourboire.',
+                [{ text: 'OK' }]
               );
-            } catch (error: any) {
-              const msg = error.response?.data?.detail || error.message || 'Erreur lors du transfert';
-              Alert.alert('Erreur', msg);
             } finally { setLoading(false); }
           },
         },

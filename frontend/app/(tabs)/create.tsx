@@ -1,20 +1,127 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, createElement } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert, Image, TextInput,
-  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard,
+  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../../src/store/authStore';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import apiClient from '../../src/api/client';
-import mobileApiClient from '../../src/api/mobileClient';
+import { useVideoPlayer, VideoView } from 'expo-video';
+
+function mimeForImageExt(ext: string): string {
+  const e = String(ext || '').toLowerCase().replace(/^\./, '');
+  if (e === 'jpg' || e === 'jpeg') return 'image/jpeg';
+  if (e === 'png') return 'image/png';
+  if (e === 'webp') return 'image/webp';
+  if (e === 'gif') return 'image/gif';
+  return 'image/jpeg';
+}
+
+function mimeForVideoExt(ext: string): string {
+  const e = String(ext || '').toLowerCase().replace(/^\./, '');
+  if (e === 'webm') return 'video/webm';
+  if (e === 'mov') return 'video/quicktime';
+  return 'video/mp4';
+}
+
+/** Sur le web, FormData exige un Blob/File — l’objet `{ uri }` (RN) n’envoie pas de fichier → multer 400. */
+function normRouteParam(v: string | string[] | undefined) {
+  if (v == null) return '';
+  return (Array.isArray(v) ? v[0] : v) || '';
+}
+
+function SelectedVideoPreviewWeb({ uri }: { uri: string }) {
+  return (
+    <View style={[styles.preview, { backgroundColor: '#111' }]}>
+      {createElement('video', {
+        key: uri,
+        src: uri,
+        style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
+        controls: true,
+        muted: true,
+        playsInline: true,
+        preload: 'metadata',
+      })}
+    </View>
+  );
+}
+
+function SelectedVideoPreviewNative({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.muted = true;
+    p.loop = true;
+  });
+  useEffect(() => {
+    const id = setTimeout(() => {
+      try {
+        player.play();
+      } catch {
+        /* politique autoplay */
+      }
+    }, 120);
+    return () => clearTimeout(id);
+  }, [uri, player]);
+  useEffect(() => {
+    return () => {
+      try {
+        player.pause();
+      } catch {
+        /* */
+      }
+    };
+  }, [player]);
+  return <VideoView style={styles.preview} player={player} contentFit="cover" nativeControls />;
+}
+
+/** Aperçu local d’une vidéo : `Image` ne décode pas la vidéo ; sur le web il faut une balise `<video>`. */
+function SelectedVideoPreview({ uri }: { uri: string }) {
+  if (Platform.OS === 'web') {
+    return <SelectedVideoPreviewWeb uri={uri} />;
+  }
+  return <SelectedVideoPreviewNative uri={uri} />;
+}
+
+async function appendUploadFile(formData: FormData, media: { uri: string; type: string }, index: number) {
+  if (Platform.OS === 'web') {
+    const res = await fetch(media.uri);
+    const blob = await res.blob();
+    let mime = String(blob.type || '').toLowerCase().trim();
+    if (!mime || mime === 'application/octet-stream') {
+      mime = media.type === 'video' ? 'video/mp4' : 'image/jpeg';
+    }
+    const ext =
+      mime.includes('png') ? 'png'
+        : mime.includes('webp') ? 'webp'
+          : mime.includes('gif') ? 'gif'
+            : mime.includes('webm') ? 'webm'
+              : mime.includes('quicktime') ? 'mov'
+                : media.type === 'video' ? 'mp4' : 'jpg';
+    const name = `upload_${index}.${ext}`;
+    formData.append('file', new File([blob], name, { type: mime }));
+    return;
+  }
+  const raw = (media.uri.split('.').pop() || '').split('?')[0] || '';
+  const ext = raw.replace(/[^a-z0-9]/gi, '').slice(0, 8) || (media.type === 'video' ? 'mp4' : 'jpg');
+  const mimeType = media.type === 'video' ? mimeForVideoExt(ext) : mimeForImageExt(ext);
+  formData.append('file', { uri: media.uri, name: `upload_${index}.${ext}`, type: mimeType } as any);
+}
+
+type SoundSeed = { title: string; fromVideoId?: string };
 
 export default function CreateScreen() {
   const insets = useSafeAreaInsets();
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated } = useAuthStore();
+  const params = useLocalSearchParams<{
+    useSoundTitle?: string | string[];
+    useSoundFromVideoId?: string | string[];
+  }>();
+  const soundSeedKeyConsumed = useRef<string | null>(null);
+
   const [selectedMedia, setSelectedMedia] = useState<{ uri: string; type: string }[]>([]);
   const [contentType, setContentType] = useState<'video' | 'photo' | 'text' | 'article'>('video');
   const [title, setTitle] = useState('');
@@ -24,6 +131,28 @@ export default function CreateScreen() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [step, setStep] = useState<'select' | 'details'>('select');
+  /** Son prérempli depuis le fil (style TikTok « Utiliser ce son »). */
+  const [soundSeed, setSoundSeed] = useState<SoundSeed | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        soundSeedKeyConsumed.current = null;
+      };
+    }, []),
+  );
+
+  useEffect(() => {
+    const t = normRouteParam(params.useSoundTitle).trim().slice(0, 200);
+    const vid = normRouteParam(params.useSoundFromVideoId).trim();
+    if (!t && !vid) return;
+    const key = `${t}|${vid}`;
+    if (soundSeedKeyConsumed.current === key) return;
+    soundSeedKeyConsumed.current = key;
+    setSoundSeed({ title: (t || 'Son original').slice(0, 200), fromVideoId: vid || undefined });
+    setContentType('video');
+    setStep('select');
+  }, [params.useSoundTitle, params.useSoundFromVideoId]);
 
   const requireAuth = (action: string) => {
     if (!isAuthenticated) {
@@ -49,7 +178,8 @@ export default function CreateScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      setSelectedMedia([{ uri: result.assets[0].uri, type: 'video' }]);
+      const a = result.assets[0];
+      setSelectedMedia([{ uri: a.uri, type: 'video' }]);
       setContentType('video');
       setStep('details');
     }
@@ -69,7 +199,7 @@ export default function CreateScreen() {
       selectionLimit: 10,
     });
     if (!result.canceled && result.assets.length > 0) {
-      setSelectedMedia(result.assets.map(a => ({ uri: a.uri, type: 'image' })));
+      setSelectedMedia(result.assets.map(a => ({ uri: a.uri, type: 'image' as const })));
       setContentType('photo');
       setStep('details');
     }
@@ -89,7 +219,8 @@ export default function CreateScreen() {
       // Pas de limite de durée pour les vidéos longues
     });
     if (!result.canceled && result.assets[0]) {
-      setSelectedMedia([{ uri: result.assets[0].uri, type: 'video' }]);
+      const a = result.assets[0];
+      setSelectedMedia([{ uri: a.uri, type: 'video' }]);
       setContentType('video');
       setStep('details');
     }
@@ -110,6 +241,8 @@ export default function CreateScreen() {
   };
 
   const handlePublish = async () => {
+    if (!requireAuth('publier')) return;
+
     if (contentType === 'text' || contentType === 'article') {
       if (!description.trim() && contentType === 'text') { Alert.alert('Contenu requis', 'Écrivez quelque chose'); return; }
       if (!title.trim() && contentType === 'article') { Alert.alert('Titre requis', 'Ajoutez un titre à votre article'); return; }
@@ -125,24 +258,31 @@ export default function CreateScreen() {
       const hashtagArray = hashtags.split(/[,#\s]+/).filter(h => h.trim()).map(h => h.trim());
       let mediaUrls: string[] = [];
       let videoUrl: string | undefined;
+      let videoThumb: string | undefined;
 
-      // Upload media files if any
+      // Upload médias → `/api/upload/image` ou `/api/upload/video` (Express)
       if (selectedMedia.length > 0) {
         setUploadProgress(10);
         for (let i = 0; i < selectedMedia.length; i++) {
           const media = selectedMedia[i];
           const formData = new FormData();
-          const ext = media.uri.split('.').pop() || (media.type === 'video' ? 'mp4' : 'jpg');
-          formData.append('file', { uri: media.uri, name: `upload_${i}.${ext}`, type: media.type === 'video' ? `video/${ext}` : `image/${ext}` } as any);
-          formData.append('type', media.type);
+          await appendUploadFile(formData, media, i);
 
-          const uploadRes = await mobileApiClient.post('/mobile/upload', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-            timeout: 300000, // 5 min pour les vidéos longues
+          const path = media.type === 'video' ? '/upload/video' : '/upload/image';
+          // Même client que le feed : Bearer + refresh sur 401. Ne pas fixer Content-Type (boundary requis).
+          const uploadRes = await apiClient.post(path, formData, {
+            timeout: 300000,
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
           });
-          const fileUrl = uploadRes.data?.data?.url || '';
-          if (media.type === 'video') videoUrl = fileUrl;
-          else mediaUrls.push(fileUrl);
+          const d = uploadRes.data?.data;
+          const fileUrl = d?.file_url || d?.url || '';
+          if (media.type === 'video') {
+            videoUrl = fileUrl;
+            videoThumb = d?.thumbnail_url || undefined;
+          } else {
+            mediaUrls.push(fileUrl);
+          }
 
           setUploadProgress(10 + Math.round((i + 1) / selectedMedia.length * 40));
         }
@@ -150,40 +290,62 @@ export default function CreateScreen() {
 
       setUploadProgress(60);
 
-      // Publier via l'API complémentaire (mobile posts)
-      await mobileApiClient.post('/mobile/posts', {
-        content_type: contentType,
-        title: title.trim() || (contentType === 'text' ? undefined : undefined),
-        text: contentType === 'article' ? articleBody.trim() : description.trim(),
-        media_urls: mediaUrls,
-        video_url: videoUrl,
-        hashtags: hashtagArray,
-      });
-
-      setUploadProgress(80);
-
-      // Si c'est une vidéo, aussi publier sur le backend PWA pour le feed vidéo
-      if (contentType === 'video' && videoUrl) {
-        try {
-          await apiClient.post('/videos', {
-            title: title.trim(),
-            description: description.trim() || title.trim(),
-            video_url: videoUrl,
-            thumbnail_url: videoUrl,
-            hashtags: hashtagArray,
-            media_type: 'video',
-          });
-        } catch (e) { console.log('PWA video post failed (non-critical):', e); }
+      if (contentType === 'video') {
+        if (!videoUrl) {
+          throw new Error('URL vidéo manquante après upload');
+        }
+        await apiClient.post('/videos', {
+          title: title.trim(),
+          description: description.trim() || title.trim(),
+          video_url: videoUrl,
+          thumbnail_url: videoThumb || videoUrl,
+          hashtags: hashtagArray,
+          media_type: 'video',
+          ...(soundSeed?.title ? { music_title: soundSeed.title.slice(0, 200) } : {}),
+          ...(soundSeed?.fromVideoId ? { remix_of_id: soundSeed.fromVideoId } : {}),
+        });
+      } else if (contentType === 'text') {
+        await apiClient.post('/posts', {
+          text: description.trim(),
+          ...(mediaUrls.length > 0 ? { images: mediaUrls } : {}),
+          visibility: 'public',
+        });
+      } else if (contentType === 'article') {
+        const text = `# ${title.trim()}\n\n${articleBody.trim()}`;
+        await apiClient.post('/posts', {
+          text,
+          ...(mediaUrls.length > 0 ? { images: mediaUrls } : {}),
+          visibility: 'public',
+        });
+      } else if (contentType === 'photo') {
+        await apiClient.post('/posts', {
+          text: description.trim() || undefined,
+          images: mediaUrls,
+          visibility: 'public',
+        });
       }
 
       setUploadProgress(100);
 
-      Alert.alert('Publié !', `Votre ${contentType === 'text' ? 'publication' : contentType === 'article' ? 'article' : contentType === 'photo' ? 'photo' : 'vidéo'} a été publié(e) avec succès`, [{
-        text: 'OK', onPress: () => {
-          resetSelection();
-          router.replace('/(tabs)');
+      const publishedLabel =
+        contentType === 'text' ? 'publication'
+          : contentType === 'article' ? 'article'
+            : contentType === 'photo' ? 'photo'
+              : 'vidéo';
+      const successBody = `Votre ${publishedLabel} a été publié(e) avec succès`;
+      const goHomeAfterPublish = () => {
+        resetSelection();
+        router.replace('/(tabs)');
+      };
+      // Sur le web, Alert.alert à boutons n’appelle souvent pas onPress → l’écran reste bloqué sur Créer.
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+          window.alert(`Publié !\n\n${successBody}`);
         }
-      }]);
+        goHomeAfterPublish();
+      } else {
+        Alert.alert('Publié !', successBody, [{ text: 'OK', onPress: goHomeAfterPublish }]);
+      }
     } catch (error: any) {
       console.error('Publish error:', error);
       const msg = error.response?.data?.error?.message || error.response?.data?.detail || error.message || 'Erreur lors de la publication';
@@ -202,6 +364,8 @@ export default function CreateScreen() {
     setDescription('');
     setArticleBody('');
     setHashtags('');
+    setSoundSeed(null);
+    soundSeedKeyConsumed.current = null;
   };
 
   if (step === 'details') {
@@ -235,10 +399,28 @@ export default function CreateScreen() {
         </View>
 
         <ScrollView style={styles.detailsContent} showsVerticalScrollIndicator={false}>
+          {soundSeed?.title ? (
+            <View style={styles.soundSeedBanner}>
+              <Ionicons name="musical-notes" size={20} color={Colors.primary} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.soundSeedLabel}>Son du fil</Text>
+                <Text style={styles.soundSeedTitle} numberOfLines={2}>
+                  {soundSeed.title}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setSoundSeed(null)} hitSlop={12} accessibilityLabel="Retirer ce son">
+                <Ionicons name="close-circle" size={22} color={Colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
           {/* Media Preview (for photo/video) */}
           {hasMedia && (
             <View style={styles.previewContainer}>
-              <Image source={{ uri: selectedMedia[0].uri }} style={styles.preview} />
+              {contentType === 'video' ? (
+                <SelectedVideoPreview uri={selectedMedia[0].uri} />
+              ) : (
+                <Image source={{ uri: selectedMedia[0].uri }} style={styles.preview} />
+              )}
               {selectedMedia.length > 1 && (
                 <View style={styles.multiMediaBadge}>
                   <Text style={styles.multiMediaText}>{selectedMedia.length} photos</Text>
@@ -345,14 +527,34 @@ export default function CreateScreen() {
         <Text style={styles.title}>Créer</Text>
       </View>
 
-      <View style={styles.content}>
+      <ScrollView
+        style={styles.selectionScroll}
+        contentContainerStyle={styles.selectionScrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {soundSeed?.title ? (
+          <View style={styles.soundSeedBanner}>
+            <Ionicons name="musical-notes" size={20} color={Colors.primary} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.soundSeedLabel}>Publier avec ce son</Text>
+              <Text style={styles.soundSeedTitle} numberOfLines={2}>
+                {soundSeed.title}
+              </Text>
+              <Text style={styles.soundSeedHint}>Enregistrez ou choisissez une vidéo — le titre audio sera associé à votre publication.</Text>
+            </View>
+            <TouchableOpacity onPress={() => setSoundSeed(null)} hitSlop={12} accessibilityLabel="Retirer ce son">
+              <Ionicons name="close-circle" size={22} color={Colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
         <View style={styles.optionsGrid}>
           <TouchableOpacity style={styles.optionCard} onPress={handleRecordVideo}>
             <View style={[styles.optionIcon, { backgroundColor: Colors.primary }]}>
               <Ionicons name="videocam" size={40} color={Colors.text} />
             </View>
             <Text style={styles.optionTitle}>Enregistrer</Text>
-            <Text style={styles.optionSubtitle}>Capturer une vidéo</Text>
+            <Text style={styles.optionSubtitle}>Caméra</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.optionCard} onPress={handlePickVideo}>
@@ -360,7 +562,7 @@ export default function CreateScreen() {
               <Ionicons name="film" size={40} color={Colors.text} />
             </View>
             <Text style={styles.optionTitle}>Vidéo</Text>
-            <Text style={styles.optionSubtitle}>Courte ou longue</Text>
+            <Text style={styles.optionSubtitle}>Depuis la galerie</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.optionCard} onPress={handlePickImage}>
@@ -368,7 +570,7 @@ export default function CreateScreen() {
               <Ionicons name="images" size={40} color={Colors.text} />
             </View>
             <Text style={styles.optionTitle}>Photo</Text>
-            <Text style={styles.optionSubtitle}>Plusieurs images</Text>
+            <Text style={styles.optionSubtitle}>Une ou plusieurs images</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.optionCard} onPress={handleTextPost}>
@@ -384,7 +586,7 @@ export default function CreateScreen() {
               <Ionicons name="document-text" size={40} color={Colors.text} />
             </View>
             <Text style={styles.optionTitle}>Article</Text>
-            <Text style={styles.optionSubtitle}>Rédiger un article</Text>
+            <Text style={styles.optionSubtitle}>Texte structuré</Text>
           </TouchableOpacity>
         </View>
 
@@ -394,7 +596,7 @@ export default function CreateScreen() {
           </View>
           <View style={styles.liveInfo}>
             <Text style={styles.liveTitle}>Démarrer un Live</Text>
-            <Text style={styles.liveSubtitle}>Diffusez en direct, le replay sera enregistré</Text>
+            <Text style={styles.liveSubtitle}>Direct et replays</Text>
           </View>
           <Ionicons name="chevron-forward" size={24} color={Colors.textSecondary} />
         </TouchableOpacity>
@@ -405,7 +607,7 @@ export default function CreateScreen() {
           </View>
           <View style={styles.liveInfo}>
             <Text style={styles.liveTitle}>Mes Lives & Replays</Text>
-            <Text style={styles.liveSubtitle}>Voir, découper et republier vos lives</Text>
+            <Text style={styles.liveSubtitle}>Voir, découper, republier (replays)</Text>
           </View>
           <Ionicons name="chevron-forward" size={24} color={Colors.textSecondary} />
         </TouchableOpacity>
@@ -413,10 +615,10 @@ export default function CreateScreen() {
         <View style={styles.tipsContainer}>
           <Text style={styles.tipsTitle}>Conseils</Text>
           {[
-            { icon: 'bulb', text: 'Utilisez une bonne lumière naturelle' },
-            { icon: 'film', text: 'Les vidéos longues sont maintenant supportées' },
-            { icon: 'musical-notes', text: 'Ajoutez de la musique tendance' },
-            { icon: 'document-text', text: 'Partagez vos idées en articles' },
+            { icon: 'bulb', text: 'Ajoutez des hashtags pour être découvert plus facilement.' },
+            { icon: 'film', text: 'Les vidéos apparaissent dans le fil principal et la grille découverte.' },
+            { icon: 'musical-notes', text: 'Combinez photos et texte pour raconter une histoire.' },
+            { icon: 'document-text', text: 'Les articles conviennent aux tutoriels et contenus longs.' },
           ].map((tip, i) => (
             <View key={i} style={styles.tipItem}>
               <Ionicons name={tip.icon as any} size={20} color={Colors.accent} />
@@ -424,7 +626,7 @@ export default function CreateScreen() {
             </View>
           ))}
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -444,7 +646,22 @@ const styles = StyleSheet.create({
   },
   publishBtnDisabled: { opacity: 0.5 },
   publishBtnText: { color: '#FFF', fontWeight: '700', fontSize: FontSizes.md },
-  content: { flex: 1, padding: Spacing.xl },
+  selectionScroll: { flex: 1 },
+  selectionScrollContent: { padding: Spacing.xl, paddingBottom: Spacing.xxl },
+  soundSeedBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  soundSeedLabel: { color: Colors.textMuted, fontSize: FontSizes.xs, fontWeight: '700', textTransform: 'uppercase' },
+  soundSeedTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '700', marginTop: 2 },
+  soundSeedHint: { color: Colors.textSecondary, fontSize: FontSizes.xs, marginTop: 6, lineHeight: 16 },
   optionsGrid: {
     flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between',
     gap: Spacing.md, marginBottom: Spacing.xl,

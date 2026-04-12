@@ -4,7 +4,7 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import mobileApiClient from '../../src/api/mobileClient';
+import apiClient from '../../src/api/client';
 
 export default function ReplayScreen() {
   const insets = useSafeAreaInsets();
@@ -21,8 +21,18 @@ export default function ReplayScreen() {
 
   const loadLive = async () => {
     try {
-      const res = await mobileApiClient.get(`/mobile/live/${id}`);
-      setLive(res.data?.data);
+      const res = await apiClient.get(`/live/${encodeURIComponent(String(id))}`);
+      const raw = res.data?.data;
+      if (raw) {
+        setLive({
+          ...raw,
+          duration: (raw.duration_minutes != null ? raw.duration_minutes * 60 : raw.duration) || 0,
+          tip_amount: raw.total_tips_amount ?? raw.tip_amount ?? 0,
+          highlights: raw.replay_chapters || raw.highlights || [],
+        });
+      } else {
+        setLive(null);
+      }
     } catch {} finally { setLoading(false); }
   };
 
@@ -31,7 +41,11 @@ export default function ReplayScreen() {
     if (!start && start !== 0 || !end || end <= start) { Alert.alert('Erreur', 'Temps invalides'); return; }
     setClipping(true);
     try {
-      const res = await mobileApiClient.post(`/mobile/live/${id}/highlight`, { live_id: id, start_time: start, end_time: end, title: clipTitle.trim() || undefined });
+      const res = await apiClient.post(`/live/${encodeURIComponent(String(id))}/chapters`, {
+        title: clipTitle.trim() || 'Moment fort',
+        start_seconds: start,
+        end_seconds: end,
+      });
       Alert.alert('Moment fort créé!', 'Le clip est prêt à être reposté dans votre feed.', [{ text: 'OK' }]);
       setShowClip(false); setClipStart(''); setClipEnd(''); setClipTitle('');
       loadLive();
@@ -78,8 +92,7 @@ export default function ReplayScreen() {
         {live.status === 'ended' && (
           <TouchableOpacity style={styles.republishBtn} onPress={async () => {
             try {
-              await mobileApiClient.post(`/mobile/live/${id}/republish`);
-              Alert.alert('Republié !', 'Le replay complet a été publié dans votre feed.');
+              Alert.alert('Non disponible', 'Aucun endpoint « republier le live » côté API Node pour le moment.');
             } catch (e: any) { Alert.alert('Erreur', e.response?.data?.detail || 'Erreur'); }
           }}>
             <Ionicons name="share-social" size={20} color="#FFF" />

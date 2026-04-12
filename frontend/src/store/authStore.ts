@@ -10,6 +10,9 @@ export interface User {
   role?: string;
   phone?: string;
   bio?: string;
+  website?: string | null;
+  location?: string | null;
+  is_verified?: boolean;
   country?: string;
   followers?: number;
   following?: number;

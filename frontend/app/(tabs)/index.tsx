@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, Dimensions, FlatList, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Image, TextInput, Modal, KeyboardAvoidingView, Platform, ScrollView, Animated, ViewToken } from 'react-native';
+import React, { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
+import { View, Text, StyleSheet, Dimensions, FlatList, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Image, TextInput, Modal, KeyboardAvoidingView, Platform, ScrollView, Animated, AppState, Alert, Pressable, type NativeSyntheticEvent, type NativeScrollEvent, type LayoutChangeEvent } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,18 +7,26 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/store/authStore';
 import apiClient from '../../src/api/client';
 import { router } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import ShareSheet from '../../src/components/ShareSheet';
 import ReportModal from '../../src/components/ReportModal';
+import { CreatorAvatar } from '../../src/components/CreatorAvatar';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { Audio } from 'expo-av';
 
 const { width, height } = Dimensions.get('window');
+
+/** Base hauteur tab bar, alignée sur `app/(tabs)/_layout.tsx` (`height: 65 + insets.bottom`). */
+const TAB_BAR_LAYOUT_HEIGHT = 65;
 
 interface VideoUser {
   id: string;
   firstName: string;
   lastName: string;
+  /** URL absolue ou vide → initiales affichées */
   avatar: string;
+  username?: string;
   isFollowing: boolean;
 }
 
@@ -48,6 +56,19 @@ interface Comment {
   isLiked: boolean;
   user: { id: string; firstName: string; lastName: string; avatar: string };
   createdAt: string;
+  /** URL du vocal (API `audio_url`) */
+  audioUrl?: string | null;
+}
+
+async function appendCommentVoiceToFormData(formData: FormData, uri: string) {
+  if (Platform.OS === 'web') {
+    const res = await fetch(uri);
+    const blob = await res.blob();
+    const mime = blob.type && blob.type !== 'application/octet-stream' ? blob.type : 'audio/webm';
+    formData.append('file', new File([blob], 'voice.webm', { type: mime }));
+    return;
+  }
+  formData.append('file', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
 }
 
 // Fallback vide - les videos sont chargees depuis l'API
@@ -56,6 +77,8 @@ const FALLBACK_VIDEOS: Video[] = [];
 interface VideoItemProps {
   video: Video;
   isActive: boolean;
+  /** Hauteur d’une page du feed (doit matcher snapToInterval / getItemLayout). */
+  slideHeight?: number;
   onLike: () => void;
   onDoubleTapLike: () => void;
   onComment: () => void;
@@ -63,10 +86,12 @@ interface VideoItemProps {
   onSave: () => void;
   onFollow: () => void;
   onReport: () => void;
+  onOpenProfile: () => void;
+  onOpenSound: () => void;
 }
 
 const VideoItem: React.FC<VideoItemProps> = ({
-  video, isActive, onLike, onDoubleTapLike, onComment, onShare, onSave, onFollow, onReport,
+  video, isActive, slideHeight, onLike, onDoubleTapLike, onComment, onShare, onSave, onFollow, onReport, onOpenProfile, onOpenSound,
 }) => {
   const insets = useSafeAreaInsets();
   const [isMuted, setIsMuted] = useState(false);
@@ -76,35 +101,56 @@ const VideoItem: React.FC<VideoItemProps> = ({
   const discAnim = useRef(new Animated.Value(0)).current;
   const lastTap = useRef(0);
   const isActiveRef = useRef(isActive);
+  const wasActiveRef = useRef(isActive);
 
   // Keep ref in sync
   useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
 
   const player = useVideoPlayer(video.videoUrl, (p) => {
     p.loop = true;
-    p.muted = false;
-    // Auto-play immediately if this is the active video
+    p.muted = !isActiveRef.current;
     if (isActiveRef.current) {
       p.play();
     }
   });
 
-  // CRITICAL: Play/Pause based on visibility
+  // Nouvelle slide active : reprendre la lecture auto (comportement type TikTok)
   useEffect(() => {
-    if (!player) return;
+    if (isActive && !wasActiveRef.current) {
+      setIsPaused(false);
+    }
+    wasActiveRef.current = isActive;
+  }, [isActive]);
+
+  // Pause + sourdine immédiates hors carte active (évite audio « fantôme » sur web / expo-video)
+  useLayoutEffect(() => {
+    if (!player || isActive) return;
     try {
-      if (isActive && !isPaused) {
-        player.play();
+      player.pause();
+      player.muted = true;
+    } catch {}
+  }, [isActive, player]);
+
+  // Lecture / pause + mute utilisateur sur la carte active
+  useEffect(() => {
+    if (!player || !isActive) return;
+    try {
+      player.muted = isMuted;
+      if (!isPaused) {
+        void Promise.resolve().then(() => {
+          try {
+            player.play();
+          } catch (e) {
+            console.log('Player play error:', e);
+          }
+        });
       } else {
         player.pause();
       }
     } catch (e) {
       console.log('Player play/pause error:', e);
     }
-  }, [isActive, isPaused, player]);
-
-  // Mute control
-  useEffect(() => { if (player) player.muted = isMuted; }, [isMuted, player]);
+  }, [isActive, isPaused, isMuted, player]);
 
   // CRITICAL: Cleanup on unmount — pause video to stop background audio
   useEffect(() => {
@@ -134,6 +180,13 @@ const VideoItem: React.FC<VideoItemProps> = ({
     return num.toString();
   };
 
+  const creatorHandle = (() => {
+    const u = (video.user.username || '').trim().replace(/^@+/, '');
+    if (u) return `@${u}`;
+    const slug = `${(video.user.firstName || '').trim()}${(video.user.lastName || '').trim()}`.replace(/\s+/g, '').slice(0, 14).toLowerCase();
+    return slug ? `@${slug}` : '@créateur';
+  })();
+
   const handleTap = () => {
     const now = Date.now();
     if (now - lastTap.current < 300) {
@@ -153,7 +206,7 @@ const VideoItem: React.FC<VideoItemProps> = ({
     lastTap.current = now;
   };
 
-  const itemHeight = height - 60 - insets.bottom;
+  const itemHeight = slideHeight ?? Math.max(200, height - TAB_BAR_LAYOUT_HEIGHT - insets.bottom);
 
   return (
     <View style={[styles.videoContainer, { height: itemHeight }]}>
@@ -183,8 +236,8 @@ const VideoItem: React.FC<VideoItemProps> = ({
       </TouchableWithoutFeedback>
 
       {/* Gradient overlays */}
-      <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent']} style={styles.topGradient} />
-      <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.bottomGradient} />
+      <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0.6)', 'transparent']} style={styles.topGradient} />
+      <LinearGradient pointerEvents="none" colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.bottomGradient} />
 
       {/* Sponsored badge */}
       {video.isSponsored && (
@@ -195,16 +248,23 @@ const VideoItem: React.FC<VideoItemProps> = ({
       )}
 
       {/* Right side actions */}
-      <View style={[styles.actions, { bottom: 100 }]}>
+      <View style={[styles.actions, { bottom: 100 }]} pointerEvents="box-none">
         {/* Avatar */}
-        <TouchableOpacity style={styles.avatarContainer}>
-          <Image source={{ uri: video.user.avatar }} style={styles.avatar} />
+        <View style={styles.avatarContainer}>
+          <CreatorAvatar
+            uri={video.user.avatar}
+            username={video.user.username}
+            firstName={video.user.firstName}
+            lastName={video.user.lastName}
+            size={48}
+            onPress={video.user.id ? onOpenProfile : undefined}
+          />
           {!video.user.isFollowing && (
             <TouchableOpacity style={styles.followBadge} onPress={onFollow}>
               <Ionicons name="add" size={12} color="#FFF" />
             </TouchableOpacity>
           )}
-        </TouchableOpacity>
+        </View>
 
         {/* Like */}
         <TouchableOpacity style={styles.actionButton} onPress={onLike}>
@@ -243,16 +303,34 @@ const VideoItem: React.FC<VideoItemProps> = ({
           <Ionicons name="ellipsis-horizontal" size={24} color="#FFF" />
         </TouchableOpacity>
 
-        {/* Rotating disc */}
-        <Animated.View style={[styles.musicDisc, { transform: [{ rotate: discRotation }] }]}>
-          <Image source={{ uri: video.user.avatar }} style={styles.musicDiscImage} />
-        </Animated.View>
+        {/* Disque son — même destination que la ligne « Son » sous la vidéo */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={onOpenSound}
+          accessibilityRole="button"
+          accessibilityLabel="Voir les vidéos avec ce son"
+        >
+          <Animated.View style={[styles.musicDisc, { transform: [{ rotate: discRotation }] }]}>
+            <View style={styles.musicDiscImage}>
+              <CreatorAvatar
+                uri={video.user.avatar}
+                username={video.user.username}
+                firstName={video.user.firstName}
+                lastName={video.user.lastName}
+                size={28}
+                bordered={false}
+              />
+            </View>
+          </Animated.View>
+        </TouchableOpacity>
       </View>
 
       {/* Bottom info */}
       <View style={[styles.bottomInfo, { bottom: 16 }]}>
         <View style={styles.userRow}>
-          <Text style={styles.username}>@{video.user.firstName.toLowerCase()}{video.user.lastName.toLowerCase()}</Text>
+          <TouchableOpacity onPress={video.user.id ? onOpenProfile : undefined} activeOpacity={0.85} disabled={!video.user.id}>
+            <Text style={styles.username}>{creatorHandle}</Text>
+          </TouchableOpacity>
           {video.user.isFollowing ? (
             <View style={styles.followingTag}><Text style={styles.followingTagText}>Abonne</Text></View>
           ) : (
@@ -267,11 +345,25 @@ const VideoItem: React.FC<VideoItemProps> = ({
             <TouchableOpacity key={i}><Text style={styles.hashtag}>#{tag} </Text></TouchableOpacity>
           ))}
         </View>
-        {/* Music ticker */}
-        <View style={styles.musicRow}>
+        <View style={styles.viewsRow} accessibilityLabel={`${formatNumber(video.views)} vues`}>
+          <Ionicons name="eye-outline" size={15} color="rgba(255,255,255,0.92)" />
+          <Text style={styles.viewsText}>
+            {formatNumber(video.views)} vues
+          </Text>
+        </View>
+        {/* Son — cliquable (liste des vidéos partageant ce titre audio) */}
+        <TouchableOpacity
+          style={styles.musicRow}
+          onPress={onOpenSound}
+          activeOpacity={0.85}
+          hitSlop={{ top: 10, bottom: 10, left: 4, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Son : ${video.music}. Ouvrir les vidéos utilisant ce son`}
+        >
           <Ionicons name="musical-notes" size={14} color="#FFF" />
           <Text style={styles.musicText} numberOfLines={1}>{video.music}</Text>
-        </View>
+          <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.55)" style={{ marginLeft: 4 }} />
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -285,6 +377,13 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
   const [totalComments, setTotalComments] = useState(commentsCount);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [playingCommentId, setPlayingCommentId] = useState<string | null>(null);
+  const [sendingVoice, setSendingVoice] = useState(false);
+  const recordingRef = useRef<Awaited<ReturnType<typeof Audio.Recording.createAsync>>['recording'] | null>(null);
+  const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const soundRef = useRef<Audio.Sound | null>(null);
 
   const formatTimeAgo = (dateStr: string) => {
     const now = new Date();
@@ -302,6 +401,31 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
   useEffect(() => {
     if (visible) loadComments();
   }, [visible, videoId]);
+
+  useEffect(() => {
+    if (visible) return;
+    (async () => {
+      if (recordingRef.current) {
+        try {
+          await recordingRef.current.stopAndUnloadAsync();
+        } catch { /* ignore */ }
+        recordingRef.current = null;
+      }
+      if (recordTimerRef.current) {
+        clearInterval(recordTimerRef.current);
+        recordTimerRef.current = null;
+      }
+      setIsRecordingVoice(false);
+      setRecordSeconds(0);
+      if (soundRef.current) {
+        try {
+          await soundRef.current.unloadAsync();
+        } catch { /* ignore */ }
+        soundRef.current = null;
+      }
+      setPlayingCommentId(null);
+    })();
+  }, [visible]);
 
   const loadComments = async () => {
     setLoading(true);
@@ -324,6 +448,7 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
               avatar: c.user_avatar || c.user?.profile_image || 'https://i.pravatar.cc/150?img=50',
             },
             createdAt: formatTimeAgo(c.created_at),
+            audioUrl: c.audio_url || null,
           };
         });
         setComments(transformed);
@@ -337,6 +462,131 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
         { id: '1', text: 'Super video!', likes: 24, isLiked: false, user: { id: 'u1', firstName: 'Aminata', lastName: 'D', avatar: 'https://i.pravatar.cc/150?img=1' }, createdAt: '2h' },
       ]);
     } finally { setLoading(false); }
+  };
+
+  const recordStartedAtRef = useRef(0);
+
+  const toggleVoiceRecording = async () => {
+    if (!isAuthenticated) {
+      Alert.alert('Connexion', 'Connectez-vous pour commenter.');
+      return;
+    }
+    if (sendingVoice) return;
+
+    if (isRecordingVoice) {
+      const rec = recordingRef.current;
+      if (recordTimerRef.current) {
+        clearInterval(recordTimerRef.current);
+        recordTimerRef.current = null;
+      }
+      setIsRecordingVoice(false);
+      setRecordSeconds(0);
+      if (!rec) return;
+      try {
+        await rec.stopAndUnloadAsync();
+        const uri = rec.getURI();
+        recordingRef.current = null;
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+        const sec = Math.floor((Date.now() - recordStartedAtRef.current) / 1000);
+        if (!uri || sec < 1) {
+          Alert.alert('Trop court', 'Enregistrez au moins 1 seconde de vocal.');
+          return;
+        }
+        setSendingVoice(true);
+        const formData = new FormData();
+        await appendCommentVoiceToFormData(formData, uri);
+        const uploadRes = await apiClient.post('/upload/audio', formData, {
+          timeout: 120000,
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+        });
+        const ud = uploadRes.data?.data;
+        const audioUrl = ud?.file_url || ud?.url;
+        if (!audioUrl) throw new Error('URL audio manquante');
+        const caption = newComment.trim();
+        const optimistic: Comment = {
+          id: `tmp-v-${Date.now()}`,
+          text: caption || '🎤',
+          likes: 0,
+          isLiked: false,
+          user: {
+            id: user?.id || 'me',
+            firstName: user?.firstName || user?.full_name?.split(' ')[0] || 'Moi',
+            lastName: user?.lastName || '',
+            avatar: user?.avatar || user?.profile_image || 'https://i.pravatar.cc/150?img=10',
+          },
+          createdAt: 'A l\'instant',
+          audioUrl,
+        };
+        setComments((prev) => [optimistic, ...prev]);
+        setTotalComments((prev) => prev + 1);
+        const response = await apiClient.post(`/videos/${videoId}/comment`, {
+          content: caption || '🎤',
+          audio_url: audioUrl,
+        });
+        const data = response.data?.data || response.data;
+        if (data?.id) {
+          setComments((prev) => prev.map((c) => (c.id === optimistic.id ? { ...c, id: data.id, audioUrl: data.audio_url || audioUrl } : c)));
+        }
+        setNewComment('');
+      } catch {
+        Alert.alert('Erreur', 'Impossible d\'envoyer le commentaire vocal.');
+        setComments((prev) => prev.filter((c) => !String(c.id).startsWith('tmp-v-')));
+        setTotalComments((prev) => Math.max(0, prev - 1));
+      } finally {
+        setSendingVoice(false);
+      }
+      return;
+    }
+
+    try {
+      const perm = await Audio.requestPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Microphone', 'Autorisez le micro pour enregistrer un commentaire vocal.');
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      recordingRef.current = recording;
+      recordStartedAtRef.current = Date.now();
+      setRecordSeconds(0);
+      setIsRecordingVoice(true);
+      recordTimerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
+    } catch {
+      Alert.alert('Erreur', 'Impossible de démarrer l\'enregistrement.');
+    }
+  };
+
+  const togglePlayCommentAudio = async (c: Comment) => {
+    if (!c.audioUrl) return;
+    try {
+      if (playingCommentId === c.id) {
+        await soundRef.current?.stopAsync();
+        await soundRef.current?.unloadAsync();
+        soundRef.current = null;
+        setPlayingCommentId(null);
+        return;
+      }
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: c.audioUrl },
+        { shouldPlay: true },
+        (status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            setPlayingCommentId(null);
+            sound.unloadAsync().catch(() => {});
+            soundRef.current = null;
+          }
+        }
+      );
+      soundRef.current = sound;
+      setPlayingCommentId(c.id);
+    } catch {
+      Alert.alert('Lecture', 'Impossible de lire ce vocal.');
+    }
   };
 
   const handleSend = async () => {
@@ -399,6 +649,17 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
                   <View style={styles.commentContent}>
                     <Text style={styles.commentUser}>{c.user.firstName} {c.user.lastName}</Text>
                     <Text style={styles.commentText}>{c.text}</Text>
+                    {c.audioUrl ? (
+                      <TouchableOpacity
+                        style={styles.commentVoiceBtn}
+                        onPress={() => void togglePlayCommentAudio(c)}
+                        accessibilityRole="button"
+                        accessibilityLabel={playingCommentId === c.id ? 'Pause vocal' : 'Lire le vocal'}
+                      >
+                        <Ionicons name={playingCommentId === c.id ? 'pause' : 'play'} size={16} color={Colors.primary} />
+                        <Text style={styles.commentVoiceLabel}>Commentaire vocal</Text>
+                      </TouchableOpacity>
+                    ) : null}
                     <View style={styles.commentMeta}>
                       <Text style={styles.commentTime}>{c.createdAt}</Text>
                       <TouchableOpacity style={styles.commentReply}><Text style={styles.commentReplyText}>Repondre</Text></TouchableOpacity>
@@ -414,8 +675,41 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
           )}
           <View style={styles.commentInput}>
             <Image source={{ uri: userAvatar }} style={styles.commentInputAvatar} />
-            <TextInput style={styles.commentTextInput} placeholder="Ajouter un commentaire..." placeholderTextColor={Colors.textMuted} value={newComment} onChangeText={setNewComment} multiline />
-            <TouchableOpacity style={[styles.commentSendBtn, !newComment.trim() && { opacity: 0.4 }]} onPress={handleSend} disabled={!newComment.trim()}>
+            {isRecordingVoice ? (
+              <View style={styles.commentRecordingBar}>
+                <View style={styles.commentRecordingDot} />
+                <Text style={styles.commentRecordingText}>
+                  Enregistrement… {recordSeconds}s — touchez le micro pour envoyer
+                </Text>
+              </View>
+            ) : (
+              <TextInput
+                style={styles.commentTextInput}
+                placeholder="Ajouter un commentaire ou un vocal…"
+                placeholderTextColor={Colors.textMuted}
+                value={newComment}
+                onChangeText={setNewComment}
+                multiline
+                editable={!sendingVoice}
+              />
+            )}
+            <TouchableOpacity
+              style={[styles.commentMicBtn, sendingVoice && { opacity: 0.5 }]}
+              onPress={() => void toggleVoiceRecording()}
+              disabled={sendingVoice}
+              accessibilityLabel={isRecordingVoice ? 'Arrêter et envoyer le vocal' : 'Enregistrer un commentaire vocal'}
+            >
+              {sendingVoice ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <Ionicons name={isRecordingVoice ? 'stop-circle' : 'mic'} size={24} color={isRecordingVoice ? '#E53935' : Colors.textSecondary} />
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.commentSendBtn, (!newComment.trim() || isRecordingVoice || sendingVoice) && { opacity: 0.4 }]}
+              onPress={handleSend}
+              disabled={!newComment.trim() || isRecordingVoice || sendingVoice}
+            >
               <Ionicons name="send" size={18} color={Colors.text} />
             </TouchableOpacity>
           </View>
@@ -426,6 +720,8 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
 };
 
 export default function FeedScreen() {
+  const isScreenFocused = useIsFocused();
+  const [appState, setAppState] = useState(AppState.currentState);
   const [videos, setVideos] = useState<Video[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -441,41 +737,136 @@ export default function FeedScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  /** Message sous l’état vide : erreur réseau ou rappel fil découverte (vidéos courtes). */
+  const [feedEmptyMessage, setFeedEmptyMessage] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
+  const { isAuthenticated } = useAuthStore();
 
   const videosRef = useRef<Video[]>([]);
   useEffect(() => { videosRef.current = videos; }, [videos]);
 
-  useEffect(() => { loadFeed(1, true); }, []);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => setAppState(next));
+    return () => sub.remove();
+  }, []);
 
-  // Stable refs for FlatList viewability (MUST be refs to avoid FlatList re-mount)
-  const viewabilityConfigRef = useRef({
-    itemVisiblePercentThreshold: 50,
-    minimumViewTime: 100,
-  });
+  const playbackAllowed = isScreenFocused && appState === 'active';
 
-  const onViewableItemsChangedRef = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
-    if (viewableItems.length > 0) {
-      const newIndex = viewableItems[0].index ?? 0;
-      setCurrentIndex(newIndex);
-      // Track view on backend
-      const video = videosRef.current[newIndex];
-      if (video) {
-        apiClient.post(`/videos/${video.id}/view`).catch(() => {});
+  /** Hauteur réelle du viewport liste (sinon snap / offset ≠ hauteur des cellules → index bloqué sur 0). */
+  const [listViewportHeight, setListViewportHeight] = useState(0);
+  const feedItemHeight = useMemo(() => {
+    if (listViewportHeight > 0) return listViewportHeight;
+    return Math.max(200, height - TAB_BAR_LAYOUT_HEIGHT - insets.bottom);
+  }, [listViewportHeight, height, insets.bottom]);
+
+  const feedItemHeightRef = useRef(feedItemHeight);
+  useEffect(() => {
+    feedItemHeightRef.current = feedItemHeight;
+  }, [feedItemHeight]);
+
+  const lastScrollOffsetYRef = useRef(0);
+  const scrollSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (scrollSyncTimeoutRef.current) clearTimeout(scrollSyncTimeoutRef.current);
+    };
+  }, []);
+
+  /** Index dérivé du scroll (une page = hauteur mesurée du FlatList). */
+  const syncIndexFromScrollOffset = useCallback((offsetY: number) => {
+    const h = feedItemHeightRef.current;
+    const list = videosRef.current;
+    if (list.length === 0 || h <= 0) return;
+    const idx = Math.min(list.length - 1, Math.max(0, Math.round(offsetY / h)));
+    setCurrentIndex(idx);
+  }, []);
+
+  const scheduleSyncFromScrollOffset = useCallback((y: number) => {
+    lastScrollOffsetYRef.current = y;
+    if (scrollSyncTimeoutRef.current) clearTimeout(scrollSyncTimeoutRef.current);
+    scrollSyncTimeoutRef.current = setTimeout(() => {
+      scrollSyncTimeoutRef.current = null;
+      syncIndexFromScrollOffset(lastScrollOffsetYRef.current);
+    }, 72);
+  }, [syncIndexFromScrollOffset]);
+
+  const onFeedScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      lastScrollOffsetYRef.current = e.nativeEvent.contentOffset.y;
+      scheduleSyncFromScrollOffset(e.nativeEvent.contentOffset.y);
+    },
+    [scheduleSyncFromScrollOffset]
+  );
+
+  const onFeedScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (scrollSyncTimeoutRef.current) {
+        clearTimeout(scrollSyncTimeoutRef.current);
+        scrollSyncTimeoutRef.current = null;
+      }
+      syncIndexFromScrollOffset(e.nativeEvent.contentOffset.y);
+    },
+    [syncIndexFromScrollOffset]
+  );
+
+  const onListLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = Math.round(e.nativeEvent.layout.height);
+    if (h > 0) setListViewportHeight((prev) => (prev === h ? prev : h));
+  }, []);
+
+  /** Feuille d’action (Modal) : fiable sur web — `Alert.alert` à plusieurs boutons est souvent inerte. */
+  const [soundMenuVideo, setSoundMenuVideo] = useState<Video | null>(null);
+  const closeSoundMenu = useCallback(() => setSoundMenuVideo(null), []);
+  const openSoundMenu = useCallback((item: Video) => setSoundMenuVideo(item), []);
+
+  const activeVideoId = videos[currentIndex]?.id ?? '';
+
+  const getItemLayout = useCallback(
+    (_data: ArrayLike<Video> | null | undefined, index: number) => ({
+      length: feedItemHeight,
+      offset: feedItemHeight * index,
+      index,
+    }),
+    [feedItemHeight]
+  );
+
+  const lastViewedVideoIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    lastViewedVideoIdRef.current = null;
+  }, [activeTab]);
+
+  useEffect(() => {
+    const v = videos[currentIndex];
+    if (!v) return;
+    if (lastViewedVideoIdRef.current === v.id) return;
+    lastViewedVideoIdRef.current = v.id;
+    apiClient.post(`/videos/${v.id}/view`).catch(() => {});
+  }, [currentIndex, videos]);
+
+  /** Extrait les vidéos du feed combiné PWA (`/api/feed` → `items[].type === 'video'`). */
+  const extractVideosFromFeedItems = (items: unknown[]): any[] => {
+    if (!Array.isArray(items)) return [];
+    const out: any[] = [];
+    for (const it of items) {
+      const row = it as { type?: string; video?: any };
+      if (row?.type === 'video' && row.video && typeof row.video === 'object') {
+        out.push(row.video);
       }
     }
-  });
+    return out;
+  };
 
   const transformVideo = (v: any): Video => {
-    const nameParts = (v.creator_name || '').split(' ');
+    const nameParts = (v.creator_name || v.creator?.full_name || '').split(' ');
+    const playUrl = v.video_url || v.hls_url || v.low_quality_playback_url || v.low_quality_url || '';
     return {
       id: v.id,
       title: v.title || '',
       description: v.description || '',
-      videoUrl: v.video_url || '',
-      thumbnailUrl: v.thumbnail_url || v.video_url || '',
+      videoUrl: playUrl,
+      thumbnailUrl: v.thumbnail_url || v.video_url || playUrl || '',
       duration: v.duration || 0,
-      views: v.views || 0,
+      views: Number(v.views ?? v.view_count ?? v.views_count) || 0,
       likes: v.likes || 0,
       comments: v.comments_count || 0,
       shares: v.shares || 0,
@@ -483,11 +874,12 @@ export default function FeedScreen() {
       isSaved: false,
       hashtags: v.hashtags || [],
       user: {
-        id: v.creator_id || '',
+        id: v.creator_id || v.creator?.id || '',
         firstName: nameParts[0] || 'Utilisateur',
         lastName: nameParts.slice(1).join(' ') || '',
-        avatar: v.creator_avatar || 'https://i.pravatar.cc/150?img=1',
-        isFollowing: false,
+        avatar: toAbsoluteMediaUrl((v.creator_avatar || v.creator?.profile_image || '').trim()).trim(),
+        username: (v.creator?.username || v.creator_username || '').trim(),
+        isFollowing: Boolean(v.creator?.is_following ?? v.is_following),
       },
       music: v.music_title || 'Son original',
       isSponsored: v.is_sponsored || v.isSponsored || false,
@@ -498,31 +890,68 @@ export default function FeedScreen() {
     if (reset) setLoading(true);
     else setLoadingMore(true);
     try {
-      const response = await apiClient.get(`/videos?page=${pageNum}&limit=10`);
-      const data = response.data?.data || response.data;
-      const backendVideos = data?.videos || [];
-      const pagination = data?.pagination;
+      setFeedEmptyMessage(null);
+      let backendVideos: any[] = [];
+      let pagination: { totalPages?: number } | undefined;
+
+      if (activeTab === 'foryou') {
+        const params: Record<string, string | number> = { page: pageNum, limit: 10 };
+        if (reset && pageNum === 1) {
+          params._ = Date.now();
+        }
+        const response = await apiClient.get('/feed', { params });
+        const pkg = response.data?.data || response.data;
+        const items = pkg?.items || [];
+        backendVideos = extractVideosFromFeedItems(items);
+        pagination = pkg?.pagination;
+      } else {
+        const response = await apiClient.get(`/videos?page=${pageNum}&limit=10`);
+        const data = response.data?.data || response.data;
+        backendVideos = data?.videos || [];
+        pagination = data?.pagination;
+      }
+
       if (backendVideos.length > 0) {
         const transformed = backendVideos.map(transformVideo);
         if (reset) {
           setVideos(transformed);
+          setCurrentIndex(0);
         } else {
           setVideos(prev => [...prev, ...transformed]);
         }
         setPage(pageNum);
-        setHasMore(pagination ? pageNum < pagination.totalPages : backendVideos.length >= 10);
+        setHasMore(pagination?.totalPages != null ? pageNum < (pagination.totalPages as number) : backendVideos.length >= 10);
       } else if (reset) {
         setVideos(FALLBACK_VIDEOS);
         setHasMore(false);
+        setFeedEmptyMessage(
+          activeTab === 'foryou'
+            ? 'Aucune vidéo dans le fil « Pour toi ». Vérifiez le backend ou publiez du contenu.'
+            : 'Aucune vidéo à afficher pour les abonnements (liste générique comme sur la PWA). Suivez des créateurs pour enrichir ce fil.'
+        );
       }
     } catch (err) {
-      console.log('Using mock videos', err);
-      if (reset) setVideos(FALLBACK_VIDEOS);
+      console.log('Feed vidéo indisponible', err);
+      if (reset) {
+        setVideos(FALLBACK_VIDEOS);
+        const msg = (err as any)?.response?.data?.error?.message || (err as any)?.message;
+        setFeedEmptyMessage(
+          msg
+            ? `Impossible de charger les vidéos : ${String(msg).slice(0, 120)}`
+            : 'Impossible de joindre l’API (vérifiez que le serveur tourne et l’URL dans la config Expo). Après une migration base, exécutez aussi prisma migrate deploy.'
+        );
+      }
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
   };
+
+  useEffect(() => {
+    setCurrentIndex(0);
+    void loadFeed(1, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recharger le fil au changement d’onglet (Pour toi / Abonnés)
+  }, [activeTab]);
 
   const loadMore = () => {
     if (!loadingMore && hasMore) {
@@ -620,11 +1049,14 @@ export default function FeedScreen() {
       </View>
 
       <FlatList
+        style={{ flex: 1 }}
         data={videos}
-        renderItem={({ item, index }) => (
+        onLayout={onListLayout}
+        renderItem={({ item }) => (
           <VideoItem
             video={item}
-            isActive={index === currentIndex}
+            slideHeight={feedItemHeight}
+            isActive={playbackAllowed && item.id === activeVideoId}
             onLike={() => handleLike(item.id)}
             onDoubleTapLike={() => handleDoubleTapLike(item.id)}
             onComment={() => openComments(item.id, item.comments)}
@@ -632,15 +1064,24 @@ export default function FeedScreen() {
             onSave={() => handleSave(item.id)}
             onFollow={() => handleFollow(item.user.id)}
             onReport={() => handleReport(item.id)}
+            onOpenProfile={() => {
+              if (!item.user.id) return;
+              router.push({ pathname: '/user/[id]', params: { id: item.user.id } });
+            }}
+            onOpenSound={() => openSoundMenu(item)}
           />
         )}
         keyExtractor={(item) => item.id}
         pagingEnabled
         showsVerticalScrollIndicator={false}
-        snapToInterval={height - 60 - insets.bottom}
+        snapToInterval={feedItemHeight}
+        snapToAlignment="start"
         decelerationRate="fast"
-        onViewableItemsChanged={onViewableItemsChangedRef.current}
-        viewabilityConfig={viewabilityConfigRef.current}
+        getItemLayout={getItemLayout}
+        onScroll={onFeedScroll}
+        scrollEventThrottle={16}
+        onMomentumScrollEnd={onFeedScrollEnd}
+        onScrollEndDrag={onFeedScrollEnd}
         initialNumToRender={2}
         maxToRenderPerBatch={2}
         windowSize={3}
@@ -650,9 +1091,15 @@ export default function FeedScreen() {
         refreshing={refreshing}
         onRefresh={onRefresh}
         ListEmptyComponent={loading ? null : (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: height - 100 }}>
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: height - 100, paddingHorizontal: 28 }}>
             <Ionicons name="videocam-outline" size={60} color="rgba(255,255,255,0.3)" />
-            <Text style={{ color: 'rgba(255,255,255,0.5)', marginTop: 16, fontSize: 16 }}>Aucune vidéo disponible</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.5)', marginTop: 16, fontSize: 16, textAlign: 'center' }}>Aucune vidéo disponible</Text>
+            {feedEmptyMessage ? (
+              <Text style={{ color: 'rgba(255,255,255,0.35)', marginTop: 12, fontSize: 13, textAlign: 'center', lineHeight: 20 }}>{feedEmptyMessage}</Text>
+            ) : null}
+            <TouchableOpacity style={{ marginTop: 20, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: Colors.primary, borderRadius: 24 }} onPress={() => loadFeed(1, true)} activeOpacity={0.85}>
+              <Text style={{ color: '#000', fontWeight: '700', fontSize: 14 }}>Réessayer</Text>
+            </TouchableOpacity>
           </View>
         )}
       />
@@ -661,7 +1108,56 @@ export default function FeedScreen() {
 
       <CommentsModal visible={commentsVisible} onClose={() => setCommentsVisible(false)} videoId={selectedVideoId} commentsCount={selectedVideoComments} />
       <ShareSheet visible={shareVisible} onClose={() => setShareVisible(false)} title={shareData.title} message={shareData.message} url={shareData.url} />
-      <ReportModal visible={reportVisible} onClose={() => setReportVisible(false)} targetType={reportTarget.type} targetId={reportTarget.id} />
+      <ReportModal visible={reportVisible} onClose={() => setReportVisible(false)} targetType={reportTarget.type} targetId={reportTarget.id} useModerationEndpoint />
+
+      <Modal visible={soundMenuVideo != null} transparent animationType="fade" onRequestClose={closeSoundMenu}>
+        <Pressable style={styles.soundModalBackdrop} onPress={closeSoundMenu}>
+          <View style={[styles.soundModalSheet, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
+            <Text style={styles.soundModalTitle}>Son</Text>
+            <Text style={styles.soundModalSubtitle} numberOfLines={3}>
+              {soundMenuVideo ? (soundMenuVideo.music || 'Son original').trim() : ''}
+            </Text>
+            <TouchableOpacity
+              style={styles.soundModalBtnPrimary}
+              activeOpacity={0.88}
+              onPress={() => {
+                const v = soundMenuVideo;
+                if (!v) return;
+                const music = (v.music || 'Son original').trim().slice(0, 200);
+                closeSoundMenu();
+                router.push({ pathname: '/sound-feed', params: { title: music } });
+              }}
+            >
+              <Ionicons name="albums-outline" size={20} color="#FFF" />
+              <Text style={styles.soundModalBtnPrimaryText}>Voir les vidéos avec ce son</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.soundModalBtnPrimary, { marginTop: 10, backgroundColor: isAuthenticated ? Colors.primary : 'rgba(255,255,255,0.2)' }]}
+              activeOpacity={0.88}
+              onPress={() => {
+                const v = soundMenuVideo;
+                if (!v) return;
+                const music = (v.music || 'Son original').trim().slice(0, 200);
+                closeSoundMenu();
+                if (!isAuthenticated) {
+                  router.push('/(auth)/login');
+                  return;
+                }
+                router.push({
+                  pathname: '/(tabs)/create',
+                  params: { useSoundTitle: music, useSoundFromVideoId: v.id },
+                } as any);
+              }}
+            >
+              <Ionicons name="add-circle-outline" size={22} color="#FFF" />
+              <Text style={styles.soundModalBtnPrimaryText}>{isAuthenticated ? 'Utiliser ce son' : 'Se connecter pour utiliser ce son'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.soundModalCancel} onPress={closeSoundMenu} accessibilityLabel="Fermer">
+              <Text style={styles.soundModalCancelText}>Annuler</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -691,15 +1187,43 @@ const styles = StyleSheet.create({
   bottomGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 250 },
   sponsoredBadge: { position: 'absolute', top: 70, left: Spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,107,0,0.85)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: BorderRadius.pill },
   sponsoredText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
-  actions: { position: 'absolute', right: 10, alignItems: 'center', gap: 16 },
+  actions: { position: 'absolute', right: 10, alignItems: 'center', gap: 16, zIndex: 20, elevation: 20 },
+  soundModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  soundModalSheet: {
+    backgroundColor: '#1a1a24',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  soundModalTitle: { color: 'rgba(255,255,255,0.55)', fontSize: FontSizes.xs, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  soundModalSubtitle: { color: '#FFF', fontSize: FontSizes.lg, fontWeight: '700', marginTop: 6, marginBottom: Spacing.lg },
+  soundModalBtnPrimary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    paddingVertical: 14,
+    borderRadius: BorderRadius.lg,
+  },
+  soundModalBtnPrimaryText: { color: '#FFF', fontSize: FontSizes.md, fontWeight: '700' },
+  soundModalCancel: { alignItems: 'center', paddingVertical: 16 },
+  soundModalCancelText: { color: 'rgba(255,255,255,0.65)', fontSize: FontSizes.md, fontWeight: '600' },
   avatarContainer: { marginBottom: 8 },
   avatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: '#FFF' },
   followBadge: { position: 'absolute', bottom: -6, alignSelf: 'center', width: 20, height: 20, borderRadius: 10, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#000' },
   actionButton: { alignItems: 'center' },
   actionText: { color: '#FFF', fontSize: 12, marginTop: 2, fontWeight: '500', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
-  musicDisc: { width: 40, height: 40, borderRadius: 20, borderWidth: 6, borderColor: '#333', marginTop: 8 },
-  musicDiscImage: { width: '100%', height: '100%', borderRadius: 14 },
-  bottomInfo: { position: 'absolute', left: Spacing.lg, right: 70 },
+  musicDisc: { width: 40, height: 40, borderRadius: 20, borderWidth: 6, borderColor: '#333', marginTop: 8, overflow: 'hidden' },
+  musicDiscImage: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 14, overflow: 'hidden' },
+  bottomInfo: { position: 'absolute', left: Spacing.lg, right: 70, zIndex: 20, elevation: 20 },
   userRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: Spacing.sm },
   username: { color: '#FFF', fontSize: FontSizes.md, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   followBtn: { backgroundColor: Colors.primary, paddingHorizontal: Spacing.md, paddingVertical: 3, borderRadius: BorderRadius.sm },
@@ -707,8 +1231,22 @@ const styles = StyleSheet.create({
   followingTag: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: Spacing.sm, paddingVertical: 2, borderRadius: BorderRadius.sm },
   followingTagText: { color: '#FFF', fontSize: FontSizes.xs },
   description: { color: '#FFF', fontSize: FontSizes.md, marginBottom: 6, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
-  hashtagsRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 },
+  hashtagsRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 6 },
   hashtag: { color: '#FFF', fontSize: FontSizes.sm, fontWeight: '600' },
+  viewsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  viewsText: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: FontSizes.sm,
+    fontWeight: '600',
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
   musicRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   musicText: { color: '#FFF', fontSize: FontSizes.sm, flex: 1 },
   loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
@@ -733,5 +1271,11 @@ const styles = StyleSheet.create({
   commentInput: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.border, gap: Spacing.sm },
   commentInputAvatar: { width: 32, height: 32, borderRadius: 16 },
   commentTextInput: { flex: 1, backgroundColor: Colors.card || Colors.background, borderRadius: BorderRadius.pill, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, color: Colors.text, fontSize: FontSizes.md, maxHeight: 80 },
+  commentRecordingBar: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.md, minHeight: 40 },
+  commentRecordingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E53935', marginRight: Spacing.sm },
+  commentRecordingText: { flex: 1, color: Colors.text, fontSize: FontSizes.sm },
+  commentMicBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.surface },
   commentSendBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
+  commentVoiceBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 8, borderRadius: BorderRadius.md, backgroundColor: 'rgba(255,107,0,0.12)' },
+  commentVoiceLabel: { color: Colors.primary, fontSize: FontSizes.sm, fontWeight: '600' },
 });

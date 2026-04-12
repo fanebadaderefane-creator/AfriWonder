@@ -262,7 +262,32 @@ class UserService {
     return user;
   }
 
-  async getFollowers(userId: string, page: number = 1, limit: number = 20) {
+  /**
+   * Indique si `viewerId` suit chaque utilisateur de la liste (bouton Suivre / Abonné côté client).
+   */
+  private async attachViewerFollows<T extends { id: string }>(
+    users: T[],
+    viewerId?: string | null
+  ): Promise<(T & { is_following: boolean })[]> {
+    if (!viewerId || users.length === 0) {
+      return users.map((u) => ({ ...u, is_following: false }));
+    }
+    const targetIds = users.map((u) => u.id).filter((id) => id !== viewerId);
+    if (targetIds.length === 0) {
+      return users.map((u) => ({ ...u, is_following: false }));
+    }
+    const rows = await prisma.follow.findMany({
+      where: { follower_id: viewerId, following_id: { in: targetIds } },
+      select: { following_id: true },
+    });
+    const set = new Set(rows.map((r) => r.following_id));
+    return users.map((u) => ({
+      ...u,
+      is_following: u.id === viewerId ? false : set.has(u.id),
+    }));
+  }
+
+  async getFollowers(userId: string, page: number = 1, limit: number = 20, viewerId?: string | null) {
     const skip = (page - 1) * limit;
 
     const [follows, total] = await Promise.all([
@@ -293,8 +318,11 @@ class UserService {
       }),
     ]);
 
+    const followers = follows.map(f => f.follower);
+    const enriched = await this.attachViewerFollows(followers, viewerId);
+
     return {
-      followers: follows.map(f => f.follower),
+      followers: enriched,
       pagination: {
         page,
         limit,
@@ -304,7 +332,7 @@ class UserService {
     };
   }
 
-  async getFollowing(userId: string, page: number = 1, limit: number = 20) {
+  async getFollowing(userId: string, page: number = 1, limit: number = 20, viewerId?: string | null) {
     const skip = (page - 1) * limit;
 
     const [follows, total] = await Promise.all([
@@ -335,8 +363,11 @@ class UserService {
       }),
     ]);
 
+    const following = follows.map(f => f.following);
+    const enriched = await this.attachViewerFollows(following, viewerId);
+
     return {
-      following: follows.map(f => f.following),
+      following: enriched,
       pagination: {
         page,
         limit,

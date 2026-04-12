@@ -17,14 +17,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import {
   CROWDFUNDING_CATEGORIES,
-  SEED_PROJECTS,
   PLATFORM_STATS,
   formatCFA,
   formatFullCFA,
   getProgressPercent,
 } from '../../src/data/crowdfunding';
 import type { CrowdfundingProject } from '../../src/data/crowdfunding';
-import mobileApiClient from '../../src/api/mobileClient';
+import apiClient from '../../src/api/client';
 
 export default function CrowdfundingHomeScreen() {
   const insets = useSafeAreaInsets();
@@ -32,15 +31,17 @@ export default function CrowdfundingHomeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [refreshing, setRefreshing] = useState(false);
-  const [projects, setProjects] = useState<CrowdfundingProject[]>(SEED_PROJECTS);
+  const [projects, setProjects] = useState<CrowdfundingProject[]>([]);
+  const [listError, setListError] = useState<string | null>(null);
 
   useEffect(() => { loadProjects(); }, []);
 
   const loadProjects = async () => {
+    setListError(null);
     try {
-      const response = await mobileApiClient.get('/mobile/crowdfunding');
+      const response = await apiClient.get('/crowdfunding', { params: { page: 1, limit: 40 } });
       const data = response.data?.data || response.data;
-      const backendProjects = data?.projects || [];
+      const backendProjects = data?.campaigns || data?.projects || [];
       if (backendProjects.length > 0) {
         const transformed: CrowdfundingProject[] = backendProjects.map((p: any) => ({
           id: p.id,
@@ -51,7 +52,7 @@ export default function CrowdfundingHomeScreen() {
           goal: p.goal_amount || 0,
           raised: p.current_amount || 0,
           currency: p.currency || 'XOF',
-          backers: p.contributors_count || 0,
+          backers: p.backers_count ?? p.contributors_count ?? 0,
           daysLeft: Math.max(0, Math.ceil((new Date(p.end_date).getTime() - Date.now()) / 86400000)),
           creator: {
             id: p.creator_id || '',
@@ -69,8 +70,13 @@ export default function CrowdfundingHomeScreen() {
           updates: 0,
         }));
         setProjects(transformed);
+      } else {
+        setProjects([]);
       }
-    } catch { /* keep mock */ }
+    } catch {
+      setListError('Impossible de charger les campagnes. Vérifiez la connexion ou réessayez plus tard.');
+      setProjects([]);
+    }
   };
 
   const onRefresh = useCallback(() => {
@@ -139,6 +145,15 @@ export default function CrowdfundingHomeScreen() {
           )}
         </View>
       </View>
+
+      {listError ? (
+        <View style={styles.listErrorBanner}>
+          <Text style={styles.listErrorText}>{listError}</Text>
+          <TouchableOpacity onPress={() => void loadProjects()} activeOpacity={0.8}>
+            <Text style={styles.listErrorRetry}>Réessayer</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -414,6 +429,9 @@ const styles = StyleSheet.create({
 
   // Search
   searchContainer: { paddingHorizontal: 16, paddingBottom: 12 },
+  listErrorBanner: { paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#2a1810', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#333' },
+  listErrorText: { color: '#FFAB91', fontSize: FontSizes.sm, marginBottom: 8 },
+  listErrorRetry: { color: Colors.primary, fontSize: FontSizes.md, fontWeight: '700' },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',

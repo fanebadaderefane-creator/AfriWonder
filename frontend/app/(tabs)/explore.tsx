@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, useWindowDimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, useWindowDimensions } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,67 +7,134 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ExploreGridSkeleton } from '../../src/components/SkeletonScreens';
 import apiClient from '../../src/api/client';
-import mobileApiClient from '../../src/api/mobileClient';
-import * as VideoThumbnails from 'expo-video-thumbnails';
+import { useAuthStore } from '../../src/store/authStore';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { SmartThumbnail, isVideoUrl } from '../../src/components/SmartThumbnail';
 
 const GRID_GAP = 2;
 
-// Helper: check if URL is a video
-const isVideoUrl = (url: string) => {
-  if (!url) return false;
-  const lower = url.toLowerCase();
-  return lower.endsWith('.mp4') || lower.endsWith('.mov') || lower.endsWith('.avi') || lower.endsWith('.webm') || lower.includes('/videos/');
-};
-
-// Component for smart thumbnail (handles video URLs)
-const SmartThumbnail = ({ uri, videoUrl, fallbackImage, style, tileSize, tileHeight }: { uri: string; videoUrl?: string; fallbackImage?: string; style: any; tileSize: number; tileHeight: number }) => {
-  const [thumbUri, setThumbUri] = useState<string | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    if (!isVideoUrl(uri)) {
-      setThumbUri(uri);
-      return;
-    }
-    // For video URLs, try to generate thumbnail on native
-    const generateThumb = async () => {
-      if (Platform.OS !== 'web') {
-        try {
-          const sourceUrl = videoUrl || uri;
-          const { uri: thumbImage } = await VideoThumbnails.getThumbnailAsync(sourceUrl, { time: 1000, quality: 0.5 });
-          setThumbUri(thumbImage);
-          return;
-        } catch {}
-      }
-      // Fallback: use creator avatar if available
-      if (fallbackImage) {
-        setThumbUri(fallbackImage);
-        return;
-      }
-      setThumbUri(null);
-      setError(true);
-    };
-    generateThumb();
-  }, [uri, videoUrl, fallbackImage]);
-
-  if (error || !thumbUri) {
-    // Colorful gradient placeholder for video
-    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#E91E63', '#FF6B00'];
-    const idx = Math.abs(uri.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % colors.length;
-    return (
-      <View style={[style, { backgroundColor: colors[idx], alignItems: 'center', justifyContent: 'center' }]}>
-        <Ionicons name="play-circle" size={Math.min(tileSize, tileHeight) * 0.35} color="rgba(255,255,255,0.7)" />
-      </View>
-    );
-  }
-
-  return <Image source={{ uri: thumbUri }} style={style} resizeMode="cover" />;
-};
-
-// Stories - will be loaded from real backend data
+// Stories — créateurs (≥1 vidéo publique) triés par popularité + « Moi »
 const DEFAULT_STORIES = [
-  { id: 'add', name: 'Votre Story', avatar: '', isAdd: true, hasNew: false, isLive: false },
+  { id: 'add', name: 'Moi', avatar: '', isAdd: true, hasNew: false, isLive: false },
 ];
+
+/** Ligne créateur avec score de tri (non affiché). */
+type ExploreCreatorRow = {
+  id: string;
+  name: string;
+  avatar: string;
+  popularity: number;
+};
+
+const USERS_PAGE_LIMIT = 50;
+const VIDEOS_PAGE_LIMIT = 100;
+/** Garde-fou si la pagination API est incohérente (50 × 100 = 5000 comptes max). */
+const MAX_USER_PAGES = 100;
+
+/** Avatar dérivé du vrai nom (pas de photo en base) — cohérent avec messages/index. */
+function generatedAvatarFromLabel(label: string) {
+  const safe = (label || '?').trim().slice(0, 48) || '?';
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(safe)}&background=FF6B00&color=fff&size=128&bold=true`;
+}
+
+function profileDisplayName(u: { full_name?: string; username?: string; email?: string }) {
+  const full = (u.full_name || '').trim();
+  if (full) return full;
+  const un = (u.username || '').trim();
+  if (un) return `@${un.replace(/^@+/, '')}`;
+  const em = (u.email || '').trim();
+  if (em) return em.split('@')[0] || 'Utilisateur';
+  return 'Utilisateur';
+}
+
+function resolveProfileAvatar(
+  rawImage: string | null | undefined,
+  displayName: string,
+  userId: string,
+): string {
+  const abs = toAbsoluteMediaUrl((rawImage || '').trim());
+  if (abs) return abs;
+  return generatedAvatarFromLabel(displayName || userId);
+}
+
+/** Récupère tous les utilisateurs paginés (GET /users, limit max 50 côté backend). */
+async function fetchAllUsersFromApi(): Promise<any[]> {
+  const first = await apiClient.get(`/users?page=1&limit=${USERS_PAGE_LIMIT}`);
+  const payload = first.data?.data;
+  const users: any[] = [...(payload?.users || [])];
+  const totalPages = Math.min(MAX_USER_PAGES, Math.max(1, Number(payload?.pagination?.totalPages) || 1));
+  for (let p = 2; p <= totalPages; p++) {
+    const res = await apiClient.get(`/users?page=${p}&limit=${USERS_PAGE_LIMIT}`);
+    users.push(...(res.data?.data?.users || []));
+  }
+  return users;
+}
+
+const MAX_VIDEO_PAGES = 60;
+
+/** Agrégation par créateur sur le catalogue public uniquement (pas de vidéos privées). */
+type PublicVideoCreatorAgg = {
+  id: string;
+  name: string;
+  avatar: string;
+  publicVideoCount: number;
+  viewsSum: number;
+};
+
+/**
+ * Uniquement les auteurs qui ont au moins une vidéo **publique** (liste /videos, visibility=public).
+ * Les comptes avec seulement des vidéos privées n’y figurent pas → absents de la rangée.
+ */
+async function collectCreatorsFromPublicVideos(): Promise<Map<string, PublicVideoCreatorAgg>> {
+  const map = new Map<string, PublicVideoCreatorAgg>();
+  let page = 1;
+  let totalPages = 1;
+  do {
+    const res = await apiClient.get(
+      `/videos?page=${page}&limit=${VIDEOS_PAGE_LIMIT}&visibility=public`,
+    );
+    const data = res.data?.data;
+    const videos = data?.videos || [];
+    if (videos.length === 0) break;
+    totalPages = Math.max(1, Number(data?.pagination?.totalPages) || 1);
+    for (const v of videos) {
+      const cid = v.creator_id;
+      if (!cid) continue;
+      const name = (v.creator_name || '').trim() || 'Créateur';
+      const avatar = resolveProfileAvatar(v.creator_avatar, name, cid);
+      const views = Number(v.views) || 0;
+      const prev = map.get(cid);
+      if (prev) {
+        prev.publicVideoCount += 1;
+        prev.viewsSum = Math.min(prev.viewsSum + views, 9_999_999);
+      } else {
+        map.set(cid, {
+          id: cid,
+          name,
+          avatar,
+          publicVideoCount: 1,
+          viewsSum: views,
+        });
+      }
+    }
+    page++;
+    if (page > MAX_VIDEO_PAGES) break;
+  } while (page <= totalPages);
+  return map;
+}
+
+/** Popularité : abonnés (Prisma `_count.following`) + engagement sur le catalogue public. */
+function popularityFromUserAndVideos(
+  u: { _count?: { following?: number } } | undefined,
+  agg: PublicVideoCreatorAgg,
+): number {
+  const followers = u ? Number(u._count?.following) || 0 : 0;
+  return (
+    followers * 10_000 +
+    Math.min(agg.viewsSum, 999_999) +
+    agg.publicVideoCount * 500
+  );
+}
 
 // Categories
 const CATEGORIES = [
@@ -95,23 +162,29 @@ const SERVICES_ROW2 = [
   { id: 'more', name: 'Tout', icon: 'apps', color: '#9B59B6', route: '/services' },
 ];
 
-// Grid items
-const EXPLORE_ITEMS = Array.from({ length: 24 }, (_, i) => ({
-  id: `e${i}`,
-  image: `https://picsum.photos/${300 + i}/${400 + i}?random=${i + 20}`,
-  type: i % 7 === 0 ? 'reel' as const : i % 5 === 0 ? 'live' as const : 'photo' as const,
-  views: Math.floor(Math.random() * 500000) + 1000,
-  likes: Math.floor(Math.random() * 50000) + 100,
-}));
-
 const formatNum = (n: number) => n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(n);
+
+type ExploreTile = {
+  id: string;
+  image: string;
+  posterUrl?: string;
+  videoUrl?: string;
+  type: 'reel' | 'live' | 'photo';
+  views: number;
+  likes: number;
+  title: string;
+  creator_name: string;
+  creator_avatar: string;
+};
 
 export default function ExploreScreen() {
   const insets = useSafeAreaInsets();
+  const user = useAuthStore((s) => s.user);
   const [activeCategory, setActiveCategory] = useState('all');
   const { width: screenWidth } = useWindowDimensions();
-  const [exploreItems, setExploreItems] = useState(EXPLORE_ITEMS);
+  const [exploreItems, setExploreItems] = useState<ExploreTile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [exploreError, setExploreError] = useState<string | null>(null);
   const [stories, setStories] = useState(DEFAULT_STORIES);
 
   const tileSize = Math.floor((screenWidth - GRID_GAP * 2) / 3);
@@ -120,63 +193,68 @@ export default function ExploreScreen() {
   // Load real videos for explore grid
   useEffect(() => {
     loadExploreVideos();
-    loadRealCreatorsAsStories();
   }, []);
+
+  useEffect(() => {
+    void loadRealCreatorsAsStories();
+  }, [user?.id]);
 
   const loadRealCreatorsAsStories = async () => {
     try {
-      // Fetch creators from videos (works without auth through proxy)
-      const videosRes = await apiClient.get('/videos?page=1&limit=30');
-      const videos = videosRes.data?.data?.videos || [];
+      const aggByCreator = await collectCreatorsFromPublicVideos();
+      const creatorMap = new Map<string, ExploreCreatorRow>();
 
-      // Extract unique creators from videos (these have real avatars)
-      const creatorMap = new Map<string, any>();
-      for (const v of videos) {
-        if (v.creator_id && !creatorMap.has(v.creator_id)) {
-          const name = v.creator_name || '';
-          const firstName = name.split(' ')[0] || 'Créateur';
-          const avatar = v.creator_avatar || '';
-          if (avatar) { // Only add creators with real avatars
-            creatorMap.set(v.creator_id, {
-              id: v.creator_id,
-              name: firstName,
-              avatar: avatar,
-            });
-          }
-        }
-      }
-
-      // Also try to get registered users with profile images
+      const userById = new Map<string, any>();
       try {
-        const usersRes = await apiClient.get('/users?limit=30');
-        const usersData = usersRes.data?.data?.users || [];
+        const usersData = await fetchAllUsersFromApi();
         for (const u of usersData) {
-          if (u.profile_image && !creatorMap.has(u.id)) {
-            creatorMap.set(u.id, {
-              id: u.id,
-              name: (u.full_name || u.username || 'User').split(' ')[0],
-              avatar: u.profile_image,
-            });
-          }
+          if (u?.id) userById.set(u.id, u);
         }
-      } catch { /* users endpoint optional */ }
-
-      const creators = Array.from(creatorMap.values()).slice(0, 15);
-
-      if (creators.length > 0) {
-        const storyList = [
-          { id: 'add', name: 'Moi', avatar: creators[0]?.avatar || '', isAdd: true, hasNew: false, isLive: false },
-          ...creators.map((c, i) => ({
-            id: c.id,
-            name: c.name,
-            avatar: c.avatar,
-            isAdd: false,
-            hasNew: i < 5,
-            isLive: i === 0,
-          })),
-        ];
-        setStories(storyList);
+      } catch (e) {
+        console.log('Explore stories: liste utilisateurs indisponible', e);
       }
+
+      for (const [id, agg] of aggByCreator) {
+        const u = userById.get(id);
+        const name = u ? profileDisplayName(u) : agg.name;
+        const avatar = u ? resolveProfileAvatar(u.profile_image, name, id) : agg.avatar;
+        creatorMap.set(id, {
+          id,
+          name,
+          avatar,
+          popularity: popularityFromUserAndVideos(u, agg),
+        });
+      }
+
+      const currentId = user?.id;
+      const others = Array.from(creatorMap.values())
+        .filter((c) => !currentId || c.id !== currentId)
+        .sort((a, b) => b.popularity - a.popularity);
+
+      const meLabel = user
+        ? profileDisplayName({
+            full_name: user.full_name,
+            username: user.username,
+            email: user.email,
+          })
+        : 'Moi';
+      const meAvatar = user
+        ? resolveProfileAvatar(user.profile_image || user.avatar, meLabel, currentId || user.id)
+        : generatedAvatarFromLabel('Moi');
+      const meName = 'Moi';
+
+      const storyList = [
+        { id: 'add', name: meName, avatar: meAvatar, isAdd: true, hasNew: false, isLive: false },
+        ...others.map((c) => ({
+          id: c.id,
+          name: c.name,
+          avatar: c.avatar,
+          isAdd: false,
+          hasNew: false,
+          isLive: false,
+        })),
+      ];
+      setStories(storyList);
     } catch (err) {
       console.log('Failed to load real creators:', err);
     }
@@ -184,26 +262,56 @@ export default function ExploreScreen() {
 
   const loadExploreVideos = async () => {
     setIsLoading(true);
+    setExploreError(null);
     try {
       const response = await apiClient.get('/videos?page=1&limit=24');
       const data = response.data?.data || response.data;
       const backendVideos = data?.videos || [];
       if (backendVideos.length > 0) {
-        const transformed = backendVideos.map((v: any, i: number) => ({
-          id: v.id || `e${i}`,
-          image: v.thumbnail_url || v.video_url || `https://picsum.photos/300/400?random=${i + 20}`,
-          videoUrl: v.video_url || v.thumbnail_url || '',
-          type: (v.media_type === 'video' ? (i % 4 === 0 ? 'reel' as const : 'photo' as const) : 'photo' as const),
-          views: v.views || 0,
-          likes: v.likes || 0,
-          title: v.title || '',
-          creator_name: v.creator_name || '',
-          creator_avatar: v.creator_avatar || '',
-        }));
+        const transformed: ExploreTile[] = backendVideos.map((v: any, i: number) => {
+          const absThumb = toAbsoluteMediaUrl(v.thumbnail_url || '').trim();
+          const absLow = toAbsoluteMediaUrl(v.low_quality_url || v.low_quality_playback_url || '').trim();
+          const absVid = toAbsoluteMediaUrl(v.video_url || '').trim();
+          const absHls = toAbsoluteMediaUrl(v.hls_url || '').trim();
+
+          const posterStatic =
+            absThumb && !isVideoUrl(absThumb)
+              ? absThumb
+              : absLow && !isVideoUrl(absLow)
+                ? absLow
+                : '';
+
+          const videoForFrame =
+            absVid && isVideoUrl(absVid)
+              ? absVid
+              : absLow && isVideoUrl(absLow)
+                ? absLow
+                : absHls && isVideoUrl(absHls)
+                  ? absHls
+                  : '';
+
+          const image = posterStatic || videoForFrame || absThumb || absLow || absVid || absHls;
+
+          return {
+            id: v.id || `e${i}`,
+            image,
+            posterUrl: posterStatic,
+            videoUrl: videoForFrame || absVid || absLow,
+            type: (v.media_type === 'video' ? (i % 4 === 0 ? 'reel' as const : 'photo' as const) : 'photo' as const),
+            views: v.views || 0,
+            likes: v.likes || 0,
+            title: v.title || '',
+            creator_name: v.creator_name || '',
+            creator_avatar: toAbsoluteMediaUrl(v.creator_avatar || '').trim(),
+          };
+        });
         setExploreItems(transformed);
+      } else {
+        setExploreItems([]);
       }
-    } catch (err) {
-      console.log('Using mock explore data', err);
+    } catch {
+      setExploreItems([]);
+      setExploreError('Impossible de charger les vidéos. Vérifiez la connexion et réessayez.');
     } finally {
       setIsLoading(false);
     }
@@ -217,21 +325,8 @@ export default function ExploreScreen() {
     );
   }
 
-  const renderServiceRow = (services: typeof SERVICES_ROW1) => (
-    <View style={{ flexDirection: 'row', marginBottom: 8, width: '100%' }}>
-      {services.map((s) => (
-        <TouchableOpacity key={s.id} style={{ flex: 1, alignItems: 'center', paddingVertical: 10 }} onPress={() => router.push(s.route as any)} activeOpacity={0.7}>
-          <View style={[styles.serviceIcon, { backgroundColor: s.color + '18' }]}>
-            <Ionicons name={s.icon as any} size={24} color={s.color} />
-          </View>
-          <Text style={styles.serviceName}>{s.name}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-
   // Build grid rows (3 items per row)
-  const gridRows: (typeof EXPLORE_ITEMS)[] = [];
+  const gridRows: ExploreTile[][] = [];
   for (let i = 0; i < exploreItems.length; i += 3) {
     gridRows.push(exploreItems.slice(i, i + 3));
   }
@@ -362,11 +457,25 @@ export default function ExploreScreen() {
           <TouchableOpacity><Text style={styles.seeAll}>Voir tout</Text></TouchableOpacity>
         </View>
 
+        {exploreError ? (
+          <View style={styles.exploreErrorBox}>
+            <Text style={styles.exploreErrorText}>{exploreError}</Text>
+            <TouchableOpacity style={styles.exploreRetryBtn} onPress={() => void loadExploreVideos()} activeOpacity={0.85}>
+              <Text style={styles.exploreRetryText}>Réessayer</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+        {!exploreError && exploreItems.length === 0 && !isLoading ? (
+          <View style={styles.exploreEmptyBox}>
+            <Text style={styles.exploreEmptyText}>Aucune vidéo publique à afficher pour l&apos;instant.</Text>
+          </View>
+        ) : null}
+
         {/* Grid */}
         <View>
           {gridRows.map((row, ri) => (
             <View key={ri} style={{ width: screenWidth, height: tileHeight + GRID_GAP, overflow: 'hidden' }}>
-              {row.map((item, ci) => (
+              {row.map((item: ExploreTile, ci: number) => (
                 <TouchableOpacity
                   key={item.id}
                   activeOpacity={0.9}
@@ -380,6 +489,7 @@ export default function ExploreScreen() {
                   }}
                 >
                   <SmartThumbnail
+                    posterUrl={(item as any).posterUrl}
                     uri={item.image}
                     videoUrl={(item as any).videoUrl}
                     fallbackImage={(item as any).creator_avatar}
@@ -474,6 +584,12 @@ const styles = StyleSheet.create({
   sectionLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionTitle: { color: '#FFF', fontSize: 18, fontWeight: '700' },
   seeAll: { color: Colors.primary, fontSize: 13, fontWeight: '600' },
+  exploreErrorBox: { paddingHorizontal: 16, paddingBottom: 12 },
+  exploreErrorText: { color: '#FFAB91', marginBottom: 8, fontSize: 14 },
+  exploreRetryBtn: { alignSelf: 'flex-start', backgroundColor: Colors.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
+  exploreRetryText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  exploreEmptyBox: { paddingHorizontal: 16, paddingBottom: 12 },
+  exploreEmptyText: { color: '#888', fontSize: 14 },
 
   // Grid
   gridContainer: { gap: GRID_GAP },

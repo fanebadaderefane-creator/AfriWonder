@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import mobileApiClient from '../../src/api/mobileClient';
+import apiClient from '../../src/api/client';
 
 const CATEGORIES = ['Musique', 'Danse', 'Cuisine', 'Discussion', 'Sport', 'Education', 'Gaming', 'Mode'];
 
@@ -23,9 +23,9 @@ export default function StartLiveScreen() {
     if (!title.trim()) { Alert.alert('Erreur', 'Titre du live requis'); return; }
     setLoading(true);
     try {
-      const res = await mobileApiClient.post('/mobile/live/start', { title: title.trim(), description: description.trim(), category });
+      const res = await apiClient.post('/live/start', { title: title.trim(), description: description.trim(), category });
       const data = res.data?.data;
-      setLiveId(data?.live_id);
+      setLiveId(data?.id || data?.live_id || null);
       setIsLive(true);
       // Start timer
       const interval = setInterval(() => setLiveTime(prev => prev + 1), 1000);
@@ -41,7 +41,7 @@ export default function StartLiveScreen() {
       { text: 'Terminer', style: 'destructive', onPress: async () => {
         if ((global as any).__liveInterval) clearInterval((global as any).__liveInterval);
         try {
-          await mobileApiClient.post(`/mobile/live/${liveId}/end`);
+          await apiClient.post(`/live/${liveId}/end`, {});
           Alert.alert('Live terminé!', 'Le replay est maintenant disponible. Vous pouvez découper les moments forts.', [
             { text: 'Voir le replay', onPress: () => router.replace({ pathname: '/live/replay', params: { id: liveId! } } as any) },
             { text: 'Retour', onPress: () => router.back() },

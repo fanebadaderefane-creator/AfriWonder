@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { WalletSkeleton } from '../../src/components/SkeletonScreens';
-import mobileApiClient from '../../src/api/mobileClient';
+import apiClient from '../../src/api/client';
 
 const { width } = Dimensions.get('window');
 
@@ -28,21 +28,27 @@ export default function WalletScreen() {
 
   const loadWallet = async () => {
     try {
-      const response = await mobileApiClient.get('/mobile/wallet');
-      const data = response.data?.data || response.data;
-      if (data?.wallet) {
-        setBalance(data.wallet.balance || 0);
-      }
-      if (data?.transactions?.length > 0) {
-        const transformed = data.transactions.map((t: any) => ({
+      const [walletRes, txRes] = await Promise.all([
+        apiClient.get('/payments/wallet'),
+        apiClient.get('/payments/transactions', { params: { page: 1, limit: 30 } }),
+      ]);
+      const walletPayload = walletRes.data?.data ?? walletRes.data;
+      const bal = (walletPayload as any)?.balance ?? (walletPayload as any)?.available_balance ?? 0;
+      setBalance(typeof bal === 'number' ? bal : parseFloat(String(bal)) || 0);
+      const txData = txRes.data?.data ?? txRes.data;
+      const txList = (txData as any)?.transactions ?? [];
+      if (Array.isArray(txList) && txList.length > 0) {
+        const transformed = txList.map((t: any) => ({
           id: t.id,
-          type: t.type === 'topup' ? 'received' : (t.type === 'transfer' ? 'sent' : t.type),
+          type: t.type === 'deposit' ? 'received' : t.type === 'withdrawal' ? 'sent' : t.type,
           name: t.description || t.provider || 'Transaction',
           amount: t.amount || 0,
           date: formatDate(t.created_at),
-          icon: t.type === 'topup' ? 'arrow-down' : 'arrow-up',
+          icon: t.type === 'deposit' ? 'arrow-down' : 'arrow-up',
         }));
         setTransactions(transformed);
+      } else {
+        setTransactions([]);
       }
     } catch (err) {
       console.log('Using mock wallet data', err);

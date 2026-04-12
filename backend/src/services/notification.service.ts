@@ -112,7 +112,11 @@ class NotificationService {
 
     if (
       videoId &&
-      (t.includes('comment') || t.includes('like') || t.includes('tip') || rt === 'video')
+      (t.includes('comment') ||
+        t.includes('like') ||
+        t.includes('tip') ||
+        t.includes('mention') ||
+        rt === 'video')
     ) {
       return toAbs(`/VideoView?id=${encodeURIComponent(videoId)}`);
     }

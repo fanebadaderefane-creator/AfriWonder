@@ -321,6 +321,7 @@ app.use('/api/proxy/auth/forgot-password', authLimiter);
 app.use('/api/proxy/auth/supabase', authLimiter);
 app.use('/api/payments', paymentLimiter); // 10 req/h
 app.use('/api/upload', uploadLimiter); // 20 req/h
+app.use('/api/proxy/upload', uploadLimiter); // même quota pour client Expo (baseURL /api/proxy)
 app.use('/api/admin', adminLimiter); // 30 req/min
 
 // Anti-spam sur routes sensibles
@@ -387,6 +388,23 @@ app.use('/api/proxy/videos', videoRoutes);
 app.use('/api/proxy/users', userRoutes);
 app.use('/api/proxy/products', productRoutes);
 app.use('/api/proxy/search', searchRoutes);
+/** Feed « Pour toi » (même contrat que `/api/feed`) — client Expo `apiClient` (`GET …/api/proxy/feed`). */
+app.use('/api/proxy/feed', feedRoutes);
+/** Notifications — aligné PWA `/api/notifications` pour le client Expo (`apiClient`). */
+app.use('/api/proxy/notifications', notificationsRoutes);
+app.use('/api/proxy/payments', paymentRoutes);
+app.use('/api/proxy/messages', messageRoutes);
+app.use('/api/proxy/crowdfunding', crowdfundingRoutes);
+app.use('/api/proxy/live', liveRoutes);
+app.use('/api/proxy/ads', adsRoutes);
+app.use('/api/proxy/creator-dashboard', creatorDashboardRoutes);
+app.use('/api/proxy/withdrawals', withdrawalsRoutes);
+app.use('/api/proxy/posts', postsRoutes);
+app.use('/api/proxy/moderation', moderationRoutes);
+/** Sauvegardes vidéo — client Expo (`apiClient` → `GET/POST …/api/proxy/saves`). */
+app.use('/api/proxy/saves', savesRoutes);
+/** Même auth / refresh que `apiClient` (Expo web) — avant le catch-all `/api/proxy`. */
+app.use('/api/proxy/upload', uploadRoutes);
 app.use('/api/proxy', proxyRoutes);
 app.use('/api/comments', commentsRoutes);
 app.use('/api/users', userRoutes);

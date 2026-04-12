@@ -5,7 +5,27 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import mobileApiClient from '../../src/api/mobileClient';
+import apiClient from '../../src/api/client';
+
+const AD_DURATION_ALLOWED = [1, 3, 7, 14, 30, 60, 90] as const;
+
+function snapDurationDays(raw: number): number {
+  if ((AD_DURATION_ALLOWED as readonly number[]).includes(raw)) return raw;
+  return AD_DURATION_ALLOWED.reduce((best, cur) =>
+    (Math.abs(cur - raw) < Math.abs(best - raw) ? cur : best), 7);
+}
+
+function regionToCountryCode(r: string): string {
+  const m: Record<string, string> = {
+    Mali: 'ML',
+    'Sénégal': 'SN',
+    "Côte d'Ivoire": 'CI',
+    'Guinée': 'GN',
+    'Burkina Faso': 'BF',
+    'Afrique de l\'Ouest': 'ML',
+  };
+  return m[r] || 'ML';
+}
 
 const REGIONS = ['Mali', 'Sénégal', 'Côte d\'Ivoire', 'Guinée', 'Burkina Faso', 'Afrique de l\'Ouest'];
 const INTERESTS = ['Mode', 'Musique', 'Cuisine', 'Sport', 'Tech', 'Beauté', 'Business', 'Education'];
@@ -28,8 +48,21 @@ export default function AdsScreen() {
   const loadMyAds = async () => {
     setLoadingAds(true);
     try {
-      const res = await mobileApiClient.get('/mobile/ads/my');
-      setMyAds(res.data?.data || []);
+      const res = await apiClient.get('/ads/campaigns', { params: { page: 1, limit: 30 } });
+      const inner = res.data?.data || res.data;
+      const raw = inner?.campaigns || [];
+      setMyAds(
+        (Array.isArray(raw) ? raw : []).map((c: any) => ({
+          id: c.id,
+          title: c.name,
+          description: c.creatives?.[0]?.description || '',
+          status: c.status === 'active' ? 'active' : 'ended',
+          impressions: c._count?.impressions ?? c.total_views ?? 0,
+          clicks: c._count?.clicks ?? c.total_clicks ?? 0,
+          spent: c.total_spent_fcfa ?? 0,
+          budget: c.price_fcfa ?? 0,
+        }))
+      );
     } catch {} finally { setLoadingAds(false); }
   };
 
@@ -42,13 +75,19 @@ export default function AdsScreen() {
     if (!budget || parseFloat(budget) < 1000) { Alert.alert('Erreur', 'Budget minimum: 1,000 FCFA'); return; }
     setLoading(true);
     try {
-      await mobileApiClient.post('/mobile/ads/create', {
-        title: title.trim(), description: description.trim(),
-        budget: parseFloat(budget), duration_days: parseInt(duration) || 7,
-        target_audience: { region, interests: selectedInterests },
-        cta_text: ctaText, payment_method: 'orange-money',
+      const duration_days = snapDurationDays(parseInt(duration, 10) || 7);
+      await apiClient.post('/ads/campaigns', {
+        name: title.trim(),
+        ad_type: 'in_feed',
+        duration_days,
+        target_interests: selectedInterests,
+        target_countries: [regionToCountryCode(region)],
       });
-      Alert.alert('Publicité créée!', 'Votre publicité est maintenant active.', [{ text: 'OK', onPress: () => { setTab('my'); loadMyAds(); setTitle(''); setDescription(''); setBudget(''); } }]);
+      Alert.alert(
+        'Campagne créée',
+        'La campagne est en brouillon côté serveur ; le montant facturé dépend de la durée (tarification Ads). Ajoutez un créatif et soumettez depuis l’espace web si besoin.',
+        [{ text: 'OK', onPress: () => { setTab('my'); loadMyAds(); setTitle(''); setDescription(''); setBudget(''); } }]
+      );
     } catch (e: any) { Alert.alert('Erreur', e.response?.data?.detail || 'Erreur'); }
     finally { setLoading(false); }
   };

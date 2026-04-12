@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import mobileApiClient from '../../src/api/mobileClient';
+import apiClient from '../../src/api/client';
 
 const { width } = Dimensions.get('window');
 
@@ -20,11 +20,32 @@ export default function LiveHubScreen() {
   const loadData = async () => {
     try {
       const [liveRes, replayRes] = await Promise.all([
-        mobileApiClient.get('/mobile/live/active'),
-        mobileApiClient.get('/mobile/live/replays'),
+        apiClient.get('/live', { params: { status: 'live', limit: 24, sortBy: 'viewers' } }),
+        apiClient.get('/live', { params: { status: 'ended', limit: 30, sortBy: 'recent' } }),
       ]);
-      setActiveLives(liveRes.data?.data || []);
-      setReplays(replayRes.data?.data || []);
+      const liveInner = liveRes.data?.data || liveRes.data;
+      const replayInner = replayRes.data?.data || replayRes.data;
+      const liveStreams = liveInner?.streams || [];
+      const endedStreams = replayInner?.streams || [];
+      const mapLive = (s: any) => ({
+        id: s.id,
+        title: s.title,
+        thumbnail_url: s.thumbnail_url || s.creator?.profile_image || 'https://picsum.photos/400/600',
+        viewer_count: s.viewers_count ?? 0,
+        likes: s.total_likes ?? 0,
+      });
+      const mapReplay = (s: any) => ({
+        id: s.id,
+        title: s.title,
+        thumbnail_url: s.thumbnail_url || s.creator?.profile_image || 'https://picsum.photos/400/600',
+        duration: (s.duration_minutes != null ? s.duration_minutes * 60 : 0),
+        peak_viewers: s.peak_viewers ?? 0,
+        likes: s.total_likes ?? 0,
+        tip_amount: s.total_tips_amount ?? 0,
+        highlights: s.replay_chapters || [],
+      });
+      setActiveLives(Array.isArray(liveStreams) ? liveStreams.map(mapLive) : []);
+      setReplays(Array.isArray(endedStreams) ? endedStreams.map(mapReplay) : []);
     } catch {} finally { setLoading(false); }
   };
 

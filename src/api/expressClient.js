@@ -630,8 +630,15 @@ export const api = {
       const { data } = await axiosInstance.delete(`/videos/${id}/reaction`);
       return data.data;
     },
-    async comment(id, content, parentId = null) {
-      const { data } = await axiosInstance.post(`/videos/${id}/comment`, { content, parentId });
+    /** @param {string|null} [parentId] réponse à un commentaire — envoyé en `parent_id` (API Node). */
+    /** @param {string|null} [audioUrl] URL du vocal après upload `/api/upload/audio`. */
+    async comment(id, content, parentId = null, audioUrl = null) {
+      const body = {
+        content: content ?? '',
+        parent_id: parentId ?? undefined,
+      };
+      if (audioUrl) body.audio_url = audioUrl;
+      const { data } = await axiosInstance.post(`/videos/${id}/comment`, body);
       return data.data;
     },
     async getComments(id, params = {}, options = {}) {

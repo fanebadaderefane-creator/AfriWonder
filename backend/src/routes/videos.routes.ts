@@ -51,9 +51,19 @@ function parsePageLimit(query: Record<string, unknown>, defaultLimit: number): {
 // GET /api/videos - Liste des vidéos
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
-    const { category, visibility = 'public', creator_id: creatorId, hashtag, search } = req.query;
+    const { category, visibility = 'public', creator_id: creatorId, hashtag, search, tagged_for: taggedFor } = req.query;
     const userId = req.user?.id;
     const { page, limit: limitValue } = parsePageLimit(req.query as Record<string, unknown>, 20);
+
+    const taggedForStr = typeof taggedFor === 'string' ? taggedFor.trim() : '';
+    if (taggedForStr) {
+      if (!userId) {
+        return res.status(401).json({ success: false, error: 'Connexion requise' });
+      }
+      if (taggedForStr !== userId) {
+        return res.status(403).json({ success: false, error: 'Vous ne pouvez consulter que vos propres identifications' });
+      }
+    }
 
     const videos = await videoService.list({
       page,
@@ -64,6 +74,7 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       creator_id: creatorId as string,
       hashtag: hashtag as string,
       search: search as string,
+      tagged_for_user_id: taggedForStr || undefined,
     });
 
     res.json({
@@ -309,9 +320,9 @@ router.post('/:id/comment', authenticate, validateBody(videoAddCommentBodySchema
   try {
     const id = param(req, 'id');
     const userId = req.user!.id;
-    const { content, parent_id } = req.body;
+    const { content, parent_id, audio_url } = req.body;
 
-    const comment = await videoService.addComment(id, userId, content, parent_id);
+    const comment = await videoService.addComment(id, userId, content, parent_id, audio_url ?? null);
 
     res.status(201).json({
       success: true,

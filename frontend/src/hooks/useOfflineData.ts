@@ -29,6 +29,9 @@ export function useOfflineData<T>(options: UseOfflineDataOptions<T>): UseOffline
   const [isCached, setIsCached] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const mounted = useRef(true);
+  /** Référence stable : un objet inline `fallbackData` à chaque render cassait les deps de `loadData` → boucle infinie. */
+  const fallbackRef = useRef(fallbackData);
+  fallbackRef.current = fallbackData;
 
   useEffect(() => {
     mounted.current = true;
@@ -46,6 +49,7 @@ export function useOfflineData<T>(options: UseOfflineDataOptions<T>): UseOffline
   // Load from cache first, then fetch
   const loadData = useCallback(async () => {
     if (!mounted.current) return;
+    const fallback = fallbackRef.current;
     setIsLoading(true);
 
     // Step 1: Load from cache
@@ -70,19 +74,19 @@ export function useOfflineData<T>(options: UseOfflineDataOptions<T>): UseOffline
       } catch (e) {
         // Use cached data on failure
         if (!cached.data && mounted.current) {
-          setData(fallbackData);
-          await OfflineStorage.set(cacheKey, fallbackData, ttl);
+          setData(fallback);
+          await OfflineStorage.set(cacheKey, fallback, ttl);
         }
       }
     } else if (!cached.data) {
       // No fetcher and no cache - use fallback
-      setData(fallbackData);
-      await OfflineStorage.set(cacheKey, fallbackData, ttl);
+      setData(fallback);
+      await OfflineStorage.set(cacheKey, fallback, ttl);
       setIsCached(true);
     }
 
     if (mounted.current) setIsLoading(false);
-  }, [cacheKey, fetcher, fallbackData, ttl, autoRefresh]);
+  }, [cacheKey, fetcher, ttl, autoRefresh]);
 
   useEffect(() => {
     loadData();

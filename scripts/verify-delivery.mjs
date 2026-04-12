@@ -29,4 +29,9 @@ if (audit.status !== 0) {
 }
 
 const tests = npmRun('test:ci:frontend');
-process.exit(tests.status ?? 0);
+if (tests.status !== 0) {
+  process.exit(tests.status ?? 1);
+}
+
+const expo = npmRun('verify:delivery:expo');
+process.exit(expo.status ?? 0);

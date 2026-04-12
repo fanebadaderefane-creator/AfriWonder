@@ -12,6 +12,8 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
+        /** Arrête le travail des onglets inactifs (vidéo / audio Accueil quand on va sur Découvrir, etc.). */
+        freezeOnBlur: true,
         headerShown: false,
         tabBarStyle: {
           backgroundColor: '#0A0A0A',

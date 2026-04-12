@@ -6,6 +6,19 @@ import { getBackendOrigin } from '../config/backendBase';
 // Même route que la PWA : `/api/proxy` sur l’origine backend (Express, port 3000 en dev).
 const getProxyBaseUrl = () => getBackendOrigin();
 
+/** Axios applique par défaut `application/json` : il faut le retirer pour `FormData` (boundary multipart). */
+function clearContentTypeForFormData(config: { data?: unknown; headers?: any }) {
+  if (!(config.data instanceof FormData) || !config.headers) return;
+  const h = config.headers;
+  if (typeof h.delete === 'function') {
+    h.delete('Content-Type');
+    h.delete('content-type');
+  } else {
+    delete h['Content-Type'];
+    delete h['content-type'];
+  }
+}
+
 const apiClient = axios.create({
   baseURL: `${getProxyBaseUrl()}/api/proxy`,
   timeout: 30000,
@@ -26,6 +39,7 @@ apiClient.interceptors.request.use(
     } catch (error) {
       console.error('Error getting token:', error);
     }
+    clearContentTypeForFormData(config);
     return config;
   },
   (error) => Promise.reject(error)
@@ -63,6 +77,8 @@ apiClient.interceptors.response.use(
           }
 
           originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+          // Sans ceci, le retry garde `Content-Type: application/json` → multer ne reçoit pas le fichier (400).
+          clearContentTypeForFormData(originalRequest);
           return apiClient(originalRequest);
         }
       } catch (refreshError) {

@@ -1,15 +1,14 @@
 import { Stack, router } from 'expo-router';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '../src/store/authStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { OfflineBanner } from '../src/components/common/OfflineBanner';
 import { Colors } from '../src/theme/colors';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { LanguageProvider } from '../src/i18n/LanguageContext';
 import notificationService from '../src/services/notificationService';
-import * as Notifications from 'expo-notifications';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -21,29 +20,32 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
-  const { loadStoredAuth, isLoading } = useAuthStore();
-  const notificationResponseRef = useRef<Notifications.Subscription | null>(null);
-
+  const { loadStoredAuth } = useAuthStore();
   useEffect(() => {
     loadStoredAuth();
 
-    // Initialize push notifications
-    notificationService.initialize();
+    void notificationService.initialize();
 
-    // Handle notification taps (navigate to correct screen)
-    notificationResponseRef.current = notificationService.onNotificationResponse((response) => {
-      const data = response.notification.request.content.data;
-      if (data?.type === 'message' && data?.conversationId) {
-        router.push({ pathname: '/messages/[id]', params: { id: data.conversationId } });
-      } else if (data?.type === 'like' || data?.type === 'follow' || data?.type === 'comment') {
-        router.push('/notifications');
-      }
-    });
+    let subscription: { remove: () => void } | null = null;
+    void notificationService
+      .onNotificationResponse((response) => {
+        const data = response.notification.request.content.data as
+          | { type?: string; conversationId?: string; videoId?: string }
+          | undefined;
+        if (data?.type === 'message' && data?.conversationId) {
+          router.push({ pathname: '/messages/[id]', params: { id: data.conversationId } });
+        } else if (data?.type === 'mention' && data?.videoId) {
+          router.push({ pathname: '/watch/[id]', params: { id: data.videoId } });
+        } else if (data?.type === 'like' || data?.type === 'follow' || data?.type === 'comment') {
+          router.push('/notifications');
+        }
+      })
+      .then((sub) => {
+        subscription = sub;
+      });
 
     return () => {
-      if (notificationResponseRef.current) {
-        Notifications.removeNotificationSubscription(notificationResponseRef.current);
-      }
+      subscription?.remove();
     };
   }, []);
 
@@ -81,6 +83,11 @@ export default function RootLayout() {
             <Stack.Screen name="courses" />
             <Stack.Screen name="news" />
             <Stack.Screen name="search" />
+            <Stack.Screen name="profile-edit" />
+            <Stack.Screen name="profile-connections" />
+            <Stack.Screen name="user/[id]" />
+            <Stack.Screen name="sound-feed" />
+            <Stack.Screen name="watch/[id]" />
             <Stack.Screen name="discover" />
             <Stack.Screen name="about" />
             <Stack.Screen name="faq" />
@@ -95,6 +102,12 @@ export default function RootLayout() {
             <Stack.Screen name="challenges" />
             <Stack.Screen name="miniapps" />
             <Stack.Screen name="assistant" />
+            <Stack.Screen name="menu-plus" />
+            <Stack.Screen name="data-protection" />
+            <Stack.Screen name="admin-dashboard" />
+            <Stack.Screen name="badges-profile" />
+            <Stack.Screen name="leaderboard" />
+            <Stack.Screen name="gamification-hub" />
           </Stack>
         </View>
       </QueryClientProvider>

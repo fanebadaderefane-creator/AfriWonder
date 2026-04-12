@@ -1,13 +1,33 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Dimensions, FlatList } from 'react-native';
-import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Pressable,
+  Image,
+  Alert,
+  Dimensions,
+  FlatList,
+  Share,
+  Linking,
+  Platform,
+  ActivityIndicator,
+} from 'react-native';
+import { Colors, Spacing } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/store/authStore';
-import { router } from 'expo-router';
+import { router, Link } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ProfileSkeleton } from '../../src/components/SkeletonScreens';
 import apiClient from '../../src/api/client';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { SmartThumbnail, isVideoUrl } from '../../src/components/SmartThumbnail';
+import { useQuery } from '@tanstack/react-query';
+import { fetchGamificationMe } from '../../src/api/gamificationApi';
 
 const { width } = Dimensions.get('window');
 const GRID_SIZE = (width - 4) / 3;
@@ -39,7 +59,63 @@ const formatNumber = (num: number) => {
 
 type ContentTab = 'posts' | 'reels' | 'saved' | 'tagged';
 
-type PostItem = { id: string; image: string; isVideo: boolean; views: number; likes: number; isPinned: boolean };
+type PostItem = {
+  id: string;
+  image: string;
+  posterUrl?: string;
+  videoUrl?: string;
+  fallbackImage?: string;
+  isVideo: boolean;
+  views: number;
+  likes: number;
+  isPinned: boolean;
+  /** Secondes (API) — filtres onglet Reels. */
+  durationSec?: number | null;
+};
+
+/** Grille profil / sauvegardes : mêmes URLs absolues + miniatures que l’onglet Découvrir. */
+function buildPostItemFromVideo(v: any, profileOwnerAvatar: string): PostItem {
+  const absThumb = toAbsoluteMediaUrl(v.thumbnail_url || '').trim();
+  const absLow = toAbsoluteMediaUrl(v.low_quality_url || v.low_quality_playback_url || '').trim();
+  const absVid = toAbsoluteMediaUrl(v.video_url || '').trim();
+  const absHls = toAbsoluteMediaUrl(v.hls_url || '').trim();
+
+  const posterStatic =
+    absThumb && !isVideoUrl(absThumb)
+      ? absThumb
+      : absLow && !isVideoUrl(absLow)
+        ? absLow
+        : '';
+
+  const videoForFrame =
+    absVid && isVideoUrl(absVid)
+      ? absVid
+      : absLow && isVideoUrl(absLow)
+        ? absLow
+        : absHls && isVideoUrl(absHls)
+          ? absHls
+          : '';
+
+  const image = posterStatic || videoForFrame || absThumb || absLow || absVid || absHls;
+  const creatorAvatar = toAbsoluteMediaUrl(v.creator_avatar || v.creator?.profile_image || '').trim();
+  const fallbackImage = creatorAvatar || profileOwnerAvatar;
+
+  const dur = v.duration;
+  const durationSec = typeof dur === 'number' && Number.isFinite(dur) ? dur : null;
+
+  return {
+    id: v.id,
+    image,
+    posterUrl: posterStatic,
+    videoUrl: videoForFrame || absVid || absLow,
+    fallbackImage,
+    isVideo: v.media_type === 'video' || Boolean(videoForFrame || absVid || absHls),
+    views: v.views || 0,
+    likes: v.likes || 0,
+    isPinned: v.is_featured || false,
+    durationSec,
+  };
+}
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -48,7 +124,29 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [realStats, setRealStats] = useState<{ posts: number; followers: number; following: number } | null>(null);
   const [realBio, setRealBio] = useState<string | null>(null);
-  const [userPosts, setUserPosts] = useState<PostItem[]>([]);
+  const [realWebsite, setRealWebsite] = useState('');
+  const [realLocation, setRealLocation] = useState('');
+  const [profileDisplayName, setProfileDisplayName] = useState<string | null>(null);
+  const [profileVerified, setProfileVerified] = useState(false);
+  /** Publications du créateur (grille « Posts » + filtres Reels / Identifié). */
+  const [tabPosts, setTabPosts] = useState<PostItem[]>([]);
+  /** Vidéos enregistrées (GET /saves). */
+  const [savedPosts, setSavedPosts] = useState<PostItem[]>([]);
+  /** Vidéos où vous êtes @mentionné dans un commentaire (GET /videos?tagged_for=). */
+  const [taggedPosts, setTaggedPosts] = useState<PostItem[]>([]);
+  /** Statistiques réelles agrégées (GET /creator-dashboard — mêmes chiffres que l’espace créateur). */
+  const [creatorDashStats, setCreatorDashStats] = useState<{
+    totalViews: number;
+    totalLikes: number;
+    videoCount: number;
+    engagementPct: number;
+  } | null>(null);
+
+  const badgesQuery = useQuery({
+    queryKey: ['gamification', 'me', 'profile-strip', user?.id],
+    queryFn: fetchGamificationMe,
+    enabled: Boolean(user?.id),
+  });
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -63,51 +161,192 @@ export default function ProfileScreen() {
               following: data._count.following || 0,
             });
           }
-          if (data?.bio) setRealBio(data.bio);
+          if (data?.full_name != null) setProfileDisplayName(String(data.full_name));
+          setProfileVerified(Boolean(data.is_verified));
+          if (data?.bio != null) setRealBio(String(data.bio));
+          else setRealBio(null);
+          setRealWebsite(data?.website != null ? String(data.website) : '');
+          setRealLocation(data?.location != null ? String(data.location) : '');
         } catch (err) {
           console.log('Could not load full profile', err);
         }
 
-        // Load user's videos for post grid
+        const creatorAvatar = toAbsoluteMediaUrl(user.profile_image || user.avatar || '').trim();
+
+        void apiClient
+          .get('/creator-dashboard')
+          .then((dashRes) => {
+            const dash = dashRes.data?.data ?? dashRes.data;
+            const st = dash?.stats;
+            if (!st) {
+              setCreatorDashStats(null);
+              return;
+            }
+            setCreatorDashStats({
+              totalViews: Number(st.total_views) || 0,
+              totalLikes: Number(st.total_likes) || 0,
+              videoCount: Number(st.video_count) || 0,
+              engagementPct: Number(st.engagement_rate_pct) || 0,
+            });
+          })
+          .catch(() => setCreatorDashStats(null));
+
+        // Publications + sauvegardes (en parallèle)
         try {
-          const videosRes = await apiClient.get(`/videos?creator_id=${user.id}&page=1&limit=30`);
+          const [videosRes, savesRes, taggedRes] = await Promise.all([
+            apiClient.get(`/videos?creator_id=${user.id}&page=1&limit=60`),
+            apiClient.get(`/saves?page=1&limit=60`).catch(() => null),
+            apiClient.get(`/videos?tagged_for=${encodeURIComponent(user.id)}&page=1&limit=60`).catch(() => null),
+          ]);
           const vData = videosRes.data?.data || videosRes.data;
           const videos = vData?.videos || [];
-          if (videos.length > 0) {
-            const realPosts: PostItem[] = videos.map((v: any, i: number) => ({
-              id: v.id,
-              image: v.thumbnail_url || v.video_url || `https://picsum.photos/300/300?random=${i + 50}`,
-              isVideo: v.media_type === 'video',
-              views: v.views || 0,
-              likes: v.likes || 0,
-              isPinned: v.is_featured || false,
-            }));
-            setUserPosts(realPosts);
+          const mapped = videos.map((v: any) => buildPostItemFromVideo(v, creatorAvatar));
+          setTabPosts(mapped);
+
+          if (savesRes) {
+            const sPayload = savesRes.data?.data || savesRes.data;
+            const savedVideos = sPayload?.videos || [];
+            setSavedPosts(savedVideos.map((v: any) => buildPostItemFromVideo(v, creatorAvatar)));
+          } else {
+            setSavedPosts([]);
+          }
+
+          if (taggedRes) {
+            const tPayload = taggedRes.data?.data || taggedRes.data;
+            const taggedVideos = tPayload?.videos || [];
+            setTaggedPosts(taggedVideos.map((v: any) => buildPostItemFromVideo(v, creatorAvatar)));
+          } else {
+            setTaggedPosts([]);
           }
         } catch (err) {
-          console.log('Could not load user videos', err);
+          console.log('Could not load user videos / saves / tagged', err);
+          setTabPosts([]);
+          setSavedPosts([]);
+          setTaggedPosts([]);
         }
+      } else {
+        setCreatorDashStats(null);
       }
       setIsLoading(false);
     };
     loadProfile();
-  }, [isAuthenticated, user?.id]);
+  }, [isAuthenticated, user?.id, user?.profile_image, user?.avatar]);
+
+  const gridItems = useMemo(() => {
+    if (!isAuthenticated || !user?.id) return [];
+    switch (activeTab) {
+      case 'posts':
+        return tabPosts;
+      case 'reels': {
+        const maxReelSec = 180;
+        return tabPosts.filter((p) => p.durationSec == null || p.durationSec <= maxReelSec);
+      }
+      case 'saved':
+        return savedPosts;
+      case 'tagged':
+        return taggedPosts;
+      default:
+        return tabPosts;
+    }
+  }, [activeTab, isAuthenticated, user?.id, tabPosts, savedPosts, taggedPosts]);
+
+  const gridEmptyCopy = useMemo(() => {
+    switch (activeTab) {
+      case 'posts':
+        return { icon: 'videocam-outline' as const, title: 'Aucune publication', subtitle: 'Vos vidéos apparaîtront ici.' };
+      case 'reels':
+        return {
+          icon: 'play-circle-outline' as const,
+          title: 'Aucune reel courte',
+          subtitle: 'Les vidéos d’au plus 3 minutes (durée renseignée) apparaissent ici.',
+        };
+      case 'saved':
+        return {
+          icon: 'bookmark-outline' as const,
+          title: 'Aucune sauvegarde',
+          subtitle: 'Enregistrez une vidéo depuis le lecteur pour la retrouver ici.',
+        };
+      case 'tagged':
+        return {
+          icon: 'pricetag-outline' as const,
+          title: 'Aucune identification',
+          subtitle:
+            'Vidéos publiques où vous êtes @mentionné dans un commentaire, ou dans le titre / la description de la vidéo.',
+        };
+      default:
+        return { icon: 'videocam-outline' as const, title: 'Aucun contenu', subtitle: '' };
+    }
+  }, [activeTab]);
 
   const profileData = isAuthenticated && user ? {
     ...DEFAULT_USER,
     firstName: user.firstName || user.full_name?.split(' ')[0] || DEFAULT_USER.firstName,
     lastName: user.lastName || user.full_name?.split(' ').slice(1).join(' ') || DEFAULT_USER.lastName,
+    displayName:
+      (profileDisplayName && profileDisplayName.trim()) ||
+      (user.full_name && user.full_name.trim()) ||
+      [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
+      user.username ||
+      '—',
     username: user.username || DEFAULT_USER.username,
     avatar: user.avatar || user.profile_image || DEFAULT_USER.avatar,
-    bio: realBio || user.bio || DEFAULT_USER.bio,
-    isVerified: false,
+    bio: realBio ?? user.bio ?? DEFAULT_USER.bio,
+    website: (realWebsite || user.website || DEFAULT_USER.website || '').trim(),
+    location: (realLocation || user.location || DEFAULT_USER.location || '').trim(),
+    isVerified: profileVerified || Boolean(user.is_verified),
     stats: {
       posts: realStats?.posts ?? user.videosCount ?? DEFAULT_USER.stats.posts,
       followers: realStats?.followers ?? user.followers ?? DEFAULT_USER.stats.followers,
       following: realStats?.following ?? user.following ?? DEFAULT_USER.stats.following,
       likes: DEFAULT_USER.stats.likes,
     },
-  } : DEFAULT_USER;
+  } : { ...DEFAULT_USER, displayName: '—' };
+
+  const shareProfileLink = async (viaQr?: boolean) => {
+    const handle = profileData.username || user?.username || 'user';
+    const url = `https://afriwonder.onrender.com/u/${encodeURIComponent(handle)}`;
+    const line = viaQr
+      ? `Scannez mon profil AfriWonder — @${handle}`
+      : `Rejoignez-moi sur AfriWonder — @${handle}`;
+    const message = `${line}\n${url}`;
+
+    if (Platform.OS === 'web') {
+      try {
+        if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+          await navigator.share({ title: 'AfriWonder', text: line, url });
+          return;
+        }
+      } catch (e: unknown) {
+        const name = e && typeof e === 'object' && 'name' in e ? String((e as { name?: string }).name) : '';
+        if (name === 'AbortError') return;
+      }
+      try {
+        await Clipboard.setStringAsync(message);
+        Alert.alert('Profil', 'Lien copié dans le presse-papiers.');
+      } catch {
+        Alert.alert('Profil', message);
+      }
+      return;
+    }
+
+    try {
+      await Share.share({ title: 'AfriWonder', message });
+    } catch {
+      try {
+        await Clipboard.setStringAsync(message);
+        Alert.alert('Profil', 'Lien copié dans le presse-papiers.');
+      } catch {
+        /* annulé ou indisponible */
+      }
+    }
+  };
+
+  const openWebsiteUrl = (w: string) => {
+    const raw = w.trim();
+    if (!raw) return;
+    const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    void Linking.openURL(url).catch(() => Alert.alert('Lien', 'Impossible d’ouvrir ce lien.'));
+  };
 
   if (isLoading) {
     return (
@@ -156,8 +395,20 @@ export default function ProfileScreen() {
   ];
 
   const renderGridItem = ({ item }: { item: PostItem }) => (
-    <TouchableOpacity style={styles.gridItem} activeOpacity={0.8}>
-      <Image source={{ uri: item.image }} style={styles.gridImage} />
+    <TouchableOpacity
+      style={styles.gridItem}
+      activeOpacity={0.8}
+      onPress={() => router.push({ pathname: '/watch/[id]', params: { id: item.id } })}
+    >
+      <SmartThumbnail
+        posterUrl={item.posterUrl}
+        uri={item.image}
+        videoUrl={item.videoUrl}
+        fallbackImage={item.fallbackImage}
+        style={styles.gridImage}
+        tileSize={GRID_SIZE}
+        tileHeight={GRID_SIZE}
+      />
       {item.isVideo && (
         <View style={styles.videoIndicator}>
           <Ionicons name="play" size={12} color="#FFF" />
@@ -183,6 +434,13 @@ export default function ProfileScreen() {
             {profileData.isVerified && <Ionicons name="checkmark-circle" size={16} color="#3897F0" />}
           </View>
           <View style={styles.topBarRight}>
+            <TouchableOpacity
+              style={styles.topBarBtn}
+              onPress={() => router.push('/menu-plus')}
+              accessibilityLabel="Menu toutes les fonctions"
+            >
+              <Ionicons name="apps-outline" size={24} color={Colors.primary} />
+            </TouchableOpacity>
             <TouchableOpacity style={styles.topBarBtn} onPress={() => router.push('/settings')}>
               <Ionicons name="menu-outline" size={26} color="#FFF" />
             </TouchableOpacity>
@@ -194,25 +452,33 @@ export default function ProfileScreen() {
           {/* Avatar + Stats Row */}
           <View style={styles.profileRow}>
             {/* Avatar with story ring */}
-            <TouchableOpacity>
-              <LinearGradient colors={['#FF6B00', '#FF3D00', '#FF006E']} style={styles.avatarRing}>
-                <View style={styles.avatarInner}>
-                  <Image source={{ uri: profileData.avatar }} style={styles.avatar} />
-                </View>
-              </LinearGradient>
-            </TouchableOpacity>
+            <Link href="/profile-edit" asChild>
+              <Pressable accessibilityLabel="Modifier photo ou profil" style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
+                <LinearGradient colors={['#FF6B00', '#FF3D00', '#FF006E']} style={styles.avatarRing}>
+                  <View style={styles.avatarInner}>
+                    <Image source={{ uri: profileData.avatar }} style={styles.avatar} />
+                  </View>
+                </LinearGradient>
+              </Pressable>
+            </Link>
 
             {/* Stats */}
             <View style={styles.statsRow}>
-              <TouchableOpacity style={styles.statItem}>
+              <TouchableOpacity style={styles.statItem} onPress={() => setActiveTab('posts')}>
                 <Text style={styles.statNumber}>{formatNumber(profileData.stats.posts)}</Text>
                 <Text style={styles.statLabel}>Posts</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.statItem}>
+              <TouchableOpacity
+                style={styles.statItem}
+                onPress={() => router.push({ pathname: '/profile-connections', params: { mode: 'followers' } })}
+              >
                 <Text style={styles.statNumber}>{formatNumber(profileData.stats.followers)}</Text>
                 <Text style={styles.statLabel}>Abonnes</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.statItem}>
+              <TouchableOpacity
+                style={styles.statItem}
+                onPress={() => router.push({ pathname: '/profile-connections', params: { mode: 'following' } })}
+              >
                 <Text style={styles.statNumber}>{formatNumber(profileData.stats.following)}</Text>
                 <Text style={styles.statLabel}>Suivi(e)s</Text>
               </TouchableOpacity>
@@ -222,91 +488,126 @@ export default function ProfileScreen() {
           {/* Name + Bio */}
           <View style={styles.bioSection}>
             <View style={styles.nameRow}>
-              <Text style={styles.displayName}>{profileData.firstName} {profileData.lastName}</Text>
+              <Text style={styles.displayName}>{profileData.displayName}</Text>
               {profileData.isVerified && <Ionicons name="checkmark-circle" size={16} color="#3897F0" />}
             </View>
             <Text style={styles.bio}>{profileData.bio}</Text>
-            <TouchableOpacity>
-              <Text style={styles.website}>{profileData.website}</Text>
-            </TouchableOpacity>
-            <View style={styles.locationRow}>
-              <Ionicons name="location-outline" size={14} color={Colors.textSecondary} />
-              <Text style={styles.location}>{profileData.location}</Text>
-            </View>
+            {profileData.website ? (
+              <TouchableOpacity onPress={() => openWebsiteUrl(profileData.website)}>
+                <Text style={styles.website}>{profileData.website}</Text>
+              </TouchableOpacity>
+            ) : null}
+            {profileData.location ? (
+              <View style={styles.locationRow}>
+                <Ionicons name="location-outline" size={14} color={Colors.textSecondary} />
+                <Text style={styles.location}>{profileData.location}</Text>
+              </View>
+            ) : null}
           </View>
 
           {/* Action Buttons */}
           <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.editProfileBtn} activeOpacity={0.7}>
-              <Text style={styles.editProfileText}>Modifier le profil</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.shareProfileBtn} activeOpacity={0.7}>
+            <Link href="/profile-edit" asChild>
+              <Pressable
+                style={({ pressed }) => [styles.editProfileBtn, pressed && { opacity: 0.75 }]}
+              >
+                <Text style={styles.editProfileText}>Modifier le profil</Text>
+              </Pressable>
+            </Link>
+            <TouchableOpacity style={styles.shareProfileBtn} activeOpacity={0.7} onPress={() => void shareProfileLink(false)}>
               <Text style={styles.shareProfileText}>Partager le profil</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.addFriendBtn} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.addFriendBtn} activeOpacity={0.7} onPress={() => router.push('/search')}>
               <Ionicons name="person-add-outline" size={16} color="#FFF" />
             </TouchableOpacity>
           </View>
 
-          {/* Achievement Badges */}
+          {/* Badges (API gamification — aligné PWA / badges-profile) */}
           <View style={styles.badgesSection}>
-            <Text style={styles.badgesSectionTitle}>Badges</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.badgesRow}>
-              {[
-                { icon: 'star', label: 'Top Creator', color: '#FFD700', earned: true },
-                { icon: 'flame', label: '7j Streak', color: '#FF3D00', earned: true },
-                { icon: 'heart', label: '1K Likes', color: '#E91E63', earned: true },
-                { icon: 'trophy', label: 'Challenge', color: '#4CAF50', earned: true },
-                { icon: 'diamond', label: 'Premium', color: '#2196F3', earned: false },
-                { icon: 'rocket', label: 'Crowdfund', color: '#9C27B0', earned: false },
-              ].map((badge, i) => (
-                <View key={i} style={[styles.badgeItem, !badge.earned && styles.badgeItemLocked]}>
-                  <View style={[styles.badgeCircle, { backgroundColor: badge.earned ? badge.color + '20' : '#1A1A1A' }]}>
-                    <Ionicons name={badge.icon as any} size={18} color={badge.earned ? badge.color : '#444'} />
-                  </View>
-                  <Text style={[styles.badgeLabel, !badge.earned && { color: '#444' }]}>{badge.label}</Text>
-                </View>
-              ))}
-            </ScrollView>
+            <View style={styles.badgesHeaderRow}>
+              <Text style={styles.badgesSectionTitle}>Badges</Text>
+              <TouchableOpacity onPress={() => router.push('/badges-profile')} hitSlop={8}>
+                <Text style={styles.badgesSeeAll}>Tout voir</Text>
+              </TouchableOpacity>
+            </View>
+            {badgesQuery.isPending ? (
+              <ActivityIndicator color={Colors.primary} style={{ marginVertical: 10 }} />
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.badgesRow}>
+                {(badgesQuery.data?.badges ?? []).length === 0 ? (
+                  <TouchableOpacity onPress={() => router.push('/gamification-hub')} style={styles.badgesEmptyTap}>
+                    <Text style={styles.badgesEmptyText}>
+                      Aucun badge pour l&apos;instant — ouvrez le centre gamification
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  (badgesQuery.data?.badges ?? []).slice(0, 12).map((b) => (
+                    <TouchableOpacity
+                      key={b.id}
+                      activeOpacity={0.85}
+                      style={styles.badgeItem}
+                      onPress={() => router.push('/badges-profile')}
+                    >
+                      <View style={[styles.badgeCircle, { backgroundColor: '#1A1A1A' }]}>
+                        {b.badge_icon?.endsWith('-outline') || b.badge_icon?.endsWith('-sharp') ? (
+                          <Ionicons name={b.badge_icon as keyof typeof Ionicons.glyphMap} size={18} color={Colors.primary} />
+                        ) : (
+                          <Text style={styles.badgeEmoji}>{b.badge_icon || '🏅'}</Text>
+                        )}
+                      </View>
+                      <Text style={styles.badgeLabel} numberOfLines={1}>
+                        {b.badge_name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </ScrollView>
+            )}
           </View>
 
-          {/* Analytics Card */}
-          <TouchableOpacity style={styles.analyticsCard} activeOpacity={0.8}>
+          {/* Statistiques créateur (données API — pas de « vues profil » dédiées côté serveur pour l’instant) */}
+          <TouchableOpacity style={styles.analyticsCard} activeOpacity={0.8} onPress={() => router.push('/creator/earnings')}>
             <View style={styles.analyticsHeader}>
               <Ionicons name="stats-chart" size={16} color={Colors.primary} />
-              <Text style={styles.analyticsTitle}>Insights cette semaine</Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.analyticsTitle}>Statistiques créateur</Text>
+                <Text style={styles.analyticsDemoHint}>Vues et likes agrégés sur vos vidéos publiées</Text>
+              </View>
               <Ionicons name="chevron-forward" size={16} color="#888" />
             </View>
             <View style={styles.analyticsGrid}>
               <View style={styles.analyticsItem}>
-                <Text style={styles.analyticsValue}>12.5K</Text>
-                <Text style={styles.analyticsLabel}>Vues profil</Text>
-                <View style={[styles.analyticsChange, { backgroundColor: '#4CAF5020' }]}>
-                  <Ionicons name="trending-up" size={10} color="#4CAF50" />
-                  <Text style={[styles.analyticsChangeText, { color: '#4CAF50' }]}>+18%</Text>
-                </View>
+                <Text style={styles.analyticsValue}>
+                  {creatorDashStats != null ? formatNumber(creatorDashStats.totalViews) : '—'}
+                </Text>
+                <Text style={styles.analyticsLabel}>Vues totales</Text>
               </View>
               <View style={styles.analyticsItem}>
-                <Text style={styles.analyticsValue}>8.2K</Text>
-                <Text style={styles.analyticsLabel}>Portee</Text>
-                <View style={[styles.analyticsChange, { backgroundColor: '#4CAF5020' }]}>
-                  <Ionicons name="trending-up" size={10} color="#4CAF50" />
-                  <Text style={[styles.analyticsChangeText, { color: '#4CAF50' }]}>+25%</Text>
-                </View>
+                <Text style={styles.analyticsValue}>
+                  {creatorDashStats != null ? formatNumber(creatorDashStats.totalLikes) : '—'}
+                </Text>
+                <Text style={styles.analyticsLabel}>J&apos;aime</Text>
               </View>
               <View style={styles.analyticsItem}>
-                <Text style={styles.analyticsValue}>340</Text>
-                <Text style={styles.analyticsLabel}>Interactions</Text>
-                <View style={[styles.analyticsChange, { backgroundColor: '#FF572220' }]}>
-                  <Ionicons name="trending-down" size={10} color="#FF5722" />
-                  <Text style={[styles.analyticsChangeText, { color: '#FF5722' }]}>-5%</Text>
-                </View>
+                <Text style={styles.analyticsValue}>
+                  {creatorDashStats != null ? formatNumber(creatorDashStats.videoCount) : '—'}
+                </Text>
+                <Text style={styles.analyticsLabel}>Vidéos</Text>
               </View>
             </View>
+            {creatorDashStats != null ? (
+              <Text style={styles.analyticsEngagementFoot}>
+                Engagement estimé (likes / vues) :{' '}
+                {Number.isInteger(creatorDashStats.engagementPct)
+                  ? creatorDashStats.engagementPct
+                  : creatorDashStats.engagementPct.toFixed(1)}
+                %
+              </Text>
+            ) : null}
           </TouchableOpacity>
 
           {/* QR Code Card */}
-          <TouchableOpacity style={styles.qrCard} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.qrCard} activeOpacity={0.8} onPress={() => void shareProfileLink(true)}>
             <View style={styles.qrLeft}>
               <Ionicons name="qr-code" size={32} color={Colors.primary} />
             </View>
@@ -319,14 +620,18 @@ export default function ProfileScreen() {
 
           {/* Story Highlights */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.highlightsContainer} contentContainerStyle={styles.highlightsContent}>
-            <TouchableOpacity style={styles.highlightItem}>
+            <TouchableOpacity style={styles.highlightItem} onPress={() => router.push('/stories')}>
               <View style={styles.highlightNew}>
                 <Ionicons name="add" size={28} color="#FFF" />
               </View>
               <Text style={styles.highlightName}>Nouveau</Text>
             </TouchableOpacity>
             {['Mode', 'Cuisine', 'Voyage', 'Bamako', 'Famille'].map((name, i) => (
-              <TouchableOpacity key={i} style={styles.highlightItem}>
+              <TouchableOpacity
+                key={i}
+                style={styles.highlightItem}
+                onPress={() => router.push({ pathname: '/search', params: { q: `#${name}` } })}
+              >
                 <View style={styles.highlightCircle}>
                   <Image source={{ uri: `https://picsum.photos/100/100?random=${i + 80}` }} style={styles.highlightImage} />
                 </View>
@@ -355,16 +660,24 @@ export default function ProfileScreen() {
 
         {/* Content Grid */}
         <FlatList
-          data={userPosts}
+          data={gridItems}
+          extraData={activeTab}
           renderItem={renderGridItem}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => `${activeTab}-${item.id}`}
           numColumns={3}
           scrollEnabled={false}
           columnWrapperStyle={styles.gridRow}
           ListEmptyComponent={
-            <View style={{ alignItems: 'center', padding: 40 }}>
-              <Ionicons name="videocam-outline" size={40} color={Colors.textMuted} />
-              <Text style={{ color: Colors.textMuted, marginTop: 8 }}>Aucune publication</Text>
+            <View style={{ alignItems: 'center', padding: 40, paddingHorizontal: 24 }}>
+              <Ionicons name={gridEmptyCopy.icon} size={40} color={Colors.textMuted} />
+              <Text style={{ color: Colors.textMuted, marginTop: 10, fontWeight: '700', textAlign: 'center' }}>
+                {gridEmptyCopy.title}
+              </Text>
+              {gridEmptyCopy.subtitle ? (
+                <Text style={{ color: Colors.textMuted, marginTop: 6, fontSize: 13, textAlign: 'center', opacity: 0.85 }}>
+                  {gridEmptyCopy.subtitle}
+                </Text>
+              ) : null}
             </View>
           }
         />
@@ -766,11 +1079,16 @@ const styles = StyleSheet.create({
 
   // Badges
   badgesSection: { marginTop: 16, marginBottom: 8 },
-  badgesSectionTitle: { color: '#888', fontSize: 12, fontWeight: '600', marginBottom: 8, paddingHorizontal: 2 },
+  badgesHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 2 },
+  badgesSectionTitle: { color: '#888', fontSize: 12, fontWeight: '600' },
+  badgesSeeAll: { color: Colors.primary, fontSize: 12, fontWeight: '700' },
   badgesRow: { gap: 12 },
+  badgesEmptyTap: { paddingVertical: 8, maxWidth: 280 },
+  badgesEmptyText: { color: '#888', fontSize: 11, lineHeight: 16 },
   badgeItem: { alignItems: 'center', width: 58 },
   badgeItemLocked: { opacity: 0.4 },
   badgeCircle: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  badgeEmoji: { fontSize: 16 },
   badgeLabel: { color: '#AAA', fontSize: 9, textAlign: 'center', fontWeight: '500' },
 
   // Analytics
@@ -778,14 +1096,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#111', borderRadius: 14, padding: 14, marginTop: 12,
     borderWidth: 1, borderColor: '#1A1A1A',
   },
-  analyticsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
-  analyticsTitle: { color: '#FFF', fontSize: 13, fontWeight: '700', flex: 1 },
+  analyticsHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 12 },
+  analyticsTitle: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  analyticsDemoHint: { color: '#666', fontSize: 10, marginTop: 3, lineHeight: 14 },
   analyticsGrid: { flexDirection: 'row', justifyContent: 'space-between' },
   analyticsItem: { flex: 1, alignItems: 'center' },
   analyticsValue: { color: '#FFF', fontSize: 18, fontWeight: '800' },
   analyticsLabel: { color: '#888', fontSize: 10, marginTop: 2, marginBottom: 4 },
-  analyticsChange: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  analyticsChangeText: { fontSize: 10, fontWeight: '700' },
+  analyticsEngagementFoot: { color: '#666', fontSize: 11, marginTop: 10, textAlign: 'center' },
 
   // QR Card
   qrCard: {

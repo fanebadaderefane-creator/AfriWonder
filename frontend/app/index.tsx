@@ -1,12 +1,13 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Animated } from 'react-native';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { Colors, FontSizes, Spacing } from '../src/theme/colors';
 import { useAuthStore } from '../src/store/authStore';
-import { Ionicons } from '@expo/vector-icons';
 import { secureStorage } from '../src/utils/secureStorage';
 
-const { width } = Dimensions.get('window');
+/** Même ressource que la PWA (`public/icon-192.png` → `Landing.jsx`). */
+const PWA_APP_ICON = require('../assets/images/pwa-icon-192.png');
 
 export default function SplashScreen() {
   const { isAuthenticated, isLoading, loadStoredAuth } = useAuthStore();
@@ -60,15 +61,23 @@ export default function SplashScreen() {
 
   return (
     <View style={styles.container}>
-      <Animated.View style={[
-        styles.logoContainer,
-        {
-          transform: [{ scale: logoScale }],
-          opacity: logoOpacity,
-        }
-      ]}>
-        <View style={styles.logoCircle}>
-          <Ionicons name="play" size={50} color={Colors.text} />
+      <Animated.View
+        style={[
+          styles.logoContainer,
+          {
+            transform: [{ scale: logoScale }],
+            opacity: logoOpacity,
+          },
+        ]}
+      >
+        <View style={styles.logoFrame}>
+          <Image
+            source={PWA_APP_ICON}
+            style={styles.logoImage}
+            contentFit="cover"
+            accessibilityRole="image"
+            accessibilityLabel="AfriWonder"
+          />
         </View>
       </Animated.View>
       
@@ -94,13 +103,20 @@ const styles = StyleSheet.create({
   logoContainer: {
     marginBottom: Spacing.xxl,
   },
-  logoCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  /** Cadre proche du hero PWA (`Landing.jsx` : ~118px, coins arrondis ~28px). */
+  logoFrame: {
+    width: 118,
+    height: 118,
+    borderRadius: 28,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  logoImage: {
+    width: '100%',
+    height: '100%',
+    transform: [{ scale: 1.18 }],
   },
   textContainer: {
     alignItems: 'center',

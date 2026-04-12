@@ -19,6 +19,8 @@ interface ListOptions {
   creator_id?: string;
   hashtag?: string;
   search?: string;
+  /** Liste les vidéos où ce user est mentionné dans au moins un commentaire (`Comment.mention_ids`). */
+  tagged_for_user_id?: string;
 }
 
 class VideoService {
@@ -64,7 +66,18 @@ class VideoService {
     }
   }
   async list(options: ListOptions) {
-    const { page, limit, category, category_id, visibility = 'public', userId, creator_id: creatorId, hashtag, search } = options;
+    const {
+      page,
+      limit,
+      category,
+      category_id,
+      visibility = 'public',
+      userId,
+      creator_id: creatorId,
+      hashtag,
+      search,
+      tagged_for_user_id: taggedForUserId,
+    } = options;
     // Si limit n'est pas spécifié ou est 0, récupérer toutes les vidéos
     const shouldGetAll = !limit || limit === 0;
     const skip = shouldGetAll ? undefined : (page - 1) * (limit || 0);
@@ -78,8 +91,32 @@ class VideoService {
       },
     };
 
-    // Filtre par visibilité
-    if (visibility === 'public') {
+    // Profil « Identifié » : vidéos publiques où l’utilisateur est cité dans un commentaire (@ → mention_ids)
+    // ou dans le titre / la description (@username, aligné sur le parsing commentaires).
+    const taggedId = (taggedForUserId || '').trim();
+    if (taggedId) {
+      where.visibility = 'public';
+      const taggedUser = await prisma.user.findUnique({
+        where: { id: taggedId },
+        select: { username: true },
+      });
+      const usernameSlug = (taggedUser?.username || '').replace(/^@+/, '').trim();
+      const taggedOr: Record<string, unknown>[] = [
+        {
+          video_comments: {
+            some: { mention_ids: { has: taggedId } },
+          },
+        },
+      ];
+      if (usernameSlug) {
+        const needle = `@${usernameSlug}`;
+        taggedOr.push(
+          { title: { contains: needle, mode: 'insensitive' } },
+          { description: { contains: needle, mode: 'insensitive' } },
+        );
+      }
+      where.OR = taggedOr;
+    } else if (visibility === 'public') {
       where.visibility = 'public';
     } else if (visibility === 'creator' && creatorId && userId && creatorId === userId) {
       // Profil propre : inclure public + privé (brouillons) du créateur — vidéos privées = brouillons
@@ -112,8 +149,8 @@ class VideoService {
     } else if (category_id) {
       where.video_categories = { some: { category_id } };
     }
-    // Filtre par créateur
-    if (creatorId && visibility !== 'creator') {
+    // Filtre par créateur (incompatible avec le mode « identifications »)
+    if (creatorId && visibility !== 'creator' && !taggedId) {
       where.creator_id = creatorId;
     }
 
@@ -125,13 +162,20 @@ class VideoService {
 
     // Recherche texte (titre, description, hashtags, music_title)
     if (search && search.trim()) {
-      const term = `%${search.trim().toLowerCase()}%`;
-      where.OR = [
-        { title: { contains: search.trim(), mode: 'insensitive' } },
-        { description: { contains: search.trim(), mode: 'insensitive' } },
-        { music_title: { contains: search.trim(), mode: 'insensitive' } },
-        { video_hashtags: { some: { tag_name: { contains: search.trim().replace(/^#/, ''), mode: 'insensitive' } } } },
+      const q = search.trim();
+      const searchOr = [
+        { title: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+        { music_title: { contains: q, mode: 'insensitive' } },
+        { video_hashtags: { some: { tag_name: { contains: q.replace(/^#/, ''), mode: 'insensitive' } } } },
       ];
+      if (taggedId) {
+        const taggedPart = where.OR;
+        where.AND = [{ OR: taggedPart as any[] }, { OR: searchOr }];
+        delete where.OR;
+      } else {
+        where.OR = searchOr;
+      }
     }
 
     let videos: any[];
@@ -168,7 +212,6 @@ class VideoService {
       logger.warn('video.list Prisma failed, using raw SQL fallback', { err: (err as Error)?.message });
       const takeVal = shouldGetAll ? 9999 : (limit || 20);
       const skipVal = shouldGetAll ? 0 : (skip ?? 0);
-      // Colonnes explicites (+ reste du modèle) : en secours Prisma, le client doit recevoir hls_url & media_type pour le fallback HLS (Firefox / WebView).
       const rows = await prisma.$queryRawUnsafe<any[]>(
         `SELECT v.id, v.title, v.description, v.video_url, v.low_quality_url, v.hls_url, v.thumbnail_url, v.creator_id, v.visibility, v.category, v.views, v.likes, v.comments_count, v.shares, v.saves, v.duration, v.created_at, v.updated_at, v.hashtags, v.music_title, v.is_featured, v.algo_tier, v.avg_retention_pct, v.qualified_views_count, v.media_type, v.remix_of_id, v.subtitle_url, v.download_allowed, v.is_premium, v.trim_start_sec, v.trim_end_sec, v.filter_id, v.comments_disabled, v.comment_visibility, v.hide_likes, v.scheduled_at,
                 u.username, u.full_name as "creator_name", u.profile_image as "creator_avatar"
@@ -850,13 +893,15 @@ class VideoService {
     return like?.type ?? null;
   }
 
-  async addComment(videoId: string, userId: string, content: string, parentId?: string) {
-    // Valider le contenu
-    if (!content || content.trim().length === 0) {
-      const error: any = new Error('Le contenu du commentaire ne peut pas être vide');
+  async addComment(videoId: string, userId: string, content: string, parentId?: string | null, audioUrl?: string | null) {
+    const text = (content ?? '').trim();
+    const audio = (audioUrl ?? '').trim();
+    if (!text && !audio) {
+      const error: any = new Error('Contenu texte ou commentaire vocal requis');
       error.statusCode = 400;
       throw error;
     }
+    const contentForDb = text || '🎤 Commentaire vocal';
 
     const video = await prisma.video.findUnique({
       where: { id: videoId },
@@ -896,7 +941,7 @@ class VideoService {
         throw err;
       }
     }
-    if (await containsBannedWord(content.trim())) {
+    if (await containsBannedWord(contentForDb)) {
       const error: any = new Error('Votre commentaire contient un mot non autorisé');
       error.statusCode = 400;
       throw error;
@@ -918,7 +963,7 @@ class VideoService {
     }
 
     // Extraire les mentions @username et résoudre en user ids
-    const mentionUsernames = [...(content.match(/@([a-zA-Z0-9_.]+)/g) || [])].map((m) => m.slice(1).toLowerCase());
+    const mentionUsernames = [...(contentForDb.match(/@([a-zA-Z0-9_.]+)/g) || [])].map((m) => m.slice(1).toLowerCase());
     const uniqueUsernames = [...new Set(mentionUsernames)];
     const mentionedUsers = uniqueUsernames.length
       ? await prisma.user.findMany({
@@ -932,8 +977,9 @@ class VideoService {
       data: {
         video_id: videoId,
         user_id: userId,
-        content,
-        parent_id: parentId,
+        content: contentForDb,
+        audio_url: audio || null,
+        parent_id: parentId || null,
         user_name: user.full_name || user.username,
         user_avatar: user.profile_image,
         mention_ids: mentionIds,
@@ -956,7 +1002,7 @@ class VideoService {
       await notificationService.create(creatorId, {
         type: 'comment',
         title: 'Nouveau commentaire',
-        message: `${authorName} a commenté votre vidéo`,
+        message: audio ? `${authorName} a laissé un commentaire vocal sur votre vidéo` : `${authorName} a commenté votre vidéo`,
         reference_id: videoId,
         reference_type: 'video',
         data: {
@@ -988,6 +1034,32 @@ class VideoService {
           },
         });
       }
+    }
+
+    // Notifications dédiées « X vous a mentionné » (commentaire texte ou vocal avec @ résolus en base)
+    const mentionMsg = audio
+      ? `${authorName} vous a mentionné dans un commentaire vocal`
+      : `${authorName} vous a mentionné dans un commentaire`;
+    const uniqueMentionIds = [...new Set(mentionIds)];
+    for (const mentionedId of uniqueMentionIds) {
+      if (!mentionedId || mentionedId === userId) continue;
+      // Le créateur de la vidéo reçoit déjà « Nouveau commentaire » si ce n’est pas lui qui écrit
+      if (mentionedId === creatorId && creatorId !== userId) continue;
+      await notificationService
+        .create(mentionedId, {
+          type: 'mention',
+          title: 'Mention',
+          message: mentionMsg,
+          reference_type: 'video',
+          reference_id: videoId,
+          data: {
+            videoId,
+            commentId: comment.id,
+            from_user_id: userId,
+            from_user_name: authorName,
+          },
+        })
+        .catch(() => {});
     }
 
     return comment;

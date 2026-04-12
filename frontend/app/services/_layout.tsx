@@ -21,6 +21,7 @@ export default function ServicesLayout() {
       <Stack.Screen name="vehicle-rental" />
       <Stack.Screen name="childcare" />
       <Stack.Screen name="voyage" />
+      <Stack.Screen name="insurance" />
     </Stack>
   );
 }
