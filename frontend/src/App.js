@@ -134,7 +134,7 @@ function OverviewSection({ data }) {
           <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.8, marginBottom: 16 }}>
             <strong>AfriWonder</strong> est un projet extremement ambitieux de super-app africaine combinant TikTok (videos courtes), 
             marketplace, services locaux, fintech, messagerie et live streaming. L'architecture backend est <strong>solide</strong> avec 
-            115 routes, 176 services et un schema Prisma de 5771 lignes. L'app mobile Expo couvre <strong>108 ecrans</strong>.
+            115 routes, 176 services et un schema Prisma de 5771 lignes. L'app mobile Expo couvre <strong>{s.total_mobile_screens} ecrans</strong>.
           </p>
           <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.8, marginBottom: 16 }}>
             Cependant, plusieurs fonctionnalites critiques sont en <strong style={{ color: "var(--accent-red)" }}>mode placeholder</strong>: 
