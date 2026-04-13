@@ -815,6 +815,95 @@ class AdminService {
       },
     };
   }
+
+  /** Fenêtre temporelle pour les endpoints GET /admin/analytics/{users,revenue,content} (?period=7d|30d|90d|14d). */
+  parseAnalyticsPeriod(period?: string): { from: Date; to: Date; days: number } {
+    const to = new Date();
+    let days = 7;
+    const p = String(period || '7d').trim().toLowerCase();
+    const m = /^(\d+)d$/.exec(p);
+    if (m) days = Math.min(366, Math.max(1, parseInt(m[1], 10)));
+    else if (p === '30d') days = 30;
+    else if (p === '90d') days = 90;
+    const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+    return { from, to, days };
+  }
+
+  async getAnalyticsUsers(period?: string) {
+    const { from, to, days } = this.parseAnalyticsPeriod(period);
+    const signupWhere = { ...realUserWhere(false), created_at: { gte: from, lte: to } };
+    const [new_signups, activeAgg] = await Promise.all([
+      prisma.user.count({ where: signupWhere }),
+      prisma.userSession.groupBy({
+        by: ['user_id'],
+        where: { last_seen: { gte: from, lte: to } },
+      }),
+    ]);
+    return {
+      period: { from: from.toISOString(), to: to.toISOString(), days },
+      new_signups,
+      active_users: activeAgg.length,
+    };
+  }
+
+  async getAnalyticsRevenue(period?: string) {
+    const { from, to, days } = this.parseAnalyticsPeriod(period);
+    const orderWhere = {
+      status: 'completed',
+      created_at: { gte: from, lte: to },
+      user: realUserWhere(false),
+    };
+    const [agg, byMethod] = await Promise.all([
+      prisma.order.aggregate({
+        where: orderWhere,
+        _sum: { total_amount: true },
+        _count: true,
+      }),
+      prisma.order.groupBy({
+        by: ['payment_method'],
+        where: orderWhere,
+        _sum: { total_amount: true },
+        _count: true,
+      }),
+    ]);
+    return {
+      period: { from: from.toISOString(), to: to.toISOString(), days },
+      marketplace_revenue_fcfa: agg._sum.total_amount ?? 0,
+      completed_orders: agg._count,
+      by_payment_method: byMethod.map((row) => ({
+        method: row.payment_method || 'unknown',
+        total_fcfa: row._sum.total_amount ?? 0,
+        count: row._count,
+      })),
+    };
+  }
+
+  async getAnalyticsContent(period?: string) {
+    const { from, to, days } = this.parseAnalyticsPeriod(period);
+    const [videos_uploaded, lives_started, lives_live_now] = await Promise.all([
+      prisma.video.count({
+        where: {
+          created_at: { gte: from, lte: to },
+          creator: realUserWhere(false),
+        },
+      }),
+      prisma.liveStream.count({
+        where: {
+          started_at: { gte: from, lte: to },
+          creator: realUserWhere(false),
+        },
+      }),
+      prisma.liveStream.count({
+        where: { status: 'live', creator: realUserWhere(false) },
+      }),
+    ]);
+    return {
+      period: { from: from.toISOString(), to: to.toISOString(), days },
+      videos_uploaded,
+      lives_started_in_period: lives_started,
+      lives_live_now,
+    };
+  }
 }
 
 export default new AdminService();

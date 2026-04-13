@@ -21,6 +21,9 @@ import * as monetizationService from '../services/monetization.service.js';
 import { invalidateBannedWordsCache } from '../services/bannedWord.service.js';
 import experimentService from '../services/experiment.service.js';
 import e2eeService from '../services/e2ee.service.js';
+import withdrawalService from '../services/withdrawal.service.js';
+import notificationService from '../services/notification.service.js';
+import liveService from '../services/live.service.js';
 import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 import {
@@ -68,11 +71,131 @@ async function auditLog(req: AuthRequest, action: string, targetType?: string, t
   });
 }
 
+async function getAdminSettingsSnapshot() {
+  const killSwitch = await platformControlService.getKillSwitchState();
+  const featureFlags = await featureFlagService.listFlags();
+  const commissionConfig = commissionSettingsService.getEffectiveConfig();
+  const rawSettings = await prisma.platformSettings.findMany({
+    where: {
+      key: {
+        in: [
+          'maintenance_message',
+          'promotion_banner',
+          'min_withdrawal_fcfa',
+        ],
+      },
+    },
+  });
+  const getJsonValue = (key: string) => rawSettings.find((row) => row.key === key)?.value;
+  return {
+    killSwitch,
+    featureFlags,
+    commissions: commissionConfig,
+    maintenance_message: getJsonValue('maintenance_message') ?? null,
+    promotion_banner: getJsonValue('promotion_banner') ?? null,
+    min_withdrawal_fcfa: getJsonValue('min_withdrawal_fcfa') ?? 5000,
+  };
+}
+
+async function safePendingReportsCount() {
+  try {
+    return await prisma.moderation.count({ where: { status: 'pending' } });
+  } catch {
+    return 0;
+  }
+}
+
+async function safeActiveLives(page: number, limit: number) {
+  try {
+    return await liveService.listStreams(page, limit, { status: 'live' });
+  } catch {
+    return {
+      streams: [],
+      pagination: { page, limit, total: 0, totalPages: 0 },
+    };
+  }
+}
+
 // GET /api/admin/dashboard
 router.get('/dashboard', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
   try {
     const dashboard = await adminService.getDashboard();
     res.json({ success: true, data: dashboard });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/admin/analytics/overview
+router.get('/analytics/overview', authenticate, requireAnyAdmin, async (_req: AuthRequest, res, next) => {
+  try {
+    const dashboard = await adminService.getDashboard();
+    const pendingWithdrawals = await withdrawalService.getPendingWithdrawals(1, 10);
+    const activeLives = await safeActiveLives(1, 10);
+    const pendingReports = await safePendingReportsCount();
+    res.json({
+      success: true,
+      data: {
+        ...dashboard,
+        alerts: {
+          pending_reports: pendingReports,
+          pending_withdrawals: pendingWithdrawals.pagination.total,
+          active_lives: activeLives.pagination.total,
+        },
+      },
+    });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/admin/analytics/realtime
+router.get('/analytics/realtime', authenticate, requireAnyAdmin, async (_req: AuthRequest, res, next) => {
+  try {
+    const [activeLives, pendingReports, pendingWithdrawals] = await Promise.all([
+      safeActiveLives(1, 20),
+      safePendingReportsCount(),
+      withdrawalService.getPendingWithdrawals(1, 20),
+    ]);
+    res.json({
+      success: true,
+      data: {
+        generated_at: new Date().toISOString(),
+        active_lives: activeLives.pagination.total,
+        pending_reports: pendingReports,
+        pending_withdrawals: pendingWithdrawals.pagination.total,
+      },
+    });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/admin/analytics/users?period=7d
+router.get('/analytics/users', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const data = await adminService.getAnalyticsUsers(String(req.query.period || '7d'));
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/admin/analytics/revenue?period=30d
+router.get('/analytics/revenue', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const data = await adminService.getAnalyticsRevenue(String(req.query.period || '30d'));
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/admin/analytics/content?period=7d
+router.get('/analytics/content', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const data = await adminService.getAnalyticsContent(String(req.query.period || '7d'));
+    res.json({ success: true, data });
   } catch (error: any) {
     next(error);
   }
@@ -92,6 +215,35 @@ router.get('/users', authenticate, requireAnyAdmin, async (req: AuthRequest, res
   }
 });
 
+// GET /api/admin/users/:id
+router.get('/users/:id', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: param(req, 'id') },
+      select: {
+        id: true,
+        username: true,
+        full_name: true,
+        email: true,
+        role: true,
+        is_verified: true,
+        account_suspended: true,
+        suspended_reason: true,
+        created_at: true,
+        country: true,
+        phone_verified: true,
+        monetization_enabled: true,
+      },
+    });
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Utilisateur non trouvé' });
+    }
+    res.json({ success: true, data: user });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // PUT /api/admin/users/:id/role
 router.put('/users/:id/role', authenticate, requireAnyAdmin, validateBody(adminUserRoleBodySchema), async (req: AuthRequest, res, next) => {
   try {
@@ -105,8 +257,46 @@ router.put('/users/:id/role', authenticate, requireAnyAdmin, validateBody(adminU
   }
 });
 
+// PUT /api/admin/users/:id/restore
+router.put('/users/:id/restore', authenticate, requireAnyAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const userId = param(req, 'id');
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        account_suspended: false,
+        suspended_at: null,
+        suspended_reason: null,
+      },
+    });
+    await auditLog(req, 'user_restore', 'user', userId);
+    res.json({ success: true, data: user });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // POST /api/admin/users/:id/ban
 router.post('/users/:id/ban', authenticate, requireAnyAdmin, validateBody(adminBanUserBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const { banType, reason, description, durationDays } = req.body;
+    const userId = param(req, 'id');
+    const ban = await adminService.banUser(userId, {
+      banType,
+      reason,
+      description,
+      durationDays,
+      issuedBy: req.user!.id,
+    });
+    await auditLog(req, 'ban_user', 'user', userId, { banType, reason, durationDays });
+    res.json({ success: true, data: ban });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// PUT /api/admin/users/:id/ban
+router.put('/users/:id/ban', authenticate, requireAnyAdmin, validateBody(adminBanUserBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { banType, reason, description, durationDays } = req.body;
     const userId = param(req, 'id');
@@ -245,6 +435,146 @@ router.get('/orders', authenticate, requireAnyAdmin, async (req: AuthRequest, re
     const status = req.query.status as string;
     const result = await adminService.getAllOrders(page, limit, status);
     res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/admin/transactions
+router.get('/transactions', authenticate, requireFinanceAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
+    const skip = (page - 1) * limit;
+    const where: any = {};
+    if (req.query.type) where.type = String(req.query.type);
+    if (req.query.status) where.status = String(req.query.status);
+    if (req.query.method) where.payment_method = String(req.query.method);
+    const [transactions, total] = await Promise.all([
+      prisma.transaction.findMany({
+        where,
+        include: {
+          user: { select: { id: true, username: true, full_name: true, email: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.transaction.count({ where }),
+    ]);
+    res.json({
+      success: true,
+      data: {
+        transactions,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      },
+    });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/admin/withdrawals
+router.get('/withdrawals', authenticate, requireFinanceAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
+    const status = String(req.query.status || 'pending');
+    if (status === 'pending') {
+      const result = await withdrawalService.getPendingWithdrawals(page, limit);
+      return res.json({ success: true, data: result });
+    }
+    const skip = (page - 1) * limit;
+    const [withdrawals, total] = await Promise.all([
+      prisma.withdrawal.findMany({
+        where: { status },
+        include: {
+          user: { select: { id: true, username: true, full_name: true, email: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.withdrawal.count({ where: { status } }),
+    ]);
+    res.json({
+      success: true,
+      data: {
+        withdrawals,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      },
+    });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// PUT /api/admin/withdrawals/:id/approve
+router.put('/withdrawals/:id/approve', authenticate, requireFinanceAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const result = await withdrawalService.processWithdrawal(param(req, 'id'), req.user!.id, {
+      transaction_reference: req.body?.transaction_reference,
+      notes: req.body?.notes,
+    });
+    await auditLog(req, 'withdrawal_approve', 'withdrawal', param(req, 'id'));
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// PUT /api/admin/withdrawals/:id/reject
+router.put('/withdrawals/:id/reject', authenticate, requireFinanceAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const result = await withdrawalService.cancelWithdrawal(param(req, 'id'), req.user!.id, true);
+    await auditLog(req, 'withdrawal_reject', 'withdrawal', param(req, 'id'), {
+      reason: req.body?.reason,
+    });
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/admin/transactions/:id/refund
+router.post('/transactions/:id/refund', authenticate, requireFinanceAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const transaction = await prisma.transaction.update({
+      where: { id: param(req, 'id') },
+      data: { status: 'refunded' },
+    });
+    await auditLog(req, 'transaction_refund', 'transaction', transaction.id);
+    res.json({ success: true, data: transaction });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/admin/transactions/export
+router.get('/transactions/export', authenticate, requireFinanceAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const from = (req.query.from as string) || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const to = (req.query.to as string) || new Date().toISOString().slice(0, 10);
+    const data = await adminService.exportTransactions(from, to);
+    const rows = [
+      ['id', 'type', 'status', 'amount', 'currency', 'payment_method', 'email', 'created_at'],
+      ...data.map((tx) => [
+        tx.id,
+        tx.type,
+        tx.status,
+        tx.amount,
+        tx.currency,
+        tx.payment_method || '',
+        tx.user?.email || '',
+        tx.created_at.toISOString(),
+      ]),
+    ];
+    const csv = rows
+      .map((cols) => cols.map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="transactions-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.status(200).send(csv);
   } catch (error: any) {
     next(error);
   }
@@ -542,6 +872,87 @@ router.get('/health', authenticate, requireAnyAdmin, async (req, res, next) => {
   }
 });
 
+// GET /api/admin/lives/active
+router.get('/lives/active', authenticate, requireAnyAdmin, async (_req: AuthRequest, res, next) => {
+  try {
+    const result = await safeActiveLives(1, 20);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/admin/lives/history
+router.get('/lives/history', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
+    const result = await liveService.listStreams(page, limit, { status: 'ended', sortBy: 'recent' });
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/admin/lives/:id/terminate
+router.post('/lives/:id/terminate', authenticate, requireAnyAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const stream = await prisma.liveStream.findUnique({ where: { id: param(req, 'id') } });
+    if (!stream) {
+      return res.status(404).json({ success: false, error: 'Live introuvable' });
+    }
+    const ended = await liveService.endStream(stream.id, stream.creator_id, {
+      replay_url: stream.replay_url || null,
+    });
+    await auditLog(req, 'live_terminate', 'live', stream.id, { reason: req.body?.reason });
+    res.json({ success: true, data: ended });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/admin/lives/:id/replay
+router.get('/lives/:id/replay', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const stream = await liveService.getStream(param(req, 'id'));
+    if (!stream) {
+      return res.status(404).json({ success: false, error: 'Live introuvable' });
+    }
+    res.json({
+      success: true,
+      data: {
+        id: stream.id,
+        replay_url: stream.replay_url,
+        replay_chapters: stream.replay_chapters || [],
+      },
+    });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/admin/lives/:id/stats
+router.get('/lives/:id/stats', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const stream = await liveService.getStream(param(req, 'id'));
+    if (!stream) {
+      return res.status(404).json({ success: false, error: 'Live introuvable' });
+    }
+    res.json({
+      success: true,
+      data: {
+        viewers_count: stream.viewers_count,
+        peak_viewers: stream.peak_viewers,
+        total_likes: stream.total_likes,
+        total_gifts_amount: stream.total_gifts_amount,
+        duration_minutes: stream.duration_minutes,
+      },
+    });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // GET /api/admin/kill-switch — État du kill switch (super_admin uniquement pour modifier)
 router.get('/kill-switch', authenticate, requireAnyAdmin, async (req, res, next) => {
   try {
@@ -761,6 +1172,56 @@ router.get('/feature-flags', authenticate, requireAnyAdmin, async (req, res, nex
   }
 });
 
+// GET /api/admin/settings
+router.get('/settings', authenticate, requireAnyAdmin, async (_req: AuthRequest, res, next) => {
+  try {
+    const snapshot = await getAdminSettingsSnapshot();
+    res.json({ success: true, data: snapshot });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// PUT /api/admin/settings
+router.put('/settings', authenticate, requireSuperAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const body = req.body || {};
+    if (body.featureFlags && typeof body.featureFlags === 'object') {
+      for (const [key, enabled] of Object.entries(body.featureFlags)) {
+        if (typeof enabled === 'boolean') {
+          await featureFlagService.setFlag(key, enabled);
+        }
+      }
+    }
+    if (body.maintenance_message !== undefined) {
+      await prisma.platformSettings.upsert({
+        where: { key: 'maintenance_message' },
+        create: { key: 'maintenance_message', value: body.maintenance_message ?? null },
+        update: { value: body.maintenance_message ?? null },
+      });
+    }
+    if (body.promotion_banner !== undefined) {
+      await prisma.platformSettings.upsert({
+        where: { key: 'promotion_banner' },
+        create: { key: 'promotion_banner', value: body.promotion_banner ?? null },
+        update: { value: body.promotion_banner ?? null },
+      });
+    }
+    if (body.min_withdrawal_fcfa !== undefined) {
+      await prisma.platformSettings.upsert({
+        where: { key: 'min_withdrawal_fcfa' },
+        create: { key: 'min_withdrawal_fcfa', value: body.min_withdrawal_fcfa },
+        update: { value: body.min_withdrawal_fcfa },
+      });
+    }
+    await auditLog(req, 'settings_update', 'platform', undefined, body);
+    const snapshot = await getAdminSettingsSnapshot();
+    res.json({ success: true, data: snapshot });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // PATCH /api/admin/feature-flags/:key - Activer/désactiver un flag
 router.patch('/feature-flags/:key', authenticate, requireSuperAdmin, validateBody(adminFeatureFlagBodySchema), async (req: AuthRequest, res, next) => {
   try {
@@ -768,6 +1229,40 @@ router.patch('/feature-flags/:key', authenticate, requireSuperAdmin, validateBod
     const { enabled } = req.body;
     await featureFlagService.setFlag(key, enabled);
     res.json({ success: true, data: { key, enabled } });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/admin/broadcast-notification
+router.post('/broadcast-notification', authenticate, requireSuperAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const title = String(req.body?.title || '').trim();
+    const body = String(req.body?.body || '').trim();
+    const target = String(req.body?.target || 'all').trim();
+    if (!title || !body) {
+      return res.status(400).json({ success: false, error: 'title et body requis' });
+    }
+    const userWhere =
+      target === 'creators'
+        ? { monetization_enabled: true }
+        : target === 'admins'
+          ? { role: { in: ['super_admin', 'admin', 'finance_admin', 'moderation_admin', 'support_admin', 'data_admin'] } }
+          : {};
+    const users = await prisma.user.findMany({
+      where: userWhere,
+      select: { id: true },
+      take: 5000,
+    });
+    for (const user of users) {
+      await notificationService.create(user.id, {
+        type: 'admin_message',
+        title,
+        message: body,
+      });
+    }
+    await auditLog(req, 'broadcast_notification', 'notification', undefined, { target, count: users.length });
+    res.json({ success: true, data: { target, delivered: users.length } });
   } catch (error: any) {
     next(error);
   }

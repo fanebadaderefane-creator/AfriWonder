@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
 import apiClient from '../src/api/client';
 import { useAuthStore } from '../src/store/authStore';
+import { API_ROUTES } from '../src/config/api';
 
 const { width } = Dimensions.get('window');
 
@@ -57,24 +58,46 @@ export default function AdminDashboardScreen() {
   const [users, setUsers] = useState<any[]>([]);
   const [reports, setReports] = useState<any[]>([]);
   const [lives, setLives] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<{
+    pending_reports?: number;
+    pending_withdrawals?: number;
+    active_lives?: number;
+  } | null>(null);
+  const [periodAnalytics, setPeriodAnalytics] = useState<{
+    users?: { new_signups?: number; active_users?: number };
+    revenue?: { marketplace_revenue_fcfa?: number; completed_orders?: number };
+    content?: { videos_uploaded?: number; lives_started_in_period?: number };
+  }>({});
 
   const isAdmin =
     user?.role === 'admin' ||
     user?.role === 'super_admin' ||
     user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (opts?: { silent?: boolean }) => {
     try {
-      const [statsRes, usersRes, reportsRes, livesRes] = await Promise.allSettled([
-        apiClient.get('/admin/dashboard'),
-        apiClient.get('/admin/users', { params: { page: 1, limit: 20 } }),
+      if (!opts?.silent) setLoading(true);
+      const [statsRes, usersRes, reportsRes, livesRes, au, ar, ac] = await Promise.allSettled([
+        apiClient.get(API_ROUTES.ADMIN_ANALYTICS_OVERVIEW),
+        apiClient.get(API_ROUTES.ADMIN_USERS, { params: { page: 1, limit: 20 } }),
         apiClient.get('/moderation/reports', { params: { status: 'pending', limit: 20 } }),
         apiClient.get('/live', { params: { status: 'live', limit: 20 } }),
+        apiClient.get(API_ROUTES.ADMIN_ANALYTICS_USERS('7d')),
+        apiClient.get(API_ROUTES.ADMIN_ANALYTICS_REVENUE('30d')),
+        apiClient.get(API_ROUTES.ADMIN_ANALYTICS_CONTENT('7d')),
       ]);
 
       if (statsRes.status === 'fulfilled') {
         const payload = statsRes.value.data?.data ?? statsRes.value.data;
         const s = payload?.stats ?? {};
+        const al = payload?.alerts;
+        if (al && typeof al === 'object') {
+          setAlerts({
+            pending_reports: Number((al as any).pending_reports) || 0,
+            pending_withdrawals: Number((al as any).pending_withdrawals) || 0,
+            active_lives: Number((al as any).active_lives) || 0,
+          });
+        }
         setStats({
           total_users: Number(s.totalUsers) || 0,
           total_videos: Number(s.totalVideos) || 0,
@@ -105,16 +128,39 @@ export default function AdminDashboardScreen() {
         const ld = livesRes.value.data?.data ?? livesRes.value.data;
         setLives(unwrapList(ld, ['streams', 'items', 'lives']));
       }
+
+      const nextPeriod: typeof periodAnalytics = {};
+      if (au.status === 'fulfilled') {
+        const d = au.value.data?.data ?? au.value.data;
+        nextPeriod.users = d;
+      }
+      if (ar.status === 'fulfilled') {
+        const d = ar.value.data?.data ?? ar.value.data;
+        nextPeriod.revenue = d;
+      }
+      if (ac.status === 'fulfilled') {
+        const d = ac.value.data?.data ?? ac.value.data;
+        nextPeriod.content = d;
+      }
+      if (Object.keys(nextPeriod).length) setPeriodAnalytics(nextPeriod);
     } catch {
       /* ignore */
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const id = setInterval(() => {
+      void loadData({ silent: true });
+    }, 30000);
+    return () => clearInterval(id);
+  }, [isAdmin, loadData]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -174,13 +220,21 @@ export default function AdminDashboardScreen() {
     );
   }
 
+  const pendingWithdrawalsDisplay =
+    alerts?.pending_withdrawals != null ? alerts.pending_withdrawals : stats.pending_withdrawals || 0;
+
   const kpis: KPI[] = [
     { label: 'Utilisateurs', value: fmt(stats.total_users || 0), icon: 'people', color: '#3B82F6' },
     { label: 'Vidéos', value: fmt(stats.total_videos || 0), icon: 'videocam', color: '#8B5CF6' },
     { label: 'Revenus', value: fmtMoney(stats.total_revenue || 0), icon: 'trending-up', color: '#10B981' },
-    { label: 'Lives actifs', value: String(lives.length), icon: 'radio', color: '#EF4444' },
+    { label: 'Lives actifs', value: String(alerts?.active_lives ?? lives.length), icon: 'radio', color: '#EF4444' },
     { label: 'Commandes', value: fmt(stats.total_orders || 0), icon: 'cart', color: '#F59E0B' },
-    { label: 'Signalements', value: String(reports.length), icon: 'flag', color: '#EC4899' },
+    {
+      label: 'Signalements',
+      value: String(alerts?.pending_reports ?? reports.length),
+      icon: 'flag',
+      color: '#EC4899',
+    },
   ];
 
   const tabs = [
@@ -254,6 +308,49 @@ export default function AdminDashboardScreen() {
                     </LinearGradient>
                   ))}
                 </View>
+                {alerts ? (
+                  <View style={styles.alertsSection}>
+                    <Text style={styles.readinessTitle}>Alertes (temps quasi réel)</Text>
+                    <View style={styles.alertRow}>
+                      <Text style={styles.alertLabel}>Signalements en attente</Text>
+                      <Text style={styles.alertValue}>{alerts.pending_reports ?? '—'}</Text>
+                    </View>
+                    <View style={styles.alertRow}>
+                      <Text style={styles.alertLabel}>Retraits en attente</Text>
+                      <Text style={styles.alertValue}>{alerts.pending_withdrawals ?? '—'}</Text>
+                    </View>
+                    <View style={styles.alertRow}>
+                      <Text style={styles.alertLabel}>Lives actifs (total)</Text>
+                      <Text style={styles.alertValue}>{alerts.active_lives ?? '—'}</Text>
+                    </View>
+                    <Text style={styles.readinessHint}>Source : GET {API_ROUTES.ADMIN_ANALYTICS_OVERVIEW}</Text>
+                  </View>
+                ) : null}
+
+                {(periodAnalytics.users || periodAnalytics.revenue || periodAnalytics.content) && (
+                  <View style={styles.readinessSection}>
+                    <Text style={styles.readinessTitle}>Activité sur période</Text>
+                    {periodAnalytics.users ? (
+                      <Text style={styles.periodLine}>
+                        Utilisateurs (7j) : +{periodAnalytics.users.new_signups ?? 0} inscrits ·{' '}
+                        {periodAnalytics.users.active_users ?? 0} actifs (sessions)
+                      </Text>
+                    ) : null}
+                    {periodAnalytics.revenue ? (
+                      <Text style={styles.periodLine}>
+                        Marketplace (30j) : {fmtMoney(periodAnalytics.revenue.marketplace_revenue_fcfa || 0)} ·{' '}
+                        {periodAnalytics.revenue.completed_orders ?? 0} commandes
+                      </Text>
+                    ) : null}
+                    {periodAnalytics.content ? (
+                      <Text style={styles.periodLine}>
+                        Contenu (7j) : {periodAnalytics.content.videos_uploaded ?? 0} vidéos ·{' '}
+                        {periodAnalytics.content.lives_started_in_period ?? 0} lives démarrés
+                      </Text>
+                    ) : null}
+                  </View>
+                )}
+
                 <View style={styles.readinessSection}>
                   <Text style={styles.readinessTitle}>Couverture production</Text>
                   <View style={styles.readinessBarOuter}>
@@ -269,12 +366,17 @@ export default function AdminDashboardScreen() {
                   </View>
                   <Text style={styles.readinessPct}>{stats.production_readiness ?? 100}%</Text>
                   <Text style={styles.readinessHint}>
-                    Score exposé par GET /admin/dashboard (stats.productionReadiness)
+                    Score exposé par l&apos;agrégat admin (stats.productionReadiness)
                   </Text>
                 </View>
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>Actions rapides</Text>
                   {[
+                    {
+                      label: 'Paramètres plateforme',
+                      icon: 'settings' as const,
+                      onPress: () => router.push('/admin-settings' as never),
+                    },
                     {
                       label: 'Gérer les utilisateurs',
                       icon: 'people' as const,
@@ -435,7 +537,7 @@ export default function AdminDashboardScreen() {
                   },
                   {
                     label: 'Retraits en attente',
-                    value: fmtMoney(stats.pending_withdrawals || 0),
+                    value: String(pendingWithdrawalsDisplay),
                     color: '#F59E0B',
                   },
                   { label: 'Tips / dons totaux', value: fmtMoney(stats.total_tips || 0), color: '#EC4899' },
@@ -555,6 +657,26 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
   },
   readinessHint: { fontSize: FontSizes.xs, color: Colors.textMuted, marginTop: 4 },
+  alertsSection: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.lg,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  alertRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+  },
+  alertLabel: { fontSize: FontSizes.sm, color: Colors.textSecondary },
+  alertValue: { fontSize: FontSizes.md, fontWeight: '700', color: Colors.text },
+  periodLine: { fontSize: FontSizes.sm, color: Colors.textSecondary, marginTop: 10, lineHeight: 20 },
   section: { paddingHorizontal: Spacing.xl, marginTop: Spacing.lg },
   sectionTitle: { fontSize: FontSizes.lg, fontWeight: 'bold', color: Colors.text, marginBottom: Spacing.md },
   actionRow: {

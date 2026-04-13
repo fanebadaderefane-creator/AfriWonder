@@ -2,6 +2,7 @@ import '../src/polyfills';
 import { Stack, router } from 'expo-router';
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import * as Linking from 'expo-linking';
 import { useAuthStore } from '../src/store/authStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -10,6 +11,8 @@ import { Colors } from '../src/theme/colors';
 import { View, StyleSheet } from 'react-native';
 import { LanguageProvider } from '../src/i18n/LanguageContext';
 import notificationService from '../src/services/notificationService';
+import { resolveMobileDeepLink } from '../src/services/mobileApiService';
+import offlineActionSyncService from '../src/services/offlineActionSyncService';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,11 +29,29 @@ export default function RootLayout() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   useEffect(() => {
+    const handleIncomingUrl = async (url: string | null | undefined) => {
+      const raw = String(url || '').trim();
+      if (!raw || !raw.startsWith('afriwonder://')) return;
+      try {
+        const resolved = await resolveMobileDeepLink(raw);
+        if (resolved?.route) {
+          router.push(resolved.route as any);
+        }
+      } catch {
+        /* ignore unresolved deep links */
+      }
+    };
+
     loadStoredAuth();
 
     void notificationService.initialize();
+    const offlineSyncCleanup = offlineActionSyncService.initAutoFlush();
+    void Linking.getInitialURL().then((url) => handleIncomingUrl(url));
 
     let subscription: { remove: () => void } | null = null;
+    const urlSubscription = Linking.addEventListener('url', ({ url }) => {
+      void handleIncomingUrl(url);
+    });
     void notificationService
       .onNotificationResponse((response) => {
         const data = response.notification.request.content.data as
@@ -50,6 +71,8 @@ export default function RootLayout() {
 
     return () => {
       subscription?.remove();
+      urlSubscription.remove();
+      offlineSyncCleanup?.();
     };
   }, []);
 
@@ -90,6 +113,10 @@ export default function RootLayout() {
             <Stack.Screen name="orders" />
             <Stack.Screen name="wishlist" />
             <Stack.Screen name="settings" />
+            <Stack.Screen name="settings/notifications" />
+            <Stack.Screen name="settings/privacy" />
+            <Stack.Screen name="settings/security" />
+            <Stack.Screen name="settings/data-saver" />
             <Stack.Screen name="communities" />
             <Stack.Screen name="courses" />
             <Stack.Screen name="news" />
@@ -120,6 +147,7 @@ export default function RootLayout() {
             <Stack.Screen name="menu-plus" />
             <Stack.Screen name="data-protection" />
             <Stack.Screen name="admin-dashboard" />
+            <Stack.Screen name="admin-settings" />
             <Stack.Screen name="badges-profile" />
             <Stack.Screen name="leaderboard" />
             <Stack.Screen name="gamification-hub" />
