@@ -50,7 +50,7 @@
 - Référence complète: `INVENTAIRE_AUDIT.md`
 
 ## 3. DASHBOARD ADMIN MOBILE
-- Écrans livrés: 2/7 — `admin-dashboard` (vue agrégée + onglets + polling 30s) et `admin-settings` (lecture seule GET settings). Les 5 autres écrans dédiés du prompt (users/moderation/transactions/lives/creators en routes séparées) restent à factoriser hors de l’écran unique.
+- Écrans livrés (routes Expo `frontend/app/(admin)/`) : **8 fichiers** — `index` (dashboard), `users`, `moderation`, `transactions`, `lives`, `creators`, `reports`, `settings` (couvre les 7 blocs fonctionnels du brief + signalements dédiés). Graphiques avancés (Recharts / carte pays), export CSV bouton-à-bouton, broadcast push depuis l’UI et parité complète avec la PWA admin restent à durcir.
 - APIs admin utilisées:
   - `GET /api/admin/analytics/overview` (KPI + alertes)
   - `GET /api/admin/analytics/users?period=7d`
@@ -194,6 +194,16 @@
 - `backend/__tests__/mobile.routes.test.ts`
 - `frontend/package.json`
 - `frontend/package-lock.json`
+- `frontend/app/(tabs)/index.tsx` (FlashList, visibilité 60 %, props alignées FlashList v2)
+- `.github/workflows/mobile-ci.yml`
+- `tests/load/afriwonder-feed.js`
+- `mobile-afriwonder/src/config/api.ts`
+- `mobile-afriwonder/README.md`
+- `RAPPORT_FINAL_AFRIWONDER.md`
+
+## CI / charge (complément brief v2)
+- Workflow ajouté : `.github/workflows/mobile-ci.yml` — `npm ci` + typecheck + Vitest + lint dans `frontend/`, puis `npm run typecheck` depuis `mobile-afriwonder/` (scripts relais).
+- Script k6 (smoke) : `tests/load/afriwonder-feed.js` — variables d’environnement `API_URL`, `TOKEN` (optionnel), `VUS`, `DURATION`. Non exécuté dans cette session.
 
 ## LIMITES HONNÊTES DE LA SESSION
 - Le dépôt était déjà sale avant cette passe, avec de nombreux fichiers modifiés ou non suivis hors de mon périmètre.

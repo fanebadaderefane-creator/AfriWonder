@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, Dimensions, FlatList, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Image, TextInput, Modal, KeyboardAvoidingView, Platform, ScrollView, Animated, AppState, Alert, Pressable, type NativeSyntheticEvent, type NativeScrollEvent, type LayoutChangeEvent } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Image, TextInput, Modal, KeyboardAvoidingView, Platform, ScrollView, Animated, AppState, Alert, Pressable, RefreshControl, type NativeSyntheticEvent, type NativeScrollEvent, type LayoutChangeEvent } from 'react-native';
+import { FlashList, type ViewToken as FlashViewToken } from '@shopify/flash-list';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +15,7 @@ import ReportModal from '../../src/components/ReportModal';
 import { CreatorAvatar } from '../../src/components/CreatorAvatar';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { Audio } from 'expo-av';
+import offlineActionSyncService from '../../src/services/offlineActionSyncService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -94,7 +96,7 @@ const VideoItem: React.FC<VideoItemProps> = ({
   video, isActive, slideHeight, onLike, onDoubleTapLike, onComment, onShare, onSave, onFollow, onReport, onOpenProfile, onOpenSound,
 }) => {
   const insets = useSafeAreaInsets();
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [showHeart, setShowHeart] = useState(false);
   const heartAnim = useRef(new Animated.Value(0)).current;
@@ -620,9 +622,8 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
         setComments(prev => prev.map(c => c.id === optimistic.id ? { ...c, id: data.id } : c));
       }
     } catch {
-      // Remove optimistic on failure
-      setComments(prev => prev.filter(c => c.id !== optimistic.id));
-      setTotalComments(prev => prev - 1);
+      await offlineActionSyncService.enqueue('comment_video', videoId, { content: commentText });
+      setComments(prev => prev.map(c => c.id === optimistic.id ? { ...c, createdAt: 'En attente' } : c));
     }
   };
 
@@ -812,6 +813,19 @@ export default function FeedScreen() {
     [syncIndexFromScrollOffset]
   );
 
+  /** Autoplay / carte active : >60 % visible (brief feed TikTok). */
+  const feedViewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: FlashViewToken<Video>[] }) => {
+      const indices = viewableItems
+        .filter((t) => t.isViewable && typeof t.index === 'number' && t.index >= 0)
+        .map((t) => t.index as number);
+      if (indices.length === 0) return;
+      const idx = Math.min(...indices);
+      setCurrentIndex((prev) => (prev === idx ? prev : idx));
+    }
+  ).current;
+
   const onListLayout = useCallback((e: LayoutChangeEvent) => {
     const h = Math.round(e.nativeEvent.layout.height);
     if (h > 0) setListViewportHeight((prev) => (prev === h ? prev : h));
@@ -823,15 +837,6 @@ export default function FeedScreen() {
   const openSoundMenu = useCallback((item: Video) => setSoundMenuVideo(item), []);
 
   const activeVideoId = videos[currentIndex]?.id ?? '';
-
-  const getItemLayout = useCallback(
-    (_data: ArrayLike<Video> | null | undefined, index: number) => ({
-      length: feedItemHeight,
-      offset: feedItemHeight * index,
-      index,
-    }),
-    [feedItemHeight]
-  );
 
   const lastViewedVideoIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -969,36 +974,54 @@ export default function FeedScreen() {
 
   const handleLike = async (videoId: string) => {
     // Optimistic update
+    const target = videos.find(v => v.id === videoId);
+    const nextLiked = !(target?.isLiked ?? false);
     setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isLiked: !v.isLiked, likes: v.isLiked ? v.likes - 1 : v.likes + 1 } : v));
     try {
       const response = await apiClient.post(`/videos/${videoId}/like`);
       const data = response.data?.data || response.data;
       // Sync with server state
       setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isLiked: data.liked } : v));
-    } catch { /* keep optimistic state */ }
+    } catch {
+      await offlineActionSyncService.enqueue('like_video', videoId, { liked: nextLiked });
+    }
   };
 
   const handleDoubleTapLike = async (videoId: string) => {
     const video = videos.find(v => v.id === videoId);
     if (video && !video.isLiked) {
       setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isLiked: true, likes: v.likes + 1 } : v));
-      try { await apiClient.post(`/videos/${videoId}/like`); } catch {}
+      try { await apiClient.post(`/videos/${videoId}/like`); } catch {
+        await offlineActionSyncService.enqueue('like_video', videoId, { liked: true });
+      }
     }
   };
 
-  const handleSave = (videoId: string) => {
-    // Local only - no backend endpoint
+  const handleSave = async (videoId: string) => {
+    const target = videos.find(v => v.id === videoId);
+    const nextSaved = !(target?.isSaved ?? false);
     setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isSaved: !v.isSaved } : v));
+    try {
+      const response = await apiClient.post('/saves', { video_id: videoId });
+      const data = response.data?.data || response.data;
+      setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isSaved: Boolean(data.saved) } : v));
+    } catch {
+      await offlineActionSyncService.enqueue('save_video', videoId, { saved: nextSaved });
+    }
   };
 
   const handleFollow = async (userId: string) => {
     // Optimistic update
+    const target = videos.find(v => v.user.id === userId);
+    const nextFollowing = !(target?.user.isFollowing ?? false);
     setVideos(prev => prev.map(v => v.user.id === userId ? { ...v, user: { ...v.user, isFollowing: !v.user.isFollowing } } : v));
     try {
       const response = await apiClient.post(`/users/${userId}/follow`);
       const data = response.data?.data || response.data;
       setVideos(prev => prev.map(v => v.user.id === userId ? { ...v, user: { ...v.user, isFollowing: data.following } } : v));
-    } catch { /* keep optimistic state */ }
+    } catch {
+      await offlineActionSyncService.enqueue('follow_user', userId, { following: nextFollowing });
+    }
   };
 
   const handleShare = async (videoId: string) => {
@@ -1051,7 +1074,7 @@ export default function FeedScreen() {
         </View>
       </View>
 
-      <FlatList
+      <FlashList
         style={{ flex: 1 }}
         data={videos}
         onLayout={onListLayout}
@@ -1080,31 +1103,62 @@ export default function FeedScreen() {
         snapToInterval={feedItemHeight}
         snapToAlignment="start"
         decelerationRate="fast"
-        getItemLayout={getItemLayout}
         onScroll={onFeedScroll}
         scrollEventThrottle={16}
         onMomentumScrollEnd={onFeedScrollEnd}
         onScrollEndDrag={onFeedScrollEnd}
-        initialNumToRender={2}
-        maxToRenderPerBatch={2}
-        windowSize={3}
-        removeClippedSubviews={Platform.OS !== 'web'}
+        viewabilityConfig={feedViewabilityConfig}
+        onViewableItemsChanged={onViewableItemsChanged}
+        drawDistance={feedItemHeight * 2}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-        ListEmptyComponent={loading ? null : (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: height - 100, paddingHorizontal: 28 }}>
-            <Ionicons name="videocam-outline" size={60} color="rgba(255,255,255,0.3)" />
-            <Text style={{ color: 'rgba(255,255,255,0.5)', marginTop: 16, fontSize: 16, textAlign: 'center' }}>Aucune vidéo disponible</Text>
-            {feedEmptyMessage ? (
-              <Text style={{ color: 'rgba(255,255,255,0.35)', marginTop: 12, fontSize: 13, textAlign: 'center', lineHeight: 20 }}>{feedEmptyMessage}</Text>
-            ) : null}
-            <TouchableOpacity style={{ marginTop: 20, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: Colors.primary, borderRadius: 24 }} onPress={() => loadFeed(1, true)} activeOpacity={0.85}>
-              <Text style={{ color: '#000', fontWeight: '700', fontSize: 14 }}>Réessayer</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+        }
+        ListEmptyComponent={
+          loading ? null : (
+            <View
+              style={{
+                flex: 1,
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: height - 100,
+                paddingHorizontal: 28,
+              }}
+            >
+              <Ionicons name="videocam-outline" size={60} color="rgba(255,255,255,0.3)" />
+              <Text style={{ color: 'rgba(255,255,255,0.5)', marginTop: 16, fontSize: 16, textAlign: 'center' }}>
+                Aucune vidéo disponible
+              </Text>
+              {feedEmptyMessage ? (
+                <Text
+                  style={{
+                    color: 'rgba(255,255,255,0.35)',
+                    marginTop: 12,
+                    fontSize: 13,
+                    textAlign: 'center',
+                    lineHeight: 20,
+                  }}
+                >
+                  {feedEmptyMessage}
+                </Text>
+              ) : null}
+              <TouchableOpacity
+                style={{
+                  marginTop: 20,
+                  paddingVertical: 12,
+                  paddingHorizontal: 24,
+                  backgroundColor: Colors.primary,
+                  borderRadius: 24,
+                }}
+                onPress={() => loadFeed(1, true)}
+                activeOpacity={0.85}
+              >
+                <Text style={{ color: '#000', fontWeight: '700', fontSize: 14 }}>Réessayer</Text>
+              </TouchableOpacity>
+            </View>
+          )
+        }
       />
 
       {loading && <View style={styles.loadingOverlay}><ActivityIndicator size="large" color={Colors.primary} /></View>}
