@@ -102,6 +102,7 @@ export default function LoginScreen() {
         {/* Method Toggle */}
         <View style={styles.methodToggle}>
           <TouchableOpacity
+            testID="login-method-phone"
             style={[styles.methodTab, loginMethod === 'phone' && styles.methodTabActive]}
             onPress={() => { setLoginMethod('phone'); setErrors({}); }}
           >
@@ -109,6 +110,7 @@ export default function LoginScreen() {
             <Text style={[styles.methodTabText, loginMethod === 'phone' && styles.methodTabTextActive]}>Telephone</Text>
           </TouchableOpacity>
           <TouchableOpacity
+            testID="login-method-email"
             style={[styles.methodTab, loginMethod === 'email' && styles.methodTabActive]}
             onPress={() => { setLoginMethod('email'); setErrors({}); }}
           >
@@ -205,6 +207,7 @@ export default function LoginScreen() {
             </>
           ) : (
             <Input
+              testID="login-email-input"
               label="Email"
               placeholder="votre@email.com"
               value={email}
@@ -217,6 +220,7 @@ export default function LoginScreen() {
           )}
 
           <Input
+            testID="login-password-input"
             label="Mot de passe"
             placeholder="Votre mot de passe"
             value={password}
@@ -231,6 +235,7 @@ export default function LoginScreen() {
           </TouchableOpacity>
 
           <Button
+            testID="login-submit-button"
             title="Se connecter"
             onPress={handleLogin}
             loading={loading}
@@ -268,7 +273,7 @@ export default function LoginScreen() {
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>Pas encore de compte ?</Text>
-          <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
+          <TouchableOpacity testID="login-link-register" onPress={() => router.push('/(auth)/register')}>
             <Text style={styles.footerLink}> Creer un compte</Text>
           </TouchableOpacity>
         </View>

@@ -53,7 +53,7 @@ export default function CreatorEarningsScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Retour">
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Mes Revenus</Text>
@@ -101,6 +101,32 @@ export default function CreatorEarningsScreen() {
             <Text style={styles.statLabel}>Total fans</Text>
           </View>
         </View>
+
+        <TouchableOpacity
+          style={styles.revenueShareCta}
+          onPress={() => router.push('/creator/revenue-share' as any)}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="pie-chart-outline" size={22} color="#1DC3E2" />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.revenueShareTitle}>Partage des revenus</Text>
+            <Text style={styles.revenueShareSubtitle}>Activer la monétisation et les retraits</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.revenueShareCta}
+          onPress={() => router.push('/subscriptions' as never)}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="diamond" size={22} color="#A855F7" />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.revenueShareTitle}>Abonnements</Text>
+            <Text style={styles.revenueShareSubtitle}>AfriWonder+, fan clubs et abonnements actifs</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+        </TouchableOpacity>
 
         {/* Ad Revenue CTA */}
         <TouchableOpacity style={styles.adCta} onPress={() => router.push('/creator/ads' as any)}>
@@ -156,6 +182,19 @@ const styles = StyleSheet.create({
   statCard: { flex: 1, backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.lg, alignItems: 'center', gap: 4 },
   statValue: { color: Colors.text, fontSize: FontSizes.md, fontWeight: 'bold' },
   statLabel: { color: Colors.textSecondary, fontSize: FontSizes.xs },
+  revenueShareCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.lg,
+    padding: Spacing.lg,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(29,195,226,0.25)',
+  },
+  revenueShareTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '700' },
+  revenueShareSubtitle: { color: Colors.textSecondary, fontSize: FontSizes.sm, marginTop: 2 },
   adCta: { marginHorizontal: Spacing.xl, marginBottom: Spacing.lg },
   adCtaGradient: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderRadius: BorderRadius.lg, padding: Spacing.xl },
   adCtaTitle: { color: '#FFF', fontSize: FontSizes.lg, fontWeight: 'bold' },

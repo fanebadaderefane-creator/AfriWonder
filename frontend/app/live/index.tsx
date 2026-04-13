@@ -59,7 +59,7 @@ export default function LiveHubScreen() {
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Ionicons name="arrow-back" size={24} color={Colors.text} /></TouchableOpacity>
         <Text style={styles.headerTitle}>Live & Replays</Text>
-        <TouchableOpacity style={styles.goLiveBtn} onPress={() => router.push('/live/stream' as any)}>
+        <TouchableOpacity testID="go-live-button" style={styles.goLiveBtn} onPress={() => router.push('/live/stream' as any)}>
           <Ionicons name="radio" size={18} color="#FFF" />
           <Text style={styles.goLiveBtnText}>Go Live</Text>
         </TouchableOpacity>
@@ -100,8 +100,13 @@ export default function LiveHubScreen() {
             <Ionicons name="videocam-off-outline" size={50} color="rgba(255,255,255,0.3)" />
             <Text style={styles.emptyText}>Aucun replay disponible</Text>
           </View>
-        ) : replays.map(replay => (
-          <TouchableOpacity key={replay.id} style={styles.replayCard} onPress={() => router.push({ pathname: '/live/replay', params: { id: replay.id } } as any)}>
+        ) : replays.map((replay, idx) => (
+          <TouchableOpacity
+            key={replay.id}
+            testID={idx === 0 ? 'live-replay-card' : undefined}
+            style={styles.replayCard}
+            onPress={() => router.push({ pathname: '/live/replay', params: { id: replay.id } } as any)}
+          >
             <Image source={{ uri: replay.thumbnail_url }} style={styles.replayThumb} />
             <View style={styles.replayInfo}>
               <Text style={styles.replayTitle} numberOfLines={2}>{replay.title}</Text>

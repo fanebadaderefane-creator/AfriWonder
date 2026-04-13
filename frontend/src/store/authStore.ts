@@ -13,6 +13,10 @@ export interface User {
   website?: string | null;
   location?: string | null;
   is_verified?: boolean;
+  /** Profil enrichi (GET /auth/me) — optionnel côté client. */
+  replay_premium?: boolean;
+  monetization_enabled?: boolean;
+  account_suspended?: boolean;
   country?: string;
   followers?: number;
   following?: number;

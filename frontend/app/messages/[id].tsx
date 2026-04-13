@@ -853,6 +853,7 @@ export default function ChatScreen() {
                 <Ionicons name="happy-outline" size={24} color={Colors.textSecondary} />
               </TouchableOpacity>
               <TextInput
+                testID="message-input"
                 style={styles.textInput}
                 placeholder="Message"
                 placeholderTextColor={Colors.textMuted}
@@ -876,7 +877,7 @@ export default function ChatScreen() {
               )}
             </View>
             {newMessage.trim() ? (
-              <TouchableOpacity style={styles.sendBtn} onPress={sendMessage}>
+              <TouchableOpacity testID="send-button" style={styles.sendBtn} onPress={sendMessage}>
                 <Ionicons name="send" size={20} color="#FFF" />
               </TouchableOpacity>
             ) : (

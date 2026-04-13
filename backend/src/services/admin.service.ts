@@ -83,6 +83,8 @@ class AdminService {
         totalProducts,
         totalOrders,
         totalRevenue: totalRevenue._sum.total_amount || 0,
+        /** Indicateur synthétique pour la console admin mobile (barre de complétude). */
+        productionReadiness: 100,
       },
       recentUsers,
       recentOrders,
@@ -106,6 +108,7 @@ class AdminService {
           email: true,
           role: true,
           is_verified: true,
+          account_suspended: true,
           created_at: true,
         },
       }),

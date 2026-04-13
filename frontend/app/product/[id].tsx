@@ -116,7 +116,7 @@ export default function ProductDetailScreen() {
           <TouchableOpacity onPress={handleShare} style={styles.headerBtn}>
             <Ionicons name="share-outline" size={24} color={Colors.text} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/cart')} style={styles.headerBtn}>
+          <TouchableOpacity testID="cart-button" onPress={() => router.push('/cart')} style={styles.headerBtn}>
             <Ionicons name="cart-outline" size={24} color={Colors.text} />
           </TouchableOpacity>
         </View>
@@ -254,7 +254,7 @@ export default function ProductDetailScreen() {
             color={isFavorite ? Colors.like : Colors.text}
           />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.addToCartBtn} onPress={() => router.push('/cart')}>
+        <TouchableOpacity testID="product-add-to-cart" style={styles.addToCartBtn} onPress={() => router.push('/cart')}>
           <Ionicons name="cart" size={20} color={Colors.text} />
           <Text style={styles.addToCartText}>Ajouter au panier</Text>
         </TouchableOpacity>

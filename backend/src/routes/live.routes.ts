@@ -337,6 +337,17 @@ router.get('/:id/token', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
+// GET /api/live/:id/agora-token — alias documenté (même réponse que `/:id/token`)
+router.get('/:id/agora-token', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const role = (req.query.role as 'host' | 'audience') || 'audience';
+    const data = await liveService.getStreamToken(param(req, 'id'), req.user!.id, role);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // POST /api/live/:id/join - Viewer rejoint (auth). Body: sessionId?, country? (pour analytics)
 router.post('/:id/join', authenticate, validateBody(liveSessionBodySchema), async (req: AuthRequest, res, next) => {
   try {

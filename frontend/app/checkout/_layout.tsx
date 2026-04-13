@@ -5,6 +5,8 @@ export default function CheckoutLayout() {
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.background } }}>
       <Stack.Screen name="index" />
+      <Stack.Screen name="orange-money" />
+      <Stack.Screen name="wave" />
     </Stack>
   );
 }

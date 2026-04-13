@@ -13,8 +13,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Configuration
-BACKEND_URL = "https://afriwonder-preview.preview.emergentagent.com"
+# Configuration — définir AFRIWONDER_API_BASE (ex. http://127.0.0.1:8000)
+BACKEND_URL = os.environ.get("AFRIWONDER_API_BASE", "http://127.0.0.1:8000").rstrip("/")
 JWT_SECRET = "afriwonder-secret-key-change-in-production"
 
 def create_test_token(user_id="test-user-123"):

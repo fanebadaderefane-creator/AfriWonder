@@ -175,8 +175,9 @@ export default function MessagesListScreen() {
     );
   };
 
-  const renderConversation = ({ item }: { item: Conversation }) => (
+  const renderConversation = ({ item, index }: { item: Conversation; index: number }) => (
     <TouchableOpacity
+      testID={index === 0 ? 'messages-first-conversation' : undefined}
       style={styles.conversationItem}
       onPress={() => router.push({
         pathname: '/messages/[id]',
@@ -210,11 +211,11 @@ export default function MessagesListScreen() {
     </TouchableOpacity>
   );
 
-  const renderContactItem = ({ item }: { item: any }) => {
+  const renderContactItem = ({ item, index }: { item: any; index: number }) => {
     const name = item.full_name || item.username || 'Utilisateur';
     const avatar = item.avatar || item.profile_image || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=FF6B00&color=fff`;
     return (
-      <TouchableOpacity style={styles.contactItem} onPress={() => startConversation(item)} activeOpacity={0.7}>
+      <TouchableOpacity testID={index === 0 ? 'messages-first-contact' : undefined} style={styles.contactItem} onPress={() => startConversation(item)} activeOpacity={0.7}>
         <Image source={{ uri: avatar }} style={styles.contactAvatar} />
         <View style={styles.contactInfo}>
           <Text style={styles.contactName}>{name}</Text>
@@ -296,7 +297,7 @@ export default function MessagesListScreen() {
           <TouchableOpacity style={styles.headerActionBtn} onPress={() => setSearchVisible(!searchVisible)}>
             <Ionicons name="search" size={22} color={Colors.text} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerActionBtn} onPress={() => router.push('/messages/new-group' as any)}>
+          <TouchableOpacity testID="messages-new-group" style={styles.headerActionBtn} onPress={() => router.push('/messages/new-group' as any)}>
             <Ionicons name="people-circle" size={24} color={Colors.text} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.headerActionBtn}>
@@ -388,6 +389,7 @@ export default function MessagesListScreen() {
 
       {/* FAB */}
       <TouchableOpacity
+        testID="messages-fab-new"
         style={[styles.fab, { bottom: insets.bottom + 20 }]}
         onPress={() => {
           if (activeTab === 0) setShowContacts(true);

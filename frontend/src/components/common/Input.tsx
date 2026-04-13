@@ -4,6 +4,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 
 interface InputProps {
+  /** Pour tests Maestro / Appium (`accessibilityIdentifier` / `testID`). */
+  testID?: string;
   label?: string;
   placeholder?: string;
   value: string;
@@ -19,6 +21,7 @@ interface InputProps {
 }
 
 export const Input: React.FC<InputProps> = ({
+  testID,
   label,
   placeholder,
   value,
@@ -47,6 +50,7 @@ export const Input: React.FC<InputProps> = ({
           <Ionicons name={icon} size={20} color={Colors.textSecondary} style={styles.icon} />
         )}
         <TextInput
+          testID={testID}
           style={[styles.input, multiline && styles.multilineInput]}
           placeholder={placeholder}
           placeholderTextColor={Colors.textMuted}

@@ -278,6 +278,95 @@ class SubscriptionService {
   }
 
   /**
+   * Catalogue public des paliers Fan Club actifs (mobile / marketplace).
+   */
+  async listCatalogTiers() {
+    const tiers = await prisma.subscriptionTier.findMany({
+      where: { is_active: true },
+      orderBy: { created_at: 'desc' },
+      take: 80,
+      include: {
+        _count: { select: { subscriptions: true } },
+      },
+    });
+    return tiers.map((t) => ({
+      id: t.id,
+      creator_id: t.creator_id,
+      name: t.name,
+      price: t.price,
+      benefits: t.benefits,
+      is_active: t.is_active,
+      subscriber_count: t._count.subscriptions,
+    }));
+  }
+
+  /**
+   * AfriWonder+ : débit portefeuille utilisateur et activation replay_premium (MVP).
+   */
+  async subscribePremiumWallet(userId: string, planId: string) {
+    const price = planId === 'yearly' ? 25000 : planId === 'monthly' ? 2500 : null;
+    if (!price) {
+      const err: any = new Error('plan_id invalide (monthly | yearly)');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const u = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { replay_premium: true },
+    });
+    if (u?.replay_premium) {
+      const err: any = new Error('Deja abonne AfriWonder+');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const wallet = await prisma.wallet.findFirst({
+      where: { user_id: userId, wallet_type: 'user' },
+    });
+    if (!wallet) {
+      const err: any = new Error('Portefeuille introuvable');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const avail = Number(wallet.available_balance ?? wallet.balance ?? 0);
+    if (avail < price) {
+      const err: any = new Error('Solde insuffisant');
+      err.statusCode = 402;
+      throw err;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.wallet.update({
+        where: { id: wallet.id },
+        data: {
+          balance: { decrement: price },
+          available_balance: { decrement: price },
+        },
+      });
+      await tx.transaction.create({
+        data: {
+          user_id: userId,
+          type: 'afriwonder_plus',
+          amount: price,
+          currency: 'XOF',
+          status: 'completed',
+          payment_method: 'wallet',
+          description: `AfriWonder+ (${planId})`,
+        },
+      });
+      await tx.user.update({
+        where: { id: userId },
+        data: { replay_premium: true },
+      });
+    });
+
+    logger.info('AfriWonder+ activé (wallet)', { userId, planId, price });
+    return { replay_premium: true, plan_id: planId, amount: price };
+  }
+
+  /**
    * Obtenir les abonnés d'un créateur
    */
   async getCreatorSubscribers(creatorId: string) {

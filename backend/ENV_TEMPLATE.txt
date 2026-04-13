@@ -82,6 +82,15 @@ ORANGE_MONEY_CLIENT_SECRET=
 ORANGE_MONEY_MERCHANT_ID=
 ORANGE_MONEY_API_KEY=
 ORANGE_MONEY_ENV=test
+# Production — signature webhook (HMAC). En test, peut rester vide selon payment.service.
+ORANGE_MONEY_WEBHOOK_SECRET=
+# ML | SN | CI | BF (défaut ML) — URL API si ORANGE_MONEY_API_URL non défini
+ORANGE_MONEY_REGION=ML
+# ORANGE_MONEY_API_URL=https://api.orange.ml
+
+# Wave (checkout sessions — Bearer WAVE_API_KEY)
+WAVE_API_KEY=
+# WAVE_API_URL=https://api.wave.com/v1
 
 # Stripe
 # Obtenir depuis : https://dashboard.stripe.com/apikeys

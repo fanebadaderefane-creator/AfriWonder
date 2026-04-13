@@ -1,211 +1,379 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Animated } from 'react-native';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  ActivityIndicator,
+  Animated,
+  Alert,
+  Linking,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing } from '../../src/theme/colors';
+import { Colors, Spacing, BorderRadius, FontSizes } from '../../src/theme/colors';
+import apiClient from '../../src/api/client';
 
-type Step = 'phone' | 'confirm' | 'processing' | 'success';
+type Step = 'form' | 'processing' | 'success' | 'failed';
 
-export default function WaveScreen() {
+const DEFAULT_RETURN_URL = 'https://afriwonder.com/payment/wave/complete';
+
+export default function WaveCheckoutScreen() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ amount?: string }>();
-  const [step, setStep] = useState<Step>('phone');
-  const [phone, setPhone] = useState('');
-  const amount = params.amount || '32000';
+  const params = useLocalSearchParams<{ amount?: string; orderId?: string; returnUrl?: string }>();
+  const [step, setStep] = useState<Step>('form');
+  const [orderIdInput, setOrderIdInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [pollKey, setPollKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const amountStr = typeof params.amount === 'string' ? params.amount : Array.isArray(params.amount) ? params.amount[0] : '0';
+  const amountNum = Math.max(0, parseFloat(String(amountStr).replace(',', '.')) || 0);
+  const paramOrderId =
+    typeof params.orderId === 'string' ? params.orderId : Array.isArray(params.orderId) ? params.orderId[0] : '';
   const successScale = useRef(new Animated.Value(0)).current;
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const handlePay = () => {
-    setStep('processing');
-    setTimeout(() => {
-      setStep('success');
-      Animated.spring(successScale, { toValue: 1, friction: 4, useNativeDriver: true }).start();
-    }, 2000);
+  const effectiveOrderId = (paramOrderId || orderIdInput).trim();
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  const startPolling = useCallback(
+    (key: string) => {
+      let attempts = 0;
+      stopPolling();
+      pollRef.current = setInterval(async () => {
+        attempts += 1;
+        if (attempts > 60) {
+          stopPolling();
+          setStep('failed');
+          setError(
+            "Délai dépassé : le paiement n'a pas été confirmé. Vérifiez Wave ou l'historique des transactions.",
+          );
+          return;
+        }
+        try {
+          const res = await apiClient.get('/payments/transactions', { params: { page: 1, limit: 50 } });
+          const data = res.data?.data ?? res.data;
+          const list = (data?.transactions ?? data?.items ?? []) as Array<{
+            reference_id?: string | null;
+            status?: string;
+            payment_method?: string | null;
+          }>;
+          const tx = list.find(
+            (t) =>
+              t.reference_id === key &&
+              (!t.payment_method || String(t.payment_method).toLowerCase().includes('wave')),
+          );
+          if (!tx) return;
+          const st = String(tx.status || '').toLowerCase();
+          if (st === 'completed' || st === 'success' || st === 'paid') {
+            stopPolling();
+            setStep('success');
+            Animated.spring(successScale, { toValue: 1, friction: 4, useNativeDriver: true }).start();
+          } else if (st === 'failed' || st === 'cancelled' || st === 'canceled') {
+            stopPolling();
+            setStep('failed');
+            setError('Le paiement a été annulé ou a échoué.');
+          }
+        } catch {
+          /* ignore transient errors while polling */
+        }
+      }, 3000);
+    },
+    [stopPolling],
+  );
+
+  const initiatePayment = async () => {
+    if (!effectiveOrderId || effectiveOrderId.length < 2) {
+      Alert.alert(
+        'Référence commande',
+        "Indiquez l'identifiant de commande (reçu après une commande ou depuis le panier). Sans commande valide côté serveur, le paiement ne peut pas être enregistré.",
+      );
+      return;
+    }
+    if (amountNum < 1) {
+      Alert.alert('Erreur', 'Montant invalide.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const returnUrl =
+        (typeof params.returnUrl === 'string' && params.returnUrl) ||
+        (Array.isArray(params.returnUrl) && params.returnUrl[0]) ||
+        DEFAULT_RETURN_URL;
+      const res = await apiClient.post('/payments/wave', {
+        orderId: effectiveOrderId,
+        amount: amountNum,
+        currency: 'XOF',
+        returnUrl,
+      });
+      const data = (res.data?.data ?? res.data) as {
+        paymentUrl?: string;
+        payment_url?: string;
+        orderId?: string;
+        reference?: string;
+      };
+      const payUrl = data?.paymentUrl || data?.payment_url;
+      const key = data?.reference || data?.orderId || effectiveOrderId;
+      setPollKey(key);
+
+      if (payUrl && typeof payUrl === 'string') {
+        const can = await Linking.canOpenURL(payUrl);
+        if (can) await Linking.openURL(payUrl);
+        else Alert.alert('Paiement', "Impossible d'ouvrir le lien Wave sur cet appareil.");
+      }
+
+      setStep('processing');
+      startPolling(key);
+    } catch (e: unknown) {
+      const err = e as {
+        response?: { data?: { message?: string; detail?: string; error?: { message?: string } } };
+        message?: string;
+      };
+      const msg =
+        err.response?.data?.message ||
+        err.response?.data?.detail ||
+        err.response?.data?.error?.message ||
+        err.message ||
+        "Erreur lors de l'initiation du paiement Wave.";
+      setError(String(msg));
+      Alert.alert('Erreur', String(msg));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onBack = () => {
+    stopPolling();
+    router.back();
+  };
+
+  const renderStep = () => {
+    switch (step) {
+      case 'form':
+        return (
+          <View style={styles.content}>
+            <View style={styles.amountCard}>
+              <Text style={styles.amountLabel}>Montant à payer</Text>
+              <Text style={styles.amountValue}>{amountNum.toLocaleString('fr-FR')} FCFA</Text>
+            </View>
+
+            {!paramOrderId ? (
+              <>
+                <Text style={styles.label}>Identifiant de commande</Text>
+                <TextInput
+                  style={styles.orderInput}
+                  placeholder="Ex. id reçu après checkout"
+                  placeholderTextColor={Colors.textMuted}
+                  value={orderIdInput}
+                  onChangeText={setOrderIdInput}
+                  autoCapitalize="none"
+                />
+                <Text style={styles.hintSmall}>Obligatoire : le backend lie le paiement à une commande existante.</Text>
+              </>
+            ) : null}
+
+            <Text style={styles.hint}>
+              Une session Wave s'ouvre dans le navigateur ou l'application Wave. Validez le montant, puis revenez ici :
+              nous vérifions le statut automatiquement (selon la configuration serveur, la ligne peut mettre quelques
+              instants à apparaître).
+            </Text>
+            <TouchableOpacity
+              style={[styles.primaryBtn, loading && styles.primaryBtnDisabled]}
+              onPress={() => void initiatePayment()}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.primaryBtnText}>Payer {amountNum.toLocaleString('fr-FR')} FCFA avec Wave</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        );
+      case 'processing':
+        return (
+          <View style={styles.centerContent}>
+            <ActivityIndicator size="large" color="#1DC3E2" />
+            <Text style={styles.processingTitle}>Paiement en cours…</Text>
+            <Text style={styles.processingDesc}>
+              Ouvrez Wave et confirmez le paiement. Nous interrogeons le statut toutes les quelques secondes.
+            </Text>
+            {pollKey ? (
+              <Text style={styles.refHint} numberOfLines={2}>
+                Réf. : {pollKey}
+              </Text>
+            ) : null}
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => {
+                stopPolling();
+                setStep('form');
+              }}
+            >
+              <Text style={styles.cancelBtnText}>Fermer cette étape</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      case 'success':
+        return (
+          <View style={styles.centerContent}>
+            <Animated.View style={{ transform: [{ scale: successScale }] }}>
+              <View style={styles.successCircle}>
+                <Ionicons name="checkmark" size={50} color="#FFF" />
+              </View>
+            </Animated.View>
+            <Text style={styles.successTitle}>Paiement réussi !</Text>
+            <Text style={styles.successAmount}>{amountNum.toLocaleString('fr-FR')} FCFA</Text>
+            <Text style={styles.successDesc}>Transaction enregistrée (Wave).</Text>
+            <TouchableOpacity style={styles.primaryBtn} onPress={onBack}>
+              <Text style={styles.primaryBtnText}>Terminer</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      case 'failed':
+        return (
+          <View style={styles.centerContent}>
+            <View style={styles.failCircle}>
+              <Ionicons name="close" size={50} color="#FFF" />
+            </View>
+            <Text style={styles.failTitle}>Paiement non confirmé</Text>
+            <Text style={styles.failDesc}>{error || 'Une erreur est survenue.'}</Text>
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={() => {
+                setError(null);
+                setStep('form');
+              }}
+            >
+              <Text style={styles.primaryBtnText}>Réessayer</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      default:
+        return null;
+    }
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => step === 'phone' ? router.back() : setStep('phone')} style={styles.headerBtn}>
+        <TouchableOpacity onPress={onBack} style={styles.headerBtn} accessibilityLabel="Retour">
           <Ionicons name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <View style={styles.waveLogo}>
-            <Ionicons name="water" size={20} color="#FFF" />
+            <Text style={styles.waveLogoText}>W</Text>
           </View>
           <Text style={styles.headerTitle}>Wave</Text>
         </View>
         <View style={{ width: 40 }} />
       </View>
-
-      {step === 'phone' && (
-        <View style={styles.content}>
-          <View style={styles.waveHero}>
-            <LinearGradient colors={['#1DC3E2', '#0891B2']} style={styles.waveHeroGradient}>
-              <Text style={styles.heroAmount}>{parseInt(amount).toLocaleString()}</Text>
-              <Text style={styles.heroCurrency}>FCFA</Text>
-            </LinearGradient>
-          </View>
-
-          <Text style={styles.stepTitle}>Payer avec Wave</Text>
-          <Text style={styles.stepSubtitle}>Entrez votre numero Wave</Text>
-
-          <View style={styles.phoneRow}>
-            <View style={styles.dialCode}><Text style={styles.dialCodeText}>+223</Text></View>
-            <TextInput
-              style={styles.phoneInput}
-              placeholder="XX XX XX XX"
-              placeholderTextColor="#666"
-              keyboardType="phone-pad"
-              value={phone}
-              onChangeText={setPhone}
-              maxLength={10}
-            />
-          </View>
-
-          <View style={styles.securityNote}>
-            <Ionicons name="shield-checkmark" size={18} color="#1DC3E2" />
-            <Text style={styles.securityText}>Paiement securise par Wave</Text>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.primaryBtn, !phone && styles.primaryBtnDisabled]}
-            onPress={() => phone.length >= 8 ? setStep('confirm') : null}
-            disabled={phone.length < 8}
-          >
-            <LinearGradient colors={['#1DC3E2', '#0891B2']} style={styles.primaryBtnGradient}>
-              <Text style={styles.primaryBtnText}>Continuer</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {step === 'confirm' && (
-        <View style={styles.content}>
-          <View style={styles.confirmCard}>
-            <View style={styles.confirmHeader}>
-              <Ionicons name="water" size={30} color="#1DC3E2" />
-              <Text style={styles.confirmTitle}>Confirmer</Text>
-            </View>
-
-            <View style={styles.confirmRow}>
-              <Text style={styles.confirmLabel}>De</Text>
-              <Text style={styles.confirmValue}>+223 {phone}</Text>
-            </View>
-            <View style={styles.confirmDivider} />
-            <View style={styles.confirmRow}>
-              <Text style={styles.confirmLabel}>A</Text>
-              <Text style={styles.confirmValue}>AfriWonder Market</Text>
-            </View>
-            <View style={styles.confirmDivider} />
-            <View style={styles.confirmRow}>
-              <Text style={styles.confirmLabel}>Montant</Text>
-              <Text style={styles.confirmAmountVal}>{parseInt(amount).toLocaleString()} FCFA</Text>
-            </View>
-            <View style={styles.confirmDivider} />
-            <View style={styles.confirmRow}>
-              <Text style={styles.confirmLabel}>Frais Wave</Text>
-              <Text style={[styles.confirmValue, { color: '#4CAF50' }]}>Gratuit</Text>
-            </View>
-          </View>
-
-          <View style={styles.totalBanner}>
-            <Text style={styles.totalLabel}>Total a debiter</Text>
-            <Text style={styles.totalAmount}>{parseInt(amount).toLocaleString()} FCFA</Text>
-          </View>
-
-          <TouchableOpacity style={styles.primaryBtn} onPress={handlePay}>
-            <LinearGradient colors={['#1DC3E2', '#0891B2']} style={styles.primaryBtnGradient}>
-              <Ionicons name="lock-closed" size={18} color="#FFF" />
-              <Text style={styles.primaryBtnText}>Confirmer le paiement</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {step === 'processing' && (
-        <View style={styles.centerContent}>
-          <ActivityIndicator size="large" color="#1DC3E2" />
-          <Text style={styles.processingText}>Traitement en cours...</Text>
-          <Text style={styles.processingSubtext}>Connexion a Wave...</Text>
-        </View>
-      )}
-
-      {step === 'success' && (
-        <View style={styles.centerContent}>
-          <Animated.View style={[styles.successCircle, { transform: [{ scale: successScale }] }]}>
-            <LinearGradient colors={['#1DC3E2', '#0891B2']} style={styles.successGradient}>
-              <Ionicons name="checkmark" size={50} color="#FFF" />
-            </LinearGradient>
-          </Animated.View>
-          <Text style={styles.successTitle}>Paiement reussi !</Text>
-          <Text style={styles.successAmount}>{parseInt(amount).toLocaleString()} FCFA</Text>
-          <Text style={styles.successSubtext}>Ref: WV-{Date.now().toString(36).toUpperCase()}</Text>
-
-          <TouchableOpacity style={styles.primaryBtn} onPress={() => router.replace('/(tabs)')}>
-            <LinearGradient colors={['#1DC3E2', '#0891B2']} style={styles.primaryBtnGradient}>
-              <Text style={styles.primaryBtnText}>Retour a l'accueil</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      )}
+      {renderStep()}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 10 },
+  container: { flex: 1, backgroundColor: '#0D0D0D' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+  },
   headerBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  waveLogo: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#1DC3E2', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { color: '#FFF', fontSize: 18, fontWeight: '700' },
-
-  content: { flex: 1, paddingHorizontal: 24, paddingTop: 20 },
-  centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
-
-  waveHero: { alignSelf: 'center', marginBottom: 24, borderRadius: 20, overflow: 'hidden' },
-  waveHeroGradient: { paddingHorizontal: 40, paddingVertical: 24, alignItems: 'center' },
-  heroAmount: { color: '#FFF', fontSize: 36, fontWeight: '800' },
-  heroCurrency: { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: '600' },
-
-  stepTitle: { color: '#FFF', fontSize: 22, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
-  stepSubtitle: { color: '#888', fontSize: 14, textAlign: 'center', marginBottom: 24 },
-
-  phoneRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  dialCode: { backgroundColor: '#1A1A1A', borderRadius: 12, paddingHorizontal: 16, justifyContent: 'center', borderWidth: 1, borderColor: '#333' },
-  dialCodeText: { color: '#1DC3E2', fontSize: 16, fontWeight: '700' },
-  phoneInput: { flex: 1, backgroundColor: '#1A1A1A', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 16, color: '#FFF', fontSize: 18, fontWeight: '600', borderWidth: 1, borderColor: '#333', letterSpacing: 2 },
-
-  securityNote: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 24 },
-  securityText: { color: '#888', fontSize: 13 },
-
-  primaryBtn: { borderRadius: 14, overflow: 'hidden', marginTop: 10 },
+  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  waveLogo: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#1DC3E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  waveLogoText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  headerTitle: { color: '#FFF', fontSize: FontSizes.lg, fontWeight: 'bold' },
+  content: { flex: 1, paddingHorizontal: Spacing.xl, paddingTop: Spacing.lg },
+  amountCard: {
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: 'rgba(29,195,226,0.1)',
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(29,195,226,0.2)',
+    marginBottom: 24,
+  },
+  amountLabel: { color: Colors.textSecondary, fontSize: FontSizes.sm },
+  amountValue: { color: '#1DC3E2', fontSize: 32, fontWeight: 'bold', marginTop: 4 },
+  label: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600', marginBottom: 8 },
+  orderInput: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    color: Colors.text,
+    fontSize: FontSizes.md,
+    marginBottom: 6,
+  },
+  hintSmall: { color: Colors.textMuted, fontSize: FontSizes.xs, marginBottom: 16, lineHeight: 16 },
+  hint: { color: Colors.textMuted, fontSize: FontSizes.sm, marginBottom: 24, lineHeight: 20 },
+  primaryBtn: { backgroundColor: '#1DC3E2', borderRadius: BorderRadius.md, padding: 16, alignItems: 'center' },
   primaryBtnDisabled: { opacity: 0.4 },
-  primaryBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 8 },
-  primaryBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-
-  confirmCard: { backgroundColor: '#111', borderRadius: 20, padding: 24, marginBottom: 16, borderWidth: 1, borderColor: '#222' },
-  confirmHeader: { alignItems: 'center', marginBottom: 20, gap: 8 },
-  confirmTitle: { color: '#FFF', fontSize: 20, fontWeight: '700' },
-  confirmRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12 },
-  confirmLabel: { color: '#888', fontSize: 14 },
-  confirmValue: { color: '#FFF', fontSize: 14, fontWeight: '600' },
-  confirmAmountVal: { color: '#1DC3E2', fontSize: 16, fontWeight: '800' },
-  confirmDivider: { height: 1, backgroundColor: '#222' },
-
-  totalBanner: { backgroundColor: '#0891B2' + '18', borderRadius: 14, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderWidth: 1, borderColor: '#1DC3E2' + '30' },
-  totalLabel: { color: '#888', fontSize: 14 },
-  totalAmount: { color: '#1DC3E2', fontSize: 20, fontWeight: '800' },
-
-  processingText: { color: '#FFF', fontSize: 18, fontWeight: '700', marginTop: 20 },
-  processingSubtext: { color: '#888', fontSize: 14, marginTop: 8 },
-
-  successCircle: { marginBottom: 24 },
-  successGradient: { width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center' },
-  successTitle: { color: '#FFF', fontSize: 24, fontWeight: '800', marginBottom: 8 },
-  successAmount: { color: '#1DC3E2', fontSize: 32, fontWeight: '800', marginBottom: 8 },
-  successSubtext: { color: '#888', fontSize: 13, marginBottom: 40 },
+  primaryBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: FontSizes.lg },
+  centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
+  processingTitle: { color: Colors.text, fontSize: FontSizes.xl, fontWeight: 'bold', marginTop: 20 },
+  processingDesc: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.md,
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 22,
+  },
+  refHint: { color: Colors.textMuted, fontSize: FontSizes.xs, marginTop: 12, textAlign: 'center' },
+  cancelBtn: { marginTop: 20, paddingVertical: 10 },
+  cancelBtnText: { color: Colors.textSecondary, fontSize: FontSizes.md },
+  successCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successTitle: { color: Colors.text, fontSize: FontSizes.xxl, fontWeight: 'bold', marginTop: 20 },
+  successAmount: { color: '#1DC3E2', fontSize: 28, fontWeight: 'bold', marginTop: 4 },
+  successDesc: { color: Colors.textSecondary, fontSize: FontSizes.md, marginTop: 8, marginBottom: 24 },
+  failCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  failTitle: { color: '#EF4444', fontSize: FontSizes.xxl, fontWeight: 'bold', marginTop: 20 },
+  failDesc: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.md,
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 24,
+    lineHeight: 22,
+  },
 });

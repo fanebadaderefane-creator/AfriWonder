@@ -8,6 +8,42 @@ import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 
 const router = Router();
 
+// GET /api/subscriptions/tiers — catalogue Fan Club (paliers actifs)
+router.get('/tiers', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const tiers = await subscriptionService.listCatalogTiers();
+    res.json({ success: true, data: { tiers, items: tiers } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/subscriptions/premium — AfriWonder+ (wallet, MVP)
+router.post('/premium', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const plan_id = String((req.body as { plan_id?: string }).plan_id || '');
+    const payment_method = String((req.body as { payment_method?: string }).payment_method || 'wallet');
+    if (payment_method !== 'wallet') {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Seul le paiement wallet est pris en charge pour le moment.' },
+      });
+    }
+    const data = await subscriptionService.subscribePremiumWallet(userId, plan_id);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    const code = error?.statusCode;
+    if (code === 402) {
+      return res.status(402).json({ success: false, error: { message: error?.message || 'Solde insuffisant' } });
+    }
+    if (code === 400) {
+      return res.status(400).json({ success: false, error: { message: error?.message || 'Requête invalide' } });
+    }
+    next(error);
+  }
+});
+
 // POST /api/subscriptions/tiers - Créer un tier (créateur)
 router.post('/tiers', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {

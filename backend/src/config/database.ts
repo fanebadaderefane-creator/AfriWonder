@@ -29,12 +29,27 @@ if (process.env.NODE_ENV === 'test') {
 } else {
   // Toujours charger backend/.env en priorité (évite "credentials (not available)" si cwd = racine projet)
   if (fs.existsSync(envPath)) {
-    dotenv.config({ path: envPath });
+    dotenv.config({ path: envPath, override: false });
+    // Windows / CI : une entrée système `DATABASE_URL=` vide empêche dotenv sans override — second passage si critique vide
+    if (
+      !String(process.env.DATABASE_URL || '').trim() ||
+      !String(process.env.JWT_SECRET || '').trim() ||
+      !String(process.env.JWT_REFRESH_SECRET || '').trim()
+    ) {
+      dotenv.config({ path: envPath, override: true });
+    }
     if (process.env.NODE_ENV === 'development') {
       logger.info('Env chargé depuis backend/.env (DATABASE_URL présente: ' + (process.env.DATABASE_URL ? 'oui' : 'non') + ')');
     }
   } else if (fs.existsSync(envExamplePath)) {
-    dotenv.config({ path: envExamplePath });
+    dotenv.config({ path: envExamplePath, override: false });
+    if (
+      !String(process.env.DATABASE_URL || '').trim() ||
+      !String(process.env.JWT_SECRET || '').trim() ||
+      !String(process.env.JWT_REFRESH_SECRET || '').trim()
+    ) {
+      dotenv.config({ path: envExamplePath, override: true });
+    }
     if (process.env.NODE_ENV === 'development') {
       logger.warn('backend/.env absent, utilisation de .env.example — créez backend/.env avec DATABASE_URL, JWT_SECRET, etc.');
     }

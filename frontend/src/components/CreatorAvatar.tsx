@@ -27,6 +27,8 @@ type Props = {
   lastName?: string | null;
   size?: number;
   onPress?: () => void;
+  /** Tests Maestro / Appium */
+  testID?: string;
   style?: StyleProp<ViewStyle>;
   /** Bordure blanche type feed TikTok */
   bordered?: boolean;
@@ -39,6 +41,7 @@ export function CreatorAvatar({
   lastName,
   size = 48,
   onPress,
+  testID,
   style,
   bordered = true,
 }: Props) {
@@ -61,6 +64,7 @@ export function CreatorAvatar({
   if (onPress) {
     return (
       <TouchableOpacity
+        testID={testID}
         onPress={onPress}
         activeOpacity={0.82}
         style={style}

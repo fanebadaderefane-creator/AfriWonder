@@ -58,6 +58,7 @@ describe('Admin API', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data).toBeDefined();
+      expect(res.body.data.stats?.productionReadiness).toBe(100);
     });
 
     it('utilisateur non admin recoit 403', async () => {

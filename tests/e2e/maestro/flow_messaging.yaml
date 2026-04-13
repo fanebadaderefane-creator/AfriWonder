@@ -1,0 +1,61 @@
+# Messagerie : pas d’onglet « messages-tab » — entrée Découvrir → testID messages-entry.
+# Liste : « AfriChat », onglet « Discussions ». Nouveau groupe : testID messages-new-group (icône).
+# Ouverture discussion : FAB messages-fab-new → messages-first-contact.
+# Prérequis : session connectée ; API /users avec au moins un utilisateur (liste contacts).
+appId: com.afriwonder.app
+name: AfriWonder - Messagerie
+tags:
+  - critical
+  - messaging
+---
+- launchApp
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Pour toi"
+    timeout: 45000
+
+# ─── 1. Accéder aux messages ───────────────────────────────────
+- tapOn: "Decouvrir"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Decouvrir"
+    timeout: 15000
+- tapOn:
+    id: "messages-entry"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "AfriChat"
+    timeout: 20000
+
+# ─── 2. Liste (onglet Discussions) ──────────────────────────────
+- assertVisible: "Discussions"
+
+# ─── 3. Nouvelle discussion → premier contact ────────────────────
+- tapOn:
+    id: "messages-fab-new"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Nouvelle discussion"
+    timeout: 20000
+- tapOn:
+    id: "messages-first-contact"
+- waitForAnimationToEnd
+
+# ─── 4. Message texte + envoi ──────────────────────────────────
+- tapOn:
+    id: "message-input"
+- inputText: "Test E2E message"
+- hideKeyboard
+- waitForAnimationToEnd
+- tapOn:
+    id: "send-button"
+- waitForAnimationToEnd
+
+# ─── 5. Nouveau groupe ───────────────────────────────────────────
+- back
+- waitForAnimationToEnd
+- tapOn:
+    id: "messages-new-group"
+- waitForAnimationToEnd
+- assertVisible: "groupe"
+- back

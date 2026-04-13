@@ -4,13 +4,14 @@ AfriChat Enhanced API Testing
 Tests the NEW AfriChat Enhanced API endpoints for AfriWonder
 """
 
+import os
 import requests
 import json
 import uuid
 from datetime import datetime
 
-# Configuration - Using the backend URL from environment
-BASE_URL = "https://afriwonder-preview.preview.emergentagent.com"
+# Configuration — définir AFRIWONDER_API_BASE (ex. http://127.0.0.1:8000 ou URL de déploiement)
+BASE_URL = os.environ.get("AFRIWONDER_API_BASE", "http://127.0.0.1:8000").rstrip("/")
 
 def authenticate():
     """Authenticate and get JWT token"""

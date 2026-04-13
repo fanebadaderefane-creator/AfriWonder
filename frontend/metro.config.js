@@ -22,4 +22,12 @@ config.cacheStores = [
 // Reduce the number of workers to decrease resource usage
 config.maxWorkers = 2;
 
+// Alias 'crypto' to 'react-native-quick-crypto' for E2EE AES-256-GCM
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === 'crypto') {
+    return context.resolveRequest(context, 'react-native-quick-crypto', platform);
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
+
 module.exports = config;

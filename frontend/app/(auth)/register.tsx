@@ -128,6 +128,7 @@ export default function RegisterScreen() {
         {/* Method Toggle */}
         <View style={styles.methodToggle}>
           <TouchableOpacity
+            testID="register-method-phone"
             style={[styles.methodTab, registerMethod === 'phone' && styles.methodTabActive]}
             onPress={() => { setRegisterMethod('phone'); setErrors({}); }}
           >
@@ -135,6 +136,7 @@ export default function RegisterScreen() {
             <Text style={[styles.methodTabText, registerMethod === 'phone' && styles.methodTabTextActive]}>Telephone</Text>
           </TouchableOpacity>
           <TouchableOpacity
+            testID="register-method-email"
             style={[styles.methodTab, registerMethod === 'email' && styles.methodTabActive]}
             onPress={() => { setRegisterMethod('email'); setErrors({}); }}
           >
@@ -149,6 +151,7 @@ export default function RegisterScreen() {
           <View style={styles.row}>
             <View style={styles.halfInput}>
               <Input
+                testID="register-firstname-input"
                 label="Prenom"
                 placeholder="Votre prenom"
                 value={formData.firstName}
@@ -159,6 +162,7 @@ export default function RegisterScreen() {
             </View>
             <View style={styles.halfInput}>
               <Input
+                testID="register-lastname-input"
                 label="Nom"
                 placeholder="Votre nom"
                 value={formData.lastName}
@@ -256,6 +260,7 @@ export default function RegisterScreen() {
             </>
           ) : (
             <Input
+              testID="register-email-input"
               label="Email"
               placeholder="votre@email.com"
               value={formData.email}
@@ -268,6 +273,7 @@ export default function RegisterScreen() {
           )}
 
           <Input
+            testID="register-password-input"
             label="Mot de passe"
             placeholder="Minimum 6 caracteres"
             value={formData.password}
@@ -278,6 +284,7 @@ export default function RegisterScreen() {
           />
 
           <Input
+            testID="register-confirm-password-input"
             label="Confirmer le mot de passe"
             placeholder="Confirmez votre mot de passe"
             value={formData.confirmPassword}
@@ -287,7 +294,8 @@ export default function RegisterScreen() {
             error={errors.confirmPassword}
           />
 
-          <TouchableOpacity 
+          <TouchableOpacity
+            testID="register-accept-terms"
             style={styles.termsContainer}
             onPress={() => setAcceptTerms(!acceptTerms)}
           >
@@ -302,6 +310,7 @@ export default function RegisterScreen() {
           {errors.terms && <Text style={styles.errorText}>{errors.terms}</Text>}
 
           <Button
+            testID="register-submit-button"
             title="S'inscrire"
             onPress={handleRegister}
             loading={loading}

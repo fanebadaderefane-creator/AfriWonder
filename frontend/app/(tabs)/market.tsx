@@ -181,7 +181,7 @@ export default function MarketScreen() {
           <TouchableOpacity style={styles.headerActionBtn} onPress={() => router.push('/wishlist' as any)}>
             <Ionicons name="heart-outline" size={24} color="#FFF" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerActionBtn} onPress={() => router.push('/cart' as any)}>
+          <TouchableOpacity testID="cart-button" style={styles.headerActionBtn} onPress={() => router.push('/cart' as any)}>
             <Ionicons name="cart-outline" size={24} color="#FFF" />
             <View style={styles.cartBadge}>
               <Text style={styles.cartBadgeText}>3</Text>
@@ -195,6 +195,7 @@ export default function MarketScreen() {
         <View style={styles.searchBar}>
           <Ionicons name="search" size={18} color="#888" />
           <TextInput
+            testID="marketplace-search-input"
             style={styles.searchInput}
             placeholder="Rechercher produits, marques..."
             placeholderTextColor="#666"
@@ -319,12 +320,13 @@ export default function MarketScreen() {
             <Text style={styles.productCount}>{filteredProducts.length} produits</Text>
           </View>
           <View style={styles.productsGrid}>
-            {filteredProducts.map(product => {
+            {filteredProducts.map((product, cardIndex) => {
               const isWished = wishlist[product.id] ?? product.wishlisted;
               const discount = product.oldPrice ? Math.round((1 - product.price / product.oldPrice) * 100) : 0;
               return (
                 <TouchableOpacity
                   key={product.id}
+                  testID={cardIndex === 0 ? 'market-first-product' : undefined}
                   style={[styles.productCard, { width: productWidth }]}
                   activeOpacity={0.85}
                   onPress={() => router.push(`/product/${product.id}` as any)}

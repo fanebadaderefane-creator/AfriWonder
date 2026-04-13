@@ -60,7 +60,7 @@ export default function ShareSheet({ visible, onClose, title, message, url }: Sh
               </TouchableOpacity>
             ))}
           </View>
-          <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+          <TouchableOpacity testID="share-sheet-cancel" style={styles.cancelBtn} onPress={onClose}>
             <Text style={styles.cancelText}>Annuler</Text>
           </TouchableOpacity>
         </View>

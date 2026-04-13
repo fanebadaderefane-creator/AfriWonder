@@ -1,89 +1,491 @@
-import React from 'react';
-import { View, Text, StyleSheet, Pressable, Linking } from 'react-native';
-import { router } from 'expo-router';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Pressable,
+  RefreshControl,
+  Dimensions,
+  ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
+import apiClient from '../src/api/client';
 import { useAuthStore } from '../src/store/authStore';
-import { DEFAULT_BACKEND_ORIGIN, getBackendOrigin } from '../src/config/backendBase';
+
+const { width } = Dimensions.get('window');
+
+const fmt = (n: number) =>
+  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
+const fmtMoney = (n: number) => `${Number(n || 0).toLocaleString('fr-FR')} FCFA`;
 
 const SUPER_ADMIN_EMAIL = (
   process.env.EXPO_PUBLIC_SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com'
 ).toLowerCase();
 
-function isSuperAdmin(user: { email?: string } | null) {
-  return user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
+interface KPI {
+  label: string;
+  value: string;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  color: string;
 }
 
-/**
- * Accès réservé — même email que la PWA (`VITE_SUPER_ADMIN_EMAIL`).
- * La console admin riche reste sur le web ; l’app mobile ouvre l’origine backend ou une URL PWA si configurée.
- */
+type AdminTab = 'overview' | 'users' | 'content' | 'finance' | 'lives';
+
+function unwrapList<T>(raw: unknown, keys: string[]): T[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const o = raw as Record<string, unknown>;
+  for (const k of keys) {
+    const v = o[k];
+    if (Array.isArray(v)) return v as T[];
+  }
+  return [];
+}
+
 export default function AdminDashboardScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
-  const allowed = isSuperAdmin(user);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [stats, setStats] = useState<Record<string, number>>({});
+  const [users, setUsers] = useState<any[]>([]);
+  const [reports, setReports] = useState<any[]>([]);
+  const [lives, setLives] = useState<any[]>([]);
 
-  const openAdminWeb = () => {
-    const pwa = (process.env.EXPO_PUBLIC_WEB_APP_URL || '').replace(/\/$/, '');
-    let origin = pwa || getBackendOrigin();
-    if (!origin && typeof window !== 'undefined' && window.location?.origin) {
-      origin = window.location.origin;
+  const isAdmin =
+    user?.role === 'admin' ||
+    user?.role === 'super_admin' ||
+    user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
+
+  const loadData = useCallback(async () => {
+    try {
+      const [statsRes, usersRes, reportsRes, livesRes] = await Promise.allSettled([
+        apiClient.get('/admin/dashboard'),
+        apiClient.get('/admin/users', { params: { page: 1, limit: 20 } }),
+        apiClient.get('/moderation/reports', { params: { status: 'pending', limit: 20 } }),
+        apiClient.get('/live', { params: { status: 'live', limit: 20 } }),
+      ]);
+
+      if (statsRes.status === 'fulfilled') {
+        const payload = statsRes.value.data?.data ?? statsRes.value.data;
+        const s = payload?.stats ?? {};
+        setStats({
+          total_users: Number(s.totalUsers) || 0,
+          total_videos: Number(s.totalVideos) || 0,
+          total_orders: Number(s.totalOrders) || 0,
+          total_revenue: Number(s.totalRevenue) || 0,
+          total_products: Number(s.totalProducts) || 0,
+          platform_commission: Number(s.platformCommission) || 0,
+          pending_withdrawals: Number(s.pendingWithdrawals) || 0,
+          total_tips: Number(s.totalTips) || 0,
+          marketplace_revenue: Number(s.marketplaceRevenue) || 0,
+          ad_revenue: Number(s.adRevenue) || 0,
+          production_readiness: Math.min(
+            100,
+            Math.max(0, Number(s.productionReadiness ?? s.production_readiness) || 100),
+          ),
+        });
+      }
+
+      if (usersRes.status === 'fulfilled') {
+        const ud = usersRes.value.data?.data ?? usersRes.value.data;
+        setUsers(Array.isArray(ud?.users) ? ud.users : []);
+      }
+      if (reportsRes.status === 'fulfilled') {
+        const rd = reportsRes.value.data?.data ?? reportsRes.value.data;
+        setReports(unwrapList(rd, ['reports', 'items']));
+      }
+      if (livesRes.status === 'fulfilled') {
+        const ld = livesRes.value.data?.data ?? livesRes.value.data;
+        setLives(unwrapList(ld, ['streams', 'items', 'lives']));
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
     }
-    if (!origin) origin = DEFAULT_BACKEND_ORIGIN;
-    const url = `${origin.replace(/\/$/, '')}/admin`;
-    void Linking.openURL(url).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    void loadData().finally(() => setRefreshing(false));
+  }, [loadData]);
+
+  const handleBanUser = async (userId: string) => {
+    try {
+      await apiClient.patch(`/admin/users/${userId}/suspend`, {
+        suspended: true,
+        reason: 'Suspension depuis la console admin mobile',
+      });
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, account_suspended: true } : u)),
+      );
+    } catch {
+      /* ignore */
+    }
   };
 
-  if (!allowed) {
+  const handleResolveReport = async (reportId: string, action: 'remove' | 'warn' | 'dismiss') => {
+    try {
+      const status = action === 'dismiss' ? 'dismissed' : 'resolved';
+      const notes =
+        action === 'remove'
+          ? 'admin_action:remove_content'
+          : action === 'warn'
+            ? 'admin_action:warn_user'
+            : 'admin_action:dismiss';
+      await apiClient.put(`/moderation/reports/${reportId}/review`, { status, notes });
+      setReports((prev) => prev.filter((r) => r.id !== reportId));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  if (!isAdmin) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <Pressable
             onPress={() => router.back()}
-            style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.85 }]}
+            style={styles.backBtn}
             accessibilityRole="button"
             accessibilityLabel="Retour"
           >
-            <Ionicons name="arrow-back" size={22} color={Colors.text} />
+            <Ionicons name="arrow-back" size={24} color={Colors.text} />
           </Pressable>
-          <Text style={styles.headerTitle}>Admin</Text>
+          <Text style={styles.headerTitle}>Administration</Text>
           <View style={{ width: 40 }} />
         </View>
-        <View style={styles.centered}>
-          <Ionicons name="lock-closed-outline" size={48} color={Colors.textMuted} />
-          <Text style={styles.denied}>Accès réservé au super-administrateur.</Text>
+        <View style={styles.denied}>
+          <Ionicons name="lock-closed" size={48} color={Colors.textMuted} />
+          <Text style={styles.deniedText}>Accès réservé aux administrateurs</Text>
         </View>
       </View>
     );
   }
+
+  const kpis: KPI[] = [
+    { label: 'Utilisateurs', value: fmt(stats.total_users || 0), icon: 'people', color: '#3B82F6' },
+    { label: 'Vidéos', value: fmt(stats.total_videos || 0), icon: 'videocam', color: '#8B5CF6' },
+    { label: 'Revenus', value: fmtMoney(stats.total_revenue || 0), icon: 'trending-up', color: '#10B981' },
+    { label: 'Lives actifs', value: String(lives.length), icon: 'radio', color: '#EF4444' },
+    { label: 'Commandes', value: fmt(stats.total_orders || 0), icon: 'cart', color: '#F59E0B' },
+    { label: 'Signalements', value: String(reports.length), icon: 'flag', color: '#EC4899' },
+  ];
+
+  const tabs = [
+    { id: 'overview' as const, label: 'Vue globale', icon: 'grid' as const },
+    { id: 'users' as const, label: 'Utilisateurs', icon: 'people' as const },
+    { id: 'content' as const, label: 'Modération', icon: 'shield-checkmark' as const },
+    { id: 'finance' as const, label: 'Finances', icon: 'wallet' as const },
+    { id: 'lives' as const, label: 'Lives', icon: 'radio' as const },
+  ];
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Pressable
           onPress={() => router.back()}
-          style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.85 }]}
+          style={styles.backBtn}
           accessibilityRole="button"
           accessibilityLabel="Retour"
         >
-          <Ionicons name="arrow-back" size={22} color={Colors.text} />
+          <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </Pressable>
-        <Text style={styles.headerTitle}>Console admin</Text>
-        <View style={{ width: 40 }} />
-      </View>
-      <View style={[styles.body, { paddingBottom: insets.bottom }]}>
-        <Text style={styles.p}>
-          L’interface d’administration complète est celle de la PWA. Vous pouvez ouvrir la console dans le navigateur
-          (même session compte que sur mobile si SSO / cookie — sinon connectez-vous sur le web).
-        </Text>
-        <Pressable
-          onPress={openAdminWeb}
-          style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }]}
-        >
-          <Text style={styles.primaryBtnText}>Ouvrir dans le navigateur</Text>
+        <Text style={styles.headerTitle}>Console Admin</Text>
+        <Pressable onPress={onRefresh} accessibilityRole="button" accessibilityLabel="Actualiser">
+          <Ionicons name="refresh" size={22} color={Colors.text} />
         </Pressable>
       </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tabsRow}
+      >
+        {tabs.map((t) => (
+          <TouchableOpacity
+            key={t.id}
+            style={[styles.tab, activeTab === t.id && styles.tabActive]}
+            onPress={() => setActiveTab(t.id)}
+          >
+            <Ionicons
+              name={t.icon}
+              size={16}
+              color={activeTab === t.id ? '#FFF' : Colors.textSecondary}
+            />
+            <Text style={[styles.tabText, activeTab === t.id && styles.tabTextActive]}>{t.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <ScrollView
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        {loading ? (
+          <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 40 }} />
+        ) : (
+          <>
+            {activeTab === 'overview' && (
+              <>
+                <View style={styles.kpiGrid}>
+                  {kpis.map((kpi, i) => (
+                    <LinearGradient
+                      key={i}
+                      colors={[`${kpi.color}22`, `${kpi.color}08`]}
+                      style={styles.kpiCard}
+                    >
+                      <Ionicons name={kpi.icon} size={22} color={kpi.color} />
+                      <Text style={styles.kpiValue}>{kpi.value}</Text>
+                      <Text style={styles.kpiLabel}>{kpi.label}</Text>
+                    </LinearGradient>
+                  ))}
+                </View>
+                <View style={styles.readinessSection}>
+                  <Text style={styles.readinessTitle}>Couverture production</Text>
+                  <View style={styles.readinessBarOuter}>
+                    <LinearGradient
+                      colors={['#10B981', '#059669']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={[
+                        styles.readinessBarInner,
+                        { width: `${stats.production_readiness ?? 100}%` },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.readinessPct}>{stats.production_readiness ?? 100}%</Text>
+                  <Text style={styles.readinessHint}>
+                    Score exposé par GET /admin/dashboard (stats.productionReadiness)
+                  </Text>
+                </View>
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Actions rapides</Text>
+                  {[
+                    {
+                      label: 'Gérer les utilisateurs',
+                      icon: 'people' as const,
+                      onPress: () => setActiveTab('users'),
+                    },
+                    {
+                      label: 'Modérer le contenu',
+                      icon: 'shield-checkmark' as const,
+                      onPress: () => setActiveTab('content'),
+                    },
+                    {
+                      label: 'Voir les finances',
+                      icon: 'wallet' as const,
+                      onPress: () => setActiveTab('finance'),
+                    },
+                    {
+                      label: 'Gérer les lives',
+                      icon: 'radio' as const,
+                      onPress: () => setActiveTab('lives'),
+                    },
+                    {
+                      label: 'Abonnements (AfriWonder+ & fan clubs)',
+                      icon: 'diamond' as const,
+                      onPress: () => router.push('/subscriptions' as never),
+                    },
+                  ].map((a, i) => (
+                    <TouchableOpacity key={i} style={styles.actionRow} onPress={a.onPress}>
+                      <View style={styles.actionIcon}>
+                        <Ionicons name={a.icon} size={20} color={Colors.primary} />
+                      </View>
+                      <Text style={styles.actionLabel}>{a.label}</Text>
+                      <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+
+            {activeTab === 'users' && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Utilisateurs récents ({users.length})</Text>
+                {users.map((u) => (
+                  <View key={u.id} style={styles.userRow}>
+                    <View style={styles.userAvatar}>
+                      <Text style={styles.userAvatarText}>
+                        {(u.full_name || u.username || 'U')[0].toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.userName}>{u.full_name || u.username}</Text>
+                      <Text style={styles.userEmail}>{u.email}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {u.account_suspended ? (
+                        <View style={[styles.badge, { backgroundColor: 'rgba(239,68,68,0.2)' }]}>
+                          <Text style={{ color: '#EF4444', fontSize: 10, fontWeight: '700' }}>
+                            SUSPENDU
+                          </Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          style={[styles.badge, { backgroundColor: 'rgba(239,68,68,0.15)' }]}
+                          onPress={() => void handleBanUser(u.id)}
+                        >
+                          <Text style={{ color: '#EF4444', fontSize: 10, fontWeight: '600' }}>
+                            Suspendre
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      {u.is_verified ? (
+                        <View style={[styles.badge, { backgroundColor: 'rgba(16,185,129,0.2)' }]}>
+                          <Text style={{ color: '#10B981', fontSize: 10, fontWeight: '700' }}>
+                            VÉRIFIÉ
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+                {users.length === 0 ? <Text style={styles.emptyText}>Aucun utilisateur</Text> : null}
+              </View>
+            )}
+
+            {activeTab === 'content' && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Signalements en attente ({reports.length})</Text>
+                {reports.map((r) => (
+                  <View key={r.id} style={styles.reportCard}>
+                    <View style={styles.reportHead}>
+                      <Text style={styles.reportType}>{r.reason || r.type || 'Signalement'}</Text>
+                      <Text style={styles.reportDate}>
+                        {r.created_at ? new Date(r.created_at).toLocaleDateString('fr-FR') : ''}
+                      </Text>
+                    </View>
+                    <Text style={styles.reportDesc} numberOfLines={2}>
+                      {r.description || r.details || 'Aucun détail'}
+                    </Text>
+                    <View style={styles.reportActions}>
+                      <TouchableOpacity
+                        style={[styles.reportBtn, { backgroundColor: 'rgba(239,68,68,0.15)' }]}
+                        onPress={() => void handleResolveReport(r.id, 'remove')}
+                      >
+                        <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>
+                          Traiter
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.reportBtn, { backgroundColor: 'rgba(245,158,11,0.15)' }]}
+                        onPress={() => void handleResolveReport(r.id, 'warn')}
+                      >
+                        <Text style={{ color: '#F59E0B', fontSize: 12, fontWeight: '600' }}>
+                          Avertir
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.reportBtn, { backgroundColor: 'rgba(16,185,129,0.15)' }]}
+                        onPress={() => void handleResolveReport(r.id, 'dismiss')}
+                      >
+                        <Text style={{ color: '#10B981', fontSize: 12, fontWeight: '600' }}>
+                          Ignorer
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+                {reports.length === 0 ? (
+                  <Text style={styles.emptyText}>Aucun signalement en attente</Text>
+                ) : null}
+              </View>
+            )}
+
+            {activeTab === 'finance' && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Finances</Text>
+                <TouchableOpacity
+                  style={styles.actionRow}
+                  onPress={() => router.push('/subscriptions' as never)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Ouvrir les abonnements"
+                >
+                  <View style={styles.actionIcon}>
+                    <Ionicons name="diamond" size={20} color="#A855F7" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.actionLabel}>Abonnements utilisateurs</Text>
+                    <Text style={{ color: Colors.textMuted, fontSize: FontSizes.xs, marginTop: 2 }}>
+                      AfriWonder+, fan clubs, mes abonnements
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+                </TouchableOpacity>
+                {[
+                  { label: 'Revenus totaux', value: fmtMoney(stats.total_revenue || 0), color: '#10B981' },
+                  {
+                    label: 'Commissions plateforme',
+                    value: fmtMoney(stats.platform_commission || 0),
+                    color: '#3B82F6',
+                  },
+                  {
+                    label: 'Retraits en attente',
+                    value: fmtMoney(stats.pending_withdrawals || 0),
+                    color: '#F59E0B',
+                  },
+                  { label: 'Tips / dons totaux', value: fmtMoney(stats.total_tips || 0), color: '#EC4899' },
+                  {
+                    label: 'Ventes marketplace',
+                    value: fmtMoney(stats.marketplace_revenue || 0),
+                    color: '#8B5CF6',
+                  },
+                  { label: 'Revenus publicitaires', value: fmtMoney(stats.ad_revenue || 0), color: '#F97316' },
+                ].map((f, i) => (
+                  <View key={i} style={styles.finRow}>
+                    <Text style={styles.finLabel}>{f.label}</Text>
+                    <Text style={[styles.finValue, { color: f.color }]}>{f.value}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {activeTab === 'lives' && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Lives en cours ({lives.length})</Text>
+                {lives.map((l) => (
+                  <View key={l.id} style={styles.liveRow}>
+                    <View style={styles.liveDot} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.liveName}>{l.title}</Text>
+                      <Text style={styles.liveMeta}>{l.viewers_count || 0} spectateurs</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.liveEndBtn}
+                      onPress={async () => {
+                        try {
+                          await apiClient.post(`/live/${l.id}/end`, {});
+                          setLives((prev) => prev.filter((x) => x.id !== l.id));
+                        } catch {
+                          /* ignore */
+                        }
+                      }}
+                    >
+                      <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>Terminer</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {lives.length === 0 ? <Text style={styles.emptyText}>Aucun live en cours</Text> : null}
+              </View>
+            )}
+          </>
+        )}
+        <View style={{ height: 60 }} />
+      </ScrollView>
     </View>
   );
 }
@@ -94,27 +496,141 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.md,
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: FontSizes.xl, fontWeight: 'bold', color: Colors.text },
+  denied: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  deniedText: { color: Colors.textMuted, fontSize: FontSizes.md },
+  tabsRow: { paddingHorizontal: Spacing.xl, gap: 8, paddingBottom: Spacing.md },
+  tab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Colors.surface,
+  },
+  tabActive: { backgroundColor: Colors.primary },
+  tabText: { fontSize: FontSizes.sm, color: Colors.textSecondary, fontWeight: '600' },
+  tabTextActive: { color: '#FFF' },
+  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: Spacing.xl, gap: 10 },
+  kpiCard: {
+    width: (width - 50) / 2,
+    padding: 16,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  kpiValue: { fontSize: FontSizes.xxl, fontWeight: 'bold', color: Colors.text, marginTop: 8 },
+  kpiLabel: { fontSize: FontSizes.xs, color: Colors.textSecondary, marginTop: 2 },
+  readinessSection: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.lg,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  readinessTitle: {
+    fontSize: FontSizes.md,
+    fontWeight: '700',
+    color: Colors.text,
+    marginBottom: Spacing.sm,
+  },
+  readinessBarOuter: {
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.border,
+    overflow: 'hidden',
+  },
+  readinessBarInner: { height: '100%', borderRadius: 5 },
+  readinessPct: {
+    fontSize: FontSizes.xxl,
+    fontWeight: '800',
+    color: '#10B981',
+    marginTop: Spacing.sm,
+  },
+  readinessHint: { fontSize: FontSizes.xs, color: Colors.textMuted, marginTop: 4 },
+  section: { paddingHorizontal: Spacing.xl, marginTop: Spacing.lg },
+  sectionTitle: { fontSize: FontSizes.lg, fontWeight: 'bold', color: Colors.text, marginBottom: Spacing.md },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  actionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,107,0,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  headerTitle: { fontSize: FontSizes.xl, fontWeight: '700', color: Colors.text },
-  body: { padding: Spacing.xl, gap: Spacing.lg },
-  p: { color: Colors.textSecondary, fontSize: FontSizes.md, lineHeight: 22 },
-  primaryBtn: {
-    backgroundColor: Colors.primary,
-    paddingVertical: Spacing.lg,
-    borderRadius: BorderRadius.lg,
+  actionLabel: { flex: 1, fontSize: FontSizes.md, color: Colors.text, fontWeight: '500' },
+  userRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
-  primaryBtnText: { color: '#fff', fontWeight: '800', fontSize: FontSizes.md },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl, gap: Spacing.lg },
-  denied: { color: Colors.textSecondary, textAlign: 'center', fontSize: FontSizes.md },
+  userAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userAvatarText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  userName: { color: Colors.text, fontWeight: '600', fontSize: FontSizes.md },
+  userEmail: { color: Colors.textSecondary, fontSize: FontSizes.xs },
+  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  emptyText: { color: Colors.textMuted, textAlign: 'center', paddingVertical: 30 },
+  reportCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.lg,
+    marginBottom: 10,
+  },
+  reportHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  reportType: { color: Colors.text, fontWeight: '600', fontSize: FontSizes.md },
+  reportDate: { color: Colors.textMuted, fontSize: FontSizes.xs },
+  reportDesc: { color: Colors.textSecondary, fontSize: FontSizes.sm, marginBottom: 10 },
+  reportActions: { flexDirection: 'row', gap: 8 },
+  reportBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
+  finRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  finLabel: { color: Colors.textSecondary, fontSize: FontSizes.md },
+  finValue: { fontWeight: 'bold', fontSize: FontSizes.md },
+  liveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  liveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444' },
+  liveName: { color: Colors.text, fontWeight: '600' },
+  liveMeta: { color: Colors.textSecondary, fontSize: FontSizes.xs },
+  liveEndBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(239,68,68,0.12)',
+  },
 });

@@ -392,15 +392,20 @@ app.use('/api/proxy/search', searchRoutes);
 app.use('/api/proxy/feed', feedRoutes);
 /** Notifications — aligné PWA `/api/notifications` pour le client Expo (`apiClient`). */
 app.use('/api/proxy/notifications', notificationsRoutes);
+app.use('/api/proxy/subscriptions', subscriptionsRoutes);
 app.use('/api/proxy/payments', paymentRoutes);
 app.use('/api/proxy/messages', messageRoutes);
 app.use('/api/proxy/crowdfunding', crowdfundingRoutes);
 app.use('/api/proxy/live', liveRoutes);
+/** E2EE — même router que `/api/e2ee` pour `apiClient` Expo (`POST /e2ee/devices/register`, etc.). */
+app.use('/api/proxy/e2ee', e2eeRoutes);
 app.use('/api/proxy/ads', adsRoutes);
 app.use('/api/proxy/creator-dashboard', creatorDashboardRoutes);
 app.use('/api/proxy/withdrawals', withdrawalsRoutes);
 app.use('/api/proxy/posts', postsRoutes);
 app.use('/api/proxy/moderation', moderationRoutes);
+/** Console admin — même router que `/api/admin` pour `apiClient` Expo (`baseURL …/api/proxy`). */
+app.use('/api/proxy/admin', adminRoutes);
 /** Sauvegardes vidéo — client Expo (`apiClient` → `GET/POST …/api/proxy/saves`). */
 app.use('/api/proxy/saves', savesRoutes);
 /** Même auth / refresh que `apiClient` (Expo web) — avant le catch-all `/api/proxy`. */

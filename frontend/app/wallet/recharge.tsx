@@ -78,7 +78,12 @@ export default function RechargeWalletScreen() {
         {/* Quick Amounts */}
         <View style={styles.quickAmounts}>
           {AMOUNTS.map((a) => (
-            <TouchableOpacity key={a} style={[styles.quickAmount, amount === a.toString() && styles.quickAmountSelected]} onPress={() => setAmount(a.toString())}>
+            <TouchableOpacity
+              key={a}
+              testID={`wallet-amount-${a}`}
+              style={[styles.quickAmount, amount === a.toString() && styles.quickAmountSelected]}
+              onPress={() => setAmount(a.toString())}
+            >
               <Text style={[styles.quickAmountText, amount === a.toString() && styles.quickAmountTextSelected]}>{a.toLocaleString()}</Text>
             </TouchableOpacity>
           ))}
@@ -89,6 +94,7 @@ export default function RechargeWalletScreen() {
         {METHODS.map((method) => (
           <TouchableOpacity
             key={method.id}
+            testID={`payment-method-${method.id}`}
             style={[styles.methodCard, selectedMethod === method.id && styles.methodCardSelected]}
             onPress={() => setSelectedMethod(method.id)}
           >
@@ -104,6 +110,7 @@ export default function RechargeWalletScreen() {
 
         {selectedMethod !== 'card' && (
           <TextInput
+            testID="phone-input"
             style={styles.phoneInput}
             placeholder="Numero de telephone"
             placeholderTextColor={Colors.textMuted}
@@ -114,6 +121,7 @@ export default function RechargeWalletScreen() {
         )}
 
         <TouchableOpacity
+          testID="wallet-deposit-submit"
           style={[styles.rechargeBtn, (!amount || loading) && styles.rechargeBtnDisabled]}
           onPress={handleRecharge}
           disabled={!amount || loading}

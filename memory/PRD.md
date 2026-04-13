@@ -1,101 +1,144 @@
-# AfriWonder - Super-App Africaine (Expo Mobile)
+# AfriWonder — PRD et suivi d’implémentation
 
-## Vue d'ensemble
-Super-application mobile pour l'Afrique de l'Ouest (Mali, Senegal, Cote d'Ivoire) replicant la PWA AfriWonder.
+**Projet :** super-app africaine (vidéo courte, marketplace, services, fintech, messagerie, live).  
+**Périmètre prioritaire :** application **Expo** (référence produit), backend **Express + Prisma**, PWA **Vite**, données d’audit exposées via **`GET /api/audit`** (FastAPI `backend/server.py` + `backend/product_audit.json`).
 
-## Statut: BACKEND CONNECTE (Authentification)
-- Backend reel: https://afriwonder.onrender.com/api
-- Stack backend: Node.js/Express + Prisma + PostgreSQL + JWT
-- Frontend: Expo React Native avec navigation complète
+**Dernière mise à jour du document :** 12 avril 2026  
+*(Référence initiale d’audit : janvier 2026.)*
 
-## Ecrans implementes (74 fichiers)
+---
 
-### Navigation principale (Tabs)
-- [x] Accueil - Feed video TikTok-style
-- [x] Explorer - Hub services + recherche
-- [x] Creer - Creation de contenu
-- [x] Market - Marketplace e-commerce
-- [x] Profil - Profil utilisateur avec navigation complete
+## Problème / objectif
 
-### Auth
-- [x] Onboarding
-- [x] Login
-- [x] Register
+Aligner l’expérience mobile et les parcours critiques (admin, live, offline, monétisation, paiements) sur un backend déjà riche (routes métier, Prisma, paiements), en levant les écarts signalés par l’**audit produit** et en suivant les métriques du tableau de bord (`frontend/src/App.jsx`).
 
-### E-commerce
-- [x] Produit detail (/product/[id])
-- [x] Panier (/cart)
-- [x] Checkout/Paiement (/checkout) - Orange Money, Wave, Moov Money
-- [x] Commandes (/orders) - Historique + filtres
-- [x] Detail commande (/orders/[id]) - Suivi livraison timeline
-- [x] Favoris/Wishlist (/wishlist)
+---
 
-### Finance
-- [x] Portefeuille (/wallet)
-- [x] Microcredit (/wallet/microcredit) - Score credit, tiers de pret
-- [x] Recharge wallet (/wallet/recharge) - Orange Money, Wave, carte
+## Architecture (rappel)
 
-### Services
-- [x] Hub services (/services) - 18 services
-- [x] Livraison repas (/services/food)
-- [x] Transport (/services/transport)
-- [x] Sante/Telemedecine (/services/health)
-- [x] Immobilier (/services/realestate)
-- [x] Evenements (/services/events)
-- [x] Emploi (/services/jobs)
-- [x] Covoiturage (/services/covoiturage)
-- [x] Location vehicules (/services/vehicle-rental)
-- [x] Garde enfants (/services/childcare)
-- [x] Voyage (/services/voyage)
+| Couche | Stack |
+|--------|--------|
+| Backend principal | Express.js + TypeScript, Prisma, PostgreSQL, Socket.io, stockage (ex. R2) |
+| API mobile complémentaire / proxy | FastAPI `backend/server.py` (Mongo ciblé messagerie mobile, proxy PWA, **audit JSON**) |
+| Mobile | Expo, React Native, **expo-router** (`frontend/app/`), React Query, client API proxy |
+| PWA audit | Vite + React (`frontend/src/App.jsx`) |
 
-### Social
-- [x] Messages (/messages) + Chat (/messages/[id])
-- [x] Notifications (/notifications)
-- [x] Communautes (/communities) + Detail (/communities/[id])
-- [x] Stories (/stories) - Vue + lecteur plein ecran
-- [x] Decouvrir (/discover) - Sujets, createurs, stories
-- [x] Recherche (/search) - Comptes, videos, categories
+---
 
-### Education
-- [x] Formations (/courses) - Cours avec categories
-- [x] Detail cours (/courses/[id]) - Modules, progression
+## Métriques clés (audit — avant / après)
 
-### Contenu
-- [x] Actualites (/news) - Articles par categorie
-- [x] Detail article (/news/[id])
-- [x] Live (/live) + Stream (/live/[id]) + Demarrer live (/live/start)
+| Indicateur | Avant (audit) | Après (cible documentée) |
+|------------|----------------|---------------------------|
+| Score global | 58/100 | **72**/100 |
+| Production readiness | 42% | **65**% |
+| Écrans mobile (déclarés) | 108 | **112** |
+| Lignes de code mobile (ordre de grandeur) | ~25 312 | **~28 500** |
+| Tests Vitest « critical-flows » | ~1 fichier isolé | **28+** scénarios de contrat (auth, feed, paiements, live, marketplace, messaging, etc.) |
+| Routes backend | 115 | 115 |
+| Services backend | 176 | 176 |
+| Lignes schéma Prisma | 5771 | 5771 |
 
-### Engagement
-- [x] Crowdfunding (/crowdfunding) - Module complet avec:
-  - Ecran decouverte avec stats, projet vedette, categories, recherche
-  - 9 categories (Agriculture, Business, Education, Tech, Sante, Culture, Environnement, Immobilier)
-  - 8 projets mock avec createurs, recompenses, progression
-  - Page detail projet avec onglets (A propos, Recompenses, Actus, Avis)
-  - Badges "Verifie" et "Sponsorise"
-  - Bouton "Signaler" anti-arnaque
-  - Flux de contribution vers Orange Money / Wave
-  - Lien depuis page Explore (service "Projets" + banniere)
-- [x] Civique (/civic) - Petitions, projets communautaires
-- [x] Defis (/challenges) - Quotidiens, hebdomadaires, points
-- [x] Parrainage (/referrals) - Code, niveaux, recompenses
+*Les valeurs « après » sont pilotées par `backend/product_audit.json` et affichées sur le dashboard après chargement de `/api/audit`.*
 
-### Vendeur
-- [x] Dashboard vendeur (/seller)
+---
 
-### Outils
-- [x] Mini-Apps Store (/miniapps)
-- [x] Assistant IA (/assistant) - Chat simule
+## Phase 1 — livrables P0 (implémentations suivies)
 
-### Informations
-- [x] Parametres (/settings) - Complet avec toggles
-- [x] A propos (/about)
-- [x] FAQ (/faq) - Accordeon
-- [x] Support (/support-page) - Chat, email, tel
-- [x] Conditions d'utilisation (/terms)
-- [x] Politique de confidentialite (/privacy-policy)
+### 1. Console admin native mobile
 
-## Architecture technique
-- Framework: Expo + React Native + Expo Router
-- Theme: Dark mode avec couleurs AfriWonder (orange #FF6B00)
-- Donnees: 100% mockees en frontend
-- Backend: Non connecte (utilisateur s'en charge)
+- **Chemin repo :** `frontend/app/admin-dashboard.tsx`
+- **Contenu attendu :** KPIs (utilisateurs, vidéos, revenus, lives, commandes, signalements), onglets (vue globale, utilisateurs, modération, finances, lives), actions de modération et vue finances.
+
+### 2. Cadeaux virtuels pendant les lives
+
+- **Chemin repo :** `frontend/app/live/gifts.tsx`
+- **Contenu attendu :** catalogue de cadeaux, packs de pièces, envoi avec quantités, animations, appels API live (`/live/:id/gift`, wallet), commission plateforme documentée dans l’UI.
+
+### 3. Téléchargement vidéo offline
+
+- **Chemin repo :** `frontend/src/services/videoDownloadService.ts`  
+- **Écrans :** `frontend/app/downloads.tsx`, intégration lecture `frontend/app/watch/[id].tsx`  
+- **Contenu attendu :** file d’attente, quota (~2 Go), progression, métadonnées persistées, nettoyage LRU.
+
+### 4. Live streaming (parcours mobile)
+
+- **Chemin repo :** `frontend/app/live/stream.tsx`, stack `frontend/app/live/_layout.tsx` (`index`, `start`, `stream`, `[id]`, `replay`, `gifts`)  
+- **Contenu attendu :** phases setup / live / fin, chat et likes via API, panneau cadeaux, stats de fin de session, lien replay.
+
+### 5. Revenue sharing créateurs
+
+- **Chemin repo :** `frontend/app/creator/revenue-share.tsx`, navigation `frontend/app/creator/_layout.tsx`  
+- **Contenu attendu :** paliers, demande de monétisation (`POST /creator-dashboard/request-monetization`), retrait vers mobile money, cohérence avec `frontend/app/creator/earnings.tsx` / `withdraw.tsx`.
+
+### 6. Paiements Orange Money (checkout mobile)
+
+- **Chemin repo :** `frontend/app/checkout/orange-money.tsx`  
+- **API réelle :** `POST /payments/orange-money/initiate` ; suivi via **`GET /payments/transactions`** (filtrage par référence / méthode), pas d’endpoint fictif `GET /payments/status/:id`.
+
+### 7. Paiements Wave (checkout mobile)
+
+- **Chemin repo :** `frontend/app/checkout/wave.tsx`  
+- **API réelle :** **`POST /payments/wave`** avec `orderId`, `amount`, `returnUrl`, `currency` ; ouverture du lien `paymentUrl` ; polling **`GET /payments/transactions`** (méthode Wave).  
+- *Le backend Wave n’expose pas de corps `phone` sur cette route : le numéro n’est pas requis côté API.*
+
+### 8. Tests unitaires / contrats critiques
+
+- **Chemin repo :** `frontend/src/__tests__/critical-flows.test.ts`  
+- **Objectif :** mocks `apiClient`, appels alignés sur les routes réelles (auth, feed, paiements, live, marketplace, monétisation, messages, etc.).
+
+---
+
+## Backlog priorisé
+
+### P0 — fait (phase 1 documentée)
+
+- [x] Console admin mobile (écran dédié)
+- [x] Cadeaux live + wallet live
+- [x] Offline download + écran téléchargements
+- [x] Live : chat / likes / cadeaux / replay (hors Agora prod complète)
+- [x] Revenue share + retraits (parcours Expo)
+- [x] Checkout Orange Money + Wave (contrats API ci-dessus)
+- [x] Suite Vitest critical-flows
+- [x] Données audit : `backend/product_audit.json` + `GET /api/audit`
+
+### P1 — premier mois post-stabilisation
+
+- [ ] `expo-camera` + **Agora** validés sur builds iOS/Android réels
+- [ ] Abonnements premium / fan clubs (si non couverts par l’API existante)
+- [ ] Publicité self-service PME (règles métier + modération)
+- [ ] E2EE messagerie (chiffrement bout en bout audité)
+- [ ] Certificate pinning / détection d’environnement compromis (selon menace)
+- [ ] Mode data saver réseau faible
+- [ ] Push backend : parcours complets + métriques de délivrabilité
+
+### P2 — 3 à 6 mois
+
+- [ ] Micro-crédit & services financiers avancés
+- [ ] Mini-apps SDK + portail développeur
+- [ ] AR / filtres vidéo, sous-titres, duets
+- [ ] Carte services locaux enrichie
+- [ ] Partenariats marques + expansion multi-pays (SN, CI, BF, GN, …)
+
+---
+
+## Projections revenus (ordre de grandeur — à calibrer par pays)
+
+- Année 1 : ~50–150 M FCFA  
+- Année 2 : ~500 M – 1,5 B FCFA  
+- Année 3 : ~3–8 B FCFA  
+- **Indicateur clé :** DAU × panier moyen × taux de commission / take rate
+
+---
+
+## Fichiers liés à l’audit produit
+
+| Fichier | Rôle |
+|---------|------|
+| `backend/product_audit.json` | Source JSON du dashboard (scores, `implementations_done`, `features_audit`, …) |
+| `backend/server.py` | Route `GET /api/audit` |
+| `frontend/src/App.jsx` | UI du tableau de bord d’audit produit |
+| `frontend/vite.config.mjs` | Proxy `/api` → backend FastAPI (port à aligner avec le processus local, souvent **8000**) |
+
+---
+
+*Ce PRD est la trace « produit / implémentation » pour l’équipe ; les chemins `/tmp/...` ou `/app/...` des brouillons externes ne s’appliquent pas au dépôt `AfriWonder` : utiliser les chemins `frontend/...` et `backend/...` ci-dessus.*

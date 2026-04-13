@@ -1,0 +1,11 @@
+appId: com.afriwonder.mobile
+---
+- launchApp
+- assertVisible:
+    id: "afw-crypto-selftest"
+- tapOn:
+    id: "afw-crypto-selftest"
+- assertVisible:
+    id: "afw-crypto-status"
+- assertVisible:
+    text: "AES-GCM OK"

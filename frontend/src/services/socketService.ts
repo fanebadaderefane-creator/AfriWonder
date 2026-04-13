@@ -24,6 +24,13 @@ class SocketService {
       reconnectionDelay: 2000,
     });
 
+    /** Relais événements live (chat, cadeaux, viewers…) vers les abonnés `socketService.on('live:…')`. */
+    this.socket.onAny((event: string, ...args: unknown[]) => {
+      if (typeof event === 'string' && event.startsWith('live:')) {
+        this.notifyListeners(event, args[0]);
+      }
+    });
+
     this.socket.on('connect', () => {
       console.log('[Socket] Connected:', this.socket?.id);
       // Authenticate after connecting
@@ -53,6 +60,14 @@ class SocketService {
 
     this.socket.on('messages_read', (data: any) => {
       this.notifyListeners('messages_read', data);
+    });
+
+    this.socket.on('notification', (data: any) => {
+      this.notifyListeners('notification', data);
+    });
+
+    this.socket.on('new_notification', (data: any) => {
+      this.notifyListeners('new_notification', data);
     });
 
     this.socket.on('disconnect', (reason: string) => {
@@ -99,6 +114,20 @@ class SocketService {
   // Mark messages as read
   markRead(conversationId: string) {
     this.socket?.emit('mark_read', { conversation_id: conversationId });
+  }
+
+  /** Émission générique (ex. événements custom côté serveur). */
+  emit(event: string, data?: unknown) {
+    this.socket?.emit(event, data);
+  }
+
+  /** Rejoindre la room Socket `stream:{streamId}` (requis pour recevoir `live:gift`, chat, etc.). */
+  joinLiveStream(streamId: string) {
+    if (streamId) this.socket?.emit('live:join-room', streamId);
+  }
+
+  leaveLiveStream(streamId: string) {
+    if (streamId) this.socket?.emit('live:leave-room', streamId);
   }
 
   // Event listener management

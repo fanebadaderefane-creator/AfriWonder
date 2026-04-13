@@ -3,6 +3,8 @@ import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, ViewStyle, TextS
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../theme/colors';
 
 interface ButtonProps {
+  /** Pour tests Maestro (`testID` sur le pressable). */
+  testID?: string;
   title: string;
   onPress: () => void;
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
@@ -15,6 +17,7 @@ interface ButtonProps {
 }
 
 export const Button: React.FC<ButtonProps> = ({
+  testID,
   title,
   onPress,
   variant = 'primary',
@@ -105,6 +108,7 @@ export const Button: React.FC<ButtonProps> = ({
 
   return (
     <TouchableOpacity
+      testID={testID}
       style={[getContainerStyle(), style]}
       onPress={onPress}
       disabled={disabled || loading}

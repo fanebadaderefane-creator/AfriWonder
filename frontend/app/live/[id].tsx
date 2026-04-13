@@ -1,63 +1,169 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, FlatList, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Image,
+  TextInput,
+  FlatList,
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+} from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import apiClient from '../../src/api/client';
+import { useAuthStore } from '../../src/store/authStore';
+import { useAgoraLiveRtc } from '../../src/hooks/useAgoraLiveRtc';
+import socketService from '../../src/services/socketService';
 
 const { width, height } = Dimensions.get('window');
 
 interface LiveMessage {
   id: string;
   text: string;
-  user: {
-    name: string;
-    avatar: string;
+  user: { name: string; avatar: string };
+}
+
+function normalizeLiveId(raw: string | string[] | undefined): string {
+  if (Array.isArray(raw)) return String(raw[0] ?? '').trim();
+  return String(raw ?? '').trim();
+}
+
+function mapChatRow(m: Record<string, unknown>): LiveMessage {
+  return {
+    id: String(m.id ?? `${Date.now()}-${Math.random()}`),
+    text: String(m.message ?? m.text ?? ''),
+    user: {
+      name: String(m.sender_name ?? m.userName ?? 'Anonyme'),
+      avatar: String(m.sender_avatar ?? m.avatar ?? 'https://i.pravatar.cc/150?img=12'),
+    },
   };
 }
 
-const INITIAL_MESSAGES: LiveMessage[] = [
-  { id: '1', text: 'Super live!', user: { name: 'Aminata', avatar: 'https://i.pravatar.cc/150?img=1' } },
-  { id: '2', text: 'Magnifique danse', user: { name: 'Moussa', avatar: 'https://i.pravatar.cc/150?img=2' } },
-  { id: '3', text: 'Bravo!', user: { name: 'Awa', avatar: 'https://i.pravatar.cc/150?img=3' } },
-  { id: '4', text: 'Quelle energie!', user: { name: 'Ibrahim', avatar: 'https://i.pravatar.cc/150?img=4' } },
-  { id: '5', text: 'Je partage avec mes amis', user: { name: 'Fatou', avatar: 'https://i.pravatar.cc/150?img=5' } },
-];
-
 export default function LiveStreamViewerScreen() {
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams();
-  const [messages, setMessages] = useState<LiveMessage[]>(INITIAL_MESSAGES);
+  const { id: rawId } = useLocalSearchParams<{ id: string | string[] }>();
+  const liveId = useMemo(() => normalizeLiveId(rawId), [rawId]);
+
+  const user = useAuthStore((s) => s.user);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  const [messages, setMessages] = useState<LiveMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [viewers, setViewers] = useState(234);
+  const [viewers, setViewers] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
   const [showGifts, setShowGifts] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [streamTitle, setStreamTitle] = useState('Live');
+  const [streamerName, setStreamerName] = useState('Créateur');
+  const [streamerAvatar, setStreamerAvatar] = useState('https://i.pravatar.cc/150?img=1');
+  const [posterUrl, setPosterUrl] = useState<string | null>(null);
+  const [sessionId] = useState(() => `${Date.now()}`);
 
-  // Simulate new messages
+  const { agoraJoined, agoraError, AgoraRemoteView } = useAgoraLiveRtc({
+    liveId: liveId || null,
+    role: 'audience',
+    enabled: isAuthenticated && !!liveId && loading === false,
+  });
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      const names = ['Kadi', 'Sekou', 'Mariam', 'Oumar', 'Binta'];
-      const texts = ['Trop bien!', 'Continue!', 'Genial!', 'Wow!', 'Incroyable!'];
-      const randomName = names[Math.floor(Math.random() * names.length)];
-      const randomText = texts[Math.floor(Math.random() * texts.length)];
-      setMessages(prev => [...prev.slice(-20), {
-        id: Date.now().toString(),
-        text: randomText,
-        user: { name: randomName, avatar: `https://i.pravatar.cc/150?img=${Math.floor(Math.random() * 70)}` }
-      }]);
-      setViewers(prev => prev + Math.floor(Math.random() * 3) - 1);
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
+    if (accessToken) socketService.connect(accessToken);
+  }, [accessToken]);
 
-  const sendMessage = () => {
-    if (!newMessage.trim()) return;
-    setMessages(prev => [...prev, {
-      id: Date.now().toString(),
-      text: newMessage,
-      user: { name: 'Moi', avatar: 'https://i.pravatar.cc/150?img=10' }
-    }]);
-    setNewMessage('');
+  const hydrate = useCallback(async () => {
+    if (!liveId) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await apiClient.get(`/live/${encodeURIComponent(liveId)}`);
+      const s = (res.data?.data ?? res.data) as Record<string, unknown> | null;
+      if (s) {
+        setStreamTitle(String(s.title ?? 'Live'));
+        const creator = s.creator as Record<string, unknown> | undefined;
+        setStreamerName(String(creator?.full_name ?? creator?.username ?? s.creator_name ?? 'Créateur'));
+        const av = String(creator?.avatar_url ?? creator?.profile_image ?? '').trim();
+        if (av) setStreamerAvatar(av);
+        if (typeof s.viewers_count === 'number') setViewers(s.viewers_count);
+        const thumb = String(s.thumbnail_url ?? '').trim();
+        if (thumb) setPosterUrl(thumb);
+        const rawMsgs = s.chat_messages;
+        if (Array.isArray(rawMsgs) && rawMsgs.length) {
+          setMessages(
+            (rawMsgs as Record<string, unknown>[])
+              .filter((m) => m && !m.is_deleted)
+              .slice(-30)
+              .map((m) => mapChatRow(m))
+          );
+        }
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
+  }, [liveId]);
+
+  useEffect(() => {
+    void hydrate();
+  }, [hydrate]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !liveId) return;
+    void (async () => {
+      try {
+        await apiClient.post(`/live/${encodeURIComponent(liveId)}/join`, { sessionId });
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [isAuthenticated, liveId, sessionId]);
+
+  useEffect(() => {
+    if (!liveId) return;
+    socketService.joinLiveStream(liveId);
+    const chatHandler = (raw: unknown) => {
+      if (!raw || typeof raw !== 'object') return;
+      setMessages((prev) => [...prev.slice(-40), mapChatRow(raw as Record<string, unknown>)]);
+    };
+    const viewerHandler = (data: unknown) => {
+      const d = data as { count?: number };
+      if (typeof d?.count === 'number') setViewers(d.count);
+    };
+    socketService.on('live:chat', chatHandler);
+    socketService.on('live:viewers', viewerHandler);
+    return () => {
+      socketService.off('live:chat', chatHandler);
+      socketService.off('live:viewers', viewerHandler);
+      socketService.leaveLiveStream(liveId);
+    };
+  }, [liveId]);
+
+  const sendMessage = async () => {
+    const text = newMessage.trim();
+    if (!text || !liveId || !user) return;
+    try {
+      await apiClient.post(`/live/${encodeURIComponent(liveId)}/chat`, { message: text });
+      setNewMessage('');
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          text,
+          user: { name: 'Moi', avatar: streamerAvatar },
+        },
+      ]);
+      setNewMessage('');
+    }
   };
 
   const GIFTS = [
@@ -67,33 +173,62 @@ export default function LiveStreamViewerScreen() {
     { id: 'g4', name: 'Couronne', emoji: '\ud83d\udc51', price: 5000 },
   ];
 
+  if (!liveId) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: Colors.textMuted }}>Live introuvable</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }} accessibilityLabel="Retour">
+          <Text style={{ color: Colors.primary }}>Retour</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center' }]}>
+        <ActivityIndicator color={Colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Video Background Placeholder */}
       <View style={styles.videoBackground}>
-        <Image
-          source={{ uri: 'https://picsum.photos/400/800?random=35' }}
-          style={styles.backgroundImage}
-        />
+        {Platform.OS !== 'web' && agoraJoined ? (
+          <AgoraRemoteView style={{ width, height }} />
+        ) : posterUrl ? (
+          <Image source={{ uri: posterUrl }} style={styles.backgroundImage} />
+        ) : (
+          <LinearGradient colors={['#1a0a2e', '#0a0a12']} style={StyleSheet.absoluteFillObject} />
+        )}
+        {!agoraJoined && agoraError ? (
+          <View style={styles.agoraBanner}>
+            <Text style={styles.agoraBannerText}>{agoraError}</Text>
+          </View>
+        ) : null}
       </View>
 
-      {/* Header Overlay */}
       <View style={styles.headerOverlay}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
-          <Ionicons name="close" size={28} color={Colors.text} />
+        <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn} accessibilityLabel="Retour">
+          <Ionicons name="arrow-back" size={26} color={Colors.text} />
         </TouchableOpacity>
 
         <View style={styles.streamerInfo}>
-          <Image source={{ uri: 'https://i.pravatar.cc/150?img=1' }} style={styles.streamerAvatar} />
-          <View>
-            <Text style={styles.streamerName}>Aminata Diallo</Text>
-            <Text style={styles.streamerTitle}>Live Dance Mali</Text>
+          <Image source={{ uri: streamerAvatar }} style={styles.streamerAvatar} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.streamerName} numberOfLines={1}>
+              {streamerName}
+            </Text>
+            <Text style={styles.streamerTitle} numberOfLines={1}>
+              {streamTitle}
+            </Text>
           </View>
           <TouchableOpacity
             style={[styles.followBtn, isFollowing && styles.followBtnActive]}
             onPress={() => setIsFollowing(!isFollowing)}
           >
-            <Text style={styles.followBtnText}>{isFollowing ? 'Abonne' : 'Suivre'}</Text>
+            <Text style={styles.followBtnText}>{isFollowing ? 'Abonné' : 'Suivre'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -103,7 +238,6 @@ export default function LiveStreamViewerScreen() {
         </View>
       </View>
 
-      {/* Messages */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.messagesContainer}
@@ -122,10 +256,13 @@ export default function LiveStreamViewerScreen() {
           )}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.messagesList}
-          inverted={false}
+          ListEmptyComponent={
+            <Text style={{ color: Colors.textMuted, textAlign: 'center', marginTop: 24 }}>
+              Aucun message pour l’instant
+            </Text>
+          }
         />
 
-        {/* Gifts Panel */}
         {showGifts && (
           <View style={styles.giftsPanel}>
             {GIFTS.map((gift) => (
@@ -137,19 +274,23 @@ export default function LiveStreamViewerScreen() {
           </View>
         )}
 
-        {/* Input Bar */}
         <View style={[styles.inputBar, { paddingBottom: insets.bottom + Spacing.sm }]}>
           <TextInput
             style={styles.messageInput}
-            placeholder="Envoyer un message..."
+            placeholder={isAuthenticated ? 'Envoyer un message…' : 'Connectez-vous pour chatter'}
             placeholderTextColor={Colors.textMuted}
             value={newMessage}
             onChangeText={setNewMessage}
+            editable={isAuthenticated}
           />
           <TouchableOpacity onPress={() => setShowGifts(!showGifts)} style={styles.giftBtn}>
             <Ionicons name="gift" size={24} color={Colors.accent} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={sendMessage} style={styles.sendBtn}>
+          <TouchableOpacity
+            style={[styles.sendBtn, !isAuthenticated && { opacity: 0.4 }]}
+            onPress={() => void sendMessage()}
+            disabled={!isAuthenticated}
+          >
             <Ionicons name="send" size={20} color={Colors.text} />
           </TouchableOpacity>
         </View>
@@ -169,7 +310,21 @@ const styles = StyleSheet.create({
   backgroundImage: {
     width: '100%',
     height: '100%',
-    opacity: 0.3,
+    opacity: 0.35,
+  },
+  agoraBanner: {
+    position: 'absolute',
+    bottom: 120,
+    left: Spacing.xl,
+    right: Spacing.xl,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+  },
+  agoraBannerText: {
+    color: '#FBBF24',
+    fontSize: FontSizes.xs,
+    textAlign: 'center',
   },
   headerOverlay: {
     paddingHorizontal: Spacing.xl,

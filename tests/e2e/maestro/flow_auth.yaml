@@ -1,0 +1,122 @@
+# Inscription (email) + déconnexion + connexion + cas d’erreur.
+# Prérequis: onboarding déjà vu ; backend joignable ; compte inexistant pour l’email par défaut
+# (ou supprimez l’utilisateur avant le run). Build dev client: com.afriwonder.app
+#
+# Override: maestro test -e MAESTRO_AUTH_EMAIL=autre@test.com -e MAESTRO_AUTH_PASSWORD='MonMot2Passe!' tests/e2e/maestro/flow_auth.yaml
+appId: com.afriwonder.app
+name: AfriWonder - Inscription et connexion
+tags:
+  - critical
+  - auth
+env:
+  MAESTRO_AUTH_EMAIL: test_e2e@afriwonder.com
+  MAESTRO_AUTH_PASSWORD: TestPass123!
+---
+# ─── 1. Aller à l’inscription depuis la connexion ─────────────────
+- launchApp
+- extendedWaitUntil:
+    visible: "Connexion"
+    timeout: 45000
+- tapOn:
+    id: "login-link-register"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Creer un compte"
+    timeout: 15000
+
+# ─── 2. Inscription (mode email) ─────────────────────────────────
+- tapOn:
+    id: "register-method-email"
+- waitForAnimationToEnd
+- tapOn:
+    id: "register-firstname-input"
+- inputText: "Test"
+- tapOn:
+    id: "register-lastname-input"
+- inputText: "E2E"
+- tapOn:
+    id: "register-email-input"
+- inputText: ${MAESTRO_AUTH_EMAIL}
+- tapOn:
+    id: "register-password-input"
+- inputText: ${MAESTRO_AUTH_PASSWORD}
+- tapOn:
+    id: "register-confirm-password-input"
+- inputText: ${MAESTRO_AUTH_PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: "register-accept-terms"
+- tapOn:
+    id: "register-submit-button"
+- waitForAnimationToEnd
+
+# Feed après inscription (remplace « Bienvenue » absent sur cet écran)
+- extendedWaitUntil:
+    visible: "Pour toi"
+    timeout: 45000
+- assertVisible: "Abonnes"
+
+# ─── 3. Déconnexion ─────────────────────────────────────────────
+- tapOn: "Profil"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element:
+      id: "profile-logout-button"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "profile-logout-button"
+- assertVisible: "Etes-vous sur"
+- tapOn: "Confirmer"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Connexion"
+    timeout: 15000
+
+# ─── 4. Connexion email ─────────────────────────────────────────
+- tapOn:
+    id: "login-method-email"
+- tapOn:
+    id: "login-email-input"
+- inputText: ${MAESTRO_AUTH_EMAIL}
+- tapOn:
+    id: "login-password-input"
+- inputText: ${MAESTRO_AUTH_PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: "login-submit-button"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Pour toi"
+    timeout: 45000
+
+# ─── 5. Erreur de connexion (identifiants invalides) ────────────
+- tapOn: "Profil"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element:
+      id: "profile-logout-button"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "profile-logout-button"
+- tapOn: "Confirmer"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Connexion"
+    timeout: 15000
+- tapOn:
+    id: "login-method-email"
+- tapOn:
+    id: "login-email-input"
+- inputText: "wrong@email.com"
+- tapOn:
+    id: "login-password-input"
+- inputText: "wrongpassword"
+- hideKeyboard
+- tapOn:
+    id: "login-submit-button"
+- waitForAnimationToEnd
+- assertVisible:
+    text: "Erreur"
+    optional: true

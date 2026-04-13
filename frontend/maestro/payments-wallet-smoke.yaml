@@ -1,0 +1,18 @@
+# Parcours Profil → Portefeuille (écran paiements / solde).
+# Prérequis: session connectée ; libellés d’onglet « Profil » / « Portefeuille » en français.
+# Commande: maestro test maestro/payments-wallet-smoke.yaml
+appId: com.afriwonder.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Recherche"
+    timeout: 45000
+- tapOn: "Profil"
+- scrollUntilVisible:
+    text: "Portefeuille"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Portefeuille"
+- extendedWaitUntil:
+    visible: "Recharger"
+    timeout: 20000

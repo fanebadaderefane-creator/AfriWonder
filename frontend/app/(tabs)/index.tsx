@@ -252,6 +252,7 @@ const VideoItem: React.FC<VideoItemProps> = ({
         {/* Avatar */}
         <View style={styles.avatarContainer}>
           <CreatorAvatar
+            testID="creator-avatar"
             uri={video.user.avatar}
             username={video.user.username}
             firstName={video.user.firstName}
@@ -273,7 +274,7 @@ const VideoItem: React.FC<VideoItemProps> = ({
         </TouchableOpacity>
 
         {/* Comment */}
-        <TouchableOpacity style={styles.actionButton} onPress={onComment}>
+        <TouchableOpacity testID="comment-button" style={styles.actionButton} onPress={onComment}>
           <Ionicons name="chatbubble-ellipses" size={28} color="#FFF" />
           <Text style={styles.actionText}>{formatNumber(video.comments)}</Text>
         </TouchableOpacity>
@@ -293,7 +294,7 @@ const VideoItem: React.FC<VideoItemProps> = ({
         </TouchableOpacity>
 
         {/* Share */}
-        <TouchableOpacity style={styles.actionButton} onPress={onShare}>
+        <TouchableOpacity testID="share-button" style={styles.actionButton} onPress={onShare}>
           <Ionicons name="arrow-redo" size={28} color="#FFF" />
           <Text style={styles.actionText}>{formatNumber(video.shares)}</Text>
         </TouchableOpacity>
@@ -634,7 +635,9 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
           <View style={styles.commentsHeader}>
             <View style={styles.shareHandle} />
             <Text style={styles.commentsTitle}>{totalComments} commentaires</Text>
-            <TouchableOpacity onPress={onClose}><Ionicons name="close" size={24} color={Colors.text} /></TouchableOpacity>
+            <TouchableOpacity testID="close-comments" onPress={onClose} accessibilityLabel="Fermer les commentaires">
+              <Ionicons name="close" size={24} color={Colors.text} />
+            </TouchableOpacity>
           </View>
           {loading ? <ActivityIndicator size="large" color={Colors.primary} style={{ padding: 40 }} /> : (
             <ScrollView style={styles.commentsList} showsVerticalScrollIndicator={false}>
@@ -1024,7 +1027,7 @@ export default function FeedScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity onPress={() => router.push('/search')} style={styles.headerSearchBtn}>
+        <TouchableOpacity testID="search-button" onPress={() => router.push('/search')} style={styles.headerSearchBtn}>
           <Ionicons name="search" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={styles.headerTabs}>
@@ -1037,11 +1040,11 @@ export default function FeedScreen() {
           </TouchableOpacity>
         </View>
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.headerIconBtn} onPress={() => router.push('/notifications')}>
+          <TouchableOpacity testID="notifications-button" style={styles.headerIconBtn} onPress={() => router.push('/notifications')}>
             <Ionicons name="notifications-outline" size={22} color="#FFF" />
             <View style={styles.headerNotifDot} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIconBtn} onPress={() => router.push('/live')}>
+          <TouchableOpacity testID="live-hub-button" style={styles.headerIconBtn} onPress={() => router.push('/live')}>
             <View style={styles.liveDot} />
             <Text style={styles.liveText}>LIVE</Text>
           </TouchableOpacity>

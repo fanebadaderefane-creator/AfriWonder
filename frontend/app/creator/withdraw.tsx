@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import apiClient from '../../src/api/client';
 
 const METHODS = [
@@ -15,11 +15,19 @@ const AMOUNTS = [5000, 10000, 25000, 50000, 100000];
 
 export default function CreatorWithdrawScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ method?: string; amount?: string }>();
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('orange-money');
   const [phone, setPhone] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const m = typeof params.method === 'string' ? params.method : Array.isArray(params.method) ? params.method[0] : '';
+    const a = typeof params.amount === 'string' ? params.amount : Array.isArray(params.amount) ? params.amount[0] : '';
+    if (m && METHODS.some((x) => x.id === m)) setMethod(m);
+    if (a && !Number.isNaN(parseFloat(a))) setAmount(a);
+  }, [params.method, params.amount]);
 
   const handleWithdraw = async () => {
     const num = parseFloat(amount);

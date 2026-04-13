@@ -38,7 +38,10 @@ type MenuSection = { title: string; items: MenuRow[] };
 const MENU_SECTIONS: MenuSection[] = [
   {
     title: 'Wallet & Paiements',
-    items: [{ label: 'Mon Wallet', icon: 'wallet-outline', href: '/wallet' }],
+    items: [
+      { label: 'Mon Wallet', icon: 'wallet-outline', href: '/wallet' },
+      { label: 'Abonnements', icon: 'diamond-outline', href: '/subscriptions' },
+    ],
   },
   {
     title: 'COMMERCE & SERVICES',

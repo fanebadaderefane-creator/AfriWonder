@@ -1,3 +1,4 @@
+import '../src/polyfills';
 import { Stack, router } from 'expo-router';
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
@@ -21,6 +22,9 @@ const queryClient = new QueryClient({
 
 export default function RootLayout() {
   const { loadStoredAuth } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
   useEffect(() => {
     loadStoredAuth();
 
@@ -49,6 +53,11 @@ export default function RootLayout() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id) return;
+    void import('../src/services/e2eeMobileService').then((m) => m.ensureE2eeBootstrap(user.id));
+  }, [isAuthenticated, user?.id]);
+
   return (
     <GestureHandlerRootView style={styles.container}>
       <LanguageProvider>
@@ -76,6 +85,8 @@ export default function RootLayout() {
             <Stack.Screen name="messages" />
             <Stack.Screen name="notifications" />
             <Stack.Screen name="checkout" />
+            <Stack.Screen name="creator" />
+            <Stack.Screen name="payments" />
             <Stack.Screen name="orders" />
             <Stack.Screen name="wishlist" />
             <Stack.Screen name="settings" />
@@ -87,7 +98,10 @@ export default function RootLayout() {
             <Stack.Screen name="profile-connections" />
             <Stack.Screen name="user/[id]" />
             <Stack.Screen name="sound-feed" />
+            <Stack.Screen name="feed" />
             <Stack.Screen name="watch/[id]" />
+            <Stack.Screen name="downloads" />
+            <Stack.Screen name="tip" />
             <Stack.Screen name="discover" />
             <Stack.Screen name="about" />
             <Stack.Screen name="faq" />
@@ -96,6 +110,7 @@ export default function RootLayout() {
             <Stack.Screen name="privacy-policy" />
             <Stack.Screen name="referrals" />
             <Stack.Screen name="stories" />
+            <Stack.Screen name="subscriptions" />
             <Stack.Screen name="crowdfunding" />
             <Stack.Screen name="seller" />
             <Stack.Screen name="civic" />

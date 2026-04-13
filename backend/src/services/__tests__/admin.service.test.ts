@@ -28,6 +28,7 @@ describe('admin.service', () => {
 
     expect(dash.stats.totalUsers).toBe(10);
     expect(dash.stats.totalRevenue).toBe(1000);
+    expect(dash.stats.productionReadiness).toBe(100);
     expect(Array.isArray(dash.recentUsers)).toBe(true);
     expect(Array.isArray(dash.recentOrders)).toBe(true);
   });

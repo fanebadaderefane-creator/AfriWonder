@@ -1,0 +1,96 @@
+# Feed vidéo (style TikTok) — prérequis: session connectée, idéalement au moins une vidéo dans le fil.
+# Les étapes optionnelles passent si l’UI n’est pas disponible (fil vide, etc.).
+appId: com.afriwonder.app
+name: AfriWonder - Feed video (TikTok-like)
+tags:
+  - critical
+  - feed
+---
+- launchApp
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Pour toi"
+    timeout: 45000
+
+# ─── 1. En-tête feed ───────────────────────────────────────────
+- assertVisible: "Pour toi"
+- assertVisible: "Abonnes"
+
+# ─── 2. Swipe entre vidéos ─────────────────────────────────────
+- swipe:
+    direction: UP
+    duration: 500
+- waitForAnimationToEnd
+- swipe:
+    direction: UP
+    duration: 500
+- waitForAnimationToEnd
+- swipe:
+    direction: DOWN
+    duration: 500
+- waitForAnimationToEnd
+
+# ─── 3. Double-tap (like) ─────────────────────────────────────
+- doubleTapOn:
+    point: "50%,50%"
+- waitForAnimationToEnd
+
+# ─── 4. Commentaires ───────────────────────────────────────────
+- tapOn:
+    id: "comment-button"
+    optional: true
+- waitForAnimationToEnd
+- assertVisible:
+    text: "commentaires"
+    optional: true
+- tapOn:
+    id: "close-comments"
+    optional: true
+- waitForAnimationToEnd
+
+# ─── 5. Onglets Abonnés / Pour toi ─────────────────────────────
+- tapOn: "Abonnes"
+- waitForAnimationToEnd
+- tapOn: "Pour toi"
+- waitForAnimationToEnd
+
+# ─── 6. Notifications ──────────────────────────────────────────
+- tapOn:
+    id: "notifications-button"
+    optional: true
+- waitForAnimationToEnd
+- back
+
+# ─── 7. Recherche ──────────────────────────────────────────────
+- tapOn:
+    id: "search-button"
+    optional: true
+- waitForAnimationToEnd
+- back
+
+# ─── 8. Profil créateur (avatar) ───────────────────────────────
+- tapOn:
+    id: "creator-avatar"
+    optional: true
+- waitForAnimationToEnd
+- back
+
+# ─── 9. Partage ───────────────────────────────────────────────
+- tapOn:
+    id: "share-button"
+    optional: true
+- waitForAnimationToEnd
+- tapOn:
+    id: "share-sheet-cancel"
+    optional: true
+- tapOn:
+    text: "Annuler"
+    optional: true
+- waitForAnimationToEnd
+
+# ─── 10. Pull to refresh (geste vers le bas sur la zone vidéo) ───
+- swipe:
+    start: "50%,20%"
+    end: "50%,60%"
+    duration: 800
+- waitForAnimationToEnd

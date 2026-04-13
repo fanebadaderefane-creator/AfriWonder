@@ -1,8 +1,6 @@
 // AfriWonder full review PR - CodeRabbit
-import dotenv from 'dotenv';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+// En premier : charge backend/.env avant tout module qui lit process.env (voir bootstrap-env.ts).
+import './bootstrap-env.js';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { initSentry } from './config/sentry.js';
@@ -79,18 +77,6 @@ async function upsertDirectCallState(
   } catch (err) {
     logger.warn('upsertDirectCallState failed', { callId, status, err });
   }
-}
-
-// Charger backend/.env en priorité (évite qu'un .env à la racine du projet n'écrase DATABASE_URL)
-const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const envPath = path.join(backendRoot, '.env');
-const envExamplePath = path.join(backendRoot, '.env.example');
-if (fs.existsSync(envPath)) {
-  dotenv.config({ path: envPath });
-} else if (fs.existsSync(envExamplePath)) {
-  dotenv.config({ path: envExamplePath });
-} else {
-  dotenv.config();
 }
 
 // Sentry doit être initialisé avant toute création d’app (handlers dans app.ts)

@@ -1,44 +1,303 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Animated } from 'react-native';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  ActivityIndicator,
+  Animated,
+  Alert,
+  Linking,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, BorderRadius, FontSizes } from '../../src/theme/colors';
+import apiClient from '../../src/api/client';
 
-type Step = 'phone' | 'confirm' | 'otp' | 'processing' | 'success';
+type Step = 'phone' | 'processing' | 'success' | 'failed';
 
-export default function OrangeMoneyScreen() {
+const DEFAULT_RETURN_URL = 'https://afriwonder.com/payment/orange-money/complete';
+
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\s/g, '');
+  if (digits.startsWith('+223')) return digits;
+  return `+223${digits.replace(/^0+/, '')}`;
+}
+
+export default function OrangeMoneyCheckoutScreen() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ amount?: string }>();
+  const params = useLocalSearchParams<{ amount?: string; orderId?: string; returnUrl?: string }>();
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState('');
-  const [otp, setOtp] = useState(['', '', '', '']);
-  const amount = params.amount || '32000';
+  const [orderIdInput, setOrderIdInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [pollKey, setPollKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const amountStr = typeof params.amount === 'string' ? params.amount : Array.isArray(params.amount) ? params.amount[0] : '0';
+  const amountNum = Math.max(0, parseFloat(String(amountStr).replace(',', '.')) || 0);
+  const paramOrderId =
+    typeof params.orderId === 'string' ? params.orderId : Array.isArray(params.orderId) ? params.orderId[0] : '';
   const successScale = useRef(new Animated.Value(0)).current;
-  const otpRefs = useRef<(TextInput | null)[]>([]);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const handleConfirm = () => setStep('otp');
+  const effectiveOrderId = (paramOrderId || orderIdInput).trim();
 
-  const handleOtpChange = (value: string, index: number) => {
-    const newOtp = [...otp];
-    newOtp[index] = value;
-    setOtp(newOtp);
-    if (value && index < 3) otpRefs.current[index + 1]?.focus();
-    if (newOtp.every(d => d)) {
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  const startPolling = useCallback(
+    (key: string) => {
+      let attempts = 0;
+      stopPolling();
+      pollRef.current = setInterval(async () => {
+        attempts += 1;
+        if (attempts > 60) {
+          stopPolling();
+          setStep('failed');
+          setError("Délai dépassé : le paiement n'a pas été confirmé dans l'application. Vérifiez Orange Money ou l'historique des transactions.");
+          return;
+        }
+        try {
+          const res = await apiClient.get('/payments/transactions', { params: { page: 1, limit: 50 } });
+          const data = res.data?.data ?? res.data;
+          const list = (data?.transactions ?? data?.items ?? []) as Array<{
+            reference_id?: string | null;
+            status?: string;
+            payment_method?: string | null;
+          }>;
+          const tx = list.find(
+            (t) =>
+              t.reference_id === key &&
+              (!t.payment_method || String(t.payment_method).toLowerCase().includes('orange')),
+          );
+          if (!tx) return;
+          const st = String(tx.status || '').toLowerCase();
+          if (st === 'completed' || st === 'success' || st === 'paid') {
+            stopPolling();
+            setStep('success');
+            Animated.spring(successScale, { toValue: 1, friction: 4, useNativeDriver: true }).start();
+          } else if (st === 'failed' || st === 'cancelled' || st === 'canceled') {
+            stopPolling();
+            setStep('failed');
+            setError('Le paiement a été annulé ou a échoué.');
+          }
+        } catch {
+          /* ignore transient errors while polling */
+        }
+      }, 3000);
+    },
+    [stopPolling],
+  );
+
+  const initiatePayment = async () => {
+    if (phone.replace(/\s/g, '').length < 8) {
+      Alert.alert('Erreur', 'Numéro de téléphone invalide.');
+      return;
+    }
+    if (!effectiveOrderId || effectiveOrderId.length < 2) {
+      Alert.alert(
+        'Référence commande',
+        "Indiquez l'identifiant de commande (reçu après une commande marketplace ou depuis le panier). Sans commande valide côté serveur, le paiement ne peut pas être enregistré.",
+      );
+      return;
+    }
+    if (amountNum < 1) {
+      Alert.alert('Erreur', 'Montant invalide.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const returnUrl =
+        (typeof params.returnUrl === 'string' && params.returnUrl) ||
+        (Array.isArray(params.returnUrl) && params.returnUrl[0]) ||
+        DEFAULT_RETURN_URL;
+      const res = await apiClient.post('/payments/orange-money/initiate', {
+        orderId: effectiveOrderId,
+        amount: amountNum,
+        phone: normalizePhone(phone),
+        currency: 'XOF',
+        returnUrl,
+      });
+      const data = (res.data?.data ?? res.data) as {
+        paymentUrl?: string;
+        payment_url?: string;
+        orderId?: string;
+        reference?: string;
+      };
+      const payUrl = data?.paymentUrl || data?.payment_url;
+      const key = data?.reference || data?.orderId || effectiveOrderId;
+      setPollKey(key);
+
+      if (payUrl && typeof payUrl === 'string') {
+        const can = await Linking.canOpenURL(payUrl);
+        if (can) await Linking.openURL(payUrl);
+        else Alert.alert('Paiement', 'Impossible d’ouvrir le lien Orange Money sur cet appareil.');
+      }
+
       setStep('processing');
-      setTimeout(() => {
-        setStep('success');
-        Animated.spring(successScale, { toValue: 1, friction: 4, useNativeDriver: true }).start();
-      }, 2500);
+      startPolling(key);
+    } catch (e: unknown) {
+      const err = e as {
+        response?: { data?: { message?: string; detail?: string; error?: { message?: string } } };
+        message?: string;
+      };
+      const msg =
+        err.response?.data?.message ||
+        err.response?.data?.detail ||
+        err.response?.data?.error?.message ||
+        err.message ||
+        "Erreur lors de l'initiation du paiement.";
+      setError(String(msg));
+      Alert.alert('Erreur', String(msg));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onBack = () => {
+    stopPolling();
+    router.back();
+  };
+
+  const renderStep = () => {
+    switch (step) {
+      case 'phone':
+        return (
+          <View style={styles.content}>
+            <View style={styles.amountCard}>
+              <Text style={styles.amountLabel}>Montant à payer</Text>
+              <Text style={styles.amountValue}>{amountNum.toLocaleString('fr-FR')} FCFA</Text>
+            </View>
+
+            {!paramOrderId ? (
+              <>
+                <Text style={styles.label}>Identifiant de commande</Text>
+                <TextInput
+                  style={styles.orderInput}
+                  placeholder="Ex. id reçu après checkout"
+                  placeholderTextColor={Colors.textMuted}
+                  value={orderIdInput}
+                  onChangeText={setOrderIdInput}
+                  autoCapitalize="none"
+                />
+                <Text style={styles.hintSmall}>Obligatoire : le backend lie le paiement à une commande existante.</Text>
+              </>
+            ) : null}
+
+            <Text style={styles.label}>Numéro Orange Money</Text>
+            <View style={styles.phoneRow}>
+              <View style={styles.dialCode}>
+                <Text style={styles.dialCodeText}>+223</Text>
+              </View>
+              <TextInput
+                style={styles.phoneInput}
+                placeholder="XX XX XX XX"
+                placeholderTextColor="#666"
+                keyboardType="phone-pad"
+                value={phone}
+                onChangeText={setPhone}
+                maxLength={10}
+              />
+            </View>
+            <Text style={styles.hint}>
+              Vous serez redirigé vers Orange Money si un lien est fourni, ou validez depuis votre téléphone selon votre
+              opérateur.
+            </Text>
+            <TouchableOpacity
+              style={[styles.primaryBtn, (phone.replace(/\s/g, '').length < 8 || loading) && styles.primaryBtnDisabled]}
+              onPress={() => void initiatePayment()}
+              disabled={phone.replace(/\s/g, '').length < 8 || loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.primaryBtnText}>Payer {amountNum.toLocaleString('fr-FR')} FCFA</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        );
+      case 'processing':
+        return (
+          <View style={styles.centerContent}>
+            <ActivityIndicator size="large" color="#FF6600" />
+            <Text style={styles.processingTitle}>Paiement en cours…</Text>
+            <Text style={styles.processingDesc}>
+              Confirmez le paiement sur votre téléphone. Nous vérifions automatiquement le statut (peut prendre quelques
+              minutes).
+            </Text>
+            {pollKey ? (
+              <Text style={styles.refHint} numberOfLines={2}>
+                Réf. : {pollKey}
+              </Text>
+            ) : null}
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => {
+                stopPolling();
+                setStep('phone');
+              }}
+            >
+              <Text style={styles.cancelBtnText}>Fermer cette étape</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      case 'success':
+        return (
+          <View style={styles.centerContent}>
+            <Animated.View style={{ transform: [{ scale: successScale }] }}>
+              <View style={styles.successCircle}>
+                <Ionicons name="checkmark" size={50} color="#FFF" />
+              </View>
+            </Animated.View>
+            <Text style={styles.successTitle}>Paiement réussi !</Text>
+            <Text style={styles.successAmount}>{amountNum.toLocaleString('fr-FR')} FCFA</Text>
+            <Text style={styles.successDesc}>Transaction enregistrée (Orange Money).</Text>
+            <TouchableOpacity style={styles.primaryBtn} onPress={onBack}>
+              <Text style={styles.primaryBtnText}>Terminer</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      case 'failed':
+        return (
+          <View style={styles.centerContent}>
+            <View style={styles.failCircle}>
+              <Ionicons name="close" size={50} color="#FFF" />
+            </View>
+            <Text style={styles.failTitle}>Paiement non confirmé</Text>
+            <Text style={styles.failDesc}>{error || 'Une erreur est survenue.'}</Text>
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={() => {
+                setError(null);
+                setStep('phone');
+              }}
+            >
+              <Text style={styles.primaryBtnText}>Réessayer</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      default:
+        return null;
     }
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => step === 'phone' ? router.back() : setStep('phone')} style={styles.headerBtn}>
+        <TouchableOpacity onPress={onBack} style={styles.headerBtn} accessibilityLabel="Retour">
           <Ionicons name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
@@ -49,186 +308,114 @@ export default function OrangeMoneyScreen() {
         </View>
         <View style={{ width: 40 }} />
       </View>
-
-      {step === 'phone' && (
-        <View style={styles.content}>
-          <Text style={styles.stepTitle}>Numero Orange Money</Text>
-          <Text style={styles.stepSubtitle}>Entrez le numero associe a votre compte</Text>
-
-          <View style={styles.phoneRow}>
-            <View style={styles.dialCode}><Text style={styles.dialCodeText}>+223</Text></View>
-            <TextInput
-              style={styles.phoneInput}
-              placeholder="XX XX XX XX"
-              placeholderTextColor="#666"
-              keyboardType="phone-pad"
-              value={phone}
-              onChangeText={setPhone}
-              maxLength={10}
-            />
-          </View>
-
-          <View style={styles.amountPreview}>
-            <Text style={styles.amountLabel}>Montant a payer</Text>
-            <Text style={styles.amountValue}>{parseInt(amount).toLocaleString()} FCFA</Text>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.primaryBtn, !phone && styles.primaryBtnDisabled]}
-            onPress={() => phone.length >= 8 ? setStep('confirm') : null}
-            disabled={phone.length < 8}
-          >
-            <LinearGradient colors={['#FF8C00', '#FF6600']} style={styles.primaryBtnGradient}>
-              <Text style={styles.primaryBtnText}>Continuer</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {step === 'confirm' && (
-        <View style={styles.content}>
-          <View style={styles.confirmCard}>
-            <View style={styles.confirmIcon}>
-              <Ionicons name="shield-checkmark" size={40} color="#FF6600" />
-            </View>
-            <Text style={styles.confirmTitle}>Confirmer le paiement</Text>
-            
-            <View style={styles.confirmDetail}>
-              <Text style={styles.confirmLabel}>Numero</Text>
-              <Text style={styles.confirmValue}>+223 {phone}</Text>
-            </View>
-            <View style={styles.confirmDivider} />
-            <View style={styles.confirmDetail}>
-              <Text style={styles.confirmLabel}>Montant</Text>
-              <Text style={styles.confirmAmountValue}>{parseInt(amount).toLocaleString()} FCFA</Text>
-            </View>
-            <View style={styles.confirmDivider} />
-            <View style={styles.confirmDetail}>
-              <Text style={styles.confirmLabel}>Frais</Text>
-              <Text style={styles.confirmValue}>0 FCFA</Text>
-            </View>
-            <View style={styles.confirmDivider} />
-            <View style={styles.confirmDetail}>
-              <Text style={styles.confirmLabel}>Total</Text>
-              <Text style={styles.confirmAmountValue}>{parseInt(amount).toLocaleString()} FCFA</Text>
-            </View>
-          </View>
-
-          <TouchableOpacity style={styles.primaryBtn} onPress={handleConfirm}>
-            <LinearGradient colors={['#FF8C00', '#FF6600']} style={styles.primaryBtnGradient}>
-              <Ionicons name="lock-closed" size={18} color="#FFF" />
-              <Text style={styles.primaryBtnText}>Confirmer et payer</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {step === 'otp' && (
-        <View style={styles.content}>
-          <View style={styles.otpIcon}>
-            <Ionicons name="chatbox" size={50} color="#FF6600" />
-          </View>
-          <Text style={styles.stepTitle}>Code de verification</Text>
-          <Text style={styles.stepSubtitle}>Un code SMS a ete envoye au +223 {phone}</Text>
-
-          <View style={styles.otpRow}>
-            {otp.map((digit, i) => (
-              <TextInput
-                key={i}
-                ref={(ref) => { otpRefs.current[i] = ref; }}
-                style={[styles.otpInput, digit && styles.otpInputFilled]}
-                keyboardType="number-pad"
-                maxLength={1}
-                value={digit}
-                onChangeText={(v) => handleOtpChange(v, i)}
-              />
-            ))}
-          </View>
-
-          <TouchableOpacity><Text style={styles.resendText}>Renvoyer le code (30s)</Text></TouchableOpacity>
-        </View>
-      )}
-
-      {step === 'processing' && (
-        <View style={styles.centerContent}>
-          <ActivityIndicator size="large" color="#FF6600" />
-          <Text style={styles.processingText}>Traitement en cours...</Text>
-          <Text style={styles.processingSubtext}>Veuillez ne pas fermer l'application</Text>
-        </View>
-      )}
-
-      {step === 'success' && (
-        <View style={styles.centerContent}>
-          <Animated.View style={[styles.successCircle, { transform: [{ scale: successScale }] }]}>
-            <LinearGradient colors={['#4CAF50', '#2E7D32']} style={styles.successGradient}>
-              <Ionicons name="checkmark" size={50} color="#FFF" />
-            </LinearGradient>
-          </Animated.View>
-          <Text style={styles.successTitle}>Paiement reussi !</Text>
-          <Text style={styles.successAmount}>{parseInt(amount).toLocaleString()} FCFA</Text>
-          <Text style={styles.successSubtext}>Transaction ID: OM-{Date.now().toString(36).toUpperCase()}</Text>
-
-          <TouchableOpacity style={styles.primaryBtn} onPress={() => router.replace('/(tabs)')}>
-            <LinearGradient colors={['#FF8C00', '#FF6600']} style={styles.primaryBtnGradient}>
-              <Text style={styles.primaryBtnText}>Retour a l'accueil</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      )}
+      {renderStep()}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 10 },
+  container: { flex: 1, backgroundColor: '#0D0D0D' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+  },
   headerBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  omLogo: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#FF6600', alignItems: 'center', justifyContent: 'center' },
-  omLogoText: { color: '#FFF', fontSize: 14, fontWeight: '900' },
-  headerTitle: { color: '#FFF', fontSize: 18, fontWeight: '700' },
-
-  content: { flex: 1, paddingHorizontal: 24, paddingTop: 30 },
-  centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
-
-  stepTitle: { color: '#FFF', fontSize: 22, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
-  stepSubtitle: { color: '#888', fontSize: 14, textAlign: 'center', marginBottom: 30 },
-
-  phoneRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
-  dialCode: { backgroundColor: '#1A1A1A', borderRadius: 12, paddingHorizontal: 16, justifyContent: 'center', borderWidth: 1, borderColor: '#333' },
-  dialCodeText: { color: '#FF6600', fontSize: 16, fontWeight: '700' },
-  phoneInput: { flex: 1, backgroundColor: '#1A1A1A', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 16, color: '#FFF', fontSize: 18, fontWeight: '600', borderWidth: 1, borderColor: '#333', letterSpacing: 2 },
-
-  amountPreview: { backgroundColor: '#111', borderRadius: 16, padding: 20, alignItems: 'center', marginBottom: 30, borderWidth: 1, borderColor: '#222' },
-  amountLabel: { color: '#888', fontSize: 13, marginBottom: 6 },
-  amountValue: { color: '#FF6600', fontSize: 28, fontWeight: '800' },
-
-  primaryBtn: { borderRadius: 14, overflow: 'hidden', marginTop: 10 },
+  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  omLogo: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#FF6600',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  omLogoText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
+  headerTitle: { color: '#FFF', fontSize: FontSizes.lg, fontWeight: 'bold' },
+  content: { flex: 1, paddingHorizontal: Spacing.xl, paddingTop: Spacing.lg },
+  amountCard: {
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: 'rgba(255,102,0,0.1)',
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255,102,0,0.2)',
+    marginBottom: 24,
+  },
+  amountLabel: { color: Colors.textSecondary, fontSize: FontSizes.sm },
+  amountValue: { color: '#FF6600', fontSize: 32, fontWeight: 'bold', marginTop: 4 },
+  label: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600', marginBottom: 8 },
+  orderInput: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    color: Colors.text,
+    fontSize: FontSizes.md,
+    marginBottom: 6,
+  },
+  hintSmall: { color: Colors.textMuted, fontSize: FontSizes.xs, marginBottom: 16, lineHeight: 16 },
+  phoneRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  dialCode: {
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    justifyContent: 'center',
+  },
+  dialCodeText: { color: Colors.text, fontWeight: '600' },
+  phoneInput: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: 16,
+    color: Colors.text,
+    fontSize: FontSizes.lg,
+  },
+  hint: { color: Colors.textMuted, fontSize: FontSizes.sm, marginBottom: 24, lineHeight: 20 },
+  primaryBtn: { backgroundColor: '#FF6600', borderRadius: BorderRadius.md, padding: 16, alignItems: 'center' },
   primaryBtnDisabled: { opacity: 0.4 },
-  primaryBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 8 },
-  primaryBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-
-  confirmCard: { backgroundColor: '#111', borderRadius: 20, padding: 24, marginBottom: 24, borderWidth: 1, borderColor: '#222' },
-  confirmIcon: { alignSelf: 'center', marginBottom: 16 },
-  confirmTitle: { color: '#FFF', fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 20 },
-  confirmDetail: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10 },
-  confirmLabel: { color: '#888', fontSize: 14 },
-  confirmValue: { color: '#FFF', fontSize: 14, fontWeight: '600' },
-  confirmAmountValue: { color: '#FF6600', fontSize: 16, fontWeight: '800' },
-  confirmDivider: { height: 1, backgroundColor: '#222' },
-
-  otpIcon: { alignSelf: 'center', marginBottom: 20 },
-  otpRow: { flexDirection: 'row', justifyContent: 'center', gap: 14, marginBottom: 30 },
-  otpInput: { width: 56, height: 64, backgroundColor: '#1A1A1A', borderRadius: 14, color: '#FFF', fontSize: 24, fontWeight: '800', borderWidth: 2, borderColor: '#333' },
-  otpInputFilled: { borderColor: '#FF6600', backgroundColor: '#1A1000' },
-  resendText: { color: '#FF6600', fontSize: 14, fontWeight: '600', textAlign: 'center' },
-
-  processingText: { color: '#FFF', fontSize: 18, fontWeight: '700', marginTop: 20 },
-  processingSubtext: { color: '#888', fontSize: 14, marginTop: 8 },
-
-  successCircle: { marginBottom: 24 },
-  successGradient: { width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center' },
-  successTitle: { color: '#FFF', fontSize: 24, fontWeight: '800', marginBottom: 8 },
-  successAmount: { color: '#4CAF50', fontSize: 32, fontWeight: '800', marginBottom: 8 },
-  successSubtext: { color: '#888', fontSize: 13, marginBottom: 40 },
+  primaryBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: FontSizes.lg },
+  centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
+  processingTitle: { color: Colors.text, fontSize: FontSizes.xl, fontWeight: 'bold', marginTop: 20 },
+  processingDesc: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.md,
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 22,
+  },
+  refHint: { color: Colors.textMuted, fontSize: FontSizes.xs, marginTop: 12, textAlign: 'center' },
+  cancelBtn: { marginTop: 20, paddingVertical: 10 },
+  cancelBtnText: { color: Colors.textSecondary, fontSize: FontSizes.md },
+  successCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successTitle: { color: Colors.text, fontSize: FontSizes.xxl, fontWeight: 'bold', marginTop: 20 },
+  successAmount: { color: '#10B981', fontSize: 28, fontWeight: 'bold', marginTop: 4 },
+  successDesc: { color: Colors.textSecondary, fontSize: FontSizes.md, marginTop: 8, marginBottom: 24 },
+  failCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  failTitle: { color: '#EF4444', fontSize: FontSizes.xxl, fontWeight: 'bold', marginTop: 20 },
+  failDesc: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.md,
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 24,
+    lineHeight: 22,
+  },
 });

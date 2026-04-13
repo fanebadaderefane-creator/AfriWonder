@@ -16,6 +16,7 @@ import jwt
 import hashlib
 from dotenv import load_dotenv
 import os
+import json
 import aiofiles
 import httpx
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -94,6 +95,26 @@ def verify_token(authorization: Optional[str] = Header(None)):
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok", "service": "AfriWonder Mobile API", "version": "2.0.0"}
+
+
+# ==================== AUDIT PRODUIT (tableau de bord PWA frontend/src/App.jsx) ====================
+# Données : backend/product_audit.json
+_PRODUCT_AUDIT_JSON = os.path.join(os.path.dirname(__file__), "product_audit.json")
+
+
+@app.get("/api/audit")
+async def product_audit_dashboard():
+    """Payload JSON pour le tableau de bord d'audit (GET /api/audit — proxy Vite /api → ce service)."""
+    if not os.path.isfile(_PRODUCT_AUDIT_JSON):
+        raise HTTPException(status_code=503, detail="product_audit.json introuvable sur le serveur")
+    async with aiofiles.open(_PRODUCT_AUDIT_JSON, "r", encoding="utf-8") as f:
+        raw = await f.read()
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"product_audit.json invalide: {e}") from e
+    return {"data": payload}
+
 
 # ==================== AUTH PROXY (Anti-bot bypass) ====================
 # Le backend PWA détecte les requêtes depuis les appareils mobiles comme "bot"

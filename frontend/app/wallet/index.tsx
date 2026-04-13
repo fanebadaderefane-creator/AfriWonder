@@ -115,12 +115,17 @@ export default function WalletScreen() {
         {/* Quick Actions */}
         <View style={styles.quickActions}>
           {QUICK_ACTIONS.map((action) => (
-            <TouchableOpacity key={action.id} style={styles.quickAction} onPress={() => {
+            <TouchableOpacity
+              key={action.id}
+              testID={action.id === 'topup' ? 'wallet-open-recharge' : undefined}
+              style={styles.quickAction}
+              onPress={() => {
               if (action.id === 'topup') router.push('/wallet/recharge');
               if (action.id === 'send') router.push('/wallet/transfer');
               if (action.id === 'receive') Alert.alert('Recevoir', 'Partagez votre numéro pour recevoir un paiement');
               if (action.id === 'withdraw') Alert.alert('Retrait', 'Fonctionnalité de retrait bientôt disponible');
-            }}>
+            }}
+            >
               <View style={[styles.quickActionIcon, { backgroundColor: action.color }]}>
                 <Ionicons name={action.icon as any} size={22} color="#FFFFFF" />
               </View>

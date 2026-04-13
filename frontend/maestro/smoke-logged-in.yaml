@@ -1,0 +1,9 @@
+# Flux minimal : utilisateur déjà connecté — onglet Accueil / barre de recherche visible.
+# Prérequis: session valide enregistrée sur l’appareil (SecureStore).
+# Commande: maestro test maestro/smoke-logged-in.yaml
+appId: com.afriwonder.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Recherche"
+    timeout: 45000

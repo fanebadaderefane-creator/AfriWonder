@@ -359,7 +359,7 @@ export default function ProfileScreen() {
   const handleLogout = () => {
     Alert.alert('Deconnexion', 'Etes-vous sur de vouloir vous deconnecter ?', [
       { text: 'Annuler', style: 'cancel' },
-      { text: 'Deconnexion', style: 'destructive', onPress: async () => { await logout(); router.replace('/(auth)/login'); } },
+      { text: 'Confirmer', style: 'destructive', onPress: async () => { await logout(); router.replace('/(auth)/login'); } },
     ]);
   };
 
@@ -394,8 +394,9 @@ export default function ProfileScreen() {
     { key: 'tagged', icon: 'pricetag-outline', iconActive: 'pricetag' },
   ];
 
-  const renderGridItem = ({ item }: { item: PostItem }) => (
+  const renderGridItem = ({ item, index }: { item: PostItem; index: number }) => (
     <TouchableOpacity
+      testID={index === 0 ? 'profile-first-grid-video' : undefined}
       style={styles.gridItem}
       activeOpacity={0.8}
       onPress={() => router.push({ pathname: '/watch/[id]', params: { id: item.id } })}
@@ -441,7 +442,7 @@ export default function ProfileScreen() {
             >
               <Ionicons name="apps-outline" size={24} color={Colors.primary} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.topBarBtn} onPress={() => router.push('/settings')}>
+            <TouchableOpacity testID="profile-settings-button" style={styles.topBarBtn} onPress={() => router.push('/settings')}>
               <Ionicons name="menu-outline" size={26} color="#FFF" />
             </TouchableOpacity>
           </View>
@@ -685,7 +686,9 @@ export default function ProfileScreen() {
         {/* Quick Actions */}
         <View style={styles.quickActions}>
           {[
+            { icon: 'download', label: 'Mes téléchargements', route: '/downloads', color: '#00B894' },
             { icon: 'wallet', label: 'Portefeuille', route: '/wallet', color: '#FF6B00' },
+            { icon: 'diamond', label: 'Abonnements', route: '/subscriptions', color: '#A855F7' },
             { icon: 'cash', label: 'Mes Revenus', route: '/creator/earnings', color: '#4ECDC4' },
             { icon: 'megaphone', label: 'Publicité', route: '/creator/ads', color: '#667eea' },
             { icon: 'radio', label: 'Live & Replays', route: '/live', color: '#E91E63' },
@@ -693,7 +696,12 @@ export default function ProfileScreen() {
             { icon: 'storefront', label: 'Ma boutique', route: '/seller', color: '#FF6B6B' },
             { icon: 'gift', label: 'Parrainage', route: '/referrals', color: '#3498DB' },
           ].map((action, i) => (
-            <TouchableOpacity key={i} style={styles.quickAction} onPress={() => router.push(action.route as any)}>
+            <TouchableOpacity
+              key={i}
+              testID={action.route === '/subscriptions' ? 'profile-subscriptions-entry' : undefined}
+              style={styles.quickAction}
+              onPress={() => router.push(action.route as any)}
+            >
               <View style={[styles.quickActionIcon, { backgroundColor: action.color + '18' }]}>
                 <Ionicons name={action.icon as any} size={22} color={action.color} />
               </View>
@@ -704,7 +712,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* Logout */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+        <TouchableOpacity testID="profile-logout-button" style={styles.logoutBtn} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={20} color="#FF4757" />
           <Text style={styles.logoutText}>Deconnexion</Text>
         </TouchableOpacity>

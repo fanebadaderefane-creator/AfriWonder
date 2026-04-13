@@ -6,6 +6,7 @@ export default function CreatorLayout() {
       <Stack.Screen name="earnings" />
       <Stack.Screen name="withdraw" />
       <Stack.Screen name="ads" />
+      <Stack.Screen name="revenue-share" />
     </Stack>
   );
 }

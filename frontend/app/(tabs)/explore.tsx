@@ -337,7 +337,7 @@ export default function ExploreScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Decouvrir</Text>
         <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.headerBtn} onPress={() => router.push('/messages')}>
+          <TouchableOpacity testID="messages-entry" style={styles.headerBtn} onPress={() => router.push('/messages')}>
             <Ionicons name="chatbubble-ellipses-outline" size={24} color="#FFF" />
             <View style={styles.notifDot} />
           </TouchableOpacity>
