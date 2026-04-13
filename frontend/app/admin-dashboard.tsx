@@ -18,16 +18,13 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
 import apiClient from '../src/api/client';
 import { useAuthStore } from '../src/store/authStore';
 import { API_ROUTES } from '../src/config/api';
+import { isAdminUser } from '../src/utils/adminAccess';
 
 const { width } = Dimensions.get('window');
 
 const fmt = (n: number) =>
   n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
 const fmtMoney = (n: number) => `${Number(n || 0).toLocaleString('fr-FR')} FCFA`;
-
-const SUPER_ADMIN_EMAIL = (
-  process.env.EXPO_PUBLIC_SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com'
-).toLowerCase();
 
 interface KPI {
   label: string;
@@ -69,10 +66,7 @@ export default function AdminDashboardScreen() {
     content?: { videos_uploaded?: number; lives_started_in_period?: number };
   }>({});
 
-  const isAdmin =
-    user?.role === 'admin' ||
-    user?.role === 'super_admin' ||
-    user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
+  const isAdmin = isAdminUser(user);
 
   const loadData = useCallback(async (opts?: { silent?: boolean }) => {
     try {
@@ -370,12 +364,53 @@ export default function AdminDashboardScreen() {
                   </Text>
                 </View>
                 <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Écrans dédiés</Text>
+                  {[
+                    {
+                      label: 'Utilisateurs (liste complète)',
+                      icon: 'people-outline' as const,
+                      onPress: () => router.push('/(admin)/users' as never),
+                    },
+                    {
+                      label: 'Modération (plein écran)',
+                      icon: 'shield-outline' as const,
+                      onPress: () => router.push('/(admin)/moderation' as never),
+                    },
+                    {
+                      label: 'Transactions & commandes',
+                      icon: 'card-outline' as const,
+                      onPress: () => router.push('/(admin)/transactions' as never),
+                    },
+                    {
+                      label: 'Lives (admin)',
+                      icon: 'radio-outline' as const,
+                      onPress: () => router.push('/(admin)/lives' as never),
+                    },
+                    {
+                      label: 'Créateurs & vérifications',
+                      icon: 'star-outline' as const,
+                      onPress: () => router.push('/(admin)/creators' as never),
+                    },
+                    {
+                      label: 'Signalements (tous statuts)',
+                      icon: 'flag-outline' as const,
+                      onPress: () => router.push('/(admin)/reports' as never),
+                    },
+                  ].map((a, idx) => (
+                    <TouchableOpacity key={`full-${idx}`} style={styles.actionRow} onPress={a.onPress}>
+                      <Ionicons name={a.icon} size={20} color={Colors.primary} />
+                      <Text style={styles.actionLabel}>{a.label}</Text>
+                      <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.section}>
                   <Text style={styles.sectionTitle}>Actions rapides</Text>
                   {[
                     {
                       label: 'Paramètres plateforme',
                       icon: 'settings' as const,
-                      onPress: () => router.push('/admin-settings' as never),
+                      onPress: () => router.push('/(admin)/settings' as never),
                     },
                     {
                       label: 'Gérer les utilisateurs',

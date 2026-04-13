@@ -15,10 +15,7 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
 import apiClient from '../src/api/client';
 import { useAuthStore } from '../src/store/authStore';
 import { API_ROUTES } from '../src/config/api';
-
-const SUPER_ADMIN_EMAIL = (
-  process.env.EXPO_PUBLIC_SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com'
-).toLowerCase();
+import { isAdminUser } from '../src/utils/adminAccess';
 
 export default function AdminSettingsScreen() {
   const insets = useSafeAreaInsets();
@@ -27,10 +24,7 @@ export default function AdminSettingsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [snapshot, setSnapshot] = useState<Record<string, unknown> | null>(null);
 
-  const isAdmin =
-    user?.role === 'admin' ||
-    user?.role === 'super_admin' ||
-    user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
+  const isAdmin = isAdminUser(user);
 
   const load = useCallback(async () => {
     try {

@@ -100,6 +100,7 @@ export default function RootLayout() {
             <Stack.Screen name="interests" />
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="(admin)" />
             <Stack.Screen name="live" />
             <Stack.Screen name="services" />
             <Stack.Screen name="product" />
