@@ -10,6 +10,14 @@ npm install
 npm run start
 ```
 
+Ou depuis ce dossier (scripts relais vers `frontend/`) :
+
+```bash
+cd mobile-afriwonder
+npm install   # optionnel : installe npm dans ce dossier minimal
+npm run start
+```
+
 ## Build EAS
 
 Configuration : `frontend/eas.json`. Depuis la racine du dépôt :
