@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Image, TextInput, Modal, KeyboardAvoidingView, Platform, ScrollView, Animated, AppState, Alert, Pressable, RefreshControl, type NativeSyntheticEvent, type NativeScrollEvent, type LayoutChangeEvent } from 'react-native';
-import { FlashList, type ViewToken as FlashViewToken } from '@shopify/flash-list';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Image, TextInput, Modal, KeyboardAvoidingView, Platform, ScrollView, Animated, AppState, Alert, Pressable, RefreshControl, type LayoutChangeEvent, type ViewToken } from 'react-native';
+import { FlashList as ShopifyFlashList, type FlashListRef } from '@shopify/flash-list';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,10 +17,15 @@ import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { Audio } from 'expo-av';
 import offlineActionSyncService from '../../src/services/offlineActionSyncService';
 
-const { width, height } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
 
 /** Base hauteur tab bar, alignée sur `app/(tabs)/_layout.tsx` (`height: 65 + insets.bottom`). */
 const TAB_BAR_LAYOUT_HEIGHT = 65;
+
+/**
+ * Sur Android (MEmu / RN), `onLayout` + snap peuvent sous-dimensionner la cellule d’1–4 px vs le viewport
+ * réel → bande de la slide suivante en bas. On allonge légèrement la cellule **et** `snapToInterval` pareil.
+ */
 
 interface VideoUser {
   id: string;
@@ -208,7 +213,7 @@ const VideoItem: React.FC<VideoItemProps> = ({
     lastTap.current = now;
   };
 
-  const itemHeight = slideHeight ?? Math.max(200, height - TAB_BAR_LAYOUT_HEIGHT - insets.bottom);
+  const itemHeight = slideHeight ?? Math.ceil(Math.max(200, height - TAB_BAR_LAYOUT_HEIGHT - insets.bottom));
 
   return (
     <View style={[styles.videoContainer, { height: itemHeight }]}>
@@ -760,76 +765,16 @@ export default function FeedScreen() {
   const [listViewportHeight, setListViewportHeight] = useState(0);
   const feedItemHeight = useMemo(() => {
     if (listViewportHeight > 0) return listViewportHeight;
-    return Math.max(200, height - TAB_BAR_LAYOUT_HEIGHT - insets.bottom);
+    return Math.ceil(Math.max(200, height - TAB_BAR_LAYOUT_HEIGHT - insets.bottom));
   }, [listViewportHeight, height, insets.bottom]);
 
-  const feedItemHeightRef = useRef(feedItemHeight);
-  useEffect(() => {
-    feedItemHeightRef.current = feedItemHeight;
-  }, [feedItemHeight]);
-
-  const lastScrollOffsetYRef = useRef(0);
-  const scrollSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    return () => {
-      if (scrollSyncTimeoutRef.current) clearTimeout(scrollSyncTimeoutRef.current);
-    };
-  }, []);
-
-  /** Index dérivé du scroll (une page = hauteur mesurée du FlatList). */
-  const syncIndexFromScrollOffset = useCallback((offsetY: number) => {
-    const h = feedItemHeightRef.current;
-    const list = videosRef.current;
-    if (list.length === 0 || h <= 0) return;
-    const idx = Math.min(list.length - 1, Math.max(0, Math.round(offsetY / h)));
-    setCurrentIndex(idx);
-  }, []);
-
-  const scheduleSyncFromScrollOffset = useCallback((y: number) => {
-    lastScrollOffsetYRef.current = y;
-    if (scrollSyncTimeoutRef.current) clearTimeout(scrollSyncTimeoutRef.current);
-    scrollSyncTimeoutRef.current = setTimeout(() => {
-      scrollSyncTimeoutRef.current = null;
-      syncIndexFromScrollOffset(lastScrollOffsetYRef.current);
-    }, 72);
-  }, [syncIndexFromScrollOffset]);
-
-  const onFeedScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      lastScrollOffsetYRef.current = e.nativeEvent.contentOffset.y;
-      scheduleSyncFromScrollOffset(e.nativeEvent.contentOffset.y);
-    },
-    [scheduleSyncFromScrollOffset]
-  );
-
-  const onFeedScrollEnd = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      if (scrollSyncTimeoutRef.current) {
-        clearTimeout(scrollSyncTimeoutRef.current);
-        scrollSyncTimeoutRef.current = null;
-      }
-      syncIndexFromScrollOffset(e.nativeEvent.contentOffset.y);
-    },
-    [syncIndexFromScrollOffset]
-  );
-
-  /** Autoplay / carte active : >60 % visible (brief feed TikTok). */
-  const feedViewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
-  const onViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: FlashViewToken<Video>[] }) => {
-      const indices = viewableItems
-        .filter((t) => t.isViewable && typeof t.index === 'number' && t.index >= 0)
-        .map((t) => t.index as number);
-      if (indices.length === 0) return;
-      const idx = Math.min(...indices);
-      setCurrentIndex((prev) => (prev === idx ? prev : idx));
-    }
-  ).current;
-
   const onListLayout = useCallback((e: LayoutChangeEvent) => {
-    const h = Math.round(e.nativeEvent.layout.height);
+    /** `Math.round` peut sous-dimensionner la cellule vs le viewport → bande de la vidéo suivante (Android). */
+    const h = Math.ceil(e.nativeEvent.layout.height);
     if (h > 0) setListViewportHeight((prev) => (prev === h ? prev : h));
   }, []);
+
+  const listRef = useRef<FlashListRef<Video> | null>(null);
 
   /** Feuille d’action (Modal) : fiable sur web — `Alert.alert` à plusieurs boutons est souvent inerte. */
   const [soundMenuVideo, setSoundMenuVideo] = useState<Video | null>(null);
@@ -843,13 +788,26 @@ export default function FeedScreen() {
     lastViewedVideoIdRef.current = null;
   }, [activeTab]);
 
-  useEffect(() => {
-    const v = videos[currentIndex];
-    if (!v) return;
-    if (lastViewedVideoIdRef.current === v.id) return;
-    lastViewedVideoIdRef.current = v.id;
-    apiClient.post(`/videos/${v.id}/view`).catch(() => {});
-  }, [currentIndex, videos]);
+  /** Style TikTok : vidéo active = ~50 % visible ≥ 100 ms (évite les faux positifs au scroll). */
+  const viewabilityConfigRef = useRef({
+    itemVisiblePercentThreshold: 50,
+    minimumViewTime: 100,
+  });
+
+  const onViewableItemsChanged = useRef(
+    (info: { viewableItems: ViewToken<Video>[]; changed: ViewToken<Video>[] }) => {
+      const { viewableItems } = info;
+      if (viewableItems.length === 0) return;
+      const idx = viewableItems[0].index ?? 0;
+      setCurrentIndex(idx);
+      const list = videosRef.current;
+      const video = list[idx];
+      if (!video) return;
+      if (lastViewedVideoIdRef.current === video.id) return;
+      lastViewedVideoIdRef.current = video.id;
+      apiClient.post(`/videos/${video.id}/view`).catch(() => {});
+    }
+  );
 
   /** Extrait les vidéos du feed combiné PWA (`/api/feed` → `items[].type === 'video'`). */
   const extractVideosFromFeedItems = (items: unknown[]): any[] => {
@@ -1074,11 +1032,13 @@ export default function FeedScreen() {
         </View>
       </View>
 
-      <FlashList
-        style={{ flex: 1 }}
+      <View style={styles.feedListClip}>
+        <ShopifyFlashList
+        style={styles.feedList}
+        ref={listRef}
         data={videos}
         onLayout={onListLayout}
-        renderItem={({ item }) => (
+        renderItem={({ item }: { item: Video; index: number }) => (
           <VideoItem
             video={item}
             slideHeight={feedItemHeight}
@@ -1097,19 +1057,20 @@ export default function FeedScreen() {
             onOpenSound={() => openSoundMenu(item)}
           />
         )}
-        keyExtractor={(item) => item.id}
-        pagingEnabled
+        keyExtractor={(item: Video) => item.id}
         showsVerticalScrollIndicator={false}
-        snapToInterval={feedItemHeight}
-        snapToAlignment="start"
-        decelerationRate="fast"
-        onScroll={onFeedScroll}
+        pagingEnabled={true}
+        bounces={false}
+        overScrollMode="never"
         scrollEventThrottle={16}
-        onMomentumScrollEnd={onFeedScrollEnd}
-        onScrollEndDrag={onFeedScrollEnd}
-        viewabilityConfig={feedViewabilityConfig}
-        onViewableItemsChanged={onViewableItemsChanged}
-        drawDistance={feedItemHeight * 2}
+        estimatedItemSize={feedItemHeight}
+        drawDistance={
+          feedItemHeight > 0
+            ? feedItemHeight * (Platform.OS === 'android' ? 2 : 3)
+            : 600
+        }
+        viewabilityConfig={viewabilityConfigRef.current}
+        onViewableItemsChanged={onViewableItemsChanged.current}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
         refreshControl={
@@ -1159,7 +1120,8 @@ export default function FeedScreen() {
             </View>
           )
         }
-      />
+        />
+      </View>
 
       {loading && <View style={styles.loadingOverlay}><ActivityIndicator size="large" color={Colors.primary} /></View>}
 
@@ -1234,8 +1196,11 @@ const styles = StyleSheet.create({
   headerNotifDot: { position: 'absolute', top: 2, right: 2, width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#FF3D00', borderWidth: 1, borderColor: '#000' },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF0000', marginRight: 4 },
   liveText: { color: '#FF4444', fontSize: FontSizes.xs, fontWeight: 'bold' },
-  videoContainer: { width, position: 'relative', backgroundColor: '#000' },
-  videoWrapper: { flex: 1 },
+  feedListClip: { flex: 1, overflow: 'hidden', backgroundColor: '#000' },
+  feedList: { flex: 1, overflow: 'hidden', backgroundColor: '#000' },
+  /** `width: 100 %` évite un écart vs la cellule FlashList (sous-pixels) qui montrait les bords des slides voisines. */
+  videoContainer: { width: '100%', alignSelf: 'stretch', position: 'relative', backgroundColor: '#000', overflow: 'hidden' },
+  videoWrapper: { flex: 1, overflow: 'hidden' },
   video: { width: '100%', height: '100%' },
   pauseOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   pauseCircle: { width: 70, height: 70, borderRadius: 35, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },

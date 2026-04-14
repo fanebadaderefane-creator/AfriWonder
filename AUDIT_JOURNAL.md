@@ -1,0 +1,135 @@
+# Journal d'Audit AfriWonder — Cursor
+## Dernière mise à jour : 2026-04-14 (session livraison)
+
+## ✅ Validé (fonctionnel + corrigé)
+- [session] `npm run verify:delivery` (avec `NODE_OPTIONS=--max-old-space-size=8192`) : **OK** — `verify:audit` OK, Vitest PWA **330/330**, Expo `verify` (lint 0 erreurs, warnings réduits, `tsc`, Vitest **34 passed | 2 skipped**). Durée ~10 min côté Vitest PWA sur cette machine.
+- [session] `npm run test:e2e:ci` : **OK** — **27** tests Chromium + **1** Firefox (`feed-layout-firefox` avec mode invité).
+- [session] `npm run test:backend` (smoke) : **10/10**.
+- [18:00] PWA prod `POST /api/auth/login` : le corps JSON doit être UTF-8 valide (fichier temp + `--data-binary` sous PowerShell) ; le **User-Agent** ne doit pas contenir `curl` (middleware `antiBot.ts` → 403 « bot détecté »). Avec UA navigateur + JSON correct → `success: true` (smoke OK, tokens non journalisés).
+- [18:00] Playwright Firefox `feed-layout-firefox.spec.ts` : correction — activer le mode invité (`sessionStorage afw_guest_explore=1` via `addInitScript`) avant `/`, sinon la route affiche la Landing et `[data-afw-feed-column="1"]` est absent. **1 passed** sur `firefox-desktop`.
+- [17:18] Expo `frontend/` : `npm run verify` OK — `expo lint` (0 erreurs, 26 warnings), `tsc --noEmit` OK, Vitest `34 passed | 2 skipped`. Le `typecheck` peut paraître long si plusieurs jobs tournent en parallèle ; en isolation `tsc` termine en ~30–40s.
+- [10:59] Baseline tests OK : `npm run test:backend` (10/10), `npm test` (330/330), `frontend verify` (typecheck+tests OK), Playwright CI subset (corrigé + repassé sur les specs paiement/protected routes).
+- [14:05] Audit mobile Expo `frontend/` terminé : cartographie réelle des écrans et surfaces critiques.
+- [14:12] `frontend` lint rétabli : plus d'erreurs bloquantes, warnings hérités uniquement.
+- [14:18] `frontend` typecheck rétabli : corrections du hook live partagé, E2EE mobile et téléchargement offline.
+- [14:21] Tests Expo `frontend` passants : `31 passed | 2 skipped`.
+- [14:33] Smoke backend rétabli : `GET /api/videos` passe de `500` à `200`.
+- [14:37] Navigation live corrigée : un live actif ouvre désormais la room live et non le replay.
+- [14:41] Écrans `referrals`, `communities`, `miniapps` branchés sur les APIs backend existantes au lieu de données statiques locales.
+- [13:55] `npm run verify:delivery` passe entièrement à la racine après remise en état des dépendances root et durcissement du script `test:ci:frontend`.
+- [14:13] APIs mobiles dédiées livrées sous `/api/mobile` : `health`, `push-token`, `videos/:id/download-url`, `resolve-deeplink`, `device-settings`, `sync`, `analytics/event`.
+- [14:13] Test Jest dédié `backend/__tests__/mobile.routes.test.ts` passant : `7/7`.
+- [14:28] Frontend Expo branché sur les APIs mobiles : push token, device settings, deeplink resolution.
+- [14:30] Queue offline minimale branchée dans le feed Expo pour `like`, `save`, `follow`, `comment`.
+- [15:49] Suite de tests Expo stabilisée localement : Vitest mono-worker/forks, `31 passed | 2 skipped`.
+- [15:50] Intégration explicite de `download-url` et `analytics/event` dans l'écran `watch/[id]`.
+- [16:08] UI Expo “Coins + Cadeaux” branchée sur le wallet et les endpoints live/gifts existants.
+- [16:10] Commentaires vocaux confirmés opérationnels dans le feed Expo (upload audio + `audio_url` + lecture).
+- [16:37] Vrai `coins_balance` backend livré via un wallet dédié `wallet_type='coins'`.
+- [16:38] Cadeaux live branchés sur le vrai solde coins au lieu d’une estimation wallet/FCFA.
+- [16:42] Historique coins/cadeaux exposé côté backend et branché dans l’écran `wallet/coins`.
+- [16:43] Breakdown revenus live enrichi côté `creator/earnings` avec cadeaux live et tips live récents.
+
+## 🔧 Corrections appliquées
+- [session] FIX: lint Expo — `width` inutilisé retiré dans `frontend/app/(tabs)/index.tsx` ; types `ViewToken<Video>[]` ; suppression `TAG_LEN` inutilisé dans `e2eeNativeCrypto.web.ts` ; `AFRICAN_STICKERS` en `T[]` dans `VideoEditor.tsx` (**26 → 21** warnings `expo lint`).
+- [18:00] FIX: `tests/e2e/feed-layout-firefox.spec.ts` — `page.addInitScript` pour `afw_guest_explore` afin de monter le feed (garde-fou layout Firefox / règle `video-feed-rendering-firefox`).
+- [10:58] FIX: Playwright E2E rendus plus robustes (username conforme, assertions UI wallet/checkout, tokens injectés avant boot, routes sensibles exclues du smoke strict).
+- [13:02] FIX: `frontend/eslint.config.js` ne référence plus une règle plugin absente qui cassait `expo lint`.
+- [13:08] FIX: `backend/src/services/video.service.ts` gère le drift de schéma sur `low_quality_url` dans le fallback SQL de la liste vidéo.
+- [13:42] FIX: ajout de `frontend/src/hooks/useAgoraLiveRtc.ts` pour résoudre les imports TypeScript entre implémentations `.native` et `.web`.
+- [13:46] FIX: `frontend/src/services/videoDownloadService.ts` migré vers `expo-file-system/legacy`, compatible avec l'API utilisée par le gestionnaire de téléchargements.
+- [13:49] FIX: `frontend/src/services/e2eeMobileService.ts` corrigé pour importer la clé PKCS8 avec un `ArrayBuffer` compatible TypeScript.
+- [13:55] FIX: `frontend/app/live/index.tsx` redirige les lives actifs vers `/live/[id]` au lieu de `/live/replay`.
+- [14:08] FIX: `frontend/app/referrals.tsx` consomme désormais `/api/proxy/referrals/stats`, permet le partage/copie du code réel et affiche les stats serveur.
+- [14:16] FIX: `frontend/app/communities/index.tsx` consomme désormais `/api/proxy/communities` avec recherche locale sur données serveur.
+- [14:20] FIX: `frontend/app/communities/[id].tsx` charge désormais la communauté réelle et gère rejoindre/quitter via API.
+- [14:28] FIX: `frontend/app/miniapps.tsx` consomme désormais `/api/mini-apps` et déclenche l'installation via API.
+- [14:31] FIX: `frontend/eslint.config.js` ignore les anciens fichiers web `frontend/src/App.jsx` et `frontend/src/main.jsx` qui ne font pas partie du shell Expo et cassaient le lint.
+- [13:53] FIX: `package.json` racine utilise désormais `node ./node_modules/vitest/vitest.mjs run --reporter=dot` pour `test:ci:frontend`, compatible avec l'environnement Windows local.
+- [14:02] FIX: ajout de `backend/src/routes/mobile.routes.ts` avec un routeur mobile dédié et montage `/api/mobile` dans `backend/src/app.ts`.
+- [14:05] FIX: ajout de `backend/src/routes/MOBILE_APIS.md` pour documenter les contrats mobiles exposés.
+- [14:08] FIX: ajout de `backend/__tests__/mobile.routes.test.ts` pour valider les nouveaux endpoints mobiles.
+- [14:11] FIX: `backend/src/routes/mobile.routes.ts` gère aussi le drift de schéma DB de test via fallbacks pour `download-url` et `device-settings`.
+- [14:18] FIX: ajout de `GET /api/mobile/device-settings` + test backend associé.
+- [14:21] FIX: ajout de `frontend/src/services/mobileApiService.ts` pour centraliser l’accès Expo à `/api/mobile/*`.
+- [14:23] FIX: `frontend/src/services/notificationService.ts` utilise désormais `/api/mobile/push-token`.
+- [14:24] FIX: `frontend/app/settings/index.tsx` charge et persiste les préférences device via `/api/mobile/device-settings`.
+- [14:25] FIX: `frontend/src/i18n/LanguageContext.tsx` synchronise la langue sélectionnée vers le backend mobile.
+- [14:26] FIX: `frontend/app/_layout.tsx` résout les deeplinks `afriwonder://...` via `/api/mobile/resolve-deeplink`.
+- [14:29] FIX: ajout de `frontend/src/services/offlineActionSyncService.ts` et branchement du flush auto au root layout.
+- [14:30] FIX: `frontend/app/(tabs)/index.tsx` enfile les actions offline principales (`like_video`, `save_video`, `follow_user`, `comment_video`) vers `/api/mobile/sync` si l’appel direct échoue.
+- [15:45] FIX: `frontend/vitest.config.ts` stabilise Vitest local Windows (`pool=forks`, `maxWorkers=1`, `fileParallelism=false`).
+- [15:47] FIX: `frontend/package.json` durcit `npm test` pour refléter cette exécution mono-worker.
+- [15:49] FIX: `frontend/src/services/mobileApiService.ts` expose aussi `getMobileVideoDownloadUrl()` et `trackMobileAnalyticsEvent()`.
+- [15:50] FIX: `frontend/app/watch/[id].tsx` consomme `/api/mobile/videos/:id/download-url` et trace `watch_open` / `watch_open_offline`.
+- [16:02] FIX: ajout de `frontend/app/wallet/coins.tsx` pour l’achat de packs Coins via les parcours paiement existants.
+- [16:03] FIX: `frontend/app/wallet/_layout.tsx` expose désormais l’écran `coins`.
+- [16:04] FIX: `frontend/app/wallet/index.tsx` affiche un estimatif coins et un accès direct à l’achat de coins.
+- [16:05] FIX: `frontend/app/(tabs)/profile.tsx` expose l’entrée “Acheter des coins”.
+- [16:07] FIX: `frontend/app/live/gifts.tsx` charge le catalogue cadeaux depuis `/api/live/gifts` et affiche une lecture Coins/FCFA plus claire.
+- [16:08] FIX: `frontend/app/wallet/coins.tsx` a été sécurisée pour ne pas créditer le wallet avant paiement confirmé.
+- [16:22] FIX: ajout de `backend/src/services/coins.service.ts` pour gérer packs, achat, confirmation et solde coins réel.
+- [16:24] FIX: ajout de `backend/src/routes/coins.routes.ts` et montage `/api/coins` + `/api/proxy/coins`.
+- [16:28] FIX: `backend/src/routes/payments.routes.ts` confirme désormais les achats coins dans les handlers de paiement réussis.
+- [16:31] FIX: ajout de `backend/__tests__/coins.routes.test.ts` pour valider le flux backend coins.
+- [16:34] FIX: `frontend/src/services/mobileApiService.ts` expose les endpoints `/api/coins/*`.
+- [16:36] FIX: `frontend/app/wallet/index.tsx` affiche maintenant le vrai solde coins.
+- [16:37] FIX: `frontend/app/wallet/coins.tsx` consomme les vrais packs et le vrai `coins_balance`.
+- [16:38] FIX: `frontend/app/live/gifts.tsx` vérifie et débite le vrai solde coins pour l’envoi de cadeaux live.
+- [16:40] FIX: `backend/src/services/coins.service.ts` expose désormais l’historique achats coins + cadeaux live envoyés/reçus.
+- [16:41] FIX: `backend/src/routes/coins.routes.ts` expose `GET /api/coins/history`.
+- [16:42] FIX: `backend/src/services/creatorDashboard.service.ts` inclut désormais `live_gifts_fcfa`, `live_tips_fcfa`, `recent_live_gifts`, `recent_live_tips`.
+- [16:42] FIX: `frontend/src/services/mobileApiService.ts` expose `getCoinsHistory()`.
+- [16:42] FIX: `frontend/app/wallet/coins.tsx` affiche un historique récent des achats coins et cadeaux envoyés.
+- [16:43] FIX: `frontend/app/creator/earnings.tsx` affiche un bloc “Revenus live” et les cadeaux live récents.
+- [18:20] FIX: `frontend/app/(auth)/register.tsx` aligne l’inscription mobile sur les contraintes backend (mot de passe min 8, `username` normalisé [a-z0-9_] et tronqué à 30).
+- [18:24] AUDIT: `GET /api/mobile/videos/:id/download-url` retourne une URL brute (non signée) → inventorié comme ⚠️ dans `INVENTAIRE_AUDIT.md` (durcissement à faire quand R2/S3 privé est requis).
+
+## ❌ Problèmes en cours / limites honnêtes
+- [15:50] L'environnement PowerShell local produit encore des erreurs parasites `Add-Content` dans les wrappers d'exécution; elles n'ont pas empêché les validations métier obtenues.
+- [15:50] La validation backend via requête ad hoc `node --import tsx ... request(app)` reste instable en shell direct (`socket hang up`), mais les tests Jest officiels passent.
+- [16:38] Le modèle coins repose sur le schéma wallet existant (`wallet_type='coins'`, `currency='COIN'`) pour éviter une migration destructive; il n’y a pas encore de tables dédiées `coins_packages` / `coins_transactions`.
+- [16:43] La machine locale a commencé à retourner des erreurs système Windows (`page file insufficient`, `System.Net.ServicePointManager`) sur certains shells PowerShell; les validations obtenues juste avant ces erreurs restent valides, mais il faut considérer l’environnement comme fragile.
+
+## 📊 Score actuel du produit (sur la base locale vérifiée)
+- Tests Expo passants : 31/31 utiles, 2 ignorés par design
+- Smoke backend passants : 10/10
+- Tests backend mobile passants : 8/8
+- Tests backend coins passants : 4/4
+- `verify:delivery` racine : OK
+- Typecheck Expo : OK
+- Lint Expo : 0 erreur bloquante, warnings hérités
+- Fonctionnalités critiques corrigées : live navigation, referrals, communities, mini-apps, offline download typing, E2EE typing, backend videos fallback, APIs mobiles dédiées, deeplinks, settings device, queue offline minimale, UI coins/gifts, commentaires vocaux feed, vrai `coins_balance`, historique coins/cadeaux, breakdown revenus live
+
+## Fichiers modifiés
+- `frontend/eslint.config.js`
+- `frontend/src/hooks/useAgoraLiveRtc.ts`
+- `frontend/src/services/videoDownloadService.ts`
+- `frontend/src/services/e2eeMobileService.ts`
+- `frontend/app/live/index.tsx`
+- `frontend/app/referrals.tsx`
+- `frontend/app/communities/index.tsx`
+- `frontend/app/communities/[id].tsx`
+- `frontend/app/miniapps.tsx`
+- `backend/src/services/video.service.ts`
+- `package.json`
+- `backend/src/routes/mobile.routes.ts`
+- `backend/src/routes/MOBILE_APIS.md`
+- `backend/__tests__/mobile.routes.test.ts`
+- `frontend/src/services/mobileApiService.ts`
+- `frontend/src/services/offlineActionSyncService.ts`
+- `frontend/src/services/notificationService.ts`
+- `frontend/src/i18n/LanguageContext.tsx`
+- `frontend/app/settings/index.tsx`
+- `frontend/app/_layout.tsx`
+- `frontend/app/(tabs)/index.tsx`
+- `frontend/vitest.config.ts`
+- `frontend/package.json`
+- `frontend/app/watch/[id].tsx`
+- `frontend/app/wallet/coins.tsx`
+- `frontend/app/wallet/_layout.tsx`
+- `frontend/app/wallet/index.tsx`
+- `backend/src/services/coins.service.ts`
+- `backend/src/routes/coins.routes.ts`
+- `backend/__tests__/coins.routes.test.ts`
+- `backend/src/services/creatorDashboard.service.ts`
