@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "21c19285-f40c-4ad5-b837-26b548177db6"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.afriwonder.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
+  }
+}

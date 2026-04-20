@@ -10,7 +10,7 @@ tags:
 - launchApp
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: "Pour toi"
+    visible: "For You"
     timeout: 45000
 
 # ─── 1. Hub « Live & Replays » depuis le feed ──────────────────

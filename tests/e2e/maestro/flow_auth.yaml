@@ -52,9 +52,9 @@ env:
 
 # Feed après inscription (remplace « Bienvenue » absent sur cet écran)
 - extendedWaitUntil:
-    visible: "Pour toi"
+    visible: "For You"
     timeout: 45000
-- assertVisible: "Abonnes"
+- assertVisible: "Following"
 
 # ─── 3. Déconnexion ─────────────────────────────────────────────
 - tapOn: "Profil"
@@ -87,7 +87,7 @@ env:
     id: "login-submit-button"
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: "Pour toi"
+    visible: "For You"
     timeout: 45000
 
 # ─── 5. Erreur de connexion (identifiants invalides) ────────────

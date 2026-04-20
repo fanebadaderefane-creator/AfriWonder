@@ -37,7 +37,7 @@ test.describe('Feed & Ads - CDC Phase 1', () => {
     expect(Array.isArray(body.data)).toBe(true);
   });
 
-  test('Home charge le feed (onglet Pour toi) sans crash', async ({ page }) => {
+  test('Home charge le feed (onglet For You) sans crash', async ({ page }) => {
     await page.goto('/', { waitUntil: 'load', timeout: 25000 });
     await dismissCookieBanner(page);
     await waitForAppVisible(page, 20000);
@@ -49,10 +49,10 @@ test.describe('Feed & Ads - CDC Phase 1', () => {
       if (url.includes('/api/feed')) feedCalls.push({ url: req.url(), method: req.method() });
     });
 
-    // S'assurer qu'on est sur l'onglet Pour toi (par défaut)
-    const pourToiTab = page.getByRole('button', { name: /pour toi|pourtoi/i }).or(page.getByText(/pour toi/i));
-    if (await pourToiTab.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await pourToiTab.click();
+    // S'assurer qu'on est sur l'onglet For You (par défaut)
+    const forYouTab = page.getByRole('button', { name: /for you|foryou/i }).or(page.getByText(/^For You$/i));
+    if (await forYouTab.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await forYouTab.click();
       await page.waitForTimeout(1500);
     }
 

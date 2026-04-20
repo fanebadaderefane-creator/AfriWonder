@@ -9,12 +9,12 @@ tags:
 - launchApp
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: "Pour toi"
+    visible: "For You"
     timeout: 45000
 
 # ─── 1. En-tête feed ───────────────────────────────────────────
-- assertVisible: "Pour toi"
-- assertVisible: "Abonnes"
+- assertVisible: "For You"
+- assertVisible: "Following"
 
 # ─── 2. Swipe entre vidéos ─────────────────────────────────────
 - swipe:
@@ -48,15 +48,15 @@ tags:
     optional: true
 - waitForAnimationToEnd
 
-# ─── 5. Onglets Abonnés / Pour toi ─────────────────────────────
-- tapOn: "Abonnes"
+# ─── 5. Onglets Following / For You ────────────────────────────
+- tapOn: "Following"
 - waitForAnimationToEnd
-- tapOn: "Pour toi"
+- tapOn: "For You"
 - waitForAnimationToEnd
 
-# ─── 6. Notifications ──────────────────────────────────────────
+# ─── 6. Inbox (barre du bas) ───────────────────────────────────
 - tapOn:
-    id: "notifications-button"
+    text: "Inbox"
     optional: true
 - waitForAnimationToEnd
 - back

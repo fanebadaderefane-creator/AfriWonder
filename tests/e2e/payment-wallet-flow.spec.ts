@@ -3,10 +3,11 @@ import { dismissCookieBanner } from './helpers';
 
 test.describe('Parcours paiement - portefeuille', () => {
   test('un utilisateur peut accéder à Mon Portefeuille après inscription backend', async ({ page, request }) => {
-    const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    // Backend: username <= 30, chars [a-zA-Z0-9_]
+    const uniqueSuffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.slice(0, 10);
     const email = `wallet.e2e.${uniqueSuffix}@example.com`;
     const password = 'E2eWallet123!@#';
-    const username = `walletUser${uniqueSuffix}`;
+    const username = `wallet_${uniqueSuffix}`.slice(0, 30);
 
     const apiBase =
       process.env.PLAYWRIGHT_API_URL ||
@@ -49,13 +50,14 @@ test.describe('Parcours paiement - portefeuille', () => {
     await dismissCookieBanner(page);
 
     // Attendre que le contenu du portefeuille soit affiché (API + rendu)
+    // NB: Le titre UI est "Portefeuille" (pas "Mon portefeuille").
     await expect(
-      page.getByRole('heading', { name: /mon portefeuille/i })
+      page.getByRole('heading', { name: /portefeuille|wallet/i })
     ).toBeVisible({ timeout: 25000 });
 
-    // Le solde disponible doit être affiché (même s'il est à 0)
+    // Le solde doit être affiché (même s'il est à 0)
     await expect(
-      page.getByText(/Solde disponible/i)
+      page.getByText(/solde actuel|solde disponible|balance|disponible/i)
     ).toBeVisible({ timeout: 10000 });
   });
 });

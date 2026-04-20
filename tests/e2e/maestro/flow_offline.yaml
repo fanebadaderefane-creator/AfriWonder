@@ -11,11 +11,11 @@ tags:
 - launchApp
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: "Pour toi"
+    visible: "For You"
     timeout: 45000
 
 # ─── 1. Feed en ligne ───────────────────────────────────────────
-- assertVisible: "Pour toi"
+- assertVisible: "For You"
 
 # ─── 2–3. Profil → 1re tuile → Lecture → télécharger (MP4 dispo) ─
 - tapOn: "Profil"

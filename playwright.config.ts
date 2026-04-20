@@ -1,4 +1,38 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Charge tests/e2e/playwright-credentials.local si présent (non versionné).
+ * N’écrase pas les variables déjà définies (CI / shell).
+ */
+function loadLocalPlaywrightCredentials(): void {
+  const file = path.join(__dirname, 'tests', 'e2e', 'playwright-credentials.local');
+  if (!fs.existsSync(file)) return;
+  const raw = fs.readFileSync(file, 'utf8');
+  for (const line of raw.split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const eq = t.indexOf('=');
+    if (eq < 1) continue;
+    const key = t.slice(0, eq).trim();
+    let val = t.slice(eq + 1).trim();
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+    if (!val) continue;
+    if (process.env[key] != null && process.env[key] !== '') continue;
+    process.env[key] = val;
+  }
+}
+
+loadLocalPlaywrightCredentials();
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173';
 

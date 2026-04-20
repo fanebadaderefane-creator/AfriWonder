@@ -1,4 +1,4 @@
-# Messagerie : pas d’onglet « messages-tab » — entrée Découvrir → testID messages-entry.
+# Messagerie : onglet barre du bas « Messages » (/(tabs)/messages).
 # Liste : « AfriChat », onglet « Discussions ». Nouveau groupe : testID messages-new-group (icône).
 # Ouverture discussion : FAB messages-fab-new → messages-first-contact.
 # Prérequis : session connectée ; API /users avec au moins un utilisateur (liste contacts).
@@ -11,17 +11,11 @@ tags:
 - launchApp
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: "Pour toi"
+    visible: "For You"
     timeout: 45000
 
 # ─── 1. Accéder aux messages ───────────────────────────────────
-- tapOn: "Decouvrir"
-- waitForAnimationToEnd
-- extendedWaitUntil:
-    visible: "Decouvrir"
-    timeout: 15000
-- tapOn:
-    id: "messages-entry"
+- tapOn: "Inbox"
 - waitForAnimationToEnd
 - extendedWaitUntil:
     visible: "AfriChat"
