@@ -1,80 +1,79 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
 import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
+import jobsApi, { Job } from '../../src/api/jobsApi';
 
-const JOBS = [
-  {
-    id: 'j1',
-    title: 'Developpeur Mobile',
-    company: 'TechMali',
-    location: 'Bamako',
-    salary: '500 000 - 800 000 FCFA',
-    type: 'CDI',
-    posted: 'Il y a 2h',
-    urgent: true,
-  },
-  {
-    id: 'j2',
-    title: 'Comptable',
-    company: 'Sahel Finance',
-    location: 'Bamako',
-    salary: '350 000 - 500 000 FCFA',
-    type: 'CDI',
-    posted: 'Il y a 5h',
-    urgent: false,
-  },
-  {
-    id: 'j3',
-    title: 'Community Manager',
-    company: 'AfriWonder',
-    location: 'Remote',
-    salary: '200 000 - 400 000 FCFA',
-    type: 'Freelance',
-    posted: 'Il y a 1j',
-    urgent: false,
-  },
-  {
-    id: 'j4',
-    title: 'Chauffeur Livreur',
-    company: 'AfriDeliver',
-    location: 'Bamako',
-    salary: '150 000 - 250 000 FCFA',
-    type: 'CDD',
-    posted: 'Il y a 2j',
-    urgent: true,
-  },
-  {
-    id: 'j5',
-    title: 'Graphiste',
-    company: 'Creative Sahel',
-    location: 'Dakar',
-    salary: '300 000 - 600 000 FCFA',
-    type: 'CDI',
-    posted: 'Il y a 3j',
-    urgent: false,
-  },
-];
-
-const JOB_TYPES = [
-  { id: 'all', name: 'Tout' },
-  { id: 'CDI', name: 'CDI' },
-  { id: 'CDD', name: 'CDD' },
-  { id: 'Freelance', name: 'Freelance' },
-];
+const TYPE_LABELS: Record<string, string> = {
+  full_time: 'CDI',
+  part_time: 'Temps partiel',
+  contract: 'CDD',
+  internship: 'Stage',
+  freelance: 'Freelance',
+};
 
 export default function JobsScreen() {
   if (!featureFlags.servicesHub) {
     return <ComingSoonScreen title="Emplois" description="La place de marché des emplois sera bientôt disponible." icon="briefcase-outline" />;
   }
   const insets = useSafeAreaInsets();
-  const [activeFilter, setActiveFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filtered = activeFilter === 'all' ? JOBS : JOBS.filter(j => j.type === activeFilter);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setError(null);
+    try {
+      const list = await jobsApi.list({
+        page: 1,
+        limit: 30,
+        search: search.trim() || undefined,
+      });
+      setJobs(list);
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        || (err as { message?: string })?.message
+        || 'Impossible de charger les offres.';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, [search]);
+
+  useEffect(() => {
+    const t = setTimeout(() => void load(), 400);
+    return () => clearTimeout(t);
+  }, [load]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    load(true).finally(() => setRefreshing(false));
+  }, [load]);
+
+  function formatSalary(j: Job): string {
+    const cur = j.currency ?? 'FCFA';
+    if (j.salary_min && j.salary_max) return `${j.salary_min.toLocaleString()} - ${j.salary_max.toLocaleString()} ${cur}`;
+    if (j.salary_min) return `À partir de ${j.salary_min.toLocaleString()} ${cur}`;
+    if (j.salary_max) return `Jusqu'à ${j.salary_max.toLocaleString()} ${cur}`;
+    return 'Salaire à négocier';
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -82,75 +81,86 @@ export default function JobsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Emploi</Text>
-        <TouchableOpacity>
-          <Ionicons name="search" size={24} color={Colors.text} />
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Emplois</Text>
+        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersScroll}>
-        {JOB_TYPES.map((type) => (
-          <TouchableOpacity
-            key={type.id}
-            style={[styles.filterChip, activeFilter === type.id && styles.filterChipActive]}
-            onPress={() => setActiveFilter(type.id)}
-          >
-            <Text style={[styles.filterText, activeFilter === type.id && styles.filterTextActive]}>
-              {type.name}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={styles.searchBar}>
+        <Ionicons name="search" size={18} color={Colors.textSecondary} />
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Poste, entreprise, ville..."
+          placeholderTextColor={Colors.textMuted}
+          style={styles.searchInput}
+        />
+      </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {filtered.map((job) => (
-          <TouchableOpacity key={job.id} style={styles.jobCard}>
-            <View style={styles.jobHeader}>
-              <View style={styles.companyIcon}>
-                <Ionicons name="business" size={24} color={Colors.primary} />
-              </View>
-              <View style={styles.jobHeaderInfo}>
-                <Text style={styles.jobTitle}>{job.title}</Text>
-                <Text style={styles.jobCompany}>{job.company}</Text>
-              </View>
-              {job.urgent && (
-                <View style={styles.urgentBadge}>
-                  <Text style={styles.urgentText}>Urgent</Text>
-                </View>
-              )}
-            </View>
-            <View style={styles.jobDetails}>
-              <View style={styles.jobDetail}>
-                <Ionicons name="location-outline" size={14} color={Colors.textSecondary} />
-                <Text style={styles.jobDetailText}>{job.location}</Text>
-              </View>
-              <View style={styles.jobDetail}>
-                <Ionicons name="cash-outline" size={14} color={Colors.textSecondary} />
-                <Text style={styles.jobDetailText}>{job.salary}</Text>
-              </View>
-              <View style={styles.jobDetail}>
-                <Ionicons name="briefcase-outline" size={14} color={Colors.textSecondary} />
-                <Text style={styles.jobDetailText}>{job.type}</Text>
-              </View>
-            </View>
-            <View style={styles.jobFooter}>
-              <Text style={styles.jobPosted}>{job.posted}</Text>
-              <TouchableOpacity style={styles.applyButton}>
-                <Text style={styles.applyText}>Postuler</Text>
-              </TouchableOpacity>
-            </View>
+      {loading ? (
+        <View style={styles.centerBox}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      ) : error ? (
+        <View style={styles.centerBox}>
+          <Ionicons name="cloud-offline-outline" size={56} color={Colors.textSecondary} />
+          <Text style={styles.errorTitle}>Offres indisponibles</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => load()}>
+            <Text style={styles.retryText}>Réessayer</Text>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
+        </View>
+      ) : jobs.length === 0 ? (
+        <View style={styles.centerBox}>
+          <Ionicons name="briefcase-outline" size={64} color={Colors.textMuted} />
+          <Text style={styles.emptyTitle}>Aucune offre</Text>
+          <Text style={styles.emptyText}>Aucune offre d'emploi disponible pour cette recherche.</Text>
+        </View>
+      ) : (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.content}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        >
+          {jobs.map((j) => (
+            <TouchableOpacity
+              key={j.id}
+              style={styles.card}
+              onPress={() => router.push(`/services/job/${j.id}` as any)}
+            >
+              <View style={styles.cardHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardTitle} numberOfLines={2}>{j.title}</Text>
+                  {j.company ? <Text style={styles.cardCompany}>{j.company}</Text> : null}
+                </View>
+                {j.type ? (
+                  <View style={styles.typeBadge}>
+                    <Text style={styles.typeText}>{TYPE_LABELS[j.type] ?? j.type}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <View style={styles.cardMeta}>
+                {j.location || j.city ? (
+                  <Text style={styles.metaText}>
+                    <Ionicons name="location-outline" size={12} color={Colors.textSecondary} /> {j.location ?? j.city}
+                  </Text>
+                ) : null}
+                {j.remote ? (
+                  <Text style={[styles.metaText, { color: Colors.success }]}>
+                    <Ionicons name="laptop-outline" size={12} color={Colors.success} /> Télétravail
+                  </Text>
+                ) : null}
+              </View>
+              <Text style={styles.salary}>{formatSalary(j)}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
+  container: { flex: 1, backgroundColor: Colors.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -158,120 +168,57 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.lg,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: FontSizes.xl, fontWeight: 'bold', color: Colors.text },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.surface,
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+  },
+  searchInput: { flex: 1, color: Colors.text, fontSize: FontSizes.md, padding: 0 },
+  centerBox: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: Spacing.xxl,
+    gap: Spacing.md,
   },
-  headerTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  filtersScroll: {
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.lg,
-  },
-  filterChip: {
-    backgroundColor: Colors.surface,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.pill,
-    marginRight: Spacing.sm,
-  },
-  filterChipActive: {
+  errorTitle: { color: Colors.text, fontSize: FontSizes.xl, fontWeight: 'bold', marginTop: Spacing.md },
+  errorText: { color: Colors.textSecondary, fontSize: FontSizes.md, textAlign: 'center' },
+  emptyTitle: { color: Colors.text, fontSize: FontSizes.xl, fontWeight: 'bold', marginTop: Spacing.md },
+  emptyText: { color: Colors.textSecondary, fontSize: FontSizes.md, textAlign: 'center' },
+  retryBtn: {
+    marginTop: Spacing.md,
     backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.xxl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
   },
-  filterText: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.md,
-    fontWeight: '500',
-  },
-  filterTextActive: {
-    color: Colors.text,
-  },
-  scrollContent: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.xxxl,
-  },
-  jobCard: {
+  retryText: { color: '#FFFFFF', fontSize: FontSizes.md, fontWeight: '600' },
+  content: { paddingHorizontal: Spacing.xl, paddingBottom: Spacing.xxxl },
+  card: {
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     marginBottom: Spacing.md,
   },
-  jobHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  companyIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.md,
+  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md },
+  cardTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600' },
+  cardCompany: { color: Colors.textSecondary, fontSize: FontSizes.sm, marginTop: 2 },
+  typeBadge: {
     backgroundColor: Colors.primary + '20',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  jobHeaderInfo: {
-    flex: 1,
-  },
-  jobTitle: {
-    color: Colors.text,
-    fontSize: FontSizes.lg,
-    fontWeight: '600',
-  },
-  jobCompany: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.sm,
-  },
-  urgentBadge: {
-    backgroundColor: Colors.live,
     paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: 4,
     borderRadius: BorderRadius.sm,
   },
-  urgentText: {
-    color: Colors.text,
-    fontSize: FontSizes.xs,
-    fontWeight: 'bold',
-  },
-  jobDetails: {
-    gap: Spacing.xs,
-    marginBottom: Spacing.md,
-  },
-  jobDetail: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  jobDetailText: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.sm,
-  },
-  jobFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    paddingTop: Spacing.md,
-  },
-  jobPosted: {
-    color: Colors.textMuted,
-    fontSize: FontSizes.sm,
-  },
-  applyButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md,
-  },
-  applyText: {
-    color: Colors.text,
-    fontSize: FontSizes.md,
-    fontWeight: '600',
-  },
+  typeText: { color: Colors.primary, fontSize: FontSizes.xs, fontWeight: '600' },
+  cardMeta: { flexDirection: 'row', gap: Spacing.lg, marginTop: Spacing.md },
+  metaText: { color: Colors.textSecondary, fontSize: FontSizes.xs },
+  salary: { color: Colors.primary, fontSize: FontSizes.md, fontWeight: 'bold', marginTop: Spacing.md },
 });

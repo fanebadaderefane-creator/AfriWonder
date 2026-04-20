@@ -1,64 +1,27 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
 import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
+import propertiesApi, { Property } from '../../src/api/propertiesApi';
 
-const PROPERTY_TYPES = [
-  { id: 'all', name: 'Tout' },
-  { id: 'rent', name: 'Location' },
-  { id: 'buy', name: 'Achat' },
-  { id: 'land', name: 'Terrain' },
-];
-
-const PROPERTIES = [
-  {
-    id: 'p1',
-    title: 'Appartement moderne ACI 2000',
-    image: 'https://picsum.photos/400/300?random=60',
-    price: 250000,
-    type: 'rent',
-    bedrooms: 3,
-    bathrooms: 2,
-    area: 120,
-    location: 'ACI 2000, Bamako',
-  },
-  {
-    id: 'p2',
-    title: 'Villa avec jardin Badalabougou',
-    image: 'https://picsum.photos/400/300?random=61',
-    price: 85000000,
-    type: 'buy',
-    bedrooms: 5,
-    bathrooms: 3,
-    area: 350,
-    location: 'Badalabougou, Bamako',
-  },
-  {
-    id: 'p3',
-    title: 'Studio meuble Hamdallaye',
-    image: 'https://picsum.photos/400/300?random=62',
-    price: 150000,
-    type: 'rent',
-    bedrooms: 1,
-    bathrooms: 1,
-    area: 35,
-    location: 'Hamdallaye, Bamako',
-  },
-  {
-    id: 'p4',
-    title: 'Terrain constructible Sotuba',
-    image: 'https://picsum.photos/400/300?random=63',
-    price: 25000000,
-    type: 'land',
-    bedrooms: 0,
-    bathrooms: 0,
-    area: 600,
-    location: 'Sotuba, Bamako',
-  },
+const TYPES: { id: Property['listing_type'] | 'all'; label: string }[] = [
+  { id: 'all', label: 'Tout' },
+  { id: 'rent', label: 'Location' },
+  { id: 'sale', label: 'Achat' },
+  { id: 'land', label: 'Terrain' },
 ];
 
 export default function RealEstateScreen() {
@@ -66,14 +29,42 @@ export default function RealEstateScreen() {
     return <ComingSoonScreen title="Immobilier" description="Le module immobilier sera bientôt disponible." icon="business-outline" />;
   }
   const insets = useSafeAreaInsets();
-  const [activeType, setActiveType] = useState('all');
+  const [activeType, setActiveType] = useState<typeof TYPES[number]['id']>('all');
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const formatPrice = (price: number, type: string) => {
-    if (type === 'rent') return price.toLocaleString('fr-FR') + ' FCFA/mois';
-    return price.toLocaleString('fr-FR') + ' FCFA';
-  };
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setError(null);
+    try {
+      const list = await propertiesApi.list({
+        page: 1,
+        limit: 30,
+        listing_type: activeType === 'all' ? undefined : (activeType as 'rent' | 'sale' | 'land'),
+        status: 'available',
+      });
+      setProperties(list);
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        || (err as { message?: string })?.message
+        || 'Impossible de charger les biens immobiliers.';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, [activeType]);
 
-  const filtered = activeType === 'all' ? PROPERTIES : PROPERTIES.filter(p => p.type === activeType);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    load(true).finally(() => setRefreshing(false));
+  }, [load]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -82,76 +73,84 @@ export default function RealEstateScreen() {
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Immobilier</Text>
-        <TouchableOpacity>
-          <Ionicons name="filter" size={24} color={Colors.text} />
-        </TouchableOpacity>
+        <View style={{ width: 40 }} />
       </View>
 
-      {/* Type Filters */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersScroll}>
-        {PROPERTY_TYPES.map((type) => (
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsContainer}>
+        {TYPES.map((t) => (
           <TouchableOpacity
-            key={type.id}
-            style={[styles.filterChip, activeType === type.id && styles.filterChipActive]}
-            onPress={() => setActiveType(type.id)}
+            key={t.id}
+            style={[styles.tab, activeType === t.id && styles.tabActive]}
+            onPress={() => setActiveType(t.id)}
           >
-            <Text style={[styles.filterText, activeType === type.id && styles.filterTextActive]}>
-              {type.name}
-            </Text>
+            <Text style={[styles.tabText, activeType === t.id && styles.tabTextActive]}>{t.label}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {filtered.map((property) => (
-          <TouchableOpacity key={property.id} style={styles.propertyCard}>
-            <Image source={{ uri: property.image }} style={styles.propertyImage} />
-            <View style={styles.propertyBadge}>
-              <Text style={styles.propertyBadgeText}>
-                {property.type === 'rent' ? 'Location' : property.type === 'buy' ? 'Vente' : 'Terrain'}
-              </Text>
-            </View>
-            <TouchableOpacity style={styles.favoriteBtn}>
-              <Ionicons name="heart-outline" size={22} color={Colors.text} />
-            </TouchableOpacity>
-            <View style={styles.propertyInfo}>
-              <Text style={styles.propertyTitle}>{property.title}</Text>
-              <Text style={styles.propertyPrice}>{formatPrice(property.price, property.type)}</Text>
-              <View style={styles.propertyLocation}>
-                <Ionicons name="location-outline" size={14} color={Colors.textSecondary} />
-                <Text style={styles.propertyLocationText}>{property.location}</Text>
-              </View>
-              <View style={styles.propertyFeatures}>
-                {property.bedrooms > 0 && (
-                  <View style={styles.feature}>
-                    <Ionicons name="bed-outline" size={16} color={Colors.textSecondary} />
-                    <Text style={styles.featureText}>{property.bedrooms}</Text>
-                  </View>
-                )}
-                {property.bathrooms > 0 && (
-                  <View style={styles.feature}>
-                    <Ionicons name="water-outline" size={16} color={Colors.textSecondary} />
-                    <Text style={styles.featureText}>{property.bathrooms}</Text>
-                  </View>
-                )}
-                <View style={styles.feature}>
-                  <Ionicons name="resize-outline" size={16} color={Colors.textSecondary} />
-                  <Text style={styles.featureText}>{property.area} m\u00b2</Text>
-                </View>
-              </View>
-            </View>
+      {loading ? (
+        <View style={styles.centerBox}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      ) : error ? (
+        <View style={styles.centerBox}>
+          <Ionicons name="cloud-offline-outline" size={56} color={Colors.textSecondary} />
+          <Text style={styles.errorTitle}>Annonces indisponibles</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => load()}>
+            <Text style={styles.retryText}>Réessayer</Text>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
+        </View>
+      ) : properties.length === 0 ? (
+        <View style={styles.centerBox}>
+          <Ionicons name="business-outline" size={64} color={Colors.textMuted} />
+          <Text style={styles.emptyTitle}>Aucun bien</Text>
+          <Text style={styles.emptyText}>Aucune annonce disponible dans cette catégorie.</Text>
+        </View>
+      ) : (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.content}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        >
+          {properties.map((p) => (
+            <TouchableOpacity
+              key={p.id}
+              style={styles.card}
+              onPress={() => router.push(`/services/property/${p.id}` as any)}
+            >
+              {p.cover_image || p.images?.[0] ? (
+                <Image source={{ uri: p.cover_image ?? p.images?.[0] }} style={styles.cardImage} />
+              ) : (
+                <View style={[styles.cardImage, styles.cardImageFallback]}>
+                  <Ionicons name="business-outline" size={36} color={Colors.textSecondary} />
+                </View>
+              )}
+              <View style={styles.cardInfo}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.cardTitle} numberOfLines={1}>{p.title}</Text>
+                  <Text style={styles.listingType}>{p.listing_type === 'rent' ? 'Location' : p.listing_type === 'sale' ? 'Vente' : 'Terrain'}</Text>
+                </View>
+                <Text style={styles.cardAddress} numberOfLines={1}>
+                  <Ionicons name="location-outline" size={12} color={Colors.textSecondary} /> {p.address}, {p.city ?? ''}
+                </Text>
+                <View style={styles.cardSpecs}>
+                  {p.bedrooms ? <Text style={styles.spec}><Ionicons name="bed-outline" size={12} color={Colors.textSecondary} /> {p.bedrooms}</Text> : null}
+                  {p.bathrooms ? <Text style={styles.spec}><Ionicons name="water-outline" size={12} color={Colors.textSecondary} /> {p.bathrooms}</Text> : null}
+                  {p.surface_m2 ? <Text style={styles.spec}>{p.surface_m2} m²</Text> : null}
+                </View>
+                <Text style={styles.price}>{p.price.toLocaleString()} {p.currency ?? 'FCFA'}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
+  container: { flex: 1, backgroundColor: Colors.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -159,114 +158,63 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.lg,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  filtersScroll: {
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.lg,
-  },
-  filterChip: {
-    backgroundColor: Colors.surface,
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: FontSizes.xl, fontWeight: 'bold', color: Colors.text },
+  tabsContainer: { paddingHorizontal: Spacing.xl, marginBottom: Spacing.lg, maxHeight: 44 },
+  tab: {
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.pill,
     marginRight: Spacing.sm,
-  },
-  filterChipActive: {
-    backgroundColor: Colors.primary,
-  },
-  filterText: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.md,
-    fontWeight: '500',
-  },
-  filterTextActive: {
-    color: Colors.text,
-  },
-  scrollContent: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.xxxl,
-  },
-  propertyCard: {
     backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.lg,
-    overflow: 'hidden',
-    marginBottom: Spacing.lg,
   },
-  propertyImage: {
-    width: '100%',
-    height: 200,
-  },
-  propertyBadge: {
-    position: 'absolute',
-    top: Spacing.sm,
-    left: Spacing.sm,
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 4,
-    borderRadius: BorderRadius.sm,
-  },
-  propertyBadgeText: {
-    color: Colors.text,
-    fontSize: FontSizes.xs,
-    fontWeight: 'bold',
-  },
-  favoriteBtn: {
-    position: 'absolute',
-    top: Spacing.sm,
-    right: Spacing.sm,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+  tabActive: { backgroundColor: Colors.primary },
+  tabText: { color: Colors.textSecondary, fontSize: FontSizes.md, fontWeight: '500' },
+  tabTextActive: { color: '#FFFFFF' },
+  centerBox: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: Spacing.xxl,
+    gap: Spacing.md,
   },
-  propertyInfo: {
-    padding: Spacing.lg,
+  errorTitle: { color: Colors.text, fontSize: FontSizes.xl, fontWeight: 'bold', marginTop: Spacing.md },
+  errorText: { color: Colors.textSecondary, fontSize: FontSizes.md, textAlign: 'center' },
+  emptyTitle: { color: Colors.text, fontSize: FontSizes.xl, fontWeight: 'bold', marginTop: Spacing.md },
+  emptyText: { color: Colors.textSecondary, fontSize: FontSizes.md, textAlign: 'center' },
+  retryBtn: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.xxl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
   },
-  propertyTitle: {
-    color: Colors.text,
-    fontSize: FontSizes.lg,
-    fontWeight: '600',
-    marginBottom: Spacing.xs,
-  },
-  propertyPrice: {
-    color: Colors.primary,
-    fontSize: FontSizes.xl,
-    fontWeight: 'bold',
-    marginBottom: Spacing.sm,
-  },
-  propertyLocation: {
+  retryText: { color: '#FFFFFF', fontSize: FontSizes.md, fontWeight: '600' },
+  content: { paddingHorizontal: Spacing.xl, paddingBottom: Spacing.xxxl },
+  card: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
     marginBottom: Spacing.md,
+    gap: Spacing.md,
   },
-  propertyLocationText: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.sm,
+  cardImage: { width: 100, height: 100, borderRadius: BorderRadius.md, backgroundColor: Colors.card },
+  cardImageFallback: { alignItems: 'center', justifyContent: 'center' },
+  cardInfo: { flex: 1 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600', flex: 1 },
+  listingType: {
+    color: Colors.primary,
+    fontSize: FontSizes.xs,
+    fontWeight: '600',
+    backgroundColor: Colors.primary + '20',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
   },
-  propertyFeatures: {
-    flexDirection: 'row',
-    gap: Spacing.lg,
-  },
-  feature: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  featureText: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.sm,
-  },
+  cardAddress: { color: Colors.textSecondary, fontSize: FontSizes.sm, marginTop: 4 },
+  cardSpecs: { flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.sm },
+  spec: { color: Colors.textSecondary, fontSize: FontSizes.xs },
+  price: { color: Colors.primary, fontSize: FontSizes.md, fontWeight: 'bold', marginTop: Spacing.sm },
 });

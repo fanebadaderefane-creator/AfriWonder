@@ -1,21 +1,23 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
 import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
+import coursesApi, { Course } from '../../src/api/coursesApi';
 
-const CATEGORIES = ['Tout', 'Tech', 'Business', 'Langue', 'Art', 'Sante'];
-
-const COURSES = [
-  { id: 'co1', title: 'Developpement Mobile React Native', instructor: 'Moussa Keita', image: 'https://picsum.photos/400/200?random=140', price: 15000, rating: 4.8, students: 1250, duration: '12h', level: 'Intermediaire' },
-  { id: 'co2', title: 'Marketing Digital pour l\'Afrique', instructor: 'Aminata Sangare', image: 'https://picsum.photos/400/200?random=141', price: 10000, rating: 4.6, students: 890, duration: '8h', level: 'Debutant' },
-  { id: 'co3', title: 'Francais des affaires', instructor: 'Prof. Diallo', image: 'https://picsum.photos/400/200?random=142', price: 0, rating: 4.9, students: 3400, duration: '20h', level: 'Tout niveau' },
-  { id: 'co4', title: 'Design Graphique avec Figma', instructor: 'Fanta Coulibaly', image: 'https://picsum.photos/400/200?random=143', price: 8000, rating: 4.7, students: 670, duration: '10h', level: 'Debutant' },
-  { id: 'co5', title: 'Agriculture moderne au Mali', instructor: 'Dr. Traore', image: 'https://picsum.photos/400/200?random=144', price: 5000, rating: 4.5, students: 2100, duration: '6h', level: 'Tout niveau' },
-];
+const CATEGORIES = ['Tous', 'Tech', 'Business', 'Langue', 'Art', 'Santé'];
 
 export default function CoursesScreen() {
   if (!featureFlags.courses) {
@@ -29,6 +31,38 @@ export default function CoursesScreen() {
   }
   const insets = useSafeAreaInsets();
   const [activeCategory, setActiveCategory] = useState(0);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setError(null);
+    try {
+      const params: Parameters<typeof coursesApi.list>[0] = { page: 1, limit: 30 };
+      if (activeCategory > 0) params.category = CATEGORIES[activeCategory].toLowerCase();
+      const list = await coursesApi.list(params);
+      setCourses(list);
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        || (err as { message?: string })?.message
+        || 'Impossible de charger les formations.';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, [activeCategory]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    load(true).finally(() => setRefreshing(false));
+  }, [load]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -37,59 +71,165 @@ export default function CoursesScreen() {
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Formations</Text>
-        <TouchableOpacity><Ionicons name="search" size={24} color={Colors.text} /></TouchableOpacity>
+        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categories}>
-        {CATEGORIES.map((cat, i) => (
-          <TouchableOpacity key={cat} style={[styles.categoryChip, activeCategory === i && styles.categoryChipActive]} onPress={() => setActiveCategory(i)}>
-            <Text style={[styles.categoryText, activeCategory === i && styles.categoryTextActive]}>{cat}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsContainer}>
+        {CATEGORIES.map((cat, idx) => (
+          <TouchableOpacity
+            key={cat}
+            style={[styles.tab, activeCategory === idx && styles.tabActive]}
+            onPress={() => setActiveCategory(idx)}
+          >
+            <Text style={[styles.tabText, activeCategory === idx && styles.tabTextActive]}>{cat}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        {COURSES.map((course) => (
-          <TouchableOpacity key={course.id} style={styles.courseCard} onPress={() => router.push(`/courses/${course.id}`)}>
-            <Image source={{ uri: course.image }} style={styles.courseImage} />
-            <View style={styles.courseInfo}>
-              <View style={styles.levelBadge}><Text style={styles.levelText}>{course.level}</Text></View>
-              <Text style={styles.courseTitle} numberOfLines={2}>{course.title}</Text>
-              <Text style={styles.courseInstructor}>{course.instructor}</Text>
-              <View style={styles.courseMeta}>
-                <View style={styles.metaItem}><Ionicons name="star" size={12} color={Colors.accent} /><Text style={styles.metaText}>{course.rating}</Text></View>
-                <View style={styles.metaItem}><Ionicons name="people" size={12} color={Colors.textSecondary} /><Text style={styles.metaText}>{course.students}</Text></View>
-                <View style={styles.metaItem}><Ionicons name="time" size={12} color={Colors.textSecondary} /><Text style={styles.metaText}>{course.duration}</Text></View>
-              </View>
-              <Text style={styles.coursePrice}>{course.price === 0 ? 'Gratuit' : course.price.toLocaleString() + ' FCFA'}</Text>
-            </View>
+      {loading ? (
+        <View style={styles.centerBox}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      ) : error ? (
+        <View style={styles.centerBox}>
+          <Ionicons name="cloud-offline-outline" size={56} color={Colors.textSecondary} />
+          <Text style={styles.errorTitle}>Formations indisponibles</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => load()}>
+            <Text style={styles.retryText}>Réessayer</Text>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
+        </View>
+      ) : courses.length === 0 ? (
+        <View style={styles.centerBox}>
+          <Ionicons name="school-outline" size={64} color={Colors.textMuted} />
+          <Text style={styles.emptyTitle}>Aucune formation</Text>
+          <Text style={styles.emptyText}>
+            Aucune formation publiée dans cette catégorie pour l'instant.
+          </Text>
+        </View>
+      ) : (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.content}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        >
+          {courses.map((course) => (
+            <TouchableOpacity
+              key={course.id}
+              style={styles.courseCard}
+              onPress={() => router.push(`/courses/${course.id}` as any)}
+            >
+              {course.thumbnail_url ? (
+                <Image source={{ uri: course.thumbnail_url }} style={styles.courseImage} />
+              ) : (
+                <View style={[styles.courseImage, styles.courseImageFallback]}>
+                  <Ionicons name="image-outline" size={32} color={Colors.textSecondary} />
+                </View>
+              )}
+              <View style={styles.courseInfo}>
+                <Text style={styles.courseTitle} numberOfLines={2}>{course.title}</Text>
+                {course.instructor?.full_name ? (
+                  <Text style={styles.courseInstructor}>{course.instructor.full_name}</Text>
+                ) : null}
+                <View style={styles.courseMeta}>
+                  {course.rating ? (
+                    <View style={styles.metaItem}>
+                      <Ionicons name="star" size={12} color="#FFD700" />
+                      <Text style={styles.metaText}>{course.rating.toFixed(1)}</Text>
+                    </View>
+                  ) : null}
+                  {course.total_students ? (
+                    <View style={styles.metaItem}>
+                      <Ionicons name="people" size={12} color={Colors.textSecondary} />
+                      <Text style={styles.metaText}>{course.total_students}</Text>
+                    </View>
+                  ) : null}
+                  {course.duration_hours ? (
+                    <View style={styles.metaItem}>
+                      <Ionicons name="time" size={12} color={Colors.textSecondary} />
+                      <Text style={styles.metaText}>{course.duration_hours}h</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={styles.courseFooter}>
+                  <Text style={styles.coursePrice}>
+                    {course.price === 0 ? 'Gratuit' : `${course.price.toLocaleString()} ${course.currency ?? 'FCFA'}`}
+                  </Text>
+                  {course.level ? <Text style={styles.courseLevel}>{course.level}</Text> : null}
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.xl, paddingVertical: Spacing.lg },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+  },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: FontSizes.xl, fontWeight: 'bold', color: Colors.text },
-  categories: { paddingHorizontal: Spacing.xl, marginBottom: Spacing.md, maxHeight: 40 },
-  categoryChip: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, borderRadius: BorderRadius.pill, backgroundColor: Colors.surface, marginRight: Spacing.sm },
-  categoryChipActive: { backgroundColor: Colors.primary },
-  categoryText: { color: Colors.textSecondary, fontSize: FontSizes.sm },
-  categoryTextActive: { color: Colors.text, fontWeight: '600' },
+  tabsContainer: { paddingHorizontal: Spacing.xl, marginBottom: Spacing.lg, maxHeight: 44 },
+  tab: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.pill,
+    marginRight: Spacing.sm,
+    backgroundColor: Colors.surface,
+  },
+  tabActive: { backgroundColor: Colors.primary },
+  tabText: { color: Colors.textSecondary, fontSize: FontSizes.md, fontWeight: '500' },
+  tabTextActive: { color: '#FFFFFF' },
   content: { paddingHorizontal: Spacing.xl, paddingBottom: Spacing.xxxl },
-  courseCard: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, overflow: 'hidden', marginBottom: Spacing.md },
-  courseImage: { width: '100%', height: 140 },
-  courseInfo: { padding: Spacing.lg },
-  levelBadge: { alignSelf: 'flex-start', backgroundColor: Colors.primary + '20', paddingHorizontal: Spacing.sm, paddingVertical: 2, borderRadius: BorderRadius.sm, marginBottom: Spacing.sm },
-  levelText: { color: Colors.primary, fontSize: FontSizes.xs, fontWeight: '600' },
-  courseTitle: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: 'bold', marginBottom: 4 },
-  courseInstructor: { color: Colors.textSecondary, fontSize: FontSizes.sm, marginBottom: Spacing.sm },
-  courseMeta: { flexDirection: 'row', gap: Spacing.lg, marginBottom: Spacing.sm },
+  centerBox: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xxl,
+    gap: Spacing.md,
+  },
+  errorTitle: { color: Colors.text, fontSize: FontSizes.xl, fontWeight: 'bold', marginTop: Spacing.md },
+  errorText: { color: Colors.textSecondary, fontSize: FontSizes.md, textAlign: 'center' },
+  emptyTitle: { color: Colors.text, fontSize: FontSizes.xl, fontWeight: 'bold', marginTop: Spacing.md },
+  emptyText: { color: Colors.textSecondary, fontSize: FontSizes.md, textAlign: 'center' },
+  retryBtn: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.xxl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+  },
+  retryText: { color: '#FFFFFF', fontSize: FontSizes.md, fontWeight: '600' },
+  courseCard: {
+    flexDirection: 'row',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    gap: Spacing.md,
+  },
+  courseImage: { width: 100, height: 100, borderRadius: BorderRadius.md, backgroundColor: Colors.card },
+  courseImageFallback: { alignItems: 'center', justifyContent: 'center' },
+  courseInfo: { flex: 1 },
+  courseTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600' },
+  courseInstructor: { color: Colors.textSecondary, fontSize: FontSizes.sm, marginTop: 2 },
+  courseMeta: { flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.sm },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { color: Colors.textSecondary, fontSize: FontSizes.sm },
-  coursePrice: { color: Colors.primary, fontSize: FontSizes.lg, fontWeight: 'bold' },
+  metaText: { color: Colors.textSecondary, fontSize: FontSizes.xs },
+  courseFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+  },
+  coursePrice: { color: Colors.primary, fontSize: FontSizes.md, fontWeight: 'bold' },
+  courseLevel: { color: Colors.textMuted, fontSize: FontSizes.xs, fontStyle: 'italic' },
 });
