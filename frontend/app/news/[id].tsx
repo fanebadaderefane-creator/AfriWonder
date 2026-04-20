@@ -1,13 +1,157 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Share,
+  Alert,
+} from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import newsApi, { NewsArticle } from '../../src/api/newsApi';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
+
+function stripHtml(html: string): string {
+  if (!html) return '';
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+function formatPublished(iso?: string): string {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleString('fr-FR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '';
+  }
+}
 
 export default function ArticleDetailScreen() {
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const articleId = typeof id === 'string' ? id : Array.isArray(id) ? id[0] : '';
+
+  const [article, setArticle] = useState<NewsArticle | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [liking, setLiking] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!articleId) {
+      setError('Article introuvable.');
+      setLoading(false);
+      return;
+    }
+    setError(null);
+    try {
+      const a = await newsApi.get(articleId);
+      setArticle(a);
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        || (err as { message?: string })?.message
+        || 'Impossible de charger cet article.';
+      setError(msg);
+      setArticle(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [articleId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const heroUri = toAbsoluteMediaUrl(
+    (article?.image_url || article?.cover_image || '').trim()
+  );
+
+  const authorAvatar = toAbsoluteMediaUrl(
+    (article?.author?.avatar || '').trim()
+  );
+
+  const bodyText = stripHtml(article?.content || article?.summary || '');
+
+  const onShare = async () => {
+    if (!article?.title) return;
+    try {
+      await Share.share({ message: `${article.title}\n\n${article.summary || ''}`.trim() });
+    } catch {
+      /* annulé */
+    }
+  };
+
+  const onLike = async () => {
+    if (!articleId) return;
+    setLiking(true);
+    try {
+      await newsApi.like(articleId);
+      Alert.alert('Merci', 'Réaction enregistrée.');
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        || (err as { message?: string })?.message
+        || 'Connexion requise ou action impossible.';
+      Alert.alert('Like', msg);
+    } finally {
+      setLiking(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  if (error || !article) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color={Colors.text} />
+          </TouchableOpacity>
+          <View style={styles.headerActions} />
+        </View>
+        <View style={styles.centered}>
+          <Text style={styles.errorText}>{error ?? 'Article introuvable.'}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => { setLoading(true); void load(); }}>
+            <Text style={styles.retryBtnText}>Réessayer</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  const sourceLabel = article.source_name?.trim() || 'AfriWonder';
+  const authorName = article.author?.display_name?.trim() || article.author?.username?.trim() || 'Rédaction';
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -16,29 +160,51 @@ export default function ArticleDetailScreen() {
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <View style={styles.headerActions}>
-          <TouchableOpacity><Ionicons name="bookmark-outline" size={22} color={Colors.text} /></TouchableOpacity>
-          <TouchableOpacity><Ionicons name="share-outline" size={22} color={Colors.text} /></TouchableOpacity>
+          <TouchableOpacity onPress={() => void onLike()} disabled={liking}>
+            <Ionicons name="heart-outline" size={22} color={Colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => void onShare()}>
+            <Ionicons name="share-outline" size={22} color={Colors.text} />
+          </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView key={String(id)} showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <Image source={{ uri: 'https://picsum.photos/400/250?random=170' }} style={styles.heroImage} />
+      <ScrollView key={articleId} showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        <ImageOrPlaceholder uri={heroUri} style={styles.heroImage} icon="newspaper-outline" iconSize={48} />
         <View style={styles.meta}>
-          <View style={styles.sourceBadge}><Text style={styles.sourceText}>AfriTech News</Text></View>
-          <Text style={styles.date}>25 Juin 2025 - 14h30</Text>
+          <View style={styles.sourceBadge}>
+            <Text style={styles.sourceText}>{sourceLabel}</Text>
+          </View>
+          {article.category ? (
+            <View style={styles.catBadge}>
+              <Text style={styles.catText}>{article.category}</Text>
+            </View>
+          ) : null}
         </View>
-        <Text style={styles.title}>AfriWonder atteint 500 000 utilisateurs en Afrique de l'Ouest</Text>
+        {formatPublished(article.published_at || article.created_at) ? (
+          <Text style={styles.date}>
+            {formatPublished(article.published_at || article.created_at)}
+          </Text>
+        ) : null}
+        <Text style={styles.title}>{article.title}</Text>
         <View style={styles.authorRow}>
-          <Image source={{ uri: 'https://picsum.photos/40/40?random=171' }} style={styles.authorAvatar} />
-          <View><Text style={styles.authorName}>Abdoulaye Fane</Text><Text style={styles.authorRole}>Journaliste Tech</Text></View>
+          <ImageOrPlaceholder uri={authorAvatar} style={styles.authorAvatar} icon="person" iconSize={22} />
+          <View>
+            <Text style={styles.authorName}>{authorName}</Text>
+            {article.country ? (
+              <Text style={styles.authorRole}>{article.country}</Text>
+            ) : null}
+          </View>
         </View>
-        <Text style={styles.paragraph}>La super-application africaine AfriWonder vient de franchir le cap symbolique des 500 000 utilisateurs actifs, confirmant son statut de plateforme numerique leader en Afrique de l'Ouest.</Text>
-        <Text style={styles.paragraph}>Lancee il y a moins d'un an, la plateforme qui combine commerce, services, divertissement et finance mobile connait une croissance exponentielle au Mali, au Senegal et en Cote d'Ivoire.</Text>
-        <Text style={styles.subtitle}>Une adoption rapide</Text>
-        <Text style={styles.paragraph}>"Nous sommes fiers de cette etape importante", declare le fondateur. "Notre mission est de creer un ecosysteme numerique qui repond aux besoins reels des communautes africaines."</Text>
-        <Text style={styles.paragraph}>La marketplace a elle seule compte plus de 10 000 vendeurs actifs, tandis que le service de paiement mobile traite des millions de transactions chaque mois.</Text>
-        <Text style={styles.subtitle}>Perspectives 2026</Text>
-        <Text style={styles.paragraph}>L'equipe prevoit d'etendre ses services a d'autres pays d'Afrique de l'Ouest dans les prochains mois, avec un objectif d'un million d'utilisateurs d'ici fin 2026.</Text>
+        {!bodyText ? (
+          <Text style={styles.paragraph}>Contenu indisponible pour cet article.</Text>
+        ) : (
+          bodyText.split('\n\n').map((block, i) => (
+            <Text key={i} style={styles.paragraph}>
+              {block.trim()}
+            </Text>
+          ))
+        )}
       </ScrollView>
     </View>
   );
@@ -46,20 +212,25 @@ export default function ArticleDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl },
+  errorText: { color: Colors.textSecondary, textAlign: 'center', marginBottom: Spacing.lg },
+  retryBtn: { backgroundColor: Colors.primary, paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md, borderRadius: BorderRadius.md },
+  retryBtnText: { color: Colors.text, fontWeight: '600' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.xl, paddingVertical: Spacing.lg },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   headerActions: { flexDirection: 'row', gap: Spacing.md },
   content: { paddingBottom: Spacing.xxxl },
   heroImage: { width: '100%', height: 220, marginBottom: Spacing.lg },
-  meta: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.xl, gap: Spacing.md, marginBottom: Spacing.md },
+  meta: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.xl, gap: Spacing.sm, marginBottom: Spacing.sm, flexWrap: 'wrap' },
   sourceBadge: { backgroundColor: Colors.primary, paddingHorizontal: Spacing.sm, paddingVertical: 2, borderRadius: BorderRadius.sm },
   sourceText: { color: Colors.text, fontSize: FontSizes.xs, fontWeight: '600' },
-  date: { color: Colors.textSecondary, fontSize: FontSizes.sm },
+  catBadge: { backgroundColor: Colors.surface, paddingHorizontal: Spacing.sm, paddingVertical: 2, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.border },
+  catText: { color: Colors.textSecondary, fontSize: FontSizes.xs, fontWeight: '600' },
+  date: { color: Colors.textSecondary, fontSize: FontSizes.sm, paddingHorizontal: Spacing.xl, marginBottom: Spacing.md },
   title: { color: Colors.text, fontSize: FontSizes.xxl, fontWeight: 'bold', paddingHorizontal: Spacing.xl, marginBottom: Spacing.lg, lineHeight: 28 },
   authorRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.xl, gap: Spacing.md, marginBottom: Spacing.xxl },
   authorAvatar: { width: 40, height: 40, borderRadius: 20 },
   authorName: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600' },
   authorRole: { color: Colors.textSecondary, fontSize: FontSizes.sm },
   paragraph: { color: Colors.textSecondary, fontSize: FontSizes.md, lineHeight: 24, paddingHorizontal: Spacing.xl, marginBottom: Spacing.lg },
-  subtitle: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: 'bold', paddingHorizontal: Spacing.xl, marginBottom: Spacing.md, marginTop: Spacing.md },
 });

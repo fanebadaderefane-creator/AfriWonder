@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   Dimensions,
   ActivityIndicator,
   RefreshControl,
@@ -19,15 +18,14 @@ import wishlistApi, { WishlistRow } from '../src/api/wishlistApi';
 import cartApi from '../src/api/cartApi';
 import { toAbsoluteMediaUrl } from '../src/utils/absoluteMediaUrl';
 import { featureFlags } from '../src/config/featureFlags';
+import { ImageOrPlaceholder } from '../src/components/common/ImageOrPlaceholder';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - Spacing.xl * 2 - Spacing.md) / 2;
-const PLACEHOLDER_IMG = 'https://picsum.photos/300/400';
 
-function firstImageUrl(row: WishlistRow): string {
+function firstProductImageUri(row: WishlistRow): string {
   const raw = row.product?.images?.[0];
-  const abs = toAbsoluteMediaUrl(raw || '').trim();
-  return abs || PLACEHOLDER_IMG;
+  return toAbsoluteMediaUrl(raw || '').trim();
 }
 
 export default function WishlistScreen() {
@@ -158,7 +156,7 @@ export default function WishlistScreen() {
                   onPress={() => pid && router.push(`/product/${pid}` as any)}
                 >
                   <View style={styles.imageContainer}>
-                    <Image source={{ uri: firstImageUrl(row) }} style={styles.image} />
+                    <ImageOrPlaceholder uri={firstProductImageUri(row)} style={styles.image} icon="bag-handle-outline" iconSize={40} />
                     <TouchableOpacity
                       style={styles.heartBtn}
                       disabled={busyRm}

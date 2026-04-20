@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import apiClient from '../../src/api/client';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
 
 type CommunityDetail = {
   id: string;
@@ -89,7 +91,12 @@ export default function CommunityDetailScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.infoCard}>
-          <Image source={{ uri: community?.banner || community?.avatar || 'https://picsum.photos/400/150?random=135' }} style={styles.coverImage} />
+          <ImageOrPlaceholder
+            uri={toAbsoluteMediaUrl(String(community?.banner || community?.avatar || '').trim())}
+            style={styles.coverImage}
+            icon="image"
+            iconSize={36}
+          />
           <View style={styles.infoContent}>
             <Text style={styles.communityName}>{community?.name || 'Communauté'}</Text>
             <Text style={styles.communityDesc}>{community?.description || 'Description indisponible.'}</Text>
@@ -113,7 +120,12 @@ export default function CommunityDetailScreen() {
         ) : (community?.members || []).map((member, index) => (
           <View key={`${member.id ?? 'member'}-${index}`} style={styles.postCard}>
             <View style={styles.postHeader}>
-              <Image source={{ uri: member.user?.profile_image || 'https://picsum.photos/50/50?random=130' }} style={styles.postAvatar} />
+              <ImageOrPlaceholder
+                uri={toAbsoluteMediaUrl(String(member.user?.profile_image || '').trim())}
+                style={styles.postAvatar}
+                icon="person"
+                iconSize={20}
+              />
               <View style={styles.postAuthorInfo}>
                 <Text style={styles.postAuthor}>{member.user?.username || 'Utilisateur'}</Text>
                 <Text style={styles.postTime}>{member.role || 'member'}</Text>

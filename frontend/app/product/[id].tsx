@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, Share, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Share, ActivityIndicator, Alert } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,6 +7,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import apiClient from '../../src/api/client';
 import cartApi from '../../src/api/cartApi';
 import { featureFlags } from '../../src/config/featureFlags';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
 
 const { width } = Dimensions.get('window');
 
@@ -72,19 +74,31 @@ export default function ProductDetailScreen() {
         const response = await apiClient.get(`/products/${id}`);
         const data = response.data?.data || response.data;
         if (data) {
+          const rawImgs: unknown[] = Array.isArray(data.images)
+            ? data.images
+            : data.image
+              ? [data.image]
+              : [];
+          const images = rawImgs
+            .map((x) => toAbsoluteMediaUrl(String(x ?? '').trim()))
+            .filter(Boolean) as string[];
+          const sellerAvatar = toAbsoluteMediaUrl(
+            String(data.seller?.profile_image || data.seller?.avatar || '').trim()
+          );
+          setSelectedImage(0);
           setProduct({
             id: data.id || (id as string),
             name: data.name || data.title || '',
             description: data.description || '',
             price: data.price || 0,
             originalPrice: data.original_price || data.price || 0,
-            images: data.images || (data.image ? [data.image] : [`https://picsum.photos/400/500?random=${id}`]),
+            images,
             rating: data.rating || 4.5,
             reviews: data.reviews_count || 0,
             sold: data.sold_count || 0,
             seller: {
-              name: data.seller?.name || data.seller_name || 'Vendeur',
-              avatar: data.seller?.avatar || `https://i.pravatar.cc/150?u=${data.seller_id || id}`,
+              name: data.seller?.name || data.seller?.username || data.seller_name || 'Vendeur',
+              avatar: sellerAvatar,
               rating: data.seller?.rating || 4.5,
               products: data.seller?.products_count || 0,
             },
@@ -96,17 +110,18 @@ export default function ProductDetailScreen() {
       } catch (err) {
         console.log('Error loading product:', err);
         // Use basic product from params
+        setSelectedImage(0);
         setProduct({
           id: id as string,
           name: 'Produit',
           description: '',
           price: 0,
           originalPrice: 0,
-          images: [`https://picsum.photos/400/500?random=${id}`],
+          images: [],
           rating: 0,
           reviews: 0,
           sold: 0,
-          seller: { name: 'Vendeur', avatar: `https://i.pravatar.cc/150?u=${id}`, rating: 0, products: 0 },
+          seller: { name: 'Vendeur', avatar: '', rating: 0, products: 0 },
           sizes: ['S', 'M', 'L', 'XL'],
           colors: ['#8B4513'],
           inStock: true,
@@ -156,18 +171,25 @@ export default function ProductDetailScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Product Images */}
         <View style={styles.imageContainer}>
-          <Image source={{ uri: product.images[selectedImage] }} style={styles.mainImage} />
-          <View style={styles.imageThumbnails}>
-            {product.images.map((img, idx) => (
-              <TouchableOpacity
-                key={idx}
-                onPress={() => setSelectedImage(idx)}
-                style={[styles.thumbnail, selectedImage === idx && styles.thumbnailActive]}
-              >
-                <Image source={{ uri: img }} style={styles.thumbnailImage} />
-              </TouchableOpacity>
-            ))}
-          </View>
+          <ImageOrPlaceholder
+            uri={product.images[selectedImage] || ''}
+            style={styles.mainImage}
+            icon="shirt-outline"
+            iconSize={56}
+          />
+          {product.images.length > 1 ? (
+            <View style={styles.imageThumbnails}>
+              {product.images.map((img, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  onPress={() => setSelectedImage(idx)}
+                  style={[styles.thumbnail, selectedImage === idx && styles.thumbnailActive]}
+                >
+                  <ImageOrPlaceholder uri={img} style={styles.thumbnailImage} icon="image" iconSize={20} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.content}>
@@ -253,7 +275,7 @@ export default function ProductDetailScreen() {
 
           {/* Seller Info */}
           <View style={styles.sellerCard}>
-            <Image source={{ uri: product.seller.avatar }} style={styles.sellerAvatar} />
+            <ImageOrPlaceholder uri={product.seller.avatar} style={styles.sellerAvatar} icon="person" iconSize={22} />
             <View style={styles.sellerInfo}>
               <Text style={styles.sellerName}>{product.seller.name}</Text>
               <View style={styles.sellerMeta}>

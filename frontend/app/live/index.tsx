@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Dimensions, Alert, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, Alert, RefreshControl } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,6 +7,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import apiClient from '../../src/api/client';
 import { useAuthStore } from '../../src/store/authStore';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
 
 const { width } = Dimensions.get('window');
 
@@ -72,10 +74,12 @@ export default function LiveHubScreen() {
       const liveStreams = liveInner?.streams || [];
       const endedStreams = replayInner?.streams || [];
       const schedStreams = schedInner?.streams || [];
+      const thumbOf = (s: any) =>
+        toAbsoluteMediaUrl(String(s.thumbnail_url || s.creator?.profile_image || '').trim());
       const mapLive = (s: any) => ({
         id: s.id,
         title: s.title,
-        thumbnail_url: s.thumbnail_url || s.creator?.profile_image || 'https://picsum.photos/400/600',
+        thumbnail_url: thumbOf(s),
         viewer_count: s.viewers_count ?? 0,
         likes: s.total_likes ?? 0,
       });
@@ -83,7 +87,7 @@ export default function LiveHubScreen() {
         id: s.id,
         creator_id: s.creator_id,
         title: s.title,
-        thumbnail_url: s.thumbnail_url || s.creator?.profile_image || 'https://picsum.photos/400/600',
+        thumbnail_url: thumbOf(s),
         duration: (s.duration_minutes != null ? s.duration_minutes * 60 : 0),
         peak_viewers: s.peak_viewers ?? 0,
         likes: s.total_likes ?? 0,
@@ -93,7 +97,7 @@ export default function LiveHubScreen() {
       const mapScheduled = (s: any) => ({
         id: s.id,
         title: s.title,
-        thumbnail_url: s.thumbnail_url || s.creator?.profile_image || 'https://picsum.photos/400/600',
+        thumbnail_url: thumbOf(s),
         scheduled_at: s.scheduled_at as string | undefined,
       });
       setActiveLives(Array.isArray(liveStreams) ? liveStreams.map(mapLive) : []);
@@ -185,7 +189,7 @@ export default function LiveHubScreen() {
                   style={styles.liveCard}
                   onPress={() => router.push({ pathname: '/live/[id]', params: { id: live.id } } as never)}
                 >
-                  <Image source={{ uri: live.thumbnail_url }} style={styles.liveImage} />
+                  <ImageOrPlaceholder uri={live.thumbnail_url} style={styles.liveImage} icon="videocam" iconSize={40} />
                   <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.liveOverlay}>
                     <View style={styles.liveBadge}><View style={styles.liveBadgeDot} /><Text style={styles.liveBadgeText}>LIVE</Text></View>
                     <Text style={styles.liveTitle} numberOfLines={1}>{live.title}</Text>
@@ -215,7 +219,7 @@ export default function LiveHubScreen() {
                   style={styles.scheduledCard}
                   onPress={() => router.push({ pathname: '/live/[id]', params: { id: s.id } } as never)}
                 >
-                  <Image source={{ uri: s.thumbnail_url }} style={styles.scheduledImage} />
+                  <ImageOrPlaceholder uri={s.thumbnail_url} style={styles.scheduledImage} icon="calendar" iconSize={36} />
                   <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={styles.scheduledOverlay}>
                     <View style={styles.scheduledBadge}>
                       <Ionicons name="time-outline" size={12} color="#FFF" />
@@ -258,7 +262,7 @@ export default function LiveHubScreen() {
             style={styles.replayCard}
             onPress={() => router.push({ pathname: '/live/replay', params: { id: replay.id } } as any)}
           >
-            <Image source={{ uri: replay.thumbnail_url }} style={styles.replayThumb} />
+            <ImageOrPlaceholder uri={replay.thumbnail_url} style={styles.replayThumb} icon="play-circle" iconSize={36} />
             <View style={styles.replayInfo}>
               <Text style={styles.replayTitle} numberOfLines={2}>{replay.title}</Text>
               <Text style={styles.replayMeta}>{formatDuration(replay.duration || 0)} • {formatViewers(replay.peak_viewers || 0)} spectateurs</Text>

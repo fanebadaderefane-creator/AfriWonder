@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import apiClient from '../../src/api/client';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
 
 type CommunityItem = {
   id: string;
@@ -76,7 +78,12 @@ export default function CommunitiesScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         {filteredCommunities.map((community) => (
           <TouchableOpacity key={community.id} style={styles.communityCard} onPress={() => router.push(`/communities/${community.id}`)}>
-            <Image source={{ uri: community.banner || community.avatar || 'https://picsum.photos/300/200?random=120' }} style={styles.communityImage} />
+            <ImageOrPlaceholder
+              uri={toAbsoluteMediaUrl(String(community.banner || community.avatar || '').trim())}
+              style={styles.communityImage}
+              icon="people"
+              iconSize={40}
+            />
             <View style={styles.communityOverlay}>
               <View style={styles.categoryBadge}><Text style={styles.categoryText}>{community.category || 'Général'}</Text></View>
               <Text style={styles.communityName}>{community.name}</Text>

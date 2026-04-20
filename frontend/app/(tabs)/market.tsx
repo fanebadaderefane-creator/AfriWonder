@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
   RefreshControl, useWindowDimensions, Animated, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,8 @@ import { Colors } from '../../src/theme/colors';
 import apiClient from '../../src/api/client';
 import cartApi from '../../src/api/cartApi';
 import { featureFlags } from '../../src/config/featureFlags';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
 
 function pickCategoryStyle(name: string): { icon: string; color: string } {
   const n = name.toLowerCase();
@@ -41,8 +43,6 @@ function deriveCategoriesFromProducts(products: any[]) {
       ...pickCategoryStyle(name),
     }));
 }
-
-const PLACEHOLDER_IMG = 'https://picsum.photos/300/400';
 
 const formatPrice = (p: number) => p.toLocaleString('fr-FR') + ' FCFA';
 
@@ -122,7 +122,7 @@ export default function MarketScreen() {
         name: p.name || '',
         price: p.price || 0,
         oldPrice: null,
-        image: p.images?.[0] || PLACEHOLDER_IMG,
+        image: toAbsoluteMediaUrl(String(p.images?.[0] || '').trim()),
         rating: p.seller?.seller_profile?.rating || 4.5,
         reviews: p.seller?.seller_profile?.total_sales || 0,
         seller: p.seller?.full_name || p.seller?.username || 'Vendeur',
@@ -194,7 +194,7 @@ export default function MarketScreen() {
           if (results.length > 0) {
             const transformed = results.map((p: any) => ({
               id: p.id, name: p.name || '', price: p.price || 0, oldPrice: null,
-              image: p.images?.[0] || PLACEHOLDER_IMG, rating: p.seller?.seller_profile?.rating || 4.5,
+              image: toAbsoluteMediaUrl(String(p.images?.[0] || '').trim()), rating: p.seller?.seller_profile?.rating || 4.5,
               reviews: p.seller?.seller_profile?.total_sales || 0, seller: p.seller?.full_name || 'Vendeur',
               sellerVerified: p.seller?.seller_profile?.is_verified || false, freeDelivery: false,
               isNew: false, isBestseller: false, wishlisted: false,
@@ -310,7 +310,7 @@ export default function MarketScreen() {
                   deal.oldPrice && deal.price
                     ? Math.max(0, Math.round((1 - deal.price / deal.oldPrice) * 100))
                     : 0;
-                const uri = deal.image || PLACEHOLDER_IMG;
+                const uri = deal.image || '';
                 return (
                   <TouchableOpacity
                     key={deal.id}
@@ -318,7 +318,7 @@ export default function MarketScreen() {
                     activeOpacity={0.85}
                     onPress={() => router.push(`/product/${deal.id}` as any)}
                   >
-                    <Image source={{ uri }} style={styles.flashImage} />
+                    <ImageOrPlaceholder uri={uri} style={styles.flashImage} icon="shirt-outline" iconSize={36} />
                     {discount > 0 ? (
                       <View style={styles.flashDiscountBadge}>
                         <Text style={styles.flashDiscountText}>-{discount}%</Text>
@@ -394,9 +394,11 @@ export default function MarketScreen() {
                 >
                   {/* Image */}
                   <View style={styles.productImageWrap}>
-                    <Image
-                      source={{ uri: product.image || PLACEHOLDER_IMG }}
+                    <ImageOrPlaceholder
+                      uri={product.image || ''}
                       style={[styles.productImage, { height: productWidth * 1.2 }]}
+                      icon="bag-handle-outline"
+                      iconSize={40}
                     />
                     {/* Badges */}
                     {product.isNew && (
@@ -459,7 +461,7 @@ export default function MarketScreen() {
                   activeOpacity={0.85}
                   onPress={() => router.push(`/product/${item.id}` as any)}
                 >
-                  <Image source={{ uri: item.image || PLACEHOLDER_IMG }} style={styles.recommendedImage} />
+                  <ImageOrPlaceholder uri={item.image || ''} style={styles.recommendedImage} icon="pricetag-outline" iconSize={32} />
                   <Text style={styles.recommendedName} numberOfLines={1}>
                     {item.name}
                   </Text>

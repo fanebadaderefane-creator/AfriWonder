@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   TextInput,
   RefreshControl,
 } from 'react-native';
@@ -23,6 +22,8 @@ import {
 } from '../../src/data/crowdfunding';
 import type { CrowdfundingProject } from '../../src/data/crowdfunding';
 import apiClient from '../../src/api/client';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
 
 export default function CrowdfundingHomeScreen() {
   const insets = useSafeAreaInsets();
@@ -41,7 +42,10 @@ export default function CrowdfundingHomeScreen() {
       const data = response.data?.data || response.data;
       const backendProjects = data?.campaigns || data?.projects || [];
       if (backendProjects.length > 0) {
-        const transformed: CrowdfundingProject[] = backendProjects.map((p: any) => ({
+        const transformed: CrowdfundingProject[] = backendProjects.map((p: any) => {
+          const cover = toAbsoluteMediaUrl(String(p.image_url || '').trim());
+          const creatorAv = toAbsoluteMediaUrl(String(p.creator_avatar || '').trim());
+          return {
           id: p.id,
           title: p.title || '',
           shortDescription: p.description || '',
@@ -55,18 +59,19 @@ export default function CrowdfundingHomeScreen() {
           creator: {
             id: p.creator_id || '',
             name: p.creator_name || 'Créateur AfriWonder',
-            avatar: p.creator_avatar || `https://i.pravatar.cc/150?u=${p.creator_id}`,
+            avatar: creatorAv,
             location: 'Bamako, Mali',
             isVerified: true,
           },
-          image: p.image_url || 'https://picsum.photos/600/400?random=300',
-          images: [p.image_url || 'https://picsum.photos/600/400?random=300'],
+          image: cover || '',
+          images: cover ? [cover] : [],
           isVerified: true,
           isSponsored: false,
           isFeatured: p.status === 'funded',
           createdAt: p.created_at || new Date().toISOString(),
           updates: 0,
-        }));
+        };
+        });
         setProjects(transformed);
       } else {
         setProjects([]);
@@ -208,7 +213,12 @@ export default function CrowdfundingHomeScreen() {
               activeOpacity={0.85}
               onPress={() => router.push(`/crowdfunding/${featuredProject.id}` as any)}
             >
-              <Image source={{ uri: featuredProject.images[0] }} style={styles.featuredImage} />
+              <ImageOrPlaceholder
+                uri={featuredProject.image || featuredProject.images?.[0] || ''}
+                style={styles.featuredImage}
+                icon="rocket-outline"
+                iconSize={48}
+              />
               <LinearGradient
                 colors={['transparent', 'rgba(0,0,0,0.85)']}
                 style={styles.featuredOverlay}
@@ -328,7 +338,12 @@ function ProjectCard({ project }: { project: CrowdfundingProject }) {
     >
       {/* Image */}
       <View style={styles.cardImageContainer}>
-        <Image source={{ uri: project.images[0] }} style={styles.cardImage} />
+        <ImageOrPlaceholder
+          uri={project.image || project.images?.[0] || ''}
+          style={styles.cardImage}
+          icon="rocket-outline"
+          iconSize={40}
+        />
         {/* Badges overlay */}
         <View style={styles.cardBadgesRow}>
           {project.isSponsored && (
@@ -393,7 +408,7 @@ function ProjectCard({ project }: { project: CrowdfundingProject }) {
         {/* Footer */}
         <View style={styles.cardFooter}>
           <View style={styles.cardCreator}>
-            <Image source={{ uri: project.creator?.avatar || `https://i.pravatar.cc/150?u=${project.id}` }} style={styles.cardCreatorAvatar} />
+            <ImageOrPlaceholder uri={project.creator?.avatar || ''} style={styles.cardCreatorAvatar} icon="person" iconSize={18} />
             <Text style={styles.cardCreatorName} numberOfLines={1}>{project.creator?.name || 'Créateur'}</Text>
             {project.creator?.isVerified && (
               <Ionicons name="checkmark-circle" size={14} color={Colors.primary} />

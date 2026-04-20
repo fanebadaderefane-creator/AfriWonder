@@ -482,6 +482,10 @@ app.use('/api/proxy/wishlist', wishlistRoutes);
 app.use('/api/proxy/civic', civicRoutes);
 /** Formations — client Expo (`apiClient` → `GET …/api/proxy/courses`). */
 app.use('/api/proxy/courses', coursesRoutes);
+/** Actualités — client Expo (`apiClient` → `GET …/api/proxy/news`). */
+app.use('/api/proxy/news', newsRoutes);
+/** Communautés — client Expo (`apiClient` → `GET …/api/proxy/communities`). */
+app.use('/api/proxy/communities', communitiesRoutes);
 app.use('/api/proxy', proxyRoutes);
 app.use('/api/comments', commentsRoutes);
 app.use('/api/users', userRoutes);
