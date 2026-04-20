@@ -474,6 +474,14 @@ app.use('/api/proxy/friends', friendsRoutes);
 app.use('/api/proxy/upload', uploadRoutes);
 /** Stories — client Expo (`apiClient` → `GET/POST …/api/proxy/stories`). */
 app.use('/api/proxy/stories', storiesRoutes);
+/** Panier marketplace — client Expo (`apiClient` → `GET/POST …/api/proxy/cart`). */
+app.use('/api/proxy/cart', cartRoutes);
+/** Favoris produits — client Expo (`apiClient` → `GET …/api/proxy/wishlist`). */
+app.use('/api/proxy/wishlist', wishlistRoutes);
+/** Pétitions civiques — client Expo (`apiClient` → `GET …/api/proxy/civic`). */
+app.use('/api/proxy/civic', civicRoutes);
+/** Formations — client Expo (`apiClient` → `GET …/api/proxy/courses`). */
+app.use('/api/proxy/courses', coursesRoutes);
 app.use('/api/proxy', proxyRoutes);
 app.use('/api/comments', commentsRoutes);
 app.use('/api/users', userRoutes);
