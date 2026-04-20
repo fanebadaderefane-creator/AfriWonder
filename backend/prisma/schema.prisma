@@ -31,11 +31,15 @@ model User {
   location                     String?
   website                      String?
   replay_premium               Boolean                   @default(false)
+  /// Abonnement AfriWonder Pro créateur (Phase 9) — dérivé aussi de CreatorSubscription ; flag cache rapide UI.
+  is_afriwonder_pro            Boolean                   @default(false)
   data_saver_mode              Boolean                   @default(false)
   shadow_banned                Boolean                   @default(false)
   referral_code                String?                   @unique
   /// Lien compte Supabase Auth (migration Phase 1) — optionnel
   supabase_id                  String?                   @unique
+  /// Sign in with Apple — sujet stable (`sub`) quand l’email n’est plus renvoyé
+  apple_id                     String?                   @unique
   phone_verified               Boolean                   @default(false)
   monetization_enabled         Boolean                   @default(false)
   monetization_suspended_at    DateTime?
@@ -147,6 +151,9 @@ model User {
   rides_as_driver              Ride[]                    @relation("RideDriver")
   rides_as_passenger           Ride[]                    @relation("RidePassenger")
   saves                        Save[]
+  save_collections             SaveCollection[]
+  video_poll_votes             VideoPollVote[]
+  comment_reactions            CommentReaction[]
   saved_jobs                   SavedJob[]
   saved_petitions              SavedPetition[]
   seller_profile               SellerProfile?
@@ -213,6 +220,8 @@ model User {
   cookie_preferences           UserCookiePreference?
   legal_acceptances            UserLegalAcceptance[]
   posts                       Post[]
+  post_comments               PostComment[]
+  post_comment_reactions      PostCommentReaction[]
   post_poll_votes             PostPollVote[]
   business_page               BusinessPage?
   payment_requests_from       PaymentRequest[]          @relation("PaymentRequestFrom")
@@ -229,6 +238,9 @@ model User {
   international_transfers_sent InternationalTransfer[]   @relation("InternationalTransferSender")
   payment_preauths            PaymentPreauth[]
   creator_contracts           CreatorContract[]
+  live_age_acknowledgments    LiveAgeAcknowledgment[]
+  live_bell_subscriptions     LiveCreatorBellSubscriber[] @relation("LiveBellSubscriber")
+  live_bell_watchers          LiveCreatorBellSubscriber[] @relation("LiveBellCreator")
 }
 
 /// Demande de monétisation — créateur envoie, admin valide
@@ -260,10 +272,47 @@ model Post {
   user         User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
   poll         PostPoll?
   images       PostImage[] // carrousel multi-images (CPO 2.5, 2.7)
+  comments     PostComment[]
 
   @@index([user_id])
   @@index([visibility, created_at])
   @@index([scheduled_at])
+}
+
+/// Commentaires sur un post / Moment (feed social)
+model PostComment {
+  id         String        @id @default(uuid())
+  post_id    String
+  user_id    String
+  content    String
+  parent_id  String?
+  created_at DateTime      @default(now())
+  updated_at DateTime      @updatedAt
+  post       Post          @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  user       User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  parent     PostComment?  @relation("PostCommentReplies", fields: [parent_id], references: [id], onDelete: SetNull)
+  replies    PostComment[] @relation("PostCommentReplies")
+  reactions  PostCommentReaction[]
+
+  @@index([post_id])
+  @@index([user_id])
+  @@index([parent_id])
+  @@map("post_comments")
+}
+
+model PostCommentReaction {
+  id         String      @id @default(uuid())
+  comment_id String
+  user_id    String
+  type       String      @default("like")
+  created_at DateTime    @default(now())
+  comment    PostComment @relation(fields: [comment_id], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([comment_id, user_id])
+  @@index([comment_id])
+  @@index([user_id])
+  @@map("post_comment_reactions")
 }
 
 /// Image d'un carrousel de post (CPO 2.5, 2.7)
@@ -500,20 +549,25 @@ model GroupCallParticipant {
 
 /// Collaboration marques / sponsoring créateur
 model BrandDeal {
-  id          String   @id @default(uuid())
-  creator_id  String
-  brand_name  String
-  status      String   @default("pending")
-  amount      Float?
-  currency    String?
-  campaign_id String?
-  notes       String?
-  created_at  DateTime @default(now())
-  updated_at DateTime @updatedAt
-  creator     User     @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+  id               String   @id @default(uuid())
+  creator_id       String
+  brand_name       String
+  status           String   @default("pending")
+  amount           Float?
+  currency         String?
+  campaign_id      String?
+  notes            String?
+  deliverables     Json?
+  brief_url        String?
+  brand_user_id    String?
+  platform_fee_pct Float    @default(0.10)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+  creator          User     @relation(fields: [creator_id], references: [id], onDelete: Cascade)
 
   @@index([creator_id])
   @@index([status])
+  @@index([brand_user_id])
 }
 
 /// Session / appareil connecté (multi-device)
@@ -642,6 +696,8 @@ model Video {
   updated_at            DateTime              @updatedAt
   hashtags              Json?
   music_title           String?
+  /// JSON client : filtres, texte/stickers, découpe %, vitesse, piste musique (éditeur mobile).
+  editor_metadata       String?
   is_featured           Boolean               @default(false)
   algo_tier             String?               @default("test")
   avg_retention_pct     Float?
@@ -656,11 +712,19 @@ model Video {
   filter_id             String?
   comments_disabled     Boolean               @default(false)
   comment_visibility    String                @default("everyone")
+  /// Phase 23 — afficher d’abord les commentaires des abonnés du créateur (tri côté API).
+  comment_subscribers_first Boolean           @default(false)
   hide_likes            Boolean               @default(false)
   scheduled_at          DateTime?
+  /// Phase 23 — `duet` | `stitch` quand `remix_of_id` est renseigné.
+  remix_kind            String?
+  /// Phase 23 — participation à un challenge viral.
+  challenge_id          String?
   filter                VideoFilter?          @relation(fields: [filter_id], references: [id], onDelete: SetNull)
   remix_of              Video?                @relation("VideoRemix", fields: [remix_of_id], references: [id], onDelete: SetNull)
   remixes               Video[]               @relation("VideoRemix")
+  challenge             VideoChallenge?       @relation(fields: [challenge_id], references: [id], onDelete: SetNull)
+  video_poll            VideoPoll?
   chapters              VideoChapter[]
   collaborator_revenues CollaboratorRevenue[]
   video_comments        Comment[]
@@ -683,7 +747,53 @@ model Video {
   @@index([category])
   @@index([is_featured])
   @@index([remix_of_id])
+  @@index([challenge_id])
   @@index([category], map: "idx_videos_category")
+}
+
+/// Phase 23 — sondage attaché à une vidéo (expire 24h après création).
+model VideoPoll {
+  id         String          @id @default(uuid())
+  video_id   String          @unique
+  /// Libellés des choix (2 à 4 chaînes).
+  options    Json
+  expires_at DateTime
+  created_at DateTime        @default(now())
+  video      Video           @relation(fields: [video_id], references: [id], onDelete: Cascade)
+  votes      VideoPollVote[]
+
+  @@index([expires_at])
+}
+
+model VideoPollVote {
+  id            String    @id @default(uuid())
+  poll_id       String
+  user_id       String
+  option_index  Int
+  created_at    DateTime  @default(now())
+  poll          VideoPoll @relation(fields: [poll_id], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([poll_id, user_id])
+  @@index([poll_id])
+}
+
+/// Phase 23 — challenge / hashtag tendance (option sponsor).
+model VideoChallenge {
+  id                 String    @id @default(uuid())
+  /// Hashtag sans # (minuscules).
+  hashtag            String    @unique
+  title              String
+  description        String?
+  sponsor_brand      String?
+  is_sponsored       Boolean   @default(false)
+  revenue_share_note String?
+  is_active          Boolean   @default(true)
+  created_at         DateTime  @default(now())
+  expires_at         DateTime?
+  videos             Video[]
+
+  @@index([is_active, created_at])
 }
 
 model Like {
@@ -897,12 +1007,27 @@ model Comment {
   created_at  DateTime  @default(now())
   parent      Comment?  @relation("CommentReplies", fields: [parent_id], references: [id])
   replies     Comment[] @relation("CommentReplies")
+  reactions   CommentReaction[]
   user        User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
   video       Video     @relation(fields: [video_id], references: [id], onDelete: Cascade)
 
   @@index([video_id])
   @@index([user_id])
   @@index([user_id], map: "idx_comments_user")
+}
+
+/// Phase 23 — une réaction par utilisateur et par commentaire.
+model CommentReaction {
+  id         String   @id @default(uuid())
+  comment_id String
+  user_id    String
+  type       String   @default("like")
+  created_at DateTime @default(now())
+  comment    Comment  @relation(fields: [comment_id], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([comment_id, user_id])
+  @@index([comment_id])
 }
 
 model Follow {
@@ -952,15 +1077,31 @@ model WonderRelation {
 }
 
 model Save {
-  id         String   @id @default(uuid())
-  user_id    String
-  video_id   String
-  created_at DateTime @default(now())
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  video      Video    @relation(fields: [video_id], references: [id], onDelete: Cascade)
+  id            String          @id @default(uuid())
+  user_id       String
+  video_id      String
+  collection_id String?
+  created_at    DateTime        @default(now())
+  user          User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  video         Video           @relation(fields: [video_id], references: [id], onDelete: Cascade)
+  collection    SaveCollection? @relation(fields: [collection_id], references: [id], onDelete: SetNull)
 
   @@unique([user_id, video_id])
   @@index([video_id])
+  @@index([user_id])
+  @@index([collection_id])
+}
+
+/// Phase 23 — dossiers « Mes sauvegardes » (privés).
+model SaveCollection {
+  id         String   @id @default(uuid())
+  user_id    String
+  name       String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  saves      Save[]
+
   @@index([user_id])
 }
 
@@ -1431,7 +1572,9 @@ model LiveStream {
   goal_target           Float?
   delay_seconds         Int                     @default(0)
   max_quality           String                  @default("auto")
-  replay_retention_days Int                     @default(14)
+  replay_retention_days Int                     @default(3)
+  /// Rappel « live dans 15 min » déjà envoyé (évite les doublons du job)
+  scheduled_reminder_sent_at DateTime?
   analytics             LiveAnalytics?
   chat_messages         LiveChat[]
   cohosts               LiveCoHost[]
@@ -1447,6 +1590,7 @@ model LiveStream {
   tips                  LiveTip[]
   top_donors            LiveTopDonor[]
   viewers               LiveViewer[]
+  age_acknowledgments   LiveAgeAcknowledgment[]
 
   @@index([creator_id])
   @@index([status])
@@ -1454,6 +1598,33 @@ model LiveStream {
   @@index([room_id])
   @@index([region])
   @@index([category])
+}
+
+/// CDC 6.1 / 6.3 — Accès live restreint : accusé réception serveur (traçabilité) avant join.
+model LiveAgeAcknowledgment {
+  id           String     @id @default(uuid())
+  live_id      String
+  user_id      String
+  restriction  String     @default("18+")
+  confirmed_at DateTime   @default(now())
+  live_stream  LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([live_id, user_id])
+  @@index([user_id])
+}
+
+/// CDC 6.3 — Cloche « prochains lives » : abonnés notifiés en plus des followers (dédoublonnage côté service).
+model LiveCreatorBellSubscriber {
+  id             String   @id @default(uuid())
+  subscriber_id  String
+  creator_id     String
+  created_at     DateTime @default(now())
+  subscriber     User     @relation("LiveBellSubscriber", fields: [subscriber_id], references: [id], onDelete: Cascade)
+  creator        User     @relation("LiveBellCreator", fields: [creator_id], references: [id], onDelete: Cascade)
+
+  @@unique([subscriber_id, creator_id])
+  @@index([creator_id])
 }
 
 model LiveViewer {
@@ -1465,6 +1636,8 @@ model LiveViewer {
   left_at        DateTime?
   watch_duration Int?
   country        String?
+  /// Ville / commune (reverse geocode client, optionnel — analytics CDC « top villes »).
+  city           String?
   is_active      Boolean    @default(true)
   last_seen_at   DateTime   @default(now())
   live_stream    LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
@@ -1556,6 +1729,7 @@ model LiveAnalytics {
   average_watch_time_seconds Int?
   duration_seconds           Int?
   viewer_countries           Json?
+  viewer_cities              Json?
   retention_buckets          Json?
   computed_at                DateTime   @default(now())
   live_stream                LiveStream @relation(fields: [live_id], references: [id], onDelete: Cascade)
@@ -1713,6 +1887,24 @@ model LiveCoHost {
   @@index([creator_id])
   @@index([cohost_id])
   @@index([status])
+}
+
+/// Packs d'achat de coins (Phase 9) — éditables en admin.
+model CoinPackage {
+  id           String   @id @default(uuid())
+  slug         String   @unique
+  name         String
+  coins_amount Int
+  price_fcfa   Int
+  price_usd    Float?
+  bonus_coins  Int      @default(0)
+  is_popular   Boolean  @default(false)
+  sort_order   Int      @default(0)
+  is_active    Boolean  @default(true)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@index([is_active, sort_order])
 }
 
 model Wallet {
@@ -3145,6 +3337,10 @@ model Conversation {
   /// Effacer l’historique « pour moi » — ne montrer que les messages après cette date (utilisateur 1 / 2).
   cleared_before_at_user1 DateTime?
   cleared_before_at_user2 DateTime?
+  /// DM type « demande de message » (TikTok) : cet utilisateur doit accepter avant réponse libre ; null = pas d’attente.
+  dm_request_pending_for_user_id String?
+  /// Utilisateur qui a initié la conversation (max 3 messages tant que la demande est en attente).
+  dm_request_initiator_id        String?
   pinned_message_id  String?   @unique // CPO 4.23 — message épinglé en haut (1-1) ; @unique requis pour relation 1-1
   user1              User      @relation("User1", fields: [user1_id], references: [id], onDelete: Cascade)
   user2              User      @relation("User2", fields: [user2_id], references: [id], onDelete: Cascade)
@@ -3155,6 +3351,7 @@ model Conversation {
   @@index([user1_id])
   @@index([user2_id])
   @@index([last_message_at])
+  @@index([dm_request_pending_for_user_id])
 }
 
 /// Groupe de messagerie (CDC : chat en groupe)
@@ -5433,6 +5630,10 @@ model AdCampaign {
   ad_type          String         @default("in_feed")
   duration_days    Int
   price_fcfa       Float
+  /// legacy_package = forfait durée (Phase 1) ; cpm_budget = décrément budget par impression
+  billing_mode     String         @default("legacy_package")
+  cpm_fcfa         Float          @default(500)
+  budget_remaining_fcfa Float?
   starts_at        DateTime
   ends_at          DateTime
   target_countries String[]       @default([])

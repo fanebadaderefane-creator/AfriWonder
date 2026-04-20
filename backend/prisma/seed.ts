@@ -1,4 +1,11 @@
 import 'dotenv/config';
+import { randomUUID, createHash } from 'crypto';
+import { LIVE_GIFTS_SEED } from './liveGiftsSeedData.js';
+
+function stableGiftId(name: string): string {
+  const h = createHash('sha256').update(`AfriWonder:gift:${name}`).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(12, 15)}-8${h.slice(15, 18)}-${h.slice(18, 30)}`;
+}
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -197,6 +204,79 @@ async function main() {
     console.log('   ✓ Mots interdits (BannedWord) initialisés');
   } catch (err: any) {
     console.warn('   ⚠ BannedWord non initialisés (table absente?). Exécutez la migration RUN_MANUAL_CPO_WAVE2.sql');
+  }
+
+  // Phase 9 — packs coins (DB)
+  try {
+    const packs: Array<{
+      slug: string;
+      name: string;
+      coins_amount: number;
+      price_fcfa: number;
+      bonus_coins: number;
+      is_popular: boolean;
+      sort_order: number;
+    }> = [
+      { slug: 'coins-100', name: 'Pack 100', coins_amount: 100, price_fcfa: 500, bonus_coins: 0, is_popular: false, sort_order: 10 },
+      { slug: 'coins-500', name: 'Pack 500', coins_amount: 500, price_fcfa: 2500, bonus_coins: 25, is_popular: true, sort_order: 20 },
+      { slug: 'coins-1000', name: 'Pack 1000', coins_amount: 1000, price_fcfa: 5000, bonus_coins: 75, is_popular: false, sort_order: 30 },
+      { slug: 'coins-5000', name: 'Pack 5000', coins_amount: 5000, price_fcfa: 25000, bonus_coins: 500, is_popular: false, sort_order: 40 },
+    ];
+    for (const p of packs) {
+      await prisma.coinPackage.upsert({
+        where: { slug: p.slug },
+        create: {
+          id: randomUUID(),
+          ...p,
+          is_active: true,
+        },
+        update: {
+          name: p.name,
+          coins_amount: p.coins_amount,
+          price_fcfa: p.price_fcfa,
+          bonus_coins: p.bonus_coins,
+          is_popular: p.is_popular,
+          sort_order: p.sort_order,
+          is_active: true,
+        },
+      });
+    }
+    console.log('   ✓ CoinPackage (Phase 9) initialisés');
+  } catch (err: any) {
+    console.warn('   ⚠ CoinPackage non initialisés — migration Phase 9 appliquée ?', err?.message);
+  }
+
+  // Phase 9 — cadeaux virtuels live (catalogue CDC 50+)
+  try {
+    for (const g of LIVE_GIFTS_SEED) {
+      const id = stableGiftId(g.name);
+      await prisma.gift.upsert({
+        where: { id },
+        create: {
+          id,
+          name: g.name,
+          icon: g.icon,
+          price: g.price,
+          coin_value: g.coin_value,
+          category: g.category,
+          animation_url: g.animation_url,
+          rarity: g.rarity,
+          is_active: true,
+        },
+        update: {
+          icon: g.icon,
+          price: g.price,
+          coin_value: g.coin_value,
+          category: g.category,
+          animation_url: g.animation_url,
+          rarity: g.rarity,
+          is_active: true,
+        },
+      });
+    }
+    console.log(`   ✓ Gifts virtuels live (${LIVE_GIFTS_SEED.length} entrées, upsert stable)`);
+  } catch (err: any) {
+    console.warn('   ⚠ Gifts non initialisés', err?.message);
   }
 
   console.log('✅ Seed completed.');
