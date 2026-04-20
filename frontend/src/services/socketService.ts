@@ -24,9 +24,15 @@ class SocketService {
       reconnectionDelay: 2000,
     });
 
-    /** Relais événements live (chat, cadeaux, viewers…) vers les abonnés `socketService.on('live:…')`. */
+    /** Relais événements live, signalisation appels (`call:*`) et présence vers les abonnés. */
     this.socket.onAny((event: string, ...args: unknown[]) => {
-      if (typeof event === 'string' && event.startsWith('live:')) {
+      if (typeof event !== 'string') return;
+      if (
+        event.startsWith('live:') ||
+        event.startsWith('call:') ||
+        event.startsWith('presence:') ||
+        event.startsWith('message:')
+      ) {
         this.notifyListeners(event, args[0]);
       }
     });
@@ -100,6 +106,16 @@ class SocketService {
   // Join a conversation room
   joinConversation(conversationId: string) {
     this.socket?.emit('join_conversation', { conversation_id: conversationId });
+  }
+
+  /** Annonce l'arrivée du user sur la plateforme — déclenche `broadcastPresence(true)` côté backend. */
+  joinUserRoom(userId: string) {
+    if (userId) this.socket?.emit('user:join', userId);
+  }
+
+  /** Annonce la sortie du user (logout / app fermée explicitement). */
+  leaveUserRoom(userId: string) {
+    if (userId) this.socket?.emit('user:leave', userId);
   }
 
   // Typing indicators

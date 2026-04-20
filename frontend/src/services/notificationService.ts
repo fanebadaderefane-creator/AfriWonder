@@ -1,10 +1,23 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import apiClient from '../api/client';
+import { registerMobilePushToken } from './mobileApiService';
+import { secureStorage } from '../utils/secureStorage';
 
 type ExpoNotifications = typeof import('expo-notifications');
 
 const isExpoGo = Constants.appOwnership === 'expo';
+
+/** Placeholder dans app.json tant que le vrai `eas.projectId` n’est pas configuré. */
+const PLACEHOLDER_EAS_PROJECT_ID = '00000000-0000-4000-8000-000000000000';
+
+function resolveExpoProjectId(): string | null {
+  const projectId =
+    Constants.expoConfig?.extra?.eas?.projectId ??
+    (Constants as { easConfig?: { projectId?: string } }).easConfig?.projectId;
+  const id = typeof projectId === 'string' ? projectId.trim() : '';
+  if (!id || id === PLACEHOLDER_EAS_PROJECT_ID) return null;
+  return id;
+}
 
 class NotificationService {
   private expoPushToken: string | null = null;
@@ -66,11 +79,9 @@ class NotificationService {
         return null;
       }
 
-      const projectId =
-        Constants.expoConfig?.extra?.eas?.projectId ??
-        (Constants as { easConfig?: { projectId?: string } }).easConfig?.projectId;
+      const projectId = resolveExpoProjectId();
       if (!projectId) {
-        console.log('[Notifications] Pas de projectId (extra.eas.projectId) — skip token Expo Push.');
+        console.log('[Notifications] Pas de projectId EAS valide (extra.eas.projectId) — skip token Expo Push.');
       } else {
         const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
         this.expoPushToken = tokenData.data;
@@ -104,9 +115,51 @@ class NotificationService {
 
   async registerToken(token: string) {
     try {
-      await apiClient.post('/notifications/device-token', { token, platform: Platform.OS });
+      await registerMobilePushToken(token, Platform.OS);
     } catch (err) {
       console.log('[Notifications] Token registration error:', err);
+    }
+  }
+
+  /**
+   * Après login / restauration session : le token Expo peut avoir été obtenu avant le JWT.
+   * Ré-enregistre sur le backend dès qu’un accessToken est disponible.
+   */
+  async syncPushTokenWithBackend(): Promise<void> {
+    try {
+      if (Platform.OS === 'web') return;
+      if (isExpoGo) return;
+
+      const access = (await secureStorage.getItem('accessToken'))?.trim();
+      if (!access) return;
+
+      await this.ensureDevicePushToken();
+      if (!this.expoPushToken) return;
+
+      await this.registerToken(this.expoPushToken);
+    } catch (err) {
+      console.log('[Notifications] syncPushTokenWithBackend:', err);
+    }
+  }
+
+  /** Récupère le token Expo Push si permissions OK (sans redemander si déjà en mémoire). */
+  private async ensureDevicePushToken(): Promise<void> {
+    if (this.expoPushToken) return;
+
+    const Notifications = await this.loadNotifications();
+    if (!Notifications) return;
+
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status !== 'granted') return;
+
+    const projectId = resolveExpoProjectId();
+    if (!projectId) return;
+
+    try {
+      const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+      this.expoPushToken = tokenData.data;
+    } catch (err) {
+      console.log('[Notifications] ensureDevicePushToken:', err);
     }
   }
 

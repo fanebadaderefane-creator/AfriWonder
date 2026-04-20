@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const DOWNLOADS_DIR = `${FileSystem.documentDirectory ?? ''}afriwonder_videos/`;
@@ -32,7 +32,7 @@ type DownloadMeta = Omit<DownloadedVideo, 'localPath' | 'fileSize' | 'downloaded
 
 class VideoDownloadManager {
   private downloads = new Map<string, FileSystem.DownloadResumable>();
-  private queue: Array<{ videoId: string; url: string; meta: DownloadMeta }> = [];
+  private queue: { videoId: string; url: string; meta: DownloadMeta }[] = [];
   private listeners = new Set<DownloadListener>();
   private processing = false;
 

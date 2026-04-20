@@ -93,6 +93,11 @@ class AgoraLiveService {
     return { ...tokenData, config: this.getStreamConfig(true) };
   }
 
+  /** Même jeton RTC que l’hôte — réservé aux co-hosts acceptés côté API. */
+  joinAsCoHost(liveId: string): Promise<(AgoraRtcJoinPayload & { config: AgoraStreamConfigHint }) | null> {
+    return this.joinAsHost(liveId);
+  }
+
   async renewToken(liveId: string, role: 'host' | 'audience'): Promise<string | null> {
     const tokenData = await this.getToken(liveId, role);
     return tokenData?.token ?? null;

@@ -1,14 +1,6 @@
 /**
- * AES-256-GCM pour le mobile : `react-native-quick-crypto` (JSI) sur iOS/Android,
- * WebCrypto sur le web. Format wire commun avec le backend :
- * - `iv` : base64, 12 octets (nonce GCM).
- * - `ciphertext` : base64, **payload chiffré || tag d’authentification (16 octets)**.
- *
- * Le bootstrap des clés d’identité / prekeys reste dans `e2eeMobileService.ts` (P-256, serveur).
- * Ici : uniquement chiffrement symétrique une fois une clé de message de 32 octets obtenue.
+ * iOS / Android : `react-native-quick-crypto` (JSI), avec repli WebCrypto si indisponible.
  */
-
-import { Platform } from 'react-native';
 import { Buffer } from 'buffer';
 
 const TAG_LEN = 16;
@@ -18,7 +10,6 @@ type QuickCrypto = typeof import('react-native-quick-crypto').default;
 let quickModule: QuickCrypto | null | undefined;
 
 function getQuickCrypto(): QuickCrypto | null {
-  if (Platform.OS === 'web') return null;
   if (quickModule !== undefined) return quickModule;
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -35,7 +26,6 @@ export function isQuickCryptoAvailable(): boolean {
   return getQuickCrypto() != null;
 }
 
-/** QuickCrypto (iOS/Android) ou WebCrypto (navigateur). */
 export function isAes256GcmCryptoAvailable(): boolean {
   if (getQuickCrypto()) return true;
   return typeof globalThis !== 'undefined' && !!globalThis.crypto?.subtle;
@@ -60,56 +50,6 @@ function fromB64(b64: string): Uint8Array {
 function ensureKey32(key: Buffer): Buffer {
   if (key.length !== 32) throw new Error('[E2EE] Clé AES-256 requise (32 octets).');
   return key;
-}
-
-/** Chiffrement AES-256-GCM (tag concaténé au ciphertext). */
-export async function aes256GcmEncrypt(
-  plaintext: string,
-  key: Buffer,
-  aad?: string
-): Promise<{ ciphertext: string; iv: string }> {
-  const k = ensureKey32(key);
-  const qc = getQuickCrypto();
-  if (qc) {
-    const iv = qc.randomBytes(12);
-    const cipher = qc.createCipheriv('aes-256-gcm', k, iv);
-    if (aad) cipher.setAAD(Buffer.from(aad, 'utf8'));
-    const enc = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    const tag = cipher.getAuthTag();
-    return {
-      iv: iv.toString('base64'),
-      ciphertext: Buffer.concat([enc, tag]).toString('base64'),
-    };
-  }
-
-  const keyView = new Uint8Array(32);
-  keyView.set(k);
-  return aes256GcmEncryptWeb(plaintext, keyView, aad);
-}
-
-/** Déchiffrement (même format que `aes256GcmEncrypt`). */
-export async function aes256GcmDecrypt(
-  ciphertextB64: string,
-  ivB64: string,
-  key: Buffer,
-  aad?: string
-): Promise<string> {
-  const k = ensureKey32(key);
-  const qc = getQuickCrypto();
-  if (qc) {
-    const combined = Buffer.from(ciphertextB64, 'base64');
-    if (combined.length < TAG_LEN) throw new Error('[E2EE] ciphertext invalide.');
-    const tag = combined.subarray(combined.length - TAG_LEN);
-    const data = combined.subarray(0, combined.length - TAG_LEN);
-    const decipher = qc.createDecipheriv('aes-256-gcm', k, Buffer.from(ivB64, 'base64'));
-    decipher.setAuthTag(tag);
-    if (aad) decipher.setAAD(Buffer.from(aad, 'utf8'));
-    return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
-  }
-
-  const keyView = new Uint8Array(32);
-  keyView.set(k);
-  return aes256GcmDecryptWeb(ciphertextB64, ivB64, keyView, aad);
 }
 
 async function aes256GcmEncryptWeb(
@@ -163,7 +103,54 @@ async function aes256GcmDecryptWeb(
   return new TextDecoder().decode(plain);
 }
 
-/** Normalise une clé 32 octets (Buffer, hex 64 chars, ou base64). */
+export async function aes256GcmEncrypt(
+  plaintext: string,
+  key: Buffer,
+  aad?: string
+): Promise<{ ciphertext: string; iv: string }> {
+  const k = ensureKey32(key);
+  const qc = getQuickCrypto();
+  if (qc) {
+    const iv = qc.randomBytes(12);
+    const cipher = qc.createCipheriv('aes-256-gcm', k, iv);
+    if (aad) cipher.setAAD(Buffer.from(aad, 'utf8'));
+    const enc = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return {
+      iv: iv.toString('base64'),
+      ciphertext: Buffer.concat([enc, tag]).toString('base64'),
+    };
+  }
+
+  const keyView = new Uint8Array(32);
+  keyView.set(k);
+  return aes256GcmEncryptWeb(plaintext, keyView, aad);
+}
+
+export async function aes256GcmDecrypt(
+  ciphertextB64: string,
+  ivB64: string,
+  key: Buffer,
+  aad?: string
+): Promise<string> {
+  const k = ensureKey32(key);
+  const qc = getQuickCrypto();
+  if (qc) {
+    const combined = Buffer.from(ciphertextB64, 'base64');
+    if (combined.length < TAG_LEN) throw new Error('[E2EE] ciphertext invalide.');
+    const tag = combined.subarray(combined.length - TAG_LEN);
+    const data = combined.subarray(0, combined.length - TAG_LEN);
+    const decipher = qc.createDecipheriv('aes-256-gcm', k, Buffer.from(ivB64, 'base64'));
+    decipher.setAuthTag(tag);
+    if (aad) decipher.setAAD(Buffer.from(aad, 'utf8'));
+    return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
+  }
+
+  const keyView = new Uint8Array(32);
+  keyView.set(k);
+  return aes256GcmDecryptWeb(ciphertextB64, ivB64, keyView, aad);
+}
+
 export function toAesKeyBuffer(key: Uint8Array | ArrayBuffer | string): Buffer {
   if (typeof key === 'string') {
     const s = key.trim();

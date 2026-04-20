@@ -7,9 +7,8 @@
  */
 
 import '../polyfills';
-import { Crypto } from '@peculiar/webcrypto';
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 import apiClient from '../api/client';
 import { secureStorage } from '../utils/secureStorage';
 
@@ -25,20 +24,46 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 let cryptoReady = false;
 const bootstrapInflight = new Map<string, Promise<{ deviceId: string; identityPublicKey: string } | null>>();
 
-function ensureGlobalWebCrypto(): boolean {
+/**
+ * `@peculiar/webcrypto` charge `react-native-quick-crypto` au parse du bundle : si le module
+ * natif `QuickCrypto` n’est pas présent (Expo Go, build sans prebuild), l’erreur est synchrone
+ * et ne doit jamais être déclenchée — on vérifie avant tout `import()`.
+ */
+let peculiarInitPromise: Promise<boolean> | null = null;
+
+function canLoadPeculiarWebCrypto(): boolean {
+  if (Platform.OS === 'web') return true;
+  try {
+    return NativeModules.QuickCrypto != null;
+  } catch {
+    return false;
+  }
+}
+
+async function initWebCryptoIfNeeded(): Promise<boolean> {
   if (cryptoReady) return true;
   const g = globalThis as unknown as { crypto?: Crypto };
   if (g.crypto?.subtle && typeof g.crypto.getRandomValues === 'function') {
     cryptoReady = true;
     return true;
   }
-  try {
-    g.crypto = new Crypto() as Crypto;
-    cryptoReady = true;
-    return true;
-  } catch {
+  if (!canLoadPeculiarWebCrypto()) {
     return false;
   }
+  if (!peculiarInitPromise) {
+    peculiarInitPromise = import('@peculiar/webcrypto')
+      .then((mod) => {
+        const CryptoCtor = mod.Crypto;
+        (globalThis as unknown as { crypto?: Crypto }).crypto = new CryptoCtor() as Crypto;
+        cryptoReady = true;
+        return true;
+      })
+      .catch(() => {
+        peculiarInitPromise = null;
+        return false;
+      });
+  }
+  return peculiarInitPromise;
 }
 
 async function getJSON<T>(key: string, fallback: T): Promise<T> {
@@ -95,8 +120,9 @@ async function exportPrivatePkcs8Base64(keyPair: CryptoKeyPair): Promise<string>
 
 async function importPrivateKeyFromBase64(pkcs8B64: string): Promise<CryptoKey> {
   const bytes = fromBase64(pkcs8B64);
-  const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-  return crypto.subtle.importKey('pkcs8', ab, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveKey']);
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return crypto.subtle.importKey('pkcs8', buffer, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveKey']);
 }
 
 async function getOrCreateIdentityKeypair(): Promise<{ publicB64: string; privateKey: CryptoKey }> {
@@ -202,7 +228,7 @@ async function maybeRotateSignedPrekey(userId: string, deviceId: string): Promis
 }
 
 async function runBootstrapBody(userId: string): Promise<{ deviceId: string; identityPublicKey: string } | null> {
-  if (!ensureGlobalWebCrypto()) return null;
+  if (!(await initWebCryptoIfNeeded())) return null;
   const deviceId = await getOrCreateDeviceId();
   const { publicB64 } = await getOrCreateIdentityKeypair();
   const reg = await readE2eeRegistration();
@@ -231,7 +257,7 @@ async function runBootstrapBody(userId: string): Promise<{ deviceId: string; ide
 /** Enregistre device + prekeys si besoin (idempotent par user). */
 export async function ensureE2eeBootstrap(userId: string | undefined | null): Promise<{ deviceId: string; identityPublicKey: string } | null> {
   if (!userId) return null;
-  if (!ensureGlobalWebCrypto()) return null;
+  if (!(await initWebCryptoIfNeeded())) return null;
   let p = bootstrapInflight.get(userId);
   if (p) return p;
   p = runBootstrapBody(userId);
@@ -243,7 +269,7 @@ export async function ensureE2eeBootstrap(userId: string | undefined | null): Pr
 }
 
 export async function getLocalE2eeDeviceId(): Promise<string> {
-  if (!ensureGlobalWebCrypto()) return '';
+  if (!(await initWebCryptoIfNeeded())) return '';
   return getOrCreateDeviceId();
 }
 
