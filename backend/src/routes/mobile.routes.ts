@@ -168,12 +168,29 @@ async function processSyncAction(userId: string, action: Record<string, any>) {
 
 // GET /api/mobile/health
 router.get('/health', (_req, res) => {
+  const agoraAppId = !!process.env.AGORA_APP_ID?.trim();
+  const agoraCert = !!process.env.AGORA_APP_CERTIFICATE?.trim();
+  const turn =
+    !!process.env.TURN_URL?.trim() ||
+    !!process.env.TURN_URLS?.trim() ||
+    !!process.env.TURN_SHARED_SECRET?.trim();
   res.json({
     success: true,
     data: {
       status: 'ok',
       service: 'mobile',
       timestamp: new Date().toISOString(),
+      capabilities: {
+        agora_rtc: agoraAppId && agoraCert,
+        turn: turn,
+        push_expo: true,
+        push_fcm_legacy: !!process.env.FIREBASE_SERVER_KEY?.trim(),
+        push_web_vapid: !!(
+          process.env.VAPID_PUBLIC_KEY?.trim() && process.env.VAPID_PRIVATE_KEY?.trim()
+        ),
+        /** Crédit serveur : POST /api/coins/iap/credit — reçus Play/App Store à valider en prod. */
+        coins_iap_credit: true,
+      },
     },
   });
 });

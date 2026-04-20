@@ -86,9 +86,27 @@ const requiredEnv = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'];
 const missingEnv = requiredEnv.filter((k) => !process.env[k]?.trim());
 const missingProdObservability = !process.env.SENTRY_DSN?.trim();
 
+function describeJwtStrengthIssue(): string | null {
+  const a = String(process.env.JWT_SECRET || '').trim();
+  const b = String(process.env.JWT_REFRESH_SECRET || '').trim();
+  if (!a || !b) return null;
+  if (a.length < 64 || b.length < 64) {
+    return 'JWT_SECRET et JWT_REFRESH_SECRET doivent faire au moins 64 caractères chacun (ex. openssl rand -hex 32).';
+  }
+  if (a === b) {
+    return 'JWT_SECRET et JWT_REFRESH_SECRET doivent être deux secrets distincts.';
+  }
+  return null;
+}
+
 if (process.env.NODE_ENV === 'production') {
   if (missingEnv.length) {
     logger.error('Variables d’environnement manquantes en production: ' + missingEnv.join(', '));
+    process.exit(1);
+  }
+  const jwtWeak = describeJwtStrengthIssue();
+  if (jwtWeak) {
+    logger.error(`Configuration JWT refusée en production: ${jwtWeak}`);
     process.exit(1);
   }
   if (missingProdObservability) {
@@ -100,6 +118,11 @@ if (process.env.NODE_ENV === 'production') {
     'Variables manquantes (login renverra 500 tant qu’elles ne sont pas définies): ' + missingEnv.join(', ') +
     '. Copiez backend/.env.example vers backend/.env et renseignez les valeurs.'
   );
+} else {
+  const jwtWeak = describeJwtStrengthIssue();
+  if (jwtWeak) {
+    logger.warn(`JWT: ${jwtWeak} — corrigez avant tout déploiement.`);
+  }
 }
 
 if (process.env.NODE_ENV === 'production' && !process.env.REDIS_URL?.trim()) {

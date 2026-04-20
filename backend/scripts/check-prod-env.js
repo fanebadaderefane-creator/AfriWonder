@@ -23,6 +23,7 @@ const required = [
   'NODE_ENV',
   'DATABASE_URL',
   'JWT_SECRET',
+  'JWT_REFRESH_SECRET',
   'CORS_ORIGIN',
   ...(allowNoRedis || renderLenientRedis ? [] : ['REDIS_URL']),
 ];
@@ -44,6 +45,9 @@ const optional = [
   'ORANGE_MONEY_CLIENT_ID',
   'ORANGE_MONEY_API_KEY',
   'ERROR_WEBHOOK_URL',
+  'EXPO_ACCESS_TOKEN',
+  'AGORA_APP_ID',
+  'TURN_URL',
 ];
 
 let failed = 0;
@@ -54,6 +58,13 @@ required.forEach((key) => {
   console.log(ok ? '  OK' : '  MANQUE', key);
   if (!ok) failed++;
 });
+
+const jwtA = String(process.env.JWT_SECRET || '').trim();
+const jwtB = String(process.env.JWT_REFRESH_SECRET || '').trim();
+if (jwtA.length < 64 || jwtB.length < 64 || jwtA === jwtB) {
+  console.log('  MANQUE', 'JWT fort (64+ caractères chacun, deux secrets différents)');
+  failed++;
+}
 
 if (allowNoRedis || renderLenientRedis) {
   const redis = process.env.REDIS_URL && String(process.env.REDIS_URL).trim().length > 0;

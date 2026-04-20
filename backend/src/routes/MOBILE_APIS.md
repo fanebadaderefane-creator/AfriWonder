@@ -30,6 +30,8 @@
 { "success": true, "data": { "id": "sub_id", "endpoint": "fcm:android:ExponentPushToken[xxx]" } }
 ```
 
+- **Envoi** : les jetons `ExponentPushToken[...]` partent vers l’API Expo Push (`POST https://exp.host/--/api/v2/push/send`). Définir `EXPO_ACCESS_TOKEN` (compte Expo) sur le backend est recommandé en production. Les jetons **FCM natifs** (hors Expo) restent sur l’API legacy `FIREBASE_SERVER_KEY` + `registration_ids`.
+
 ## GET `/api/mobile/videos/:id/download-url`
 - Auth: optionnelle
 - Réponse:

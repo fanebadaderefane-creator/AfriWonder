@@ -36,6 +36,26 @@ async function sendSms(phone: string, message: string): Promise<void> {
   }
 }
 
+/** Token stocké comme `fcm:<platform>:<token>` (voir `mobile.routes`). */
+function parseMobilePushEndpoint(endpoint: string): { platform: string; token: string } | null {
+  const s = String(endpoint || '');
+  if (!s.startsWith('fcm:')) return null;
+  const rest = s.slice(4);
+  const i = rest.indexOf(':');
+  if (i < 0) return null;
+  return { platform: rest.slice(0, i), token: rest.slice(i + 1) };
+}
+
+/** Expo attend des valeurs string dans `data`. */
+function expoStringData(data: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (v === undefined || v === null) continue;
+    out[String(k)] = typeof v === 'string' ? v : JSON.stringify(v);
+  }
+  return out;
+}
+
 class NotificationService {
   private warnedMissingPushConfig = false;
 
@@ -256,6 +276,57 @@ class NotificationService {
     }
   }
 
+  /**
+   * Expo Push API — tokens `ExponentPushToken[...]` (client Expo / EAS).
+   * `EXPO_ACCESS_TOKEN` (expo.dev) optionnel pour débit / contrôle.
+   */
+  private async sendExpoPushBatch(
+    items: { to: string; title: string; body: string; data: Record<string, string> }[],
+  ): Promise<boolean> {
+    if (items.length === 0) return false;
+    const accessToken = process.env.EXPO_ACCESS_TOKEN?.trim();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'Accept-Encoding': 'gzip',
+    };
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+    const messages = items.map((m) => ({
+      to: m.to,
+      title: m.title,
+      body: m.body,
+      sound: 'default',
+      priority: 'high',
+      channelId: 'default',
+      data: m.data,
+    }));
+    try {
+      const res = await axios.post(
+        'https://exp.host/--/api/v2/push/send',
+        { messages },
+        { timeout: 20000, headers, validateStatus: () => true },
+      );
+      if (res.status >= 400) {
+        logger.warn('Expo push HTTP error', { status: res.status, body: res.data });
+        return false;
+      }
+      const tickets = res.data?.data;
+      if (!Array.isArray(tickets)) {
+        logger.warn('Expo push réponse inattendue', { body: res.data });
+        return false;
+      }
+      const ok = tickets.some((t: { status?: string }) => t?.status === 'ok');
+      const errors = tickets.filter((t: { status?: string }) => t?.status === 'error');
+      if (errors.length) {
+        logger.warn('Expo push tickets en erreur', { count: errors.length, sample: errors[0] });
+      }
+      return ok;
+    } catch (err) {
+      logger.warn('Expo push échec réseau', { err });
+      return false;
+    }
+  }
+
   private async sendPushToUser(userId: string, title: string, message: string, category: string, data?: any): Promise<void> {
     const pushWebhook = process.env.PUSH_WEBHOOK_URL;
     const firebaseKey = process.env.FIREBASE_SERVER_KEY;
@@ -263,7 +334,7 @@ class NotificationService {
     const vapidPrivate = process.env.VAPID_PRIVATE_KEY;
     const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:support@afriwonder.app';
 
-    const dataObj = { ...(data || {}), category };
+    const dataObj: Record<string, unknown> = { ...(data || {}), category };
     const payload = JSON.stringify({
       title,
       body: message,
@@ -320,10 +391,44 @@ class NotificationService {
       }
     }
 
-    if (!pushWebhook && !firebaseKey && !delivered) {
+    const expoData = expoStringData(dataObj);
+    const expoMessages: { to: string; title: string; body: string; data: Record<string, string> }[] = [];
+    const legacyRegistrationIds: string[] = [];
+    for (const sub of mobilePushSubscriptions) {
+      const parsed = parseMobilePushEndpoint(sub.endpoint);
+      if (!parsed?.token) continue;
+      if (parsed.token.startsWith('ExponentPushToken')) {
+        expoMessages.push({ to: parsed.token, title, body: message, data: expoData });
+      } else {
+        legacyRegistrationIds.push(parsed.token);
+      }
+    }
+
+    if (expoMessages.length > 0) {
+      const ok = await this.sendExpoPushBatch(expoMessages);
+      if (ok) delivered = true;
+    }
+
+    const needsLegacyFcm = legacyRegistrationIds.length > 0;
+
+    if (!delivered && !pushWebhook && !firebaseKey && expoMessages.length === 0 && !needsLegacyFcm) {
       if (!this.warnedMissingPushConfig) {
         this.warnedMissingPushConfig = true;
-        logger.warn('Push notifications disabled: set VAPID keys or PUSH_WEBHOOK_URL or FIREBASE_SERVER_KEY/FCM env vars');
+        logger.warn(
+          'Push désactivé : définir VAPID (web), ou tokens Expo (aucun ExponentPushToken en base), ' +
+            'ou EXPO_ACCESS_TOKEN + enregistrement mobile, ou PUSH_WEBHOOK_URL, ou FIREBASE_SERVER_KEY (FCM legacy device tokens).',
+        );
+      }
+      await this.logChannelDelivery(userId, 'notification_push', message, 'skipped', category, title);
+      return;
+    }
+
+    if (!delivered && needsLegacyFcm && !firebaseKey) {
+      if (!this.warnedMissingPushConfig) {
+        this.warnedMissingPushConfig = true;
+        logger.warn(
+          'Push mobile : tokens natifs FCM sans FIREBASE_SERVER_KEY — ajoutez la clé serveur ou migrez vers Expo Push.',
+        );
       }
       await this.logChannelDelivery(userId, 'notification_push', message, 'skipped', category, title);
       return;
@@ -345,31 +450,32 @@ class NotificationService {
         return;
       }
 
-      if (firebaseKey) {
-        const registrationIds = mobilePushSubscriptions
-          .map((sub) => String(sub.endpoint).split(':').slice(2).join(':'))
-          .filter(Boolean);
-
-        if (registrationIds.length > 0) {
-          await axios.post(
-            'https://fcm.googleapis.com/fcm/send',
-            {
-              registration_ids: registrationIds,
-              notification: { title, body: message },
-              data: { ...(data || {}), category },
+      if (firebaseKey && legacyRegistrationIds.length > 0) {
+        await axios.post(
+          'https://fcm.googleapis.com/fcm/send',
+          {
+            registration_ids: legacyRegistrationIds,
+            notification: { title, body: message },
+            data: Object.fromEntries(
+              Object.entries({ ...(data || {}), category }).map(([k, v]) => [
+                k,
+                v == null ? '' : typeof v === 'string' ? v : JSON.stringify(v),
+              ]),
+            ),
+          },
+          {
+            timeout: 5000,
+            headers: {
+              Authorization: `key=${firebaseKey}`,
+              'Content-Type': 'application/json',
             },
-            {
-              timeout: 5000,
-              headers: {
-                Authorization: `key=${firebaseKey}`,
-                'Content-Type': 'application/json',
-              },
-            },
-          );
-          await this.logChannelDelivery(userId, 'notification_push', message, 'sent', category, title);
-          return;
-        }
+          },
+        );
+        await this.logChannelDelivery(userId, 'notification_push', message, 'sent', category, title);
+        return;
+      }
 
+      if (firebaseKey && !needsLegacyFcm && mobilePushSubscriptions.length === 0) {
         await axios.post(
           'https://fcm.googleapis.com/fcm/send',
           {
@@ -386,6 +492,11 @@ class NotificationService {
           },
         );
         await this.logChannelDelivery(userId, 'notification_push', message, 'sent', category, title);
+        return;
+      }
+
+      if (!delivered && expoMessages.length > 0) {
+        await this.logChannelDelivery(userId, 'notification_push', message, 'failed', category, title);
       }
     } catch (err) {
       logger.warn('Push notification failed', { userId, err });
