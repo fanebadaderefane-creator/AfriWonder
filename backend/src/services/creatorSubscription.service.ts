@@ -9,7 +9,8 @@ import platformRevenueService from './platformRevenue.service.js';
 
 export const CREATOR_TIERS = {
   basic: { price_fcfa: 1000, label: 'Basic' },
-  pro: { price_fcfa: 3000, label: 'Pro' },
+  /** Phase 9 — AfriWonder Pro (analytics avancés, no limit, badge). */
+  pro: { price_fcfa: 2500, label: 'AfriWonder Pro' },
 } as const;
 
 class CreatorSubscriptionService {
@@ -50,6 +51,13 @@ class CreatorSubscriptionService {
       },
     });
 
+    if (tier === 'pro') {
+      await prisma.user.update({
+        where: { id: creatorId },
+        data: { is_afriwonder_pro: true },
+      });
+    }
+
     await platformRevenueService.addRevenue(
       tierConfig.price_fcfa,
       'gifts_tips',
@@ -80,13 +88,28 @@ class CreatorSubscriptionService {
   }
 
   async expireSubscriptions() {
+    const now = new Date();
+    const toExpire = await prisma.creatorSubscription.findMany({
+      where: { status: 'active', expires_at: { lt: now } },
+      select: { creator_id: true, tier: true },
+    });
+    if (toExpire.length === 0) return 0;
+
     const result = await prisma.creatorSubscription.updateMany({
-      where: {
-        status: 'active',
-        expires_at: { lt: new Date() },
-      },
+      where: { status: 'active', expires_at: { lt: now } },
       data: { status: 'expired' },
     });
+
+    const proCreators = [...new Set(toExpire.filter((t) => t.tier === 'pro').map((t) => t.creator_id))];
+    for (const cid of proCreators) {
+      const still = await prisma.creatorSubscription.findFirst({
+        where: { creator_id: cid, status: 'active', tier: 'pro', expires_at: { gt: now } },
+      });
+      if (!still) {
+        await prisma.user.update({ where: { id: cid }, data: { is_afriwonder_pro: false } }).catch(() => {});
+      }
+    }
+
     if (result.count > 0) {
       logger.info('Creator subscriptions expired', { count: result.count });
     }

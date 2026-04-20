@@ -11,15 +11,75 @@ import paymentService from './payment.service.js';
 import { normalizeOrangeMoneySubscriberMl } from '../utils/orangeMoneyPhone.js';
 import crypto from 'crypto';
 import commissionService from './commission.service.js';
+import coinsService from './coins.service.js';
+import { COIN_FCFA_APPROX_PURCHASE_PER_COIN } from '../config/coinEconomy.js';
+import { generateThumbnailForLiveStreamId, pickLiveReplaySrc } from './videoThumbnail.service.js';
+import { maskProfanityFr } from '../utils/liveProfanityMask.js';
+import { transcribeLiveAudioWhisper } from './liveStt.service.js';
 // Cadeaux live : 50% partagé (25% créateur, 25% plateforme) — modèle AfriWonder
 const VIEWER_INACTIVE_SEC = 60;
-const ANTI_SPAM_CHAT_SEC = 2;
 const GIFT_RATE_LIMIT_COUNT = 5;
 const GIFT_RATE_LIMIT_WINDOW_MS = 10 * 1000;
+const GIFT_COMBO_WINDOW_MS = 5000;
+
+/** Combo : même cadeau répété dans une fenêtre courte (mémoire process ; en prod → Redis). */
+const giftComboStreak = new Map<string, { giftId: string; lastAt: number; streak: number }>();
+
+function computeGiftCombo(streamId: string, senderId: string, giftId: string): number {
+  const key = `${streamId}:${senderId}`;
+  const now = Date.now();
+  const prev = giftComboStreak.get(key);
+  if (!prev || prev.giftId !== giftId || now - prev.lastAt > GIFT_COMBO_WINDOW_MS) {
+    giftComboStreak.set(key, { giftId, lastAt: now, streak: 1 });
+    return 1;
+  }
+  const next = { giftId, lastAt: now, streak: prev.streak + 1 };
+  giftComboStreak.set(key, next);
+  return next.streak;
+}
+
+/** Durée replay hors premium : `LIVE_REPLAY_RETENTION_HOURS` (défaut **72 h**), sinon jours via `LIVE_REPLAY_RETENTION_DAYS_DEFAULT`. */
+function parseReplayNonPremiumRetentionDays(): number {
+  const hoursRaw = parseInt(process.env.LIVE_REPLAY_RETENTION_HOURS || '72', 10);
+  if (Number.isFinite(hoursRaw) && hoursRaw > 0) {
+    return Math.min(365, Math.max(1, Math.ceil(hoursRaw / 24)));
+  }
+  const days = parseInt(process.env.LIVE_REPLAY_RETENTION_DAYS_DEFAULT || '3', 10);
+  if (!Number.isFinite(days) || days < 1) return 3;
+  return Math.min(365, days);
+}
+
+function parseReplayPremiumRetentionDays(): number {
+  const raw = parseInt(process.env.LIVE_REPLAY_PREMIUM_RETENTION_DAYS || '3650', 10);
+  if (!Number.isFinite(raw) || raw < 1) return 3650;
+  return Math.min(36500, raw);
+}
+
+/** 0 = désactivé (seule la règle « très vieux » reste). Sinon : flux `live` sans spectateur et sans mise à jour du row depuis N h. */
+function parseLiveStaleIdleEndHours(): number | null {
+  const raw = parseInt(process.env.LIVE_STALE_AUTO_END_HOURS || '12', 10);
+  if (!Number.isFinite(raw) || raw < 0) return 12;
+  if (raw === 0) return null;
+  return raw;
+}
+
+/** Lives oubliés encore en `live` après trop longtemps (nettoyage). */
+function parseLiveMaxAgeDays(): number {
+  const raw = parseInt(process.env.LIVE_MAX_LIVE_AGE_DAYS || '14', 10);
+  if (!Number.isFinite(raw) || raw < 1) return 14;
+  return Math.min(90, raw);
+}
 
 // In-memory rate limits (en prod: Redis)
 const giftRateLimitMap = new Map<string, number[]>();
-const chatLastMessageMap = new Map<string, number>();
+const raiseHandCooldown = new Map<string, number>();
+const RAISE_HAND_MIN_MS = 2000;
+/** CDC spectateur : 1 clic = 1 animation — anti-spam réactions côté serveur. */
+const liveReactionCooldown = new Map<string, number>();
+const LIVE_REACTION_MIN_MS = 900;
+
+/** Timer commun (CDC C) — mémoire process ; en multi-nœuds → Redis + emit via adapter. */
+const liveBroadcastTimers = new Map<string, { end_at_ms: number; label: string }>();
 
 function getIO(): any {
   try {
@@ -138,8 +198,8 @@ class LiveService {
       data: {
         creator_id: userId,
         creator_name: user.username || 'Unknown',
-        // CDC: titre max 100 caractères, description max 500
-        title: data.title.slice(0, 100),
+        // Aligné schéma API : titre max 80
+        title: data.title.slice(0, 80),
         description: data.description ? data.description.slice(0, 500) : null,
         category: data.category,
         stream_url: data.streamUrl || '',
@@ -161,6 +221,7 @@ class LiveService {
         goal_amount: data.goal_target ? 0 : null,
         delay_seconds: Math.min(60, Math.max(0, data.delay_seconds ?? 0)),
         max_quality: data.max_quality || 'auto',
+        replay_retention_days: parseReplayNonPremiumRetentionDays(),
       },
     });
 
@@ -176,27 +237,52 @@ class LiveService {
     const io = getIO();
     if (io && status === 'live') io.emit('live:started', { streamId: stream.id, creatorId: userId, title: data.title, roomId });
 
-    // C: Notification push "Live started" aux followers (seulement si live immédiat)
+    // C: Notifications followers — live immédiat ou live planifié (CDC 6.1)
     try {
       const followers = await prisma.follow.findMany({
         where: { following_id: userId },
         select: { follower_id: true },
       });
       const creatorName = user.username || 'Un créateur';
+      const schedLabel =
+        data.scheduled_at instanceof Date
+          ? data.scheduled_at.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+          : data.scheduled_at
+            ? String(data.scheduled_at)
+            : '';
       for (const f of followers) {
         try {
-          await notificationService.create(f.follower_id, {
-            type: 'live_started',
-            title: 'Live démarré',
-            message: `${creatorName} a commencé un live : ${data.title}`,
-            reference_type: 'live',
-            reference_id: stream.id,
-          });
+          if (status === 'scheduled') {
+            await notificationService.create(f.follower_id, {
+              type: 'live_scheduled',
+              title: 'Live annoncé',
+              message: schedLabel
+                ? `${creatorName} a planifié un live : ${data.title} — ${schedLabel}`
+                : `${creatorName} a planifié un live : ${data.title}`,
+              reference_type: 'live',
+              reference_id: stream.id,
+            });
+          } else {
+            await notificationService.create(f.follower_id, {
+              type: 'live_started',
+              title: 'Live démarré',
+              message: `${creatorName} a commencé un live : ${data.title}`,
+              reference_type: 'live',
+              reference_id: stream.id,
+            });
+          }
         } catch (_) {}
       }
       if (status === 'live' && followers.length) logger.info('Live started notifications sent', { streamId: stream.id, count: followers.length });
+      if (status === 'scheduled' && followers.length)
+        logger.info('Live scheduled notifications sent', { streamId: stream.id, count: followers.length });
+
+      if (status === 'live') {
+        const followerSet = new Set(followers.map((f) => f.follower_id));
+        await this.notifyBellSubscribersOnLiveStart(userId, stream.id, data.title, creatorName, followerSet);
+      }
     } catch (e) {
-      logger.warn('Live started notifications skip', { streamId: stream.id });
+      logger.warn('Live follower notifications skip', { streamId: stream.id });
     }
 
     logger.info('Live stream created', { userId, streamId: stream.id, status });
@@ -214,6 +300,34 @@ class LiveService {
     });
     const io = getIO();
     if (io) io.emit('live:started', { streamId, creatorId: userId, title: stream.title, roomId: stream.room_id });
+
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { username: true },
+      });
+      const followers = await prisma.follow.findMany({
+        where: { following_id: userId },
+        select: { follower_id: true },
+      });
+      const creatorName = user?.username || 'Un créateur';
+      for (const f of followers) {
+        try {
+          await notificationService.create(f.follower_id, {
+            type: 'live_started',
+            title: 'Live démarré',
+            message: `${creatorName} a commencé un live : ${stream.title}`,
+            reference_type: 'live',
+            reference_id: streamId,
+          });
+        } catch (_) {}
+      }
+      const followerSet = new Set(followers.map((x) => x.follower_id));
+      await this.notifyBellSubscribersOnLiveStart(userId, streamId, stream.title, creatorName, followerSet);
+    } catch (e) {
+      logger.warn('Live scheduled→live notifications skip', { streamId });
+    }
+
     return prisma.liveStream.findUnique({ where: { id: streamId } });
   }
 
@@ -221,7 +335,12 @@ class LiveService {
   async getStreamToken(streamId: string, userId: string, role: 'host' | 'audience') {
     const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
     if (!stream) throw new Error('Stream not found');
-    if (role === 'host' && stream.creator_id !== userId) throw new Error('Unauthorized');
+    if (role === 'host' && stream.creator_id !== userId) {
+      const cohost = await prisma.liveCoHost.findUnique({
+        where: { live_id_cohost_id: { live_id: streamId, cohost_id: userId } },
+      });
+      if (!cohost || cohost.status !== 'accepted') throw new Error('Unauthorized');
+    }
     try {
       const agora = await this.getAgoraToken(stream.room_id, userId, role);
       if (agora) return { ...agora, streamId };
@@ -238,11 +357,203 @@ class LiveService {
     };
   }
 
-  /** Viewer rejoint → create LiveViewer, sync count. Optionnel: country pour analytics. */
-  async joinViewer(streamId: string, userId: string, sessionId: string, options?: { country?: string }) {
+  /**
+   * Rôle RTC pour l’écran spectateur (`/live/[id]`) : co-host accepté = broadcaster.
+   * Le créateur diffuse via `stream.tsx` ; s’il ouvre le lecteur, il reste spectateur (pas double publish).
+   */
+  async getRtcRoleForViewer(streamId: string, userId: string): Promise<{ role: 'host' | 'audience' }> {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream) throw new Error('Stream not found');
+    if (stream.creator_id === userId) return { role: 'audience' };
+    const co = await prisma.liveCoHost.findUnique({
+      where: { live_id_cohost_id: { live_id: streamId, cohost_id: userId } },
+    });
+    if (co?.status === 'accepted') return { role: 'host' };
+    return { role: 'audience' };
+  }
+
+  /** Spectateur / co-host : main levée (socket `live:raise-hand`). Pas pour le créateur du live. */
+  async setRaiseHand(streamId: string, userId: string, raised: boolean) {
     const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
     if (!stream) throw new Error('Stream not found');
     if (stream.status !== 'live') throw new Error('Stream has ended');
+    if (stream.creator_id === userId) return { ok: true, raised, ignored: true as const };
+
+    const key = `${streamId}:${userId}`;
+    const now = Date.now();
+    if (raised) {
+      const last = raiseHandCooldown.get(key) ?? 0;
+      if (now - last < RAISE_HAND_MIN_MS) throw new Error('Attendez un instant avant de lever la main à nouveau.');
+      raiseHandCooldown.set(key, now);
+    } else {
+      raiseHandCooldown.delete(key);
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { username: true, full_name: true },
+    });
+    const username = (user?.full_name || user?.username || 'Spectateur').trim().slice(0, 80) || 'Spectateur';
+
+    const io = getIO();
+    if (io) {
+      io.to(`stream:${streamId}`).emit('live:raise-hand', {
+        userId,
+        raised,
+        username,
+        at: now,
+      });
+    }
+    logger.info('Live raise-hand', { streamId, userId, raised });
+    return { ok: true, raised };
+  }
+
+  /** CDC 6.3 — Créateur accepte ou refuse une demande de parole (main levée). Si accepté → invitation co-host (grille). */
+  async respondRaiseHand(streamId: string, creatorId: string, targetUserId: string, accept: boolean) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream || stream.creator_id !== creatorId) throw new Error('Unauthorized');
+    if (stream.status !== 'live') throw new Error('Stream has ended');
+    if (targetUserId === creatorId) throw new Error('Invalid target');
+
+    const io = getIO();
+    if (accept) {
+      await this.inviteCoHost(streamId, creatorId, targetUserId);
+      if (io) {
+        io.to(`user:${targetUserId}`).emit('live:raise-hand:resolved', { streamId, accepted: true });
+        io.to(`stream:${streamId}`).emit('live:raise-hand:resolved', { userId: targetUserId, accepted: true });
+      }
+    } else {
+      if (io) {
+        io.to(`stream:${streamId}`).emit('live:raise-hand:rejected', { userId: targetUserId });
+        io.to(`user:${targetUserId}`).emit('live:raise-hand:resolved', { streamId, accepted: false });
+      }
+    }
+    return { ok: true, accept };
+  }
+
+  /** Accusé réception âge (traçabilité CDC) avant join sur live 13+ / 18+. */
+  async acknowledgeLiveAge(streamId: string, userId: string, restriction: '18+' | '13+') {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream) throw new Error('Stream not found');
+    const ar = String(stream.age_restriction || 'all');
+    if (ar === '18+') {
+      if (restriction !== '18+') throw new Error('Ce live exige une confirmation 18+.');
+    } else if (ar === '13+') {
+      if (restriction !== '13+' && restriction !== '18+') throw new Error('Restriction âge invalide.');
+    } else {
+      return { ok: true, skipped: true as const };
+    }
+    await prisma.liveAgeAcknowledgment.upsert({
+      where: { live_id_user_id: { live_id: streamId, user_id: userId } },
+      create: { live_id: streamId, user_id: userId, restriction },
+      update: { restriction, confirmed_at: new Date() },
+    });
+    return { ok: true };
+  }
+
+  async setLiveBellSubscribe(subscriberId: string, creatorId: string, enabled: boolean) {
+    if (subscriberId === creatorId) throw new Error('Impossible de vous abonner à votre propre cloche.');
+    const creator = await prisma.user.findUnique({ where: { id: creatorId }, select: { id: true } });
+    if (!creator) throw new Error('Créateur introuvable');
+    if (enabled) {
+      await prisma.liveCreatorBellSubscriber.upsert({
+        where: { subscriber_id_creator_id: { subscriber_id: subscriberId, creator_id: creatorId } },
+        create: { subscriber_id: subscriberId, creator_id: creatorId },
+        update: {},
+      });
+    } else {
+      await prisma.liveCreatorBellSubscriber.deleteMany({
+        where: { subscriber_id: subscriberId, creator_id: creatorId },
+      });
+    }
+    return { subscribed: enabled };
+  }
+
+  async getLiveBellSubscribed(subscriberId: string, creatorId: string) {
+    const row = await prisma.liveCreatorBellSubscriber.findUnique({
+      where: { subscriber_id_creator_id: { subscriber_id: subscriberId, creator_id: creatorId } },
+    });
+    return { subscribed: !!row };
+  }
+
+  /** Notif « cloche » aux abonnés hors followers (followers déjà notifiés dans createStream). */
+  async notifyBellSubscribersOnLiveStart(creatorId: string, streamId: string, title: string, creatorName: string, followerIds: Set<string>) {
+    const rows = await prisma.liveCreatorBellSubscriber.findMany({
+      where: { creator_id: creatorId },
+      select: { subscriber_id: true },
+    });
+    for (const r of rows) {
+      if (followerIds.has(r.subscriber_id)) continue;
+      try {
+        await notificationService.create(r.subscriber_id, {
+          type: 'live_creator_bell',
+          title: 'Live — créateur suivi',
+          message: `${creatorName} est en direct : ${title}`,
+          reference_type: 'live',
+          reference_id: streamId,
+        });
+      } catch (_) {}
+    }
+  }
+
+  /** CDC 6.4 — Méta monnaie virtuelle (taux indicatif, configurable). */
+  getLiveEconomyMeta() {
+    const raw = parseInt(process.env.LIVE_COINS_PER_USD || '200', 10);
+    const coinsPerUsd = Number.isFinite(raw) && raw > 0 ? raw : 200;
+    const usdPerCoin = 1 / coinsPerUsd;
+    return {
+      currency: 'USD',
+      coins_per_usd: coinsPerUsd,
+      usd_per_coin: Math.round(usdPerCoin * 1e6) / 1e6,
+      /** Ex. 100 coins → 0,5 USD quand LIVE_COINS_PER_USD=200 */
+      example_coins: 100,
+      example_usd: Math.round((100 / coinsPerUsd) * 10000) / 10000,
+    };
+  }
+
+  /** CDC 6.2 — Sous-titres manuels hôte (diffusion temps réel ; STT optionnel côté client si clé). */
+  async broadcastLiveCaption(streamId: string, creatorId: string, text: string) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream || stream.creator_id !== creatorId) throw new Error('Unauthorized');
+    if (stream.status !== 'live') throw new Error('Stream has ended');
+    const t = String(text || '').trim().slice(0, 280);
+    if (!t) throw new Error('Texte vide');
+    const io = getIO();
+    if (io) io.to(`stream:${streamId}`).emit('live:caption', { text: t, at: Date.now() });
+    return { ok: true };
+  }
+
+  /** CDC 6.2 — Dictée hôte → STT (Whisper) ; le texte est renvoyé pour édition / diffusion manuelle. */
+  async transcribeLiveHostDictation(streamId: string, creatorId: string, audio: Buffer, mimeType: string) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream || stream.creator_id !== creatorId) throw new Error('Unauthorized');
+    if (stream.status !== 'live') throw new Error('Stream has ended');
+    const text = await transcribeLiveAudioWhisper(audio, mimeType);
+    return { text: text.slice(0, 2000) };
+  }
+
+  /** Viewer rejoint → create LiveViewer, sync count. Optionnel: country pour analytics. */
+  async joinViewer(streamId: string, userId: string, sessionId: string, options?: { country?: string; city?: string }) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream) throw new Error('Stream not found');
+    if (stream.status !== 'live') throw new Error('Stream has ended');
+
+    const ar = String(stream.age_restriction || 'all');
+    if (ar === '18+' || ar === '13+') {
+      const ack = await prisma.liveAgeAcknowledgment.findUnique({
+        where: { live_id_user_id: { live_id: streamId, user_id: userId } },
+      });
+      const okAck =
+        !!ack &&
+        (ar === '13+' ? ack.restriction === '13+' || ack.restriction === '18+' : ack.restriction === '18+');
+      if (!okAck) {
+        const err: any = new Error('Confirmation âge requise (POST /api/live/:id/age-ack).');
+        err.statusCode = 403;
+        err.isOperational = true;
+        err.code = 'AGE_ACK_REQUIRED';
+        throw err;
+      }
+    }
 
     await prisma.liveViewer.upsert({
       where: {
@@ -255,8 +566,15 @@ class LiveService {
         is_active: true,
         last_seen_at: new Date(),
         country: options?.country?.slice(0, 10),
+        city: options?.city?.trim().slice(0, 80) || null,
       },
-      update: { is_active: true, left_at: null, last_seen_at: new Date(), country: options?.country?.slice(0, 10) },
+      update: {
+        is_active: true,
+        left_at: null,
+        last_seen_at: new Date(),
+        country: options?.country?.slice(0, 10),
+        city: options?.city?.trim().slice(0, 80) || null,
+      },
     });
 
     const count = await syncViewersCount(streamId);
@@ -299,13 +617,17 @@ class LiveService {
     return r.count;
   }
 
-  async getStream(streamId: string) {
+  async getStream(streamId: string, readerUserId?: string | null) {
     const stream = await prisma.liveStream.findUnique({
       where: { id: streamId },
       include: {
         creator: { select: { id: true, username: true, profile_image: true, is_verified: true, replay_premium: true } },
         moderation_settings: true,
-        chat_messages: { take: 100, orderBy: [{ is_pinned: 'desc' }, { created_date: 'desc' }], where: { is_deleted: false } },
+        chat_messages: {
+          take: 100,
+          orderBy: [{ is_pinned: 'desc' }, { created_date: 'desc' }],
+          where: { is_deleted: false, message_type: { not: 'replay_comment' } },
+        },
         gifts: { take: 30, orderBy: { created_at: 'desc' } },
         replay_chapters: { orderBy: { start_seconds: 'asc' } },
       },
@@ -315,9 +637,9 @@ class LiveService {
     const topDonorIds = new Set((await prisma.liveTopDonor.findMany({ where: { live_id: streamId }, take: 20, select: { user_id: true } })).map((d) => d.user_id));
     const creatorId = stream.creator_id;
     const creator = stream.creator as { replay_premium?: boolean };
-    const retentionDays = creator?.replay_premium ? 90 : 14;
+    const retentionDays = creator?.replay_premium ? parseReplayPremiumRetentionDays() : parseReplayNonPremiumRetentionDays();
     const now = new Date();
-    const chatWithBadges = stream.chat_messages.map((msg: any) => {
+    const mapChatBadge = (msg: any) => {
       const pinExpired = msg.pin_expires_at && new Date(msg.pin_expires_at) < now;
       return {
         ...msg,
@@ -328,14 +650,146 @@ class LiveService {
           is_top_supporter: topDonorIds.has(msg.sender_id),
         },
       };
-    });
-    return { ...stream, chat_messages: chatWithBadges, replay_retention_days: retentionDays };
+    };
+    const chatWithBadges = stream.chat_messages.map(mapChatBadge);
+
+    let replay_chat_messages: any[] = [];
+    if (stream.status === 'ended') {
+      const replayRows = await prisma.liveChat.findMany({
+        where: { live_id: streamId, is_deleted: false, message_type: 'replay_comment' },
+        take: 200,
+        orderBy: { created_date: 'asc' },
+      });
+      replay_chat_messages = replayRows.map(mapChatBadge);
+    }
+
+    if (stream.status === 'ended' && !String(stream.thumbnail_url || '').trim()) {
+      const src = pickLiveReplaySrc({
+        replay_url: stream.replay_url,
+        playback_url: stream.playback_url,
+        stream_url: stream.stream_url,
+      });
+      if (src) {
+        void generateThumbnailForLiveStreamId(streamId, { internal: true, force: false }).catch(() => {});
+      }
+    }
+
+    let viewer_age_acknowledged: boolean | undefined;
+    let needs_age_ack_for_viewer = false;
+    let viewer_live_bell_subscribed: boolean | undefined;
+    if (readerUserId) {
+      const ar = String(stream.age_restriction || 'all');
+      if ((ar === '18+' || ar === '13+') && stream.status === 'live') {
+        const ack = await prisma.liveAgeAcknowledgment.findUnique({
+          where: { live_id_user_id: { live_id: streamId, user_id: readerUserId } },
+        });
+        viewer_age_acknowledged = !!ack;
+        const okAck =
+          !!ack &&
+          (ar === '13+' ? ack.restriction === '13+' || ack.restriction === '18+' : ack.restriction === '18+');
+        needs_age_ack_for_viewer = !okAck;
+      }
+      const bell = await prisma.liveCreatorBellSubscriber.findUnique({
+        where: {
+          subscriber_id_creator_id: { subscriber_id: readerUserId, creator_id: stream.creator_id },
+        },
+      });
+      viewer_live_bell_subscribed = !!bell;
+    }
+
+    return {
+      ...stream,
+      chat_messages: chatWithBadges,
+      replay_chat_messages,
+      replay_retention_days: retentionDays,
+      viewer_age_acknowledged,
+      needs_age_ack_for_viewer,
+      viewer_live_bell_subscribed,
+    };
   }
 
-  async listStreams(page = 1, limit = 20, filters?: { status?: string; category?: string; featured?: boolean; region?: string; language?: string; sortBy?: string }) {
+  /**
+   * Ferme les `LiveStream` restés en `live` alors qu’ils sont abandonnés (zombies),
+   * pour que la découverte / Moments ne « mentent » pas sur l’état réel.
+   */
+  async closeStaleLiveStreamsForPublicListing() {
+    const now = new Date();
+    const maxAgeMs = parseLiveMaxAgeDays() * 24 * 60 * 60 * 1000;
+    const ageCutoff = new Date(Date.now() - maxAgeMs);
+    const ancient = await prisma.liveStream.updateMany({
+      where: { status: 'live', ended_at: null, started_at: { lt: ageCutoff } },
+      data: { status: 'ended', ended_at: now },
+    });
+
+    const idleHours = parseLiveStaleIdleEndHours();
+    let idle = { count: 0 as number };
+    if (idleHours != null) {
+      const idleCutoff = new Date(Date.now() - idleHours * 60 * 60 * 1000);
+      idle = await prisma.liveStream.updateMany({
+        where: {
+          status: 'live',
+          ended_at: null,
+          viewers_count: 0,
+          updated_at: { lt: idleCutoff },
+        },
+        data: { status: 'ended', ended_at: now },
+      });
+    }
+
+    /** Flux « live » en base mais sans spectateur ni aucun signal (likes/messages/dons) depuis longtemps — cas fréquent en dev après abandon. */
+    const quietHours = Math.max(1, parseInt(process.env.LIVE_ZERO_ENGAGEMENT_END_HOURS || '3', 10) || 3);
+    const quietCutoff = new Date(Date.now() - quietHours * 60 * 60 * 1000);
+    const quiet = await prisma.liveStream.updateMany({
+      where: {
+        status: 'live',
+        ended_at: null,
+        viewers_count: 0,
+        total_messages: 0,
+        total_likes: 0,
+        total_gifts_amount: 0,
+        total_tips_amount: 0,
+        updated_at: { lt: quietCutoff },
+      },
+      data: { status: 'ended', ended_at: now },
+    });
+
+    if (ancient.count + idle.count + quiet.count > 0) {
+      logger.info('Auto-ended stale live streams', {
+        olderThanMaxAgeDays: ancient.count,
+        idleNoViewers: idle.count,
+        zeroEngagementHours: quiet.count > 0 ? quietHours : undefined,
+        zeroEngagement: quiet.count,
+        idleHours: idleHours ?? 'off',
+        maxLiveAgeDays: parseLiveMaxAgeDays(),
+      });
+    }
+  }
+
+  async listStreams(
+    page = 1,
+    limit = 20,
+    filters?: {
+      status?: string;
+      category?: string;
+      featured?: boolean;
+      region?: string;
+      language?: string;
+      sortBy?: string;
+      creator_id?: string;
+    },
+  ) {
     const skip = (page - 1) * limit;
     const where: any = {};
-    if (filters?.status) where.status = filters.status;
+    if (filters?.creator_id) {
+      where.creator_id = String(filters.creator_id).trim();
+    }
+    if (filters?.status) {
+      where.status = filters.status;
+      if (filters.status === 'live') {
+        await this.closeStaleLiveStreamsForPublicListing();
+        where.ended_at = null;
+      }
+    }
     if (filters?.category) where.category = filters.category;
     if (filters?.featured !== undefined) where.is_featured = filters.featured;
     if (filters?.region) where.region = filters.region;
@@ -351,20 +805,33 @@ class LiveService {
     const [streams, total] = await Promise.all([
       prisma.liveStream.findMany({
         where,
-        include: { creator: { select: { id: true, username: true, profile_image: true, is_verified: true } } },
+        include: { creator: { select: { id: true, username: true, full_name: true, profile_image: true, is_verified: true } } },
         skip,
         take: limit,
         orderBy,
       }),
       prisma.liveStream.count({ where }),
     ]);
+    for (const s of streams) {
+      if (s.status === 'ended' && !String(s.thumbnail_url || '').trim()) {
+        const src = pickLiveReplaySrc({
+          replay_url: s.replay_url,
+          playback_url: s.playback_url,
+          stream_url: s.stream_url,
+        });
+        if (src) {
+          void generateThumbnailForLiveStreamId(s.id, { internal: true, force: false }).catch(() => {});
+        }
+      }
+    }
     return { streams, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
   /** Recommandations intelligentes basées sur l'activité utilisateur */
   async getRecommendations(userId: string | null, options?: { limit?: number; excludeLiveId?: string }) {
+    await this.closeStaleLiveStreamsForPublicListing();
     const limit = Math.min(options?.limit ?? 10, 20);
-    const where: any = { status: 'live' };
+    const where: any = { status: 'live', ended_at: null };
     if (options?.excludeLiveId) {
       where.id = { not: options.excludeLiveId };
     }
@@ -474,8 +941,9 @@ class LiveService {
 
   /** Découverte : populaires, régionaux, par catégorie, des comptes suivis, trending (algorithme recommandation) */
   async getDiscovery(userId: string | null, options?: { type?: 'popular' | 'regional' | 'followed' | 'category' | 'trending'; region?: string; category?: string; limit?: number }) {
+    await this.closeStaleLiveStreamsForPublicListing();
     const limit = Math.min(options?.limit ?? 20, 50);
-    const where: any = { status: 'live' };
+    const where: any = { status: 'live', ended_at: null };
 
     if (options?.type === 'regional' && options?.region) {
       where.region = options.region;
@@ -498,7 +966,7 @@ class LiveService {
     const [streams, total] = await Promise.all([
       prisma.liveStream.findMany({
         where,
-        include: { creator: { select: { id: true, username: true, profile_image: true, is_verified: true } } },
+        include: { creator: { select: { id: true, username: true, full_name: true, profile_image: true, is_verified: true } } },
         take: options?.type === 'trending' ? limit * 2 : limit,
         orderBy,
       }),
@@ -674,10 +1142,18 @@ class LiveService {
     if (stream.status !== 'live') throw new Error('Stream has ended. Gifts are disabled.');
     if (stream.donations_enabled === false) throw new Error('Les dons sont désactivés.');
 
-    const totalAmount = data.amount * data.quantity;
-    // CDC: montant minimum 100 FCFA, maximum 1 000 000 FCFA
-    if (totalAmount < 100) throw new Error('Montant minimum pour un don live: 100 FCFA');
-    if (totalAmount > 1_000_000) throw new Error('Montant maximum pour un don live: 1 000 000 FCFA');
+    const giftCatalog = await this.getGiftCatalog();
+    const giftConfig = giftCatalog.find((g) => g.id === data.giftId);
+    if (!giftConfig) throw new Error('Cadeau introuvable');
+
+    const unitCoins = Number(giftConfig.coin_value ?? giftConfig.price);
+    if (!Number.isFinite(unitCoins) || unitCoins <= 0) throw new Error('Cadeau invalide (coins)');
+    const totalCoins = Math.round(unitCoins * data.quantity);
+    /** FCFA équivalent pour stats / objectifs / commissions (coins × taux documenté). */
+    const totalAmountFcfa = Math.round(totalCoins * COIN_FCFA_APPROX_PURCHASE_PER_COIN);
+    const unitFcfa = Math.round(unitCoins * COIN_FCFA_APPROX_PURCHASE_PER_COIN);
+    if (totalCoins < 1) throw new Error('Quantité invalide');
+    if (totalAmountFcfa > 1_000_000) throw new Error('Montant maximum pour un don live: 1 000 000 FCFA');
 
     const key = `${streamId}:${senderId}`;
     pruneGiftRateLimit(key);
@@ -688,10 +1164,10 @@ class LiveService {
     recent.push(Date.now());
     giftRateLimitMap.set(key, recent);
 
-    const wallet = await getOrCreateWallet(senderId);
-    const bal = wallet.available_balance ?? wallet.balance ?? 0;
-    if (bal < totalAmount) {
-      throw new Error(`Solde insuffisant. Votre solde: ${Math.round(bal).toLocaleString()} FCFA. Rechargez votre portefeuille.`);
+    const coinsWallet = await coinsService.getOrCreateCoinsWallet(senderId);
+    const bal = coinsWallet.available_balance ?? coinsWallet.balance ?? 0;
+    if (bal < totalCoins) {
+      throw new Error(`Solde coins insuffisant. Votre solde: ${Math.round(bal).toLocaleString()} coins.`);
     }
 
     // CDC: message accompagnant le don max 200 caractères
@@ -699,14 +1175,14 @@ class LiveService {
       data.message = data.message.slice(0, 200);
     }
 
-    const { platform: platformCommission, creator: creatorEarnings } = commissionService.videoSocialLiveGift(totalAmount);
+    const { platform: platformCommission, creator: creatorEarnings } = commissionService.videoSocialLiveGift(totalAmountFcfa);
 
     const result = await prisma.$transaction(async (tx) => {
       await tx.wallet.update({
-        where: { id: wallet.id },
+        where: { id: coinsWallet.id },
         data: {
-          balance: { decrement: totalAmount },
-          available_balance: { decrement: totalAmount },
+          balance: { decrement: totalCoins },
+          available_balance: { decrement: totalCoins },
         },
       });
 
@@ -720,19 +1196,19 @@ class LiveService {
           gift_id: data.giftId,
           gift_name: data.giftName,
           gift_icon: data.giftIcon,
-          amount: data.amount,
+          amount: unitFcfa,
           quantity: data.quantity,
-          total_amount: totalAmount,
+          total_amount: totalAmountFcfa,
           creator_earnings: creatorEarnings,
           platform_commission: platformCommission,
           message: data.message,
         },
       });
 
-      const goalUpdate: Record<string, unknown> = { total_gifts_amount: { increment: totalAmount } };
+      const goalUpdate: Record<string, unknown> = { total_gifts_amount: { increment: totalAmountFcfa } };
       if (stream.goal_target != null && stream.goal_target > 0) {
         const current = stream.goal_amount ?? 0;
-        goalUpdate.goal_amount = current + totalAmount;
+        goalUpdate.goal_amount = current + totalAmountFcfa;
       }
       await tx.liveStream.update({ where: { id: streamId }, data: goalUpdate });
 
@@ -763,7 +1239,7 @@ class LiveService {
         data: {
           user_id: senderId,
           type: 'live_gift_sent',
-          amount: -totalAmount,
+          amount: -totalAmountFcfa,
           currency: 'XOF',
           status: 'completed',
           description: `Cadeau live: ${data.giftName} x${data.quantity}`,
@@ -790,8 +1266,15 @@ class LiveService {
 
     await platformRevenueService.addRevenue(platformCommission, 'live_gifts', `Commission gift live - ${data.giftName}`, result.id);
 
+    const combo = computeGiftCombo(streamId, senderId, data.giftId);
     const io = getIO();
-    if (io) io.to(`stream:${streamId}`).emit('live:gift', result);
+    if (io)
+      io.to(`stream:${streamId}`).emit('live:gift', {
+        ...result,
+        combo,
+        rarity: giftConfig.rarity ?? 'common',
+        animation_url: giftConfig.animation_url ?? null,
+      });
 
     const streamAfter = await prisma.liveStream.findUnique({ where: { id: streamId }, select: { goal_amount: true, goal_target: true, creator_id: true } });
     if (streamAfter?.goal_target && streamAfter.goal_target > 0 && (streamAfter.goal_amount ?? 0) >= streamAfter.goal_target) {
@@ -806,12 +1289,17 @@ class LiveService {
       } catch (_) {}
     }
 
-    logger.info('Live gift sent', { streamId, senderId, giftId: result.id, totalAmount });
-    return result;
+    logger.info('Live gift sent', { streamId, senderId, giftId: result.id, totalAmountFcfa, totalCoins, combo });
+    return { ...result, combo };
   }
 
-  /** Chat: anti-spam, slow mode, emoji_only, slash commands (/ban, /timeout, /clear) */
-  async sendChatMessage(streamId: string, userId: string, message: string) {
+  /** Chat: 5 msg/min, slow mode, emoji_only, slash commands (/ban, /timeout, /clear) */
+  async sendChatMessage(
+    streamId: string,
+    userId: string,
+    message: string,
+    options?: { is_question?: boolean },
+  ) {
     const stream = await prisma.liveStream.findUnique({
       where: { id: streamId },
       include: { moderation_settings: true },
@@ -830,6 +1318,12 @@ class LiveService {
       where: { live_id: streamId, user_id: userId },
     });
     const canModerate = !!(isCreator || isMod);
+    const maxChatLen = isCreator ? 500 : 150;
+    if (rawMsg.length > maxChatLen) {
+      throw new Error(
+        isCreator ? 'Message trop long (max 500 caractères pour l’hôte).' : 'Message trop long (max 150 caractères).',
+      );
+    }
 
     if (rawMsg.startsWith('/') && canModerate) {
       const parts = rawMsg.slice(1).split(/\s+/);
@@ -873,13 +1367,33 @@ class LiveService {
       if (ban.expires_at && ban.expires_at > new Date()) throw new Error('You are temporarily muted.');
     }
 
-    const chatKey = `${streamId}:${userId}`;
-    const now = Date.now();
-    const last = chatLastMessageMap.get(chatKey) || 0;
-    if (now - last < ANTI_SPAM_CHAT_SEC * 1000) {
-      throw new Error(`Attendez ${ANTI_SPAM_CHAT_SEC} secondes entre chaque message.`);
+    if (!canModerate) {
+      const oneMinuteAgo = new Date(Date.now() - 60_000);
+      const recentChatCount = await prisma.liveChat.count({
+        where: {
+          live_id: streamId,
+          sender_id: userId,
+          created_date: { gte: oneMinuteAgo },
+          is_deleted: false,
+        },
+      });
+      let perMinute = 5;
+      const [sub, u] = await Promise.all([
+        prisma.liveCreatorSubscription.findFirst({
+          where: { subscriber_id: userId, creator_id: stream.creator_id, status: 'active' },
+        }),
+        prisma.user.findUnique({ where: { id: userId }, select: { is_verified: true } }),
+      ]);
+      if (sub) perMinute = 25;
+      else if (u?.is_verified) perMinute = 12;
+      if (recentChatCount >= perMinute) {
+        throw new Error(
+          perMinute > 5
+            ? `Maximum ${perMinute} messages par minute (abonnement live créateur ou compte vérifié).`
+            : 'Maximum 5 messages par minute.',
+        );
+      }
     }
-    chatLastMessageMap.set(chatKey, now);
 
     const slowModeSec = settings?.slow_mode_seconds ?? 0;
     if (slowModeSec > 0 && settings) {
@@ -895,16 +1409,23 @@ class LiveService {
       }
     }
 
-    const bannedWords = (settings?.banned_words as string[]) || [];
-    let cleanMessage = rawMsg.slice(0, 500);
+    const extraBanned = (process.env.LIVE_EXTRA_BANNED_WORDS || '')
+      .split(/[,;\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const bannedWords = [...(((settings?.banned_words as string[]) || []) as string[]), ...extraBanned];
+    let cleanMessage = rawMsg.slice(0, maxChatLen);
     for (const word of bannedWords) {
       const re = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
       cleanMessage = cleanMessage.replace(re, '***');
     }
-    if (!cleanMessage) throw new Error('Message vide.');
+    cleanMessage = maskProfanityFr(cleanMessage);
+    if (!cleanMessage.trim()) throw new Error('Message vide.');
 
-    // Détecter automatiquement les questions (contient "?")
-    const isQuestion = cleanMessage.includes('?') && !cleanMessage.startsWith('/');
+    const isQuestion =
+      options?.is_question === true
+        ? true
+        : cleanMessage.includes('?') && !cleanMessage.startsWith('/');
 
     if (settings?.followers_only) {
       const follow = await prisma.follow.findUnique({
@@ -970,11 +1491,73 @@ class LiveService {
     return chatMessage;
   }
 
-  /** CDC: Réaction (heart, fire, thumbs) */
-  async reaction(streamId: string, userId: string, reactionType: 'like' | 'heart' | 'fire' | 'thumbs') {
+  /** Commentaires après fin du live (séparés du chat temps réel : message_type replay_comment) */
+  async sendReplayComment(streamId: string, userId: string, message: string) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream) throw new Error('Stream not found');
+    if (stream.status !== 'ended') throw new Error('Les commentaires replay sont disponibles une fois le live terminé.');
+
+    const rawMsg = (message || '').trim();
+    if (!rawMsg) throw new Error('Message vide.');
+    const maxLen = 150;
+    if (rawMsg.length > maxLen) throw new Error(`Message trop long (max ${maxLen} caractères).`);
+
+    const ban = await prisma.liveStreamBan.findFirst({
+      where: { live_id: streamId, user_id: userId },
+      orderBy: { created_at: 'desc' },
+    });
+    if (ban) {
+      if (ban.is_permanent) throw new Error('You are banned from this stream.');
+      if (ban.expires_at && ban.expires_at > new Date()) throw new Error('You are temporarily muted.');
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { username: true, profile_image: true },
+    });
+    const isCreator = stream.creator_id === userId;
+    const isMod = await prisma.liveModerator.findFirst({
+      where: { live_id: streamId, user_id: userId },
+    });
+    const senderRole = isCreator ? 'creator' : (isMod ? 'moderator' : 'viewer');
+
+    const chatMessage = await prisma.liveChat.create({
+      data: {
+        live_id: streamId,
+        sender_id: userId,
+        sender_name: user?.username || 'Unknown',
+        sender_avatar: user?.profile_image || null,
+        sender_role: senderRole,
+        message: rawMsg.slice(0, maxLen),
+        message_type: 'replay_comment',
+        is_question: false,
+        is_answered: false,
+      },
+    });
+
+    const io = getIO();
+    if (io) io.to(`stream:${streamId}`).emit('live:replay:comment', chatMessage);
+
+    return chatMessage;
+  }
+
+  /** CDC: Réaction (heart, fire, thumbs, clap) */
+  async reaction(streamId: string, userId: string, reactionType: 'like' | 'heart' | 'fire' | 'thumbs' | 'clap') {
     const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
     if (!stream) throw new Error('Stream not found');
     if (stream.status !== 'live') throw new Error('Stream has ended.');
+
+    const rKey = `${streamId}:${userId}`;
+    const now = Date.now();
+    const lastR = liveReactionCooldown.get(rKey) ?? 0;
+    if (now - lastR < LIVE_REACTION_MIN_MS) {
+      const err: any = new Error('Réactions : attendez un instant entre deux animations.');
+      err.statusCode = 429;
+      err.isOperational = true;
+      err.code = 'LIVE_REACTION_COOLDOWN';
+      throw err;
+    }
+    liveReactionCooldown.set(rKey, now);
 
     await prisma.liveLike.create({
       data: { live_id: streamId, user_id: userId, reaction_type: reactionType },
@@ -1022,7 +1605,7 @@ class LiveService {
 
     const viewers = await prisma.liveViewer.findMany({
       where: { live_id: streamId },
-      select: { user_id: true, watch_duration: true, joined_at: true, left_at: true, country: true },
+      select: { user_id: true, watch_duration: true, joined_at: true, left_at: true, country: true, city: true },
     });
     const uniqueViewers = await prisma.liveViewer.groupBy({
       by: ['user_id'],
@@ -1035,6 +1618,12 @@ class LiveService {
     for (const v of viewers) {
       const c = v.country || 'unknown';
       viewerCountries[c] = (viewerCountries[c] || 0) + 1;
+    }
+    const viewerCities: Record<string, number> = {};
+    for (const v of viewers) {
+      const ct = String(v.city || '').trim();
+      if (!ct) continue;
+      viewerCities[ct] = (viewerCities[ct] || 0) + 1;
     }
     const retentionBuckets = [
       { min: 0, max: 60, count: viewers.filter((v) => (v.watch_duration ?? 0) < 60).length },
@@ -1095,6 +1684,7 @@ class LiveService {
         duration_seconds: durationSeconds,
         average_watch_time_seconds: avgWatchTime,
         viewer_countries: viewerCountries,
+        viewer_cities: Object.keys(viewerCities).length ? viewerCities : undefined,
         retention_buckets: retentionBuckets,
       },
     });
@@ -1135,7 +1725,32 @@ class LiveService {
     const io = getIO();
     if (io) io.to(`stream:${streamId}`).emit('live:ended', { streamId, replayUrl: finalReplayUrl ?? null });
 
+    liveBroadcastTimers.delete(streamId);
+    if (io) io.to(`stream:${streamId}`).emit('live:timer', null);
+
+    try {
+      await this.maybeAutoPublishReplayToFeedVideo({
+        liveId: streamId,
+        creatorId: userId,
+        title: stream.title,
+        thumbnail_url: stream.thumbnail_url,
+        replayUrl: typeof finalReplayUrl === 'string' ? finalReplayUrl : null,
+        durationMinutes,
+      });
+    } catch (e) {
+      logger.warn('Auto-publish replay → feed ignoré', { streamId, err: e });
+    }
+
     logger.info('Live stream ended', { streamId, userId, durationMinutes });
+
+    const thumbSrcRow = await prisma.liveStream.findUnique({
+      where: { id: streamId },
+      select: { replay_url: true, playback_url: true, stream_url: true },
+    });
+    if (thumbSrcRow && pickLiveReplaySrc(thumbSrcRow)) {
+      void generateThumbnailForLiveStreamId(streamId, { internal: true, force: false }).catch(() => {});
+    }
+
     return prisma.liveStream.findUnique({ where: { id: streamId } });
   }
 
@@ -1327,6 +1942,46 @@ class LiveService {
   }
 
   async getTopDonors(streamId: string, limit = 10) {
+    const gifts = await prisma.liveGift.findMany({
+      where: { live_id: streamId },
+      select: {
+        sender_id: true,
+        sender_name: true,
+        sender_avatar: true,
+        total_amount: true,
+        quantity: true,
+      },
+    });
+    if (gifts.length > 0) {
+      const map = new Map<
+        string,
+        {
+          sender_id: string;
+          sender_name: string;
+          sender_avatar: string | null;
+          total_amount_fcfa: number;
+          gift_events: number;
+        }
+      >();
+      for (const g of gifts) {
+        const cur = map.get(g.sender_id) || {
+          sender_id: g.sender_id,
+          sender_name: g.sender_name,
+          sender_avatar: g.sender_avatar,
+          total_amount_fcfa: 0,
+          gift_events: 0,
+        };
+        cur.total_amount_fcfa += g.total_amount;
+        cur.gift_events += g.quantity;
+        map.set(g.sender_id, cur);
+      }
+      const sorted = Array.from(map.values()).sort((a, b) => b.total_amount_fcfa - a.total_amount_fcfa);
+      return sorted.slice(0, Math.min(100, Math.max(1, limit))).map((row, i) => ({
+        rank: i + 1,
+        source: 'live_gift_aggregate',
+        ...row,
+      }));
+    }
     const donors = await prisma.liveTopDonor.findMany({
       where: { live_id: streamId },
       orderBy: { rank: 'asc' },
@@ -1334,6 +1989,50 @@ class LiveService {
       include: { user: { select: { id: true, username: true, full_name: true, profile_image: true } } },
     });
     return donors;
+  }
+
+  /** CDC 6.4 — Hall of Fame : tops donateurs agrégés sur tous les lives du créateur. */
+  async getGiftHallOfFameForCreator(creatorId: string, limit = 30) {
+    const take = Math.min(100, Math.max(1, Math.floor(limit)));
+    const rows = await prisma.liveGift.groupBy({
+      by: ['sender_id', 'sender_name'],
+      where: { creator_id: creatorId },
+      _sum: { total_amount: true },
+      _count: { id: true },
+      orderBy: { _sum: { total_amount: 'desc' } },
+      take,
+    });
+    const out = [];
+    let idx = 0;
+    for (const r of rows) {
+      idx += 1;
+      const av = await prisma.user.findUnique({
+        where: { id: r.sender_id },
+        select: { profile_image: true },
+      });
+      out.push({
+        rank: idx,
+        sender_id: r.sender_id,
+        sender_name: r.sender_name,
+        sender_avatar: av?.profile_image || null,
+        total_amount_fcfa: r._sum.total_amount ?? 0,
+        gift_events: r._count.id,
+      });
+    }
+    return out;
+  }
+
+  /** Créateur : ajuster la rétention replay stockée (jours, ex. 3 = 72 h si aligné env). */
+  async updateStreamReplayRetention(streamId: string, creatorId: string, replay_retention_days: number) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream || stream.creator_id !== creatorId) throw new Error('Non autorisé');
+    const days = Math.floor(Number(replay_retention_days));
+    if (!Number.isFinite(days) || days < 1 || days > 36500) throw new Error('Durée de rétention invalide (1–36500 jours).');
+    await prisma.liveStream.update({
+      where: { id: streamId },
+      data: { replay_retention_days: days },
+    });
+    return prisma.liveStream.findUnique({ where: { id: streamId } });
   }
 
   async getAnalytics(streamId: string, userId: string) {
@@ -1510,6 +2209,61 @@ class LiveService {
     return prisma.liveReplayChapter.create({
       data: { live_id: streamId, title: data.title, start_seconds: data.start_seconds, end_seconds: data.end_seconds ?? null },
     });
+  }
+
+  /**
+   * Publie un chapitre replay comme vidéo VOD dans le feed : même `replay_url` + `trim_start_sec` / `trim_end_sec`.
+   * Le client (Expo) boucle la lecture sur la fenêtre ; pas de transcodage serveur.
+   */
+  async republishReplayChapterToFeed(liveId: string, chapterId: string, userId: string) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: liveId } });
+    if (!stream || stream.creator_id !== userId) throw new Error('Unauthorized');
+    const chapter = await prisma.liveReplayChapter.findFirst({
+      where: { id: chapterId, live_id: liveId },
+    });
+    if (!chapter) throw new Error('Chapter not found');
+    const replayUrl = (stream.replay_url || '').trim();
+    if (!replayUrl) throw new Error('Replay not ready');
+
+    const start = Math.max(0, Math.floor(chapter.start_seconds));
+    let end = chapter.end_seconds != null ? Math.floor(chapter.end_seconds) : null;
+    const durationSec =
+      stream.duration_minutes != null && stream.duration_minutes > 0
+        ? Math.round(stream.duration_minutes * 60)
+        : null;
+    if (end == null && durationSec != null && durationSec > start) {
+      end = durationSec;
+    }
+    if (end == null) {
+      throw new Error('End time required: set end_seconds on the chapter or ensure live duration is set');
+    }
+    if (end <= start) {
+      throw new Error('Invalid clip window');
+    }
+    const clipDuration = end - start;
+    const titleBase = (chapter.title || 'Moment fort').slice(0, 200);
+    const streamTitle = (stream.title || 'Live').slice(0, 180);
+
+    const video = await prisma.video.create({
+      data: {
+        title: titleBase,
+        description: `Extrait du live « ${streamTitle} »`,
+        video_url: replayUrl,
+        thumbnail_url: stream.thumbnail_url || undefined,
+        creator_id: userId,
+        visibility: 'public',
+        trim_start_sec: start,
+        trim_end_sec: end,
+        duration: clipDuration,
+        hashtags: ['#AfriWonder', '#Live', '#Replay'],
+        editor_metadata: JSON.stringify({
+          source: 'live_highlight',
+          live_id: liveId,
+          chapter_id: chapterId,
+        }),
+      },
+    });
+    return video;
   }
 
   /** CDC: Abonnement mensuel créateur (don récurrent) */
@@ -1701,19 +2455,26 @@ class LiveService {
     return endedPoll;
   }
 
-  /** Inviter un co-host */
+  /** Inviter un co-host (max 5 invitations actives : pending + accepted) */
   async inviteCoHost(streamId: string, creatorId: string, cohostId: string) {
     const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
     if (!stream || stream.creator_id !== creatorId) throw new Error('Unauthorized');
     if (stream.status !== 'live') throw new Error('Stream must be live');
     if (cohostId === creatorId) throw new Error('Cannot invite yourself');
-    
+
     const existing = await prisma.liveCoHost.findUnique({
       where: { live_id_cohost_id: { live_id: streamId, cohost_id: cohostId } },
     });
-    
+
     if (existing && existing.status === 'pending') throw new Error('Invitation already pending');
     if (existing && existing.status === 'accepted') throw new Error('User is already a co-host');
+
+    const activeCohostSlots = await prisma.liveCoHost.count({
+      where: { live_id: streamId, status: { in: ['pending', 'accepted'] } },
+    });
+    if (activeCohostSlots >= 5) {
+      throw new Error('Maximum 5 co-hosts (invitations en attente + acceptées).');
+    }
     
     const invite = await prisma.liveCoHost.upsert({
       where: { live_id_cohost_id: { live_id: streamId, cohost_id: cohostId } },
@@ -1761,11 +2522,114 @@ class LiveService {
     
     const io = getIO();
     if (io) {
-      io.to(`stream:${streamId}`).emit('live:cohost:accepted', accepted);
-      // TODO: Générer token Agora pour le co-host avec rôle 'host'
+      io.to(`stream:${streamId}`).emit('live:cohost:accepted', {
+        ...accepted,
+        rtcHint: 'GET /api/live/:id/token?role=host',
+      });
     }
     
     return accepted;
+  }
+
+  /** Supprime tous les lives au statut `ended` pour ce créateur (nettoyage des replays). */
+  async deleteMyEndedStreams(userId: string) {
+    const r = await prisma.liveStream.deleteMany({
+      where: { creator_id: userId, status: 'ended' },
+    });
+    return { deleted: r.count };
+  }
+
+  /** Admin : supprime tous les lives terminés (ex. nettoyage base de dev). */
+  async deleteAllEndedStreamsAdmin() {
+    const r = await prisma.liveStream.deleteMany({
+      where: { status: 'ended' },
+    });
+    return { deleted: r.count };
+  }
+
+  getBroadcastTimer(streamId: string) {
+    return liveBroadcastTimers.get(streamId) ?? null;
+  }
+
+  async setBroadcastTimer(streamId: string, userId: string, body: { end_at_ms: number; label: string }) {
+    const stream = await prisma.liveStream.findUnique({ where: { id: streamId } });
+    if (!stream || stream.creator_id !== userId) throw new Error('Unauthorized');
+    if (stream.status !== 'live') throw new Error('Stream must be live');
+    const endAt = Number(body.end_at_ms);
+    if (!Number.isFinite(endAt) || endAt < Date.now() + 5000) {
+      throw new Error('end_at_ms doit être au moins 5 secondes dans le futur');
+    }
+    const label = String(body.label || 'Événement').slice(0, 120);
+    liveBroadcastTimers.set(streamId, { end_at_ms: endAt, label });
+    const io = getIO();
+    if (io) io.to(`stream:${streamId}`).emit('live:timer', { end_at_ms: endAt, label });
+    return { end_at_ms: endAt, label };
+  }
+
+  async clearBroadcastTimer(streamId: string, userId: string) {
+    const stream = await prisma.liveStream.findUnique({
+      where: { id: streamId },
+      select: { creator_id: true },
+    });
+    if (!stream || stream.creator_id !== userId) throw new Error('Unauthorized');
+    liveBroadcastTimers.delete(streamId);
+    const io = getIO();
+    if (io) io.to(`stream:${streamId}`).emit('live:timer', null);
+    return { cleared: true };
+  }
+
+  /**
+   * D — Publication replay complet comme vidéo feed (désactivable : LIVE_AUTO_PUBLISH_REPLAY_TO_FEED=0).
+   * Pas de transcodage : même URL replay + durée ; le client peut trim si besoin.
+   */
+  /**
+   * CDC 6.5 — Publie le replay intégral comme `Video` feed si `replay_url` est défini.
+   * `LIVE_AUTO_PUBLISH_REPLAY_TO_FEED` : désactiver explicitement avec `0`, `false` ou `no`.
+   * Toute autre valeur (y compris variable absente) = publication auto (dédoublonnage via `editor_metadata`).
+   */
+  async maybeAutoPublishReplayToFeedVideo(opts: {
+    liveId: string;
+    creatorId: string;
+    title: string;
+    thumbnail_url: string | null;
+    replayUrl: string | null;
+    durationMinutes: number;
+  }) {
+    const off = String(process.env.LIVE_AUTO_PUBLISH_REPLAY_TO_FEED || '').toLowerCase();
+    if (off === '0' || off === 'false' || off === 'no') return null;
+    const replayUrl = (opts.replayUrl || '').trim();
+    if (!replayUrl) return null;
+    const marker = `"live_replay_auto_id":"${opts.liveId}"`;
+    const dup = await prisma.video.findFirst({
+      where: {
+        creator_id: opts.creatorId,
+        editor_metadata: { contains: marker },
+      },
+      select: { id: true },
+    });
+    if (dup) return dup;
+
+    const durationSec = Math.max(1, Math.round((opts.durationMinutes || 1) * 60));
+    const titleBase = (opts.title || 'Live').slice(0, 200);
+    const video = await prisma.video.create({
+      data: {
+        title: `Replay · ${titleBase}`,
+        description: `Rediffusion du live (replay intégral).`,
+        video_url: replayUrl,
+        thumbnail_url: opts.thumbnail_url || undefined,
+        creator_id: opts.creatorId,
+        visibility: 'public',
+        duration: durationSec,
+        hashtags: ['#AfriWonder', '#Live', '#Replay'],
+        editor_metadata: JSON.stringify({
+          source: 'live_replay_auto',
+          live_id: opts.liveId,
+          live_replay_auto_id: opts.liveId,
+        }),
+      },
+    });
+    logger.info('Replay auto publié comme vidéo feed', { liveId: opts.liveId, videoId: video.id });
+    return video;
   }
 
   /** Retirer un co-host */
@@ -1789,8 +2653,7 @@ class LiveService {
     
     const io = getIO();
     if (io) {
-      io.to(`stream:${streamId}`).emit('live:cohost:removed', { cohostId });
-      // TODO: Déconnecter le co-host d'Agora
+      io.to(`stream:${streamId}`).emit('live:cohost:removed', { cohostId, leaveRtc: true });
     }
     
     return { ok: true };

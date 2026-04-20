@@ -124,6 +124,7 @@ export async function listPosts(options: {
         user: { select: { id: true, username: true, full_name: true, profile_image: true } },
         poll: true,
         images: { orderBy: { position: 'asc' } },
+        _count: { select: { comments: true } },
       },
       orderBy: [{ is_pinned: 'desc' }, { created_at: 'desc' }],
       skip,
@@ -180,6 +181,7 @@ export async function getPostById(postId: string, viewerId?: string) {
       user: { select: { id: true, username: true, full_name: true, profile_image: true } },
       poll: true,
       images: { orderBy: { position: 'asc' } },
+      _count: { select: { comments: true } },
     },
   });
   if (post?.poll && viewerId) {
@@ -272,6 +274,7 @@ export async function updatePost(postId: string, userId: string, data: {
       user: { select: { id: true, username: true, full_name: true, profile_image: true } },
       poll: true,
       images: { orderBy: { position: 'asc' } },
+      _count: { select: { comments: true } },
     },
   });
 }
@@ -285,4 +288,245 @@ export async function deletePost(postId: string, userId: string) {
 
 export async function listArchivedPosts(userId: string, page?: number, limit?: number) {
   return listPosts({ userId, visibility: 'archived', page, limit });
+}
+
+const MAX_POST_COMMENT_LEN = 2000;
+const POST_COMMENT_REACTION_TYPES = new Set(['like', 'love', 'fire', 'laugh', 'wow', 'sad', 'angry', 'moving', 'strong', 'african']);
+
+const POST_COMMENT_USER_INCLUDE = {
+  select: { id: true, username: true, full_name: true, profile_image: true },
+} as const;
+
+function sumReactionCounts(counts: Record<string, number> | null | undefined) {
+  if (!counts) return 0;
+  return Object.values(counts).reduce((sum, n) => sum + (typeof n === 'number' ? n : 0), 0);
+}
+
+async function getPostCommentReactionSummary(commentIds: string[], viewerId?: string) {
+  const reactionMap = new Map<string, Record<string, number>>();
+  const myReactionMap = new Map<string, string | null>();
+  if (commentIds.length === 0) return { reactionMap, myReactionMap };
+
+  const grouped = await prisma.postCommentReaction.groupBy({
+    by: ['comment_id', 'type'],
+    where: { comment_id: { in: commentIds } },
+    _count: { type: true },
+  });
+  for (const row of grouped) {
+    const counts = reactionMap.get(row.comment_id) ?? {};
+    counts[row.type || 'like'] = row._count.type;
+    reactionMap.set(row.comment_id, counts);
+  }
+
+  if (viewerId) {
+    const mine = await prisma.postCommentReaction.findMany({
+      where: { user_id: viewerId, comment_id: { in: commentIds } },
+      select: { comment_id: true, type: true },
+    });
+    for (const row of mine) myReactionMap.set(row.comment_id, row.type ?? null);
+  }
+
+  return { reactionMap, myReactionMap };
+}
+
+async function enrichPostCommentTree<T extends {
+  id: string;
+  user_id: string;
+  content: string;
+  created_at: Date;
+  updated_at: Date;
+  parent_id: string | null;
+  user: { id: string; username: string | null; full_name: string | null; profile_image: string | null };
+  replies?: Array<any>;
+}>(comments: T[], viewerId?: string) {
+  const allIds: string[] = [];
+  for (const comment of comments) {
+    allIds.push(comment.id);
+    if (Array.isArray(comment.replies)) {
+      for (const reply of comment.replies) allIds.push(reply.id);
+    }
+  }
+  const { reactionMap, myReactionMap } = await getPostCommentReactionSummary(allIds, viewerId);
+
+  const mapOne = (comment: any) => {
+    const reaction_counts = reactionMap.get(comment.id) ?? {};
+    const my_reaction = myReactionMap.get(comment.id) ?? null;
+    return {
+      ...comment,
+      reaction_counts,
+      reactions_count: sumReactionCounts(reaction_counts),
+      my_reaction,
+    };
+  };
+
+  return comments.map((comment) => ({
+    ...mapOne(comment),
+    replies: Array.isArray(comment.replies) ? comment.replies.map(mapOne) : [],
+  }));
+}
+
+export async function listPostComments(
+  postId: string,
+  viewerId: string | undefined,
+  page = 1,
+  limit = 50,
+) {
+  const post = await getPostById(postId, viewerId);
+  if (!post) return null;
+  const safePage = Math.max(1, page);
+  const safeLimit = Math.min(100, Math.max(1, limit));
+  const skip = (safePage - 1) * safeLimit;
+  const whereRoot = { post_id: postId, parent_id: null as string | null };
+  const [rows, total] = await Promise.all([
+    prisma.postComment.findMany({
+      where: whereRoot,
+      include: {
+        user: POST_COMMENT_USER_INCLUDE,
+        replies: {
+          include: { user: POST_COMMENT_USER_INCLUDE },
+          orderBy: { created_at: 'asc' },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+      skip,
+      take: safeLimit,
+    }),
+    prisma.postComment.count({ where: whereRoot }),
+  ]);
+  return {
+    comments: await enrichPostCommentTree(rows, viewerId),
+    pagination: {
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages: Math.ceil(total / safeLimit) || 1,
+    },
+  };
+}
+
+export async function addPostComment(postId: string, userId: string, content: string, parentId?: string | null) {
+  const text = (content ?? '').trim();
+  if (!text) {
+    const err: any = new Error('Message vide');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (text.length > MAX_POST_COMMENT_LEN) {
+    const err: any = new Error(`Message trop long (max ${MAX_POST_COMMENT_LEN} caractères)`);
+    err.statusCode = 400;
+    throw err;
+  }
+  const post = await getPostById(postId, userId);
+  if (!post) {
+    const err: any = new Error('Publication introuvable ou non visible');
+    err.statusCode = 404;
+    throw err;
+  }
+  if (parentId) {
+    const parent = await prisma.postComment.findFirst({
+      where: { id: parentId, post_id: postId },
+      select: { id: true },
+    });
+    if (!parent) {
+      const err: any = new Error('Commentaire parent introuvable');
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+  return prisma.postComment.create({
+    data: {
+      post_id: postId,
+      user_id: userId,
+      content: text.slice(0, MAX_POST_COMMENT_LEN),
+      parent_id: parentId || null,
+    },
+    include: { user: POST_COMMENT_USER_INCLUDE },
+  });
+}
+
+export async function updatePostComment(commentId: string, userId: string, content: string) {
+  const comment = await prisma.postComment.findUnique({
+    where: { id: commentId },
+    select: { id: true, user_id: true },
+  });
+  if (!comment) {
+    const err: any = new Error('Commentaire introuvable');
+    err.statusCode = 404;
+    throw err;
+  }
+  if (comment.user_id !== userId) {
+    const err: any = new Error('Vous ne pouvez modifier que vos propres commentaires');
+    err.statusCode = 403;
+    throw err;
+  }
+  const text = String(content ?? '').trim();
+  if (!text) {
+    const err: any = new Error('Message vide');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (text.length > MAX_POST_COMMENT_LEN) {
+    const err: any = new Error(`Message trop long (max ${MAX_POST_COMMENT_LEN} caractères)`);
+    err.statusCode = 400;
+    throw err;
+  }
+  return prisma.postComment.update({
+    where: { id: commentId },
+    data: { content: text.slice(0, MAX_POST_COMMENT_LEN) },
+    include: { user: POST_COMMENT_USER_INCLUDE },
+  });
+}
+
+export async function deletePostComment(commentId: string, userId: string) {
+  const comment = await prisma.postComment.findUnique({
+    where: { id: commentId },
+    select: { id: true, user_id: true },
+  });
+  if (!comment) {
+    const err: any = new Error('Commentaire introuvable');
+    err.statusCode = 404;
+    throw err;
+  }
+  if (comment.user_id !== userId) {
+    const err: any = new Error('Vous ne pouvez supprimer que vos propres commentaires');
+    err.statusCode = 403;
+    throw err;
+  }
+  const replies = await prisma.postComment.findMany({
+    where: { parent_id: commentId },
+    select: { id: true },
+  });
+  const ids = [commentId, ...replies.map((row) => row.id)];
+  await prisma.postComment.deleteMany({ where: { id: { in: ids } } });
+  return { deleted: ids.length };
+}
+
+export async function setPostCommentReaction(userId: string, commentId: string, typeRaw: string) {
+  const type = POST_COMMENT_REACTION_TYPES.has(typeRaw) ? typeRaw : 'like';
+  const comment = await prisma.postComment.findUnique({
+    where: { id: commentId },
+    select: { id: true },
+  });
+  if (!comment) {
+    const err: any = new Error('Commentaire introuvable');
+    err.statusCode = 404;
+    throw err;
+  }
+  const existing = await prisma.postCommentReaction.findUnique({
+    where: { comment_id_user_id: { comment_id: commentId, user_id: userId } },
+  });
+  if (existing && existing.type === type) {
+    await prisma.postCommentReaction.delete({ where: { id: existing.id } });
+  } else if (existing) {
+    await prisma.postCommentReaction.update({ where: { id: existing.id }, data: { type } });
+  } else {
+    await prisma.postCommentReaction.create({
+      data: { comment_id: commentId, user_id: userId, type },
+    });
+  }
+  const { reactionMap, myReactionMap } = await getPostCommentReactionSummary([commentId], userId);
+  return {
+    reaction_counts: reactionMap.get(commentId) ?? {},
+    my_reaction: myReactionMap.get(commentId) ?? null,
+  };
 }

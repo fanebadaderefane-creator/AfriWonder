@@ -106,9 +106,26 @@ export async function stopCloudRecording(
   return `${R2_ENDPOINT}/${R2_BUCKET}/${fileName}`;
 }
 
+function missingRecordingEnvKeys(): string[] {
+  const keys: string[] = [];
+  if (!AGORA_APP_ID) keys.push('AGORA_APP_ID');
+  if (!process.env.AGORA_APP_CERTIFICATE?.trim()) keys.push('AGORA_APP_CERTIFICATE');
+  if (!AGORA_CUSTOMER_KEY) keys.push('AGORA_CUSTOMER_KEY');
+  if (!AGORA_CUSTOMER_SECRET) keys.push('AGORA_CUSTOMER_SECRET');
+  if (!R2_BUCKET) keys.push('R2_BUCKET_NAME');
+  if (!R2_ACCESS) keys.push('R2_ACCESS_KEY_ID');
+  if (!R2_SECRET) keys.push('R2_SECRET_ACCESS_KEY');
+  if (!R2_ENDPOINT) keys.push('R2_ENDPOINT');
+  return keys;
+}
+
 export async function startLiveRecording(streamId: string): Promise<void> {
-  if (!AGORA_APP_ID || !AGORA_CUSTOMER_KEY || !AGORA_CUSTOMER_SECRET || !R2_BUCKET || !R2_ACCESS || !R2_SECRET || !R2_ENDPOINT) {
-    logger.warn('Cloud Recording non configuré — variables manquantes', { streamId });
+  const missing = missingRecordingEnvKeys();
+  if (missing.length > 0) {
+    logger.warn('Cloud Recording non configuré — enregistrement replay désactivé tant que ces variables ne sont pas définies', {
+      streamId,
+      missingEnv: missing,
+    });
     return;
   }
 

@@ -32,6 +32,22 @@ export interface CreateCampaignInput {
   target_interests?: string[];
 }
 
+/** Campagne budget + CPM (Phase 9) — `price_fcfa` = budget prépayé affiché. */
+export interface CreateCampaignCpmInput {
+  advertiser_id: string;
+  name: string;
+  budget_fcfa: number;
+  cpm_fcfa?: number;
+  duration_days?: number;
+  ad_type?: string;
+  target_countries?: string[];
+  target_cities?: string[];
+  target_age_min?: number;
+  target_age_max?: number;
+  target_gender?: string;
+  target_interests?: string[];
+}
+
 export interface CreateCreativeInput {
   campaign_id: string;
   media_type: 'video' | 'image';
@@ -88,6 +104,41 @@ class AdsService {
       },
     });
     return campaign;
+  }
+
+  /**
+   * Campagne pub au CPM avec budget FCFA (défaut CPM 500 FCFA / 1000 impressions).
+   * Le paiement à l’activation suit le même flux que `createCampaign` + `submitForReview` (prépaiement `price_fcfa`).
+   */
+  async createCampaignCpmBudget(input: CreateCampaignCpmInput) {
+    const budget = Math.max(1000, Math.floor(input.budget_fcfa));
+    const cpm = input.cpm_fcfa != null && input.cpm_fcfa > 0 ? Number(input.cpm_fcfa) : 500;
+    const duration = input.duration_days && VALID_DURATION_DAYS.includes(input.duration_days) ? input.duration_days : 30;
+    const now = new Date();
+    const endsAt = new Date(now);
+    endsAt.setDate(endsAt.getDate() + duration);
+
+    return prisma.adCampaign.create({
+      data: {
+        advertiser_id: input.advertiser_id,
+        name: input.name,
+        ad_type: input.ad_type || 'in_feed',
+        duration_days: duration,
+        price_fcfa: budget,
+        billing_mode: 'cpm_budget',
+        cpm_fcfa: cpm,
+        budget_remaining_fcfa: budget,
+        starts_at: now,
+        ends_at: endsAt,
+        status: 'draft',
+        target_countries: input.target_countries || [],
+        target_cities: input.target_cities || [],
+        target_age_min: input.target_age_min,
+        target_age_max: input.target_age_max,
+        target_gender: input.target_gender,
+        target_interests: input.target_interests || [],
+      },
+    });
   }
 
   async updateCampaign(campaignId: string, advertiserId: string, data: { name?: string; duration_days?: number }) {
@@ -381,6 +432,13 @@ class AdsService {
       );
     }
 
+    filtered = filtered.filter((c: any) => {
+      if (c.billing_mode === 'cpm_budget') {
+        return (c.budget_remaining_fcfa ?? 0) > 0;
+      }
+      return true;
+    });
+
     return filtered.slice(0, limit).map((c) => ({
       id: c.id,
       campaign_id: c.id,
@@ -402,17 +460,35 @@ class AdsService {
     }
     if (!creative.is_approved || campaign.status !== 'active') return null;
 
-    await prisma.$transaction([
-      prisma.adImpression.create({
-        data: { creative_id: creativeId, campaign_id: campaignId, viewer_key: viewerKey },
-      }),
-      prisma.adCampaign.update({
-        where: { id: campaignId },
-        data: { total_views: { increment: 1 } },
-      }),
-    ]);
+    const cpm = (campaign as any).cpm_fcfa ?? 500;
+    const billingMode = (campaign as any).billing_mode || 'legacy_package';
+    const budgetRem = (campaign as any).budget_remaining_fcfa;
 
-    return { ok: true };
+    let impressionCost = 0;
+    if (billingMode === 'cpm_budget' && budgetRem != null) {
+      impressionCost = Math.round((Number(cpm) / 1000) * 100) / 100;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.adImpression.create({
+        data: { creative_id: creativeId, campaign_id: campaignId, viewer_key: viewerKey },
+      });
+      const data: Record<string, unknown> = { total_views: { increment: 1 } };
+      if (impressionCost > 0 && budgetRem != null) {
+        const newBudget = Math.max(0, Number(budgetRem) - impressionCost);
+        data.budget_remaining_fcfa = newBudget;
+        data.total_spent_fcfa = { increment: impressionCost } as any;
+        if (newBudget <= 0) {
+          data.status = 'paused';
+        }
+      }
+      await tx.adCampaign.update({
+        where: { id: campaignId },
+        data: data as any,
+      });
+    });
+
+    return { ok: true, cost_fcfa: impressionCost };
   }
 
   async recordClick(creativeId: string, campaignId: string, viewerKey: string) {

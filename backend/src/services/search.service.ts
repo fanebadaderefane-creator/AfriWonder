@@ -8,8 +8,9 @@ import { videoService } from './video.service.js';
 import userService from './user.service.js';
 import productService from './product.service.js';
 import { logger } from '../utils/logger.js';
+import prisma from '../config/database.js';
 
-export type GlobalSearchType = 'all' | 'videos' | 'users' | 'products';
+export type GlobalSearchType = 'all' | 'videos' | 'users' | 'products' | 'sounds';
 
 export interface GlobalSearchOptions {
   q: string;
@@ -23,15 +24,23 @@ export interface GlobalSearchOptions {
   duration?: 'all' | 'short' | 'medium' | 'long';
 }
 
+/** Sons / musiques utilisés sur des vidéos (`music_title`), agrégés pour la recherche globale. */
+export interface SoundSearchHit {
+  title: string;
+  video_count: number;
+  sample_video_id: string | null;
+}
+
 export interface GlobalSearchResult {
   videos: any[];
   users: any[];
   products: any[];
+  sounds: SoundSearchHit[];
   meta: {
     query: string;
     type: GlobalSearchType;
     total: number;
-    counts: { videos: number; users: number; products: number };
+    counts: { videos: number; users: number; products: number; sounds: number };
   };
 }
 
@@ -55,9 +64,45 @@ function textIncludesTerm(text: unknown, term: string): boolean {
   return normalizeSearchText(text).includes(term);
 }
 
+async function searchSoundOrigins(term: string, limit: number): Promise<SoundSearchHit[]> {
+  const t = term.trim();
+  if (t.length < 1) return [];
+  try {
+    const rows = await prisma.video.findMany({
+      where: {
+        visibility: 'public',
+        music_title: { not: null, contains: t, mode: 'insensitive' },
+      },
+      select: { id: true, music_title: true },
+      take: 400,
+    });
+    const agg = new Map<string, { title: string; count: number; sampleId: string | null }>();
+    for (const r of rows) {
+      const title = String(r.music_title || '').trim();
+      if (!title) continue;
+      const key = title.toLowerCase();
+      const cur = agg.get(key) || { title, count: 0, sampleId: r.id };
+      cur.count += 1;
+      if (!cur.sampleId) cur.sampleId = r.id;
+      agg.set(key, cur);
+    }
+    return Array.from(agg.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, limit)
+      .map((x) => ({
+        title: x.title,
+        video_count: x.count,
+        sample_video_id: x.sampleId,
+      }));
+  } catch (err) {
+    logger.warn('search.service searchSoundOrigins failed', { err: (err as Error)?.message });
+    return [];
+  }
+}
+
 /**
  * Recherche globale : interroge en parallèle vidéos, utilisateurs, produits
- * et retourne un objet unifié. Respecte le filtre type (all | videos | users | products).
+ * et retourne un objet unifié. Respecte le filtre type (all | videos | users | products | sounds).
  */
 export async function globalSearch(options: GlobalSearchOptions): Promise<GlobalSearchResult> {
   const {
@@ -81,8 +126,9 @@ export async function globalSearch(options: GlobalSearchOptions): Promise<Global
   const shouldSearchVideos = type === 'all' || type === 'videos';
   const shouldSearchUsers = type === 'all' || type === 'users';
   const shouldSearchProducts = type === 'all' || type === 'products';
+  const shouldSearchSounds = type === 'all' || type === 'sounds';
 
-  const [videosResult, usersResult, productsResult] = await Promise.all([
+  const [videosResult, usersResult, productsResult, soundsResult] = await Promise.all([
     shouldSearchVideos && term.length >= 1
       ? videoService
           .list({
@@ -123,11 +169,13 @@ export async function globalSearch(options: GlobalSearchOptions): Promise<Global
             return [];
           })
       : Promise.resolve([]),
+    shouldSearchSounds && term.length >= 1 ? searchSoundOrigins(term, limit) : Promise.resolve([] as SoundSearchHit[]),
   ]);
 
   let videos = Array.isArray(videosResult) ? videosResult : [];
   let users = Array.isArray(usersResult) ? usersResult : [];
   let products = Array.isArray(productsResult) ? productsResult : [];
+  let sounds = Array.isArray(soundsResult) ? soundsResult : [];
 
   const normalizedTerm = normalizeSearchText(term.replace(/^#/, ''));
 
@@ -195,12 +243,19 @@ export async function globalSearch(options: GlobalSearchOptions): Promise<Global
     });
   }
 
-  const total = videos.length + users.length + products.length;
+  if (type === 'sounds') {
+    videos = [];
+    users = [];
+    products = [];
+  }
+
+  const total = videos.length + users.length + products.length + sounds.length;
 
   return {
     videos,
     users,
     products,
+    sounds,
     meta: {
       query: term,
       type,
@@ -209,6 +264,7 @@ export async function globalSearch(options: GlobalSearchOptions): Promise<Global
         videos: videos.length,
         users: users.length,
         products: products.length,
+        sounds: sounds.length,
       },
     },
   };

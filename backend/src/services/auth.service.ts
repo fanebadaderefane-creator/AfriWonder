@@ -327,6 +327,7 @@ class AuthService {
         full_name: user.full_name,
         profile_image: user.profile_image,
         role: user.role,
+        is_afriwonder_pro: user.is_afriwonder_pro,
       },
       two_factor_verified: !!twoFactor?.is_enabled,
       ...tokens,
@@ -407,6 +408,7 @@ class AuthService {
         messaging_cdc_moderation: true,
         replay_premium: true,
         monetization_enabled: true,
+        is_afriwonder_pro: true,
       },
     });
 
@@ -423,15 +425,30 @@ class AuthService {
     email: string;
     full_name?: string;
     profile_image?: string;
-    provider: 'google' | 'facebook';
+    provider: 'google' | 'facebook' | 'apple';
     provider_id: string;
   }) {
-    // Chercher un utilisateur existant par email
-    let user = await prisma.user.findFirst({
-      where: {
-        email: data.email,
-      },
-    });
+    const userSelect = {
+      id: true,
+      email: true,
+      username: true,
+      full_name: true,
+      profile_image: true,
+      role: true,
+      created_at: true,
+      apple_id: true,
+    } as const;
+
+    let user =
+      data.provider === 'apple'
+        ? await prisma.user.findFirst({
+            where: {
+              OR: [{ apple_id: data.provider_id }, { email: data.email }],
+            },
+          })
+        : await prisma.user.findFirst({
+            where: { email: data.email },
+          });
 
     // Si l'utilisateur n'existe pas, le créer
     if (!user) {
@@ -447,7 +464,7 @@ class AuthService {
       const baseUsername = data.email.split('@')[0];
       let username = baseUsername;
       let counter = 1;
-      
+
       while (await prisma.user.findUnique({ where: { username } })) {
         username = `${baseUsername}${counter}`;
         counter++;
@@ -461,34 +478,28 @@ class AuthService {
           profile_image: data.profile_image,
           password_hash: '', // Pas de mot de passe pour les comptes sociaux
           is_verified: true, // Les comptes sociaux sont considérés comme vérifiés
+          ...(data.provider === 'apple' ? { apple_id: data.provider_id } : {}),
         },
-        select: {
-          id: true,
-          email: true,
-          username: true,
-          full_name: true,
-          profile_image: true,
-          role: true,
-          created_at: true,
-        },
+        select: userSelect,
       }) as Awaited<ReturnType<typeof prisma.user.findFirst>>;
 
       logger.info('Utilisateur créé via OAuth', { userId: user!.id, email: user!.email, provider: data.provider });
     } else {
-      // Mettre à jour les informations si nécessaire
+      const updates: { profile_image?: string; apple_id?: string; full_name?: string } = {};
+      if (data.provider === 'apple' && data.provider_id && !user.apple_id) {
+        updates.apple_id = data.provider_id;
+      }
       if (data.profile_image && !user.profile_image) {
+        updates.profile_image = data.profile_image;
+      }
+      if (data.full_name && !user.full_name && data.provider === 'apple') {
+        updates.full_name = data.full_name;
+      }
+      if (Object.keys(updates).length > 0) {
         user = await prisma.user.update({
           where: { id: user.id },
-          data: { profile_image: data.profile_image },
-          select: {
-            id: true,
-            email: true,
-            username: true,
-            full_name: true,
-            profile_image: true,
-            role: true,
-            created_at: true,
-          },
+          data: updates,
+          select: userSelect,
         }) as Awaited<ReturnType<typeof prisma.user.findFirst>>;
       }
     }

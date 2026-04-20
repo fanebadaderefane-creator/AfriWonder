@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import * as qualifiedViewService from './qualifiedView.service.js';
@@ -9,6 +10,77 @@ import notificationService from './notification.service.js';
 import { scheduleCompatTranscodeAfterPublish } from './videoCompatTranscode.service.js';
 import { scheduleLowQualityRenditionAfterPublish } from './videoLowQualityRendition.service.js';
 
+/**
+ * Mots vides (FR / EN / simplifiés pour AR) — filtrés lors de l'extraction de mots-clés
+ * pour « Rechercher contenu similaire ». Liste volontairement courte et couvrante
+ * (on enlève aussi les tokens courts <3 caractères plus bas).
+ */
+const CONTENT_STOPWORDS = new Set<string>([
+  // FR
+  'le', 'la', 'les', 'un', 'une', 'des', 'de', 'du', 'et', 'ou', 'ni', 'mais',
+  'donc', 'car', 'au', 'aux', 'en', 'pour', 'par', 'sur', 'sous', 'dans',
+  'avec', 'sans', 'que', 'qui', 'quoi', 'ce', 'cet', 'cette', 'ces', 'mon',
+  'ma', 'mes', 'ton', 'ta', 'tes', 'son', 'sa', 'ses', 'notre', 'votre',
+  'leur', 'leurs', 'je', 'tu', 'il', 'elle', 'on', 'nous', 'vous', 'ils',
+  'elles', 'est', 'sont', 'été', 'être', 'avoir', 'ai', 'as', 'ont', 'pas',
+  'ne', 'si', 'oui', 'non', 'très', 'plus', 'moins', 'tout', 'tous', 'toute',
+  'toutes', 'comme', 'aussi', 'alors', 'bien', 'fait', 'faire', 'quand',
+  // EN
+  'the', 'a', 'an', 'and', 'or', 'but', 'to', 'of', 'in', 'on', 'at', 'for',
+  'with', 'by', 'from', 'as', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'have', 'has', 'had', 'do', 'does', 'did', 'this', 'that', 'these', 'those',
+  'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us',
+  'them', 'my', 'your', 'his', 'our', 'their', 'its', 'so', 'not', 'no',
+  'yes', 'very', 'too', 'just', 'now', 'then', 'there', 'here', 'what',
+  'when', 'where', 'why', 'how', 'all', 'any', 'some', 'like', 'about',
+  // Divers
+  'https', 'http', 'www', 'com', 'net', 'org', 'html',
+]);
+
+/**
+ * Extrait des mots-clés « discriminants » à partir du titre, description, hashtags et catégorie.
+ * - Normalise (lowercase + suppression accents + ponctuation).
+ * - Retire stopwords et tokens trop courts.
+ * - Retourne les uniques, en priorité les hashtags / termes présents dans le titre.
+ */
+function extractContentKeywords(input: {
+  title?: string | null;
+  description?: string | null;
+  hashtags?: string[];
+  category?: string | null;
+}): string[] {
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/#/g, ' ')
+      .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const tokens = (text?: string | null): string[] => {
+    if (!text) return [];
+    return normalize(text)
+      .split(' ')
+      .map((t) => t.trim())
+      .filter((t) => t.length >= 3 && !CONTENT_STOPWORDS.has(t) && !/^\d+$/.test(t));
+  };
+
+  const keywords = new Set<string>();
+  for (const tag of input.hashtags || []) {
+    const norm = normalize(String(tag || ''));
+    if (norm.length >= 2 && !CONTENT_STOPWORDS.has(norm)) keywords.add(norm);
+  }
+  for (const t of tokens(input.title)) keywords.add(t);
+  for (const t of tokens(input.description)) keywords.add(t);
+  if (input.category) {
+    const c = normalize(String(input.category));
+    if (c.length >= 2) keywords.add(c);
+  }
+  return Array.from(keywords).slice(0, 24);
+}
+
 interface ListOptions {
   page: number;
   limit?: number;
@@ -19,9 +91,34 @@ interface ListOptions {
   creator_id?: string;
   hashtag?: string;
   search?: string;
+  /** Filtre strict (case-insensitive) sur `music_title` — page Son. */
+  music_title?: string;
   /** Liste les vidéos où ce user est mentionné dans au moins un commentaire (`Comment.mention_ids`). */
   tagged_for_user_id?: string;
+  /** Fil « Suivis » / Ami(e)s : uniquement les vidéos des créateurs que `userId` suit (données réelles, pas le catalogue global). */
+  following_only?: boolean;
 }
+
+function isSchemaColumnError(err: unknown): boolean {
+  const message = String((err as Error | undefined)?.message || '');
+  return /column .* does not exist|Unknown column|no such column|42703/i.test(message);
+}
+
+const VIDEO_LIST_FALLBACK_SELECT = `SELECT v.id, v.title, v.description, v.video_url, v.low_quality_url, v.hls_url, v.thumbnail_url, v.creator_id, v.visibility, v.category, v.views, v.likes, v.comments_count, v.shares, v.saves, v.duration, v.created_at, v.updated_at, v.hashtags, v.music_title, v.is_featured, v.algo_tier, v.avg_retention_pct, v.qualified_views_count, v.media_type, v.remix_of_id, v.subtitle_url, v.download_allowed, v.is_premium, v.trim_start_sec, v.trim_end_sec, v.filter_id, v.comments_disabled, v.comment_visibility, v.hide_likes, v.scheduled_at,
+                u.username, u.full_name as "creator_name", u.profile_image as "creator_avatar"
+         FROM "Video" v
+         JOIN "User" u ON u.id = v.creator_id
+         WHERE v.visibility = 'public' AND (v.video_url IS NULL OR v.video_url NOT LIKE '%example.com%')
+         ORDER BY v.created_at DESC
+         LIMIT $1 OFFSET $2`;
+
+const VIDEO_LIST_FALLBACK_SELECT_NO_LOW_Q = `SELECT v.id, v.title, v.description, v.video_url, v.hls_url, v.thumbnail_url, v.creator_id, v.visibility, v.category, v.views, v.likes, v.comments_count, v.shares, v.saves, v.duration, v.created_at, v.updated_at, v.hashtags, v.music_title, v.is_featured, v.algo_tier, v.avg_retention_pct, v.qualified_views_count, v.media_type, v.remix_of_id, v.subtitle_url, v.download_allowed, v.is_premium, v.trim_start_sec, v.trim_end_sec, v.filter_id, v.comments_disabled, v.comment_visibility, v.hide_likes, v.scheduled_at,
+                u.username, u.full_name as "creator_name", u.profile_image as "creator_avatar"
+         FROM "Video" v
+         JOIN "User" u ON u.id = v.creator_id
+         WHERE v.visibility = 'public' AND (v.video_url IS NULL OR v.video_url NOT LIKE '%example.com%')
+         ORDER BY v.created_at DESC
+         LIMIT $1 OFFSET $2`;
 
 class VideoService {
   /**
@@ -76,7 +173,9 @@ class VideoService {
       creator_id: creatorId,
       hashtag,
       search,
+      music_title: musicTitle,
       tagged_for_user_id: taggedForUserId,
+      following_only: followingOnly,
     } = options;
     // Si limit n'est pas spécifié ou est 0, récupérer toutes les vidéos
     const shouldGetAll = !limit || limit === 0;
@@ -91,10 +190,45 @@ class VideoService {
       },
     };
 
+    /** Fil abonnements : créateurs suivis uniquement (public + contenu « abonnés » de ces créateurs). */
+    if (followingOnly) {
+      if (!userId) {
+        return {
+          videos: [],
+          pagination: {
+            page,
+            limit: limitValue,
+            total: 0,
+            totalPages: 0,
+          },
+        };
+      }
+      const follows = await prisma.follow.findMany({
+        where: { follower_id: userId },
+        select: { following_id: true },
+      });
+      const creatorIds = follows.map((f) => f.following_id);
+      if (creatorIds.length === 0) {
+        return {
+          videos: [],
+          pagination: {
+            page,
+            limit: limitValue,
+            total: 0,
+            totalPages: 0,
+          },
+        };
+      }
+      where.creator_id = { in: creatorIds };
+      where.visibility = { in: ['public', 'abonnes'] };
+    }
+
     // Profil « Identifié » : vidéos publiques où l’utilisateur est cité dans un commentaire (@ → mention_ids)
     // ou dans le titre / la description (@username, aligné sur le parsing commentaires).
     const taggedId = (taggedForUserId || '').trim();
-    if (taggedId) {
+    if (followingOnly) {
+      /* `where` déjà restreint aux suivis — ne pas appliquer les branches « visibilité globale » ci-dessous. */
+    } else if (taggedId) {
       where.visibility = 'public';
       const taggedUser = await prisma.user.findUnique({
         where: { id: taggedId },
@@ -123,15 +257,17 @@ class VideoService {
       where.creator_id = creatorId;
       where.OR = [
         { visibility: 'public' },
-        { visibility: 'prive' },
+        { visibility: { in: ['prive', 'private'] } },
       ];
     } else if (userId) {
-      // Si utilisateur connecté, voir aussi ses vidéos privées et celles des abonnements
+      // Si utilisateur connecté, voir aussi ses vidéos privées et celles des abonnements.
+      // Accepte les libellés FR historiques (`prive`, `abonnes`) ET les nouveaux EN
+      // (`private`, `followers`) envoyés par l'écran "Créer" TikTok-like.
       where.OR = [
         { visibility: 'public' },
-        { visibility: 'prive', creator_id: userId },
+        { visibility: { in: ['prive', 'private'] }, creator_id: userId },
         {
-          visibility: 'abonnes',
+          visibility: { in: ['abonnes', 'followers'] },
           creator: {
             followers: {
               some: {
@@ -149,8 +285,22 @@ class VideoService {
     } else if (category_id) {
       where.video_categories = { some: { category_id } };
     }
-    // Filtre par créateur (incompatible avec le mode « identifications »)
-    if (creatorId && visibility !== 'creator' && !taggedId) {
+
+    /**
+     * Vidéos planifiées : on cache celles dont `scheduled_at` est dans le futur,
+     * sauf quand l'utilisateur consulte ses propres vidéos (mode `creator`).
+     * Les vidéos non planifiées (`scheduled_at = null`) restent visibles.
+     */
+    const isOwnerScope = visibility === 'creator' && creatorId && userId && creatorId === userId;
+    if (!isOwnerScope) {
+      const now = new Date();
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : []),
+        { OR: [{ scheduled_at: null }, { scheduled_at: { lte: now } }] },
+      ];
+    }
+    // Filtre par créateur (incompatible avec le mode « identifications » ni fil suivis)
+    if (creatorId && visibility !== 'creator' && !taggedId && !followingOnly) {
       where.creator_id = creatorId;
     }
 
@@ -158,6 +308,11 @@ class VideoService {
     if (hashtag && hashtag.trim()) {
       const tag = String(hashtag).replace(/^#/, '').toLowerCase();
       where.video_hashtags = { some: { tag_name: tag } };
+    }
+
+    // Page Son: filtrer strictement `music_title` (indépendant de `search`)
+    if (musicTitle && String(musicTitle).trim()) {
+      where.music_title = { equals: String(musicTitle).trim(), mode: 'insensitive' };
     }
 
     // Recherche texte (titre, description, hashtags, music_title)
@@ -173,6 +328,12 @@ class VideoService {
         const taggedPart = where.OR;
         where.AND = [{ OR: taggedPart as any[] }, { OR: searchOr }];
         delete where.OR;
+      } else if (followingOnly) {
+        const cid = where.creator_id;
+        const vis = where.visibility;
+        delete where.creator_id;
+        delete where.visibility;
+        where.AND = [{ creator_id: cid }, { visibility: vis }, { OR: searchOr }];
       } else {
         where.OR = searchOr;
       }
@@ -180,6 +341,11 @@ class VideoService {
 
     let videos: any[];
     let total: number;
+
+    const orderBy =
+      creatorId && !taggedId && !followingOnly
+        ? ([{ is_featured: 'desc' }, { created_at: 'desc' }] as const)
+        : { created_at: 'desc' };
 
     try {
       [videos, total] = await Promise.all([
@@ -202,7 +368,7 @@ class VideoService {
               },
             },
           },
-          orderBy: { created_at: 'desc' },
+          orderBy: orderBy as any,
           ...(skip !== undefined && { skip }),
           ...(!shouldGetAll && limit && { take: limit }),
         }),
@@ -212,17 +378,22 @@ class VideoService {
       logger.warn('video.list Prisma failed, using raw SQL fallback', { err: (err as Error)?.message });
       const takeVal = shouldGetAll ? 9999 : (limit || 20);
       const skipVal = shouldGetAll ? 0 : (skip ?? 0);
-      const rows = await prisma.$queryRawUnsafe<any[]>(
-        `SELECT v.id, v.title, v.description, v.video_url, v.low_quality_url, v.hls_url, v.thumbnail_url, v.creator_id, v.visibility, v.category, v.views, v.likes, v.comments_count, v.shares, v.saves, v.duration, v.created_at, v.updated_at, v.hashtags, v.music_title, v.is_featured, v.algo_tier, v.avg_retention_pct, v.qualified_views_count, v.media_type, v.remix_of_id, v.subtitle_url, v.download_allowed, v.is_premium, v.trim_start_sec, v.trim_end_sec, v.filter_id, v.comments_disabled, v.comment_visibility, v.hide_likes, v.scheduled_at,
-                u.username, u.full_name as "creator_name", u.profile_image as "creator_avatar"
-         FROM "Video" v
-         JOIN "User" u ON u.id = v.creator_id
-         WHERE v.visibility = 'public' AND (v.video_url IS NULL OR v.video_url NOT LIKE '%example.com%')
-         ORDER BY v.created_at DESC
-         LIMIT $1 OFFSET $2`,
-        takeVal,
-        skipVal
-      );
+      let rows: any[];
+      try {
+        rows = await prisma.$queryRawUnsafe<any[]>(
+          VIDEO_LIST_FALLBACK_SELECT,
+          takeVal,
+          skipVal
+        );
+      } catch (rawErr) {
+        if (!isSchemaColumnError(rawErr)) throw rawErr;
+        logger.warn('video.list fallback retry without low_quality_url', { err: (rawErr as Error)?.message });
+        rows = await prisma.$queryRawUnsafe<any[]>(
+          VIDEO_LIST_FALLBACK_SELECT_NO_LOW_Q,
+          takeVal,
+          skipVal
+        );
+      }
       const countRows = await prisma.$queryRawUnsafe<Array<{ count: bigint | number }>>(
         `SELECT COUNT(*)::int as count FROM "Video" v WHERE v.visibility = 'public' AND (v.video_url IS NULL OR v.video_url NOT LIKE '%example.com%')`
       );
@@ -288,6 +459,19 @@ class VideoService {
             full_name: true,
             profile_image: true,
           },
+        },
+        remix_of: {
+          select: {
+            id: true,
+            title: true,
+            creator_id: true,
+            creator: {
+              select: { id: true, username: true, full_name: true, profile_image: true },
+            },
+          },
+        },
+        challenge: {
+          select: { id: true, hashtag: true, title: true, is_sponsored: true, sponsor_brand: true },
         },
         video_hashtags: { select: { tag_name: true } },
         video_likes: userId
@@ -371,10 +555,37 @@ class VideoService {
       hashtags: Array.isArray(hashtags) ? hashtags : [],
       music_title: video.music_title || null,
       comment_visibility: video.comment_visibility || 'everyone',
+      comment_subscribers_first: Boolean((video as any).comment_subscribers_first),
       hide_likes: video.hide_likes ?? false,
+      remix_kind: (video as any).remix_kind ?? null,
+      remix_credit: (video as any).remix_of_id
+        ? {
+            video_id: (video as any).remix_of?.id,
+            title: (video as any).remix_of?.title,
+            kind: (video as any).remix_kind || 'remix',
+            creator: (video as any).remix_of?.creator
+              ? {
+                  id: (video as any).remix_of.creator.id,
+                  username: (video as any).remix_of.creator.username,
+                  full_name: (video as any).remix_of.creator.full_name,
+                  profile_image: (video as any).remix_of.creator.profile_image,
+                }
+              : null,
+          }
+        : null,
+      challenge: (video as any).challenge
+        ? {
+            id: (video as any).challenge.id,
+            hashtag: (video as any).challenge.hashtag,
+            title: (video as any).challenge.title,
+            is_sponsored: (video as any).challenge.is_sponsored,
+            sponsor_brand: (video as any).challenge.sponsor_brand,
+          }
+        : null,
     };
 
     // Supprimer les champs internes
+    delete formattedVideo.remix_of;
     delete formattedVideo.creator;
     delete formattedVideo.video_hashtags;
     if (formattedVideo.video_likes !== undefined) {
@@ -553,6 +764,8 @@ class VideoService {
     category?: string;
     hashtags?: string[];
     music_title?: string;
+    /** JSON string (éditeur mobile) — persisté tel quel pour jobs futurs. */
+    editor_metadata?: string;
     media_type?: 'video' | 'image';
     remix_of_id?: string;
     subtitle_url?: string;
@@ -562,6 +775,10 @@ class VideoService {
     comment_visibility?: string;
     hide_likes?: boolean;
     scheduled_at?: string | Date | null;
+    poll_options?: string[];
+    remix_kind?: string | null;
+    comment_subscribers_first?: boolean;
+    challenge_id?: string | null;
   }) {
     // Valider les données requises
     if (!data.title || !data.video_url) {
@@ -605,12 +822,26 @@ class VideoService {
         hashtags: hashtagsArray.length ? JSON.stringify(hashtagsArray) : undefined,
         music_title: data.music_title,
         media_type: data.media_type || 'video',
+        ...(typeof data.editor_metadata === 'string' && data.editor_metadata.trim()
+          ? { editor_metadata: data.editor_metadata.trim().slice(0, 16000) }
+          : {}),
         ...(data.remix_of_id && { remix_of_id: data.remix_of_id }),
+        ...(data.remix_kind != null && String(data.remix_kind).trim() && { remix_kind: String(data.remix_kind).trim() }),
+        ...(data.challenge_id != null && { challenge_id: data.challenge_id || null }),
+        ...(data.comment_subscribers_first != null && {
+          comment_subscribers_first: Boolean(data.comment_subscribers_first),
+        }),
         ...(data.subtitle_url && { subtitle_url: data.subtitle_url }),
         ...(data.download_allowed != null && { download_allowed: Boolean(data.download_allowed) }),
         ...(data.is_premium != null && { is_premium: Boolean(data.is_premium) }),
         ...(data.comments_disabled != null && { comments_disabled: Boolean(data.comments_disabled) }),
-        ...(data.comment_visibility != null && { comment_visibility: ['everyone', 'followers', 'mentioned_only'].includes(data.comment_visibility) ? data.comment_visibility : 'everyone' }),
+        ...(data.comment_visibility != null && {
+          comment_visibility: ['everyone', 'friends', 'followers', 'mentioned_only', 'no_one'].includes(
+            data.comment_visibility,
+          )
+            ? data.comment_visibility
+            : 'everyone',
+        }),
         ...(data.hide_likes != null && { hide_likes: Boolean(data.hide_likes) }),
         ...(data.scheduled_at != null && { scheduled_at: data.scheduled_at ? new Date(data.scheduled_at) : null }),
       },
@@ -659,6 +890,13 @@ class VideoService {
     );
     (await import('./dailyMissions.service.js')).checkAndAwardPostVideo(data.creator_id).catch(() => {});
 
+    if (Array.isArray(data.poll_options) && data.poll_options.length >= 2) {
+      const { createVideoPoll } = await import('./videoPoll.service.js');
+      await createVideoPoll(data.creator_id, video.id, data.poll_options).catch((e) =>
+        logger.warn('video poll create failed', { videoId: video.id, err: e })
+      );
+    }
+
     return video;
   }
 
@@ -693,13 +931,16 @@ class VideoService {
     thumbnail_url?: string;
     comments_disabled?: boolean;
     comment_visibility?: string;
+    comment_subscribers_first?: boolean;
     hide_likes?: boolean;
     scheduled_at?: string | Date | null;
+    remix_kind?: string | null;
+    challenge_id?: string | null;
   }>, userId: string) {
     // Vérifier que l'utilisateur est le créateur
     const video = await prisma.video.findUnique({
       where: { id },
-      select: { creator_id: true },
+      select: { creator_id: true, is_featured: true },
     });
 
     if (!video) {
@@ -710,6 +951,24 @@ class VideoService {
       throw new Error('Non autorisé');
     }
 
+    /** Max 3 vidéos épinglées sur le profil (aligné usage type TikTok). */
+    if (data.is_featured === true && !video.is_featured) {
+      const featuredOthers = await prisma.video.count({
+        where: {
+          creator_id: userId,
+          is_featured: true,
+          id: { not: id },
+        },
+      });
+      if (featuredOthers >= 3) {
+        const err: Error & { statusCode?: number } = new Error(
+          'Vous pouvez épingler au maximum 3 vidéos sur votre profil'
+        );
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+
     const hashtagsArray = Array.isArray(data.hashtags) ? data.hashtags : undefined;
     const updateData: Record<string, unknown> = { ...data };
 
@@ -718,6 +977,15 @@ class VideoService {
     }
     if (data.scheduled_at !== undefined) {
       updateData.scheduled_at = data.scheduled_at ? new Date(data.scheduled_at) : null;
+    }
+    if (data.comment_subscribers_first !== undefined) {
+      updateData.comment_subscribers_first = Boolean(data.comment_subscribers_first);
+    }
+    if (data.remix_kind !== undefined) {
+      updateData.remix_kind = data.remix_kind ? String(data.remix_kind).trim() : null;
+    }
+    if (data.challenge_id !== undefined) {
+      updateData.challenge_id = data.challenge_id || null;
     }
 
     const updated = await prisma.video.update({
@@ -773,12 +1041,28 @@ class VideoService {
     logger.info('Vidéo supprimée', { videoId: id, userId });
   }
 
-  private static readonly REACTION_TYPES = new Set(['like', 'love', 'fire', 'laugh', 'wow', 'sad', 'angry']);
+  private static readonly REACTION_TYPES = new Set([
+    'like',
+    'love',
+    'fire',
+    'laugh',
+    'wow',
+    'sad',
+    'angry',
+    /** Phase 23 — réactions sociales (libellés produit) */
+    'moving',
+    'strong',
+    'african',
+  ]);
 
   async toggleLike(videoId: string, userId: string, type: string = 'like') {
     const reactionType = VideoService.REACTION_TYPES.has(type) ? type : 'like';
     const result = await this.setReaction(videoId, userId, reactionType);
-    return { liked: result.reaction !== null, reaction: result.reaction };
+    return {
+      liked: result.reaction !== null,
+      reaction: result.reaction,
+      reaction_counts: result.reaction_counts,
+    };
   }
 
   /** Définir ou supprimer une réaction (CPO 2.44). type = null pour retirer. */
@@ -1147,16 +1431,20 @@ class VideoService {
     return { success: true };
   }
 
-  async getComments(videoId: string, options: { page: number; limit: number }) {
+  async getComments(videoId: string, options: { page: number; limit: number }, viewerUserId?: string | null) {
     const { page, limit } = options;
     const skip = (page - 1) * limit;
 
-    const [comments, total] = await Promise.all([
-      prisma.comment.findMany({
-        where: {
-          video_id: videoId,
-          parent_id: null, // Commentaires principaux seulement
+    const commentInclude = {
+      user: {
+        select: {
+          id: true,
+          username: true,
+          full_name: true,
+          profile_image: true,
         },
+      },
+      replies: {
         include: {
           user: {
             select: {
@@ -1166,45 +1454,341 @@ class VideoService {
               profile_image: true,
             },
           },
-          replies: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  username: true,
-                  full_name: true,
-                  profile_image: true,
-                },
-              },
-            },
-            orderBy: {
-              created_at: 'asc',
-            },
-          },
+          _count: { select: { reactions: true } },
         },
-        orderBy: [
-          { is_pinned: 'desc' },
-          { created_at: 'desc' },
-        ],
-        skip,
-        take: limit,
-      }),
-      prisma.comment.count({
-        where: {
-          video_id: videoId,
-          parent_id: null,
+        orderBy: {
+          created_at: 'asc' as const,
         },
-      }),
-    ]);
+      },
+      _count: { select: { reactions: true } },
+    };
+
+    const video = await prisma.video.findUnique({
+      where: { id: videoId },
+      select: { creator_id: true, comment_subscribers_first: true },
+    });
+    if (!video) {
+      const err: any = new Error('Vidéo non trouvée');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const useSubscriberSort =
+      Boolean(video.comment_subscribers_first) &&
+      !!viewerUserId &&
+      viewerUserId !== video.creator_id;
+
+    let orderedIds: string[] = [];
+    let total: number;
+
+    if (useSubscriberSort) {
+      const rows = await prisma.$queryRaw<{ id: string }[]>(
+        Prisma.sql`
+          SELECT c.id FROM "Comment" c
+          LEFT JOIN "Follow" f ON f."follower_id" = c."user_id" AND f."following_id" = ${video.creator_id}
+          WHERE c."video_id" = ${videoId} AND c."parent_id" IS NULL
+          ORDER BY c."is_pinned" DESC, CASE WHEN f."follower_id" IS NOT NULL THEN 0 ELSE 1 END ASC, c."created_at" DESC
+          OFFSET ${skip} LIMIT ${limit}
+        `
+      );
+      orderedIds = rows.map((r) => r.id);
+      const countRow = await prisma.$queryRaw<{ c: bigint }[]>(
+        Prisma.sql`SELECT COUNT(*)::bigint AS c FROM "Comment" c WHERE c."video_id" = ${videoId} AND c."parent_id" IS NULL`
+      );
+      total = Number(countRow[0]?.c ?? 0);
+    } else {
+      const [pageRows, count] = await Promise.all([
+        prisma.comment.findMany({
+          where: { video_id: videoId, parent_id: null },
+          orderBy: [{ is_pinned: 'desc' }, { created_at: 'desc' }],
+          skip,
+          take: limit,
+          select: { id: true },
+        }),
+        prisma.comment.count({ where: { video_id: videoId, parent_id: null } }),
+      ]);
+      orderedIds = pageRows.map((c) => c.id);
+      total = count;
+    }
+
+    const comments = orderedIds.length
+      ? await prisma.comment.findMany({
+          where: { id: { in: orderedIds } },
+          include: commentInclude,
+        })
+      : [];
+
+    const byId = new Map(comments.map((c) => [c.id, c]));
+    const ordered = orderedIds.map((id) => byId.get(id)).filter(Boolean) as typeof comments;
+
+    const collectCommentIds = (list: typeof ordered): string[] => {
+      const out: string[] = [];
+      for (const c of list) {
+        out.push(c.id);
+        for (const r of c.replies || []) {
+          out.push(r.id);
+        }
+      }
+      return out;
+    };
+    const allCommentIds = [...new Set(collectCommentIds(ordered))];
+
+    const countsByComment = new Map<string, Record<string, number>>();
+    const myByComment = new Map<string, string | null>();
+
+    if (allCommentIds.length > 0) {
+      const [groupRows, myRows] = await Promise.all([
+        prisma.commentReaction.groupBy({
+          by: ['comment_id', 'type'],
+          where: { comment_id: { in: allCommentIds } },
+          _count: { _all: true },
+        }),
+        viewerUserId
+          ? prisma.commentReaction.findMany({
+              where: { comment_id: { in: allCommentIds }, user_id: viewerUserId },
+              select: { comment_id: true, type: true },
+            })
+          : Promise.resolve([] as { comment_id: string; type: string }[]),
+      ]);
+
+      for (const row of groupRows) {
+        const cid = row.comment_id;
+        const t = (row.type || 'like') as string;
+        const n = row._count._all;
+        let cur = countsByComment.get(cid);
+        if (!cur) {
+          cur = {};
+          countsByComment.set(cid, cur);
+        }
+        cur[t] = n;
+      }
+      for (const r of myRows) {
+        myByComment.set(r.comment_id, r.type || 'like');
+      }
+    }
+
+    const enrichComment = (c: (typeof comments)[number]): (typeof comments)[number] & {
+      reaction_counts: Record<string, number>;
+      my_reaction: string | null;
+    } => ({
+      ...c,
+      reaction_counts: countsByComment.get(c.id) ?? {},
+      my_reaction: myByComment.get(c.id) ?? null,
+      replies: (c.replies || []).map((r) =>
+        enrichComment(r as unknown as (typeof comments)[number])
+      ),
+    });
 
     return {
-      comments,
+      comments: ordered.map(enrichComment),
       pagination: {
         page,
         limit,
         total,
         totalPages: Math.ceil(total / limit),
       },
+    };
+  }
+
+  /**
+   * Suggestions « similaires » (heuristique : même type média + catégorie / hashtags / musique / créateur).
+   * Pas d’analyse d’image — base pour une future recherche visuelle.
+   */
+  async listSimilar(sourceId: string, userId: string | undefined, rawLimit?: number) {
+    const limit = Math.min(40, Math.max(4, Number(rawLimit) || 20));
+    const source = await prisma.video.findUnique({
+      where: { id: sourceId },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        category: true,
+        music_title: true,
+        media_type: true,
+        creator_id: true,
+        hashtags: true,
+        visibility: true,
+      },
+    });
+    if (!source) {
+      const error: any = new Error('Vidéo non trouvée');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (source.visibility !== 'public' && source.creator_id !== userId) {
+      const error: any = new Error('Contenu non disponible');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const mediaType = String(source.media_type || 'video').toLowerCase();
+    const isPhoto = mediaType === 'photo';
+
+    // --- 1) Hashtags de la source ----------------------------------------
+    let tagNames: string[] = [];
+    const rawTags = source.hashtags as unknown;
+    if (Array.isArray(rawTags)) {
+      tagNames = rawTags
+        .map((t) => String(t).replace(/^#/, '').trim().toLowerCase())
+        .filter(Boolean);
+    }
+    if (tagNames.length === 0) {
+      const tagRows = await prisma.videoHashtag.findMany({
+        where: { video_id: sourceId },
+        select: { tag_name: true },
+      });
+      tagNames = tagRows.map((r) => r.tag_name.toLowerCase());
+    }
+
+    // --- 2) Extraction de mots-clés (titre + description + hashtags) -----
+    /**
+     * Similarité type TikTok « contenu » : extraire les mots-clés discriminants
+     * (nom du sujet, ex. "naruto", "coran", "stem") pour retrouver tout contenu
+     * qui en parle, peu importe les tags formels.
+     */
+    const keywords = extractContentKeywords({
+      title: source.title,
+      description: source.description,
+      hashtags: tagNames,
+      category: source.category,
+    });
+
+    const musicTitle = (source.music_title || '').trim();
+
+    // --- 3) Conditions OR pour la recherche SQL --------------------------
+    const or: Prisma.VideoWhereInput[] = [];
+    for (const kw of keywords.slice(0, 12)) {
+      or.push({ title: { contains: kw, mode: 'insensitive' } });
+      or.push({ description: { contains: kw, mode: 'insensitive' } });
+      or.push({
+        video_hashtags: { some: { tag_name: { contains: kw, mode: 'insensitive' } } },
+      });
+    }
+    for (const tag of tagNames.slice(0, 8)) {
+      or.push({
+        video_hashtags: { some: { tag_name: { equals: tag, mode: 'insensitive' } } },
+      });
+    }
+    if (source.category) {
+      or.push({ category: source.category });
+    }
+    if (musicTitle) {
+      or.push({ music_title: { equals: musicTitle, mode: 'insensitive' } });
+    }
+
+    /** `NOT photo` excluait les lignes `media_type: null` (SQL trois valeurs) — on traite null comme vidéo. */
+    const typeWhere: Prisma.VideoWhereInput = isPhoto
+      ? { media_type: 'photo' }
+      : { OR: [{ media_type: 'video' }, { media_type: null }] };
+
+    /** Fallback "dernier recours" : même créateur, si aucun mot-clé / tag / catégorie / musique. */
+    if (or.length === 0) {
+      if (source.creator_id) {
+        or.push({ creator_id: source.creator_id });
+      } else {
+        return { source_media_type: isPhoto ? 'photo' : 'video', videos: [] };
+      }
+    }
+
+    const baseWhere: Prisma.VideoWhereInput = {
+      id: { not: sourceId },
+      visibility: 'public',
+      video_url: { not: { contains: 'example.com' } },
+      AND: [typeWhere, { OR: or }],
+    };
+
+    const rawRows = await prisma.video.findMany({
+      where: baseWhere,
+      include: {
+        creator: {
+          select: { id: true, username: true, full_name: true, profile_image: true },
+        },
+        video_hashtags: { select: { tag_name: true } },
+        _count: { select: { video_likes: true, video_comments: true } },
+      },
+      orderBy: [{ views: 'desc' }, { created_at: 'desc' }],
+      take: Math.max(limit * 4, 40),
+    });
+
+    /**
+     * Score pondéré type TF-IDF simple :
+     *   Titre       → +4 par mot-clé trouvé
+     *   Description → +1 par mot-clé trouvé
+     *   Hashtag     → +3 par tag exact partagé, +2 par mot-clé contenu dans un tag
+     *   Catégorie   → +2
+     *   Musique     → +2
+     *   Créateur    → +1 (bonus faible)
+     */
+    const sourceTagSet = new Set(tagNames);
+    const rows = rawRows
+      .map((row: any) => {
+        let score = 0;
+        const rowTitle = String(row.title || '').toLowerCase();
+        const rowDesc = String(row.description || '').toLowerCase();
+        const rowTags: string[] = (row.video_hashtags || [])
+          .map((h: any) => String(h.tag_name || '').toLowerCase())
+          .filter(Boolean);
+
+        for (const kw of keywords) {
+          if (rowTitle.includes(kw)) score += 4;
+          if (rowDesc.includes(kw)) score += 1;
+          if (rowTags.some((t) => t.includes(kw))) score += 2;
+        }
+        for (const t of rowTags) if (sourceTagSet.has(t)) score += 3;
+        if (source.category && row.category === source.category) score += 2;
+        if (
+          musicTitle &&
+          String(row.music_title || '')
+            .trim()
+            .toLowerCase() === musicTitle.toLowerCase()
+        ) {
+          score += 2;
+        }
+        if (source.creator_id && row.creator_id === source.creator_id) score += 1;
+        return { row, score };
+      })
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score || (b.row.views || 0) - (a.row.views || 0))
+      .slice(0, limit)
+      .map((x) => x.row);
+
+    const videos = rows.map((video: any) => {
+      const { creator, _count, video_hashtags, ...videoData } = video;
+      let hashtags = video.hashtags;
+      if (typeof hashtags === 'string') {
+        try {
+          hashtags = JSON.parse(hashtags);
+        } catch {
+          hashtags = [];
+        }
+      }
+      if (!Array.isArray(hashtags) || hashtags.length === 0) {
+        hashtags = (video_hashtags || []).map((h: any) => h.tag_name);
+      }
+      const rawThumb = String(video.thumbnail_url || '').trim();
+      const vu = String(video.video_url || '').trim();
+      const looksImage =
+        /\.(jpe?g|png|gif|webp|avif)(\?|$)/i.test(vu) || /^data:image\//i.test(vu);
+      const thumbnail_url = rawThumb || (looksImage ? vu : '');
+      return {
+        ...videoData,
+        thumbnail_url,
+        low_quality_playback_url: videoData.low_quality_url ?? null,
+        creator_id: creator?.id || video.creator_id,
+        creator_name: creator?.full_name || creator?.username || '',
+        creator_avatar: creator?.profile_image || '',
+        views: video.views ?? 0,
+        likes: _count?.video_likes || video.likes || 0,
+        comments_count: _count?.video_comments || video.comments_count || 0,
+        hashtags: Array.isArray(hashtags) ? hashtags : [],
+        music_title: video.music_title || null,
+        media_type: video.media_type || 'video',
+      };
+    });
+
+    return {
+      source_media_type: isPhoto ? 'photo' : 'video',
+      videos,
     };
   }
 }

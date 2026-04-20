@@ -14,7 +14,53 @@ const NOT_DELETED_USER = {
   },
 };
 
+const TEST_ACCOUNT_MARKERS = /\b(e2e|test|mock|qa|dummy|sample|autotest|bot)\b/i;
+const PRIVACY_SETTINGS_KEY = (userId: string) => `privacy_settings:${userId}`;
+
+function isLikelyTestAccount(user: { username?: string | null; full_name?: string | null; email?: string | null }): boolean {
+  const username = (user.username || '').trim().toLowerCase();
+  const fullName = (user.full_name || '').trim().toLowerCase();
+  const email = (user.email || '').trim().toLowerCase();
+  const blob = `${username} ${fullName} ${email}`.trim();
+  if (!blob) return false;
+  if (TEST_ACCOUNT_MARKERS.test(blob)) return true;
+  return (
+    username.startsWith('e2e_') ||
+    username.startsWith('test_') ||
+    username.startsWith('mock_') ||
+    email.endsWith('@example.com') ||
+    email.endsWith('@test.local')
+  );
+}
+
 class UserService {
+  private async getPrivacyVisibility(userId: string): Promise<{
+    followingList: 'everyone' | 'friends' | 'only_me';
+    likedVideos: 'everyone' | 'friends' | 'only_me';
+  }> {
+    const stored = await prisma.platformSettings.findUnique({ where: { key: PRIVACY_SETTINGS_KEY(userId) } });
+    const value = ((stored?.value as Record<string, unknown>) || {});
+    const followingList = String(value.following_list_visibility || 'everyone') as 'everyone' | 'friends' | 'only_me';
+    const likedVideos = String(value.liked_videos_visibility || 'everyone') as 'everyone' | 'friends' | 'only_me';
+    return { followingList, likedVideos };
+  }
+
+  private async canViewerAccessByVisibilityRule(
+    ownerId: string,
+    viewerId: string | null | undefined,
+    rule: 'everyone' | 'friends' | 'only_me'
+  ): Promise<boolean> {
+    if (rule === 'everyone') return true;
+    if (!viewerId) return false;
+    if (viewerId === ownerId) return true;
+    if (rule === 'only_me') return false;
+    const [vToOwner, ownerToV] = await Promise.all([
+      prisma.follow.findFirst({ where: { follower_id: viewerId, following_id: ownerId }, select: { id: true } }),
+      prisma.follow.findFirst({ where: { follower_id: ownerId, following_id: viewerId }, select: { id: true } }),
+    ]);
+    return !!vToOwner && !!ownerToV;
+  }
+
   async list(page: number = 1, limit: number = 20, search?: string) {
     const skip = (page - 1) * limit;
     const where: any = { ...NOT_DELETED_USER };
@@ -333,6 +379,13 @@ class UserService {
   }
 
   async getFollowing(userId: string, page: number = 1, limit: number = 20, viewerId?: string | null) {
+    const visibility = await this.getPrivacyVisibility(userId);
+    const allowed = await this.canViewerAccessByVisibilityRule(userId, viewerId, visibility.followingList);
+    if (!allowed) {
+      const error: any = new Error('Liste des abonnements privée');
+      error.statusCode = 403;
+      throw error;
+    }
     const skip = (page - 1) * limit;
 
     const [follows, total] = await Promise.all([
@@ -541,15 +594,67 @@ class UserService {
     return { rejected: true };
   }
 
-  /** Suggestions de comptes à suivre (CPO 2.33) — utilisateurs populaires que l'utilisateur ne suit pas encore */
+  /** Suggestions de comptes à suivre (CPO 2.33) — mélange de comptes récents + populaires non suivis. */
   async getSuggestedUsersToFollow(userId: string, limit: number = 20) {
+    const safeLimit = Math.min(50, Math.max(1, limit));
     const followingIds = await prisma.follow.findMany({
       where: { follower_id: userId },
       select: { following_id: true },
     }).then((r) => new Set(r.map((x) => x.following_id)));
 
     const excludeIds = [userId, ...followingIds];
-    const suggested = await prisma.user.findMany({
+    const [recentUsers, popularUsers] = await Promise.all([
+      prisma.user.findMany({
+        where: {
+          ...NOT_DELETED_USER,
+          id: { notIn: excludeIds },
+        },
+        select: {
+          id: true,
+          username: true,
+          full_name: true,
+          profile_image: true,
+          email: true,
+          is_verified: true,
+          _count: { select: { follows: true, following: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        take: safeLimit * 2,
+      }),
+      prisma.user.findMany({
+        where: {
+          ...NOT_DELETED_USER,
+          id: { notIn: excludeIds },
+        },
+        select: {
+          id: true,
+          username: true,
+          full_name: true,
+          profile_image: true,
+          email: true,
+          is_verified: true,
+          _count: { select: { follows: true, following: true } },
+        },
+        orderBy: { following: { _count: 'desc' } },
+        take: safeLimit * 2,
+      }),
+    ]);
+
+    const suggested = [...recentUsers, ...popularUsers];
+    const seen = new Set<string>();
+    const deduped = suggested.filter((u) => {
+      if (seen.has(u.id)) return false;
+      seen.add(u.id);
+      return true;
+    });
+
+    const base = deduped
+      .filter((u) => !followingIds.has(u.id))
+      .filter((u) => !isLikelyTestAccount(u))
+      .slice(0, safeLimit);
+    if (base.length >= safeLimit) return base;
+
+    const filler = await prisma.user.findMany({
       where: {
         ...NOT_DELETED_USER,
         id: { notIn: excludeIds },
@@ -559,14 +664,52 @@ class UserService {
         username: true,
         full_name: true,
         profile_image: true,
+        email: true,
+        is_verified: true,
+        _count: { select: { follows: true, following: true } },
+      },
+      orderBy: { created_at: 'desc' },
+      take: safeLimit * 3,
+    });
+    for (const u of filler) {
+      if (seen.has(u.id)) continue;
+      seen.add(u.id);
+      deduped.push(u);
+    }
+
+    /**
+     * Fallback anti-liste vide:
+     * si l'utilisateur suit déjà presque tout le monde, on complète avec des
+     * comptes supplémentaires (hors self) pour garder un écran "Find friends"
+     * toujours alimenté, comme l'UX TikTok.
+     */
+    const baseIds = new Set(base.map((u) => u.id));
+    const fallback = await prisma.user.findMany({
+      where: {
+        ...NOT_DELETED_USER,
+        id: { not: userId },
+      },
+      select: {
+        id: true,
+        username: true,
+        full_name: true,
+        profile_image: true,
+        email: true,
         is_verified: true,
         _count: { select: { follows: true, following: true } },
       },
       orderBy: { following: { _count: 'desc' } },
-      take: Math.min(50, Math.max(1, limit)),
+      take: safeLimit * 2,
     });
 
-    return suggested.filter((u) => !followingIds.has(u.id)).slice(0, limit);
+    for (const user of fallback) {
+      if (baseIds.has(user.id)) continue;
+      if (isLikelyTestAccount(user)) continue;
+      base.push(user);
+      baseIds.add(user.id);
+      if (base.length >= safeLimit) break;
+    }
+    return base.slice(0, safeLimit);
   }
 
   /** Wonder = s'émerveiller avec un créateur (équivalent follow avec branding Afriwonder) */
@@ -657,7 +800,7 @@ class UserService {
   }
 
   async getUserStats(userId: string) {
-    const [user, videosCount, followersCount, followingCount, productsCount, wonderersCount] = await Promise.all([
+    const [user, videosCount, followersCount, followingCount, productsCount, wonderersCount, likesAgg] = await Promise.all([
       prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -674,11 +817,17 @@ class UserService {
       prisma.follow.count({ where: { follower_id: userId } }),
       prisma.product.count({ where: { seller_id: userId } }),
       this.getWonderersCount(userId),
+      prisma.video.aggregate({
+        where: { creator_id: userId, visibility: 'public' },
+        _sum: { likes: true },
+      }),
     ]);
 
     if (!user) {
       throw new Error('Utilisateur non trouvé');
     }
+
+    const likesReceived = likesAgg._sum.likes ?? 0;
 
     return {
       user,
@@ -688,11 +837,19 @@ class UserService {
         following: followingCount,
         products: productsCount,
         wonderers: Math.max(wonderersCount, followersCount), // compat: wonderers >= followers
+        likesReceived: typeof likesReceived === 'number' && Number.isFinite(likesReceived) ? likesReceived : 0,
       },
     };
   }
 
-  async getLikedVideos(userId: string, page: number = 1, limit?: number) {
+  async getLikedVideos(userId: string, page: number = 1, limit?: number, viewerId?: string | null) {
+    const visibility = await this.getPrivacyVisibility(userId);
+    const allowed = await this.canViewerAccessByVisibilityRule(userId, viewerId, visibility.likedVideos);
+    if (!allowed) {
+      const error: any = new Error('Vidéos likées privées');
+      error.statusCode = 403;
+      throw error;
+    }
     const shouldGetAll = !limit || limit === 0;
     const actualLimit = shouldGetAll ? 9999 : limit!;
     const skip = shouldGetAll ? 0 : (page - 1) * limit!;

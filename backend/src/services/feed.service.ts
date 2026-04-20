@@ -1,13 +1,13 @@
 /**
  * Feed combiné : vidéos organiques (algo TikTok) + publicités In-Feed
- * Fréquence : 1 pub tous les 4 à 5 contenus (CDC Phase 1)
+ * Fréquence : ~3 pubs / 10 vidéos (Phase 9) — intervalle 3–4 organiques entre deux pubs.
  */
 import { getAlgorithmFeed } from './feedAlgorithm.service.js';
-import { adsService } from './ads.service.js';
+import { adsService } from './ads.service.js'; 
 import { logger } from '../utils/logger.js';
 
-const AD_FREQUENCY_MIN = 4; // 1 ad après au moins 4 vidéos
-const AD_FREQUENCY_MAX = 5;
+const AD_FREQUENCY_MIN = 3;
+const AD_FREQUENCY_MAX = 4;
 
 export interface FeedItem {
   type: 'video' | 'ad' | 'top_banner';
@@ -39,7 +39,7 @@ export interface FeedOptions {
 
 class FeedService {
   /**
-   * Construit le feed combiné : vidéos + pubs insérées tous les 4-5 contenus
+   * Construit le feed combiné : vidéos + pubs insérées tous les 3-4 contenus
    */
   async getFeed(options: FeedOptions): Promise<{ items: FeedItem[]; pagination: any }> {
     const limit = options.limit || 50;

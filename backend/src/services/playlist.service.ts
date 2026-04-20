@@ -2,17 +2,28 @@ import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 
 class PlaylistService {
-  async getUserPlaylists(userId: string, page: number = 1, limit: number = 20) {
+  async getUserPlaylists(options: {
+    targetUserId: string;
+    viewerUserId?: string | null;
+    page?: number;
+    limit?: number;
+  }) {
+    const targetUserId = String(options.targetUserId || '').trim();
+    const viewerUserId = options.viewerUserId ? String(options.viewerUserId).trim() : null;
+    const page = options.page ?? 1;
+    const limit = options.limit ?? 20;
+    if (!targetUserId) {
+      throw new Error('targetUserId requis');
+    }
     const skip = (page - 1) * limit;
+    const isOwner = Boolean(viewerUserId && viewerUserId === targetUserId);
+    const where = isOwner
+      ? { user_id: targetUserId }
+      : { user_id: targetUserId, is_public: true };
 
     const [playlists, total] = await Promise.all([
       prisma.playlist.findMany({
-        where: {
-          OR: [
-            { user_id: userId },
-            { is_public: true },
-          ],
-        },
+        where,
         include: {
           user: {
             select: {
@@ -29,7 +40,22 @@ class PlaylistService {
                   id: true,
                   title: true,
                   thumbnail_url: true,
+                  video_url: true,
+                  low_quality_url: true,
+                  hls_url: true,
                   duration: true,
+                  views: true,
+                  likes: true,
+                  created_at: true,
+                  updated_at: true,
+                  creator: {
+                    select: {
+                      id: true,
+                      username: true,
+                      full_name: true,
+                      profile_image: true,
+                    },
+                  },
                 },
               },
             },
@@ -39,14 +65,7 @@ class PlaylistService {
         take: limit,
         orderBy: { created_at: 'desc' },
       }),
-      prisma.playlist.count({
-        where: {
-          OR: [
-            { user_id: userId },
-            { is_public: true },
-          ],
-        },
-      }),
+      prisma.playlist.count({ where }),
     ]);
 
     return {
@@ -118,6 +137,45 @@ class PlaylistService {
 
     logger.info('Playlist created', { userId, playlistId: playlist.id });
     return playlist;
+  }
+
+  async update(
+    playlistId: string,
+    userId: string,
+    data: {
+      name?: string;
+      description?: string | null;
+      isPublic?: boolean;
+    },
+  ) {
+    const playlist = await prisma.playlist.findUnique({
+      where: { id: playlistId },
+    });
+
+    if (!playlist || playlist.user_id !== userId) {
+      throw new Error('Playlist not found or unauthorized');
+    }
+
+    const updated = await prisma.playlist.update({
+      where: { id: playlistId },
+      data: {
+        ...(data.name !== undefined && { name: data.name.trim() }),
+        ...(data.description !== undefined && { description: data.description }),
+        ...(data.isPublic !== undefined && { is_public: data.isPublic }),
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            profile_image: true,
+          },
+        },
+      },
+    });
+
+    logger.info('Playlist updated', { playlistId, userId });
+    return updated;
   }
 
   async addVideo(playlistId: string, userId: string, videoId: string) {

@@ -67,6 +67,8 @@ export async function broadcastPresence(userId: string, isOnline: boolean) {
 
 const DEFAULT_PAGE_SIZE = 20;
 const MESSAGES_PAGE_SIZE = 30;
+/** DM « demande de message » : messages envoyés par l’initiateur avant acceptation (hors programmés non livrés). */
+const DM_REQUEST_MAX_INITIATOR_MESSAGES = 3;
 
 /** Exclure les comptes supprimés (anonymisés) des listes. */
 const NOT_DELETED_USER = {
@@ -120,6 +122,44 @@ function maskSensitiveContacts(input: string): string {
 }
 
 class MessageService {
+  private async countNonScheduledMessagesFromSender(conversationId: string, senderId: string): Promise<number> {
+    return prisma.message.count({
+      where: {
+        conversation_id: conversationId,
+        sender_id: senderId,
+        is_deleted: false,
+        NOT: { status: 'scheduled' },
+      },
+    });
+  }
+
+  private async appendDmRequestMeta(conversation: Record<string, any> | null, viewerId: string) {
+    if (!conversation) return conversation;
+    if (conversation.is_group) {
+      return { ...conversation, dm_request: null };
+    }
+    const initiatorId = conversation.dm_request_initiator_id as string | null | undefined;
+    let initiator_sent_count = 0;
+    if (initiatorId) {
+      initiator_sent_count = await this.countNonScheduledMessagesFromSender(conversation.id, initiatorId);
+    }
+    const pending = conversation.dm_request_pending_for_user_id as string | null | undefined;
+    return {
+      ...conversation,
+      dm_request: {
+        max_messages_before_accept: DM_REQUEST_MAX_INITIATOR_MESSAGES,
+        pending_for_viewer: pending === viewerId,
+        pending_for_user_id: pending ?? null,
+        initiator_user_id: initiatorId ?? null,
+        initiator_sent_count,
+        initiator_messages_remaining:
+          initiatorId && pending
+            ? Math.max(0, DM_REQUEST_MAX_INITIATOR_MESSAGES - initiator_sent_count)
+            : 0,
+      },
+    };
+  }
+
   private async getConversationForViewer(conversationId: string, viewerId: string) {
     const conversation = await prisma.conversation.findFirst({
       where: {
@@ -155,7 +195,7 @@ class MessageService {
         (conversation as any).pinned_message = null;
       }
     }
-    return conversation;
+    return this.appendDmRequestMeta(conversation as any, viewerId);
   }
 
   private async getMessageForParticipant(messageId: string, userId: string) {
@@ -191,7 +231,14 @@ class MessageService {
     return !!block;
   }
 
-  async getConversations(userId: string, page: number = 1, limit: number = DEFAULT_PAGE_SIZE, includeArchived: boolean = false) {
+  async getConversations(
+    userId: string,
+    page: number = 1,
+    limit: number = DEFAULT_PAGE_SIZE,
+    includeArchived: boolean = false,
+    /** `all` = même comportement qu’avant les demandes DM (aucun filtre inbox). `primary` = hors demandes à accepter. */
+    inbox: 'all' | 'primary' | 'requests' = 'all'
+  ) {
     const skip = (page - 1) * limit;
     const take = Math.min(50, Math.max(1, limit));
 
@@ -209,9 +256,27 @@ class MessageService {
             { user2_id: userId, is_archived_user2: false },
           ],
         };
-    const where = archiveFilter
-      ? { AND: [{ OR: [...baseWhere.OR] }, archiveFilter] }
-      : { OR: [...baseWhere.OR] };
+    /** Filtre « primary » explicite : (pending IS NULL) OU (pending non null ET ≠ moi). Évite les ambiguïtés SQL sur NULL avec `not: userId` seul. */
+    const inboxClause: Prisma.ConversationWhereInput | null =
+      inbox === 'requests'
+        ? { dm_request_pending_for_user_id: userId, is_group: false }
+        : inbox === 'primary'
+          ? {
+              OR: [
+                { dm_request_pending_for_user_id: null },
+                {
+                  AND: [
+                    { dm_request_pending_for_user_id: { not: null } },
+                    { NOT: { dm_request_pending_for_user_id: userId } },
+                  ],
+                },
+              ],
+            }
+          : null;
+    const andParts: object[] = [{ OR: [...baseWhere.OR] }];
+    if (inboxClause) andParts.push(inboxClause);
+    if (archiveFilter) andParts.push(archiveFilter);
+    const where = { AND: andParts };
 
     const [conversations, total] = await Promise.all([
       prisma.conversation.findMany({
@@ -327,6 +392,9 @@ class MessageService {
           (conversation as any).pinned_message = null;
         }
       }
+    }
+    if (vId && conversation) {
+      return this.appendDmRequestMeta(conversation as any, vId);
     }
     return conversation;
   }
@@ -559,6 +627,41 @@ class MessageService {
     const scheduledAt = options?.scheduled_at ? new Date(options.scheduled_at) : null;
     const isScheduled = scheduledAt != null && scheduledAt.getTime() > Date.now();
 
+    const convDm = await prisma.conversation.findUnique({
+      where: { id: conversation.id },
+      select: {
+        id: true,
+        user1_id: true,
+        user2_id: true,
+        is_group: true,
+        dm_request_pending_for_user_id: true,
+        dm_request_initiator_id: true,
+        unread_count_map: true,
+        muted_user1: true,
+        muted_user2: true,
+      },
+    });
+    if (!convDm) throw makeHttpError('Conversation introuvable', 404);
+
+    if (!convDm.is_group && !isScheduled && convDm.dm_request_pending_for_user_id) {
+      if (senderId === convDm.dm_request_pending_for_user_id) {
+        throw makeHttpError('Acceptez la demande de message pour répondre.', 403);
+      }
+      if (senderId === convDm.dm_request_initiator_id) {
+        const n = await this.countNonScheduledMessagesFromSender(convDm.id, senderId);
+        if (n >= DM_REQUEST_MAX_INITIATOR_MESSAGES) {
+          throw makeHttpError(
+            `Vous ne pouvez envoyer que ${DM_REQUEST_MAX_INITIATOR_MESSAGES} messages tant que le destinataire n'a pas accepté.`,
+            403
+          );
+        }
+      }
+    }
+
+    const priorNonScheduled = await prisma.message.count({
+      where: { conversation_id: convDm.id, is_deleted: false, NOT: { status: 'scheduled' } },
+    });
+
     const isPoll = normalizedType === 'poll';
     const isEvent = normalizedType === 'event' && shareEventId != null;
     const pollQuestion = isPoll ? maskSensitiveContacts(rawContent.trim()).slice(0, GROUP_POLL_MAX_QUESTION_LEN) : '';
@@ -621,7 +724,12 @@ class MessageService {
       return message;
     }
 
-    const prevMap = (conversation.unread_count_map as UnreadCountMap) || {};
+    const dmInitData =
+      !convDm.is_group && !convDm.dm_request_pending_for_user_id && priorNonScheduled === 0
+        ? { dm_request_pending_for_user_id: otherId, dm_request_initiator_id: senderId }
+        : {};
+
+    const prevMap = (convDm.unread_count_map as UnreadCountMap) || {};
     const newMap = incrementUnreadForUser(prevMap, otherId);
 
     const lastText = isPoll
@@ -651,6 +759,7 @@ class MessageService {
         last_message_text: lastText.slice(0, 200),
         last_message_at: new Date(),
         unread_count_map: newMap,
+        ...dmInitData,
       },
     });
 
@@ -660,8 +769,8 @@ class MessageService {
     }
 
     const recipientMuted =
-      (conversation as any).muted_user2 === true && otherId === conversation.user2_id ||
-      (conversation as any).muted_user1 === true && otherId === conversation.user1_id;
+      (convDm.muted_user2 === true && otherId === convDm.user2_id) ||
+      (convDm.muted_user1 === true && otherId === convDm.user1_id);
     if (!recipientMuted) {
       try {
         await notificationService.create(otherId, {
@@ -716,6 +825,46 @@ class MessageService {
     const conv = message.conversation;
     const senderId = message.sender_id;
     const otherId = conv.user1_id === senderId ? conv.user2_id : conv.user1_id;
+
+    const convFull = await prisma.conversation.findUnique({
+      where: { id: conv.id },
+      select: {
+        is_group: true,
+        dm_request_pending_for_user_id: true,
+        dm_request_initiator_id: true,
+      },
+    });
+    if (!convFull) return false;
+
+    if (!convFull.is_group && convFull.dm_request_pending_for_user_id) {
+      if (senderId === convFull.dm_request_pending_for_user_id) {
+        logger.warn('Scheduled DM blocked: recipient must accept', { messageId, conversationId: conv.id });
+        return false;
+      }
+      if (senderId === convFull.dm_request_initiator_id) {
+        const sentAlready = await prisma.message.count({
+          where: {
+            conversation_id: conv.id,
+            sender_id: senderId,
+            is_deleted: false,
+            status: 'sent',
+          },
+        });
+        if (sentAlready >= DM_REQUEST_MAX_INITIATOR_MESSAGES) {
+          logger.warn('Scheduled DM blocked: initiator cap', { messageId, conversationId: conv.id });
+          return false;
+        }
+      }
+    }
+
+    const priorSent = await prisma.message.count({
+      where: { conversation_id: conv.id, is_deleted: false, status: 'sent' },
+    });
+    const dmInitData =
+      !convFull.is_group && !convFull.dm_request_pending_for_user_id && priorSent === 0
+        ? { dm_request_pending_for_user_id: otherId, dm_request_initiator_id: senderId }
+        : {};
+
     const t = String(message.type || 'text').toLowerCase();
     const lastText =
       t === 'text'
@@ -740,6 +889,7 @@ class MessageService {
           last_message_text: lastText,
           last_message_at: new Date(),
           unread_count_map: newMap,
+          ...dmInitData,
         },
       }),
     ]);
@@ -1480,6 +1630,41 @@ class MessageService {
         preview: MessageService.scheduledPreviewLine(m.type, m.content),
       };
     });
+  }
+
+  async acceptDmRequest(conversationId: string, userId: string) {
+    const conv = await prisma.conversation.findFirst({
+      where: {
+        id: conversationId,
+        OR: [{ user1_id: userId }, { user2_id: userId }],
+        is_group: false,
+      },
+    });
+    if (!conv) throw makeHttpError('Conversation introuvable', 404);
+    if (conv.dm_request_pending_for_user_id !== userId) {
+      throw makeHttpError('Aucune demande de message en attente pour cette conversation.', 400);
+    }
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { dm_request_pending_for_user_id: null, dm_request_initiator_id: null },
+    });
+    return this.getConversationById(conversationId, userId);
+  }
+
+  async declineDmRequest(conversationId: string, userId: string) {
+    const conv = await prisma.conversation.findFirst({
+      where: {
+        id: conversationId,
+        OR: [{ user1_id: userId }, { user2_id: userId }],
+        is_group: false,
+      },
+    });
+    if (!conv) throw makeHttpError('Conversation introuvable', 404);
+    if (conv.dm_request_pending_for_user_id !== userId) {
+      throw makeHttpError('Vous ne pouvez pas supprimer cette demande.', 403);
+    }
+    await prisma.conversation.delete({ where: { id: conversationId } });
+    return { deleted: true as const };
   }
 
   async getPresence(userId: string) {

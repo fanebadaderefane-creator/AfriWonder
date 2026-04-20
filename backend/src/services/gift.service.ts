@@ -9,7 +9,8 @@ import withdrawalService from './withdrawal.service.js';
  * Commission plateforme : 12%
  */
 class GiftService {
-  private readonly PLATFORM_COMMISSION_RATE = 0.12;
+  /** Aligné Phase 9 (cadeaux hors live) : même split plateforme que les lives (30 %). */
+  private readonly PLATFORM_COMMISSION_RATE = 0.3;
 
   /**
    * Envoyer un gift à un utilisateur
