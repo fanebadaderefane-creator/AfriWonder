@@ -53,7 +53,7 @@ export default function SoundFeedScreen() {
     setErr(null);
     try {
       const res = await apiClient.get('/videos', {
-        params: { page: 1, limit: 40, search: soundTitle, visibility: 'public' },
+        params: { page: 1, limit: 40, music_title: soundTitle, visibility: 'public' },
       });
       const data = res.data?.data ?? res.data;
       const videos = Array.isArray(data?.videos) ? data.videos : [];

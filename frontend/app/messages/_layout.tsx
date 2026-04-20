@@ -11,6 +11,7 @@ export default function MessagesLayout() {
       }}
     >
       <Stack.Screen name="index" />
+      <Stack.Screen name="requests" />
       <Stack.Screen name="[id]" />
       <Stack.Screen name="call" options={{ animation: 'fade', presentation: 'fullScreenModal' }} />
       <Stack.Screen name="new-group" />

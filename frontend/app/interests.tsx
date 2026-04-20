@@ -5,6 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { setInterestsDone } from '../src/utils/onboardingFlow';
 
 const INTERESTS = [
   { id: 'music', label: 'Musique', icon: 'musical-notes', color: '#E91E63' },
@@ -53,12 +55,22 @@ export default function InterestsScreen() {
         })}
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
         <Text style={styles.countText}>{selected.length}/3 minimum</Text>
         <TouchableOpacity
           style={[styles.continueBtn, selected.length < 3 && { opacity: 0.4 }]}
           disabled={selected.length < 3}
-          onPress={() => router.replace('/(tabs)')}
+          accessibilityRole="button"
+          accessibilityLabel="Continuer vers les suggestions de createurs"
+          onPress={async () => {
+            try {
+              await AsyncStorage.setItem('user_interests_json', JSON.stringify(selected));
+            } catch {
+              /* ignore */
+            }
+            await setInterestsDone();
+            router.replace('/suggest-creators' as Parameters<typeof router.replace>[0]);
+          }}
         >
           <LinearGradient colors={['#8B5CF6', '#EC4899']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.continueBtnGradient}>
             <Text style={styles.continueBtnText}>Continuer</Text>
@@ -80,7 +92,7 @@ const styles = StyleSheet.create({
   iconCircle: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
   cardLabel: { color: Colors.text, fontSize: FontSizes.sm, fontWeight: '600', textAlign: 'center' },
   checkBadge: { position: 'absolute', top: 8, right: 8, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: Colors.background, paddingHorizontal: Spacing.xl, paddingBottom: 34, paddingTop: Spacing.lg, borderTopWidth: 1, borderTopColor: Colors.border },
+  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: Colors.background, paddingHorizontal: Spacing.xl, paddingTop: Spacing.lg, borderTopWidth: 1, borderTopColor: Colors.border },
   countText: { color: Colors.textSecondary, textAlign: 'center', marginBottom: 8, fontSize: FontSizes.sm },
   continueBtn: { borderRadius: BorderRadius.md, overflow: 'hidden' },
   continueBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.lg, gap: 8 },

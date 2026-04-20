@@ -1,11 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-
-const { width } = Dimensions.get('window');
 
 const VEHICLES = [
   { id: 'v1', name: 'Toyota Corolla', type: 'Berline', image: 'https://picsum.photos/400/200?random=230', price: 25000, perDay: true, rating: 4.7, available: true },

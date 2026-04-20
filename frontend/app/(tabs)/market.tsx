@@ -1,13 +1,13 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image,
-  RefreshControl, useWindowDimensions, Animated, ActivityIndicator,
+  RefreshControl, useWindowDimensions, Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
+import { Colors } from '../../src/theme/colors';
 import apiClient from '../../src/api/client';
 
 // --- MOCK DATA ---
@@ -58,7 +58,7 @@ export default function MarketScreen() {
   const [activeFilter, setActiveFilter] = useState('all');
   const flashAnim = useRef(new Animated.Value(1)).current;
   const [realProducts, setRealProducts] = useState<any[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [, setLoadingProducts] = useState(true);
 
   const productWidth = (screenWidth - 48) / 2;
 
@@ -72,7 +72,7 @@ export default function MarketScreen() {
     );
     pulse.start();
     return () => pulse.stop();
-  }, []);
+  }, [flashAnim]);
 
   // Load products from real backend
   useEffect(() => { fetchProducts(); }, []);

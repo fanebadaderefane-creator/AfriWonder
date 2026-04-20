@@ -1,13 +1,29 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, Dimensions, ActivityIndicator, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, ActivityIndicator, RefreshControl, Alert, ScrollView } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import apiClient from '../../src/api/client';
+import socketService from '../../src/services/socketService';
+import { useAuthStore } from '../../src/store/authStore';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 
-const { width } = Dimensions.get('window');
 const TABS = ['Discussions', 'Statuts', 'Appels'];
+
+function formatTimeAgo(dateStr: string) {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffH = Math.floor(diffMs / 3600000);
+  if (diffH < 1) return 'Maintenant';
+  if (diffH < 24) return `${diffH}h`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD === 1) return 'Hier';
+  if (diffD < 7) return ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'][date.getDay()];
+  return `${date.getDate()}/${date.getMonth() + 1}`;
+}
 
 interface Conversation {
   id: string;
@@ -27,8 +43,31 @@ interface Conversation {
   otherUserId?: string;
 }
 
+/** Petit wrapper pour pouvoir scroller la liste de statuts en dessous de la carte « Mon statut ». */
+function ScrollViewWrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 8, paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
+      {children}
+    </ScrollView>
+  );
+}
+
+type StoryFeedItem = {
+  id: string;
+  username: string | null;
+  full_name: string | null;
+  profile_image: string | null;
+  is_self: boolean;
+  has_story: boolean;
+  has_unseen_story: boolean;
+  is_live: boolean;
+  live_id: string | null;
+  story_ids: string[];
+};
+
 export default function MessagesListScreen() {
   const insets = useSafeAreaInsets();
+  const currentUser = useAuthStore((s) => s.user);
   const [activeTab, setActiveTab] = useState(0);
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,73 +76,168 @@ export default function MessagesListScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showContacts, setShowContacts] = useState(false);
+  const [requestCount, setRequestCount] = useState(0);
+  const [storyFeed, setStoryFeed] = useState<StoryFeedItem[]>([]);
 
-  useEffect(() => { loadConversations(); loadRealUsers(); }, []);
+  /** Avatar du compte connecté — utilisé sur la carte « Mon statut » de l'onglet Statuts. */
+  const myAvatarUri =
+    toAbsoluteMediaUrl(currentUser?.profile_image || currentUser?.avatar || '') ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(
+      currentUser?.full_name || currentUser?.username || 'Moi',
+    )}&background=FF6B00&color=fff`;
+  const myFullName = currentUser?.full_name || currentUser?.username || 'Mon statut';
 
-  const loadRealUsers = async () => {
+  const loadStories = useCallback(async () => {
     try {
-      const response = await apiClient.get('/users?limit=50');
+      const res = await apiClient.get('/stories/feed-bar');
+      const data = res.data?.data ?? res.data;
+      const items: StoryFeedItem[] = Array.isArray(data?.items) ? data.items : [];
+      setStoryFeed(items);
+    } catch {
+      setStoryFeed([]);
+    }
+  }, []);
+
+  const loadRequestCount = useCallback(async () => {
+    try {
+      const response = await apiClient.get('/messages/conversations', {
+        params: { inbox: 'requests', page: 1, limit: 1 },
+      });
+      const data = response.data?.data || response.data;
+      const total = data?.pagination?.total;
+      setRequestCount(typeof total === 'number' ? total : 0);
+    } catch {
+      setRequestCount(0);
+    }
+  }, []);
+
+  const loadRealUsers = useCallback(async () => {
+    try {
+      const response = await apiClient.get('/users', { params: { page: 1, limit: 100 } });
       const rawData = response.data;
-      const data = rawData?.data || rawData;
-      let users = data?.users || data || [];
+      const data = rawData?.data ?? rawData;
+      let users = data?.users ?? (Array.isArray(data) ? data : []);
       if (!Array.isArray(users)) users = [];
       const filtered = users.filter((u: any) => u && (u.username || u.full_name));
       setRealUsers(filtered);
     } catch (err: any) {
       console.log('Could not load real users, trying direct:', err?.message);
     }
-  };
+  }, []);
 
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     try {
+      // Pas de `inbox=primary` ici : défaut API = `all` (toutes les discussions), comme avant la fonctionnalité « demandes ».
+      // Les fils « à accepter » restent accessibles via l’écran Demandes (`inbox=requests`).
       const response = await apiClient.get('/messages/conversations', { params: { page: 1, limit: 40 } });
       const data = response.data?.data || response.data;
       const backendConvos = data?.conversations || [];
-      if (backendConvos.length > 0) {
-        const transformed: Conversation[] = backendConvos.map((c: any) => {
-          const other = c.other || {};
-          const timeStr = c.last_message_at ? formatTimeAgo(c.last_message_at) : '';
-          const displayName = c.is_group
-            ? (c.group_name || 'Groupe')
-            : (other.full_name || other.username || 'Contact');
-          const avatar = c.is_group
-            ? (c.group_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=333&color=fff`)
-            : (other.profile_image || `https://i.pravatar.cc/150?u=${other.id || c.id}`);
-          return {
-            id: c.id,
-            name: displayName,
-            avatar,
-            lastMessage: c.last_message_text || '',
-            time: timeStr,
-            unread: c.unread_count || 0,
-            online: false,
-            isTyping: false,
-            lastMsgType: 'text',
-            isRead: (c.unread_count || 0) === 0,
-            isMine: false,
-            isGroup: !!c.is_group,
-            otherUserId: c.is_group ? undefined : other.id,
-          };
-        });
-        setConversations(transformed);
+      const transformed: Conversation[] = backendConvos.map((c: any) => {
+        const other = c.other || {};
+        const timeStr = c.last_message_at ? formatTimeAgo(c.last_message_at) : '';
+        const displayName = c.is_group
+          ? (c.group_name || 'Groupe')
+          : (other.full_name || other.username || 'Contact');
+        const avatar = c.is_group
+          ? (c.group_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=333&color=fff`)
+          : (other.profile_image || `https://i.pravatar.cc/150?u=${other.id || c.id}`);
+        return {
+          id: c.id,
+          name: displayName,
+          avatar,
+          lastMessage: c.last_message_text || '',
+          time: timeStr,
+          unread: c.unread_count || 0,
+          online: Boolean(other.is_online ?? other.presence?.is_online ?? false),
+          isTyping: false,
+          lastMsgType: 'text',
+          isRead: (c.unread_count || 0) === 0,
+          isMine: false,
+          isGroup: !!c.is_group,
+          otherUserId: c.is_group ? undefined : other.id,
+        };
+      });
+      setConversations(transformed);
+
+      /** Récupère la présence en parallèle pour tous les peers 1-1 (best effort). */
+      const peerIds = transformed
+        .filter((t) => !t.isGroup && t.otherUserId)
+        .map((t) => t.otherUserId as string);
+      if (peerIds.length > 0) {
+        const presenceResults = await Promise.all(
+          peerIds.map((uid) =>
+            apiClient
+              .get(`/messages/presence/${encodeURIComponent(uid)}`)
+              .then((r) => ({ uid, online: Boolean(r.data?.data?.is_online) }))
+              .catch(() => ({ uid, online: false })),
+          ),
+        );
+        const onlineByUid = new Map(presenceResults.map((p) => [p.uid, p.online]));
+        setConversations((prev) =>
+          prev.map((c) => (c.otherUserId ? { ...c, online: onlineByUid.get(c.otherUserId) ?? c.online } : c)),
+        );
       }
     } catch (err) {
       console.log('Error loading conversations:', err);
+      setConversations([]);
     } finally { setLoading(false); }
-  };
+  }, []);
 
-  const formatTimeAgo = (dateStr: string) => {
-    const now = new Date();
-    const date = new Date(dateStr);
-    const diffMs = now.getTime() - date.getTime();
-    const diffH = Math.floor(diffMs / 3600000);
-    if (diffH < 1) return 'Maintenant';
-    if (diffH < 24) return `${diffH}h`;
-    const diffD = Math.floor(diffH / 24);
-    if (diffD === 1) return 'Hier';
-    if (diffD < 7) return ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'][date.getDay()];
-    return `${date.getDate()}/${date.getMonth() + 1}`;
-  };
+  useEffect(() => {
+    void loadConversations();
+    void loadRealUsers();
+    void loadRequestCount();
+    void loadStories();
+  }, [loadConversations, loadRealUsers, loadRequestCount, loadStories]);
+
+  /** Rafraîchit la liste à chaque retour sur l'écran (badge non-lu, dernier message, stories). */
+  useFocusEffect(
+    useCallback(() => {
+      void loadConversations();
+      void loadRequestCount();
+      void loadStories();
+    }, [loadConversations, loadRequestCount, loadStories]),
+  );
+
+  /**
+   * Temps réel : présence en ligne (point vert), nouveaux messages, lectures.
+   * Tous les events sont relayés par `socketService` dès la connexion globale (`_layout.tsx`).
+   *
+   * Backend émissions (cf. `backend/src/services/message.service.ts`) :
+   *  - `message:unread` → vers `user:{userId}` à chaque changement de compteur (nouveau msg, mark read).
+   *  - `message:read`   → vers `conversation:{id}` lors d'une lecture (read receipt).
+   *  - `presence:update` → vers chaque peer 1-1 à la connexion / déconnexion d'un utilisateur.
+   */
+  useEffect(() => {
+    const offPresence = socketService.on('presence:update', (data: { userId: string; isOnline: boolean }) => {
+      if (!data?.userId) return;
+      setConversations((prev) =>
+        prev.map((c) => (c.otherUserId === data.userId ? { ...c, online: !!data.isOnline } : c)),
+      );
+    });
+    const offNew = socketService.on('new_message', () => {
+      void loadConversations();
+    });
+    const offUnread = socketService.on('message:unread', (data: { conversationId?: string; unread?: number }) => {
+      if (!data?.conversationId) return;
+      const n = Math.max(0, Number(data.unread) || 0);
+      setConversations((prev) =>
+        prev.map((c) => (c.id === data.conversationId ? { ...c, unread: n, isRead: n === 0 } : c)),
+      );
+    });
+    const offRead = socketService.on('message:read', (data: { conversationId?: string }) => {
+      if (!data?.conversationId) return;
+      setConversations((prev) =>
+        prev.map((c) => (c.id === data.conversationId ? { ...c, unread: 0, isRead: true } : c)),
+      );
+    });
+    return () => {
+      offPresence();
+      offNew();
+      offUnread();
+      offRead();
+    };
+  }, [loadConversations]);
 
   const startConversation = async (user: any) => {
     try {
@@ -127,8 +261,8 @@ export default function MessagesListScreen() {
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    Promise.all([loadConversations(), loadRealUsers()]).finally(() => setRefreshing(false));
-  }, []);
+    Promise.all([loadConversations(), loadRealUsers(), loadRequestCount()]).finally(() => setRefreshing(false));
+  }, [loadConversations, loadRealUsers, loadRequestCount]);
 
   const totalUnread = conversations.reduce((sum, c) => sum + c.unread, 0);
   const filteredConversations = searchQuery
@@ -175,19 +309,37 @@ export default function MessagesListScreen() {
     );
   };
 
+  /**
+   * Tap sur une conversation :
+   * 1. Optimistic UI : badge orange disparaît instantanément côté liste.
+   * 2. Persiste côté serveur via `PUT /messages/:id/read` (best effort).
+   * 3. Navigue vers l'écran de conversation (qui rejouera également le mark-as-read).
+   */
+  const openConversation = useCallback((item: Conversation) => {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === item.id ? { ...c, unread: 0, isRead: true } : c)),
+    );
+    apiClient
+      .put(`/messages/${encodeURIComponent(item.id)}/read`, {})
+      .catch(() => {
+        /* best effort */
+      });
+    router.push({
+      pathname: '/messages/[id]',
+      params: {
+        id: item.id,
+        name: item.name,
+        avatar: item.avatar,
+        ...(item.otherUserId ? { otherUserId: item.otherUserId } : {}),
+      },
+    });
+  }, []);
+
   const renderConversation = ({ item, index }: { item: Conversation; index: number }) => (
     <TouchableOpacity
       testID={index === 0 ? 'messages-first-conversation' : undefined}
       style={styles.conversationItem}
-      onPress={() => router.push({
-        pathname: '/messages/[id]',
-        params: {
-          id: item.id,
-          name: item.name,
-          avatar: item.avatar,
-          ...(item.otherUserId ? { otherUserId: item.otherUserId } : {}),
-        },
-      })}
+      onPress={() => openConversation(item)}
       activeOpacity={0.7}
     >
       <View style={styles.avatarContainer}>
@@ -224,26 +376,6 @@ export default function MessagesListScreen() {
       </TouchableOpacity>
     );
   };
-
-  const renderCallItem = ({ item }: { item: any }) => (
-    <TouchableOpacity style={styles.callItem}>
-      <Image source={{ uri: item.avatar }} style={styles.callAvatar} />
-      <View style={styles.callInfo}>
-        <Text style={[styles.callName, item.missed && styles.callMissed]}>{item.name}</Text>
-        <View style={styles.callMetaRow}>
-          <Ionicons
-            name={(item.type === 'incoming' ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline') as React.ComponentProps<typeof Ionicons>['name']}
-            size={14}
-            color={item.missed ? Colors.error : Colors.success}
-          />
-          <Text style={styles.callTime}>{item.time}</Text>
-        </View>
-      </View>
-      <TouchableOpacity style={styles.callAction}>
-        <Ionicons name={item.isVideo ? 'videocam' : 'call'} size={22} color={Colors.primary} />
-      </TouchableOpacity>
-    </TouchableOpacity>
-  );
 
   // Contacts overlay
   if (showContacts) {
@@ -294,6 +426,18 @@ export default function MessagesListScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>AfriChat</Text>
         <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.headerActionBtn}
+            onPress={() => router.push('/messages/requests' as any)}
+            accessibilityLabel="Demandes de messages"
+          >
+            <Ionicons name="mail-unread-outline" size={22} color={Colors.text} />
+            {requestCount > 0 && (
+              <View style={styles.headerBadge}>
+                <Text style={styles.headerBadgeText}>{requestCount > 9 ? '9+' : requestCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
           <TouchableOpacity style={styles.headerActionBtn} onPress={() => setSearchVisible(!searchVisible)}>
             <Ionicons name="search" size={22} color={Colors.text} />
           </TouchableOpacity>
@@ -365,18 +509,89 @@ export default function MessagesListScreen() {
       )}
 
       {activeTab === 1 && (
-        <View style={styles.statusContainer}>
-          <TouchableOpacity style={styles.myStatusCard}>
+        <ScrollViewWrapper>
+          <TouchableOpacity
+            style={styles.myStatusCard}
+            onPress={() => router.push('/stories' as never)}
+            accessibilityLabel="Ajouter un statut"
+            activeOpacity={0.85}
+          >
             <View style={styles.myStatusAvatar}>
-              <Image source={{ uri: 'https://i.pravatar.cc/150?img=8' }} style={styles.statusAvatarImg} />
-              <View style={styles.addStatusBadge}><Ionicons name="add" size={14} color="#FFF" /></View>
+              <Image source={{ uri: myAvatarUri }} style={styles.statusAvatarImg} />
+              <View style={styles.addStatusBadge}>
+                <Ionicons name="add" size={14} color="#FFF" />
+              </View>
             </View>
-            <View>
-              <Text style={styles.myStatusTitle}>Mon statut</Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.myStatusTitle} numberOfLines={1}>
+                {myFullName}
+              </Text>
               <Text style={styles.myStatusSubtitle}>Appuyez pour ajouter un statut</Text>
             </View>
+            <Ionicons name="camera" size={20} color={Colors.textMuted} />
           </TouchableOpacity>
-        </View>
+
+          {storyFeed.filter((s) => !s.is_self && (s.has_story || s.is_live)).length > 0 ? (
+            <Text style={styles.statusSectionTitle}>Mises à jour récentes</Text>
+          ) : (
+            <View style={styles.statusEmpty}>
+              <Ionicons name="ellipse-outline" size={40} color={Colors.textMuted} />
+              <Text style={styles.statusEmptyTitle}>Aucun statut récent</Text>
+              <Text style={styles.statusEmptyText}>
+                Les statuts de vos contacts s'afficheront ici pendant 24 heures.
+              </Text>
+            </View>
+          )}
+
+          {storyFeed
+            .filter((s) => !s.is_self && (s.has_story || s.is_live))
+            .map((s) => {
+              const ringColor = s.is_live
+                ? '#FF2D55'
+                : s.has_unseen_story
+                  ? Colors.primary
+                  : 'rgba(255,255,255,0.25)';
+              const sub = s.is_live
+                ? 'En direct'
+                : s.has_unseen_story
+                  ? 'Nouveau · 24 h'
+                  : 'Vu';
+              const peerAvatar =
+                toAbsoluteMediaUrl(s.profile_image || '') ||
+                `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                  s.full_name || s.username || 'U',
+                )}&background=FF6B00&color=fff`;
+              return (
+                <TouchableOpacity
+                  key={s.id}
+                  style={styles.statusItem}
+                  activeOpacity={0.75}
+                  onPress={() => {
+                    if (s.is_live && s.live_id) {
+                      router.push({ pathname: '/live/[id]', params: { id: s.live_id } } as never);
+                    } else {
+                      router.push({ pathname: '/stories', params: { userId: s.id } } as never);
+                    }
+                  }}
+                >
+                  <View style={[styles.statusAvatarRing, { borderColor: ringColor }]}>
+                    <Image source={{ uri: peerAvatar }} style={styles.statusAvatarImg} />
+                    {s.is_live ? (
+                      <View style={styles.statusLiveBadge}>
+                        <Text style={styles.statusLiveBadgeText}>LIVE</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.statusName} numberOfLines={1}>
+                      {s.full_name || s.username || 'Contact'}
+                    </Text>
+                    <Text style={styles.statusSub}>{sub}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+        </ScrollViewWrapper>
       )}
 
       {activeTab === 2 && (
@@ -393,6 +608,10 @@ export default function MessagesListScreen() {
         style={[styles.fab, { bottom: insets.bottom + 20 }]}
         onPress={() => {
           if (activeTab === 0) setShowContacts(true);
+          else if (activeTab === 1) router.push('/stories' as never);
+          else if (activeTab === 2) {
+            Alert.alert('Appels', 'Lancez un appel depuis une conversation : ouvrez la discussion puis touchez le bouton 📞 ou 📹.');
+          }
         }}
       >
         <Ionicons name={activeTab === 0 ? 'chatbubble' : activeTab === 1 ? 'camera' : 'call'} size={24} color="#FFF" />
@@ -407,7 +626,20 @@ const styles = StyleSheet.create({
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, fontSize: FontSizes.xxl, fontWeight: 'bold', color: Colors.text },
   headerActions: { flexDirection: 'row', gap: Spacing.xs },
-  headerActionBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  headerActionBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  headerBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  headerBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '800' },
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.md, marginHorizontal: Spacing.lg, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, gap: Spacing.sm, marginBottom: Spacing.sm },
   searchInput: { flex: 1, color: Colors.text, fontSize: FontSizes.md },
   tabsContainer: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: Colors.border, paddingHorizontal: Spacing.lg },
@@ -449,10 +681,52 @@ const styles = StyleSheet.create({
   statusContainer: { flex: 1, paddingTop: Spacing.md },
   myStatusCard: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, gap: Spacing.md },
   myStatusAvatar: { position: 'relative' },
-  statusAvatarImg: { width: 52, height: 52, borderRadius: 26 },
+  statusAvatarImg: { width: 52, height: 52, borderRadius: 26, backgroundColor: Colors.surface },
   addStatusBadge: { position: 'absolute', bottom: 0, right: 0, width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.background },
   myStatusTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600' },
   myStatusSubtitle: { color: Colors.textSecondary, fontSize: FontSizes.sm },
+  statusSectionTitle: {
+    color: Colors.textMuted,
+    fontSize: FontSizes.xs,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.sm,
+  },
+  statusItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  statusAvatarRing: {
+    position: 'relative',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 2.5,
+    padding: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusLiveBadge: {
+    position: 'absolute',
+    bottom: -4,
+    alignSelf: 'center',
+    backgroundColor: '#FF2D55',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  statusLiveBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '800' },
+  statusName: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600' },
+  statusSub: { color: Colors.textSecondary, fontSize: FontSizes.xs, marginTop: 2 },
+  statusEmpty: { alignItems: 'center', paddingHorizontal: 30, paddingVertical: 60, gap: 8 },
+  statusEmptyTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '700' },
+  statusEmptyText: { color: Colors.textSecondary, fontSize: FontSizes.sm, textAlign: 'center', lineHeight: 18 },
   // Calls
   callItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, gap: Spacing.md },
   callAvatar: { width: 48, height: 48, borderRadius: 24 },

@@ -28,7 +28,7 @@ export default function CourseDetailScreen() {
         <TouchableOpacity><Ionicons name="bookmark-outline" size={24} color={Colors.text} /></TouchableOpacity>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <ScrollView key={String(id)} showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <Image source={{ uri: 'https://picsum.photos/400/200?random=150' }} style={styles.courseImage} />
         <Text style={styles.courseTitle}>Developpement Mobile React Native</Text>
         <View style={styles.instructorRow}>

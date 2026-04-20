@@ -71,7 +71,7 @@ export function useOfflineData<T>(options: UseOfflineDataOptions<T>): UseOffline
           setLastUpdated(Date.now());
           await OfflineStorage.set(cacheKey, freshData, ttl);
         }
-      } catch (e) {
+      } catch (_e) {
         // Use cached data on failure
         if (!cached.data && mounted.current) {
           setData(fallback);

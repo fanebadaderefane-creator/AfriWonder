@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,8 +11,17 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Modal,
+  Pressable,
+  Share,
+  Alert,
+  ActionSheetIOS,
+  Linking,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Clipboard from 'expo-clipboard';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
+import { useAppTheme } from '../../src/theme/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -21,12 +30,29 @@ import apiClient from '../../src/api/client';
 import { useAuthStore } from '../../src/store/authStore';
 import { useAgoraLiveRtc } from '../../src/hooks/useAgoraLiveRtc';
 import socketService from '../../src/services/socketService';
+import { LiveGiftsPanel, useGiftAnimations } from './gifts';
+import { tryEnterPictureInPicture } from '../../src/live/liveNativeExtras';
+import { resolveLiveJoinGeo } from '../../src/live/liveViewerGeo';
 
 const { width, height } = Dimensions.get('window');
+const LIVE_REMINDER_KEY = (creatorId: string) => `afw_live_reminder_${creatorId}`;
+const CHAT_MAX = 150;
+const CHAT_PER_MIN = 5;
+
+function formatCompactCount(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return '0';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}K`;
+  return String(Math.round(n));
+}
 
 interface LiveMessage {
   id: string;
   text: string;
+  is_question?: boolean;
+  senderId?: string;
+  sender_role?: string;
+  is_top_supporter?: boolean;
   user: { name: string; avatar: string };
 }
 
@@ -36,9 +62,15 @@ function normalizeLiveId(raw: string | string[] | undefined): string {
 }
 
 function mapChatRow(m: Record<string, unknown>): LiveMessage {
+  const badges = m.sender_badges as { is_top_supporter?: boolean } | undefined;
+  const sid = String(m.sender_id ?? '').trim();
   return {
     id: String(m.id ?? `${Date.now()}-${Math.random()}`),
     text: String(m.message ?? m.text ?? ''),
+    is_question: Boolean(m.is_question),
+    senderId: sid || undefined,
+    sender_role: String(m.sender_role ?? ''),
+    is_top_supporter: Boolean(badges?.is_top_supporter),
     user: {
       name: String(m.sender_name ?? m.userName ?? 'Anonyme'),
       avatar: String(m.sender_avatar ?? m.avatar ?? 'https://i.pravatar.cc/150?img=12'),
@@ -46,8 +78,28 @@ function mapChatRow(m: Record<string, unknown>): LiveMessage {
   };
 }
 
+function liveChatViewerColor(m: LiveMessage, creatorId: string | null): string {
+  if (creatorId && m.senderId && m.senderId === creatorId) return '#FBBF24';
+  if (m.sender_role === 'moderator') return '#60A5FA';
+  if (m.is_top_supporter) return '#C084FC';
+  return Colors.primary;
+}
+
+const REPORT_REASONS = [
+  { id: 'spam', label: 'Spam / publicité' },
+  { id: 'nudity', label: 'Contenu adulte' },
+  { id: 'violence', label: 'Violence' },
+  { id: 'harassment', label: 'Harcèlement' },
+  { id: 'other', label: 'Autre' },
+];
+
+function formatScheduledFr(ms: number): string {
+  return new Date(ms).toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short' });
+}
+
 export default function LiveStreamViewerScreen() {
   const insets = useSafeAreaInsets();
+  const { colors, mode } = useAppTheme();
   const { id: rawId } = useLocalSearchParams<{ id: string | string[] }>();
   const liveId = useMemo(() => normalizeLiveId(rawId), [rawId]);
 
@@ -56,6 +108,9 @@ export default function LiveStreamViewerScreen() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const [messages, setMessages] = useState<LiveMessage[]>([]);
+  const [topDonors, setTopDonors] = useState<
+    { rank?: number; sender_id?: string; user_id?: string; sender_name?: string; total_amount_fcfa?: number; total_amount?: number; user?: { id?: string } }[]
+  >([]);
   const [newMessage, setNewMessage] = useState('');
   const [viewers, setViewers] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -66,11 +121,64 @@ export default function LiveStreamViewerScreen() {
   const [streamerAvatar, setStreamerAvatar] = useState('https://i.pravatar.cc/150?img=1');
   const [posterUrl, setPosterUrl] = useState<string | null>(null);
   const [sessionId] = useState(() => `${Date.now()}`);
+  const [creatorId, setCreatorId] = useState<string | null>(null);
+  const [ageRestriction, setAgeRestriction] = useState<string>('all');
+  const [ageGateOk, setAgeGateOk] = useState(false);
+  const [streamStatus, setStreamStatus] = useState<'live' | 'scheduled' | 'ended' | null>(null);
+  const [scheduledAtMs, setScheduledAtMs] = useState<number | null>(null);
+  const [showProfile, setShowProfile] = useState(false);
+  const [bellOn, setBellOn] = useState(false);
+  const [isQuestion, setIsQuestion] = useState(false);
+  const [broadcastTimer, setBroadcastTimer] = useState<{ end_at_ms: number; label: string } | null>(null);
+  const [, setBroadcastTimerTick] = useState(0);
+  const [hostCaptionLine, setHostCaptionLine] = useState<string | null>(null);
+  const [showCaptions, setShowCaptions] = useState(true);
+  const chatTimesRef = useRef<number[]>([]);
+  const reactionCooldownRef = useRef(0);
 
-  const { agoraJoined, agoraError, AgoraRemoteView } = useAgoraLiveRtc({
+  const { animations, removeAnimation, GiftAnimationBubble, GiftFullscreenHost } = useGiftAnimations(liveId || '');
+
+  const fetchTopDonors = useCallback(async (id: string) => {
+    try {
+      const res = await apiClient.get(`/live/${encodeURIComponent(id)}/top-donors?limit=3`);
+      const raw = res.data?.data ?? res.data;
+      const list = Array.isArray(raw) ? raw : [];
+      setTopDonors(list.slice(0, 3));
+    } catch {
+      setTopDonors([]);
+    }
+  }, []);
+
+  const topDonorIdSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const d of topDonors) {
+      const row = d as { sender_id?: string; user_id?: string; user?: { id?: string } };
+      const id = String(row.sender_id || row.user_id || row.user?.id || '').trim();
+      if (id) s.add(id);
+    }
+    return s;
+  }, [topDonors]);
+
+  const visibleMessages = useMemo(
+    () =>
+      messages.map((m) => ({
+        ...m,
+        is_top_supporter: Boolean(m.is_top_supporter || (m.senderId && topDonorIdSet.has(m.senderId))),
+      })),
+    [messages, topDonorIdSet],
+  );
+
+  const liveInteractionsEnabled = streamStatus === 'live';
+
+  const { agoraJoined, agoraError, AgoraRemoteView, AgoraRemoteGrid, remoteUids } = useAgoraLiveRtc({
     liveId: liveId || null,
     role: 'audience',
-    enabled: isAuthenticated && !!liveId && loading === false,
+    enabled:
+      isAuthenticated &&
+      !!liveId &&
+      loading === false &&
+      ((ageRestriction !== '18+' && ageRestriction !== '13+') || ageGateOk) &&
+      liveInteractionsEnabled,
   });
 
   useEffect(() => {
@@ -83,11 +191,15 @@ export default function LiveStreamViewerScreen() {
       return;
     }
     setLoading(true);
+    setStreamStatus(null);
+    setScheduledAtMs(null);
     try {
       const res = await apiClient.get(`/live/${encodeURIComponent(liveId)}`);
       const s = (res.data?.data ?? res.data) as Record<string, unknown> | null;
       if (s) {
         setStreamTitle(String(s.title ?? 'Live'));
+        const cid = String(s.creator_id ?? '').trim();
+        if (cid) setCreatorId(cid);
         const creator = s.creator as Record<string, unknown> | undefined;
         setStreamerName(String(creator?.full_name ?? creator?.username ?? s.creator_name ?? 'Créateur'));
         const av = String(creator?.avatar_url ?? creator?.profile_image ?? '').trim();
@@ -95,87 +207,397 @@ export default function LiveStreamViewerScreen() {
         if (typeof s.viewers_count === 'number') setViewers(s.viewers_count);
         const thumb = String(s.thumbnail_url ?? '').trim();
         if (thumb) setPosterUrl(thumb);
+        const ar = String(s.age_restriction ?? 'all');
+        setAgeRestriction(ar);
+        const needsAck = Boolean(s.needs_age_ack_for_viewer);
+        if (ar === '18+' || ar === '13+') {
+          setAgeGateOk(!needsAck);
+        } else {
+          setAgeGateOk(true);
+        }
+        const stRaw = String(s.status ?? 'live').toLowerCase();
+        const stNorm: 'live' | 'scheduled' | 'ended' =
+          stRaw === 'scheduled' || stRaw === 'ended' ? stRaw : 'live';
+        setStreamStatus(stNorm);
+        if (stNorm !== 'live') setBroadcastTimer(null);
+        const rawSat = s.scheduled_at as string | Date | undefined | null;
+        let satMs: number | null = null;
+        if (rawSat) {
+          const parsed =
+            typeof rawSat === 'string'
+              ? Date.parse(rawSat)
+              : rawSat instanceof Date
+                ? rawSat.getTime()
+                : NaN;
+          if (Number.isFinite(parsed)) satMs = parsed;
+        }
+        setScheduledAtMs(satMs);
         const rawMsgs = s.chat_messages;
         if (Array.isArray(rawMsgs) && rawMsgs.length) {
           setMessages(
             (rawMsgs as Record<string, unknown>[])
               .filter((m) => m && !m.is_deleted)
-              .slice(-30)
-              .map((m) => mapChatRow(m))
+              .slice(-40)
+              .map((m) => mapChatRow(m)),
           );
         }
+        const c = cid || String(creator?.id ?? '').trim();
+        if (c && isAuthenticated && user?.id && c !== user.id) {
+          try {
+            const br = await apiClient.get(`/live/creator/${encodeURIComponent(c)}/bell`);
+            const bd = br.data?.data ?? br.data;
+            if (typeof (bd as { subscribed?: boolean })?.subscribed === 'boolean') {
+              setBellOn(Boolean((bd as { subscribed?: boolean }).subscribed));
+            } else {
+              const v = await AsyncStorage.getItem(LIVE_REMINDER_KEY(c));
+              setBellOn(v === '1');
+            }
+          } catch {
+            const v = await AsyncStorage.getItem(LIVE_REMINDER_KEY(c));
+            setBellOn(v === '1');
+          }
+        } else if (c) {
+          const v = await AsyncStorage.getItem(LIVE_REMINDER_KEY(c));
+          setBellOn(v === '1');
+        }
+        if (isAuthenticated && c && user?.id && c !== user.id) {
+          try {
+            const ur = await apiClient.get(`/users/${encodeURIComponent(c)}`);
+            const prof = ur.data?.data ?? ur.data;
+            const fol = (prof as { isFollowing?: boolean } | null)?.isFollowing;
+            if (typeof fol === 'boolean') setIsFollowing(fol);
+          } catch {
+            /* ignore */
+          }
+        } else {
+          setIsFollowing(false);
+        }
+      } else {
+        setStreamStatus('ended');
+        setStreamTitle('Live introuvable');
+        setIsFollowing(false);
       }
-    } catch {
-      /* ignore */
+    } catch (e: unknown) {
+      const st = (e as { response?: { status?: number } }).response?.status;
+      setStreamStatus('ended');
+      setStreamTitle(st === 404 ? 'Live introuvable' : 'Impossible de charger le live');
     } finally {
       setLoading(false);
     }
-  }, [liveId]);
+  }, [liveId, isAuthenticated, user?.id]);
 
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
 
   useEffect(() => {
+    if (!liveId || streamStatus !== 'live') return;
+    void fetchTopDonors(liveId);
+    const t = setInterval(() => void fetchTopDonors(liveId), 12_000);
+    return () => clearInterval(t);
+  }, [liveId, streamStatus, fetchTopDonors]);
+
+  useEffect(() => {
+    if (!broadcastTimer) return;
+    const id = setInterval(() => setBroadcastTimerTick((t) => t + 1), 500);
+    return () => clearInterval(id);
+  }, [broadcastTimer]);
+
+  useEffect(() => {
     if (!isAuthenticated || !liveId) return;
+    if (streamStatus !== 'live') return;
+    if ((ageRestriction === '18+' || ageRestriction === '13+') && !ageGateOk) return;
     void (async () => {
       try {
-        await apiClient.post(`/live/${encodeURIComponent(liveId)}/join`, { sessionId });
-      } catch {
-        /* ignore */
+        const geo = await resolveLiveJoinGeo();
+        await apiClient.post(`/live/${encodeURIComponent(liveId)}/join`, { sessionId, ...geo });
+      } catch (e: unknown) {
+        const err = e as { response?: { status?: number; data?: { error?: { code?: string; message?: string } } } };
+        const box = err.response?.data?.error;
+        const code = typeof box === 'object' && box ? box.code : undefined;
+        const msg = typeof box === 'object' && box ? box.message : '';
+        if (err.response?.status === 403 && (code === 'AGE_ACK_REQUIRED' || String(msg).toLowerCase().includes('âge'))) {
+          Alert.alert('Accès live', 'Confirmez votre âge sur la fenêtre de sécurité pour rejoindre ce direct.');
+        }
       }
     })();
-  }, [isAuthenticated, liveId, sessionId]);
+  }, [isAuthenticated, liveId, sessionId, ageRestriction, ageGateOk, streamStatus]);
 
   useEffect(() => {
     if (!liveId) return;
+    if (streamStatus !== 'live') return;
+    if ((ageRestriction === '18+' || ageRestriction === '13+') && !ageGateOk) return;
     socketService.joinLiveStream(liveId);
     const chatHandler = (raw: unknown) => {
       if (!raw || typeof raw !== 'object') return;
-      setMessages((prev) => [...prev.slice(-40), mapChatRow(raw as Record<string, unknown>)]);
+      setMessages((prev) => [...prev.slice(-50), mapChatRow(raw as Record<string, unknown>)]);
     };
     const viewerHandler = (data: unknown) => {
       const d = data as { count?: number };
       if (typeof d?.count === 'number') setViewers(d.count);
     };
+    const timerHandler = (payload: unknown) => {
+      if (payload == null) {
+        setBroadcastTimer(null);
+        return;
+      }
+      if (typeof payload !== 'object') return;
+      const p = payload as { end_at_ms?: unknown; label?: unknown };
+      const end = Number(p.end_at_ms);
+      if (!Number.isFinite(end)) {
+        setBroadcastTimer(null);
+        return;
+      }
+      setBroadcastTimer({ end_at_ms: end, label: String(p.label || '') });
+    };
+    const captionHandler = (raw: unknown) => {
+      if (!raw || typeof raw !== 'object') return;
+      const p = raw as { text?: string };
+      const t = String(p.text || '').trim();
+      if (t) setHostCaptionLine(t);
+    };
+    const raiseResolved = (raw: unknown) => {
+      if (!raw || typeof raw !== 'object') return;
+      const p = raw as { accepted?: boolean; userId?: string };
+      if (user?.id && p.userId === user.id) {
+        Alert.alert(
+          p.accepted ? 'Demande acceptée' : 'Demande refusée',
+          p.accepted ? 'Le créateur vous invite en co-host (grille).' : 'Le créateur a refusé votre demande.',
+        );
+      }
+    };
     socketService.on('live:chat', chatHandler);
     socketService.on('live:viewers', viewerHandler);
+    socketService.on('live:timer', timerHandler);
+    socketService.on('live:caption', captionHandler);
+    socketService.on('live:raise-hand:resolved', raiseResolved);
     return () => {
       socketService.off('live:chat', chatHandler);
       socketService.off('live:viewers', viewerHandler);
+      socketService.off('live:timer', timerHandler);
+      socketService.off('live:caption', captionHandler);
+      socketService.off('live:raise-hand:resolved', raiseResolved);
       socketService.leaveLiveStream(liveId);
     };
-  }, [liveId]);
+  }, [liveId, ageRestriction, ageGateOk, streamStatus, user?.id]);
 
-  const sendMessage = async () => {
-    const text = newMessage.trim();
-    if (!text || !liveId || !user) return;
+  const toggleFollow = async () => {
+    if (!isAuthenticated || !creatorId) {
+      Alert.alert('Connexion', 'Connectez-vous pour suivre ce créateur.');
+      return;
+    }
     try {
-      await apiClient.post(`/live/${encodeURIComponent(liveId)}/chat`, { message: text });
-      setNewMessage('');
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          text,
-          user: { name: 'Moi', avatar: streamerAvatar },
-        },
-      ]);
-      setNewMessage('');
+      const res = await apiClient.post(`/users/${encodeURIComponent(creatorId)}/follow`, {});
+      const d = res.data?.data ?? res.data;
+      setIsFollowing(Boolean(d?.following));
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: string } } };
+      Alert.alert('Suivi', String(err.response?.data?.error || 'Impossible de suivre'));
     }
   };
 
-  const GIFTS = [
-    { id: 'g1', name: 'Coeur', emoji: '\u2764\ufe0f', price: 100 },
-    { id: 'g2', name: 'Etoile', emoji: '\u2b50', price: 500 },
-    { id: 'g3', name: 'Diamant', emoji: '\ud83d\udc8e', price: 1000 },
-    { id: 'g4', name: 'Couronne', emoji: '\ud83d\udc51', price: 5000 },
-  ];
+  const sendMessage = async () => {
+    if (!liveInteractionsEnabled) return;
+    const text = newMessage.trim();
+    if (!text || !liveId || !user) return;
+    if (text.length > CHAT_MAX) {
+      Alert.alert('Chat', `Maximum ${CHAT_MAX} caractères.`);
+      return;
+    }
+    const now = Date.now();
+    chatTimesRef.current = chatTimesRef.current.filter((t) => now - t < 60_000);
+    if (chatTimesRef.current.length >= CHAT_PER_MIN) {
+      Alert.alert('Limite', `Max ${CHAT_PER_MIN} messages par minute (spectateur sans badge).`);
+      return;
+    }
+    try {
+      await apiClient.post(`/live/${encodeURIComponent(liveId)}/chat`, {
+        message: text,
+        ...(isQuestion ? { is_question: true } : {}),
+      });
+      chatTimesRef.current.push(now);
+      setNewMessage('');
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      Alert.alert('Chat', String(err.response?.data?.error || err.response?.data?.message || "Impossible d'envoyer"));
+    }
+  };
+
+  const sendReaction = async (type: 'heart' | 'like' | 'fire' | 'thumbs' | 'clap') => {
+    if (!liveInteractionsEnabled || !liveId || !isAuthenticated) return;
+    const now = Date.now();
+    if (now - reactionCooldownRef.current < 400) return;
+    reactionCooldownRef.current = now;
+    try {
+      await apiClient.post(`/live/${encodeURIComponent(liveId)}/reaction`, { type });
+    } catch (e: unknown) {
+      const ax = e as { response?: { status?: number; data?: { error?: { code?: string; message?: string } | string } } };
+      const code =
+        typeof ax.response?.data?.error === 'object' && ax.response?.data?.error
+          ? (ax.response.data.error as { code?: string }).code
+          : undefined;
+      if (ax.response?.status === 429 || code === 'LIVE_REACTION_COOLDOWN') {
+        /* déjà limité côté client ; message serveur optionnel */
+        return;
+      }
+    }
+  };
+
+  const raiseHand = async () => {
+    if (!liveInteractionsEnabled || !liveId || !isAuthenticated) return;
+    try {
+      await apiClient.post(`/live/${encodeURIComponent(liveId)}/raise-hand`, { raised: true });
+      Alert.alert('Demande envoyée', 'Le créateur peut accepter ou refuser ; s’il accepte, vous serez invité en co-host (grille).');
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: string } } };
+      Alert.alert('Main levée', String(err.response?.data?.error || 'Réessayez plus tard'));
+    }
+  };
+
+  const shareLive = async () => {
+    if (!liveId) return;
+    const msg = `Regarde ce live sur AfriWonder — ${streamTitle}\nhttps://afriwonder.com/live/${liveId}`;
+    try {
+      await Share.share({ message: msg });
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const shareLiveWhatsApp = async () => {
+    if (!liveId) return;
+    const text = encodeURIComponent(
+      `Regarde ce live sur AfriWonder — ${streamTitle}\nhttps://afriwonder.com/live/${liveId}`,
+    );
+    const wa = `whatsapp://send?text=${text}`;
+    try {
+      if (await Linking.canOpenURL(wa)) await Linking.openURL(wa);
+      else await shareLive();
+    } catch {
+      void shareLive();
+    }
+  };
+
+  const shareLiveFacebook = async () => {
+    if (!liveId) return;
+    const url = encodeURIComponent(`https://afriwonder.com/live/${liveId}`);
+    const fb = `https://www.facebook.com/sharer/sharer.php?u=${url}`;
+    try {
+      await Linking.openURL(fb);
+    } catch {
+      void shareLive();
+    }
+  };
+
+  const submitReportWithReason = async (reason: string) => {
+    if (!liveId || !isAuthenticated) return;
+    try {
+      await apiClient.post('/moderation/report', {
+        contentType: 'live_stream',
+        contentId: liveId,
+        reason,
+        description: `Signalement live ${liveId}`,
+      });
+      Alert.alert('Merci', 'Signalement envoyé.');
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: string } } };
+      Alert.alert('Erreur', String(err.response?.data?.error || 'Envoi impossible'));
+    }
+  };
+
+  const toggleBell = async () => {
+    if (!creatorId) return;
+    if (!isAuthenticated) {
+      Alert.alert('Connexion', 'Connectez-vous pour activer la cloche créateur.');
+      return;
+    }
+    const next = !bellOn;
+    setBellOn(next);
+    await AsyncStorage.setItem(LIVE_REMINDER_KEY(creatorId), next ? '1' : '0');
+    try {
+      await apiClient.post(`/live/creator/${encodeURIComponent(creatorId)}/bell`, { enabled: next });
+    } catch {
+      /* préférence locale conservée */
+    }
+    Alert.alert(
+      next ? 'Cloche activée' : 'Cloche désactivée',
+      next
+        ? 'Vous recevrez une notification pour les prochains lives de ce créateur (serveur + appareil).'
+        : 'Préférence enregistrée.',
+    );
+  };
+
+  const confirmAgeAndAck = async () => {
+    if (!liveId || !isAuthenticated) {
+      Alert.alert('Connexion', 'Connectez-vous pour confirmer l’accès à ce live.');
+      return;
+    }
+    const restriction = ageRestriction === '18+' ? '18+' : '13+';
+    try {
+      await apiClient.post(`/live/${encodeURIComponent(liveId)}/age-ack`, { restriction });
+      setAgeGateOk(true);
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: { message?: string } | string } } };
+      const raw = err.response?.data?.error;
+      const msg =
+        typeof raw === 'object' && raw && 'message' in raw
+          ? String((raw as { message?: string }).message)
+          : String(raw || 'Impossible d’enregistrer la confirmation');
+      Alert.alert('Âge', msg);
+    }
+  };
+
+  const copyLiveLink = async () => {
+    if (!liveId) return;
+    const url = `https://afriwonder.com/live/${liveId}`;
+    try {
+      await Clipboard.setStringAsync(url);
+      Alert.alert('Lien', 'Lien du live copié.');
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const openReportMenu = () => {
+    if (!liveId) return;
+    if (!isAuthenticated) {
+      Alert.alert('Connexion', 'Connectez-vous pour signaler ce live.');
+      return;
+    }
+    if (Platform.OS === 'ios') {
+      const labels = REPORT_REASONS.map((r) => r.label);
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Annuler', ...labels, 'Copier le lien'],
+          cancelButtonIndex: 0,
+        },
+        (idx) => {
+          if (idx === 0) return;
+          if (idx === labels.length + 1) {
+            void copyLiveLink();
+            return;
+          }
+          const r = REPORT_REASONS[idx - 1];
+          if (r) void submitReportWithReason(r.id);
+        },
+      );
+    } else {
+      Alert.alert('Signaler le live', 'Choisissez une raison', [
+        ...REPORT_REASONS.map((r) => ({
+          text: r.label,
+          onPress: () => void submitReportWithReason(r.id),
+        })),
+        { text: 'Copier le lien', onPress: () => void copyLiveLink() },
+        { text: 'Annuler', style: 'cancel' },
+      ]);
+    }
+  };
+
+  const bg = mode === 'dark' ? colors.background : colors.background;
 
   if (!liveId) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
+      <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center', backgroundColor: bg }]}>
         <Text style={{ color: Colors.textMuted }}>Live introuvable</Text>
         <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }} accessibilityLabel="Retour">
           <Text style={{ color: Colors.primary }}>Retour</Text>
@@ -186,17 +608,69 @@ export default function LiveStreamViewerScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center' }]}>
+      <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', backgroundColor: bg }]}>
         <ActivityIndicator color={Colors.primary} />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: bg }]}>
+      <Modal visible={(ageRestriction === '18+' || ageRestriction === '13+') && !ageGateOk} transparent animationType="fade">
+        <View style={styles.ageModal}>
+          <Text style={styles.ageTitle}>
+            {ageRestriction === '18+' ? 'Live réservé aux 18+' : 'Live réservé aux 13+'}
+          </Text>
+          <Text style={styles.ageText}>
+            {ageRestriction === '18+'
+              ? 'Confirmation enregistrée côté serveur (traçabilité CDC) avant d’accéder au direct.'
+              : 'Confirmation enregistrée côté serveur avant d’accéder au direct.'}
+          </Text>
+          <TouchableOpacity
+            style={styles.ageBtn}
+            onPress={() => void confirmAgeAndAck()}
+            accessibilityLabel={ageRestriction === '18+' ? 'Je confirme avoir 18 ans ou plus' : 'Je confirme avoir 13 ans ou plus'}
+          >
+            <Text style={styles.ageBtnText}>
+              {ageRestriction === '18+' ? 'J’ai 18 ans ou plus — continuer' : 'J’ai 13 ans ou plus — continuer'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.ageLeave} onPress={() => router.back()} accessibilityLabel="Quitter">
+            <Text style={styles.ageLeaveText}>Quitter</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      <Modal visible={showProfile} transparent animationType="slide">
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowProfile(false)}>
+          <Pressable style={styles.profileCard} onPress={(e) => e.stopPropagation()}>
+            <Image source={{ uri: streamerAvatar }} style={styles.profileAvatar} />
+            <Text style={styles.profileName}>{streamerName}</Text>
+            <TouchableOpacity style={styles.profileFollow} onPress={() => void toggleFollow()}>
+              <Text style={styles.profileFollowText}>{isFollowing ? 'Abonné' : 'Suivre'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalClose} onPress={() => setShowProfile(false)}>
+              <Text style={styles.modalCloseText}>Fermer</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {animations.map((anim) => (
+        <GiftAnimationBubble key={anim.id} gift={anim} onRemove={removeAnimation} />
+      ))}
+      <GiftFullscreenHost />
+
       <View style={styles.videoBackground}>
         {Platform.OS !== 'web' && agoraJoined ? (
-          <AgoraRemoteView style={{ width, height }} />
+          <>
+            <AgoraRemoteView style={{ width, height }} />
+            {remoteUids.length > 1 ? (
+              <View style={styles.cohostStripViewer} pointerEvents="box-none">
+                <AgoraRemoteGrid uids={remoteUids.slice(1)} maxCells={4} style={{}} />
+              </View>
+            ) : null}
+          </>
         ) : posterUrl ? (
           <Image source={{ uri: posterUrl }} style={styles.backgroundImage} />
         ) : (
@@ -207,6 +681,33 @@ export default function LiveStreamViewerScreen() {
             <Text style={styles.agoraBannerText}>{agoraError}</Text>
           </View>
         ) : null}
+
+        {streamStatus === 'scheduled' ? (
+          <View style={styles.statusOverlay} pointerEvents="box-none">
+            <Ionicons name="calendar-outline" size={32} color="#93c5fd" />
+            <Text style={styles.statusTitle}>Live programmé</Text>
+            <Text style={styles.statusSub}>
+              {scheduledAtMs != null
+                ? `Début prévu : ${formatScheduledFr(scheduledAtMs)}`
+                : 'Heure de diffusion à confirmer.'}
+            </Text>
+            <Text style={styles.statusHint}>Revenez au démarrage ou activez la cloche pour les prochains lives.</Text>
+          </View>
+        ) : null}
+        {streamStatus === 'ended' ? (
+          <View style={styles.statusOverlay} pointerEvents="box-none">
+            <Ionicons name="checkmark-circle-outline" size={32} color="#86efac" />
+            <Text style={styles.statusTitle}>Live terminé</Text>
+            <TouchableOpacity
+              style={styles.replayCta}
+              onPress={() => router.replace({ pathname: '/live/replay', params: { id: liveId } } as never)}
+              accessibilityRole="button"
+              accessibilityLabel="Voir le replay"
+            >
+              <Text style={styles.replayCtaText}>Voir le replay</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.headerOverlay}>
@@ -215,7 +716,9 @@ export default function LiveStreamViewerScreen() {
         </TouchableOpacity>
 
         <View style={styles.streamerInfo}>
-          <Image source={{ uri: streamerAvatar }} style={styles.streamerAvatar} />
+          <TouchableOpacity onPress={() => setShowProfile(true)} accessibilityLabel="Profil du créateur">
+            <Image source={{ uri: streamerAvatar }} style={styles.streamerAvatar} />
+          </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.streamerName} numberOfLines={1}>
               {streamerName}
@@ -226,16 +729,117 @@ export default function LiveStreamViewerScreen() {
           </View>
           <TouchableOpacity
             style={[styles.followBtn, isFollowing && styles.followBtnActive]}
-            onPress={() => setIsFollowing(!isFollowing)}
+            onPress={() => void toggleFollow()}
           >
             <Text style={styles.followBtnText}>{isFollowing ? 'Abonné' : 'Suivre'}</Text>
           </TouchableOpacity>
         </View>
 
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={() => void toggleBell()} style={styles.iconAct} accessibilityLabel="Cloche prochains lives">
+            <Ionicons name={bellOn ? 'notifications' : 'notifications-outline'} size={22} color={Colors.accent} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setShowCaptions((v) => !v)}
+            style={[styles.iconAct, !showCaptions && { opacity: 0.45 }]}
+            accessibilityLabel="Afficher ou masquer les sous-titres"
+          >
+            <Ionicons name="text-outline" size={22} color={Colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => void copyLiveLink()} style={styles.iconAct} accessibilityLabel="Copier le lien du live">
+            <Ionicons name="link-outline" size={22} color={Colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              if (!liveInteractionsEnabled) return;
+              void tryEnterPictureInPicture();
+            }}
+            style={[styles.iconAct, !liveInteractionsEnabled && { opacity: 0.35 }]}
+            accessibilityLabel="Picture in Picture"
+            disabled={!liveInteractionsEnabled}
+          >
+            <Ionicons name="expand-outline" size={22} color={Colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => void shareLive()} style={styles.iconAct} accessibilityLabel="Partager">
+            <Ionicons name="share-social-outline" size={22} color={Colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => void shareLiveWhatsApp()} style={styles.iconAct} accessibilityLabel="WhatsApp">
+            <Ionicons name="logo-whatsapp" size={22} color="#25D366" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => void shareLiveFacebook()} style={styles.iconAct} accessibilityLabel="Partager sur Facebook">
+            <Ionicons name="logo-facebook" size={22} color="#1877F2" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => openReportMenu()} style={styles.iconAct} accessibilityLabel="Signaler">
+            <Ionicons name="flag-outline" size={22} color="#F87171" />
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.viewersBadge}>
           <Ionicons name="eye" size={14} color={Colors.text} />
-          <Text style={styles.viewersText}>{viewers}</Text>
+          <Text style={styles.viewersText}>{formatCompactCount(viewers)}</Text>
         </View>
+      </View>
+
+      {liveInteractionsEnabled && topDonors.length > 0 ? (
+        <View style={[styles.donorStripWrap, { top: insets.top + 102 }]} pointerEvents="box-none">
+          <Text style={styles.donorStripLabel}>Top cadeaux</Text>
+          <View style={styles.donorStripRow}>
+            {topDonors.slice(0, 3).map((d, idx) => {
+              const name = String(d.sender_name || (d as { user?: { username?: string } }).user?.username || '?').slice(0, 14);
+              const amt = Number(d.total_amount_fcfa ?? d.total_amount ?? 0) || 0;
+              const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
+              return (
+                <View key={`${d.sender_id || d.user_id || idx}`} style={styles.donorChip}>
+                  <Text style={styles.donorChipMedal}>{medal}</Text>
+                  <Text style={styles.donorChipName} numberOfLines={1}>
+                    {name}
+                  </Text>
+                  <Text style={styles.donorChipAmt}>{formatCompactCount(amt)} F</Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
+      {broadcastTimer && Date.now() < broadcastTimer.end_at_ms ? (
+        <View style={[styles.liveBroadcastTimer, { top: insets.top + 56 }]} pointerEvents="none">
+          <Text style={styles.liveBroadcastTimerText} numberOfLines={2}>
+            {Math.max(0, Math.ceil((broadcastTimer.end_at_ms - Date.now()) / 1000))}s
+            {broadcastTimer.label ? ` · ${broadcastTimer.label}` : ''}
+          </Text>
+        </View>
+      ) : null}
+
+      {hostCaptionLine && showCaptions && liveInteractionsEnabled ? (
+        <View style={[styles.captionBar, { bottom: 168 + insets.bottom }]} pointerEvents="none">
+          <Text style={styles.captionText} numberOfLines={3}>
+            {hostCaptionLine}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={[styles.reactionRow, !liveInteractionsEnabled && { opacity: 0.4 }]}>
+        {(['heart', 'fire', 'thumbs', 'clap'] as const).map((t) => (
+          <TouchableOpacity
+            key={t}
+            style={styles.reactionBtn}
+            onPress={() => void sendReaction(t)}
+            disabled={!liveInteractionsEnabled}
+          >
+            <Text style={styles.reactionEmoji}>
+              {t === 'heart' ? '❤️' : t === 'fire' ? '🔥' : t === 'thumbs' ? '👍' : '👏'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+        <TouchableOpacity
+          style={styles.raiseBtn}
+          onPress={() => void raiseHand()}
+          disabled={!liveInteractionsEnabled}
+        >
+          <Ionicons name="hand-left" size={18} color="#FFF" />
+          <Text style={styles.raiseBtnText}>Main levée</Text>
+        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView
@@ -243,13 +847,19 @@ export default function LiveStreamViewerScreen() {
         style={styles.messagesContainer}
       >
         <FlatList
-          data={messages}
+          data={visibleMessages}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <View style={styles.messageItem}>
               <Image source={{ uri: item.user.avatar }} style={styles.msgAvatar} />
               <View style={styles.messageBubble}>
-                <Text style={styles.msgUser}>{item.user.name}</Text>
+                <Text style={[styles.msgUser, { color: liveChatViewerColor(item, creatorId) }]}>
+                  {item.sender_role === 'moderator' ? '🛡️ ' : ''}
+                  {creatorId && item.senderId === creatorId ? '⭐ ' : ''}
+                  {item.is_top_supporter ? '👑 ' : ''}
+                  {item.is_question ? '❓ ' : ''}
+                  {item.user.name}
+                </Text>
                 <Text style={styles.msgText}>{item.text}</Text>
               </View>
             </View>
@@ -258,38 +868,72 @@ export default function LiveStreamViewerScreen() {
           contentContainerStyle={styles.messagesList}
           ListEmptyComponent={
             <Text style={{ color: Colors.textMuted, textAlign: 'center', marginTop: 24 }}>
-              Aucun message pour l’instant
+              {!liveInteractionsEnabled
+                ? streamStatus === 'scheduled'
+                  ? 'Le chat s’ouvrira quand le live démarrera.'
+                  : 'Ce live est terminé — consultez le replay pour les commentaires replay.'
+                : 'Aucun message pour l’instant'}
             </Text>
           }
         />
 
-        {showGifts && (
-          <View style={styles.giftsPanel}>
-            {GIFTS.map((gift) => (
-              <TouchableOpacity key={gift.id} style={styles.giftItem}>
-                <Text style={styles.giftEmoji}>{gift.emoji}</Text>
-                <Text style={styles.giftPrice}>{gift.price}</Text>
-              </TouchableOpacity>
-            ))}
+        {showGifts && creatorId ? (
+          <View style={styles.giftsOverlay}>
+            <TouchableOpacity style={styles.giftsBackdrop} activeOpacity={1} onPress={() => setShowGifts(false)} />
+            <LiveGiftsPanel liveId={liveId} creatorId={creatorId} visible={showGifts} onClose={() => setShowGifts(false)} />
           </View>
-        )}
+        ) : null}
 
         <View style={[styles.inputBar, { paddingBottom: insets.bottom + Spacing.sm }]}>
-          <TextInput
-            style={styles.messageInput}
-            placeholder={isAuthenticated ? 'Envoyer un message…' : 'Connectez-vous pour chatter'}
-            placeholderTextColor={Colors.textMuted}
-            value={newMessage}
-            onChangeText={setNewMessage}
-            editable={isAuthenticated}
-          />
-          <TouchableOpacity onPress={() => setShowGifts(!showGifts)} style={styles.giftBtn}>
+          <View style={{ flex: 1 }}>
+            <TextInput
+              style={styles.messageInput}
+              placeholder={
+                !liveInteractionsEnabled
+                  ? streamStatus === 'scheduled'
+                    ? 'Chat indisponible avant le direct'
+                    : 'Live terminé'
+                  : isAuthenticated
+                    ? `Message (max ${CHAT_MAX})`
+                    : 'Connectez-vous pour chatter'
+              }
+              placeholderTextColor={Colors.textMuted}
+              value={newMessage}
+              onChangeText={(v) => setNewMessage(v.slice(0, CHAT_MAX))}
+              editable={
+                isAuthenticated &&
+                ((ageRestriction !== '18+' && ageRestriction !== '13+') || ageGateOk) &&
+                liveInteractionsEnabled
+              }
+              maxLength={CHAT_MAX}
+            />
+            <View style={styles.questionRow}>
+              <Text style={styles.qLabel}>Question</Text>
+              <TouchableOpacity
+                onPress={() => liveInteractionsEnabled && setIsQuestion(!isQuestion)}
+                style={[styles.qChip, isQuestion && styles.qChipOn, !liveInteractionsEnabled && { opacity: 0.4 }]}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: isQuestion }}
+                disabled={!liveInteractionsEnabled}
+              >
+                <Text style={styles.qChipText}>{isQuestion ? 'Oui' : 'Non'}</Text>
+              </TouchableOpacity>
+              <Text style={styles.charHint}>
+                {newMessage.length}/{CHAT_MAX}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            onPress={() => liveInteractionsEnabled && setShowGifts(!showGifts)}
+            style={[styles.giftBtn, !liveInteractionsEnabled && { opacity: 0.35 }]}
+            disabled={!liveInteractionsEnabled}
+          >
             <Ionicons name="gift" size={24} color={Colors.accent} />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.sendBtn, !isAuthenticated && { opacity: 0.4 }]}
+            style={[styles.sendBtn, (!isAuthenticated || !liveInteractionsEnabled) && { opacity: 0.4 }]}
             onPress={() => void sendMessage()}
-            disabled={!isAuthenticated}
+            disabled={!isAuthenticated || !liveInteractionsEnabled}
           >
             <Ionicons name="send" size={20} color={Colors.text} />
           </TouchableOpacity>
@@ -302,10 +946,18 @@ export default function LiveStreamViewerScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   videoBackground: {
     ...StyleSheet.absoluteFillObject,
+  },
+  cohostStripViewer: {
+    position: 'absolute',
+    right: 8,
+    bottom: 160,
+    left: 8,
+    zIndex: 3,
+    maxHeight: 180,
+    alignItems: 'flex-end',
   },
   backgroundImage: {
     width: '100%',
@@ -326,12 +978,85 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xs,
     textAlign: 'center',
   },
-  headerOverlay: {
+  statusOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    zIndex: 4,
+  },
+  statusTitle: {
+    color: '#FFF',
+    fontSize: FontSizes.lg,
+    fontWeight: 'bold',
+    marginTop: Spacing.md,
+    textAlign: 'center',
+  },
+  statusSub: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: FontSizes.sm,
+    marginTop: Spacing.sm,
+    textAlign: 'center',
+  },
+  statusHint: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: FontSizes.xs,
+    marginTop: Spacing.md,
+    textAlign: 'center',
+  },
+  replayCta: {
+    marginTop: Spacing.lg,
+    backgroundColor: Colors.primary,
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.pill,
+  },
+  replayCtaText: {
+    color: '#FFF',
+    fontWeight: 'bold',
+    fontSize: FontSizes.md,
+  },
+  headerOverlay: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
+    gap: Spacing.sm,
+    flexWrap: 'wrap',
+  },
+  liveBroadcastTimer: {
+    position: 'absolute',
+    left: Spacing.md,
+    right: Spacing.md,
+    zIndex: 12,
+    alignItems: 'center',
+  },
+  liveBroadcastTimerText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '800',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    textAlign: 'center',
+  },
+  captionBar: {
+    position: 'absolute',
+    left: Spacing.md,
+    right: Spacing.md,
+    zIndex: 11,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  captionText: {
+    color: '#FFF',
+    fontSize: FontSizes.sm,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   closeBtn: {
     width: 40,
@@ -341,6 +1066,7 @@ const styles = StyleSheet.create({
   },
   streamerInfo: {
     flex: 1,
+    minWidth: 120,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -348,6 +1074,12 @@ const styles = StyleSheet.create({
     padding: Spacing.sm,
     gap: Spacing.sm,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  iconAct: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   streamerAvatar: {
     width: 36,
     height: 36,
@@ -393,6 +1125,66 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     fontWeight: '600',
   },
+  donorStripWrap: {
+    position: 'absolute',
+    left: Spacing.sm,
+    right: Spacing.sm,
+    zIndex: 11,
+    alignItems: 'stretch',
+  },
+  donorStripLabel: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 10,
+    fontWeight: '800',
+    marginBottom: 4,
+    textShadowColor: 'rgba(0,0,0,0.75)',
+    textShadowRadius: 4,
+    textShadowOffset: { width: 0, height: 1 },
+  },
+  donorStripRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: BorderRadius.md,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  donorChip: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+  },
+  donorChipMedal: { fontSize: 14, marginBottom: 2 },
+  donorChipName: { color: '#FFF', fontSize: 10, fontWeight: '700', textAlign: 'center' },
+  donorChipAmt: { color: '#FDE68A', fontSize: 10, fontWeight: '800', marginTop: 2 },
+  reactionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    gap: 10,
+    marginBottom: Spacing.sm,
+  },
+  reactionBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reactionEmoji: { fontSize: 20 },
+  raiseBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 'auto',
+    backgroundColor: 'rgba(233,30,99,0.85)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.pill,
+  },
+  raiseBtnText: { color: '#FFF', fontWeight: '700', fontSize: FontSizes.xs },
   messagesContainer: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -428,36 +1220,16 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontSize: FontSizes.sm,
   },
-  giftsPanel: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.xl,
-    borderTopLeftRadius: BorderRadius.lg,
-    borderTopRightRadius: BorderRadius.lg,
-  },
-  giftItem: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  giftEmoji: {
-    fontSize: 32,
-  },
-  giftPrice: {
-    color: Colors.accent,
-    fontSize: FontSizes.xs,
-    fontWeight: '600',
-  },
+  giftsOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 40, justifyContent: 'flex-end' },
+  giftsBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
   inputBar: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.sm,
     gap: Spacing.sm,
   },
   messageInput: {
-    flex: 1,
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: BorderRadius.pill,
     paddingHorizontal: Spacing.lg,
@@ -465,6 +1237,23 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontSize: FontSizes.md,
   },
+  questionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+    paddingLeft: 4,
+  },
+  qLabel: { color: Colors.textMuted, fontSize: 11 },
+  qChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  qChipOn: { backgroundColor: Colors.primary },
+  qChipText: { color: Colors.text, fontSize: 11, fontWeight: '700' },
+  charHint: { color: Colors.textMuted, fontSize: 10, marginLeft: 'auto' },
   giftBtn: {
     width: 40,
     height: 40,
@@ -479,4 +1268,72 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  ageModal: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  ageTitle: { color: '#FFF', fontSize: FontSizes.xl, fontWeight: '800', textAlign: 'center' },
+  ageText: { color: 'rgba(255,255,255,0.8)', marginTop: 12, textAlign: 'center', fontSize: FontSizes.md },
+  ageBtn: {
+    marginTop: 24,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: BorderRadius.md,
+  },
+  ageBtnText: { color: '#FFF', fontWeight: '800' },
+  ageLeave: { marginTop: 16, padding: 12 },
+  ageLeaveText: { color: Colors.textSecondary, fontSize: FontSizes.md },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    padding: Spacing.lg,
+  },
+  profileCard: {
+    alignSelf: 'center',
+    backgroundColor: '#141520',
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    minWidth: 260,
+  },
+  profileAvatar: { width: 80, height: 80, borderRadius: 40, marginBottom: 12 },
+  profileName: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: '700' },
+  profileFollow: {
+    marginTop: 16,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.pill,
+  },
+  profileFollowText: { color: '#FFF', fontWeight: '700' },
+  modalClose: { marginTop: 16 },
+  modalCloseText: { color: Colors.textMuted, fontWeight: '600' },
+  reportCard: {
+    backgroundColor: '#141520',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+  },
+  reportTitle: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: '800', marginBottom: 12 },
+  reportRow: {
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 8,
+  },
+  reportRowActive: { borderColor: Colors.primary, backgroundColor: 'rgba(233,30,99,0.12)' },
+  reportRowText: { color: Colors.text, fontSize: FontSizes.md },
+  reportSubmit: {
+    marginTop: 12,
+    backgroundColor: '#EF4444',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+  },
+  reportSubmitText: { color: '#FFF', fontWeight: '800' },
 });

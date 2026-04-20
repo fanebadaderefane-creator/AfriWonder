@@ -7,8 +7,13 @@ import { Button } from '../../src/components/common/Button';
 import { useAuthStore } from '../../src/store/authStore';
 import { authApi } from '../../src/api/auth';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COUNTRIES } from '../../src/data/countries';
+import { SocialOAuthButtons } from '../../src/components/auth/SocialOAuthButtons';
+import { setPersonalizationPending, getPostAuthRoute } from '../../src/utils/onboardingFlow';
+
+const AFW_APP_LOGO = require('../../assets/images/pwa-icon-192.png');
 
 type RegisterMethod = 'phone' | 'email';
 
@@ -61,8 +66,8 @@ export default function RegisterScreen() {
 
     if (!formData.password) {
       newErrors.password = 'Mot de passe requis';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Minimum 6 caracteres';
+    } else if (formData.password.length < 8) {
+      newErrors.password = 'Minimum 8 caracteres';
     }
     if (formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = 'Les mots de passe ne correspondent pas';
@@ -80,7 +85,16 @@ export default function RegisterScreen() {
     
     setLoading(true);
     try {
-      const username = `${formData.firstName}${formData.lastName}`.toLowerCase().replace(/\s/g, '');
+      // Backend: username 2..30, caractères [a-zA-Z0-9_]
+      const rawUsername = `${formData.firstName}_${formData.lastName}`
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '_')
+        .replace(/[^a-z0-9_]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      const suffix = Math.random().toString(36).slice(2, 6);
+      const username = (rawUsername.length >= 2 ? rawUsername : `user_${suffix}`).slice(0, 30);
       const full_name = `${formData.firstName} ${formData.lastName}`.trim();
       const response = await authApi.register({
         username,
@@ -90,17 +104,14 @@ export default function RegisterScreen() {
         full_name,
       });
       await setAuth(response.user, response.accessToken, response.refreshToken);
-      router.replace('/(tabs)');
+      await setPersonalizationPending(true);
+      router.replace((await getPostAuthRoute()) as Parameters<typeof router.replace>[0]);
     } catch (error: any) {
       const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || "Erreur lors de l'inscription";
       Alert.alert('Erreur', message);
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSocialRegister = (provider: string) => {
-    Alert.alert('Info', `Inscription ${provider} bientot disponible`);
   };
 
   return (
@@ -118,8 +129,8 @@ export default function RegisterScreen() {
 
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.logoCircle}>
-            <Ionicons name="person-add" size={28} color="#FFF" />
+          <View style={styles.logoCircle} accessibilityRole="image" accessibilityLabel="AfriWonder">
+            <Image source={AFW_APP_LOGO} style={styles.logoImage} contentFit="contain" />
           </View>
           <Text style={styles.title}>Creer un compte</Text>
           <Text style={styles.subtitle}>Rejoignez la communaute AfriWonder</Text>
@@ -319,31 +330,12 @@ export default function RegisterScreen() {
           />
         </View>
 
-        {/* Divider */}
-        <View style={styles.divider}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>ou continuer avec</Text>
-          <View style={styles.dividerLine} />
-        </View>
-
-        {/* Social Login */}
-        <View style={styles.socialButtons}>
-          <TouchableOpacity
-            style={[styles.socialButton, { backgroundColor: '#DB4437' }]}
-            onPress={() => handleSocialRegister('Google')}
-          >
-            <Ionicons name="logo-google" size={22} color="#FFF" />
-            <Text style={styles.socialButtonText}>Google</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.socialButton, { backgroundColor: '#4267B2' }]}
-            onPress={() => handleSocialRegister('Facebook')}
-          >
-            <Ionicons name="logo-facebook" size={22} color="#FFF" />
-            <Text style={styles.socialButtonText}>Facebook</Text>
-          </TouchableOpacity>
-        </View>
+        <SocialOAuthButtons
+          onAuthenticated={async () => {
+            await setPersonalizationPending(true);
+            router.replace((await getPostAuthRoute()) as Parameters<typeof router.replace>[0]);
+          }}
+        />
 
         {/* Footer */}
         <View style={styles.footer}>
@@ -381,14 +373,14 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xxl,
   },
   logoCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    overflow: 'hidden',
     marginBottom: Spacing.lg,
+    backgroundColor: 'rgba(255,255,255,0.05)',
   },
+  logoImage: { width: '100%', height: '100%' },
   title: {
     fontSize: FontSizes.xxxl,
     fontWeight: 'bold',
@@ -625,44 +617,6 @@ const styles = StyleSheet.create({
   },
   registerButton: {
     width: '100%',
-  },
-
-  // Divider
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.xxl,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.border,
-  },
-  dividerText: {
-    color: Colors.textSecondary,
-    paddingHorizontal: Spacing.md,
-    fontSize: FontSizes.sm,
-  },
-
-  // Social
-  socialButtons: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-    marginBottom: Spacing.xxxl,
-  },
-  socialButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-    gap: Spacing.sm,
-  },
-  socialButtonText: {
-    color: '#FFF',
-    fontSize: FontSizes.md,
-    fontWeight: '600',
   },
 
   // Footer

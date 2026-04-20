@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Dimensions,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -35,6 +36,8 @@ interface KPI {
 
 type AdminTab = 'overview' | 'users' | 'content' | 'finance' | 'lives';
 
+type AdminLiveRow = { id: string; title: string; viewers_count?: number };
+
 function unwrapList<T>(raw: unknown, keys: string[]): T[] {
   if (!raw || typeof raw !== 'object') return [];
   const o = raw as Record<string, unknown>;
@@ -54,12 +57,12 @@ export default function AdminDashboardScreen() {
   const [stats, setStats] = useState<Record<string, number>>({});
   const [users, setUsers] = useState<any[]>([]);
   const [reports, setReports] = useState<any[]>([]);
-  const [lives, setLives] = useState<any[]>([]);
   const [alerts, setAlerts] = useState<{
     pending_reports?: number;
     pending_withdrawals?: number;
     active_lives?: number;
   } | null>(null);
+  const [lives, setLives] = useState<AdminLiveRow[]>([]);
   const [periodAnalytics, setPeriodAnalytics] = useState<{
     users?: { new_signups?: number; active_users?: number };
     revenue?: { marketplace_revenue_fcfa?: number; completed_orders?: number };
@@ -71,11 +74,10 @@ export default function AdminDashboardScreen() {
   const loadData = useCallback(async (opts?: { silent?: boolean }) => {
     try {
       if (!opts?.silent) setLoading(true);
-      const [statsRes, usersRes, reportsRes, livesRes, au, ar, ac] = await Promise.allSettled([
+      const [statsRes, usersRes, reportsRes, au, ar, ac] = await Promise.allSettled([
         apiClient.get(API_ROUTES.ADMIN_ANALYTICS_OVERVIEW),
         apiClient.get(API_ROUTES.ADMIN_USERS, { params: { page: 1, limit: 20 } }),
         apiClient.get('/moderation/reports', { params: { status: 'pending', limit: 20 } }),
-        apiClient.get('/live', { params: { status: 'live', limit: 20 } }),
         apiClient.get(API_ROUTES.ADMIN_ANALYTICS_USERS('7d')),
         apiClient.get(API_ROUTES.ADMIN_ANALYTICS_REVENUE('30d')),
         apiClient.get(API_ROUTES.ADMIN_ANALYTICS_CONTENT('7d')),
@@ -118,11 +120,6 @@ export default function AdminDashboardScreen() {
         const rd = reportsRes.value.data?.data ?? reportsRes.value.data;
         setReports(unwrapList(rd, ['reports', 'items']));
       }
-      if (livesRes.status === 'fulfilled') {
-        const ld = livesRes.value.data?.data ?? livesRes.value.data;
-        setLives(unwrapList(ld, ['streams', 'items', 'lives']));
-      }
-
       const nextPeriod: typeof periodAnalytics = {};
       if (au.status === 'fulfilled') {
         const d = au.value.data?.data ?? au.value.data;
@@ -144,6 +141,23 @@ export default function AdminDashboardScreen() {
     }
   }, []);
 
+  const loadActiveLives = useCallback(async () => {
+    try {
+      const r = await apiClient.get(API_ROUTES.ADMIN_LIVES_ACTIVE);
+      const d = r.data?.data ?? r.data;
+      const list = Array.isArray(d?.streams) ? d.streams : [];
+      setLives(
+        list.map((x: { id?: string; title?: string; viewers_count?: number }) => ({
+          id: String(x?.id ?? ''),
+          title: String(x?.title ?? 'Sans titre'),
+          viewers_count: x?.viewers_count,
+        })),
+      );
+    } catch {
+      setLives([]);
+    }
+  }, []);
+
   useEffect(() => {
     void loadData();
   }, [loadData]);
@@ -156,10 +170,19 @@ export default function AdminDashboardScreen() {
     return () => clearInterval(id);
   }, [isAdmin, loadData]);
 
+  useEffect(() => {
+    if (!isAdmin || activeTab !== 'lives') return;
+    void loadActiveLives();
+  }, [isAdmin, activeTab, loadActiveLives]);
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    void loadData().finally(() => setRefreshing(false));
-  }, [loadData]);
+    void loadData()
+      .then(() => {
+        if (activeTab === 'lives') return loadActiveLives();
+      })
+      .finally(() => setRefreshing(false));
+  }, [loadData, loadActiveLives, activeTab]);
 
   const handleBanUser = async (userId: string) => {
     try {
@@ -186,8 +209,11 @@ export default function AdminDashboardScreen() {
             : 'admin_action:dismiss';
       await apiClient.put(`/moderation/reports/${reportId}/review`, { status, notes });
       setReports((prev) => prev.filter((r) => r.id !== reportId));
-    } catch {
-      /* ignore */
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+        'Action refusée ou erreur réseau (rôle modérateur requis côté API).';
+      Alert.alert('Signalement', String(msg));
     }
   };
 
@@ -221,7 +247,6 @@ export default function AdminDashboardScreen() {
     { label: 'Utilisateurs', value: fmt(stats.total_users || 0), icon: 'people', color: '#3B82F6' },
     { label: 'Vidéos', value: fmt(stats.total_videos || 0), icon: 'videocam', color: '#8B5CF6' },
     { label: 'Revenus', value: fmtMoney(stats.total_revenue || 0), icon: 'trending-up', color: '#10B981' },
-    { label: 'Lives actifs', value: String(alerts?.active_lives ?? lives.length), icon: 'radio', color: '#EF4444' },
     { label: 'Commandes', value: fmt(stats.total_orders || 0), icon: 'cart', color: '#F59E0B' },
     {
       label: 'Signalements',
@@ -315,7 +340,9 @@ export default function AdminDashboardScreen() {
                     </View>
                     <View style={styles.alertRow}>
                       <Text style={styles.alertLabel}>Lives actifs (total)</Text>
-                      <Text style={styles.alertValue}>{alerts.active_lives ?? '—'}</Text>
+                      <Text style={styles.alertValue}>
+                        {alerts.active_lives != null ? String(alerts.active_lives) : '—'}
+                      </Text>
                     </View>
                     <Text style={styles.readinessHint}>Source : GET {API_ROUTES.ADMIN_ANALYTICS_OVERVIEW}</Text>
                   </View>
@@ -605,8 +632,8 @@ export default function AdminDashboardScreen() {
                       style={styles.liveEndBtn}
                       onPress={async () => {
                         try {
-                          await apiClient.post(`/live/${l.id}/end`, {});
-                          setLives((prev) => prev.filter((x) => x.id !== l.id));
+                          await apiClient.post(API_ROUTES.ADMIN_LIVE_TERMINATE(l.id), {});
+                          setLives((prev: AdminLiveRow[]) => prev.filter((x) => x.id !== l.id));
                         } catch {
                           /* ignore */
                         }

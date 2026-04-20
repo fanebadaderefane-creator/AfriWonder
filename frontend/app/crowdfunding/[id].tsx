@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
+import { Colors } from '../../src/theme/colors';
 import {
   SEED_PROJECTS,
   CROWDFUNDING_CATEGORIES,
@@ -59,7 +59,7 @@ export default function ProjectDetailScreen() {
       await Share.share({
         message: `Decouvrez ce projet sur AfriWonder : ${project.title} - ${formatFullCFA(project.raised)} collectes sur ${formatFullCFA(project.goal)}`,
       });
-    } catch (e) {
+    } catch (_e) {
       // Ignore
     }
   };

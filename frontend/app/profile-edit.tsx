@@ -89,7 +89,7 @@ export default function ProfileEditScreen() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, user?.full_name, user?.bio]);
+  }, [user?.id, user?.full_name, user?.bio, user?.avatar, user?.profile_image]);
 
   const uploadAvatarFromUri = async (uri: string) => {
     if (!user?.id) {

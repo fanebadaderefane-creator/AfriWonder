@@ -1,22 +1,62 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, ActivityIndicator, Alert } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import apiClient from '../../src/api/client';
 
-const COMMUNITIES = [
-  { id: 'c1', name: 'Developpeurs Mali', members: 3200, image: 'https://picsum.photos/300/200?random=120', category: 'Tech', description: 'Communaute des developpeurs maliens' },
-  { id: 'c2', name: 'Cuisine Africaine', members: 8500, image: 'https://picsum.photos/300/200?random=121', category: 'Cuisine', description: 'Recettes et partage culinaire' },
-  { id: 'c3', name: 'Entrepreneurs Sahel', members: 5100, image: 'https://picsum.photos/300/200?random=122', category: 'Business', description: 'Business et entrepreneuriat au Sahel' },
-  { id: 'c4', name: 'Musique Mandingue', members: 12000, image: 'https://picsum.photos/300/200?random=123', category: 'Musique', description: 'Amateurs de musique mandingue' },
-  { id: 'c5', name: 'Football Mali', members: 25000, image: 'https://picsum.photos/300/200?random=124', category: 'Sport', description: 'Les Aigles du Mali et football local' },
-  { id: 'c6', name: 'Mode Africaine', members: 9800, image: 'https://picsum.photos/300/200?random=125', category: 'Mode', description: 'Tendances mode et creation africaine' },
-];
+type CommunityItem = {
+  id: string;
+  name: string;
+  members_count?: number;
+  avatar?: string | null;
+  banner?: string | null;
+  category?: string | null;
+  description?: string | null;
+  is_member?: boolean;
+};
 
 export default function CommunitiesScreen() {
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [communities, setCommunities] = useState<CommunityItem[]>([]);
+
+  useEffect(() => {
+    void loadCommunities();
+  }, []);
+
+  const loadCommunities = async () => {
+    try {
+      setLoading(true);
+      const res = await apiClient.get('/communities', { params: { limit: 50 } });
+      const data = res.data?.data ?? res.data;
+      setCommunities(Array.isArray(data?.communities) ? data.communities : []);
+    } catch {
+      Alert.alert('Communautés', 'Impossible de charger les communautés.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredCommunities = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return communities;
+    return communities.filter((community) =>
+      [community.name, community.description, community.category].some((value) =>
+        String(value ?? '').toLowerCase().includes(q)
+      )
+    );
+  }, [communities, search]);
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator color={Colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -34,20 +74,25 @@ export default function CommunitiesScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        {COMMUNITIES.map((community) => (
+        {filteredCommunities.map((community) => (
           <TouchableOpacity key={community.id} style={styles.communityCard} onPress={() => router.push(`/communities/${community.id}`)}>
-            <Image source={{ uri: community.image }} style={styles.communityImage} />
+            <Image source={{ uri: community.banner || community.avatar || 'https://picsum.photos/300/200?random=120' }} style={styles.communityImage} />
             <View style={styles.communityOverlay}>
-              <View style={styles.categoryBadge}><Text style={styles.categoryText}>{community.category}</Text></View>
+              <View style={styles.categoryBadge}><Text style={styles.categoryText}>{community.category || 'Général'}</Text></View>
               <Text style={styles.communityName}>{community.name}</Text>
-              <Text style={styles.communityDesc}>{community.description}</Text>
+              <Text style={styles.communityDesc}>{community.description || 'Communauté AfriWonder'}</Text>
               <View style={styles.communityMeta}>
                 <Ionicons name="people" size={14} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.communityMembers}>{community.members.toLocaleString()} membres</Text>
+                <Text style={styles.communityMembers}>{(community.members_count ?? 0).toLocaleString()} membres</Text>
               </View>
             </View>
           </TouchableOpacity>
         ))}
+        {filteredCommunities.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>Aucune communauté trouvée.</Text>
+          </View>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -70,4 +115,6 @@ const styles = StyleSheet.create({
   communityDesc: { color: 'rgba(255,255,255,0.8)', fontSize: FontSizes.sm },
   communityMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   communityMembers: { color: 'rgba(255,255,255,0.8)', fontSize: FontSizes.sm },
+  emptyCard: { backgroundColor: Colors.surface, borderRadius: BorderRadius.md, padding: Spacing.lg },
+  emptyText: { color: Colors.textSecondary, fontSize: FontSizes.sm },
 });

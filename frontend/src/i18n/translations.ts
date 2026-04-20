@@ -1,10 +1,15 @@
-export type Language = 'fr' | 'en' | 'bm' | 'wo';
+export type Language = 'fr' | 'en' | 'bm' | 'wo' | 'ar' | 'sw' | 'ha';
+
+export const ALL_LANGUAGES: Language[] = ['fr', 'en', 'ar', 'bm', 'wo', 'sw', 'ha'];
 
 export const LANGUAGE_META: Record<Language, { name: string; nativeName: string; flag: string }> = {
   fr: { name: 'Francais', nativeName: 'Francais', flag: '🇫🇷' },
   en: { name: 'English', nativeName: 'English', flag: '🇬🇧' },
   bm: { name: 'Bambara', nativeName: 'Bamanankan', flag: '🇲🇱' },
   wo: { name: 'Wolof', nativeName: 'Wolof', flag: '🇸🇳' },
+  ar: { name: 'Arabic', nativeName: 'العربية', flag: '🇩🇿' },
+  sw: { name: 'Swahili', nativeName: 'Kiswahili', flag: '🇰🇪' },
+  ha: { name: 'Hausa', nativeName: 'Hausa', flag: '🇳🇬' },
 };
 
 export const translations: Record<Language, Record<string, string>> = {
@@ -38,6 +43,9 @@ export const translations: Record<Language, Record<string, string>> = {
     'feed.trending': 'Tendances',
     'feed.seeAll': 'Voir tout',
     'feed.comments': 'commentaires',
+    'feed.empty.title': 'Aucune video pour le moment',
+    'feed.empty.subtitle': 'Tirez pour actualiser ou reessayez.',
+    'feed.empty.retry': 'Reessayer',
     'feed.shares': 'partages',
 
     // Reactions
@@ -195,6 +203,9 @@ export const translations: Record<Language, Record<string, string>> = {
     'feed.trending': 'Trending',
     'feed.seeAll': 'See all',
     'feed.comments': 'comments',
+    'feed.empty.title': 'No videos yet',
+    'feed.empty.subtitle': 'Pull to refresh or try again.',
+    'feed.empty.retry': 'Retry',
     'feed.shares': 'shares',
     'react.like': 'Like',
     'react.love': 'Love',
@@ -570,4 +581,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'cf.cat.environment': 'Dex bi',
     'cf.cat.realestate': 'Keur',
   },
+  /** Clés complétées via `phase8Locales.ts` (repli fr/en). */
+  ar: {},
+  sw: {},
+  ha: {},
 };

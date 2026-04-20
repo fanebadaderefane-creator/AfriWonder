@@ -22,12 +22,17 @@ config.cacheStores = [
 // Reduce the number of workers to decrease resource usage
 config.maxWorkers = 2;
 
-// Alias 'crypto' to 'react-native-quick-crypto' for E2EE AES-256-GCM
+// Alias 'crypto' → quick-crypto sur iOS/Android uniquement (le web n'a pas le module natif QuickCrypto).
+const origResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (moduleName === 'crypto') {
-    return context.resolveRequest(context, 'react-native-quick-crypto', platform);
+  if (moduleName === 'crypto' && platform !== 'web') {
+    return origResolveRequest
+      ? origResolveRequest(context, 'react-native-quick-crypto', platform)
+      : context.resolveRequest(context, 'react-native-quick-crypto', platform);
   }
-  return context.resolveRequest(context, moduleName, platform);
+  return origResolveRequest
+    ? origResolveRequest(context, moduleName, platform)
+    : context.resolveRequest(context, moduleName, platform);
 };
 
 module.exports = config;

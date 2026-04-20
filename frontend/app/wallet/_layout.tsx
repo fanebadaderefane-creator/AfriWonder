@@ -11,6 +11,7 @@ export default function WalletLayout() {
       }}
     >
       <Stack.Screen name="index" />
+      <Stack.Screen name="coins" />
       <Stack.Screen name="microcredit" />
       <Stack.Screen name="recharge" />
       <Stack.Screen name="transfer" />

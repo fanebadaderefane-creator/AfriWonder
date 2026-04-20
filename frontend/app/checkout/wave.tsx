@@ -67,11 +67,11 @@ export default function WaveCheckoutScreen() {
         try {
           const res = await apiClient.get('/payments/transactions', { params: { page: 1, limit: 50 } });
           const data = res.data?.data ?? res.data;
-          const list = (data?.transactions ?? data?.items ?? []) as Array<{
+          const list = (data?.transactions ?? data?.items ?? []) as {
             reference_id?: string | null;
             status?: string;
             payment_method?: string | null;
-          }>;
+          }[];
           const tx = list.find(
             (t) =>
               t.reference_id === key &&
@@ -93,7 +93,7 @@ export default function WaveCheckoutScreen() {
         }
       }, 3000);
     },
-    [stopPolling],
+    [stopPolling, successScale],
   );
 
   const initiatePayment = async () => {

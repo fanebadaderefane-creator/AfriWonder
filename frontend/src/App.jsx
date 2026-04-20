@@ -232,8 +232,8 @@ function LiveSection({ data }) {
         <div className="section-body">
           <p style={{ color: strong ? "var(--text-secondary)" : "var(--accent-red)", fontSize: 14, fontWeight: 600, marginBottom: 16, padding: 12, background: strong ? "var(--accent-blue-soft)" : "var(--accent-red-soft)", borderRadius: 8 }}>
             {strong
-              ? "Chat, likes et cadeaux sont branches sur l'API ; les ecrans live, replay et gifts sont dans le stack. Il reste surtout la validation WebRTC/Agora sur device et l'enregistrement cloud de bout en bout."
-              : "Le live streaming est la fonctionnalite NUMERO 1 manquante. L'ecran stream.tsx affiche un placeholder \"Camera en direct\" sans integration reelle. Pas de WebRTC/Agora dans le mobile, pas de reception de flux video pour les spectateurs, pas de chat en direct, pas de cadeaux."}
+              ? "Chat, likes et cadeaux sont branches sur l'API ; les ecrans live, replay et gifts sont dans le stack. Il reste surtout la validation WebRTC sur appareil et l'enregistrement cloud de bout en bout."
+              : "Le live streaming est la fonctionnalite NUMERO 1 manquante. L'ecran stream.tsx affiche un placeholder \"Camera en direct\" sans integration reelle. Pas de WebRTC dans le mobile, pas de reception de flux video pour les spectateurs, pas de chat en direct, pas de cadeaux."}
           </p>
           <div className="two-col">
             <div>
@@ -249,7 +249,7 @@ function LiveSection({ data }) {
             <h4 style={{ color: "var(--accent-orange)", fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Solution Recommandee</h4>
             <ul style={{ listStyle: "none", color: "var(--text-secondary)", fontSize: 13 }}>
               <li style={{ padding: "4px 0" }}>1. Installer expo-camera pour l'acces camera</li>
-              <li style={{ padding: "4px 0" }}>2. Integrer Agora SDK (agora-token deja dans le backend) pour WebRTC</li>
+              <li style={{ padding: "4px 0" }}>2. Integrer le moteur WebRTC / video temps reel (tokens deja cote backend)</li>
               <li style={{ padding: "4px 0" }}>3. Implementer le chat en temps reel via Socket.io existant</li>
               <li style={{ padding: "4px 0" }}>4. Connecter le systeme de cadeaux virtuels (schema Gift existe)</li>
               <li style={{ padding: "4px 0" }}>5. Activer l'enregistrement automatique (liveRecording.service.ts existe)</li>

@@ -1,16 +1,16 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
-import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { Colors, FontSizes, Spacing } from '../src/theme/colors';
 import { useAuthStore } from '../src/store/authStore';
 import { secureStorage } from '../src/utils/secureStorage';
+import { Image } from 'expo-image';
 
-/** Même ressource que la PWA (`public/icon-192.png` → `Landing.jsx`). */
+/** Même ressource que la PWA / notifications. */
 const PWA_APP_ICON = require('../assets/images/pwa-icon-192.png');
 
 export default function SplashScreen() {
-  const { isAuthenticated, isLoading, loadStoredAuth } = useAuthStore();
+  const { loadStoredAuth } = useAuthStore();
   const logoScale = useRef(new Animated.Value(0.5)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const textOpacity = useRef(new Animated.Value(0)).current;
@@ -57,6 +57,7 @@ export default function SplashScreen() {
     };
 
     checkAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- splash : montage unique (anim + auth)
   }, []);
 
   return (

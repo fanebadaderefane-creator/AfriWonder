@@ -1,23 +1,28 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions, FlatList, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, FlatList, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
-import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
+import { Colors, FontSizes, Spacing } from '../src/theme/colors';
 import { Button } from '../src/components/common/Button';
 import { Ionicons } from '@expo/vector-icons';
 import { secureStorage } from '../src/utils/secureStorage';
+import { Image } from 'expo-image';
 
-const { width, height } = Dimensions.get('window');
+/** Même ressource que l’icône PWA / notifications. */
+const AFW_BRAND_LOGO = require('../assets/images/pwa-icon-192.png');
+
+const { width } = Dimensions.get('window');
 
 const slides = [
   {
     id: '1',
-    icon: 'play-circle',
+    useBrandLogo: true as const,
     title: 'Découvrez des Vidéos',
     description: 'Regardez des vidéos passionnantes de créateurs africains. Partagez, commentez et suivez vos favoris.',
     color: Colors.primary,
   },
   {
     id: '2',
+    useBrandLogo: false as const,
     icon: 'cart',
     title: 'Marketplace Africain',
     description: 'Achetez et vendez des produits locaux. Mode, électronique, alimentation et plus encore.',
@@ -25,10 +30,27 @@ const slides = [
   },
   {
     id: '3',
+    useBrandLogo: false as const,
     icon: 'wallet',
     title: 'Paiements Mobiles',
     description: 'Payez facilement avec Orange Money, Wave, MTN MoMo ou carte bancaire.',
     color: Colors.accent,
+  },
+  {
+    id: '4',
+    useBrandLogo: false as const,
+    icon: 'people',
+    title: 'Communauté & Lives',
+    description: 'Suivez vos créateurs préférés, envoyez des cadeaux en direct et rejoignez la scène africaine.',
+    color: '#9C27B0',
+  },
+  {
+    id: '5',
+    useBrandLogo: false as const,
+    icon: 'sparkles',
+    title: 'Pour vous',
+    description: 'Un fil personnalisé selon vos goûts. Activez les notifications pour ne rien manquer.',
+    color: '#00BCD4',
   },
 ];
 
@@ -51,11 +73,22 @@ export default function OnboardingScreen() {
     router.replace('/(auth)/login');
   };
 
-  const renderSlide = ({ item }: { item: typeof slides[0] }) => (
+  const renderSlide = ({ item }: { item: (typeof slides)[number] }) => (
     <View style={styles.slide}>
-      <View style={[styles.iconContainer, { backgroundColor: item.color }]}>
-        <Ionicons name={item.icon as any} size={80} color={Colors.text} />
-      </View>
+      {item.useBrandLogo ? (
+        <View style={styles.logoWrap}>
+          <Image
+            source={AFW_BRAND_LOGO}
+            style={styles.brandLogo}
+            contentFit="contain"
+            accessibilityLabel="AfriWonder"
+          />
+        </View>
+      ) : (
+        <View style={[styles.iconContainer, { backgroundColor: item.color }]}>
+          <Ionicons name={item.icon as any} size={80} color={Colors.text} />
+        </View>
+      )}
       <Text style={styles.title}>{item.title}</Text>
       <Text style={styles.description}>{item.description}</Text>
     </View>
@@ -126,6 +159,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.xxl,
+  },
+  logoWrap: {
+    marginBottom: Spacing.xxxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandLogo: {
+    width: 168,
+    height: 168,
+    borderRadius: 84,
   },
   iconContainer: {
     width: 160,

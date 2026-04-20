@@ -1,19 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { WalletSkeleton } from '../../src/components/SkeletonScreens';
 import apiClient from '../../src/api/client';
-
-const { width } = Dimensions.get('window');
+import { getCoinsBalance } from '../../src/services/mobileApiService';
 
 const QUICK_ACTIONS = [
   { id: 'send', name: 'Envoyer', icon: 'send', color: Colors.primary },
   { id: 'receive', name: 'Recevoir', icon: 'download', color: Colors.success },
   { id: 'topup', name: 'Recharger', icon: 'add-circle', color: Colors.info },
   { id: 'withdraw', name: 'Retirer', icon: 'cash', color: Colors.accent },
+  { id: 'coins', name: 'Coins', icon: 'diamond', color: '#FFD700' },
 ];
 
 export default function WalletScreen() {
@@ -21,20 +21,21 @@ export default function WalletScreen() {
   const [showBalance, setShowBalance] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [balance, setBalance] = useState(0);
+  const [coinsBalance, setCoinsBalance] = useState(0);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => { loadWallet(); }, []);
-
-  const loadWallet = async () => {
+  const loadWallet = useCallback(async () => {
     try {
-      const [walletRes, txRes] = await Promise.all([
+      const [walletRes, txRes, coinsRes] = await Promise.all([
         apiClient.get('/payments/wallet'),
         apiClient.get('/payments/transactions', { params: { page: 1, limit: 30 } }),
+        getCoinsBalance().catch(() => ({ coins_balance: 0 })),
       ]);
       const walletPayload = walletRes.data?.data ?? walletRes.data;
       const bal = (walletPayload as any)?.balance ?? (walletPayload as any)?.available_balance ?? 0;
       setBalance(typeof bal === 'number' ? bal : parseFloat(String(bal)) || 0);
+      setCoinsBalance(Number(coinsRes.coins_balance || 0));
       const txData = txRes.data?.data ?? txRes.data;
       const txList = (txData as any)?.transactions ?? [];
       if (Array.isArray(txList) && txList.length > 0) {
@@ -53,8 +54,13 @@ export default function WalletScreen() {
     } catch (err) {
       console.log('Using mock wallet data', err);
       setBalance(127500);
+      setCoinsBalance(0);
     } finally { setIsLoading(false); }
-  };
+  }, []);
+
+  useEffect(() => {
+    void loadWallet();
+  }, [loadWallet]);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -68,7 +74,7 @@ export default function WalletScreen() {
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadWallet().finally(() => setRefreshing(false));
-  }, []);
+  }, [loadWallet]);
 
   if (isLoading) {
     return (
@@ -110,6 +116,17 @@ export default function WalletScreen() {
               <Text style={styles.balanceMetaText}>+15 000 FCFA ce mois</Text>
             </View>
           </View>
+          <View style={styles.coinsMetaRow}>
+            <View style={styles.coinsMetaBadge}>
+              <Ionicons name="diamond" size={14} color="#FFD700" />
+              <Text style={styles.coinsMetaText}>
+                {showBalance ? `${coinsBalance.toLocaleString()} coins` : '•••• coins'}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => router.push('/wallet/coins' as any)}>
+              <Text style={styles.coinsMetaLink}>Acheter des coins</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Quick Actions */}
@@ -123,7 +140,8 @@ export default function WalletScreen() {
               if (action.id === 'topup') router.push('/wallet/recharge');
               if (action.id === 'send') router.push('/wallet/transfer');
               if (action.id === 'receive') Alert.alert('Recevoir', 'Partagez votre numéro pour recevoir un paiement');
-              if (action.id === 'withdraw') Alert.alert('Retrait', 'Fonctionnalité de retrait bientôt disponible');
+              if (action.id === 'withdraw') router.push('/creator/withdraw');
+              if (action.id === 'coins') router.push('/wallet/coins' as any);
             }}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: action.color }]}>
@@ -133,6 +151,19 @@ export default function WalletScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        <TouchableOpacity style={styles.coinsBanner} onPress={() => router.push('/wallet/coins' as any)}>
+          <View style={styles.coinsBannerLeft}>
+            <View style={styles.coinsIconWrap}>
+              <Ionicons name="diamond" size={22} color="#FFD700" />
+            </View>
+            <View>
+              <Text style={styles.coinsTitle}>Coins AfriWonder</Text>
+              <Text style={styles.coinsSubtitle}>Achetez des coins pour envoyer des cadeaux en live</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={22} color={Colors.textSecondary} />
+        </TouchableOpacity>
 
         {/* Microcredit Section */}
         <TouchableOpacity style={styles.microcreditBanner} onPress={() => router.push('/wallet/microcredit')}>
@@ -242,6 +273,32 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.8)',
     fontSize: FontSizes.sm,
   },
+  coinsMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.md,
+  },
+  coinsMetaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  coinsMetaText: {
+    color: '#FFD700',
+    fontSize: FontSizes.xs,
+    fontWeight: '700',
+  },
+  coinsMetaLink: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: FontSizes.xs,
+    textDecorationLine: 'underline',
+  },
   quickActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -263,6 +320,28 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     fontWeight: '500',
   },
+  coinsBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    marginBottom: Spacing.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255,215,0,0.25)',
+  },
+  coinsBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, flex: 1 },
+  coinsIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,215,0,0.12)',
+  },
+  coinsTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '700' },
+  coinsSubtitle: { color: Colors.textSecondary, fontSize: FontSizes.xs, marginTop: 2 },
   microcreditBanner: {
     flexDirection: 'row',
     alignItems: 'center',

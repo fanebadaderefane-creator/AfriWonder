@@ -21,7 +21,7 @@ export default function ArticleDetailScreen() {
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <ScrollView key={String(id)} showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <Image source={{ uri: 'https://picsum.photos/400/250?random=170' }} style={styles.heroImage} />
         <View style={styles.meta}>
           <View style={styles.sourceBadge}><Text style={styles.sourceText}>AfriTech News</Text></View>

@@ -9,6 +9,7 @@ export default function LiveLayout() {
       <Stack.Screen name="[id]" />
       <Stack.Screen name="replay" />
       <Stack.Screen name="gifts" />
+      <Stack.Screen name="analytics/[id]" />
     </Stack>
   );
 }

@@ -9,20 +9,32 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.afriwonder.app",
+      "usesAppleSignIn": true,
+      "buildNumber": "1",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Enregistrer des messages vocaux dans AfriChat",
         "NSCameraUsageDescription": "Prendre des photos et vidéos (profil, publication, messages, live streaming)",
         "NSPhotoLibraryUsageDescription": "Choisir des photos et vidéos (profil, publication, messages)",
-        "UIBackgroundModes": ["audio", "fetch", "remote-notification"]
+        "NSLocationWhenInUseUsageDescription": "AfriWonder utilise votre position pour les services locaux et recommandations proches de vous.",
+        "UIBackgroundModes": [
+          "audio",
+          "fetch",
+          "remote-notification",
+          "audio",
+          "fetch",
+          "remote-notification"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "package": "com.afriwonder.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#FFFFFF"
+        "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
@@ -30,6 +42,7 @@
         "RECORD_AUDIO",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
         "WAKE_LOCK"
@@ -41,18 +54,35 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/pwa-icon-192.png",
+          "image": "./assets/images/splash-image.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#000000"
         }
       ],
+      "expo-camera",
+      "expo-image-picker",
       "expo-secure-store",
+      "expo-sqlite",
       "expo-video",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "AfriWonder utilise Face ID pour proteger rapidement vos donnees sensibles."
+        }
+      ],
       [
         "expo-notifications",
         {
@@ -60,7 +90,13 @@
           "color": "#FF6B00",
           "defaultChannel": "default"
         }
-      ]
+      ],
+      [
+        "expo-pip",
+        {}
+      ],
+      "expo-apple-authentication",
+      "react-native-iap"
     ],
     "notification": {
       "icon": "./assets/images/pwa-icon-192.png",
@@ -69,18 +105,17 @@
       "androidCollapsedTitle": "AfriWonder"
     },
     "extra": {
+      "router": {},
       "eas": {
-        "projectId": "00000000-0000-4000-8000-000000000000"
+        "projectId": "f4715a6b-9779-4ec1-841a-9dd7cb73e2b3"
       }
     },
     "experiments": {
       "typedRoutes": true
     },
-    "updates": {
-      "url": "https://u.expo.dev/00000000-0000-4000-8000-000000000000"
-    },
     "runtimeVersion": {
       "policy": "sdkVersion"
-    }
+    },
+    "owner": "abdoulaye_fane"
   }
 }

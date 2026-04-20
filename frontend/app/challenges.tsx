@@ -1,117 +1,172 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
-import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  SectionList,
+  TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
-import { useAuthStore } from '../src/store/authStore';
-import { fetchDailyMissions, fetchGamificationMe, type DailyMission } from '../src/api/gamificationApi';
+import { Colors, Spacing, BorderRadius, FontSizes } from '../src/theme/colors';
+import apiClient from '../src/api/client';
 
-function MissionRow({ m }: { m: DailyMission }) {
-  return (
-    <View style={[styles.challengeCard, m.completed && styles.challengeCardDone]}>
-      <View style={[styles.challengeIcon, m.completed && styles.challengeIconDone]}>
-        {m.completed ? (
-          <Ionicons name="checkmark" size={22} color={Colors.text} />
-        ) : (
-          <Text style={styles.missionEmoji}>{m.icon}</Text>
-        )}
-      </View>
-      <View style={styles.challengeInfo}>
-        <Text style={styles.challengeTitle}>{m.label}</Text>
-        <Text style={styles.challengeProgress}>{m.completed ? 'Terminé' : `+${m.xp} XP`}</Text>
-      </View>
-      <View style={styles.rewardBadge}>
-        <Ionicons name="gift" size={14} color={Colors.accent} />
-        <Text style={styles.rewardText}>{m.xp}</Text>
-      </View>
-    </View>
-  );
-}
+type ChallengeRow = {
+  id: string;
+  title?: string;
+  name?: string;
+  description?: string;
+  hashtag?: string;
+  status?: string;
+  is_sponsored?: boolean;
+  sponsor_brand?: string;
+  participation_count?: number;
+};
+
+type ChallengeSection = { title: string; data: ChallengeRow[] };
 
 export default function ChallengesScreen() {
   const insets = useSafeAreaInsets();
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const [sections, setSections] = useState<ChallengeSection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const meQuery = useQuery({
-    queryKey: ['gamification', 'me', 'challenges'],
-    queryFn: fetchGamificationMe,
-    enabled: isAuthenticated,
-  });
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const [viralRes, paidRes] = await Promise.all([
+        apiClient.get('/challenges/viral/trending', { params: { limit: 20 } }).catch(() => null),
+        apiClient.get('/challenges', { params: { page: 1, limit: 40 } }).catch(() => null),
+      ]);
+      const viralInner = viralRes?.data?.data ?? viralRes?.data;
+      const viralList = Array.isArray(viralInner) ? viralInner : [];
+      const paidInner = paidRes?.data?.data ?? paidRes?.data;
+      const paidList = paidInner?.challenges ?? paidInner?.data ?? paidInner ?? [];
+      const paidArr = Array.isArray(paidList) ? paidList : [];
+      const next: ChallengeSection[] = [];
+      if (viralList.length) next.push({ title: 'Challenges viraux (#hashtag)', data: viralList });
+      if (paidArr.length) next.push({ title: 'Défis & programmes', data: paidArr });
+      setSections(next);
+    } catch {
+      setError('Impossible de charger les défis pour le moment.');
+      setSections([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
-  const missionsQuery = useQuery({
-    queryKey: ['gamification', 'daily-missions', 'challenges'],
-    queryFn: fetchDailyMissions,
-    enabled: isAuthenticated,
-  });
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  const missions = missionsQuery.data ?? [];
-  const points = meQuery.data?.total_points ?? 0;
-  const level = meQuery.data?.level ?? 1;
+  const onRefresh = () => {
+    setRefreshing(true);
+    void load();
+  };
 
-  const refresh = () => {
-    void meQuery.refetch();
-    void missionsQuery.refetch();
+  const openChallengeSearch = (item: ChallengeRow) => {
+    const title = String(item.title || item.name || '').trim();
+    const words = title.split(/\s+/).filter(Boolean);
+    const q =
+      String(item.hashtag || '')
+        .trim()
+        .replace(/^#+/, '') || words[0];
+    if (!q) return;
+    router.push({ pathname: '/search', params: { q: q.startsWith('#') ? q : `#${q}` } });
+  };
+
+  const renderItem = ({ item }: { item: ChallengeRow }) => {
+    const title = String(item.title || item.name || 'Défi').trim();
+    const desc = String(item.description || '').trim();
+    const tag =
+      String(item.hashtag || '')
+        .trim()
+        .replace(/^#+/, '') ||
+      title.split(/\s+/)[0] ||
+      '';
+    const sponsored = Boolean(item.is_sponsored);
+    const part = item.participation_count;
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.85}
+        onPress={() => openChallengeSearch(item)}
+        accessibilityLabel={`Rechercher le défi ${title}`}
+      >
+        <View style={styles.cardIcon}>
+          <Ionicons name="trophy" size={22} color={Colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.cardTitle} numberOfLines={2}>
+            {title}
+          </Text>
+          {desc ? (
+            <Text style={styles.cardDesc} numberOfLines={2}>
+              {desc}
+            </Text>
+          ) : null}
+          {tag ? (
+            <Text style={styles.cardTag} numberOfLines={1}>
+              #{tag}
+            </Text>
+          ) : null}
+          {sponsored ? (
+            <Text style={styles.cardSponsor} numberOfLines={1}>
+              Sponsorisé{item.sponsor_brand ? ` · ${item.sponsor_brand}` : ''}
+            </Text>
+          ) : null}
+          {typeof part === 'number' ? <Text style={styles.cardMuted}>{part} participation(s)</Text> : null}
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+      </TouchableOpacity>
+    );
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Retour">
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => router.back()}
+          accessibilityLabel="Retour"
+        >
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Défis</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      {!isAuthenticated ? (
+      {loading ? (
         <View style={styles.centered}>
-          <Text style={styles.muted}>Connectez-vous pour voir vos missions quotidiennes et vos points (même compte que la PWA).</Text>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      ) : error ? (
+        <View style={styles.centered}>
+          <Text style={styles.err}>{error}</Text>
+          <TouchableOpacity style={styles.retry} onPress={() => { setLoading(true); void load(); }}>
+            <Text style={styles.retryText}>Réessayer</Text>
+          </TouchableOpacity>
         </View>
       ) : (
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.xxxl }]}
-          refreshControl={
-            <RefreshControl
-              refreshing={meQuery.isRefetching || missionsQuery.isRefetching}
-              onRefresh={refresh}
-              tintColor={Colors.primary}
-            />
-          }
-        >
-          {meQuery.isPending || missionsQuery.isPending ? (
-            <ActivityIndicator color={Colors.primary} style={{ marginVertical: Spacing.xl }} />
-          ) : null}
-
-          <View style={styles.pointsCard}>
-            <Ionicons name="trophy" size={40} color={Colors.accent} />
-            <Text style={styles.pointsValue}>{points.toLocaleString('fr-FR')}</Text>
-            <Text style={styles.pointsLabel}>Points (niveau {level})</Text>
-          </View>
-
-          <Text style={styles.sectionTitle}>Missions du jour</Text>
-          {missionsQuery.isError ? (
-            <Text style={styles.muted}>Impossible de charger les missions. Tirez pour rafraîchir.</Text>
-          ) : missions.length === 0 ? (
-            <Text style={styles.muted}>Aucune mission disponible pour le moment.</Text>
-          ) : (
-            missions.map((m) => <MissionRow key={m.type} m={m} />)
+        <SectionList
+          sections={sections}
+          keyExtractor={(it) => String(it.id)}
+          renderItem={({ item }) => renderItem({ item })}
+          renderSectionHeader={({ section: { title } }) => (
+            <Text style={styles.sectionTitle}>{title}</Text>
           )}
-
-          <Text style={[styles.sectionTitle, { marginTop: Spacing.xl }]}>Objectifs hebdomadaires</Text>
-          <Text style={styles.muted}>
-            Les défis hebdomadaires détaillés seront communiqués dans l&apos;application ; vos missions du jour ci-dessus
-            sont synchronisées avec le serveur AfriWonder.
-          </Text>
-
-          <TouchableOpacity style={styles.hubLink} onPress={() => router.push('/gamification-hub')} activeOpacity={0.85}>
-            <Ionicons name="ribbon-outline" size={20} color={Colors.primary} />
-            <Text style={styles.hubLinkText}>Centre gamification</Text>
-            <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
-          </TouchableOpacity>
-        </ScrollView>
+          stickySectionHeadersEnabled={false}
+          contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 40 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          ListEmptyComponent={
+            <Text style={styles.empty}>Aucun défi actif — les nouveaux défis apparaîtront ici.</Text>
+          }
+        />
       )}
     </View>
   );
@@ -119,26 +174,49 @@ export default function ChallengesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.xl, paddingVertical: Spacing.lg },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#222',
+  },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: FontSizes.xl, fontWeight: 'bold', color: Colors.text },
-  content: { paddingHorizontal: Spacing.xl },
-  centered: { flex: 1, padding: Spacing.xl, justifyContent: 'center' },
-  muted: { color: Colors.textSecondary, fontSize: FontSizes.md, lineHeight: 22 },
-  pointsCard: { alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.xl, padding: Spacing.xxl, marginBottom: Spacing.xxl },
-  pointsValue: { color: Colors.accent, fontSize: 36, fontWeight: 'bold', marginTop: Spacing.sm },
-  pointsLabel: { color: Colors.textSecondary, fontSize: FontSizes.md },
-  sectionTitle: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: 'bold', marginBottom: Spacing.md },
-  challengeCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.md, padding: Spacing.lg, marginBottom: Spacing.sm, gap: Spacing.md },
-  challengeCardDone: { opacity: 0.9, borderWidth: 1, borderColor: 'rgba(76,175,80,0.35)' },
-  challengeIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.card, alignItems: 'center', justifyContent: 'center' },
-  challengeIconDone: { backgroundColor: 'rgba(76,175,80,0.25)' },
-  missionEmoji: { fontSize: 22 },
-  challengeInfo: { flex: 1 },
-  challengeTitle: { color: Colors.text, fontWeight: '600', fontSize: FontSizes.md },
-  challengeProgress: { color: Colors.textMuted, fontSize: FontSizes.sm, marginTop: 4 },
-  rewardBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  rewardText: { color: Colors.accent, fontWeight: '700', fontSize: FontSizes.sm },
-  hubLink: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginTop: Spacing.xl, padding: Spacing.lg, backgroundColor: Colors.card, borderRadius: BorderRadius.md },
-  hubLinkText: { flex: 1, color: Colors.text, fontWeight: '700', fontSize: FontSizes.md },
+  headerTitle: { color: Colors.text, fontSize: 18, fontWeight: '700' },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  err: { color: Colors.textSecondary, textAlign: 'center' },
+  retry: { marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, borderRadius: BorderRadius.lg, backgroundColor: Colors.surface },
+  retryText: { color: Colors.primary, fontWeight: '700' },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.surface,
+    marginBottom: Spacing.md,
+  },
+  cardIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,107,0,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '700' },
+  cardDesc: { color: Colors.textSecondary, fontSize: FontSizes.sm, marginTop: 4 },
+  cardTag: { color: Colors.primary, fontSize: FontSizes.sm, marginTop: 6, fontWeight: '600' },
+  cardSponsor: { color: '#FFB347', fontSize: FontSizes.xs, marginTop: 4, fontWeight: '700' },
+  cardMuted: { color: Colors.textMuted, fontSize: FontSizes.sm, marginTop: 6 },
+  sectionTitle: {
+    color: Colors.text,
+    fontSize: FontSizes.md,
+    fontWeight: '800',
+    marginBottom: Spacing.sm,
+    marginTop: Spacing.md,
+  },
+  empty: { textAlign: 'center', color: Colors.textMuted, marginTop: 40, paddingHorizontal: 24 },
 });

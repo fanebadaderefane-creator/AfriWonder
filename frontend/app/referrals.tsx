@@ -1,32 +1,84 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Share } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, ActivityIndicator, Alert } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
+import apiClient from '../src/api/client';
 
-const REFERRAL_CODE = 'AFRI-MOUS-2025';
-const REWARDS = [
-  { level: 1, target: 5, reward: '500 FCFA', achieved: true },
-  { level: 2, target: 15, reward: '2 000 FCFA', achieved: true },
-  { level: 3, target: 30, reward: '5 000 FCFA', achieved: false },
-  { level: 4, target: 50, reward: '10 000 FCFA + Badge Or', achieved: false },
-];
+type ReferralReward = {
+  invites_count?: number;
+  reward_type?: string;
+  reward_value?: string;
+};
 
-const RECENT_REFERRALS = [
-  { name: 'Aminata D.', date: 'Il y a 2 jours', status: 'Inscrit', reward: '+100 FCFA' },
-  { name: 'Moussa K.', date: 'Il y a 5 jours', status: 'Premiere commande', reward: '+500 FCFA' },
-  { name: 'Fanta C.', date: 'Il y a 1 semaine', status: 'Inscrit', reward: '+100 FCFA' },
-];
+type ReferralRow = {
+  id?: string;
+  status?: string;
+  created_at?: string;
+  referred?: {
+    username?: string | null;
+    email?: string | null;
+  } | null;
+};
 
 export default function ReferralsScreen() {
   const insets = useSafeAreaInsets();
+  const [loading, setLoading] = useState(true);
+  const [code, setCode] = useState('');
+  const [totalReferrals, setTotalReferrals] = useState(0);
+  const [completedReferrals, setCompletedReferrals] = useState(0);
+  const [rewards, setRewards] = useState<ReferralReward[]>([]);
+  const [referrals, setReferrals] = useState<ReferralRow[]>([]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await apiClient.get('/referrals/stats');
+        const data = res.data?.data ?? res.data;
+        setCode(String(data?.code ?? ''));
+        setTotalReferrals(Number(data?.totalReferrals ?? 0));
+        setCompletedReferrals(Number(data?.completedReferrals ?? 0));
+        setRewards(Array.isArray(data?.rewards) ? data.rewards : []);
+        setReferrals(Array.isArray(data?.referrals) ? data.referrals : []);
+      } catch (_error) {
+        Alert.alert('Parrainage', 'Impossible de charger vos statistiques de parrainage.');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const currentLevel = useMemo(() => {
+    return rewards.length > 0 ? rewards.length : 0;
+  }, [rewards]);
 
   const handleShare = async () => {
     try {
-      await Share.share({ message: `Rejoins AfriWonder avec mon code ${REFERRAL_CODE} et recois 500 FCFA de bonus! Telecharge: https://afriwonder.com/dl` });
-    } catch (e) {}
+      await Share.share({ message: `Rejoins AfriWonder avec mon code ${code} et découvre AfriWonder : https://afriwonder.com/dl` });
+    } catch {}
   };
+
+  const handleCopy = async () => {
+    if (!code) return;
+    await Clipboard.setStringAsync(code);
+    Alert.alert('Parrainage', 'Code copié.');
+  };
+
+  const rewardLabel = (reward: ReferralReward) => {
+    if (reward.reward_value) return reward.reward_value;
+    if (reward.reward_type) return reward.reward_type;
+    return 'Récompense';
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator color={Colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -39,61 +91,70 @@ export default function ReferralsScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        {/* Stats Card */}
         <View style={styles.statsCard}>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>18</Text>
+            <Text style={styles.statValue}>{totalReferrals}</Text>
             <Text style={styles.statLabel}>Filleuls</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>2 600</Text>
-            <Text style={styles.statLabel}>FCFA gagnes</Text>
+            <Text style={styles.statValue}>{completedReferrals}</Text>
+            <Text style={styles.statLabel}>Complétés</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>Niveau 2</Text>
+            <Text style={styles.statValue}>Niveau {currentLevel}</Text>
             <Text style={styles.statLabel}>Rang</Text>
           </View>
         </View>
 
-        {/* Referral Code */}
         <View style={styles.codeCard}>
           <Text style={styles.codeLabel}>Votre code de parrainage</Text>
           <View style={styles.codeRow}>
-            <Text style={styles.codeText}>{REFERRAL_CODE}</Text>
-            <TouchableOpacity style={styles.copyBtn}><Ionicons name="copy" size={20} color={Colors.primary} /></TouchableOpacity>
+            <Text style={styles.codeText}>{code || 'INDISPONIBLE'}</Text>
+            <TouchableOpacity style={styles.copyBtn} onPress={() => void handleCopy()}>
+              <Ionicons name="copy" size={20} color={Colors.primary} />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
+          <TouchableOpacity style={styles.shareButton} onPress={() => void handleShare()} disabled={!code}>
             <Ionicons name="share-social" size={20} color={Colors.text} />
             <Text style={styles.shareButtonText}>Partager</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Reward Levels */}
         <Text style={styles.sectionTitle}>Niveaux de recompenses</Text>
-        {REWARDS.map((reward, i) => (
-          <View key={i} style={[styles.rewardCard, reward.achieved && styles.rewardCardAchieved]}>
-            <View style={[styles.rewardLevel, reward.achieved && styles.rewardLevelDone]}>
-              {reward.achieved ? <Ionicons name="checkmark" size={16} color={Colors.text} /> : <Text style={styles.rewardLevelText}>{reward.level}</Text>}
+        {rewards.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>Aucune récompense débloquée pour le moment.</Text>
+          </View>
+        ) : rewards.map((reward, i) => (
+          <View key={`${reward.reward_type ?? 'reward'}-${i}`} style={[styles.rewardCard, styles.rewardCardAchieved]}>
+            <View style={[styles.rewardLevel, styles.rewardLevelDone]}>
+              <Ionicons name="checkmark" size={16} color={Colors.text} />
             </View>
             <View style={styles.rewardInfo}>
-              <Text style={styles.rewardTarget}>{reward.target} filleuls</Text>
-              <Text style={styles.rewardAmount}>{reward.reward}</Text>
+              <Text style={styles.rewardTarget}>{reward.invites_count ?? 0} filleuls</Text>
+              <Text style={styles.rewardAmount}>{rewardLabel(reward)}</Text>
             </View>
           </View>
         ))}
 
-        {/* Recent */}
         <Text style={styles.sectionTitle}>Filleuls recents</Text>
-        {RECENT_REFERRALS.map((ref, i) => (
-          <View key={i} style={styles.referralItem}>
+        {referrals.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>Aucun filleul enregistré pour l’instant.</Text>
+          </View>
+        ) : referrals.map((ref, i) => (
+          <View key={`${ref.id ?? 'ref'}-${i}`} style={styles.referralItem}>
             <View style={styles.referralAvatar}><Ionicons name="person" size={20} color={Colors.textSecondary} /></View>
             <View style={styles.referralInfo}>
-              <Text style={styles.referralName}>{ref.name}</Text>
-              <Text style={styles.referralDate}>{ref.date} - {ref.status}</Text>
+              <Text style={styles.referralName}>{ref.referred?.username || ref.referred?.email || 'Utilisateur'}</Text>
+              <Text style={styles.referralDate}>
+                {ref.status === 'completed' ? 'Complété' : 'En attente'}
+                {ref.created_at ? ` - ${new Date(ref.created_at).toLocaleDateString('fr-FR')}` : ''}
+              </Text>
             </View>
-            <Text style={styles.referralReward}>{ref.reward}</Text>
+            <Text style={styles.referralReward}>{ref.status === 'completed' ? 'OK' : '...'}</Text>
           </View>
         ))}
       </ScrollView>
@@ -134,4 +195,6 @@ const styles = StyleSheet.create({
   referralName: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '500' },
   referralDate: { color: Colors.textSecondary, fontSize: FontSizes.sm },
   referralReward: { color: Colors.success, fontSize: FontSizes.md, fontWeight: 'bold' },
+  emptyCard: { backgroundColor: Colors.surface, borderRadius: BorderRadius.md, padding: Spacing.lg, marginBottom: Spacing.md },
+  emptyText: { color: Colors.textSecondary, fontSize: FontSizes.sm },
 });

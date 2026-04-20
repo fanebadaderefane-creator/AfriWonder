@@ -42,5 +42,6 @@ coverage/
 playwright-report/
 test-results/
 *.log
+*.log.txt
 
 app-example

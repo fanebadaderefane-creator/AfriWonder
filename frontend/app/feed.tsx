@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, useWindowDimensions,
-  Platform, Share, Alert, Modal, Pressable, type ImageStyle,
+  Platform, Share, Alert, Modal, Pressable, type ImageStyle, TextInput, FlatList,
+  KeyboardAvoidingView, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -100,9 +101,23 @@ interface Post {
   location?: string;
 }
 
+type MomentCommentRow = {
+  id: string;
+  content: string;
+  parent_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  reactions_count?: number;
+  reaction_counts?: Record<string, number>;
+  my_reaction?: string | null;
+  user_id?: string;
+  replies?: MomentCommentRow[];
+  user?: { id?: string; full_name?: string; username?: string; profile_image?: string };
+};
+
 type MomentsFeedPayload = { posts: Post[]; loaded: boolean };
 
-/** Anneau Stories / Live en tête du fil Moments (données réelles). */
+/** Anneau Stories en tête du fil Moments (données réelles). */
 interface MomentStoryRing {
   id: string;
   userId: string;
@@ -110,8 +125,6 @@ interface MomentStoryRing {
   avatar: string;
   isAdd: boolean;
   hasNew: boolean;
-  isLive: boolean;
-  liveStreamId: string | null;
   /** Aperçu image (ex. 1re image d’un moment) pour l’écran Stories. */
   previewUrl?: string;
 }
@@ -123,32 +136,8 @@ function defaultAvatarForUserId(userId: string): string {
   return `https://ui-avatars.com/api/?name=${q}&background=1a1a1a&color=fff&size=128`;
 }
 
-function mapLiveRowToRing(row: Record<string, unknown>): MomentStoryRing | null {
-  const creator = (row.creator as Record<string, unknown>) || {};
-  const creatorId = String(row.creator_id ?? creator.id ?? '').trim();
-  const streamId = String(row.id ?? '').trim();
-  if (!creatorId || !streamId) return null;
-  const name = String(creator.full_name || creator.username || row.creator_name || 'Live').trim() || 'Live';
-  const avatarRaw = String(creator.profile_image ?? '').trim();
-  const avatar = avatarRaw || defaultAvatarForUserId(creatorId);
-  const thumb = String(row.thumbnail_url ?? '').trim();
-  return {
-    id: `live-${streamId}`,
-    userId: creatorId,
-    name,
-    avatar,
-    isAdd: false,
-    hasNew: true,
-    isLive: true,
-    liveStreamId: streamId,
-    previewUrl: thumb || undefined,
-  };
-}
-
-/** Lives en premier (tri spectateurs côté API), puis auteurs des moments (ordre du fil). */
 function buildMomentStoryRings(
   posts: Post[],
-  liveRows: Record<string, unknown>[],
   me: { id?: string; profile_image?: string; avatar?: string; full_name?: string; username?: string } | null
 ): MomentStoryRing[] {
   const uid = normalizeId(me?.id);
@@ -162,19 +151,10 @@ function buildMomentStoryRings(
     avatar: selfAvatar,
     isAdd: true,
     hasNew: false,
-    isLive: false,
-    liveStreamId: null,
   };
 
   const seen = new Set<string>();
   const rings: MomentStoryRing[] = [];
-
-  for (const row of liveRows) {
-    const ring = mapLiveRowToRing(row);
-    if (!ring || seen.has(ring.userId)) continue;
-    seen.add(ring.userId);
-    rings.push(ring);
-  }
 
   posts.forEach((p) => {
     const aid = normalizeId(p.authorId);
@@ -188,8 +168,6 @@ function buildMomentStoryRings(
       avatar: p.user.avatar || defaultAvatarForUserId(aid),
       isAdd: false,
       hasNew: true,
-      isLive: false,
-      liveStreamId: null,
       previewUrl: preview || undefined,
     });
   });
@@ -287,6 +265,12 @@ function mapApiPostToFeedPost(p: Record<string, unknown>): Post {
     typeof p.created_at === 'string' ? p.created_at
       : typeof p.createdAt === 'string' ? p.createdAt
         : undefined;
+  const countRaw = p as { _count?: { comments?: number }; comments_count?: number; commentsCount?: number };
+  const commentsCount =
+    typeof countRaw._count?.comments === 'number'
+      ? countRaw._count.comments
+      : Number(countRaw.comments_count ?? countRaw.commentsCount ?? 0) || 0;
+
   return {
     id: String(p.id),
     authorId,
@@ -296,7 +280,7 @@ function mapApiPostToFeedPost(p: Record<string, unknown>): Post {
     images,
     reactions: { ...EMPTY_REACTIONS },
     totalReactions: 0,
-    comments: 0,
+    comments: commentsCount,
     shares: 0,
     location: undefined,
   };
@@ -315,21 +299,13 @@ export default function FeedScreen() {
   const [postMenuPost, setPostMenuPost] = useState<Post | null>(null);
   /** Signalement avec raison (ReportModal → /moderation/report). */
   const [reportPostId, setReportPostId] = useState<string | null>(null);
-  const [liveStreamRows, setLiveStreamRows] = useState<Record<string, unknown>[]>([]);
-
-  const fetchActiveLives = useCallback(async () => {
-    try {
-      const res = await apiClient.get('/live', {
-        params: { status: 'live', sortBy: 'viewers', limit: 24 },
-      });
-      const body = res.data as Record<string, unknown> | undefined;
-      const inner = (body?.data ?? body) as Record<string, unknown> | undefined;
-      const streams = Array.isArray(inner?.streams) ? (inner.streams as Record<string, unknown>[]) : [];
-      setLiveStreamRows(streams);
-    } catch {
-      setLiveStreamRows([]);
-    }
-  }, []);
+  const [commentsModalPost, setCommentsModalPost] = useState<Post | null>(null);
+  const [commentsList, setCommentsList] = useState<MomentCommentRow[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [commentSending, setCommentSending] = useState(false);
+  const [replyingToComment, setReplyingToComment] = useState<{ id: string; label: string } | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
 
   const fetchMomentsFeed = useCallback(async (): Promise<MomentsFeedPayload> => {
     const res = await apiClient.get('/posts', {
@@ -353,24 +329,19 @@ export default function FeedScreen() {
   useFocusEffect(
     useCallback(() => {
       void refresh();
-      void fetchActiveLives();
-    }, [refresh, fetchActiveLives])
+    }, [refresh])
   );
 
   const displayPosts = feedData.posts;
 
   const momentStoryRings = useMemo(
-    () => buildMomentStoryRings(displayPosts, liveStreamRows, user),
-    [displayPosts, liveStreamRows, user]
+    () => buildMomentStoryRings(displayPosts, user),
+    [displayPosts, user]
   );
 
   const onMomentRingPress = useCallback((ring: MomentStoryRing) => {
     if (ring.isAdd) {
       router.push('/stories');
-      return;
-    }
-    if (ring.isLive && ring.liveStreamId) {
-      router.push(`/live/${ring.liveStreamId}` as const);
       return;
     }
     router.push({
@@ -388,20 +359,232 @@ export default function FeedScreen() {
     setPostReactions(prev => ({ ...prev, [postId]: reaction }));
   }, []);
 
-  const handleMomentComment = useCallback((post: Post) => {
-    const body =
-      'Les commentaires sur chaque moment seront disponibles ici prochainement. En attendant, ouvrez la messagerie.';
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      if (window.confirm(`${body}\n\nAller aux messages ?`)) {
-        router.push('/messages');
-      }
-      return;
+  const loadCommentsForPost = useCallback(async (postId: string) => {
+    setCommentsLoading(true);
+    try {
+      const res = await apiClient.get(`/posts/${encodeURIComponent(postId)}/comments`, {
+        params: { page: 1, limit: 50 },
+      });
+      const inner = (res.data as { data?: { comments?: MomentCommentRow[] } })?.data ?? res.data;
+      const arr = Array.isArray(inner?.comments) ? inner.comments : [];
+      setCommentsList(arr);
+    } catch {
+      setCommentsList([]);
+    } finally {
+      setCommentsLoading(false);
     }
-    Alert.alert('Commentaires', body, [
-      { text: 'OK', style: 'cancel' },
-      { text: 'Messages', onPress: () => router.push('/messages') },
-    ]);
   }, []);
+
+  const closeCommentsModal = useCallback(() => {
+    setCommentsModalPost(null);
+    setCommentsList([]);
+    setCommentDraft('');
+    setCommentsLoading(false);
+    setCommentSending(false);
+    setReplyingToComment(null);
+    setEditingCommentId(null);
+  }, []);
+
+  const handleMomentComment = useCallback(
+    (post: Post) => {
+      if (!isAuthenticated) {
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.confirm === 'function') {
+          if (window.confirm('Connectez-vous pour commenter. Aller à la connexion ?')) {
+            router.push('/(auth)/login');
+          }
+        } else {
+          Alert.alert('Connexion', 'Connectez-vous pour commenter ce moment.', [
+            { text: 'Annuler', style: 'cancel' },
+            { text: 'Se connecter', onPress: () => router.push('/(auth)/login') },
+          ]);
+        }
+        return;
+      }
+      setCommentsModalPost(post);
+      setCommentDraft('');
+      setReplyingToComment(null);
+      setEditingCommentId(null);
+      void loadCommentsForPost(post.id);
+    },
+    [isAuthenticated, loadCommentsForPost],
+  );
+
+  const showMomentCommentError = useCallback((msg: string) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert(msg);
+    } else {
+      Alert.alert('Erreur', msg);
+    }
+  }, []);
+
+  const toggleMomentCommentReaction = useCallback(
+    async (commentId: string, type: string = 'like') => {
+      try {
+        const res = await apiClient.post(`/posts/comments/${encodeURIComponent(commentId)}/reaction`, { type });
+        const inner = (res.data as { data?: { reaction_counts?: Record<string, number>; my_reaction?: string | null } })?.data ?? res.data;
+        const nextCounts =
+          inner?.reaction_counts && typeof inner.reaction_counts === 'object'
+            ? (inner.reaction_counts as Record<string, number>)
+            : {};
+        const nextTotal = Object.values(nextCounts).reduce<number>((sum, n) => sum + (typeof n === 'number' ? n : 0), 0);
+        setCommentsList((prev) => {
+          const apply = (rows: MomentCommentRow[]): MomentCommentRow[] =>
+            rows.map((row) => {
+              if (row.id === commentId) {
+                return {
+                  ...row,
+                  reaction_counts: nextCounts,
+                  reactions_count: nextTotal,
+                  my_reaction: inner?.my_reaction ?? null,
+                };
+              }
+              return row.replies?.length ? { ...row, replies: apply(row.replies) } : row;
+            });
+          return apply(prev);
+        });
+      } catch (e: unknown) {
+        const err = e as { response?: { data?: { error?: { message?: string } } }; message?: string };
+        showMomentCommentError(err.response?.data?.error?.message || err.message || 'Impossible de liker ce commentaire.');
+      }
+    },
+    [showMomentCommentError],
+  );
+
+  const submitMomentComment = useCallback(async () => {
+    const post = commentsModalPost;
+    const text = commentDraft.trim();
+    if (!post || !text || commentSending) return;
+    setCommentSending(true);
+    try {
+      if (editingCommentId) {
+        await apiClient.patch(`/posts/comments/${encodeURIComponent(editingCommentId)}`, { content: text });
+      } else {
+        await apiClient.post(`/posts/${encodeURIComponent(post.id)}/comments`, {
+          content: text,
+          ...(replyingToComment ? { parent_id: replyingToComment.id } : {}),
+        });
+      }
+      setCommentDraft('');
+      setReplyingToComment(null);
+      setEditingCommentId(null);
+      await loadCommentsForPost(post.id);
+      await refresh();
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: { message?: string } } }; message?: string };
+      showMomentCommentError(
+        err.response?.data?.error?.message ||
+          err.message ||
+          (editingCommentId ? 'Impossible de modifier le commentaire.' : 'Impossible d’envoyer le commentaire.')
+      );
+    } finally {
+      setCommentSending(false);
+    }
+  }, [commentDraft, commentSending, commentsModalPost, editingCommentId, loadCommentsForPost, refresh, replyingToComment, showMomentCommentError]);
+
+  const startReplyToMomentComment = useCallback((comment: MomentCommentRow) => {
+    const u = comment.user || {};
+    const label = String(u.full_name || u.username || 'ce commentaire').trim() || 'ce commentaire';
+    setReplyingToComment({ id: comment.id, label });
+    setEditingCommentId(null);
+    setCommentDraft('');
+  }, []);
+
+  const startEditMomentComment = useCallback((comment: MomentCommentRow) => {
+    setEditingCommentId(comment.id);
+    setReplyingToComment(null);
+    setCommentDraft(comment.content || '');
+  }, []);
+
+  const deleteMomentComment = useCallback(
+    async (comment: MomentCommentRow) => {
+      const runDelete = async () => {
+        if (!commentsModalPost) return;
+        try {
+          await apiClient.delete(`/posts/comments/${encodeURIComponent(comment.id)}`);
+          if (editingCommentId === comment.id) {
+            setEditingCommentId(null);
+            setCommentDraft('');
+          }
+          if (replyingToComment?.id === comment.id) setReplyingToComment(null);
+          await loadCommentsForPost(commentsModalPost.id);
+          await refresh();
+        } catch (e: unknown) {
+          const err = e as { response?: { data?: { error?: { message?: string } } }; message?: string };
+          showMomentCommentError(err.response?.data?.error?.message || err.message || 'Impossible de supprimer ce commentaire.');
+        }
+      };
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.confirm === 'function') {
+        if (window.confirm('Supprimer ce commentaire ?')) await runDelete();
+        return;
+      }
+
+      Alert.alert('Supprimer', 'Supprimer ce commentaire ?', [
+        { text: 'Annuler', style: 'cancel' },
+        { text: 'Supprimer', style: 'destructive', onPress: () => void runDelete() },
+      ]);
+    },
+    [commentsModalPost, editingCommentId, loadCommentsForPost, refresh, replyingToComment, showMomentCommentError],
+  );
+
+  const renderMomentCommentThread = useCallback(
+    (item: MomentCommentRow, depth = 0): React.ReactElement => {
+      const u = item.user || {};
+      const label = String(u.full_name || u.username || 'Utilisateur').trim() || 'Utilisateur';
+      const avatar = String(u.profile_image || '').trim();
+      const created = typeof item.created_at === 'string' ? item.created_at : undefined;
+      const isMine = Boolean(user?.id) && String(item.user_id || u.id || '') === String(user?.id);
+      const liked = item.my_reaction === 'like';
+      const reactionCount = Number(item.reactions_count || 0);
+
+      return (
+        <View key={item.id} style={[styles.commentThreadBlock, depth > 0 && styles.commentReplyBlock]}>
+          <View style={styles.commentRow}>
+            <Image
+              source={{
+                uri: avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(label.slice(0, 12))}&background=333&color=fff&size=64`,
+              }}
+              style={styles.commentAvatar}
+            />
+            <View style={styles.commentBody}>
+              <Text style={styles.commentAuthor}>{label}</Text>
+              <Text style={styles.commentMeta}>
+                {formatTimeAgo(created)}
+                {item.updated_at && item.updated_at !== item.created_at ? ' · modifié' : ''}
+              </Text>
+              <Text style={styles.commentText}>{item.content}</Text>
+              <View style={styles.commentActionsRow}>
+                <TouchableOpacity onPress={() => void toggleMomentCommentReaction(item.id)} hitSlop={10}>
+                  <Text style={[styles.commentActionText, liked && styles.commentActionTextActive]}>
+                    {liked ? "J’aime" : 'Like'}{reactionCount > 0 ? ` (${reactionCount})` : ''}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => startReplyToMomentComment(item)} hitSlop={10}>
+                  <Text style={styles.commentActionText}>Répondre</Text>
+                </TouchableOpacity>
+                {isMine ? (
+                  <TouchableOpacity onPress={() => startEditMomentComment(item)} hitSlop={10}>
+                    <Text style={styles.commentActionText}>Modifier</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {isMine ? (
+                  <TouchableOpacity onPress={() => void deleteMomentComment(item)} hitSlop={10}>
+                    <Text style={[styles.commentActionText, styles.commentDeleteText]}>Supprimer</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+          </View>
+          {Array.isArray(item.replies) && item.replies.length > 0 ? (
+            <View style={styles.commentRepliesWrap}>
+              {item.replies.map((reply) => renderMomentCommentThread(reply, depth + 1))}
+            </View>
+          ) : null}
+        </View>
+      );
+    },
+    [deleteMomentComment, startEditMomentComment, startReplyToMomentComment, toggleMomentCommentReaction, user?.id],
+  );
 
   const performDeletePost = useCallback(async (post: Post) => {
     try {
@@ -602,7 +785,7 @@ export default function FeedScreen() {
               key={story.id}
               style={styles.storyItem}
               onPress={() => onMomentRingPress(story)}
-              accessibilityLabel={story.isAdd ? 'Votre story' : story.isLive ? `${story.name} en direct` : `Story ${story.name}`}
+              accessibilityLabel={story.isAdd ? 'Votre story' : `Story ${story.name}`}
             >
               {story.isAdd ? (
                 <View style={styles.storyAddContainer}>
@@ -611,15 +794,12 @@ export default function FeedScreen() {
                 </View>
               ) : (
                 <LinearGradient
-                  colors={story.isLive ? ['#FF0000', '#FF4444'] : story.hasNew ? ['#FF6B00', '#FF006E'] : ['#444', '#333']}
+                  colors={story.hasNew ? ['#FF6B00', '#FF006E'] : ['#444', '#333']}
                   style={styles.storyRing}
                 >
                   <View style={styles.storyRingInner}>
                     <Image source={{ uri: story.avatar }} style={styles.storyAvatar} />
                   </View>
-                  {story.isLive && (
-                    <View style={styles.storyLiveBadge}><Text style={styles.storyLiveText}>LIVE</Text></View>
-                  )}
                 </LinearGradient>
               )}
               <Text style={styles.storyName} numberOfLines={1}>{story.isAdd ? 'Votre Story' : story.name}</Text>
@@ -867,6 +1047,96 @@ export default function FeedScreen() {
         </Pressable>
       </Modal>
 
+      <Modal
+        visible={commentsModalPost != null}
+        transparent
+        animationType="slide"
+        onRequestClose={closeCommentsModal}
+      >
+        <KeyboardAvoidingView
+          style={styles.commentsModalRoot}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={insets.top}
+        >
+          <Pressable style={styles.commentsModalBackdrop} onPress={closeCommentsModal} accessibilityLabel="Fermer" />
+          <View style={[styles.commentsSheet, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+            <View style={styles.commentsHeader}>
+              <Text style={styles.commentsTitle} numberOfLines={1}>
+                Commentaires{commentsModalPost?.user?.name ? ` · ${commentsModalPost.user.name}` : ''}
+              </Text>
+              <TouchableOpacity onPress={closeCommentsModal} hitSlop={12} accessibilityLabel="Fermer">
+                <Ionicons name="close" size={26} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+            {replyingToComment || editingCommentId ? (
+              <View style={styles.commentContextBar}>
+                <Text style={styles.commentContextText} numberOfLines={1}>
+                  {editingCommentId ? 'Modification du commentaire' : `Réponse à ${replyingToComment?.label ?? ''}`}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setReplyingToComment(null);
+                    setEditingCommentId(null);
+                    setCommentDraft('');
+                  }}
+                  hitSlop={10}
+                >
+                  <Text style={styles.commentContextCancel}>Annuler</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            {commentsLoading ? (
+              <View style={styles.commentsLoadingBox}>
+                <ActivityIndicator size="small" color="#FF6B00" />
+              </View>
+            ) : (
+              <FlatList
+                data={commentsList}
+                keyExtractor={(item) => item.id}
+                style={styles.commentsList}
+                contentContainerStyle={commentsList.length === 0 ? styles.commentsListEmpty : undefined}
+                keyboardShouldPersistTaps="handled"
+                ListEmptyComponent={
+                  <Text style={styles.commentsEmptyText}>Aucun commentaire pour l’instant. Soyez le premier !</Text>
+                }
+                renderItem={({ item }) => renderMomentCommentThread(item)}
+              />
+            )}
+            <View style={styles.commentComposer}>
+              <TextInput
+                style={styles.commentInput}
+                placeholder={
+                  editingCommentId
+                    ? 'Modifier votre commentaire…'
+                    : replyingToComment
+                      ? `Répondre à ${replyingToComment.label}…`
+                      : 'Écrire un commentaire…'
+                }
+                placeholderTextColor="#666"
+                value={commentDraft}
+                onChangeText={setCommentDraft}
+                multiline
+                maxLength={2000}
+                editable={!commentSending}
+                autoFocus
+              />
+              <TouchableOpacity
+                style={[styles.commentSendBtn, (!commentDraft.trim() || commentSending) && styles.commentSendBtnDisabled]}
+                onPress={() => void submitMomentComment()}
+                disabled={!commentDraft.trim() || commentSending}
+                accessibilityLabel={editingCommentId ? 'Enregistrer la modification' : 'Envoyer le commentaire'}
+              >
+                {commentSending ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Ionicons name={editingCommentId ? 'checkmark' : 'send'} size={20} color="#FFF" />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       <ReportModal
         visible={reportPostId != null}
         onClose={() => setReportPostId(null)}
@@ -904,10 +1174,6 @@ const styles = StyleSheet.create({
     position: 'absolute', bottom: 0, right: 0, backgroundColor: '#FF006E', width: 22, height: 22, borderRadius: 11,
     alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#0A0A0A',
   },
-  storyLiveBadge: {
-    position: 'absolute', bottom: -2, alignSelf: 'center', backgroundColor: '#FF0000', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4,
-  },
-  storyLiveText: { color: '#FFF', fontSize: 9, fontWeight: '800' },
   storyName: { color: '#AAA', fontSize: 11, marginTop: 6, maxWidth: 72, textAlign: 'center' },
   createPost: {
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1a1a1a', gap: 10,
@@ -1006,4 +1272,90 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   postMenuRowMutedText: { color: '#888', fontSize: 16, fontWeight: '600' },
+  commentsModalRoot: { flex: 1, justifyContent: 'flex-end' },
+  commentsModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 1,
+  },
+  commentsSheet: {
+    backgroundColor: '#141414',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    borderTopWidth: 1,
+    borderColor: '#2a2a2a',
+    maxHeight: '88%',
+    minHeight: 280,
+    zIndex: 2,
+    elevation: 2,
+  },
+  commentsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#2a2a2a',
+  },
+  commentsTitle: { color: '#FFF', fontSize: 16, fontWeight: '700', flex: 1, marginRight: 12 },
+  commentsLoadingBox: { paddingVertical: 40, alignItems: 'center' },
+  commentsList: { maxHeight: 360, paddingHorizontal: 12, paddingTop: 8 },
+  commentsListEmpty: { flexGrow: 1, justifyContent: 'center', paddingVertical: 24 },
+  commentsEmptyText: { color: '#777', fontSize: 14, textAlign: 'center', paddingHorizontal: 20 },
+  commentContextBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(255,107,0,0.08)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#2a2a2a',
+    gap: 12,
+  },
+  commentContextText: { flex: 1, color: '#DDD', fontSize: 12 },
+  commentContextCancel: { color: '#FF6B00', fontSize: 12, fontWeight: '700' },
+  commentThreadBlock: { paddingVertical: 2 },
+  commentReplyBlock: { marginLeft: 18, paddingLeft: 10, borderLeftWidth: 1, borderLeftColor: '#2d2d2d' },
+  commentRow: { flexDirection: 'row', paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#222' },
+  commentAvatar: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
+  commentBody: { flex: 1 },
+  commentAuthor: { color: '#FFF', fontWeight: '600', fontSize: 14 },
+  commentMeta: { color: '#666', fontSize: 11, marginTop: 2 },
+  commentText: { color: '#DDD', fontSize: 14, marginTop: 6, lineHeight: 20 },
+  commentActionsRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginTop: 8 },
+  commentActionText: { color: '#8C8C8C', fontSize: 12, fontWeight: '600' },
+  commentActionTextActive: { color: '#FF6B00' },
+  commentDeleteText: { color: '#FF7676' },
+  commentRepliesWrap: { marginTop: 2 },
+  commentComposer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    gap: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#2a2a2a',
+  },
+  commentInput: {
+    flex: 1,
+    backgroundColor: '#1c1c1c',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#FFF',
+    fontSize: 15,
+    maxHeight: 100,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  commentSendBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#FF6B00',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commentSendBtnDisabled: { opacity: 0.45 },
 });

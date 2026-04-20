@@ -31,17 +31,22 @@ export default function CreatorEarningsScreen() {
         : 0;
       const total = Number(rev.total_fcfa) || 0;
       const tips = Number(rev.donations_fcfa) || 0;
+      const liveGifts = Number(rev.live_gifts_fcfa) || 0;
+      const liveTips = Number(rev.live_tips_fcfa) || 0;
       setEarnings({
         total_earned: total,
         available_balance: Math.max(0, total - totalWithdrawn),
         total_withdrawn: totalWithdrawn,
         total_tips: tips,
+        total_live_gifts: liveGifts,
+        total_live_tips: liveTips,
         monthly_earned: Number(rev.video_fcfa) || 0,
         monthly_tips: tips,
-        recent_tips: [],
+        recent_tips: d?.recent_live_tips || [],
+        recent_gifts: d?.recent_live_gifts || [],
       });
-    } catch (e) {
-      setEarnings({ total_earned: 0, available_balance: 0, total_withdrawn: 0, total_tips: 0, monthly_earned: 0, monthly_tips: 0, recent_tips: [] });
+    } catch (_e) {
+      setEarnings({ total_earned: 0, available_balance: 0, total_withdrawn: 0, total_tips: 0, total_live_gifts: 0, total_live_tips: 0, monthly_earned: 0, monthly_tips: 0, recent_tips: [], recent_gifts: [] });
     } finally { setLoading(false); }
   };
 
@@ -102,6 +107,18 @@ export default function CreatorEarningsScreen() {
           </View>
         </View>
 
+        <View style={styles.liveRevenueCard}>
+          <Text style={styles.liveRevenueTitle}>Revenus live</Text>
+          <View style={styles.liveRevenueRow}>
+            <Text style={styles.liveRevenueLabel}>Cadeaux live</Text>
+            <Text style={styles.liveRevenueValue}>{formatMoney(earnings?.total_live_gifts || 0)}</Text>
+          </View>
+          <View style={styles.liveRevenueRow}>
+            <Text style={styles.liveRevenueLabel}>Tips live</Text>
+            <Text style={styles.liveRevenueValue}>{formatMoney(earnings?.total_live_tips || 0)}</Text>
+          </View>
+        </View>
+
         <TouchableOpacity
           style={styles.revenueShareCta}
           onPress={() => router.push('/creator/revenue-share' as any)}
@@ -158,6 +175,27 @@ export default function CreatorEarningsScreen() {
             </View>
           ))
         )}
+
+        <Text style={styles.sectionTitle}>Cadeaux live récents</Text>
+        {(earnings?.recent_gifts || []).length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="gift-outline" size={40} color="rgba(255,255,255,0.3)" />
+            <Text style={styles.emptyText}>Aucun cadeau live récent</Text>
+            <Text style={styles.emptySubtext}>Les revenus des cadeaux live apparaîtront ici.</Text>
+          </View>
+        ) : (
+          (earnings?.recent_gifts || []).map((gift: any) => (
+            <View key={gift.id} style={styles.tipItem}>
+              <View style={styles.tipIcon}><Ionicons name="gift" size={18} color="#FFD700" /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.tipAmount}>{formatMoney(gift.creator_earnings || 0)}</Text>
+                <Text style={styles.tipMeta}>
+                  {gift.gift_name || 'Cadeau'} • {gift.quantity}× • {new Date(gift.created_at).toLocaleDateString('fr-FR')}
+                </Text>
+              </View>
+            </View>
+          ))
+        )}
         <View style={{ height: 40 }} />
       </ScrollView>
     </View>
@@ -182,6 +220,18 @@ const styles = StyleSheet.create({
   statCard: { flex: 1, backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.lg, alignItems: 'center', gap: 4 },
   statValue: { color: Colors.text, fontSize: FontSizes.md, fontWeight: 'bold' },
   statLabel: { color: Colors.textSecondary, fontSize: FontSizes.xs },
+  liveRevenueCard: {
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.lg,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    gap: 8,
+  },
+  liveRevenueTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '700' },
+  liveRevenueRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  liveRevenueLabel: { color: Colors.textSecondary, fontSize: FontSizes.sm },
+  liveRevenueValue: { color: Colors.text, fontSize: FontSizes.sm, fontWeight: '700' },
   revenueShareCta: {
     flexDirection: 'row',
     alignItems: 'center',

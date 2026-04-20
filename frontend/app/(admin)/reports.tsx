@@ -19,6 +19,7 @@ type ReportRow = {
   content_type?: string;
   content_id?: string;
   reason?: string;
+  description?: string | null;
   created_at?: string;
   reporter?: { username?: string | null };
 };
@@ -97,6 +98,11 @@ export default function AdminReportsScreen() {
                 {r.content_type || 'contenu'} · {r.content_id?.slice(0, 10) || '—'}
               </Text>
               <Text style={styles.reason}>{r.reason || '—'}</Text>
+              {r.description ? (
+                <Text style={styles.desc} numberOfLines={2}>
+                  {r.description}
+                </Text>
+              ) : null}
               <Text style={styles.meta}>@{r.reporter?.username || '?'}</Text>
             </View>
           )}
@@ -136,5 +142,6 @@ const styles = StyleSheet.create({
   badge: { fontSize: FontSizes.xs, color: Colors.primary, fontWeight: '700', marginBottom: 4 },
   type: { fontSize: FontSizes.sm, color: Colors.textSecondary },
   reason: { fontSize: FontSizes.md, color: Colors.text, marginTop: Spacing.sm },
+  desc: { fontSize: FontSizes.sm, color: Colors.textSecondary, marginTop: 4 },
   meta: { fontSize: FontSizes.xs, color: Colors.textMuted, marginTop: Spacing.xs },
 });

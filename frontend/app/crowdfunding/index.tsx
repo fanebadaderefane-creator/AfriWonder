@@ -8,13 +8,12 @@ import {
   Image,
   TextInput,
   RefreshControl,
-  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
+import { Colors, FontSizes } from '../../src/theme/colors';
 import {
   CROWDFUNDING_CATEGORIES,
   PLATFORM_STATS,
@@ -27,7 +26,6 @@ import apiClient from '../../src/api/client';
 
 export default function CrowdfundingHomeScreen() {
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [refreshing, setRefreshing] = useState(false);

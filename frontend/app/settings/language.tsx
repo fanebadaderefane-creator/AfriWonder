@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Colors, Spacing, BorderRadius, FontSizes } from '../../src/theme/colors';
+import { Colors } from '../../src/theme/colors';
 import { useLanguage } from '../../src/i18n/LanguageContext';
 import { Language, LANGUAGE_META } from '../../src/i18n/translations';
 
@@ -59,7 +59,7 @@ export default function LanguageScreen() {
         <View style={styles.infoBox}>
           <Ionicons name="information-circle-outline" size={20} color="#888" />
           <Text style={styles.infoText}>
-            Les traductions en Bambara et Wolof sont communautaires. Aidez-nous a les ameliorer !
+            Langues : FR, EN, AR (RTL), Wolof, Bambara, Swahili, Hausa. Les variantes communautaires évoluent — votre aide est la bienvenue.
           </Text>
         </View>
       </ScrollView>

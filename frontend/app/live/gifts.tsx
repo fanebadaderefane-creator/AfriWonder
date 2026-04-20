@@ -10,7 +10,12 @@ import {
   Dimensions,
   Linking,
   Pressable,
+  ActivityIndicator,
+  Platform,
+  Modal,
+  Image,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,30 +23,54 @@ import { router, useLocalSearchParams } from 'expo-router';
 import apiClient from '../../src/api/client';
 import { useAuthStore } from '../../src/store/authStore';
 import socketService from '../../src/services/socketService';
+import { playGiftSoundForCatalog } from '../../src/live/liveGiftSounds';
+import { coinIapConfiguredForPackage, purchaseCoinPackageViaIap } from '../../src/wallet/coinIapPurchase';
 
 const { width, height } = Dimensions.get('window');
 
-/** Prix unitaire en FCFA (backend : total = amount × quantity, min 100 FCFA). */
-const GIFT_CATALOG = [
-  { id: 'heart', name: 'Cœur', icon: 'heart' as const, amountXof: 100, color: '#FF4757' },
-  { id: 'star', name: 'Étoile', icon: 'star' as const, amountXof: 250, color: '#FFEAA7' },
-  { id: 'fire', name: 'Feu', icon: 'flame' as const, amountXof: 500, color: '#FF6B00' },
-  { id: 'diamond', name: 'Diamant', icon: 'diamond' as const, amountXof: 1000, color: '#74B9FF' },
-  { id: 'crown', name: 'Couronne', icon: 'trophy' as const, amountXof: 2500, color: '#FFD700' },
-  { id: 'lion', name: "Lion d'or", icon: 'shield' as const, amountXof: 5000, color: '#FF6B00' },
-  { id: 'rocket', name: 'Fusée', icon: 'rocket' as const, amountXof: 10000, color: '#A855F7' },
-  { id: 'africa', name: 'Afrique', icon: 'globe' as const, amountXof: 25000, color: '#10B981' },
-];
+export type GiftCatalogRow = {
+  id: string;
+  name: string;
+  icon: string;
+  price: number;
+  coin_value: number;
+  category?: string | null;
+  rarity?: string | null;
+  animation_url?: string | null;
+};
 
-const RECHARGE_PACKS = [
-  { amount: 500, label: '500 FCFA' },
-  { amount: 1500, label: '1 500 FCFA' },
-  { amount: 5000, label: '5 000 FCFA' },
-  { amount: 10000, label: '10 000 FCFA' },
-  { amount: 25000, label: '25 000 FCFA' },
-];
+function rarityColor(rarity?: string | null): string {
+  switch (String(rarity || '').toLowerCase()) {
+    case 'legendary':
+      return '#f59e0b';
+    case 'epic':
+      return '#a855f7';
+    case 'rare':
+      return '#60a5fa';
+    default:
+      return '#94a3b8';
+  }
+}
 
-export type GiftCatalogItem = (typeof GIFT_CATALOG)[number];
+function isLikelyEmojiIcon(s: string): boolean {
+  const t = String(s || '').trim();
+  if (!t) return false;
+  if (t.length > 12) return false;
+  return !/^[a-z0-9\-_]+$/i.test(t);
+}
+
+function GiftGlyph({ icon, color, size }: { icon: string; color: string; size: number }) {
+  if (isLikelyEmojiIcon(icon)) {
+    return <Text style={{ fontSize: size * 0.85 }}>{icon}</Text>;
+  }
+  return (
+    <Ionicons
+      name={(icon as React.ComponentProps<typeof Ionicons>['name']) || 'gift'}
+      size={size}
+      color={color}
+    />
+  );
+}
 
 interface GiftAnimationData {
   id: string;
@@ -50,25 +79,67 @@ interface GiftAnimationData {
   giftIcon: string;
   giftColor: string;
   quantity: number;
+  combo: number;
+  rarity?: string | null;
+  giftId?: string;
+  animationUrl?: string;
 }
 
 function mapServerGiftToAnimation(data: Record<string, unknown>): GiftAnimationData {
-  const senderName = String(
-    data.sender_name ?? data.senderName ?? 'Anonyme',
-  );
+  const senderName = String(data.sender_name ?? data.senderName ?? 'Anonyme');
   const giftName = String(data.gift_name ?? data.giftName ?? 'Cadeau');
-  const giftIcon = String(data.gift_icon ?? data.giftIcon ?? 'gift');
+  const giftIcon = String(data.gift_icon ?? data.giftIcon ?? '🎁');
   const quantity = Number(data.quantity ?? 1) || 1;
-  const giftId = String(data.gift_id ?? data.giftId ?? '');
-  const fromCat = GIFT_CATALOG.find((g) => g.id === giftId);
+  const combo = Math.max(1, Math.floor(Number(data.combo ?? 1) || 1));
+  const rarity = data.rarity != null ? String(data.rarity) : '';
+  const giftId = String(data.gift_id ?? data.giftId ?? '').trim();
+  const animationUrl =
+    data.animation_url != null ? String(data.animation_url).trim() : data.animationUrl != null ? String(data.animationUrl).trim() : '';
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     senderName,
     giftName,
     giftIcon,
-    giftColor: fromCat?.color ?? Colors.primary,
+    giftColor: rarityColor(rarity || undefined),
     quantity,
+    combo,
+    rarity: rarity || undefined,
+    giftId: giftId || undefined,
+    animationUrl: animationUrl || undefined,
   };
+}
+
+/** Plein écran ~3 s — visible par tous les clients branchés sur le socket live. */
+function GiftFullscreenOverlay({ gift, onDismiss }: { gift: GiftAnimationData | null; onDismiss: () => void }) {
+  useEffect(() => {
+    if (!gift) return;
+    const t = setTimeout(onDismiss, 2800);
+    return () => clearTimeout(t);
+  }, [gift, onDismiss]);
+
+  if (!gift) return null;
+
+  const rawUrl = String(gift.animationUrl || '').trim();
+  const isHttpImage = /^https?:\/\/.+\.(png|jpe?g|webp|gif)(\?|#|$)/i.test(rawUrl);
+
+  return (
+    <Modal visible transparent animationType="fade" statusBarTranslucent>
+      <Pressable style={styles.fsRoot} onPress={onDismiss}>
+        <View style={styles.fsCard} pointerEvents="box-none">
+          {isHttpImage ? (
+            <Image source={{ uri: rawUrl }} style={styles.fsImage} resizeMode="contain" />
+          ) : (
+            <Text style={styles.fsEmoji}>{gift.giftIcon}</Text>
+          )}
+          <Text style={styles.fsFrom}>{gift.senderName}</Text>
+          <Text style={styles.fsGift}>
+            {gift.giftName} ×{gift.quantity}
+            {gift.combo > 1 ? ` · COMBO ×${gift.combo}` : ''}
+          </Text>
+        </View>
+      </Pressable>
+    </Modal>
+  );
 }
 
 const GiftAnimationBubble: React.FC<{
@@ -80,6 +151,10 @@ const GiftAnimationBubble: React.FC<{
   const scale = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
+    if (Platform.OS !== 'web') {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      void playGiftSoundForCatalog(gift.giftId, gift.rarity, gift.giftName);
+    }
     const anim = Animated.parallel([
       Animated.spring(scale, { toValue: 1, friction: 4, useNativeDriver: true }),
       Animated.sequence([
@@ -92,22 +167,21 @@ const GiftAnimationBubble: React.FC<{
     ]);
     anim.start(() => onRemove(gift.id));
     return () => anim.stop();
-  }, [gift.id, onRemove, opacity, scale, translateY]);
+  }, [gift.id, gift.giftId, gift.rarity, onRemove, opacity, scale, translateY]);
+
+  const comboLabel = gift.combo > 1 ? ` · COMBO ×${gift.combo}` : '';
 
   return (
     <Animated.View
       style={[styles.giftAnimContainer, { transform: [{ translateY }, { scale }], opacity }]}
     >
       <View style={[styles.giftAnimBubble, { borderColor: gift.giftColor }]}>
-        <Ionicons
-          name={(gift.giftIcon as React.ComponentProps<typeof Ionicons>['name']) || 'gift'}
-          size={28}
-          color={gift.giftColor}
-        />
+        <GiftGlyph icon={gift.giftIcon} color={gift.giftColor} size={28} />
         <View>
           <Text style={styles.giftAnimSender}>{gift.senderName}</Text>
           <Text style={styles.giftAnimName}>
             {gift.giftName} ×{gift.quantity}
+            {comboLabel}
           </Text>
         </View>
       </View>
@@ -122,48 +196,118 @@ export interface LiveGiftsPanelProps {
   onClose: () => void;
 }
 
-export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({ liveId, creatorId: _creatorId, visible, onClose }) => {
+type CoinPackageRow = {
+  id: string;
+  name: string;
+  coins_amount: number;
+  price_fcfa: number;
+  bonus_coins?: number;
+};
+
+export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
+  liveId,
+  creatorId: _creatorId,
+  visible,
+  onClose,
+}) => {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
-  const [balanceXof, setBalanceXof] = useState(0);
+  const [balanceCoins, setBalanceCoins] = useState(0);
+  const [catalog, setCatalog] = useState<GiftCatalogRow[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
   const [showRecharge, setShowRecharge] = useState(false);
-  const [selectedGift, setSelectedGift] = useState<GiftCatalogItem | null>(null);
+  const [packages, setPackages] = useState<CoinPackageRow[]>([]);
+  const [packagesLoading, setPackagesLoading] = useState(false);
+  const [selectedGift, setSelectedGift] = useState<GiftCatalogRow | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [sending, setSending] = useState(false);
+  const [economyHint, setEconomyHint] = useState<string | null>(null);
+
+  const loadCatalog = useCallback(async () => {
+    setCatalogLoading(true);
+    try {
+      try {
+        const er = await apiClient.get('/live/economy');
+        const em = (er.data?.data ?? er.data) as {
+          example_coins?: number;
+          example_usd?: number;
+          coins_per_usd?: number;
+        } | null;
+        if (em && typeof em.example_coins === 'number' && typeof em.example_usd === 'number') {
+          setEconomyHint(
+            `Indicatif CDC : ${em.example_coins} coins ≈ ${em.example_usd} USD (LIVE_COINS_PER_USD=${em.coins_per_usd ?? '—'}).`,
+          );
+        } else setEconomyHint(null);
+      } catch {
+        setEconomyHint(null);
+      }
+      const res = await apiClient.get('/live/gifts');
+      const raw = res.data?.data ?? res.data;
+      const list = Array.isArray(raw) ? raw : raw?.catalog ?? [];
+      setCatalog(
+        (list as GiftCatalogRow[]).map((g) => ({
+          id: String(g.id),
+          name: String(g.name),
+          icon: String(g.icon || '🎁'),
+          price: Number(g.price) || 0,
+          coin_value: Math.round(Number(g.coin_value ?? g.price) || 0),
+          category: g.category,
+          rarity: g.rarity,
+          animation_url: g.animation_url,
+        })),
+      );
+    } catch {
+      setCatalog([]);
+    } finally {
+      setCatalogLoading(false);
+    }
+  }, []);
+
+  const loadBalance = useCallback(async () => {
+    try {
+      const res = await apiClient.get('/coins/balance');
+      const d = res.data?.data ?? res.data;
+      const raw = d?.coins_balance ?? d?.coinsBalance ?? d?.balance ?? 0;
+      setBalanceCoins(Math.round(Number(raw)) || 0);
+    } catch {
+      setBalanceCoins(0);
+    }
+  }, []);
+
+  const loadPackages = useCallback(async () => {
+    setPackagesLoading(true);
+    try {
+      const res = await apiClient.get('/coins/packages');
+      const d = res.data?.data ?? res.data;
+      const pk = d?.packages ?? d;
+      setPackages(Array.isArray(pk) ? (pk as CoinPackageRow[]) : []);
+    } catch {
+      setPackages([]);
+    } finally {
+      setPackagesLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!visible || !liveId) return;
-    void loadWallet();
+    void loadCatalog();
+    void loadBalance();
+    void loadPackages();
     socketService.joinLiveStream(liveId);
     return () => {
       socketService.leaveLiveStream(liveId);
     };
-  }, [visible, liveId]);
-
-  const loadWallet = async () => {
-    try {
-      const res = await apiClient.get('/live/wallet');
-      const d = res.data?.data ?? res.data;
-      const raw =
-        d?.available_balance ??
-        d?.availableBalance ??
-        d?.balance ??
-        d?.coins_balance ??
-        0;
-      setBalanceXof(Math.round(Number(raw)) || 0);
-    } catch {
-      setBalanceXof(0);
-    }
-  };
+  }, [visible, liveId, loadCatalog, loadBalance, loadPackages]);
 
   const sendGift = async () => {
     if (!selectedGift || !user) return;
-    const totalCost = selectedGift.amountXof * quantity;
-    if (totalCost < 100) {
-      Alert.alert('Montant invalide', 'Le montant minimum est de 100 FCFA.');
+    const unitCoins = Math.round(selectedGift.coin_value || selectedGift.price);
+    const totalCoins = unitCoins * quantity;
+    if (totalCoins < 1) {
+      Alert.alert('Montant invalide', 'Quantité ou cadeau invalide.');
       return;
     }
-    if (totalCost > balanceXof) {
+    if (totalCoins > balanceCoins) {
       setShowRecharge(true);
       return;
     }
@@ -173,10 +317,10 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({ liveId, creatorI
         giftId: selectedGift.id,
         giftName: selectedGift.name,
         giftIcon: selectedGift.icon,
-        amount: selectedGift.amountXof,
+        amount: unitCoins,
         quantity,
       });
-      setBalanceXof((prev) => Math.max(0, prev - totalCost));
+      setBalanceCoins((prev) => Math.max(0, prev - totalCoins));
       setSelectedGift(null);
       setQuantity(1);
       Alert.alert('Cadeau envoyé', `${selectedGift.name} ×${quantity} — merci !`);
@@ -192,27 +336,60 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({ liveId, creatorI
     }
   };
 
-  const startRecharge = async (pack: (typeof RECHARGE_PACKS)[0]) => {
+  const startPurchase = async (pkg: CoinPackageRow) => {
     try {
-      const res = await apiClient.post('/live/wallet/recharge', { amount: pack.amount });
+      const res = await apiClient.post('/coins/purchase', {
+        packageId: pkg.id,
+        payment_method: 'orange_money',
+      });
       const d = res.data?.data ?? res.data;
       if (d?.payment_url && typeof d.payment_url === 'string') {
         const ok = await Linking.canOpenURL(d.payment_url);
         if (ok) await Linking.openURL(d.payment_url);
-        else Alert.alert('Recharge', 'URL de paiement reçue mais non ouvrable sur cet appareil.');
+        else Alert.alert('Achat coins', 'URL de paiement reçue mais non ouvrable sur cet appareil.');
       } else {
         Alert.alert(
-          'Recharge initiée',
+          'Achat coins',
           d?.mock
-            ? 'Mode simulation : ouvrez le lien Orange mock depuis votre navigateur si besoin, puis rechargez le solde.'
-            : 'Suivez les instructions de paiement (Orange Money).',
+            ? 'Mode simulation : suivez les instructions de test du backend.'
+            : 'Paiement initié. Suivez les instructions (Mobile Money).',
         );
       }
       setShowRecharge(false);
+      void loadBalance();
     } catch (e: unknown) {
       const err = e as { response?: { data?: { error?: string } } };
-      Alert.alert('Erreur', String(err.response?.data?.error || "Erreur lors de l'initiation du paiement."));
+      Alert.alert('Erreur', String(err.response?.data?.error || "Erreur lors de l'achat de coins."));
     }
+  };
+
+  const startIapPurchase = async (pkg: CoinPackageRow) => {
+    try {
+      const r = await purchaseCoinPackageViaIap(pkg.id);
+      setBalanceCoins(r.coins_balance);
+      setShowRecharge(false);
+      Alert.alert('Merci !', `Votre solde : ${r.coins_balance.toLocaleString('fr-FR')} coins.`);
+      void loadBalance();
+    } catch (e: unknown) {
+      Alert.alert('Achat in-app', String((e as Error)?.message || e));
+    }
+  };
+
+  const onPressCoinPack = (pkg: CoinPackageRow) => {
+    if (Platform.OS === 'web') {
+      void startPurchase(pkg);
+      return;
+    }
+    const iapOk = coinIapConfiguredForPackage(pkg.id) === true;
+    if (!iapOk) {
+      void startPurchase(pkg);
+      return;
+    }
+    Alert.alert('Acheter des coins', 'Choisissez le mode de paiement.', [
+      { text: 'Mobile Money / Wave', onPress: () => void startPurchase(pkg) },
+      { text: 'App Store / Play (IAP)', onPress: () => void startIapPurchase(pkg) },
+      { text: 'Annuler', style: 'cancel' },
+    ]);
   };
 
   if (!visible) return null;
@@ -223,7 +400,7 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({ liveId, creatorI
         <View style={styles.panelHandle} />
         <View style={styles.panelTitleRow}>
           <Text style={styles.panelTitle}>
-            {showRecharge ? 'Recharger le portefeuille' : 'Envoyer un cadeau'}
+            {showRecharge ? 'Acheter des coins' : 'Envoyer un cadeau'}
           </Text>
           <TouchableOpacity
             onPress={showRecharge ? () => setShowRecharge(false) : onClose}
@@ -233,60 +410,99 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({ liveId, creatorI
             <Ionicons name={showRecharge ? 'arrow-back' : 'close'} size={24} color={Colors.text} />
           </TouchableOpacity>
         </View>
+        {economyHint && !showRecharge ? (
+          <Text style={{ color: Colors.textMuted, fontSize: 11, paddingHorizontal: Spacing.md, marginBottom: 6 }}>{economyHint}</Text>
+        ) : null}
+        {!showRecharge ? (
+          <TouchableOpacity
+            style={styles.missionsRow}
+            onPress={() => {
+              onClose();
+              router.push('/wallet/coins' as never);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Missions quotidiennes et coins gratuits"
+          >
+            <Ionicons name="gift-outline" size={16} color={Colors.primary} />
+            <Text style={styles.missionsRowText}>Gagner des coins (missions quotidiennes)</Text>
+            <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity
           style={styles.coinBalance}
           onPress={() => setShowRecharge(true)}
           accessibilityRole="button"
         >
-          <Ionicons name="wallet" size={14} color="#FFD700" />
-          <Text style={styles.coinBalanceText}>{balanceXof.toLocaleString('fr-FR')} FCFA</Text>
+          <Ionicons name="diamond-outline" size={14} color="#FFD700" />
+          <Text style={styles.coinBalanceText}>{balanceCoins.toLocaleString('fr-FR')} coins</Text>
           <Ionicons name="add-circle" size={16} color={Colors.primary} />
         </TouchableOpacity>
       </View>
 
       {showRecharge ? (
         <View style={styles.coinPacks}>
-          {RECHARGE_PACKS.map((pack) => (
-            <TouchableOpacity
-              key={pack.amount}
-              style={styles.coinPack}
-              onPress={() => void startRecharge(pack)}
-            >
-              <Ionicons name="phone-portrait-outline" size={24} color="#FFD700" />
-              <Text style={styles.coinPackLabel}>{pack.label}</Text>
-              <Text style={styles.coinPackPrice}>Orange Money</Text>
-            </TouchableOpacity>
-          ))}
+          {packagesLoading ? (
+            <ActivityIndicator color={Colors.primary} style={{ marginVertical: 16 }} />
+          ) : packages.length === 0 ? (
+            <Text style={styles.routeHint}>Aucun pack disponible pour le moment.</Text>
+          ) : (
+            packages.map((pkg) => (
+              <TouchableOpacity
+                key={pkg.id}
+                style={styles.coinPack}
+                onPress={() => void onPressCoinPack(pkg)}
+              >
+                <Ionicons name="wallet" size={24} color="#FFD700" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.coinPackLabel}>{pkg.name}</Text>
+                  <Text style={styles.coinPackSub}>
+                    {pkg.coins_amount.toLocaleString('fr-FR')} coins
+                    {pkg.bonus_coins ? ` + ${pkg.bonus_coins} bonus` : ''}
+                  </Text>
+                </View>
+                <Text style={styles.coinPackPrice}>{pkg.price_fcfa.toLocaleString('fr-FR')} FCFA</Text>
+              </TouchableOpacity>
+            ))
+          )}
         </View>
+      ) : catalogLoading ? (
+        <ActivityIndicator color={Colors.primary} style={{ marginVertical: 24 }} />
       ) : (
         <>
           <FlatList
-            data={GIFT_CATALOG}
+            data={catalog}
             numColumns={4}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.giftGrid}
-            scrollEnabled={false}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[
-                  styles.giftItem,
-                  selectedGift?.id === item.id && {
-                    borderColor: item.color,
-                    backgroundColor: `${item.color}15`,
-                  },
-                ]}
-                onPress={() => {
-                  setSelectedGift(item);
-                  setQuantity(1);
-                }}
-              >
-                <Ionicons name={item.icon} size={28} color={item.color} />
-                <Text style={styles.giftName}>{item.name}</Text>
-                <View style={styles.giftCost}>
-                  <Text style={styles.giftCostText}>{item.amountXof.toLocaleString('fr-FR')}</Text>
-                </View>
-              </TouchableOpacity>
-            )}
+            style={{ maxHeight: height * 0.38 }}
+            renderItem={({ item }) => {
+              const c = rarityColor(item.rarity);
+              return (
+                <TouchableOpacity
+                  style={[
+                    styles.giftItem,
+                    selectedGift?.id === item.id && {
+                      borderColor: c,
+                      backgroundColor: `${c}18`,
+                    },
+                  ]}
+                  onPress={() => {
+                    setSelectedGift(item);
+                    setQuantity(1);
+                  }}
+                >
+                  <GiftGlyph icon={item.icon} color={c} size={28} />
+                  <Text style={styles.giftName} numberOfLines={2}>
+                    {item.name}
+                  </Text>
+                  <View style={styles.giftCost}>
+                    <Text style={styles.giftCostText}>
+                      {Math.round(item.coin_value || item.price)} coins
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
           />
           {selectedGift ? (
             <View style={styles.sendRow}>
@@ -308,7 +524,10 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({ liveId, creatorI
               >
                 <Text style={styles.sendBtnText}>
                   Envoyer {selectedGift.name} (
-                  {(selectedGift.amountXof * quantity).toLocaleString('fr-FR')} FCFA)
+                  {(Math.round(selectedGift.coin_value || selectedGift.price) * quantity).toLocaleString(
+                    'fr-FR',
+                  )}{' '}
+                  coins)
                 </Text>
               </TouchableOpacity>
             </View>
@@ -321,6 +540,7 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({ liveId, creatorI
 
 export function useGiftAnimations(liveId: string) {
   const [animations, setAnimations] = useState<GiftAnimationData[]>([]);
+  const [fullscreenGift, setFullscreenGift] = useState<GiftAnimationData | null>(null);
 
   useEffect(() => {
     if (!liveId) return;
@@ -328,6 +548,7 @@ export function useGiftAnimations(liveId: string) {
     const handler = (data: unknown) => {
       if (!data || typeof data !== 'object') return;
       const anim = mapServerGiftToAnimation(data as Record<string, unknown>);
+      setFullscreenGift(anim);
       setAnimations((prev) => [...prev.slice(-4), anim]);
     };
     socketService.on('live:gift', handler);
@@ -341,7 +562,12 @@ export function useGiftAnimations(liveId: string) {
     setAnimations((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
-  return { animations, removeAnimation, GiftAnimationBubble };
+  const GiftFullscreenHost = useCallback(
+    () => <GiftFullscreenOverlay gift={fullscreenGift} onDismiss={() => setFullscreenGift(null)} />,
+    [fullscreenGift],
+  );
+
+  return { animations, removeAnimation, GiftAnimationBubble, GiftFullscreenHost };
 }
 
 /** Route plein écran : `/live/gifts?liveId=…&creatorId=…` — ou réutilisez `<LiveGiftsPanel />` dans l’écran live. */
@@ -388,7 +614,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#141520',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: height * 0.55,
+    maxHeight: height * 0.62,
   },
   panelHeader: {
     padding: Spacing.lg,
@@ -409,6 +635,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   panelTitle: { fontSize: FontSizes.lg, fontWeight: 'bold', color: Colors.text },
+  missionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 4,
+    paddingVertical: 8,
+    paddingHorizontal: Spacing.md,
+    alignSelf: 'stretch',
+  },
+  missionsRowText: { flex: 1, color: Colors.text, fontSize: FontSizes.sm, fontWeight: '600' },
   coinBalance: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -423,7 +660,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,215,0,0.2)',
   },
   coinBalanceText: { color: '#FFD700', fontSize: FontSizes.sm, fontWeight: '600' },
-  giftGrid: { padding: Spacing.md },
+  giftGrid: { padding: Spacing.md, paddingBottom: Spacing.lg },
   giftItem: {
     width: (width - 64) / 4,
     alignItems: 'center',
@@ -433,9 +670,9 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
     margin: 4,
   },
-  giftName: { color: Colors.text, fontSize: 10, fontWeight: '600', marginTop: 4 },
+  giftName: { color: Colors.text, fontSize: 10, fontWeight: '600', marginTop: 4, textAlign: 'center' },
   giftCost: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
-  giftCostText: { color: '#FFD700', fontSize: 10, fontWeight: '700' },
+  giftCostText: { color: '#FFD700', fontSize: 9, fontWeight: '700' },
   sendRow: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.md },
   quantityRow: {
     flexDirection: 'row',
@@ -472,7 +709,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  coinPackLabel: { flex: 1, color: Colors.text, fontWeight: '600', fontSize: FontSizes.md },
+  coinPackLabel: { color: Colors.text, fontWeight: '600', fontSize: FontSizes.md },
+  coinPackSub: { color: Colors.textMuted, fontSize: FontSizes.sm, marginTop: 2 },
   coinPackPrice: { color: Colors.primary, fontWeight: 'bold', fontSize: FontSizes.md },
   giftAnimContainer: { position: 'absolute', left: 16, bottom: 200 },
   giftAnimBubble: {
@@ -486,4 +724,16 @@ const styles = StyleSheet.create({
   },
   giftAnimSender: { color: '#FFF', fontSize: FontSizes.sm, fontWeight: '600' },
   giftAnimName: { color: '#FFD700', fontSize: FontSizes.xs, fontWeight: '700' },
+  fsRoot: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.82)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  fsCard: { alignItems: 'center', maxWidth: width * 0.92 },
+  fsEmoji: { fontSize: Math.min(120, width * 0.22), marginBottom: 12 },
+  fsImage: { width: width * 0.72, height: height * 0.34, marginBottom: 12 },
+  fsFrom: { color: 'rgba(255,255,255,0.9)', fontSize: FontSizes.md, fontWeight: '700' },
+  fsGift: { color: '#FFD700', fontSize: FontSizes.lg, fontWeight: '900', marginTop: 6, textAlign: 'center' },
 });

@@ -32,7 +32,6 @@ export default function CartScreen() {
   const insets = useSafeAreaInsets();
   const [cart, setCart] = useState<CartItem[]>(INITIAL_CART);
   const [selectedPayment, setSelectedPayment] = useState('orange');
-  const [showCheckout, setShowCheckout] = useState(false);
 
   const updateQuantity = (id: string, delta: number) => {
     setCart(prev => prev.map(item =>

@@ -1,19 +1,81 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import apiClient from '../../src/api/client';
 
-const POSTS = [
-  { id: 'p1', author: 'Moussa Keita', avatar: 'https://picsum.photos/50/50?random=130', time: 'Il y a 2h', text: 'Quelqu\'un a des recommandations pour un bon framework mobile en 2025?', likes: 45, comments: 12 },
-  { id: 'p2', author: 'Aminata Diallo', avatar: 'https://picsum.photos/50/50?random=131', time: 'Il y a 5h', text: 'Je viens de lancer mon nouveau site web! Jetez un coup d\'oeil et donnez-moi vos retours.', likes: 89, comments: 23 },
-  { id: 'p3', author: 'Ibrahim Traore', avatar: 'https://picsum.photos/50/50?random=132', time: 'Hier', text: 'Meetup developpeurs ce samedi a Bamako. Qui est interesse?', likes: 156, comments: 67 },
-];
+type CommunityDetail = {
+  id: string;
+  name?: string | null;
+  description?: string | null;
+  banner?: string | null;
+  avatar?: string | null;
+  category?: string | null;
+  members_count?: number;
+  is_member?: boolean;
+  members?: {
+    id?: string;
+    role?: string;
+    user?: {
+      id?: string;
+      username?: string | null;
+      profile_image?: string | null;
+    } | null;
+  }[];
+};
 
 export default function CommunityDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams();
+  const [loading, setLoading] = useState(true);
+  const [community, setCommunity] = useState<CommunityDetail | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    void (async () => {
+      try {
+        const res = await apiClient.get(`/communities/${id}`);
+        const data = res.data?.data ?? res.data;
+        setCommunity(data ?? null);
+      } catch {
+        Alert.alert('Communauté', 'Impossible de charger cette communauté.');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [id]);
+
+  const toggleMembership = async () => {
+    if (!community?.id) return;
+    try {
+      if (community.is_member) {
+        await apiClient.post(`/communities/${community.id}/leave`, {});
+      } else {
+        await apiClient.post(`/communities/${community.id}/join`, {});
+      }
+      setCommunity((prev) =>
+        prev
+          ? {
+              ...prev,
+              is_member: !prev.is_member,
+              members_count: Math.max(0, (prev.members_count ?? 0) + (prev.is_member ? -1 : 1)),
+            }
+          : prev
+      );
+    } catch {
+      Alert.alert('Communauté', 'Action impossible pour le moment.');
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator color={Colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -21,54 +83,41 @@ export default function CommunityDetailScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Developpeurs Mali</Text>
+        <Text style={styles.headerTitle}>{community?.name || 'Communauté'}</Text>
         <TouchableOpacity><Ionicons name="ellipsis-vertical" size={22} color={Colors.text} /></TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        {/* Community Info */}
         <View style={styles.infoCard}>
-          <Image source={{ uri: 'https://picsum.photos/400/150?random=135' }} style={styles.coverImage} />
+          <Image source={{ uri: community?.banner || community?.avatar || 'https://picsum.photos/400/150?random=135' }} style={styles.coverImage} />
           <View style={styles.infoContent}>
-            <Text style={styles.communityName}>Developpeurs Mali</Text>
-            <Text style={styles.communityDesc}>Communaute des developpeurs maliens. Entraide, partage de connaissances et networking.</Text>
+            <Text style={styles.communityName}>{community?.name || 'Communauté'}</Text>
+            <Text style={styles.communityDesc}>{community?.description || 'Description indisponible.'}</Text>
             <View style={styles.statsRow}>
-              <View style={styles.stat}><Text style={styles.statValue}>3.2K</Text><Text style={styles.statLabel}>Membres</Text></View>
-              <View style={styles.stat}><Text style={styles.statValue}>156</Text><Text style={styles.statLabel}>Posts/semaine</Text></View>
-              <View style={styles.stat}><Text style={styles.statValue}>12</Text><Text style={styles.statLabel}>En ligne</Text></View>
+              <View style={styles.stat}><Text style={styles.statValue}>{(community?.members_count ?? 0).toLocaleString()}</Text><Text style={styles.statLabel}>Membres</Text></View>
+              <View style={styles.stat}><Text style={styles.statValue}>{community?.category || 'Général'}</Text><Text style={styles.statLabel}>Catégorie</Text></View>
+              <View style={styles.stat}><Text style={styles.statValue}>{community?.is_member ? 'Oui' : 'Non'}</Text><Text style={styles.statLabel}>Membre</Text></View>
             </View>
-            <TouchableOpacity style={styles.joinButton}>
-              <Text style={styles.joinButtonText}>Membre</Text>
-              <Ionicons name="checkmark" size={16} color={Colors.text} />
+            <TouchableOpacity style={styles.joinButton} onPress={() => void toggleMembership()}>
+              <Text style={styles.joinButtonText}>{community?.is_member ? 'Quitter' : 'Rejoindre'}</Text>
+              <Ionicons name={community?.is_member ? 'checkmark' : 'add'} size={16} color={Colors.text} />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Posts */}
-        <Text style={styles.sectionTitle}>Publications</Text>
-        {POSTS.map((post) => (
-          <View key={post.id} style={styles.postCard}>
+        <Text style={styles.sectionTitle}>Membres</Text>
+        {(community?.members || []).length === 0 ? (
+          <View style={styles.postCard}>
+            <Text style={styles.postText}>Aucun membre à afficher pour le moment.</Text>
+          </View>
+        ) : (community?.members || []).map((member, index) => (
+          <View key={`${member.id ?? 'member'}-${index}`} style={styles.postCard}>
             <View style={styles.postHeader}>
-              <Image source={{ uri: post.avatar }} style={styles.postAvatar} />
+              <Image source={{ uri: member.user?.profile_image || 'https://picsum.photos/50/50?random=130' }} style={styles.postAvatar} />
               <View style={styles.postAuthorInfo}>
-                <Text style={styles.postAuthor}>{post.author}</Text>
-                <Text style={styles.postTime}>{post.time}</Text>
+                <Text style={styles.postAuthor}>{member.user?.username || 'Utilisateur'}</Text>
+                <Text style={styles.postTime}>{member.role || 'member'}</Text>
               </View>
-              <TouchableOpacity><Ionicons name="ellipsis-horizontal" size={20} color={Colors.textSecondary} /></TouchableOpacity>
-            </View>
-            <Text style={styles.postText}>{post.text}</Text>
-            <View style={styles.postActions}>
-              <TouchableOpacity style={styles.postAction}>
-                <Ionicons name="heart-outline" size={20} color={Colors.textSecondary} />
-                <Text style={styles.postActionText}>{post.likes}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.postAction}>
-                <Ionicons name="chatbubble-outline" size={20} color={Colors.textSecondary} />
-                <Text style={styles.postActionText}>{post.comments}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.postAction}>
-                <Ionicons name="share-outline" size={20} color={Colors.textSecondary} />
-              </TouchableOpacity>
             </View>
           </View>
         ))}

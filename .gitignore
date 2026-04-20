@@ -23,6 +23,7 @@ backend/coverage/
 playwright-report/
 test-results/
 *.log
+*.log.txt
 tests/e2e/playwright-credentials.local
 
 # Next.js

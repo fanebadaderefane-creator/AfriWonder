@@ -16,7 +16,6 @@ import { Colors } from '../../src/theme/colors';
 import {
   SEED_PROJECTS,
   CROWDFUNDING_CATEGORIES,
-  formatCFA,
   formatFullCFA,
   getProgressPercent,
 } from '../../src/data/crowdfunding';

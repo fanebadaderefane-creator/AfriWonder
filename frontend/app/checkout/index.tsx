@@ -21,7 +21,7 @@ export default function CheckoutScreen() {
   const insets = useSafeAreaInsets();
   const [selectedPayment, setSelectedPayment] = useState('orange');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [address, setAddress] = useState('Bamako, Commune III, Quartier Hippodrome');
+  const [address] = useState('Bamako, Commune III, Quartier Hippodrome');
   const subtotal = CART_ITEMS.reduce((sum, item) => sum + item.price * item.qty, 0);
   const delivery = 1500;
   const total = subtotal + delivery;

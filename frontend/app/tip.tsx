@@ -16,7 +16,7 @@ const METHODS = [
 
 export default function TipScreen() {
   const insets = useSafeAreaInsets();
-  const { creatorId, creatorName, videoId } = useLocalSearchParams();
+  const { creatorName, videoId } = useLocalSearchParams();
   const [amount, setAmount] = useState(500);
   const [method, setMethod] = useState('wallet');
   const [mmPhone, setMmPhone] = useState('');

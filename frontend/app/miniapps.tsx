@@ -1,28 +1,75 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, Dimensions } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Dimensions, ActivityIndicator, Alert } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import apiClient from '../src/api/client';
 
 const { width } = Dimensions.get('window');
 const CARD_SIZE = (width - Spacing.xl * 2 - Spacing.md) / 2;
 
-const CATEGORIES = ['Tous', 'Finance', 'Sante', 'Education', 'Commerce', 'Jeux', 'Outils'];
+const CATEGORIES = ['Tous', 'finance', 'sante', 'education', 'commerce', 'jeux', 'outils', 'services', 'social'];
 
-const MINI_APPS = [
-  { id: 'ma1', name: 'Calculateur FCFA', icon: 'calculator', color: '#FF6B6B', rating: 4.8, installs: '50K+', category: 'Finance' },
-  { id: 'ma2', name: 'Meteo Mali', icon: 'partly-sunny', color: '#4ECDC4', rating: 4.5, installs: '100K+', category: 'Outils' },
-  { id: 'ma3', name: 'Jeu du Wari', icon: 'game-controller', color: '#DDA0DD', rating: 4.9, installs: '200K+', category: 'Jeux' },
-  { id: 'ma4', name: 'Sante Bebe', icon: 'medkit', color: '#45B7D1', rating: 4.7, installs: '30K+', category: 'Sante' },
-  { id: 'ma5', name: 'Apprendre Bambara', icon: 'book', color: '#82E0AA', rating: 4.6, installs: '75K+', category: 'Education' },
-  { id: 'ma6', name: 'Gestion Stock', icon: 'list', color: '#F7DC6F', rating: 4.3, installs: '25K+', category: 'Commerce' },
-];
+type MiniAppItem = {
+  id: string;
+  name: string;
+  category?: string | null;
+  rating?: number | null;
+  installs_count?: number | null;
+  icon_url?: string | null;
+  description?: string | null;
+};
 
 export default function MiniAppsScreen() {
   const insets = useSafeAreaInsets();
   const [activeCategory, setActiveCategory] = useState(0);
   const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [apps, setApps] = useState<MiniAppItem[]>([]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await apiClient.get('/mini-apps', { params: { limit: 50, status: 'published' } });
+        const data = res.data?.data ?? res.data;
+        setApps(Array.isArray(data?.miniApps) ? data.miniApps : Array.isArray(data?.apps) ? data.apps : []);
+      } catch {
+        Alert.alert('Mini-Apps', 'Impossible de charger les mini-apps.');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const filteredApps = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const category = CATEGORIES[activeCategory];
+    return apps.filter((app) => {
+      const matchesCategory = category === 'Tous' || String(app.category || '').toLowerCase() === category;
+      const matchesSearch = !query || [app.name, app.description, app.category].some((value) =>
+        String(value ?? '').toLowerCase().includes(query)
+      );
+      return matchesCategory && matchesSearch;
+    });
+  }, [activeCategory, apps, search]);
+
+  const installMiniApp = async (appId: string) => {
+    try {
+      await apiClient.post(`/mini-apps/${appId}/install`, {});
+      Alert.alert('Mini-Apps', 'Mini-app installée avec succès.');
+    } catch {
+      Alert.alert('Mini-Apps', "Impossible d'installer cette mini-app.");
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator color={Colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -47,21 +94,28 @@ export default function MiniAppsScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.grid}>
-          {MINI_APPS.map((app) => (
+          {filteredApps.map((app) => (
             <TouchableOpacity key={app.id} style={styles.appCard}>
-              <View style={[styles.appIcon, { backgroundColor: app.color }]}>
-                <Ionicons name={app.icon as any} size={28} color="#FFF" />
+              <View style={[styles.appIcon, { backgroundColor: Colors.primary }]}>
+                <Ionicons name="apps" size={28} color="#FFF" />
               </View>
               <Text style={styles.appName}>{app.name}</Text>
               <View style={styles.appMeta}>
                 <Ionicons name="star" size={12} color={Colors.accent} />
-                <Text style={styles.appRating}>{app.rating}</Text>
+                <Text style={styles.appRating}>{Number(app.rating ?? 0).toFixed(1)}</Text>
               </View>
-              <Text style={styles.appInstalls}>{app.installs}</Text>
-              <TouchableOpacity style={styles.installBtn}><Text style={styles.installBtnText}>Installer</Text></TouchableOpacity>
+              <Text style={styles.appInstalls}>{(app.installs_count ?? 0).toLocaleString()} installations</Text>
+              <TouchableOpacity style={styles.installBtn} onPress={() => void installMiniApp(app.id)}>
+                <Text style={styles.installBtnText}>Installer</Text>
+              </TouchableOpacity>
             </TouchableOpacity>
           ))}
         </View>
+        {filteredApps.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>Aucune mini-app publiée pour cette recherche.</Text>
+          </View>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -89,4 +143,6 @@ const styles = StyleSheet.create({
   appInstalls: { color: Colors.textSecondary, fontSize: FontSizes.xs, marginBottom: Spacing.sm },
   installBtn: { backgroundColor: Colors.primary, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.xs },
   installBtnText: { color: Colors.text, fontSize: FontSizes.xs, fontWeight: '600' },
+  emptyCard: { backgroundColor: Colors.surface, borderRadius: BorderRadius.md, padding: Spacing.lg, marginTop: Spacing.md },
+  emptyText: { color: Colors.textSecondary, fontSize: FontSizes.sm },
 });

@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, BorderRadius, FontSizes } from '../../src/theme/colors';
+import { Colors } from '../../src/theme/colors';
 import { CROWDFUNDING_CATEGORIES } from '../../src/data/crowdfunding';
 
 type Step = 1 | 2 | 3 | 4 | 5;

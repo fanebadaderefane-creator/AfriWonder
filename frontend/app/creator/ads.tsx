@@ -4,7 +4,6 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import apiClient from '../../src/api/client';
 
 const AD_DURATION_ALLOWED = [1, 3, 7, 14, 30, 60, 90] as const;
@@ -40,7 +39,6 @@ export default function AdsScreen() {
   const [duration, setDuration] = useState('7');
   const [region, setRegion] = useState('Mali');
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
-  const [ctaText, setCtaText] = useState('En savoir plus');
   const [loading, setLoading] = useState(false);
   const [myAds, setMyAds] = useState<any[]>([]);
   const [loadingAds, setLoadingAds] = useState(false);

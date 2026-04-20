@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, KeyboardAvoidingView, Platform, Dimensions, ActivityIndicator, Modal, Alert, Pressable, Animated } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, KeyboardAvoidingView, Platform, Dimensions, ActivityIndicator, Modal, Alert, Pressable, Animated, Linking } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,8 +9,8 @@ import { useAuthStore } from '../../src/store/authStore';
 import * as Clipboard from 'expo-clipboard';
 import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
 import socketService from '../../src/services/socketService';
+import ReportModal from '../../src/components/ReportModal';
 
 const { width } = Dimensions.get('window');
 
@@ -20,8 +20,9 @@ interface Message {
   isMine: boolean;
   time: string;
   status: 'sent' | 'delivered' | 'read';
-  type: 'text' | 'image' | 'voice' | 'document' | 'audio';
+  type: 'text' | 'image' | 'voice' | 'document' | 'audio' | 'video';
   imageUri?: string;
+  thumbnailUri?: string;
   voiceDuration?: string;
   replyTo?: { id: string; name: string; text: string };
   date?: string;
@@ -63,10 +64,23 @@ export default function ChatScreen() {
 
   const [contact, setContact] = useState({
     name: (paramName as string) || 'Contact',
+    username: '' as string,
     avatar: (paramAvatar as string) || `https://i.pravatar.cc/150?u=${conversationId}`,
     online: false,
     lastSeen: '',
+    otherUserId: (paramOtherUserId as string) || '',
   });
+
+  type DmRequestState = {
+    pending_for_viewer: boolean;
+    pending_for_user_id: string | null;
+    initiator_user_id: string | null;
+    initiator_messages_remaining: number;
+    max_messages_before_accept: number;
+  };
+  const [dmRequest, setDmRequest] = useState<DmRequestState | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [dmActionLoading, setDmActionLoading] = useState(false);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -98,13 +112,63 @@ export default function ChatScreen() {
   const soundRef = useRef<Audio.Sound | null>(null);
 
   // Ephemeral messages
-  const [ephemeralMode, setEphemeralMode] = useState<'off' | '24h' | '7d' | '90d'>('off');
 
   // Typing indicator
   const [isContactTyping, setIsContactTyping] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const flatListRef = useRef<FlatList>(null);
+
+  const formatDateLabel = (date: Date) => {
+    const now = new Date();
+    const diffH = Math.floor((now.getTime() - date.getTime()) / 3600000);
+    if (diffH < 24) return "Aujourd'hui";
+    if (diffH < 48) return 'Hier';
+    return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
+  };
+
+  const loadMessages = useCallback(async () => {
+    try {
+      const response = await apiClient.get(`/messages/${encodeURIComponent(conversationId)}`, { params: { limit: 40 } });
+      const data = response.data?.data || response.data;
+      const backendMsgs = data?.messages || [];
+      if (backendMsgs.length > 0) {
+        const transformed: Message[] = [];
+        let lastDate = '';
+        backendMsgs.forEach((m: any) => {
+          const msgDate = new Date(m.created_at);
+          const dateStr = formatDateLabel(msgDate);
+          if (dateStr !== lastDate) {
+            transformed.push({ id: `date-${m.id}`, text: '', isMine: false, time: '', status: 'read', type: 'text', date: dateStr });
+            lastDate = dateStr;
+          }
+          const rt = m.reply_to;
+          const replyName = rt?.sender?.full_name || rt?.sender?.username || '';
+          const isDeleted = !!m.is_deleted || !!m.deleted_for_all_at;
+          transformed.push({
+            id: m.id,
+            text: isDeleted ? 'Ce message a ete supprime' : (m.content || ''),
+            isMine: m.sender_id === currentUserId,
+            time: msgDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+            status: String(m.status || '').toLowerCase() === 'read' ? 'read' : 'delivered',
+            type: (m.type || 'text') as any,
+            imageUri: m.media_url || undefined,
+            thumbnailUri: m.thumbnail_url || undefined,
+            replyTo: rt ? { id: rt.id, name: replyName, text: rt.content || '' } : undefined,
+            forwarded: !!m.forwarded_from_message_id,
+            edited: !!m.is_edited,
+            deleted: isDeleted,
+          });
+        });
+        setMessages(transformed);
+      } else {
+        setMessages([{ id: 'd1', text: '', isMine: false, time: '', status: 'read', type: 'text', date: "Aujourd'hui" }]);
+      }
+    } catch (err) {
+      console.log('Error loading messages:', err);
+      setMessages([{ id: 'd1', text: '', isMine: false, time: '', status: 'read', type: 'text', date: "Aujourd'hui" }]);
+    } finally { setLoading(false); }
+  }, [conversationId, currentUserId]);
 
   // Socket.IO real-time connection
   useEffect(() => {
@@ -113,6 +177,12 @@ export default function ChatScreen() {
       socketService.connect(token);
       socketService.joinConversation(conversationId);
       socketService.markRead(conversationId);
+      /** HTTP : seul endpoint qui persiste vraiment `unread_count = 0` côté DB. */
+      apiClient
+        .put(`/messages/${encodeURIComponent(conversationId)}/read`, {})
+        .catch(() => {
+          /* best effort — ne bloque pas l'ouverture de la conversation */
+        });
     }
 
     // Listen for new messages
@@ -130,6 +200,10 @@ export default function ChatScreen() {
         };
         setMessages(prev => [...prev, newMsg]);
         socketService.markRead(conversationId);
+        /** Persiste également côté API pour que le badge Inbox redescende à 0 immédiatement. */
+        apiClient
+          .put(`/messages/${encodeURIComponent(conversationId)}/read`, {})
+          .catch(() => {});
       }
     });
 
@@ -160,9 +234,11 @@ export default function ChatScreen() {
       unsubRead();
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
-  }, [conversationId, currentUserId]);
+  }, [conversationId, currentUserId, accessToken]);
 
-  useEffect(() => { loadMessages(); }, [conversationId]);
+  useEffect(() => {
+    void loadMessages();
+  }, [loadMessages]);
 
   useEffect(() => {
     const p = typeof paramOtherUserId === 'string' ? paramOtherUserId : '';
@@ -179,12 +255,28 @@ export default function ChatScreen() {
         if (!conv || cancelled) return;
         const other = conv.user1_id === currentUserId ? conv.user2 : conv.user1;
         if (other?.id) setRecipientUserId(other.id);
-        if (other && (other.full_name || other.username)) {
+        if (other && (other.full_name || other.username || other.id)) {
           setContact((c) => ({
             ...c,
             name: other.full_name || other.username || c.name,
+            username: other.username ? `@${other.username}` : c.username,
             avatar: other.profile_image || c.avatar,
+            otherUserId: other.id || c.otherUserId,
           }));
+        }
+        const dr = conv.dm_request;
+        if (dr && typeof dr === 'object') {
+          setDmRequest({
+            pending_for_viewer: !!dr.pending_for_viewer,
+            pending_for_user_id: dr.pending_for_user_id ?? null,
+            initiator_user_id: dr.initiator_user_id ?? null,
+            initiator_messages_remaining:
+              typeof dr.initiator_messages_remaining === 'number' ? dr.initiator_messages_remaining : 0,
+            max_messages_before_accept:
+              typeof dr.max_messages_before_accept === 'number' ? dr.max_messages_before_accept : 3,
+          });
+        } else {
+          setDmRequest(null);
         }
       } catch {
         /* ignore */
@@ -194,54 +286,45 @@ export default function ChatScreen() {
     return () => { cancelled = true; };
   }, [conversationId, currentUserId, recipientUserId]);
 
-  const loadMessages = async () => {
+  const handleAcceptDm = async () => {
+    if (!conversationId || dmActionLoading) return;
+    setDmActionLoading(true);
     try {
-      const response = await apiClient.get(`/messages/${encodeURIComponent(conversationId)}`, { params: { limit: 40 } });
-      const data = response.data?.data || response.data;
-      const backendMsgs = data?.messages || [];
-      if (backendMsgs.length > 0) {
-        const transformed: Message[] = [];
-        let lastDate = '';
-        backendMsgs.forEach((m: any) => {
-          const msgDate = new Date(m.created_at);
-          const dateStr = formatDateLabel(msgDate);
-          if (dateStr !== lastDate) {
-            transformed.push({ id: `date-${m.id}`, text: '', isMine: false, time: '', status: 'read', type: 'text', date: dateStr });
-            lastDate = dateStr;
-          }
-          const rt = m.reply_to;
-          const replyName = rt?.sender?.full_name || rt?.sender?.username || '';
-          const isDeleted = !!m.is_deleted || !!m.deleted_for_all_at;
-          transformed.push({
-            id: m.id,
-            text: isDeleted ? 'Ce message a ete supprime' : (m.content || ''),
-            isMine: m.sender_id === currentUserId,
-            time: msgDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-            status: String(m.status || '').toLowerCase() === 'read' ? 'read' : 'delivered',
-            type: (m.type || 'text') as any,
-            imageUri: m.media_url || undefined,
-            replyTo: rt ? { id: rt.id, name: replyName, text: rt.content || '' } : undefined,
-            forwarded: !!m.forwarded_from_message_id,
-            edited: !!m.is_edited,
-            deleted: isDeleted,
-          });
+      await apiClient.post(`/messages/conversations/${encodeURIComponent(conversationId)}/dm-request/accept`, {});
+      const resConv = await apiClient.get(`/messages/conversations/id/${encodeURIComponent(conversationId)}`);
+      const conv = resConv.data?.data;
+      const dr = conv?.dm_request;
+      if (dr && typeof dr === 'object') {
+        setDmRequest({
+          pending_for_viewer: !!dr.pending_for_viewer,
+          pending_for_user_id: dr.pending_for_user_id ?? null,
+          initiator_user_id: dr.initiator_user_id ?? null,
+          initiator_messages_remaining:
+            typeof dr.initiator_messages_remaining === 'number' ? dr.initiator_messages_remaining : 0,
+          max_messages_before_accept:
+            typeof dr.max_messages_before_accept === 'number' ? dr.max_messages_before_accept : 3,
         });
-        setMessages(transformed);
       } else {
-        setMessages([{ id: 'd1', text: '', isMine: false, time: '', status: 'read', type: 'text', date: "Aujourd'hui" }]);
+        setDmRequest(null);
       }
-    } catch (err) {
-      console.log('Error loading messages:', err);
-      setMessages([{ id: 'd1', text: '', isMine: false, time: '', status: 'read', type: 'text', date: "Aujourd'hui" }]);
-    } finally { setLoading(false); }
+    } catch (e: any) {
+      Alert.alert('Erreur', String(e?.response?.data?.error || e?.response?.data?.message || "Impossible d'accepter."));
+    } finally {
+      setDmActionLoading(false);
+    }
   };
 
-  const formatDateLabel = (date: Date) => {
-    const now = new Date();
-    const diffH = Math.floor((now.getTime() - date.getTime()) / 3600000);
-    if (diffH < 24) return "Aujourd'hui";
-    if (diffH < 48) return 'Hier';
-    return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
+  const handleDeclineDm = async () => {
+    if (!conversationId || dmActionLoading) return;
+    setDmActionLoading(true);
+    try {
+      await apiClient.post(`/messages/conversations/${encodeURIComponent(conversationId)}/dm-request/decline`, {});
+      router.back();
+    } catch (e: any) {
+      Alert.alert('Erreur', String(e?.response?.data?.error || e?.response?.data?.message || 'Impossible de supprimer.'));
+    } finally {
+      setDmActionLoading(false);
+    }
   };
 
   const sendMessage = useCallback(async () => {
@@ -278,8 +361,32 @@ export default function ChatScreen() {
       const response = await apiClient.post('/messages/send', body);
       const sentMsg = response.data?.data;
       setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: sentMsg?.id || tempId, status: 'delivered' } : m));
-    } catch (err) {
-      console.log('Send error:', err);
+      try {
+        const resConv = await apiClient.get(`/messages/conversations/id/${encodeURIComponent(conversationId)}`);
+        const conv = resConv.data?.data;
+        const dr = conv?.dm_request;
+        if (dr && typeof dr === 'object') {
+          setDmRequest({
+            pending_for_viewer: !!dr.pending_for_viewer,
+            pending_for_user_id: dr.pending_for_user_id ?? null,
+            initiator_user_id: dr.initiator_user_id ?? null,
+            initiator_messages_remaining:
+              typeof dr.initiator_messages_remaining === 'number' ? dr.initiator_messages_remaining : 0,
+            max_messages_before_accept:
+              typeof dr.max_messages_before_accept === 'number' ? dr.max_messages_before_accept : 3,
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.error?.message ||
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        (typeof err?.message === 'string' ? err.message : '');
+      if (msg) Alert.alert('Message', String(msg));
+      setMessages(prev => prev.filter(m => m.id !== tempId));
     } finally { setSending(false); }
   }, [newMessage, conversationId, sending, replyingTo, contact.name, recipientUserId]);
 
@@ -554,7 +661,7 @@ export default function ChatScreen() {
       } else {
         setMessages(prev => prev.filter(m => m.id !== selectedMessage.id));
       }
-    } catch (err) {
+    } catch (_err) {
       Alert.alert('Erreur', 'Impossible de supprimer le message');
     }
   };
@@ -707,6 +814,17 @@ export default function ChatScreen() {
                 <Ionicons name="mic" size={14} color={Colors.primary} />
               </View>
             </TouchableOpacity>
+          ) : item.type === 'video' && (item.thumbnailUri || item.imageUri) ? (
+            <TouchableOpacity
+              style={styles.imageBubble}
+              activeOpacity={0.85}
+              onPress={() => item.imageUri && Linking.openURL(item.imageUri)}
+            >
+              <Image source={{ uri: item.thumbnailUri || item.imageUri }} style={styles.chatImage} resizeMode="cover" />
+              <View style={styles.videoPlayOverlay}>
+                <Ionicons name="play-circle" size={44} color="rgba(255,255,255,0.95)" />
+              </View>
+            </TouchableOpacity>
           ) : item.type === 'image' && item.imageUri ? (
             <View style={styles.imageBubble}>
               <Image source={{ uri: item.imageUri }} style={styles.chatImage} resizeMode="cover" />
@@ -763,16 +881,62 @@ export default function ChatScreen() {
           <Image source={{ uri: contact.avatar }} style={styles.headerAvatar} />
           <View style={styles.headerInfo}>
             <Text style={styles.headerName} numberOfLines={1}>{contact.name}</Text>
+            {contact.username ? (
+              <Text style={styles.headerHandle} numberOfLines={1}>{contact.username}</Text>
+            ) : null}
             <Text style={styles.headerStatus}>{isContactTyping ? 'En train d\'ecrire...' : contact.online ? 'En ligne' : 'AfriChat'}</Text>
           </View>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.headerAction} onPress={() => router.push({ pathname: '/messages/call' as any, params: { name: contact.name, avatar: contact.avatar, type: 'video' } })}>
+        <TouchableOpacity
+          style={styles.headerAction}
+          onPress={() =>
+            router.push({
+              pathname: '/messages/call' as any,
+              params: {
+                name: contact.name,
+                avatar: contact.avatar,
+                type: 'video',
+                otherUserId: String(contact.otherUserId || ''),
+                role: 'caller',
+              },
+            })
+          }
+          disabled={!contact.otherUserId}
+        >
           <Ionicons name="videocam" size={22} color={Colors.text} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.headerAction} onPress={() => router.push({ pathname: '/messages/call' as any, params: { name: contact.name, avatar: contact.avatar, type: 'audio' } })}>
+        <TouchableOpacity
+          style={styles.headerAction}
+          onPress={() =>
+            router.push({
+              pathname: '/messages/call' as any,
+              params: {
+                name: contact.name,
+                avatar: contact.avatar,
+                type: 'audio',
+                otherUserId: String(contact.otherUserId || ''),
+                role: 'caller',
+              },
+            })
+          }
+          disabled={!contact.otherUserId}
+        >
           <Ionicons name="call" size={22} color={Colors.text} />
         </TouchableOpacity>
       </View>
+
+      {dmRequest &&
+        dmRequest.pending_for_user_id &&
+        dmRequest.initiator_user_id === currentUserId &&
+        !dmRequest.pending_for_viewer && (
+          <View style={styles.dmInitiatorBanner}>
+            <Text style={styles.dmInitiatorText}>
+              {dmRequest.initiator_messages_remaining > 0
+                ? `Encore ${dmRequest.initiator_messages_remaining} message${dmRequest.initiator_messages_remaining > 1 ? 's' : ''} possible${dmRequest.initiator_messages_remaining > 1 ? 's' : ''} avant acceptation (${dmRequest.max_messages_before_accept} max).`
+                : `Limite de ${dmRequest.max_messages_before_accept} messages atteinte. En attente d'acceptation.`}
+            </Text>
+          </View>
+        )}
 
       {/* Messages */}
       <View style={styles.chatArea}>
@@ -825,6 +989,7 @@ export default function ChatScreen() {
       )}
 
       {/* Input Bar */}
+      {!dmRequest?.pending_for_viewer ? (
       <View style={[styles.inputContainer, { paddingBottom: insets.bottom + Spacing.xs }]}>
         {isRecording ? (
           /* Recording Mode */
@@ -888,6 +1053,42 @@ export default function ChatScreen() {
           </>
         )}
       </View>
+      ) : null}
+
+      {dmRequest?.pending_for_viewer ? (
+        <View style={[styles.dmRequestFooter, { paddingBottom: insets.bottom + Spacing.md }]}>
+          <Text style={styles.dmRequestTitle}>
+            {contact.name} veut t&apos;envoyer un message
+          </Text>
+          <Text style={styles.dmRequestBody}>
+            Si tu acceptes, tu pourras chatter immédiatement avec cet utilisateur. Si tu supprimes, ce chat sera retiré
+            de tes demandes de messages.{'\n\n'}
+            Remarque : cet utilisateur peut envoyer jusqu&apos;à {dmRequest.max_messages_before_accept} messages.{' '}
+            <Text style={styles.dmReportLink} onPress={() => setReportOpen(true)}>
+              Signaler cet utilisateur
+            </Text>{' '}
+            si tu en reçois un suspect.
+          </Text>
+          <View style={styles.dmActionsRow}>
+            <TouchableOpacity
+              style={styles.dmDeclineBtn}
+              onPress={handleDeclineDm}
+              disabled={dmActionLoading}
+            >
+              <Text style={styles.dmDeclineBtnText}>Supprimer</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.dmAcceptBtn}
+              onPress={handleAcceptDm}
+              disabled={dmActionLoading}
+            >
+              <Text style={styles.dmAcceptBtnText}>Accepter</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
+      <ReportModal visible={reportOpen} onClose={() => setReportOpen(false)} targetType="user" targetId={recipientUserId || ''} />
 
       {/* ===== CONTEXT MENU MODAL ===== */}
       <Modal visible={contextMenuVisible} transparent animationType="fade" onRequestClose={() => setContextMenuVisible(false)}>
@@ -974,7 +1175,16 @@ const styles = StyleSheet.create({
   headerAvatar: { width: 40, height: 40, borderRadius: 20 },
   headerInfo: { flex: 1 },
   headerName: { color: Colors.text, fontSize: FontSizes.md, fontWeight: 'bold' },
+  headerHandle: { color: Colors.textMuted, fontSize: FontSizes.xs, marginTop: 1 },
   headerStatus: { color: Colors.success, fontSize: FontSizes.xs },
+  dmInitiatorBanner: {
+    backgroundColor: 'rgba(255,106,0,0.12)',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+  },
+  dmInitiatorText: { color: Colors.text, fontSize: FontSizes.xs, lineHeight: 18 },
   headerAction: { width: 38, height: 44, alignItems: 'center', justifyContent: 'center' },
   // Chat area
   chatArea: { flex: 1, backgroundColor: '#0B141A' },
@@ -1067,8 +1277,42 @@ const styles = StyleSheet.create({
   voiceDurationText: { color: 'rgba(255,255,255,0.5)', fontSize: 11, marginTop: 3 },
   voiceMicBadge: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   // Image bubble
-  imageBubble: { marginBottom: 2 },
-  chatImage: { width: 220, height: 220, borderRadius: 8, marginBottom: 4 },
+  imageBubble: { marginBottom: 2, position: 'relative', overflow: 'hidden', borderRadius: 8 },
+  chatImage: { width: 220, height: 280, borderRadius: 8, marginBottom: 4 },
+  videoPlayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    borderRadius: 8,
+  },
+  dmRequestFooter: {
+    backgroundColor: Colors.background,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
+  },
+  dmRequestTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '700', marginBottom: Spacing.sm },
+  dmRequestBody: { color: Colors.textSecondary, fontSize: FontSizes.sm, lineHeight: 20, marginBottom: Spacing.sm },
+  dmReportLink: { color: Colors.primary, fontSize: FontSizes.sm, fontWeight: '600', marginBottom: Spacing.md },
+  dmActionsRow: { flexDirection: 'row', gap: Spacing.sm },
+  dmDeclineBtn: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+  },
+  dmDeclineBtnText: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600' },
+  dmAcceptBtn: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+  },
+  dmAcceptBtnText: { color: '#FFF', fontSize: FontSizes.md, fontWeight: '700' },
   // Recording bar
   recordingBar: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8 },
   cancelRecBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },

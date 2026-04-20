@@ -7,8 +7,13 @@ import { Button } from '../../src/components/common/Button';
 import { useAuthStore } from '../../src/store/authStore';
 import { authApi } from '../../src/api/auth';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COUNTRIES } from '../../src/data/countries';
+import { SocialOAuthButtons } from '../../src/components/auth/SocialOAuthButtons';
+import { getPostAuthRoute } from '../../src/utils/onboardingFlow';
+
+const AFW_APP_LOGO = require('../../assets/images/pwa-icon-192.png');
 
 type LoginMethod = 'phone' | 'email';
 
@@ -68,17 +73,13 @@ export default function LoginScreen() {
       const identifier = loginMethod === 'email' ? email : `${selectedCountry.dial}${phone}`;
       const response = await authApi.login({ identifier, password });
       await setAuth(response.user, response.accessToken, response.refreshToken);
-      router.replace('/(tabs)');
+      router.replace((await getPostAuthRoute()) as Parameters<typeof router.replace>[0]);
     } catch (error: any) {
       const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'Erreur de connexion';
       Alert.alert('Erreur', message);
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSocialLogin = (provider: string) => {
-    Alert.alert('Info', `Connexion ${provider} bientot disponible`);
   };
 
   return (
@@ -92,8 +93,8 @@ export default function LoginScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.logoCircle}>
-            <Ionicons name="globe" size={32} color="#FFF" />
+          <View style={styles.logoCircle} accessibilityRole="image" accessibilityLabel="AfriWonder">
+            <Image source={AFW_APP_LOGO} style={styles.logoImage} contentFit="contain" />
           </View>
           <Text style={styles.title}>Connexion</Text>
           <Text style={styles.subtitle}>Bienvenue sur AfriWonder</Text>
@@ -230,8 +231,8 @@ export default function LoginScreen() {
             error={errors.password}
           />
 
-          <TouchableOpacity style={styles.forgotPassword}>
-            <Text style={styles.forgotPasswordText}>Mot de passe oublie ?</Text>
+          <TouchableOpacity style={styles.forgotPassword} onPress={() => router.push('/support-page')}>
+            <Text style={styles.forgotPasswordText}>Besoin d'aide pour vous connecter ?</Text>
           </TouchableOpacity>
 
           <Button
@@ -244,31 +245,11 @@ export default function LoginScreen() {
           />
         </View>
 
-        {/* Divider */}
-        <View style={styles.divider}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>ou continuer avec</Text>
-          <View style={styles.dividerLine} />
-        </View>
-
-        {/* Social Login */}
-        <View style={styles.socialButtons}>
-          <TouchableOpacity
-            style={[styles.socialButton, { backgroundColor: '#DB4437' }]}
-            onPress={() => handleSocialLogin('Google')}
-          >
-            <Ionicons name="logo-google" size={22} color="#FFF" />
-            <Text style={styles.socialButtonText}>Google</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.socialButton, { backgroundColor: '#4267B2' }]}
-            onPress={() => handleSocialLogin('Facebook')}
-          >
-            <Ionicons name="logo-facebook" size={22} color="#FFF" />
-            <Text style={styles.socialButtonText}>Facebook</Text>
-          </TouchableOpacity>
-        </View>
+        <SocialOAuthButtons
+          onAuthenticated={async () => {
+            router.replace((await getPostAuthRoute()) as Parameters<typeof router.replace>[0]);
+          }}
+        />
 
         {/* Footer */}
         <View style={styles.footer}>
@@ -286,7 +267,15 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   scrollContent: { flexGrow: 1, paddingHorizontal: Spacing.xxl, paddingBottom: 40 },
   header: { alignItems: 'center', marginBottom: Spacing.xxl },
-  logoCircle: { width: 72, height: 72, borderRadius: 20, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.lg },
+  logoCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    overflow: 'hidden',
+    marginBottom: Spacing.lg,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  logoImage: { width: '100%', height: '100%' },
   title: { fontSize: FontSizes.xxxl, fontWeight: 'bold', color: Colors.text, marginBottom: Spacing.xs },
   subtitle: { fontSize: FontSizes.md, color: Colors.textSecondary },
 
@@ -335,16 +324,6 @@ const styles = StyleSheet.create({
   forgotPassword: { alignSelf: 'flex-end', marginBottom: Spacing.xl, marginTop: Spacing.xs },
   forgotPasswordText: { color: Colors.primary, fontSize: FontSizes.sm },
   loginButton: { width: '100%' },
-
-  // Divider
-  divider: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.xxl },
-  dividerLine: { flex: 1, height: 1, backgroundColor: Colors.border },
-  dividerText: { color: Colors.textSecondary, paddingHorizontal: Spacing.md, fontSize: FontSizes.sm },
-
-  // Social
-  socialButtons: { flexDirection: 'row', gap: Spacing.md, marginBottom: Spacing.xxxl },
-  socialButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.md, borderRadius: BorderRadius.md, gap: Spacing.sm },
-  socialButtonText: { color: '#FFF', fontSize: FontSizes.md, fontWeight: '600' },
 
   // Footer
   footer: { flexDirection: 'row', justifyContent: 'center' },

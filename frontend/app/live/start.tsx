@@ -10,25 +10,28 @@ export default function StartLiveScreen() {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('general');
 
+  /** Aligné backend `LIVE_CATEGORIES` (ids stables API). */
   const CATEGORIES = [
-    { id: 'general', name: 'General', icon: 'radio' },
-    { id: 'music', name: 'Musique', icon: 'musical-notes' },
-    { id: 'dance', name: 'Danse', icon: 'body' },
-    { id: 'cooking', name: 'Cuisine', icon: 'restaurant' },
-    { id: 'fashion', name: 'Mode', icon: 'shirt' },
-    { id: 'gaming', name: 'Gaming', icon: 'game-controller' },
+    { id: 'general', name: 'Général', icon: 'radio' },
+    { id: 'musique', name: 'Musique', icon: 'musical-notes' },
+    { id: 'gaming', name: 'Jeux', icon: 'game-controller' },
+    { id: 'qa', name: 'Q&A', icon: 'help-circle' },
+    { id: 'cuisine', name: 'Cuisine', icon: 'restaurant' },
+    { id: 'beauty', name: 'Beauté', icon: 'sparkles' },
+    { id: 'sport', name: 'Sport', icon: 'basketball' },
+    { id: 'actu', name: 'Actualités', icon: 'newspaper' },
+    { id: 'education', name: 'Éducation', icon: 'school' },
   ];
 
-  const handleStartLive = () => {
+  const goToFullSetup = () => {
     if (!title.trim()) {
-      Alert.alert('Erreur', 'Veuillez entrer un titre pour votre live');
+      Alert.alert('Titre requis', 'Entrez un titre pour continuer vers la configuration complète (CDC).');
       return;
     }
-    Alert.alert(
-      'Live demarre!',
-      'Votre live est en cours. Cette fonctionnalite sera completement integree bientot.',
-      [{ text: 'OK', onPress: () => router.back() }]
-    );
+    router.replace({
+      pathname: '/live/stream',
+      params: { prefilled_title: title.trim(), prefilled_category: category },
+    } as never);
   };
 
   return (
@@ -37,8 +40,13 @@ export default function StartLiveScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="close" size={28} color={Colors.text} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Retour"
+        >
+          <Ionicons name="arrow-back" size={26} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Demarrer un Live</Text>
         <View style={{ width: 40 }} />
@@ -62,8 +70,12 @@ export default function StartLiveScreen() {
           placeholderTextColor={Colors.textMuted}
           value={title}
           onChangeText={setTitle}
-          maxLength={100}
+          maxLength={80}
         />
+        <Text style={styles.hintBelow}>
+          Mini assistant : la suite (miniature, hashtags, programmation, objectif, contrôle 18+, options studio) se fait
+          sur l’écran studio.
+        </Text>
 
         {/* Category */}
         <Text style={styles.label}>Categorie</Text>
@@ -107,9 +119,9 @@ export default function StartLiveScreen() {
 
       {/* Start Button */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + Spacing.md }]}>
-        <TouchableOpacity style={styles.startButton} onPress={handleStartLive}>
+        <TouchableOpacity style={styles.startButton} onPress={goToFullSetup}>
           <View style={styles.liveDot} />
-          <Text style={styles.startButtonText}>Demarrer le Live</Text>
+          <Text style={styles.startButtonText}>Continuer vers le studio</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -182,7 +194,13 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.md,
     borderWidth: 1,
     borderColor: Colors.border,
+    marginBottom: Spacing.sm,
+  },
+  hintBelow: {
+    color: Colors.textMuted,
+    fontSize: FontSizes.xs,
     marginBottom: Spacing.xxl,
+    lineHeight: 18,
   },
   categoriesGrid: {
     flexDirection: 'row',

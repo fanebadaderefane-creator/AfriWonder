@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, createElement } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert, Image, TextInput,
-  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform,
+  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Modal,
+  Switch, Pressable,
 } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +13,9 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import apiClient from '../../src/api/client';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import VideoEditor, { type VideoEditorResult } from '../../src/components/VideoEditor';
+import { LinearGradient } from 'expo-linear-gradient';
+import { DateTimePickerSheet } from '../../src/components/common/DateTimePickerSheet';
 
 function mimeForImageExt(ext: string): string {
   const e = String(ext || '').toLowerCase().replace(/^\./, '');
@@ -27,6 +31,15 @@ function mimeForVideoExt(ext: string): string {
   if (e === 'webm') return 'video/webm';
   if (e === 'mov') return 'video/quicktime';
   return 'video/mp4';
+}
+
+function mimeForAudioExt(ext: string): string {
+  const e = String(ext || '').toLowerCase().replace(/^\./, '');
+  if (e === 'm4a' || e === 'aac') return 'audio/mp4';
+  if (e === 'caf') return 'audio/x-caf';
+  if (e === 'webm') return 'audio/webm';
+  if (e === 'wav') return 'audio/wav';
+  return 'audio/m4a';
 }
 
 /** Sur le web, FormData exige un Blob/File — l’objet `{ uri }` (RN) n’envoie pas de fichier → multer 400. */
@@ -111,11 +124,170 @@ async function appendUploadFile(formData: FormData, media: { uri: string; type: 
   formData.append('file', { uri: media.uri, name: `upload_${index}.${ext}`, type: mimeType } as any);
 }
 
+async function appendUploadVoice(formData: FormData, uri: string, index: number) {
+  if (Platform.OS === 'web') {
+    const res = await fetch(uri);
+    const blob = await res.blob();
+    let mime = String(blob.type || '').toLowerCase().trim();
+    if (!mime || mime === 'application/octet-stream') {
+      mime = 'audio/webm';
+    }
+    const ext = mime.includes('webm') ? 'webm' : mime.includes('mp4') || mime.includes('m4a') ? 'm4a' : 'webm';
+    formData.append('file', new File([blob], `voice_${index}.${ext}`, { type: mime }));
+    return;
+  }
+  const raw = (uri.split('.').pop() || '').split('?')[0] || '';
+  const ext = raw.replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'm4a';
+  const mimeType = mimeForAudioExt(ext);
+  formData.append('file', { uri, name: `voice_${index}.${ext}`, type: mimeType } as any);
+}
+
 type SoundSeed = { title: string; fromVideoId?: string };
+
+type Option = { value: string; label: string };
+
+const CATEGORY_OPTIONS: Option[] = [
+  { value: 'general', label: 'Général' },
+  { value: 'apprendre', label: 'Apprendre / Éducation' },
+  { value: 'cuisine', label: 'Cuisine' },
+  { value: 'musique', label: 'Musique' },
+  { value: 'sport', label: 'Sport' },
+  { value: 'voyage', label: 'Voyage' },
+  { value: 'tech', label: 'Tech' },
+  { value: 'mode', label: 'Mode' },
+  { value: 'comedie', label: 'Comédie' },
+  { value: 'danse', label: 'Danse' },
+  { value: 'vlog', label: 'Vlog' },
+  { value: 'beaute', label: 'Beauté' },
+  { value: 'animaux', label: 'Animaux' },
+  { value: 'gaming', label: 'Gaming' },
+  { value: 'art', label: 'Art' },
+  { value: 'actu', label: 'Actualités' },
+];
+
+const LANGUAGE_OPTIONS: Option[] = [
+  { value: 'fr', label: 'Français' },
+  { value: 'en', label: 'English' },
+  { value: 'bm', label: 'Bambara' },
+  { value: 'wo', label: 'Wolof' },
+  { value: 'ar', label: 'العربية' },
+  { value: 'es', label: 'Español' },
+  { value: 'pt', label: 'Português' },
+  { value: 'ha', label: 'Hausa' },
+  { value: 'sw', label: 'Kiswahili' },
+];
+
+const COMMENT_VISIBILITY_OPTIONS: Option[] = [
+  { value: 'everyone', label: 'Tout le monde' },
+  { value: 'friends', label: 'Amis' },
+  { value: 'no_one', label: 'Personne' },
+];
+
+const VISIBILITY_OPTIONS: { value: 'public' | 'followers' | 'private'; label: string; sub: string; icon: any }[] = [
+  { value: 'public', label: 'Public', sub: 'Tout le monde', icon: 'globe-outline' },
+  { value: 'followers', label: 'Abonnés', sub: 'Vos abonnés seulement', icon: 'people-outline' },
+  { value: 'private', label: 'Privé', sub: 'Vous seul', icon: 'lock-closed-outline' },
+];
+
+function labelOf(options: Option[], value: string, fallback: string): string {
+  const found = options.find((o) => o.value === value);
+  return found ? found.label : fallback;
+}
+
+function SwitchPill({ value, onValueChange }: { value: boolean; onValueChange: (v: boolean) => void }) {
+  return (
+    <Switch
+      value={value}
+      onValueChange={onValueChange}
+      trackColor={{ false: '#3B3B3B', true: Colors.primary }}
+      thumbColor="#FFF"
+    />
+  );
+}
+
+function formatScheduledAtForDisplay(iso: string): string {
+  if (!iso) return '';
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return iso;
+  return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}`;
+}
+
+function setRelativeIso(offsetMin: number): string {
+  const d = new Date(Date.now() + offsetMin * 60_000);
+  d.setSeconds(0, 0);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function setTomorrowMorningIso(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(9, 0, 0, 0);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function ScheduleChip({ label, onPress, destructive }: { label: string; onPress: () => void; destructive?: boolean }) {
+  return (
+    <TouchableOpacity onPress={onPress} style={[styles.chip, destructive && styles.chipDestructive]}>
+      <Text style={[styles.chipText, destructive && styles.chipTextDestructive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function hasMeaningfulEditorEffects(r: VideoEditorResult | null): boolean {
+  if (!r) return false;
+  const hasMusic = Boolean(r.musicTrackId && r.musicTrackId !== 'm0');
+  const trimTouched = r.trimStart !== 0 || r.trimEnd !== 100;
+  return (
+    r.filter !== 'none'
+    || r.texts.length > 0
+    || r.stickers.length > 0
+    || hasMusic
+    || r.speed !== 1
+    || trimTouched
+    || r.gridEnabled
+    || Boolean(r.voiceOverUri)
+    || r.transitionId !== 'none'
+  );
+}
+
+/** JSON pour `POST /videos` — plafonné côté API à 16 ko. */
+function serializeEditorMetadata(r: VideoEditorResult, voiceOverRemoteUrl?: string | null): string {
+  const payload = {
+    v: 1,
+    filter: r.filter,
+    speed: r.speed,
+    trimStart: r.trimStart,
+    trimEnd: r.trimEnd,
+    gridEnabled: r.gridEnabled,
+    transitionId: r.transitionId,
+    musicTrackId: r.musicTrackId,
+    ...(voiceOverRemoteUrl ? { voiceOverUrl: voiceOverRemoteUrl } : {}),
+    texts: r.texts.map((t) => ({
+      id: t.id,
+      text: t.text,
+      x: t.x,
+      y: t.y,
+      color: t.color,
+      fontSize: t.fontSize,
+      fontWeight: t.fontWeight,
+    })),
+    stickers: r.stickers.map((s) => ({
+      id: s.id,
+      emoji: s.emoji,
+      x: s.x,
+      y: s.y,
+      size: s.size,
+    })),
+  };
+  const s = JSON.stringify(payload);
+  return s.length > 16000 ? s.slice(0, 16000) : s;
+}
 
 export default function CreateScreen() {
   const insets = useSafeAreaInsets();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
   const params = useLocalSearchParams<{
     useSoundTitle?: string | string[];
     useSoundFromVideoId?: string | string[];
@@ -130,9 +302,34 @@ export default function CreateScreen() {
   const [hashtags, setHashtags] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [step, setStep] = useState<'select' | 'details'>('select');
+  const [step, setStep] = useState<'select' | 'edit' | 'details'>('select');
+  /** Réglages écran Éditeur (filtres, texte, musique, etc.) — métadonnées pour API / futur traitement vidéo. */
+  const [editorResult, setEditorResult] = useState<VideoEditorResult | null>(null);
   /** Son prérempli depuis le fil (style TikTok « Utiliser ce son »). */
   const [soundSeed, setSoundSeed] = useState<SoundSeed | null>(null);
+  /** Compte à rebours avant ouverture caméra (0 = désactivé). */
+  const [cameraCountdownSec, setCameraCountdownSec] = useState<0 | 3 | 5 | 10>(0);
+  const [countdownTick, setCountdownTick] = useState<number | null>(null);
+
+  /**
+   * Options de publication TikTok-like (capture 1/2) :
+   *  - `category` / `language` / `musicTitle` (métadonnées créateur)
+   *  - `visibility` Public/Followers/Private (`public|followers|private`)
+   *  - `hideLikes` / `commentsDisabled` / `commentVisibility` (everyone/friends/no_one)
+   *  - `scheduledAt` ISO datetime futur (publication différée)
+   *  - `customThumbnail` (uri locale → uploadée au moment du publish)
+   */
+  const [category, setCategory] = useState<string>('');
+  const [language, setLanguage] = useState<string>('fr');
+  const [musicTitle, setMusicTitle] = useState<string>('');
+  const [visibility, setVisibility] = useState<'public' | 'followers' | 'private'>('public');
+  const [hideLikes, setHideLikes] = useState(false);
+  const [commentsDisabled, setCommentsDisabled] = useState(false);
+  const [commentVisibility, setCommentVisibility] = useState<'everyone' | 'friends' | 'no_one'>('everyone');
+  const [scheduledAt, setScheduledAt] = useState<string>(''); // ISO local (datetime-local input)
+  const [customThumbnail, setCustomThumbnail] = useState<{ uri: string; mime?: string } | null>(null);
+  const [pickerOpen, setPickerOpen] = useState<null | 'category' | 'language' | 'commentVisibility'>(null);
+  const [scheduledPickerOpen, setScheduledPickerOpen] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -152,6 +349,7 @@ export default function CreateScreen() {
     setSoundSeed({ title: (t || 'Son original').slice(0, 200), fromVideoId: vid || undefined });
     setContentType('video');
     setStep('select');
+    setEditorResult(null);
   }, [params.useSoundTitle, params.useSoundFromVideoId]);
 
   const requireAuth = (action: string) => {
@@ -181,7 +379,8 @@ export default function CreateScreen() {
       const a = result.assets[0];
       setSelectedMedia([{ uri: a.uri, type: 'video' }]);
       setContentType('video');
-      setStep('details');
+      setEditorResult(null);
+      setStep('edit');
     }
   };
 
@@ -212,17 +411,24 @@ export default function CreateScreen() {
       Alert.alert('Permission refusée', "Accès à la caméra nécessaire");
       return;
     }
+    let n = cameraCountdownSec;
+    while (n > 0) {
+      setCountdownTick(n);
+      await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+      n -= 1;
+    }
+    setCountdownTick(null);
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
       allowsEditing: true,
       quality: 0.8,
-      // Pas de limite de durée pour les vidéos longues
     });
     if (!result.canceled && result.assets[0]) {
       const a = result.assets[0];
       setSelectedMedia([{ uri: a.uri, type: 'video' }]);
       setContentType('video');
-      setStep('details');
+      setEditorResult(null);
+      setStep('edit');
     }
   };
 
@@ -290,19 +496,68 @@ export default function CreateScreen() {
 
       setUploadProgress(60);
 
+      let voiceOverRemoteUrl: string | null = null;
+      if (contentType === 'video' && editorResult?.voiceOverUri) {
+        setUploadProgress(55);
+        const audioForm = new FormData();
+        await appendUploadVoice(audioForm, editorResult.voiceOverUri, 0);
+        const audioRes = await apiClient.post('/upload/audio', audioForm, {
+          timeout: 120000,
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
+        });
+        voiceOverRemoteUrl = audioRes.data?.data?.file_url || null;
+        if (!voiceOverRemoteUrl) {
+          throw new Error('URL voix off manquante après upload');
+        }
+        setUploadProgress(59);
+      }
+
       if (contentType === 'video') {
         if (!videoUrl) {
           throw new Error('URL vidéo manquante après upload');
         }
+        const resolvedMusicTitle =
+          (musicTitle && musicTitle.trim()) ||
+          (soundSeed?.title && soundSeed.title.trim()) ||
+          (editorResult?.musicTitle && editorResult.musicTitle.trim()) ||
+          '';
+        const editorMeta = editorResult ? serializeEditorMetadata(editorResult, voiceOverRemoteUrl) : '';
+
+        let finalThumbnail = videoThumb || videoUrl;
+        if (customThumbnail?.uri) {
+          try {
+            const tForm = new FormData();
+            await appendUploadFile(tForm, { uri: customThumbnail.uri, type: 'image' }, 0);
+            const tRes = await apiClient.post('/upload/image', tForm, {
+              timeout: 120000,
+              maxContentLength: Infinity,
+              maxBodyLength: Infinity,
+            });
+            const tUrl = tRes.data?.data?.file_url || tRes.data?.data?.url;
+            if (typeof tUrl === 'string' && tUrl.trim()) finalThumbnail = tUrl.trim();
+          } catch (e) {
+            console.warn('custom thumbnail upload failed', e);
+          }
+        }
+
         await apiClient.post('/videos', {
           title: title.trim(),
           description: description.trim() || title.trim(),
           video_url: videoUrl,
-          thumbnail_url: videoThumb || videoUrl,
+          thumbnail_url: finalThumbnail,
           hashtags: hashtagArray,
           media_type: 'video',
-          ...(soundSeed?.title ? { music_title: soundSeed.title.slice(0, 200) } : {}),
+          ...(resolvedMusicTitle ? { music_title: resolvedMusicTitle.slice(0, 200) } : {}),
           ...(soundSeed?.fromVideoId ? { remix_of_id: soundSeed.fromVideoId } : {}),
+          ...(editorMeta ? { editor_metadata: editorMeta } : {}),
+          ...(category ? { category } : {}),
+          ...(language ? { language } : {}),
+          visibility,
+          hide_likes: hideLikes,
+          comments_disabled: commentsDisabled,
+          comment_visibility: commentVisibility,
+          ...(scheduledAt ? { scheduled_at: new Date(scheduledAt).toISOString() } : {}),
         });
       } else if (contentType === 'text') {
         await apiClient.post('/posts', {
@@ -364,9 +619,61 @@ export default function CreateScreen() {
     setDescription('');
     setArticleBody('');
     setHashtags('');
+    setEditorResult(null);
     setSoundSeed(null);
     soundSeedKeyConsumed.current = null;
+    setCategory('');
+    setLanguage('fr');
+    setMusicTitle('');
+    setVisibility('public');
+    setHideLikes(false);
+    setCommentsDisabled(false);
+    setCommentVisibility('everyone');
+    setScheduledAt('');
+    setCustomThumbnail(null);
   };
+
+  const pickCustomThumbnail = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission refusée', "Accès à la galerie nécessaire");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [9, 16],
+        quality: 0.85,
+      });
+      if (!result.canceled && result.assets[0]) {
+        setCustomThumbnail({ uri: result.assets[0].uri });
+      }
+    } catch (e) {
+      console.warn('thumbnail picker', e);
+    }
+  };
+
+  const goBackFromDetails = () => {
+    if (contentType === 'video' && selectedMedia.length > 0 && selectedMedia[0].type === 'video') {
+      setStep('edit');
+      return;
+    }
+    resetSelection();
+  };
+
+  if (step === 'edit' && selectedMedia.length > 0 && contentType === 'video') {
+    return (
+      <VideoEditor
+        videoUri={selectedMedia[0].uri}
+        onDone={(result) => {
+          setEditorResult(result);
+          setStep('details');
+        }}
+        onCancel={resetSelection}
+      />
+    );
+  }
 
   if (step === 'details') {
     const hasMedia = selectedMedia.length > 0;
@@ -379,7 +686,7 @@ export default function CreateScreen() {
         style={[styles.container, { paddingTop: insets.top }]}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={resetSelection} style={styles.backBtn}>
+          <TouchableOpacity onPress={goBackFromDetails} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color={Colors.text} />
           </TouchableOpacity>
           <Text style={styles.title}>
@@ -430,12 +737,20 @@ export default function CreateScreen() {
                 <Ionicons name="refresh" size={16} color="#FFF" />
                 <Text style={styles.changeMediaText}>Changer</Text>
               </TouchableOpacity>
-              {contentType === 'video' && (
-                <View style={styles.videoIndicator}>
-                  <Ionicons name="videocam" size={14} color="#FFF" />
-                  <Text style={styles.videoIndicatorText}>Vidéo</Text>
-                </View>
-              )}
+              {contentType === 'video' ? (
+                <>
+                  <View style={styles.videoIndicator}>
+                    <Ionicons name="videocam" size={14} color="#FFF" />
+                    <Text style={styles.videoIndicatorText}>Vidéo</Text>
+                  </View>
+                  {hasMeaningfulEditorEffects(editorResult) ? (
+                    <View style={styles.editorBadge}>
+                      <Ionicons name="color-wand-outline" size={14} color="#FFF" />
+                      <Text style={styles.editorBadgeText}>Effets appliqués</Text>
+                    </View>
+                  ) : null}
+                </>
+              ) : null}
             </View>
           )}
 
@@ -503,6 +818,127 @@ export default function CreateScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            {contentType === 'video' && (
+              <>
+                <Text style={styles.formLabel}>Catégorie</Text>
+                <TouchableOpacity style={styles.selectField} onPress={() => setPickerOpen('category')}>
+                  <Text style={[styles.selectFieldText, !category && styles.selectFieldPlaceholder]} numberOfLines={1}>
+                    {category ? labelOf(CATEGORY_OPTIONS, category, category) : 'Choisir une catégorie'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={18} color={Colors.textMuted} />
+                </TouchableOpacity>
+
+                <Text style={styles.formLabel}>Musique</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="Aucune musique — collez le titre du son"
+                  placeholderTextColor={Colors.textMuted}
+                  value={musicTitle}
+                  onChangeText={setMusicTitle}
+                  maxLength={200}
+                />
+
+                <Text style={styles.formLabel}>Langue</Text>
+                <TouchableOpacity style={styles.selectField} onPress={() => setPickerOpen('language')}>
+                  <Text style={styles.selectFieldText} numberOfLines={1}>
+                    {labelOf(LANGUAGE_OPTIONS, language, 'Français')}
+                  </Text>
+                  <Ionicons name="chevron-down" size={18} color={Colors.textMuted} />
+                </TouchableOpacity>
+
+                <Text style={[styles.formLabel, { marginTop: Spacing.xl }]}>Options de publication</Text>
+
+                <View style={styles.optionRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.optionRowLabel}>Cacher les likes</Text>
+                    <Text style={styles.optionRowHint}>Le nombre de likes sera masqué pour les autres.</Text>
+                  </View>
+                  <SwitchPill value={hideLikes} onValueChange={setHideLikes} />
+                </View>
+
+                <View style={styles.optionRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.optionRowLabel}>Désactiver les commentaires</Text>
+                    <Text style={styles.optionRowHint}>Personne ne pourra commenter cette vidéo.</Text>
+                  </View>
+                  <SwitchPill value={commentsDisabled} onValueChange={setCommentsDisabled} />
+                </View>
+
+                <Text style={styles.formLabel}>Qui peut commenter</Text>
+                <TouchableOpacity
+                  style={[styles.selectField, commentsDisabled && { opacity: 0.45 }]}
+                  onPress={() => !commentsDisabled && setPickerOpen('commentVisibility')}
+                  disabled={commentsDisabled}
+                >
+                  <Text style={styles.selectFieldText} numberOfLines={1}>
+                    {labelOf(COMMENT_VISIBILITY_OPTIONS, commentVisibility, 'Tout le monde')}
+                  </Text>
+                  <Ionicons name="chevron-down" size={18} color={Colors.textMuted} />
+                </TouchableOpacity>
+
+                <Text style={styles.formLabel}>Programmer la publication (optionnel)</Text>
+                <TouchableOpacity style={styles.selectField} onPress={() => setScheduledPickerOpen(true)}>
+                  <View style={styles.scheduleFieldLeft}>
+                    <Ionicons name="calendar-outline" size={18} color={Colors.textSecondary} />
+                    <Text style={[styles.selectFieldText, !scheduledAt && styles.selectFieldPlaceholder]} numberOfLines={1}>
+                      {scheduledAt ? formatScheduledAtForDisplay(scheduledAt) : 'jj/mm/aaaa --:--'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-down" size={18} color={Colors.textMuted} />
+                </TouchableOpacity>
+                <View style={styles.scheduleChips}>
+                  <ScheduleChip label="Dans 1 h" onPress={() => setScheduledAt(setRelativeIso(60))} />
+                  <ScheduleChip label="Dans 3 h" onPress={() => setScheduledAt(setRelativeIso(180))} />
+                  <ScheduleChip label="Demain 9h" onPress={() => setScheduledAt(setTomorrowMorningIso())} />
+                  {scheduledAt ? <ScheduleChip label="Effacer" onPress={() => setScheduledAt('')} destructive /> : null}
+                </View>
+
+                <Text style={styles.formLabel}>Miniature personnalisée (optionnel)</Text>
+                <View style={styles.thumbnailRow}>
+                  {customThumbnail?.uri ? (
+                    <Image source={{ uri: customThumbnail.uri }} style={styles.thumbnailPreview} />
+                  ) : (
+                    <View style={[styles.thumbnailPreview, styles.thumbnailPlaceholder]}>
+                      <Ionicons name="image-outline" size={28} color={Colors.textMuted} />
+                    </View>
+                  )}
+                  <TouchableOpacity style={styles.thumbnailBtn} onPress={() => void pickCustomThumbnail()}>
+                    <Ionicons name={customThumbnail ? 'refresh' : 'cloud-upload-outline'} size={18} color={Colors.text} />
+                    <Text style={styles.thumbnailBtnText}>
+                      {customThumbnail ? 'Changer la miniature' : 'Choisir un fichier'}
+                    </Text>
+                  </TouchableOpacity>
+                  {customThumbnail ? (
+                    <TouchableOpacity onPress={() => setCustomThumbnail(null)} style={styles.thumbnailRemove} hitSlop={10}>
+                      <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                <Text style={[styles.formLabel, { marginTop: Spacing.xl }]}>Visibilité</Text>
+                <View style={styles.visibilityList}>
+                  {VISIBILITY_OPTIONS.map((opt) => {
+                    const selected = visibility === opt.value;
+                    return (
+                      <TouchableOpacity
+                        key={opt.value}
+                        style={[styles.visibilityRow, selected && styles.visibilityRowActive]}
+                        onPress={() => setVisibility(opt.value)}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name={opt.icon} size={20} color={selected ? Colors.primary : Colors.textSecondary} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.visibilityLabel, selected && { color: Colors.primary }]}>{opt.label}</Text>
+                          <Text style={styles.visibilitySub}>{opt.sub}</Text>
+                        </View>
+                        {selected ? <Ionicons name="checkmark" size={20} color={Colors.primary} /> : null}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
           </View>
 
           {uploading && (
@@ -516,13 +952,82 @@ export default function CreateScreen() {
             </View>
           )}
         </ScrollView>
+
+        <Modal
+          transparent
+          visible={pickerOpen !== null}
+          animationType="fade"
+          onRequestClose={() => setPickerOpen(null)}
+        >
+          <Pressable style={styles.pickerBackdrop} onPress={() => setPickerOpen(null)}>
+            <Pressable style={styles.pickerSheet} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.pickerHandle} />
+              <Text style={styles.pickerTitle}>
+                {pickerOpen === 'category'
+                  ? 'Catégorie'
+                  : pickerOpen === 'language'
+                    ? 'Langue'
+                    : 'Qui peut commenter'}
+              </Text>
+              <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+                {(pickerOpen === 'category'
+                  ? CATEGORY_OPTIONS
+                  : pickerOpen === 'language'
+                    ? LANGUAGE_OPTIONS
+                    : COMMENT_VISIBILITY_OPTIONS
+                ).map((opt) => {
+                  const current =
+                    pickerOpen === 'category' ? category : pickerOpen === 'language' ? language : commentVisibility;
+                  const selected = current === opt.value;
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={styles.pickerItem}
+                      onPress={() => {
+                        if (pickerOpen === 'category') setCategory(opt.value);
+                        else if (pickerOpen === 'language') setLanguage(opt.value);
+                        else setCommentVisibility(opt.value as 'everyone' | 'friends' | 'no_one');
+                        setPickerOpen(null);
+                      }}
+                    >
+                      <Text style={[styles.pickerItemText, selected && styles.pickerItemTextActive]}>
+                        {opt.label}
+                      </Text>
+                      {selected ? <Ionicons name="checkmark" size={20} color={Colors.primary} /> : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              <TouchableOpacity style={styles.pickerCancel} onPress={() => setPickerOpen(null)}>
+                <Text style={styles.pickerCancelText}>Fermer</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <DateTimePickerSheet
+          visible={scheduledPickerOpen}
+          value={scheduledAt}
+          onClose={() => setScheduledPickerOpen(false)}
+          onConfirm={(v) => {
+            setScheduledAt(v);
+            setScheduledPickerOpen(false);
+          }}
+        />
       </KeyboardAvoidingView>
     );
   }
 
   // Selection screen
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <>
+      <Modal visible={countdownTick != null && countdownTick > 0} transparent animationType="fade">
+        <View style={styles.countdownOverlay}>
+          <Text style={styles.countdownNum}>{countdownTick}</Text>
+          <Text style={styles.countdownHint}>Préparez-vous…</Text>
+        </View>
+      </Modal>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Créer</Text>
       </View>
@@ -548,13 +1053,70 @@ export default function CreateScreen() {
             </TouchableOpacity>
           </View>
         ) : null}
+
+        <TouchableOpacity
+          style={styles.goLiveHero}
+          onPress={() => {
+            if (!requireAuth('lancer un live')) return;
+            const uname = String(user?.username || 'AfriWonder').replace(/^@+/, '');
+            const prefilled_title = `Live ${uname} · ${new Date().toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}`.slice(0, 80);
+            router.push({
+              pathname: '/live/stream',
+              params: { prefilled_title, prefilled_category: 'general' },
+            } as never);
+          }}
+          accessibilityLabel="Go Live"
+        >
+          <LinearGradient colors={['#E91E63', '#9C27B0']} style={styles.goLiveHeroGrad}>
+            <Ionicons name="radio" size={32} color="#FFF" />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.goLiveHeroTitle}>Go Live</Text>
+              <Text style={styles.goLiveHeroSub}>
+                Parcours rapide CDC : onglet Créer → Go Live → « Démarrer tout de suite » (titre prérempli) = 3 actions + décompte 3-2-1.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#FFF" />
+          </LinearGradient>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.liveHubRow}
+          onPress={() => router.push('/live' as never)}
+          accessibilityLabel="Hub lives et replays"
+        >
+          <Ionicons name="albums-outline" size={22} color={Colors.primary} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.liveHubTitle}>Lives et replays</Text>
+            <Text style={styles.liveHubSub}>Découvrir, rejoindre un direct ou un replay.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+        </TouchableOpacity>
+
+        <View style={styles.countdownBlock}>
+          <Text style={styles.countdownLabel}>Minuterie avant enregistrement</Text>
+          <View style={styles.countdownChips}>
+            {([0, 3, 5, 10] as const).map((sec) => (
+              <TouchableOpacity
+                key={sec}
+                style={[styles.countdownChip, cameraCountdownSec === sec && styles.countdownChipActive]}
+                onPress={() => setCameraCountdownSec(sec)}
+                accessibilityLabel={sec === 0 ? 'Pas de compte à rebours' : `Compte à rebours ${sec} secondes`}
+              >
+                <Text style={[styles.countdownChipText, cameraCountdownSec === sec && styles.countdownChipTextActive]}>
+                  {sec === 0 ? 'Non' : `${sec}s`}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         <View style={styles.optionsGrid}>
           <TouchableOpacity style={styles.optionCard} onPress={handleRecordVideo}>
             <View style={[styles.optionIcon, { backgroundColor: Colors.primary }]}>
               <Ionicons name="videocam" size={40} color={Colors.text} />
             </View>
             <Text style={styles.optionTitle}>Enregistrer</Text>
-            <Text style={styles.optionSubtitle}>Caméra</Text>
+            <Text style={styles.optionSubtitle}>Capturer une vidéo</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.optionCard} onPress={handlePickVideo}>
@@ -562,7 +1124,7 @@ export default function CreateScreen() {
               <Ionicons name="film" size={40} color={Colors.text} />
             </View>
             <Text style={styles.optionTitle}>Vidéo</Text>
-            <Text style={styles.optionSubtitle}>Depuis la galerie</Text>
+            <Text style={styles.optionSubtitle}>Courte ou longue</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.optionCard} onPress={handlePickImage}>
@@ -570,7 +1132,7 @@ export default function CreateScreen() {
               <Ionicons name="images" size={40} color={Colors.text} />
             </View>
             <Text style={styles.optionTitle}>Photo</Text>
-            <Text style={styles.optionSubtitle}>Une ou plusieurs images</Text>
+            <Text style={styles.optionSubtitle}>Plusieurs images</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.optionCard} onPress={handleTextPost}>
@@ -586,39 +1148,17 @@ export default function CreateScreen() {
               <Ionicons name="document-text" size={40} color={Colors.text} />
             </View>
             <Text style={styles.optionTitle}>Article</Text>
-            <Text style={styles.optionSubtitle}>Texte structuré</Text>
+            <Text style={styles.optionSubtitle}>Rédiger un article</Text>
           </TouchableOpacity>
         </View>
-
-        <TouchableOpacity style={styles.liveCard} onPress={() => router.push('/live/stream' as any)}>
-          <View style={styles.liveIcon}>
-            <Ionicons name="radio" size={28} color="#FFF" />
-          </View>
-          <View style={styles.liveInfo}>
-            <Text style={styles.liveTitle}>Démarrer un Live</Text>
-            <Text style={styles.liveSubtitle}>Direct et replays</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={24} color={Colors.textSecondary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.liveCard, { borderLeftColor: '#FFEAA7', borderLeftWidth: 3 }]} onPress={() => router.push('/live' as any)}>
-          <View style={[styles.liveIcon, { backgroundColor: '#FFEAA7' }]}>
-            <Ionicons name="play-circle" size={28} color="#333" />
-          </View>
-          <View style={styles.liveInfo}>
-            <Text style={styles.liveTitle}>Mes Lives & Replays</Text>
-            <Text style={styles.liveSubtitle}>Voir, découper, republier (replays)</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={24} color={Colors.textSecondary} />
-        </TouchableOpacity>
 
         <View style={styles.tipsContainer}>
           <Text style={styles.tipsTitle}>Conseils</Text>
           {[
-            { icon: 'bulb', text: 'Ajoutez des hashtags pour être découvert plus facilement.' },
-            { icon: 'film', text: 'Les vidéos apparaissent dans le fil principal et la grille découverte.' },
-            { icon: 'musical-notes', text: 'Combinez photos et texte pour raconter une histoire.' },
-            { icon: 'document-text', text: 'Les articles conviennent aux tutoriels et contenus longs.' },
+            { icon: 'bulb', text: 'Utilisez une bonne lumière naturelle' },
+            { icon: 'film', text: 'Les vidéos longues sont maintenant supportées' },
+            { icon: 'musical-notes', text: 'Ajoutez de la musique tendance' },
+            { icon: 'document-text', text: 'Partagez vos idées en articles' },
           ].map((tip, i) => (
             <View key={i} style={styles.tipItem}>
               <Ionicons name={tip.icon as any} size={20} color={Colors.accent} />
@@ -627,7 +1167,8 @@ export default function CreateScreen() {
           ))}
         </View>
       </ScrollView>
-    </View>
+      </View>
+    </>
   );
 }
 
@@ -662,6 +1203,28 @@ const styles = StyleSheet.create({
   soundSeedLabel: { color: Colors.textMuted, fontSize: FontSizes.xs, fontWeight: '700', textTransform: 'uppercase' },
   soundSeedTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '700', marginTop: 2 },
   soundSeedHint: { color: Colors.textSecondary, fontSize: FontSizes.xs, marginTop: 6, lineHeight: 16 },
+  countdownBlock: { marginBottom: Spacing.lg },
+  countdownLabel: { color: Colors.textMuted, fontSize: FontSizes.xs, fontWeight: '700', marginBottom: Spacing.sm, textTransform: 'uppercase' },
+  countdownChips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  countdownChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  countdownChipActive: { borderColor: Colors.primary, backgroundColor: 'rgba(255,107,0,0.1)' },
+  countdownChipText: { color: Colors.textSecondary, fontSize: FontSizes.sm, fontWeight: '600' },
+  countdownChipTextActive: { color: Colors.primary },
+  countdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countdownNum: { fontSize: 120, fontWeight: '800', color: '#FFF' },
+  countdownHint: { color: 'rgba(255,255,255,0.85)', fontSize: FontSizes.md, marginTop: Spacing.md },
   optionsGrid: {
     flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between',
     gap: Spacing.md, marginBottom: Spacing.xl,
@@ -676,17 +1239,6 @@ const styles = StyleSheet.create({
   },
   optionTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600', marginBottom: 4 },
   optionSubtitle: { color: Colors.textSecondary, fontSize: FontSizes.xs, textAlign: 'center' },
-  liveCard: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.lg, padding: Spacing.lg, marginBottom: Spacing.xl, gap: Spacing.md,
-  },
-  liveIcon: {
-    width: 50, height: 50, borderRadius: 25, backgroundColor: '#FF0000',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  liveInfo: { flex: 1 },
-  liveTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600' },
-  liveSubtitle: { color: Colors.textSecondary, fontSize: FontSizes.sm, marginTop: 2 },
   tipsContainer: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.xl },
   tipsTitle: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: '600', marginBottom: Spacing.lg },
   tipItem: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.md, gap: Spacing.md },
@@ -707,6 +1259,12 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full, gap: 4,
   },
   videoIndicatorText: { color: '#FFF', fontSize: FontSizes.xs },
+  editorBadge: {
+    position: 'absolute', bottom: 10, right: 10, backgroundColor: 'rgba(255,107,0,0.85)',
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: BorderRadius.full, gap: 4,
+  },
+  editorBadgeText: { color: '#FFF', fontSize: FontSizes.xs, fontWeight: '600' },
   formContainer: { gap: Spacing.xs },
   formLabel: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600', marginTop: Spacing.md },
   formInput: {
@@ -730,4 +1288,131 @@ const styles = StyleSheet.create({
   progressBar: { width: '100%', height: 6, backgroundColor: Colors.surface, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: 3 },
   progressText: { color: Colors.textSecondary, fontSize: FontSizes.sm, marginTop: Spacing.sm },
+  liveHubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  liveHubTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '800' },
+  liveHubSub: { color: Colors.textSecondary, fontSize: FontSizes.xs, marginTop: 4, lineHeight: 16 },
+  goLiveHero: { marginBottom: Spacing.lg, borderRadius: BorderRadius.xl, overflow: 'hidden' },
+  goLiveHeroGrad: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+  },
+  goLiveHeroTitle: { color: '#FFF', fontSize: FontSizes.xl, fontWeight: '900' },
+  goLiveHeroSub: { color: 'rgba(255,255,255,0.9)', fontSize: FontSizes.sm, marginTop: 4, lineHeight: 18 },
+
+  /* Champs de sélection (catégorie / langue / qui peut commenter) */
+  selectField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  selectFieldText: { color: Colors.text, fontSize: FontSizes.md, flex: 1, marginRight: 6 },
+  selectFieldPlaceholder: { color: Colors.textMuted },
+  scheduleFieldLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+
+  /* Toggles "Cacher les likes" / "Désactiver les commentaires" */
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    gap: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+  },
+  optionRowLabel: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600' },
+  optionRowHint: { color: Colors.textMuted, fontSize: FontSizes.xs, marginTop: 2 },
+
+  /* Programmer la publication */
+  scheduleChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  chipText: { color: Colors.text, fontSize: FontSizes.xs, fontWeight: '600' },
+  chipDestructive: { borderColor: '#FF2D55' },
+  chipTextDestructive: { color: '#FF2D55' },
+
+  /* Miniature personnalisée */
+  thumbnailRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
+  thumbnailPreview: { width: 56, height: 90, borderRadius: 8, backgroundColor: Colors.surface },
+  thumbnailPlaceholder: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.border, borderStyle: 'dashed' },
+  thumbnailBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  thumbnailBtnText: { color: Colors.text, fontSize: FontSizes.sm, fontWeight: '600' },
+  thumbnailRemove: { padding: 4 },
+
+  /* Visibilité (Public / Followers / Privé) */
+  visibilityList: { gap: 8, marginTop: 4 },
+  visibilityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: Colors.surface,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 12,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  visibilityRowActive: { borderColor: Colors.primary, backgroundColor: 'rgba(255,107,0,0.08)' },
+  visibilityLabel: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '700' },
+  visibilitySub: { color: Colors.textMuted, fontSize: FontSizes.xs, marginTop: 2 },
+
+  /* Modal picker */
+  pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  pickerSheet: { backgroundColor: Colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 8, paddingBottom: 24 },
+  pickerHandle: { width: 40, height: 4, backgroundColor: Colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: 8 },
+  pickerTitle: { textAlign: 'center', fontSize: FontSizes.md, fontWeight: '700', color: Colors.text, paddingVertical: 10 },
+  pickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+  },
+  pickerItemText: { color: Colors.text, fontSize: FontSizes.md },
+  pickerItemTextActive: { color: Colors.primary, fontWeight: '700' },
+  pickerCancel: {
+    alignItems: 'center',
+    paddingVertical: 14,
+    marginTop: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+  },
+  pickerCancelText: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '700' },
 });

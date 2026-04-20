@@ -236,7 +236,7 @@ export default function NotificationsScreen() {
         break;
       case 'live':
       case 'live_started':
-        router.push('/live');
+        router.push('/(tabs)');
         break;
       case 'order':
         if (data.orderId) router.push({ pathname: '/orders/[id]', params: { id: data.orderId } });

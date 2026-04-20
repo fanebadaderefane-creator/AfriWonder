@@ -1,23 +1,65 @@
 import React, { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Image, TextInput, Modal, KeyboardAvoidingView, Platform, ScrollView, Animated, AppState, Alert, Pressable, RefreshControl, type LayoutChangeEvent, type ViewToken } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Image, TextInput, Modal, KeyboardAvoidingView, Platform, Pressable, ScrollView, Animated, AppState, Alert, PanResponder, RefreshControl, FlatList, StatusBar, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, type ViewToken } from 'react-native';
 import { FlashList as ShopifyFlashList, type FlashListRef } from '@shopify/flash-list';
+import { useEventListener } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/store/authStore';
 import apiClient from '../../src/api/client';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import ShareSheet from '../../src/components/ShareSheet';
+import ShareSheet, { type ShareVideoContext } from '../../src/components/ShareSheet';
+import { getVideoSharePageUrl } from '../../src/config/shareUrls';
 import ReportModal from '../../src/components/ReportModal';
+import CommentReportModal from '../../src/components/CommentReportModal';
 import { CreatorAvatar } from '../../src/components/CreatorAvatar';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { SmartThumbnail } from '../../src/components/SmartThumbnail';
 import { Audio } from 'expo-av';
 import offlineActionSyncService from '../../src/services/offlineActionSyncService';
-
+import { FeedSkeleton } from '../../src/components/feed/FeedSkeleton';
+import { useLanguage } from '../../src/i18n/LanguageContext';
+import { useDataSaver } from '../../src/dataSaver/DataSaverContext';
+import FeedPollCard, { type FeedPollPayload } from '../../src/components/feed/FeedPollCard';
+import VideoReactionBar, { reactionEmojiForType } from '../../src/components/feed/VideoReactionBar';
+import { addRecentlyViewedVideo } from '../../src/utils/recentlyViewedVideos';
+import { FollowingStoriesBar } from '../../src/components/feed/FollowingStoriesBar';
 const { height } = Dimensions.get('window');
+
+/** Temps sous l’aperçu de scrub (style PWA / TikTok). */
+function formatScrubTimeline(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const total = Math.min(seconds, 359999);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = Math.floor(total % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function formatCommentTimeAgo(dateStr: string) {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return 'A l\'instant';
+  if (diffMin < 60) return `${diffMin} min`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}h`;
+  const diffD = Math.floor(diffH / 24);
+  return diffD < 30 ? `${diffD}j` : `${Math.floor(diffD / 30)} mois`;
+}
+
+/** `Image` ne peut pas afficher un MP4/HLS : éviter poster « vide » si l’API renvoie l’URL média comme miniature. */
+function isLikelyVideoFileUrl(uri: string): boolean {
+  if (!uri) return false;
+  const path = uri.split('?')[0].toLowerCase();
+  if (/\.(mp4|m3u8|webm|mov|mkv|m4v|3gp|ogv)$/.test(path)) return true;
+  return path.includes('.m3u8');
+}
 
 /** Base hauteur tab bar, alignée sur `app/(tabs)/_layout.tsx` (`height: 65 + insets.bottom`). */
 const TAB_BAR_LAYOUT_HEIGHT = 65;
@@ -37,6 +79,23 @@ interface VideoUser {
   isFollowing: boolean;
 }
 
+/** Élément renvoyé par `GET /videos/:id/similar` (snake_case API + champs Prisma camelCase). */
+type SimilarFeedItem = {
+  id: string;
+  title?: string;
+  thumbnail_url?: string | null;
+  thumbnailUrl?: string | null;
+  poster_url?: string | null;
+  video_url?: string | null;
+  videoUrl?: string | null;
+  likes?: number;
+  views?: number;
+  media_type?: string | null;
+  creator_name?: string;
+  creator_avatar?: string | null;
+  creatorAvatar?: string | null;
+};
+
 interface Video {
   id: string;
   title: string;
@@ -54,6 +113,19 @@ interface Video {
   user: VideoUser;
   music: string;
   isSponsored?: boolean;
+  /** Extrait replay live : lecture bouclée sur [trimStartSec, trimEndSec] (secondes média). */
+  trimStartSec?: number | null;
+  trimEndSec?: number | null;
+  /** URL lecture privilégiant bas débit (mode économie). */
+  dataSaverLowQuality?: boolean;
+  /** Réactions vidéo (Like.type) — phase 23 */
+  reactionCounts?: Record<string, number> | null;
+  myReaction?: string | null;
+  commentsDisabled?: boolean;
+  remixCreditName?: string | null;
+  remixKind?: string | null;
+  /** `video` | `photo` — pour suggestions « similaires ». */
+  mediaType?: 'video' | 'photo' | string;
 }
 
 interface Comment {
@@ -65,6 +137,15 @@ interface Comment {
   createdAt: string;
   /** URL du vocal (API `audio_url`) */
   audioUrl?: string | null;
+  /** Total réactions (CommentReaction) — API `_count.reactions` */
+  reactionTotal?: number;
+  /** Répartition par type — API `reaction_counts` */
+  reactionCounts?: Record<string, number> | null;
+  /** Réaction courante — API `my_reaction` */
+  myReaction?: string | null;
+  isPinned?: boolean;
+  parentId?: string | null;
+  isReply?: boolean;
 }
 
 async function appendCommentVoiceToFormData(formData: FormData, uri: string) {
@@ -81,6 +162,13 @@ async function appendCommentVoiceToFormData(formData: FormData, uri: string) {
 // Fallback vide - les videos sont chargees depuis l'API
 const FALLBACK_VIDEOS: Video[] = [];
 
+/**
+ * Nombre d’emplacements demandés au backend pour « Pour toi » (`/feed`).
+ * Le JSON mélange vidéos + pubs + bannières : avec 10 slots on ne recevait souvent que 3–5 vidéos,
+ * et `hasMore` se basait sur le nombre de vidéos → pagination coupée trop tôt.
+ */
+const FEED_PAGE_LIMIT = 28;
+
 interface VideoItemProps {
   video: Video;
   isActive: boolean;
@@ -95,47 +183,334 @@ interface VideoItemProps {
   onReport: () => void;
   onOpenProfile: () => void;
   onOpenSound: () => void;
+  onOpenHashtag: (rawTag: string) => void;
+  tapToPlayOnly?: boolean;
+  reduceAnimations?: boolean;
+  /** Sondage attaché (chargé pour la slide active) */
+  pollState?: FeedPollPayload | null | 'loading' | undefined;
+  pollVoting?: boolean;
+  onPollVote: (optionIndex: number) => void | Promise<void>;
+  onReactionPick: (type: string) => void | Promise<void>;
 }
 
 const VideoItem: React.FC<VideoItemProps> = ({
-  video, isActive, slideHeight, onLike, onDoubleTapLike, onComment, onShare, onSave, onFollow, onReport, onOpenProfile, onOpenSound,
+  video,
+  isActive,
+  slideHeight,
+  onLike,
+  onDoubleTapLike,
+  onComment,
+  onSave,
+  onShare,
+  onFollow,
+  onReport,
+  onOpenProfile,
+  onOpenSound,
+  onOpenHashtag,
+  tapToPlayOnly = false,
+  reduceAnimations = false,
+  pollState,
+  pollVoting = false,
+  onPollVote,
+  onReactionPick,
 }) => {
   const insets = useSafeAreaInsets();
+  const { addPlaybackEstimate } = useDataSaver();
   const [isMuted] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [showHeart, setShowHeart] = useState(false);
+  const [burstEmoji, setBurstEmoji] = useState<string | null>(null);
+  const [reactionsOpen, setReactionsOpen] = useState(false);
+  /** Feuille « recherche visuelle » (similaires) — reste sur l’écran Accueil. */
+  const [similarOpen, setSimilarOpen] = useState(false);
+  const [similarLoading, setSimilarLoading] = useState(false);
+  const [similarItems, setSimilarItems] = useState<SimilarFeedItem[]>([]);
+  const [similarSourceKind, setSimilarSourceKind] = useState<'video' | 'photo'>('video');
+  const burstAnim = useRef(new Animated.Value(0)).current;
   const heartAnim = useRef(new Animated.Value(0)).current;
   const discAnim = useRef(new Animated.Value(0)).current;
   const lastTap = useRef(0);
   const isActiveRef = useRef(isActive);
   const wasActiveRef = useRef(isActive);
+  const [progressPct, setProgressPct] = useState(0);
+  const isPausedRef = useRef(isPaused);
+  const isScrubbingRef = useRef(false);
+  const wasPlayingBeforeScrubRef = useRef(false);
+  const progressBarHitRef = useRef<View>(null);
+  const barWindowRectRef = useRef({ x: 0, width: 1 });
+  const [showScrubPreview, setShowScrubPreview] = useState(false);
+  const [scrubTimeSec, setScrubTimeSec] = useState(0);
+  const trimStartRef = useRef<number | null>(null);
+  const trimEndRef = useRef<number | null>(null);
+  const prevVideoIdRef = useRef(video.id);
+  const markViewedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Keep ref in sync
-  useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
+  /**
+   * Refs lues par `useVideoPlayer` (setup synchrone au changement de source) : les mettre à jour
+   * avant tout hook suivant, sinon FlashList recycle avec `isActive` vrai mais ref encore `false`.
+   * Reset `isPaused` / barre au changement de `video.id` pendant le rendu pour éviter que l’effet
+   * lecture/pause ne voie un `isPaused` obsolète et appelle `pause()` avant le flush du state.
+   */
+  isActiveRef.current = isActive;
+  if (prevVideoIdRef.current !== video.id) {
+    prevVideoIdRef.current = video.id;
+    setIsPaused(tapToPlayOnly);
+    setProgressPct(0);
+    setShowScrubPreview(false);
+    setScrubTimeSec(0);
+    isPausedRef.current = tapToPlayOnly;
+  } else {
+    isPausedRef.current = isPaused;
+  }
+
+  // Historique "Vue récente" : marquer comme vue seulement si la slide reste active un minimum (éviter les faux scrolls).
+  useEffect(() => {
+    if (markViewedTimeoutRef.current) {
+      clearTimeout(markViewedTimeoutRef.current);
+      markViewedTimeoutRef.current = null;
+    }
+    if (!isActive) return undefined;
+    markViewedTimeoutRef.current = setTimeout(() => {
+      if (!isActiveRef.current) return;
+      // Même si l'utilisateur a pausé, on considère qu'elle a été vue (elle a été ouverte et visible).
+      void addRecentlyViewedVideo(video.id);
+    }, 1200);
+    return () => {
+      if (markViewedTimeoutRef.current) {
+        clearTimeout(markViewedTimeoutRef.current);
+        markViewedTimeoutRef.current = null;
+      }
+    };
+  }, [isActive, video.id]);
+
+  useEffect(() => {
+    const ts = typeof video.trimStartSec === 'number' && video.trimStartSec >= 0 ? video.trimStartSec : null;
+    const te =
+      typeof video.trimEndSec === 'number' && ts != null && video.trimEndSec > ts ? video.trimEndSec : null;
+    trimStartRef.current = ts;
+    trimEndRef.current = te;
+  }, [video.trimStartSec, video.trimEndSec, video.id]);
+
+  useEffect(() => {
+    if (!isActive) {
+      setReactionsOpen(false);
+      setSimilarOpen(false);
+    }
+  }, [isActive]);
+
+  useEffect(() => {
+    setSimilarOpen(false);
+    setSimilarItems([]);
+  }, [video.id]);
+
+  useEffect(() => {
+    if (!isPaused) setSimilarOpen(false);
+  }, [isPaused]);
+
+  const openSimilarSheet = useCallback(async () => {
+    setSimilarOpen(true);
+    setSimilarLoading(true);
+    setSimilarItems([]);
+    setSimilarSourceKind(video.mediaType === 'photo' ? 'photo' : 'video');
+    try {
+      const res = await apiClient.get(`/videos/${video.id}/similar`, { params: { limit: 24 } });
+      const body = res.data as Record<string, unknown>;
+      const inner = (body?.data ?? body) as { videos?: unknown[]; source_media_type?: string };
+      const rawList = inner?.videos;
+      const list = Array.isArray(rawList) ? rawList : [];
+      setSimilarSourceKind(inner?.source_media_type === 'photo' ? 'photo' : 'video');
+      setSimilarItems(list as SimilarFeedItem[]);
+    } catch {
+      setSimilarItems([]);
+    } finally {
+      setSimilarLoading(false);
+    }
+  }, [video.id, video.mediaType]);
+
+  /** Mode économie / réseau lent : aligner la pause sans attendre un changement de vidéo. */
+  useEffect(() => {
+    setIsPaused(tapToPlayOnly);
+  }, [tapToPlayOnly]);
 
   const player = useVideoPlayer(video.videoUrl, (p) => {
     p.loop = true;
     p.muted = !isActiveRef.current;
+    p.timeUpdateEventInterval = 0.25;
     if (isActiveRef.current) {
       p.play();
     }
   });
 
-  // Nouvelle slide active : reprendre la lecture auto (comportement type TikTok)
+  /** Web / certains runtimes : premier `play()` peut échouer avant `readyToPlay`. */
+  useEventListener(player, 'statusChange', ({ status }) => {
+    if (status !== 'readyToPlay') return;
+    if (!isActiveRef.current || isPausedRef.current) return;
+    void Promise.resolve().then(() => {
+      try {
+        player.play();
+      } catch {
+        /* ignore */
+      }
+    });
+  });
+
+  /** Recyclage FlashList / nouveau média : sauter au début du clip si extrait live. */
+  useEffect(() => {
+    const ts = typeof video.trimStartSec === 'number' && video.trimStartSec >= 0 ? video.trimStartSec : null;
+    if (ts == null) return undefined;
+    const tid = setTimeout(() => {
+      try {
+        player.currentTime = ts;
+      } catch {
+        /* player pas prêt */
+      }
+    }, 150);
+    return () => clearTimeout(tid);
+  }, [video.id, player, video.trimStartSec]);
+
+  useEventListener(player, 'timeUpdate', ({ currentTime }) => {
+    if (!isActiveRef.current || isScrubbingRef.current) return;
+    const ts = trimStartRef.current;
+    const te = trimEndRef.current;
+    if (te != null && ts != null && currentTime >= te - 0.08) {
+      try {
+        player.currentTime = ts;
+      } catch {
+        /* ignore */
+      }
+    }
+    try {
+      const d = player.duration;
+      if (d > 0 && Number.isFinite(d)) {
+        if (ts != null && te != null && te > ts) {
+          const span = te - ts;
+          const rel = Math.min(span, Math.max(0, currentTime - ts));
+          setProgressPct(Math.min(100, Math.max(0, (rel / span) * 100)));
+        } else {
+          setProgressPct(Math.min(100, Math.max(0, (currentTime / d) * 100)));
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  });
+
+  const seekFromPageX = useCallback(
+    (pageX: number) => {
+      if (!player) return;
+      const { x: barX, width: w } = barWindowRectRef.current;
+      if (w < 8) return;
+      let d = 0;
+      try {
+        d = player.duration;
+      } catch {
+        return;
+      }
+      if (!Number.isFinite(d) || d <= 0) return;
+      const ratio = Math.max(0, Math.min(1, (pageX - barX) / w));
+      const ts = trimStartRef.current;
+      const te = trimEndRef.current;
+      let t = ratio * d;
+      if (ts != null && te != null && te > ts) {
+        t = ts + ratio * (te - ts);
+      }
+      try {
+        player.currentTime = t;
+      } catch {
+        /* ignore */
+      }
+      if (ts != null && te != null && te > ts) {
+        setProgressPct(ratio * 100);
+        if (isScrubbingRef.current) setScrubTimeSec(t - ts);
+      } else {
+        setProgressPct(ratio * 100);
+        if (isScrubbingRef.current) setScrubTimeSec(t);
+      }
+    },
+    [player]
+  );
+
+  const measureProgressBar = useCallback(() => {
+    progressBarHitRef.current?.measureInWindow((x, _y, width) => {
+      barWindowRectRef.current = { x, width: Math.max(1, width) };
+    });
+  }, []);
+
+  const endScrubbing = useCallback(() => {
+    isScrubbingRef.current = false;
+    setShowScrubPreview(false);
+    if (!isActiveRef.current || !player) return;
+    try {
+      if (wasPlayingBeforeScrubRef.current && !isPausedRef.current) {
+        player.play();
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [player]);
+
+  const progressPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => Boolean(isActiveRef.current),
+        onMoveShouldSetPanResponder: (_evt, g) =>
+          Boolean(isActiveRef.current) && (Math.abs(g.dx) > 2 || Math.abs(g.dy) > 2),
+        onPanResponderGrant: (evt) => {
+          if (!isActiveRef.current || !player) return;
+          isScrubbingRef.current = true;
+          setShowScrubPreview(true);
+          try {
+            wasPlayingBeforeScrubRef.current = player.playing;
+          } catch {
+            wasPlayingBeforeScrubRef.current = false;
+          }
+          try {
+            player.pause();
+          } catch {
+            /* ignore */
+          }
+          const pageX = evt.nativeEvent.pageX;
+          progressBarHitRef.current?.measureInWindow((x, _y, width) => {
+            barWindowRectRef.current = { x, width: Math.max(1, width) };
+            seekFromPageX(pageX);
+          });
+        },
+        onPanResponderMove: (evt) => {
+          seekFromPageX(evt.nativeEvent.pageX);
+        },
+        onPanResponderRelease: (evt) => {
+          seekFromPageX(evt.nativeEvent.pageX);
+          endScrubbing();
+        },
+        onPanResponderTerminate: () => {
+          endScrubbing();
+        },
+      }),
+    [player, seekFromPageX, endScrubbing]
+  );
+
+  // Nouvelle slide active : lecture auto sauf mode économie (tap pour lire)
   useEffect(() => {
     if (isActive && !wasActiveRef.current) {
-      setIsPaused(false);
+      setIsPaused(tapToPlayOnly);
     }
     wasActiveRef.current = isActive;
-  }, [isActive]);
+  }, [isActive, tapToPlayOnly]);
 
-  // Pause + sourdine immédiates hors carte active (évite audio « fantôme » sur web / expo-video)
+  // Pause + sourdine hors slide active (double tick : certains runtimes laissent passer l’audio une frame)
   useLayoutEffect(() => {
     if (!player || isActive) return;
     try {
       player.pause();
       player.muted = true;
     } catch {}
+    const id = requestAnimationFrame(() => {
+      try {
+        player.pause();
+        player.muted = true;
+      } catch {}
+    });
+    return () => cancelAnimationFrame(id);
   }, [isActive, player]);
 
   // Lecture / pause + mute utilisateur sur la carte active
@@ -157,7 +532,15 @@ const VideoItem: React.FC<VideoItemProps> = ({
     } catch (e) {
       console.log('Player play/pause error:', e);
     }
-  }, [isActive, isPaused, isMuted, player]);
+  }, [isActive, isPaused, isMuted, player, video.id]);
+
+  /** Estimation consommation data (Phase 14 — Afrique). */
+  useEffect(() => {
+    if (!isActive || isPaused) return;
+    const low = Boolean(video.dataSaverLowQuality);
+    const id = setInterval(() => addPlaybackEstimate(1, low), 1000);
+    return () => clearInterval(id);
+  }, [isActive, isPaused, video.id, video.dataSaverLowQuality, addPlaybackEstimate]);
 
   // CRITICAL: Cleanup on unmount — pause video to stop background audio
   useEffect(() => {
@@ -166,18 +549,18 @@ const VideoItem: React.FC<VideoItemProps> = ({
     };
   }, [player]);
 
-  // Rotating disc animation
+  // Rotating disc animation (désactivé si « Réduire les animations » — économie batterie)
   useEffect(() => {
-    if (isActive && !isPaused) {
-      const rotate = Animated.loop(
-        Animated.timing(discAnim, { toValue: 1, duration: 4000, useNativeDriver: true })
-      );
-      rotate.start();
-      return () => rotate.stop();
-    } else {
+    if (reduceAnimations || !isActive || isPaused) {
       discAnim.setValue(0);
+      return;
     }
-  }, [isActive, isPaused]);
+    const rotate = Animated.loop(
+      Animated.timing(discAnim, { toValue: 1, duration: 4000, useNativeDriver: true })
+    );
+    rotate.start();
+    return () => rotate.stop();
+  }, [isActive, isPaused, reduceAnimations, discAnim]);
 
   const discRotation = discAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
@@ -197,8 +580,10 @@ const VideoItem: React.FC<VideoItemProps> = ({
   const handleTap = () => {
     const now = Date.now();
     if (now - lastTap.current < 300) {
-      // Double tap - like animation
       onDoubleTapLike();
+      if (reduceAnimations) {
+        return;
+      }
       setShowHeart(true);
       Animated.sequence([
         Animated.spring(heartAnim, { toValue: 1, useNativeDriver: true, friction: 3 }),
@@ -215,6 +600,30 @@ const VideoItem: React.FC<VideoItemProps> = ({
 
   const itemHeight = slideHeight ?? Math.ceil(Math.max(200, height - TAB_BAR_LAYOUT_HEIGHT - insets.bottom));
 
+  const engagementTotal = useMemo(() => {
+    if (video.reactionCounts && Object.keys(video.reactionCounts).length > 0) {
+      return Object.values(video.reactionCounts).reduce((a, b) => a + (Number(b) || 0), 0);
+    }
+    return video.likes;
+  }, [video.reactionCounts, video.likes]);
+
+  const handleReactionWithBurst = useCallback(
+    async (type: string) => {
+      await onReactionPick(type);
+      if (reduceAnimations) return;
+      const em = reactionEmojiForType(type);
+      setBurstEmoji(em);
+      burstAnim.setValue(0);
+      Animated.sequence([
+        Animated.spring(burstAnim, { toValue: 1, friction: 5, useNativeDriver: true }),
+        Animated.timing(burstAnim, { toValue: 0, duration: 320, delay: 100, useNativeDriver: true }),
+      ]).start(() => setBurstEmoji(null));
+    },
+    [burstAnim, onReactionPick, reduceAnimations]
+  );
+
+  const heartFilled = video.myReaction === 'like' || video.isLiked;
+
   return (
     <View style={[styles.videoContainer, { height: itemHeight }]}>
       <TouchableWithoutFeedback onPress={handleTap}>
@@ -229,6 +638,23 @@ const VideoItem: React.FC<VideoItemProps> = ({
               </View>
             </View>
           )}
+
+          {isPaused && isActive && !similarOpen ? (
+            <TouchableOpacity
+              testID="similar-find-pill"
+              style={styles.similarPill}
+              onPress={() => void openSimilarSheet()}
+              activeOpacity={0.88}
+              accessibilityRole="button"
+              accessibilityLabel="Trouver des contenus similaires"
+            >
+              <View style={styles.similarPillIconBox}>
+                <Ionicons name="search" size={14} color="#FFF" />
+              </View>
+              <Text style={styles.similarPillText}>Trouver des similaires</Text>
+              <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.95)" />
+            </TouchableOpacity>
+          ) : null}
 
           {/* Double-tap heart animation */}
           {showHeart && (
@@ -245,6 +671,38 @@ const VideoItem: React.FC<VideoItemProps> = ({
       {/* Gradient overlays */}
       <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0.6)', 'transparent']} style={styles.topGradient} />
       <LinearGradient pointerEvents="none" colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.bottomGradient} />
+
+      {pollState === 'loading' || (pollState && typeof pollState === 'object') ? (
+        <View style={[styles.pollOverlay, { bottom: Math.max(268, insets.bottom + 278) }]} pointerEvents="box-none">
+          <FeedPollCard
+            poll={pollState === 'loading' ? 'loading' : pollState}
+            voting={pollVoting}
+            onVote={onPollVote}
+          />
+        </View>
+      ) : null}
+
+      {burstEmoji ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.reactionBurst,
+            {
+              opacity: burstAnim,
+              transform: [
+                {
+                  scale: burstAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.4, 1.15],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <Text style={styles.reactionBurstEmoji}>{burstEmoji}</Text>
+        </Animated.View>
+      ) : null}
 
       {/* Sponsored badge */}
       {video.isSponsored && (
@@ -276,8 +734,8 @@ const VideoItem: React.FC<VideoItemProps> = ({
 
         {/* Like */}
         <TouchableOpacity style={styles.actionButton} onPress={onLike}>
-          <Ionicons name={video.isLiked ? 'heart' : 'heart-outline'} size={32} color={video.isLiked ? Colors.like : '#FFF'} />
-          <Text style={styles.actionText}>{formatNumber(video.likes)}</Text>
+          <Ionicons name={heartFilled ? 'heart' : 'heart-outline'} size={32} color={heartFilled ? Colors.like : '#FFF'} />
+          <Text style={styles.actionText}>{formatNumber(engagementTotal)}</Text>
         </TouchableOpacity>
 
         {/* Comment */}
@@ -316,7 +774,7 @@ const VideoItem: React.FC<VideoItemProps> = ({
           activeOpacity={0.85}
           onPress={onOpenSound}
           accessibilityRole="button"
-          accessibilityLabel="Voir les vidéos avec ce son"
+          accessibilityLabel="Voir le son — page des vidéos utilisant ce titre audio"
         >
           <Animated.View style={[styles.musicDisc, { transform: [{ rotate: discRotation }] }]}>
             <View style={styles.musicDiscImage}>
@@ -334,23 +792,55 @@ const VideoItem: React.FC<VideoItemProps> = ({
       </View>
 
       {/* Bottom info */}
-      <View style={[styles.bottomInfo, { bottom: 16 }]}>
+      <View style={styles.bottomInfo}>
+        <TouchableOpacity
+          style={styles.reactionsTriggerBtn}
+          onPress={() => setReactionsOpen(true)}
+          activeOpacity={0.88}
+          accessibilityRole="button"
+          accessibilityLabel="Réagir à la vidéo"
+        >
+          <Ionicons name="happy-outline" size={17} color="rgba(255,255,255,0.95)" />
+          <Text style={styles.reactionsTriggerText}>Réagir</Text>
+          {video.myReaction && video.myReaction !== 'like' ? <View style={styles.reactionsTriggerDot} /> : null}
+        </TouchableOpacity>
         <View style={styles.userRow}>
           <TouchableOpacity onPress={video.user.id ? onOpenProfile : undefined} activeOpacity={0.85} disabled={!video.user.id}>
             <Text style={styles.username}>{creatorHandle}</Text>
           </TouchableOpacity>
           {video.user.isFollowing ? (
-            <View style={styles.followingTag}><Text style={styles.followingTagText}>Abonne</Text></View>
+            <TouchableOpacity
+              style={styles.followingTag}
+              onPress={onFollow}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel="Ne plus suivre"
+            >
+              <Text style={styles.followingTagText}>Abonné</Text>
+            </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.followBtn} onPress={onFollow}>
               <Text style={styles.followBtnText}>Suivre</Text>
             </TouchableOpacity>
           )}
         </View>
+        {video.remixCreditName ? (
+          <Text style={styles.remixCredit} numberOfLines={1}>
+            {video.remixKind === 'stitch' ? 'Stitch' : video.remixKind === 'duet' ? 'Duet' : 'Remix'} · @{video.remixCreditName}
+          </Text>
+        ) : null}
         <Text style={styles.description} numberOfLines={2}>{video.description}</Text>
         <View style={styles.hashtagsRow}>
           {video.hashtags.map((tag, i) => (
-            <TouchableOpacity key={i}><Text style={styles.hashtag}>#{tag} </Text></TouchableOpacity>
+            <TouchableOpacity
+              key={`${String(tag)}-${i}`}
+              onPress={() => onOpenHashtag(String(tag))}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={`Rechercher le hashtag ${String(tag)}`}
+            >
+              <Text style={styles.hashtag}>#{tag} </Text>
+            </TouchableOpacity>
           ))}
         </View>
         <View style={styles.viewsRow} accessibilityLabel={`${formatNumber(video.views)} vues`}>
@@ -366,20 +856,244 @@ const VideoItem: React.FC<VideoItemProps> = ({
           activeOpacity={0.85}
           hitSlop={{ top: 10, bottom: 10, left: 4, right: 8 }}
           accessibilityRole="button"
-          accessibilityLabel={`Son : ${video.music}. Ouvrir les vidéos utilisant ce son`}
+          accessibilityLabel={`Voir le son : ${video.music}`}
         >
           <Ionicons name="musical-notes" size={14} color="#FFF" />
           <Text style={styles.musicText} numberOfLines={1}>{video.music}</Text>
-          <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.55)" style={{ marginLeft: 4 }} />
         </TouchableOpacity>
       </View>
+
+      {/* Prévisualisation : même lecteur que la vidéo (pas de miniature séparée / pas de spinner) */}
+      {showScrubPreview && player ? (
+        <View style={styles.scrubPreviewContainer} pointerEvents="none">
+          <View style={styles.scrubPreviewFrame}>
+            <VideoView
+              style={styles.scrubPreviewVideo}
+              player={player}
+              contentFit="cover"
+              nativeControls={false}
+              pointerEvents="none"
+              {...(Platform.OS === 'android' ? ({ surfaceType: 'textureView' } as const) : {})}
+            />
+          </View>
+          <Text style={styles.scrubPreviewTimeText}>{formatScrubTimeline(scrubTimeSec)}</Text>
+        </View>
+      ) : null}
+
+      {/* Barre de progression : glisser pour scrub + image vidéo (currentTime mis à jour en continu, lecture en pause pendant le geste) */}
+      <View
+        ref={progressBarHitRef}
+        style={styles.videoProgressHit}
+        onLayout={() => {
+          requestAnimationFrame(measureProgressBar);
+        }}
+        accessibilityRole="adjustable"
+        accessibilityLabel="Progression de la vidéo"
+        accessibilityHint="Maintenez et faites glisser pour avancer ou reculer dans la vidéo"
+        {...progressPanResponder.panHandlers}
+      >
+        <View style={styles.videoProgressTrackWrap} pointerEvents="none">
+          <View style={styles.videoProgressTrack}>
+            <View style={[styles.videoProgressFill, { width: `${progressPct}%` }]} />
+            <View
+              style={[
+                styles.videoProgressThumb,
+                showScrubPreview && styles.videoProgressThumbScrubbing,
+                {
+                  left: `${Math.min(100, Math.max(0, progressPct))}%`,
+                  marginLeft: showScrubPreview ? -8 : -6,
+                },
+              ]}
+            />
+          </View>
+        </View>
+      </View>
+
+      <Modal
+        visible={similarOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSimilarOpen(false)}
+      >
+        <View style={styles.similarModalRoot}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setSimilarOpen(false)} accessibilityLabel="Fermer" />
+          <View style={styles.similarModalColumn}>
+            <View style={styles.similarModalPreviewArea} pointerEvents="box-none">
+              <TouchableOpacity
+                style={styles.similarModalClose}
+                onPress={() => setSimilarOpen(false)}
+                hitSlop={12}
+                accessibilityLabel="Fermer"
+              >
+                <Ionicons name="close" size={28} color="#FFF" />
+              </TouchableOpacity>
+              <View style={styles.similarPreviewFrame}>
+                <View style={styles.similarPreviewCorners} pointerEvents="none" />
+                <SmartThumbnail
+                  posterUrl={toAbsoluteMediaUrl(video.thumbnailUrl || '')}
+                  uri={toAbsoluteMediaUrl(video.thumbnailUrl || video.videoUrl || '')}
+                  videoUrl={toAbsoluteMediaUrl(video.videoUrl || '')}
+                  style={styles.similarPreviewImage}
+                  tileSize={120}
+                  tileHeight={180}
+                />
+              </View>
+            </View>
+            <View
+              style={[
+                styles.similarSheet,
+                {
+                  height: Math.round(Dimensions.get('window').height * 0.56),
+                  paddingBottom: Math.max(insets.bottom, 16) + 8,
+                },
+              ]}
+            >
+              <View style={styles.similarSheetGrab} />
+              <Text style={styles.similarSheetTitle}>Recherche visuelle</Text>
+              <Text style={styles.similarSheetSubtitle}>
+                {similarSourceKind === 'photo'
+                  ? 'Photos similaires à ce contenu'
+                  : 'Vidéos similaires à ce contenu'}
+              </Text>
+              {similarLoading ? (
+                <ActivityIndicator style={{ marginTop: 24 }} color={Colors.primary} />
+              ) : similarItems.length === 0 ? (
+                <Text style={styles.similarEmpty}>Aucun résultat pour le moment.</Text>
+              ) : (
+                <ScrollView
+                  style={styles.similarGridScroll}
+                  contentContainerStyle={styles.similarGridScrollContent}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                >
+                  {(() => {
+                    const winW = Dimensions.get('window').width;
+                    const pad = 16;
+                    const gap = 8;
+                    /** Largeur utile de la feuille (plafonnée en desktop pour éviter des cartes géantes). */
+                    const sheetW = Math.min(winW - pad * 2, 560);
+                    /** Plus de colonnes sur écran large pour un vrai look "résultats visuels". */
+                    const cols = winW >= 900 ? 4 : winW >= 600 ? 3 : 2;
+                    const colW = Math.floor((sheetW - gap * (cols - 1)) / cols);
+                    const imgH = Math.round(colW * 1.25);
+                    return similarItems.map((item) => {
+                      const absThumb = toAbsoluteMediaUrl(
+                        String(item.thumbnail_url ?? item.thumbnailUrl ?? item.poster_url ?? '').trim()
+                      );
+                      const absVideo = toAbsoluteMediaUrl(
+                        String(item.video_url ?? item.videoUrl ?? '').trim()
+                      );
+                      const uriProp = absThumb || absVideo;
+                      return (
+                        <TouchableOpacity
+                          key={item.id}
+                          style={[styles.similarCard, { width: colW }]}
+                          activeOpacity={0.9}
+                          onPress={() => {
+                            setSimilarOpen(false);
+                            router.push({ pathname: '/watch/[id]', params: { id: item.id } } as never);
+                          }}
+                        >
+                          <SmartThumbnail
+                            posterUrl={absThumb}
+                            uri={uriProp}
+                            videoUrl={absVideo}
+                            style={{ width: colW, height: imgH, borderRadius: 8, backgroundColor: '#E8E8E8' }}
+                            tileSize={colW}
+                            tileHeight={imgH}
+                          />
+                          {(item.media_type || '').toLowerCase() !== 'photo' ? (
+                            <View style={styles.similarCardPlayBadge} pointerEvents="none">
+                              <Ionicons name="play" size={10} color="#FFF" />
+                            </View>
+                          ) : null}
+                          <Text style={styles.similarCardTitle} numberOfLines={2}>
+                            {item.title || 'Sans titre'}
+                          </Text>
+                          <View style={styles.similarCardMeta}>
+                            <CreatorAvatar
+                              uri={toAbsoluteMediaUrl(
+                                String(item.creator_avatar ?? item.creatorAvatar ?? '').trim()
+                              )}
+                              username={item.creator_name || ''}
+                              firstName={String(item.creator_name || '').split(' ')[0]}
+                              lastName={String(item.creator_name || '').split(' ').slice(1).join(' ')}
+                              size={22}
+                            />
+                            <Text style={styles.similarCardCreator} numberOfLines={1}>
+                              {item.creator_name || '—'}
+                            </Text>
+                            <View style={{ flex: 1 }} />
+                            <Ionicons name="heart-outline" size={12} color="#666" />
+                            <Text style={styles.similarCardLikes}>{formatNumber(Number(item.likes ?? 0))}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    });
+                  })()}
+                </ScrollView>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={reactionsOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setReactionsOpen(false)}
+      >
+        <View style={styles.reactionSheetRoot}>
+          <TouchableWithoutFeedback onPress={() => setReactionsOpen(false)}>
+            <View style={styles.reactionSheetDim} />
+          </TouchableWithoutFeedback>
+          <View style={[styles.reactionSheetPanel, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}>
+            <View style={styles.reactionSheetHeader}>
+              <Text style={styles.reactionSheetTitle}>Choisir une réaction</Text>
+              <TouchableOpacity
+                onPress={() => setReactionsOpen(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityLabel="Fermer"
+              >
+                <Ionicons name="close" size={26} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+            <VideoReactionBar
+              reactionCounts={video.reactionCounts}
+              myReaction={video.myReaction ?? null}
+              onPick={async (type) => {
+                await handleReactionWithBurst(type);
+                setReactionsOpen(false);
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
 
 // Comments Modal
-const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: string; commentsCount: number }> = ({ visible, onClose, videoId, commentsCount }) => {
+const CommentsModal: React.FC<{
+  visible: boolean;
+  onClose: () => void;
+  videoId: string;
+  commentsCount: number;
+  /** Créateur de la vidéo (épinglage commentaires) */
+  videoCreatorId?: string | null;
+  /** Désactivés côté créateur (API `comments_disabled`) */
+  commentsDisabled?: boolean;
+}> = ({ visible, onClose, videoId, commentsCount, videoCreatorId = null, commentsDisabled = false }) => {
   const insets = useSafeAreaInsets();
+  const dragClosePan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 6 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 56) onClose();
+      },
+    })
+  ).current;
   const { isAuthenticated, user } = useAuthStore();
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
@@ -387,28 +1101,141 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
   const [totalComments, setTotalComments] = useState(commentsCount);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
+  /** Fichier local après arrêt d’enregistrement — envoi seulement après validation (bouton envoyer). */
+  const [voicePreviewUri, setVoicePreviewUri] = useState<string | null>(null);
+  const [voicePreviewSeconds, setVoicePreviewSeconds] = useState(0);
+  const [voicePreviewPlaying, setVoicePreviewPlaying] = useState(false);
   const [playingCommentId, setPlayingCommentId] = useState<string | null>(null);
   const [sendingVoice, setSendingVoice] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<{ id: string; label: string } | null>(null);
+  /** Menu ⋯ : options selon auteur du commentaire */
+  const [commentMenuFor, setCommentMenuFor] = useState<Comment | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [reportCommentId, setReportCommentId] = useState<string | null>(null);
   const recordingRef = useRef<Awaited<ReturnType<typeof Audio.Recording.createAsync>>['recording'] | null>(null);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const voicePreviewSoundRef = useRef<Audio.Sound | null>(null);
+  /** Web : MediaRecorder (expo-av sur le web peut produire un fichier vide / silencieux). */
+  const webRecorderRef = useRef<MediaRecorder | null>(null);
+  const webStreamRef = useRef<MediaStream | null>(null);
+  const webChunksRef = useRef<BlobPart[]>([]);
+  /** URL blob: à révoquer après usage pour éviter fuites et doublons. */
+  const voicePreviewBlobUrlRef = useRef<string | null>(null);
+  /** Web : lecture audio navigateur (expo-av + blob / cross-origin est souvent cassé). */
+  const webVoiceAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  const formatTimeAgo = (dateStr: string) => {
-    const now = new Date();
-    const date = new Date(dateStr);
-    const diffMs = now.getTime() - date.getTime();
-    const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return 'A l\'instant';
-    if (diffMin < 60) return `${diffMin} min`;
-    const diffH = Math.floor(diffMin / 60);
-    if (diffH < 24) return `${diffH}h`;
-    const diffD = Math.floor(diffH / 24);
-    return diffD < 30 ? `${diffD}j` : `${Math.floor(diffD / 30)} mois`;
+  const stopWebVoicePlayback = () => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const el = webVoiceAudioRef.current;
+    if (el) {
+      try {
+        el.pause();
+        el.removeAttribute('src');
+        el.load();
+      } catch { /* ignore */ }
+      webVoiceAudioRef.current = null;
+    }
   };
 
+  const revokeVoicePreviewBlobUrl = () => {
+    const u = voicePreviewBlobUrlRef.current;
+    if (u && u.startsWith('blob:')) {
+      try {
+        URL.revokeObjectURL(u);
+      } catch { /* ignore */ }
+    }
+    voicePreviewBlobUrlRef.current = null;
+  };
+
+  /** Arrêt forcé (fermeture modale) : couper le micro, pas besoin de blob final. */
+  const abortWebVoiceRecording = () => {
+    try {
+      webStreamRef.current?.getTracks().forEach((t) => t.stop());
+    } catch { /* ignore */ }
+    webRecorderRef.current = null;
+    webStreamRef.current = null;
+    webChunksRef.current = [];
+  };
+
+  const loadComments = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await apiClient.get(`/videos/${videoId}/comments`);
+      const data = response.data?.data || response.data;
+      const backendComments = data?.comments || [];
+      if (backendComments.length > 0) {
+        const mapOne = (c: any, isReply: boolean, parentId: string | null): Comment => {
+          const nameParts = (c.user_name || c.user?.full_name || '').split(' ');
+          const rawCounts =
+            c.reaction_counts && typeof c.reaction_counts === 'object' && !Array.isArray(c.reaction_counts)
+              ? (c.reaction_counts as Record<string, number>)
+              : null;
+          const fromCounts = rawCounts
+            ? Object.values(rawCounts).reduce(
+                (s, n) => s + (typeof n === 'number' && !Number.isNaN(n) ? n : 0),
+                0
+              )
+            : 0;
+          const rcLegacy = Number(c._count?.reactions ?? 0);
+          const legacyLikes = Number(c.likes_count ?? 0);
+          const totalReactions = fromCounts > 0 ? fromCounts : rcLegacy > 0 ? rcLegacy : legacyLikes;
+          const myR = (c.my_reaction ?? null) as string | null;
+          return {
+            id: String(c.id),
+            text: c.content || '',
+            likes: totalReactions,
+            isLiked: myR === 'like',
+            user: {
+              id: c.user_id || c.user?.id || '',
+              firstName: nameParts[0] || '',
+              lastName: nameParts.slice(1).join(' ') || '',
+              avatar: c.user_avatar || c.user?.profile_image || 'https://i.pravatar.cc/150?img=50',
+            },
+            createdAt: formatCommentTimeAgo(c.created_at),
+            audioUrl: c.audio_url || null,
+            reactionTotal: totalReactions,
+            reactionCounts: rawCounts,
+            myReaction: myR,
+            isPinned: Boolean(c.is_pinned),
+            parentId,
+            isReply,
+          };
+        };
+        const transformed: Comment[] = [];
+        for (const c of backendComments) {
+          transformed.push(mapOne(c, false, null));
+          for (const r of c.replies || []) {
+            transformed.push(mapOne(r, true, c.id));
+          }
+        }
+        setComments(transformed);
+        setTotalComments(data?.pagination?.total || backendComments.length);
+      } else {
+        setComments([]);
+        setTotalComments(0);
+      }
+    } catch {
+      setComments([
+        { id: '1', text: 'Super video!', likes: 24, isLiked: false, user: { id: 'u1', firstName: 'Aminata', lastName: 'D', avatar: 'https://i.pravatar.cc/150?img=1' }, createdAt: '2h' },
+      ]);
+    } finally { setLoading(false); }
+  }, [videoId]);
+
   useEffect(() => {
-    if (visible) loadComments();
-  }, [visible, videoId]);
+    if (visible) void loadComments();
+  }, [visible, videoId, loadComments]);
+
+  useEffect(() => {
+    if (!visible) {
+      setReplyingTo(null);
+      setCommentMenuFor(null);
+      setEditingCommentId(null);
+      setEditDraft('');
+      setReportCommentId(null);
+    }
+  }, [visible]);
 
   useEffect(() => {
     if (visible) return;
@@ -425,70 +1252,392 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
       }
       setIsRecordingVoice(false);
       setRecordSeconds(0);
+      abortWebVoiceRecording();
+      revokeVoicePreviewBlobUrl();
+      setVoicePreviewUri(null);
+      setVoicePreviewSeconds(0);
+      setVoicePreviewPlaying(false);
+      stopWebVoicePlayback();
       if (soundRef.current) {
         try {
           await soundRef.current.unloadAsync();
         } catch { /* ignore */ }
         soundRef.current = null;
       }
+      if (voicePreviewSoundRef.current) {
+        try {
+          await voicePreviewSoundRef.current.unloadAsync();
+        } catch { /* ignore */ }
+        voicePreviewSoundRef.current = null;
+      }
       setPlayingCommentId(null);
     })();
   }, [visible]);
 
-  const loadComments = async () => {
-    setLoading(true);
+  const sumReactionCounts = (counts: Record<string, number> | undefined | null) => {
+    if (!counts || typeof counts !== 'object') return 0;
+    return Object.values(counts).reduce(
+      (s, n) => s + (typeof n === 'number' && !Number.isNaN(n) ? n : 0),
+      0
+    );
+  };
+
+  const toggleCommentReaction = async (commentId: string, type: string = 'like') => {
+    if (!isAuthenticated) {
+      Alert.alert('Connexion', 'Connectez-vous pour réagir.');
+      return;
+    }
+    const idKey = String(commentId);
     try {
-      const response = await apiClient.get(`/videos/${videoId}/comments`);
+      const response = await apiClient.post(`/comments/${encodeURIComponent(idKey)}/reaction`, { type });
       const data = response.data?.data || response.data;
-      const backendComments = data?.comments || [];
-      if (backendComments.length > 0) {
-        const transformed: Comment[] = backendComments.map((c: any) => {
-          const nameParts = (c.user_name || c.user?.full_name || '').split(' ');
-          return {
-            id: c.id,
-            text: c.content || '',
-            likes: c.likes_count || 0,
-            isLiked: false,
-            user: {
-              id: c.user_id || c.user?.id || '',
-              firstName: nameParts[0] || '',
-              lastName: nameParts.slice(1).join(' ') || '',
-              avatar: c.user_avatar || c.user?.profile_image || 'https://i.pravatar.cc/150?img=50',
-            },
-            createdAt: formatTimeAgo(c.created_at),
-            audioUrl: c.audio_url || null,
-          };
-        });
-        setComments(transformed);
-        setTotalComments(data?.pagination?.total || backendComments.length);
-      } else {
-        setComments([]);
-        setTotalComments(0);
-      }
+      const counts = (data?.reaction_counts || {}) as Record<string, number>;
+      const total = sumReactionCounts(counts);
+      const my = (data?.my_reaction ?? null) as string | null;
+      setComments((prev) =>
+        prev.map((c) =>
+          String(c.id) === idKey
+            ? {
+                ...c,
+                reactionCounts: counts,
+                myReaction: my,
+                reactionTotal: total,
+                likes: total,
+                isLiked: my === 'like',
+              }
+            : c
+        )
+      );
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.message ||
+        (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.error;
+      Alert.alert('Erreur', msg || "Impossible d'enregistrer la réaction.");
+    }
+  };
+
+  const handleTogglePinComment = async (c: Comment) => {
+    if (!videoCreatorId || String(user?.id) !== String(videoCreatorId)) return;
+    if (!c.id) return;
+    const nextPinned = !c.isPinned;
+    try {
+      await apiClient.patch(`/videos/comments/${c.id}`, { is_pinned: nextPinned });
+      setComments((prev) =>
+        prev.map((row) =>
+          row.id === c.id ? { ...row, isPinned: nextPinned } : nextPinned ? { ...row, isPinned: false } : row
+        )
+      );
     } catch {
-      setComments([
-        { id: '1', text: 'Super video!', likes: 24, isLiked: false, user: { id: 'u1', firstName: 'Aminata', lastName: 'D', avatar: 'https://i.pravatar.cc/150?img=1' }, createdAt: '2h' },
-      ]);
-    } finally { setLoading(false); }
+      Alert.alert('Erreur', "Impossible d'épingler ce commentaire.");
+    }
   };
 
   const recordStartedAtRef = useRef(0);
 
+  const unloadVoicePreviewSound = async () => {
+    stopWebVoicePlayback();
+    if (voicePreviewSoundRef.current) {
+      try {
+        await voicePreviewSoundRef.current.unloadAsync();
+      } catch { /* ignore */ }
+      voicePreviewSoundRef.current = null;
+    }
+    setVoicePreviewPlaying(false);
+  };
+
+  const discardVoicePreview = async () => {
+    await unloadVoicePreviewSound();
+    revokeVoicePreviewBlobUrl();
+    setVoicePreviewUri(null);
+    setVoicePreviewSeconds(0);
+  };
+
+  const startWebVoiceRecording = async () => {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      Alert.alert('Microphone', 'Enregistrement vocal non disponible sur ce navigateur.');
+      return;
+    }
+    if (typeof MediaRecorder === 'undefined') {
+      Alert.alert('Microphone', 'Enregistrement vocal non pris en charge (MediaRecorder).');
+      return;
+    }
+    const pickMime = (): string | undefined => {
+      const candidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/mp4',
+      ];
+      for (const c of candidates) {
+        if (MediaRecorder.isTypeSupported(c)) return c;
+      }
+      return undefined;
+    };
+    try {
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+      webStreamRef.current = stream;
+      const mime = pickMime();
+      let mr: MediaRecorder;
+      try {
+        mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      } catch {
+        mr = new MediaRecorder(stream);
+      }
+      webChunksRef.current = [];
+      mr.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) webChunksRef.current.push(e.data);
+      };
+      mr.start(100);
+      webRecorderRef.current = mr;
+      recordStartedAtRef.current = Date.now();
+      setRecordSeconds(0);
+      setIsRecordingVoice(true);
+      recordTimerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
+    } catch {
+      abortWebVoiceRecording();
+      Alert.alert('Microphone', 'Autorisez le micro pour enregistrer un commentaire vocal.');
+    }
+  };
+
+  const stopWebVoiceRecording = async (): Promise<{ uri: string; blob: Blob } | null> => {
+    const mr = webRecorderRef.current;
+    const stream = webStreamRef.current;
+    webRecorderRef.current = null;
+    if (!mr) {
+      abortWebVoiceRecording();
+      return null;
+    }
+    return new Promise((resolve, reject) => {
+      mr.onstop = () => {
+        try {
+          stream?.getTracks().forEach((t) => t.stop());
+          webStreamRef.current = null;
+          const blob = new Blob(webChunksRef.current, { type: mr.mimeType || 'audio/webm' });
+          webChunksRef.current = [];
+          if (blob.size < 80) {
+            resolve(null);
+            return;
+          }
+          const uri = URL.createObjectURL(blob);
+          resolve({ uri, blob });
+        } catch (e) {
+          reject(e);
+        }
+      };
+      mr.onerror = () => reject(new Error('MediaRecorder'));
+      try {
+        if (mr.state === 'recording') {
+          if (typeof mr.requestData === 'function') mr.requestData();
+          mr.stop();
+        } else {
+          stream?.getTracks().forEach((t) => t.stop());
+          webStreamRef.current = null;
+          resolve(null);
+        }
+      } catch (e) {
+        reject(e);
+      }
+    });
+  };
+
+  const toggleVoicePreviewPlayback = async () => {
+    if (!voicePreviewUri) return;
+    if (Platform.OS === 'web') {
+      try {
+        if (voicePreviewPlaying) {
+          stopWebVoicePlayback();
+          setVoicePreviewPlaying(false);
+          return;
+        }
+        if (soundRef.current) {
+          try {
+            await soundRef.current.stopAsync();
+            await soundRef.current.unloadAsync();
+          } catch { /* ignore */ }
+          soundRef.current = null;
+          setPlayingCommentId(null);
+        }
+        stopWebVoicePlayback();
+        const el = new window.Audio(voicePreviewUri);
+        webVoiceAudioRef.current = el;
+        el.onended = () => {
+          webVoiceAudioRef.current = null;
+          setVoicePreviewPlaying(false);
+        };
+        el.onerror = () => {
+          webVoiceAudioRef.current = null;
+          setVoicePreviewPlaying(false);
+          Alert.alert('Lecture', 'Impossible de lire l’aperçu du vocal.');
+        };
+        await el.play();
+        setVoicePreviewPlaying(true);
+      } catch {
+        Alert.alert('Lecture', 'Impossible de lire l’aperçu du vocal.');
+        stopWebVoicePlayback();
+        setVoicePreviewPlaying(false);
+      }
+      return;
+    }
+    try {
+      if (voicePreviewPlaying) {
+        await unloadVoicePreviewSound();
+        return;
+      }
+      if (soundRef.current) {
+        try {
+          await soundRef.current.stopAsync();
+          await soundRef.current.unloadAsync();
+        } catch { /* ignore */ }
+        soundRef.current = null;
+        setPlayingCommentId(null);
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: voicePreviewUri },
+        { shouldPlay: true },
+        (status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            unloadVoicePreviewSound().catch(() => {});
+          }
+        }
+      );
+      voicePreviewSoundRef.current = sound;
+      setVoicePreviewPlaying(true);
+    } catch {
+      Alert.alert('Lecture', 'Impossible de lire l’aperçu du vocal.');
+      await unloadVoicePreviewSound();
+    }
+  };
+
+  const sendVoiceComment = async () => {
+    if (!voicePreviewUri || commentsDisabled || sendingVoice) return;
+    if (!isAuthenticated) {
+      Alert.alert('Connexion', 'Connectez-vous pour commenter.');
+      return;
+    }
+    const uri = voicePreviewUri;
+    const blobUrlToRevoke = voicePreviewBlobUrlRef.current;
+    voicePreviewBlobUrlRef.current = null;
+    const caption = newComment.trim();
+    const parentId = replyingTo?.id ?? null;
+    await unloadVoicePreviewSound();
+    setVoicePreviewUri(null);
+    setVoicePreviewSeconds(0);
+    setSendingVoice(true);
+    try {
+      const formData = new FormData();
+      await appendCommentVoiceToFormData(formData, uri);
+      const uploadRes = await apiClient.post('/upload/audio', formData, {
+        timeout: 120000,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      });
+      const ud = uploadRes.data?.data;
+      const audioUrl = ud?.file_url || ud?.url;
+      if (!audioUrl) throw new Error('URL audio manquante');
+      const optimistic: Comment = {
+        id: `tmp-v-${Date.now()}`,
+        text: caption || '🎤',
+        likes: 0,
+        isLiked: false,
+        user: {
+          id: user?.id || 'me',
+          firstName: user?.firstName || user?.full_name?.split(' ')[0] || 'Moi',
+          lastName: user?.lastName || '',
+          avatar: user?.avatar || user?.profile_image || 'https://i.pravatar.cc/150?img=10',
+        },
+        createdAt: 'A l\'instant',
+        audioUrl,
+        reactionTotal: 0,
+        isPinned: false,
+        parentId,
+        isReply: Boolean(parentId),
+      };
+      setComments((prev) => {
+        if (!parentId) return [optimistic, ...prev];
+        const idx = prev.findIndex((c) => c.id === parentId);
+        if (idx === -1) return [...prev, optimistic];
+        return [...prev.slice(0, idx + 1), optimistic, ...prev.slice(idx + 1)];
+      });
+      setTotalComments((prev) => prev + 1);
+      const response = await apiClient.post(`/videos/${videoId}/comment`, {
+        content: caption || '🎤',
+        audio_url: audioUrl,
+        ...(parentId ? { parent_id: parentId } : {}),
+      });
+      const data = response.data?.data || response.data;
+      if (data?.id) {
+        setComments((prev) =>
+          prev.map((c) => (c.id === optimistic.id ? { ...c, id: data.id, audioUrl: data.audio_url || audioUrl } : c))
+        );
+      }
+      setNewComment('');
+      setReplyingTo(null);
+    } catch {
+      Alert.alert('Erreur', 'Impossible d\'envoyer le commentaire vocal.');
+      setComments((prev) => prev.filter((c) => !String(c.id).startsWith('tmp-v-')));
+      setTotalComments((prev) => Math.max(0, prev - 1));
+    } finally {
+      if (blobUrlToRevoke && blobUrlToRevoke.startsWith('blob:')) {
+        try {
+          URL.revokeObjectURL(blobUrlToRevoke);
+        } catch { /* ignore */ }
+      }
+      setSendingVoice(false);
+    }
+  };
+
+  /** Micro : démarrer / arrêter (→ prévisualisation) / réenregistrer si une prévisualisation existe. */
   const toggleVoiceRecording = async () => {
+    if (commentsDisabled) {
+      Alert.alert('Commentaires', 'Les commentaires sont désactivés sur cette vidéo.');
+      return;
+    }
     if (!isAuthenticated) {
       Alert.alert('Connexion', 'Connectez-vous pour commenter.');
       return;
     }
     if (sendingVoice) return;
 
+    if (voicePreviewUri) {
+      await discardVoicePreview();
+    }
+
     if (isRecordingVoice) {
-      const rec = recordingRef.current;
       if (recordTimerRef.current) {
         clearInterval(recordTimerRef.current);
         recordTimerRef.current = null;
       }
       setIsRecordingVoice(false);
       setRecordSeconds(0);
+
+      if (Platform.OS === 'web') {
+        try {
+          const result = await stopWebVoiceRecording();
+          const sec = Math.max(1, Math.floor((Date.now() - recordStartedAtRef.current) / 1000));
+          if (!result || !result.blob.size) {
+            Alert.alert('Enregistrement', 'Aucun son capturé. Vérifiez le micro et réessayez.');
+            return;
+          }
+          revokeVoicePreviewBlobUrl();
+          voicePreviewBlobUrlRef.current = result.uri;
+          setVoicePreviewUri(result.uri);
+          setVoicePreviewSeconds(sec);
+        } catch {
+          Alert.alert('Erreur', 'Impossible de finaliser l’enregistrement.');
+          abortWebVoiceRecording();
+        }
+        return;
+      }
+
+      const rec = recordingRef.current;
       if (!rec) return;
       try {
         await rec.stopAndUnloadAsync();
@@ -500,54 +1649,21 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
           Alert.alert('Trop court', 'Enregistrez au moins 1 seconde de vocal.');
           return;
         }
-        setSendingVoice(true);
-        const formData = new FormData();
-        await appendCommentVoiceToFormData(formData, uri);
-        const uploadRes = await apiClient.post('/upload/audio', formData, {
-          timeout: 120000,
-          maxBodyLength: Infinity,
-          maxContentLength: Infinity,
-        });
-        const ud = uploadRes.data?.data;
-        const audioUrl = ud?.file_url || ud?.url;
-        if (!audioUrl) throw new Error('URL audio manquante');
-        const caption = newComment.trim();
-        const optimistic: Comment = {
-          id: `tmp-v-${Date.now()}`,
-          text: caption || '🎤',
-          likes: 0,
-          isLiked: false,
-          user: {
-            id: user?.id || 'me',
-            firstName: user?.firstName || user?.full_name?.split(' ')[0] || 'Moi',
-            lastName: user?.lastName || '',
-            avatar: user?.avatar || user?.profile_image || 'https://i.pravatar.cc/150?img=10',
-          },
-          createdAt: 'A l\'instant',
-          audioUrl,
-        };
-        setComments((prev) => [optimistic, ...prev]);
-        setTotalComments((prev) => prev + 1);
-        const response = await apiClient.post(`/videos/${videoId}/comment`, {
-          content: caption || '🎤',
-          audio_url: audioUrl,
-        });
-        const data = response.data?.data || response.data;
-        if (data?.id) {
-          setComments((prev) => prev.map((c) => (c.id === optimistic.id ? { ...c, id: data.id, audioUrl: data.audio_url || audioUrl } : c)));
-        }
-        setNewComment('');
+        revokeVoicePreviewBlobUrl();
+        setVoicePreviewUri(uri);
+        if (uri.startsWith('blob:')) voicePreviewBlobUrlRef.current = uri;
+        setVoicePreviewSeconds(Math.max(1, sec));
       } catch {
-        Alert.alert('Erreur', 'Impossible d\'envoyer le commentaire vocal.');
-        setComments((prev) => prev.filter((c) => !String(c.id).startsWith('tmp-v-')));
-        setTotalComments((prev) => Math.max(0, prev - 1));
-      } finally {
-        setSendingVoice(false);
+        Alert.alert('Erreur', 'Impossible de finaliser l’enregistrement.');
       }
       return;
     }
 
     try {
+      if (Platform.OS === 'web') {
+        await startWebVoiceRecording();
+        return;
+      }
       const perm = await Audio.requestPermissionsAsync();
       if (!perm.granted) {
         Alert.alert('Microphone', 'Autorisez le micro pour enregistrer un commentaire vocal.');
@@ -567,6 +1683,39 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
 
   const togglePlayCommentAudio = async (c: Comment) => {
     if (!c.audioUrl) return;
+    const playUri = toAbsoluteMediaUrl(c.audioUrl);
+    if (!playUri) return;
+    if (Platform.OS === 'web') {
+      try {
+        if (playingCommentId === c.id) {
+          stopWebVoicePlayback();
+          setPlayingCommentId(null);
+          return;
+        }
+        stopWebVoicePlayback();
+        await unloadVoicePreviewSound();
+        const el = new window.Audio();
+        if (playUri.startsWith('http')) el.crossOrigin = 'anonymous';
+        el.src = playUri;
+        webVoiceAudioRef.current = el;
+        el.onended = () => {
+          webVoiceAudioRef.current = null;
+          setPlayingCommentId(null);
+        };
+        el.onerror = () => {
+          webVoiceAudioRef.current = null;
+          setPlayingCommentId(null);
+          Alert.alert('Lecture', 'Impossible de lire ce vocal (réseau ou CORS).');
+        };
+        await el.play();
+        setPlayingCommentId(c.id);
+      } catch {
+        Alert.alert('Lecture', 'Impossible de lire ce vocal.');
+        stopWebVoicePlayback();
+        setPlayingCommentId(null);
+      }
+      return;
+    }
     try {
       if (playingCommentId === c.id) {
         await soundRef.current?.stopAsync();
@@ -575,12 +1724,14 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
         setPlayingCommentId(null);
         return;
       }
+      await unloadVoicePreviewSound();
       if (soundRef.current) {
         await soundRef.current.unloadAsync();
         soundRef.current = null;
       }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
       const { sound } = await Audio.Sound.createAsync(
-        { uri: c.audioUrl },
+        { uri: playUri },
         { shouldPlay: true },
         (status) => {
           if (status.isLoaded && status.didJustFinish) {
@@ -597,10 +1748,74 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
     }
   };
 
+  const isOwnComment = (c: Comment) => Boolean(user?.id && String(c.user.id) === String(user.id));
+
+  const cancelCommentEdit = () => {
+    setEditingCommentId(null);
+    setEditDraft('');
+  };
+
+  const saveCommentEdit = async () => {
+    if (!editingCommentId || !editDraft.trim()) {
+      Alert.alert('Commentaire', 'Le texte ne peut pas être vide.');
+      return;
+    }
+    if (String(editingCommentId).startsWith('tmp')) {
+      Alert.alert('Commentaire', 'Ce commentaire est encore en cours d’envoi.');
+      return;
+    }
+    const id = editingCommentId;
+    const text = editDraft.trim();
+    try {
+      await apiClient.patch(`/videos/comments/${encodeURIComponent(id)}`, { content: text });
+      setComments((prev) => prev.map((c) => (c.id === id ? { ...c, text } : c)));
+      cancelCommentEdit();
+    } catch {
+      Alert.alert('Erreur', 'Impossible de modifier ce commentaire.');
+    }
+  };
+
+  const confirmDeleteComment = (c: Comment) => {
+    const run = async () => {
+      try {
+        if (String(c.id).startsWith('tmp-v-')) {
+          setComments((prev) => prev.filter((x) => x.id !== c.id));
+          setTotalComments((prev) => Math.max(0, prev - 1));
+          return;
+        }
+        await apiClient.delete(`/videos/comments/${encodeURIComponent(c.id)}`);
+        setComments((prev) => prev.filter((x) => x.id !== c.id));
+        setTotalComments((prev) => Math.max(0, prev - 1));
+      } catch (err: unknown) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 404) {
+          setComments((prev) => prev.filter((x) => x.id !== c.id));
+          setTotalComments((prev) => Math.max(0, prev - 1));
+          return;
+        }
+        Alert.alert('Erreur', 'Impossible de supprimer ce commentaire.');
+      }
+    };
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      if (window.confirm('Supprimer ce commentaire ?')) void run();
+      return;
+    }
+    Alert.alert('Supprimer', 'Supprimer ce commentaire ?', [
+      { text: 'Annuler', style: 'cancel' },
+      { text: 'Supprimer', style: 'destructive', onPress: () => void run() },
+    ]);
+  };
+
   const handleSend = async () => {
+    if (commentsDisabled) {
+      Alert.alert('Commentaires', 'Les commentaires sont désactivés sur cette vidéo.');
+      return;
+    }
     if (!newComment.trim()) return;
     const commentText = newComment.trim();
+    const parentId = replyingTo?.id ?? null;
     setNewComment('');
+    setReplyingTo(null);
 
     // Optimistic add
     const optimistic: Comment = {
@@ -615,49 +1830,157 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
         avatar: user?.avatar || user?.profile_image || 'https://i.pravatar.cc/150?img=10',
       },
       createdAt: 'A l\'instant',
+      reactionTotal: 0,
+      isPinned: false,
+      parentId,
+      isReply: Boolean(parentId),
     };
-    setComments(prev => [optimistic, ...prev]);
-    setTotalComments(prev => prev + 1);
+    setComments((prev) => {
+      if (!parentId) return [optimistic, ...prev];
+      const idx = prev.findIndex((c) => c.id === parentId);
+      if (idx === -1) return [...prev, optimistic];
+      return [...prev.slice(0, idx + 1), optimistic, ...prev.slice(idx + 1)];
+    });
+    setTotalComments((prev) => prev + 1);
 
     try {
-      const response = await apiClient.post(`/videos/${videoId}/comment`, { content: commentText });
+      const response = await apiClient.post(`/videos/${videoId}/comment`, {
+        content: commentText,
+        ...(parentId ? { parent_id: parentId } : {}),
+      });
       const data = response.data?.data || response.data;
       if (data?.id) {
-        // Replace optimistic with real
-        setComments(prev => prev.map(c => c.id === optimistic.id ? { ...c, id: data.id } : c));
+        setComments((prev) => prev.map((c) => (c.id === optimistic.id ? { ...c, id: data.id } : c)));
       }
-    } catch {
-      await offlineActionSyncService.enqueue('comment_video', videoId, { content: commentText });
-      setComments(prev => prev.map(c => c.id === optimistic.id ? { ...c, createdAt: 'En attente' } : c));
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string; error?: { message?: string } } } };
+      const msg =
+        ax?.response?.data?.message ||
+        ax?.response?.data?.error?.message ||
+        (typeof ax?.response?.data === 'string' ? ax.response.data : '');
+      if (msg) {
+        Alert.alert('Commentaire', String(msg));
+        setComments((prev) => prev.filter((c) => c.id !== optimistic.id));
+        setTotalComments((prev) => Math.max(0, prev - 1));
+        return;
+      }
+      await offlineActionSyncService.enqueue('comment_video', videoId, { content: commentText, parent_id: parentId });
+      setComments((prev) => prev.map((c) => (c.id === optimistic.id ? { ...c, createdAt: 'En attente' } : c)));
     }
   };
 
   const userAvatar = user?.avatar || user?.profile_image || 'https://i.pravatar.cc/150?img=10';
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={Platform.OS !== 'ios'}
+      presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : 'overFullScreen'}
+      onRequestClose={onClose}
+    >
       <View style={styles.modalOverlay}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.commentsContainer, { paddingBottom: insets.bottom }]}>
-          <View style={styles.commentsHeader}>
-            <View style={styles.shareHandle} />
+          <View style={styles.commentsHeader} {...dragClosePan.panHandlers}>
+            <View style={styles.shareHandle} accessibilityLabel="Fermer en glissant vers le bas" />
             <Text style={styles.commentsTitle}>{totalComments} commentaires</Text>
             <TouchableOpacity testID="close-comments" onPress={onClose} accessibilityLabel="Fermer les commentaires">
               <Ionicons name="close" size={24} color={Colors.text} />
             </TouchableOpacity>
           </View>
+          {commentsDisabled ? (
+            <View style={{ paddingHorizontal: Spacing.lg, paddingVertical: 10, backgroundColor: 'rgba(255,107,0,0.15)' }}>
+              <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13 }}>
+                Commentaires désactivés par le créateur.
+              </Text>
+            </View>
+          ) : null}
+          {replyingTo ? (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: Spacing.lg,
+                paddingVertical: 8,
+                backgroundColor: 'rgba(255,255,255,0.06)',
+              }}
+            >
+              <Text style={{ flex: 1, color: Colors.textMuted, fontSize: 12 }} numberOfLines={1}>
+                Réponse à {replyingTo.label}
+              </Text>
+              <TouchableOpacity onPress={() => setReplyingTo(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={{ color: Colors.primary, fontWeight: '700', fontSize: 13 }}>Annuler</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
           {loading ? <ActivityIndicator size="large" color={Colors.primary} style={{ padding: 40 }} /> : (
-            <ScrollView style={styles.commentsList} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={styles.commentsList}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="always"
+              nestedScrollEnabled
+            >
               {comments.length === 0 ? (
                 <View style={{ alignItems: 'center', padding: 40 }}>
                   <Ionicons name="chatbubble-outline" size={40} color={Colors.textMuted} />
                   <Text style={{ color: Colors.textMuted, marginTop: 8 }}>Soyez le premier a commenter</Text>
                 </View>
               ) : comments.map((c) => (
-                <View key={c.id} style={styles.commentItem}>
+                <View key={c.id} style={[styles.commentItem, c.isReply ? { paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: 'rgba(255,255,255,0.12)' } : null]}>
                   <Image source={{ uri: c.user.avatar }} style={styles.commentAvatar} />
                   <View style={styles.commentContent}>
-                    <Text style={styles.commentUser}>{c.user.firstName} {c.user.lastName}</Text>
-                    <Text style={styles.commentText}>{c.text}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                      <Text style={styles.commentUser}>{c.user.firstName} {c.user.lastName}</Text>
+                      {c.isPinned ? (
+                        <View style={styles.commentPinnedBadge}>
+                          <Text style={styles.commentPinnedBadgeText}>Épinglé</Text>
+                        </View>
+                      ) : null}
+                      {videoCreatorId && user?.id && String(videoCreatorId) === String(user.id) && !c.isReply ? (
+                        <TouchableOpacity
+                          onPress={() => void handleTogglePinComment(c)}
+                          accessibilityRole="button"
+                          accessibilityLabel={c.isPinned ? 'Désépingler' : 'Épingler'}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        >
+                          <Ionicons name="pin" size={14} color={c.isPinned ? Colors.primary : Colors.textMuted} />
+                        </TouchableOpacity>
+                      ) : null}
+                      <View style={{ flex: 1, minWidth: 12 }} />
+                      {isAuthenticated && !commentsDisabled ? (
+                        <TouchableOpacity
+                          onPress={() => setCommentMenuFor(c)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Options du commentaire"
+                        >
+                          <Ionicons name="ellipsis-horizontal" size={20} color={Colors.textSecondary} />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                    {editingCommentId === c.id ? (
+                      <View style={styles.commentEditBlock}>
+                        <TextInput
+                          style={styles.commentEditInput}
+                          value={editDraft}
+                          onChangeText={setEditDraft}
+                          multiline
+                          placeholder="Modifier le commentaire…"
+                          placeholderTextColor={Colors.textMuted}
+                        />
+                        <View style={styles.commentEditActions}>
+                          <TouchableOpacity onPress={cancelCommentEdit} style={styles.commentEditBtn}>
+                            <Text style={styles.commentEditBtnTextMuted}>Annuler</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => void saveCommentEdit()} style={styles.commentEditBtn}>
+                            <Text style={styles.commentEditBtnTextPrimary}>Enregistrer</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ) : (
+                      <Text style={styles.commentText}>{c.text}</Text>
+                    )}
                     {c.audioUrl ? (
                       <TouchableOpacity
                         style={styles.commentVoiceBtn}
@@ -669,44 +1992,139 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
                         <Text style={styles.commentVoiceLabel}>Commentaire vocal</Text>
                       </TouchableOpacity>
                     ) : null}
-                    <View style={styles.commentMeta}>
-                      <Text style={styles.commentTime}>{c.createdAt}</Text>
-                      <TouchableOpacity style={styles.commentReply}><Text style={styles.commentReplyText}>Repondre</Text></TouchableOpacity>
+                    <View style={styles.commentMetaColumn}>
+                      <View style={styles.commentMeta}>
+                        <Text style={styles.commentTime}>{c.createdAt}</Text>
+                        {!commentsDisabled ? (
+                          <TouchableOpacity
+                            style={styles.commentReply}
+                            onPress={() => {
+                              const label = `${c.user.firstName} ${c.user.lastName}`.trim() || 'ce commentaire';
+                              setReplyingTo({ id: c.id, label });
+                            }}
+                          >
+                            <Text style={styles.commentReplyText}>Répondre</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                      {isAuthenticated && !commentsDisabled ? (
+                        <View
+                          style={[
+                            styles.commentReactionRow,
+                            Platform.OS === 'web' ? ({ zIndex: 2, position: 'relative' } as const) : null,
+                          ]}
+                        >
+                          {(
+                            [
+                              ['laugh', '😂'],
+                              ['fire', '🔥'],
+                              ['wow', '😮'],
+                              ['sad', '😭'],
+                              ['moving', '😢'],
+                              ['strong', '💪'],
+                              ['african', '🌍'],
+                            ] as const
+                          ).map(([type, emoji]) => (
+                            <TouchableOpacity
+                              key={type}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Réaction ${type}`}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              activeOpacity={0.65}
+                              delayPressIn={0}
+                              onPress={() => void toggleCommentReaction(c.id, type)}
+                              style={[
+                                styles.commentReactionHit,
+                                c.myReaction === type ? styles.commentReactionHitActive : null,
+                                Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : null,
+                              ]}
+                            >
+                              <Text style={styles.commentReactionEmoji}>{emoji}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      ) : null}
                     </View>
                   </View>
-                  <TouchableOpacity style={styles.commentLikeBtn}>
+                  <TouchableOpacity
+                    style={styles.commentLikeBtn}
+                    onPress={() => void toggleCommentReaction(c.id, 'like')}
+                    accessibilityRole="button"
+                    accessibilityLabel={c.isLiked ? 'Retirer le j’aime' : 'J’aime'}
+                  >
                     <Ionicons name={c.isLiked ? 'heart' : 'heart-outline'} size={14} color={c.isLiked ? Colors.like : Colors.textSecondary} />
-                    <Text style={styles.commentLikeCount}>{c.likes}</Text>
+                    <Text style={styles.commentLikeCount}>{c.reactionTotal ?? c.likes}</Text>
                   </TouchableOpacity>
                 </View>
               ))}
             </ScrollView>
           )}
-          <View style={styles.commentInput}>
+          <View style={[styles.commentInput, commentsDisabled && { opacity: 0.55 }]}>
             <Image source={{ uri: userAvatar }} style={styles.commentInputAvatar} />
-            {isRecordingVoice ? (
+            {voicePreviewUri ? (
+              <View style={styles.commentVoicePreviewBar}>
+                <TouchableOpacity
+                  onPress={() => void toggleVoicePreviewPlayback()}
+                  style={styles.commentVoicePreviewPlayBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={voicePreviewPlaying ? 'Pause' : 'Écouter le vocal'}
+                >
+                  <Ionicons name={voicePreviewPlaying ? 'pause' : 'play'} size={22} color={Colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void discardVoicePreview()}
+                  style={styles.commentVoicePreviewPlayBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Supprimer le vocal"
+                >
+                  <Ionicons name="trash-outline" size={22} color="#E53935" />
+                </TouchableOpacity>
+                <Text style={styles.commentVoicePreviewMeta}>{voicePreviewSeconds}s</Text>
+                <TextInput
+                  style={[styles.commentTextInput, styles.commentVoicePreviewInput]}
+                  placeholder="Légende (optionnel)…"
+                  placeholderTextColor={Colors.textMuted}
+                  value={newComment}
+                  onChangeText={setNewComment}
+                  multiline
+                  editable={!sendingVoice && !commentsDisabled}
+                />
+              </View>
+            ) : isRecordingVoice ? (
               <View style={styles.commentRecordingBar}>
                 <View style={styles.commentRecordingDot} />
                 <Text style={styles.commentRecordingText}>
-                  Enregistrement… {recordSeconds}s — touchez le micro pour envoyer
+                  Enregistrement… {recordSeconds}s — touchez le rouge pour terminer, écoutez puis envoyez
                 </Text>
               </View>
             ) : (
               <TextInput
                 style={styles.commentTextInput}
-                placeholder="Ajouter un commentaire ou un vocal…"
+                placeholder={
+                  commentsDisabled
+                    ? 'Commentaires fermés'
+                    : replyingTo
+                      ? `Réponse à ${replyingTo.label}…`
+                      : 'Ajouter un commentaire ou un vocal…'
+                }
                 placeholderTextColor={Colors.textMuted}
                 value={newComment}
                 onChangeText={setNewComment}
                 multiline
-                editable={!sendingVoice}
+                editable={!sendingVoice && !commentsDisabled}
               />
             )}
             <TouchableOpacity
-              style={[styles.commentMicBtn, sendingVoice && { opacity: 0.5 }]}
+              style={[styles.commentMicBtn, (sendingVoice || commentsDisabled) && { opacity: 0.5 }]}
               onPress={() => void toggleVoiceRecording()}
-              disabled={sendingVoice}
-              accessibilityLabel={isRecordingVoice ? 'Arrêter et envoyer le vocal' : 'Enregistrer un commentaire vocal'}
+              disabled={sendingVoice || commentsDisabled}
+              accessibilityLabel={
+                voicePreviewUri
+                  ? 'Réenregistrer le vocal'
+                  : isRecordingVoice
+                    ? 'Terminer et préécouter le vocal'
+                    : 'Enregistrer un commentaire vocal'
+              }
             >
               {sendingVoice ? (
                 <ActivityIndicator size="small" color={Colors.primary} />
@@ -715,9 +2133,17 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
               )}
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.commentSendBtn, (!newComment.trim() || isRecordingVoice || sendingVoice) && { opacity: 0.4 }]}
-              onPress={handleSend}
-              disabled={!newComment.trim() || isRecordingVoice || sendingVoice}
+              style={[
+                styles.commentSendBtn,
+                (!voicePreviewUri && !newComment.trim()) || isRecordingVoice || sendingVoice || commentsDisabled ? { opacity: 0.4 } : null,
+              ]}
+              onPress={() => {
+                if (voicePreviewUri) void sendVoiceComment();
+                else void handleSend();
+              }}
+              disabled={
+                (!voicePreviewUri && !newComment.trim()) || Boolean(isRecordingVoice) || sendingVoice || commentsDisabled
+              }
             >
               <Ionicons name="send" size={18} color={Colors.text} />
             </TouchableOpacity>
@@ -725,22 +2151,87 @@ const CommentsModal: React.FC<{ visible: boolean; onClose: () => void; videoId: 
         </KeyboardAvoidingView>
       </View>
     </Modal>
+
+    <Modal
+      visible={commentMenuFor !== null}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setCommentMenuFor(null)}
+    >
+      <View style={styles.commentActionMenuOverlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={() => setCommentMenuFor(null)} />
+        <View style={[styles.commentActionMenuSheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+          {commentMenuFor && isOwnComment(commentMenuFor) ? (
+            <>
+              <TouchableOpacity
+                style={styles.commentActionMenuRow}
+                onPress={() => {
+                  setEditDraft(commentMenuFor.text);
+                  setEditingCommentId(commentMenuFor.id);
+                  setCommentMenuFor(null);
+                }}
+              >
+                <Text style={styles.commentActionMenuText}>Modifier</Text>
+              </TouchableOpacity>
+              <View style={styles.commentActionMenuSep} />
+              <TouchableOpacity
+                style={styles.commentActionMenuRow}
+                onPress={() => {
+                  const row = commentMenuFor;
+                  setCommentMenuFor(null);
+                  if (row) confirmDeleteComment(row);
+                }}
+              >
+                <Text style={[styles.commentActionMenuText, { color: '#E53935' }]}>Supprimer</Text>
+              </TouchableOpacity>
+            </>
+          ) : commentMenuFor ? (
+            <TouchableOpacity
+              style={styles.commentActionMenuRow}
+              onPress={() => {
+                setReportCommentId(commentMenuFor.id);
+                setCommentMenuFor(null);
+              }}
+            >
+              <Text style={styles.commentActionMenuText}>Signaler</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+    </Modal>
+
+    <CommentReportModal
+      visible={reportCommentId !== null}
+      onClose={() => setReportCommentId(null)}
+      commentId={reportCommentId ?? ''}
+    />
+    </>
   );
 };
 
-export default function FeedScreen() {
+export default function FeedScreen(props?: {
+  amisStandalone?: boolean;
+  diversifiedStandalone?: boolean;
+}) {
+  const amisStandalone = Boolean(props?.amisStandalone);
+  const diversifiedStandalone = Boolean(props?.diversifiedStandalone);
   const isScreenFocused = useIsFocused();
   const [appState, setAppState] = useState(AppState.currentState);
   const [videos, setVideos] = useState<Video[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  /** Index pour la lecture uniquement : dérivé du scroll (instantané). `viewability` restait ~100 ms trop lent → audio fantôme. */
+  const [playbackIndex, setPlaybackIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'following' | 'foryou'>('foryou');
+  const [activeTab, setActiveTab] = useState<'following' | 'foryou' | 'apprendre' | 'diversified'>(
+    amisStandalone ? 'following' : diversifiedStandalone ? 'diversified' : 'foryou'
+  );
   const [commentsVisible, setCommentsVisible] = useState(false);
   const [shareVisible, setShareVisible] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
   const [reportTarget, setReportTarget] = useState({ type: 'video', id: '' });
   const [shareData, setShareData] = useState({ title: '', message: '', url: '' });
+  const [shareVideo, setShareVideo] = useState<ShareVideoContext | null>(null);
   const [selectedVideoId, setSelectedVideoId] = useState('');
+  const [selectedVideoCreatorId, setSelectedVideoCreatorId] = useState<string | null>(null);
   const [selectedVideoComments, setSelectedVideoComments] = useState(0);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -749,7 +2240,69 @@ export default function FeedScreen() {
   /** Message sous l’état vide : erreur réseau ou rappel fil découverte (vidéos courtes). */
   const [feedEmptyMessage, setFeedEmptyMessage] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
-  const { isAuthenticated } = useAuthStore();
+  const feedParams = useLocalSearchParams<{ feed?: string; topic?: string }>();
+
+  /** Android edge-to-edge : `insets.top` peut rester à 0 alors que la barre d’état recouvre le header ; les `position:absolute` avec `top:0` montent sous l’heure. */
+  const feedHeaderTopPad = useMemo(() => {
+    const statusH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0;
+    const inset = Math.max(insets.top, statusH);
+    return inset + (Platform.OS === 'android' ? 10 : 8);
+  }, [insets.top]);
+  const { t } = useLanguage();
+
+  useEffect(() => {
+    if (amisStandalone) {
+      setActiveTab('following');
+      return;
+    }
+    if (diversifiedStandalone) {
+      setActiveTab('diversified');
+      return;
+    }
+    if (feedParams.feed === 'following') {
+      setActiveTab('following');
+      requestAnimationFrame(() => {
+        try {
+          router.setParams({ feed: undefined });
+        } catch {
+          /* navigateur sans setParams sur cet écran */
+        }
+      });
+      return;
+    }
+    if (feedParams.topic === 'apprendre') {
+      setActiveTab('apprendre');
+      requestAnimationFrame(() => {
+        try {
+          router.setParams({ topic: undefined });
+        } catch {
+          /* navigateur sans setParams sur cet écran */
+        }
+      });
+    }
+  }, [amisStandalone, diversifiedStandalone, feedParams.feed, feedParams.topic]);
+  const { effectiveDataSaver, tapToPlayOnly, reduceAnimations } = useDataSaver();
+
+  /** Pastille sur l’entrée Live si des directs sont disponibles. */
+  const [liveHubHasStreams, setLiveHubHasStreams] = useState(false);
+  const refreshLiveHubHint = useCallback(async () => {
+    if (amisStandalone) return;
+    try {
+      const res = await apiClient.get('/live/recommendations', { params: { limit: 1 } });
+      const raw = res.data?.data ?? res.data;
+      const list = Array.isArray(raw) ? raw : [];
+      setLiveHubHasStreams(list.some((x: { id?: string }) => Boolean(x?.id)));
+    } catch {
+      setLiveHubHasStreams(false);
+    }
+  }, [amisStandalone]);
+
+  useEffect(() => {
+    if (amisStandalone || !isScreenFocused) return undefined;
+    void refreshLiveHubHint();
+    const id = setInterval(() => void refreshLiveHubHint(), 75_000);
+    return () => clearInterval(id);
+  }, [amisStandalone, isScreenFocused, refreshLiveHubHint]);
 
   const videosRef = useRef<Video[]>([]);
   useEffect(() => { videosRef.current = videos; }, [videos]);
@@ -766,7 +2319,7 @@ export default function FeedScreen() {
   const feedItemHeight = useMemo(() => {
     if (listViewportHeight > 0) return listViewportHeight;
     return Math.ceil(Math.max(200, height - TAB_BAR_LAYOUT_HEIGHT - insets.bottom));
-  }, [listViewportHeight, height, insets.bottom]);
+  }, [listViewportHeight, insets.bottom]);
 
   const onListLayout = useCallback((e: LayoutChangeEvent) => {
     /** `Math.round` peut sous-dimensionner la cellule vs le viewport → bande de la vidéo suivante (Android). */
@@ -774,21 +2327,172 @@ export default function FeedScreen() {
     if (h > 0) setListViewportHeight((prev) => (prev === h ? prev : h));
   }, []);
 
-  const listRef = useRef<FlashListRef<Video> | null>(null);
+  const listRef = useRef<FlashListRef<Video> | FlatList<Video> | null>(null);
 
-  /** Feuille d’action (Modal) : fiable sur web — `Alert.alert` à plusieurs boutons est souvent inerte. */
-  const [soundMenuVideo, setSoundMenuVideo] = useState<Video | null>(null);
-  const closeSoundMenu = useCallback(() => setSoundMenuVideo(null), []);
-  const openSoundMenu = useCallback((item: Video) => setSoundMenuVideo(item), []);
+  /**
+   * Au plus une vidéo par geste (fling fort). Index au début du geste tactile ; molette web sans toucher
+   * utilise la dernière slide « stabilisée ».
+   */
+  const feedGestureStartIndexRef = useRef(0);
+  /** Web : `true` après `onScrollBeginDrag` jusqu’au clamp final (inertie comprise). */
+  const feedTouchGestureActiveRef = useRef(false);
+  /** Web + molette : index de référence quand aucun drag tactile n’a démarré le geste. */
+  const lastSettledPlaybackIndexRef = useRef(0);
 
-  const activeVideoId = videos[currentIndex]?.id ?? '';
+  const clampFeedScrollToAtMostOneItem = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const h = feedItemHeight;
+      const len = videosRef.current.length;
+      if (h <= 0 || len === 0) return;
+      const y = Math.max(0, e.nativeEvent.contentOffset.y);
+      const rawIdx = Math.round(y / h);
+      const start =
+        Platform.OS === 'web'
+          ? feedTouchGestureActiveRef.current
+            ? feedGestureStartIndexRef.current
+            : lastSettledPlaybackIndexRef.current
+          : feedGestureStartIndexRef.current;
+      const minI = Math.max(0, start - 1);
+      const maxI = Math.min(len - 1, start + 1);
+      const idx = Math.max(minI, Math.min(maxI, rawIdx));
+      const targetY = idx * h;
+      if (Math.abs(targetY - y) > 2) {
+        listRef.current?.scrollToOffset({ offset: targetY, animated: false });
+      }
+      if (Platform.OS === 'web') {
+        lastSettledPlaybackIndexRef.current = idx;
+        feedGestureStartIndexRef.current = idx;
+      }
+    },
+    [feedItemHeight]
+  );
+
+  const onFeedScrollBeginDrag = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const h = feedItemHeight;
+      if (h <= 0) return;
+      const y = Math.max(0, e.nativeEvent.contentOffset.y);
+      feedGestureStartIndexRef.current = Math.round(y / h);
+      if (Platform.OS === 'web') {
+        feedTouchGestureActiveRef.current = true;
+      }
+    },
+    [feedItemHeight]
+  );
+
+  const onFeedScrollEndDrag = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const vy = e.nativeEvent.velocity?.y ?? 0;
+      if (Platform.OS === 'web') {
+        if (Math.abs(vy) > 0.2) return;
+        clampFeedScrollToAtMostOneItem(e);
+        feedTouchGestureActiveRef.current = false;
+        return;
+      }
+      if (Math.abs(vy) > 0.2) return;
+      clampFeedScrollToAtMostOneItem(e);
+    },
+    [clampFeedScrollToAtMostOneItem]
+  );
+
+  const onFeedMomentumScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (Platform.OS === 'web') {
+        clampFeedScrollToAtMostOneItem(e);
+        feedTouchGestureActiveRef.current = false;
+        return;
+      }
+      clampFeedScrollToAtMostOneItem(e);
+    },
+    [clampFeedScrollToAtMostOneItem]
+  );
+
+  /** Page Son (`music_title`) — liste des vidéos + CTA « Utiliser ce son ». */
+  const openSoundPage = useCallback((item: Video) => {
+    const music = (item.music || 'Son original').trim().slice(0, 200);
+    router.push({ pathname: '/sound-feed', params: { title: music } });
+  }, []);
+
+  const activeVideoId = videos[playbackIndex]?.id ?? '';
+
+  const [pollByVideoId, setPollByVideoId] = useState<Record<string, FeedPollPayload | null | 'loading'>>({});
+  const pollFetchedRef = useRef<Set<string>>(new Set());
+  const [pollVoteVideoId, setPollVoteVideoId] = useState<string | null>(null);
+
+  useLayoutEffect(() => {
+    const id = activeVideoId;
+    if (!id || pollFetchedRef.current.has(id)) return;
+    pollFetchedRef.current.add(id);
+    setPollByVideoId((prev) => ({ ...prev, [id]: 'loading' }));
+    apiClient
+      .get(`/videos/${id}/poll`)
+      .then((res) => {
+        const d = res.data?.data ?? res.data;
+        setPollByVideoId((prev) => ({ ...prev, [id]: d ?? null }));
+      })
+      .catch(() => {
+        setPollByVideoId((prev) => ({ ...prev, [id]: null }));
+      });
+  }, [activeVideoId]);
+
+  const votePoll = useCallback(async (videoId: string, optionIndex: number) => {
+    setPollVoteVideoId(videoId);
+    try {
+      const r = await apiClient.post(`/videos/${videoId}/poll/vote`, { option_index: optionIndex });
+      const d = r.data?.data ?? r.data;
+      if (d) setPollByVideoId((prev) => ({ ...prev, [videoId]: d }));
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      Alert.alert('Sondage', msg || 'Impossible de voter pour le moment.');
+    } finally {
+      setPollVoteVideoId(null);
+    }
+  }, []);
+
+  const handleVideoReaction = useCallback(async (videoId: string, type: string) => {
+    try {
+      const response = await apiClient.post(`/videos/${videoId}/like`, { type });
+      const data = response.data?.data || response.data;
+      const counts = (data?.reaction_counts || {}) as Record<string, number>;
+      const total = Object.values(counts).reduce((s, x) => s + (Number(x) || 0), 0);
+      const reaction = data?.reaction ?? null;
+      setVideos((prev) =>
+        prev.map((v) =>
+          v.id === videoId
+            ? {
+                ...v,
+                reactionCounts: counts,
+                myReaction: reaction,
+                isLiked: reaction === 'like',
+                likes: total > 0 ? total : v.likes,
+              }
+            : v
+        )
+      );
+    } catch {
+      Alert.alert('Réaction', 'Impossible d’enregistrer la réaction.');
+    }
+  }, []);
+
+  const handlePlaybackScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const h = feedItemHeight;
+      if (h <= 0) return;
+      const len = videosRef.current.length;
+      if (len === 0) return;
+      const y = Math.max(0, e.nativeEvent.contentOffset.y);
+      const idx = Math.min(len - 1, Math.max(0, Math.floor((y + h * 0.5) / h)));
+      setPlaybackIndex((prev) => (prev === idx ? prev : idx));
+    },
+    [feedItemHeight]
+  );
 
   const lastViewedVideoIdRef = useRef<string | null>(null);
   useEffect(() => {
     lastViewedVideoIdRef.current = null;
   }, [activeTab]);
 
-  /** Style TikTok : vidéo active = ~50 % visible ≥ 100 ms (évite les faux positifs au scroll). */
+  /** View / analytics uniquement — pas pour `isActive` (trop lent pour couper l’audio). */
   const viewabilityConfigRef = useRef({
     itemVisiblePercentThreshold: 50,
     minimumViewTime: 100,
@@ -799,7 +2503,6 @@ export default function FeedScreen() {
       const { viewableItems } = info;
       if (viewableItems.length === 0) return;
       const idx = viewableItems[0].index ?? 0;
-      setCurrentIndex(idx);
       const list = videosRef.current;
       const video = list[idx];
       if (!video) return;
@@ -822,22 +2525,44 @@ export default function FeedScreen() {
     return out;
   };
 
-  const transformVideo = (v: any): Video => {
+  const transformVideo = useCallback((v: any): Video => {
     const nameParts = (v.creator_name || v.creator?.full_name || '').split(' ');
-    const playUrl = v.video_url || v.hls_url || v.low_quality_playback_url || v.low_quality_url || '';
+    const preferLow = effectiveDataSaver;
+    const playUrl = preferLow
+      ? (v.low_quality_playback_url || v.low_quality_url || v.video_url || v.hls_url || '')
+      : (v.video_url || v.hls_url || v.low_quality_playback_url || v.low_quality_url || '');
+    const rawThumb =
+      [v.thumbnail_url, v.poster_url, v.cover_url, v.preview_image_url]
+        .map((x: unknown) => (typeof x === 'string' ? x.trim() : ''))
+        .find((s) => s.length > 0) || '';
+    const thumbAbs = rawThumb ? toAbsoluteMediaUrl(rawThumb) : '';
+    const thumbnailUrl =
+      rawThumb && !isLikelyVideoFileUrl(thumbAbs || rawThumb) ? rawThumb : '';
+    const rc =
+      v.reaction_counts && typeof v.reaction_counts === 'object' && !Array.isArray(v.reaction_counts)
+        ? (v.reaction_counts as Record<string, number>)
+        : null;
+    const myR = (v.current_user_reaction ?? v.my_reaction ?? null) as string | null;
+    const remixCredit =
+      v.remix_credit?.creator?.username ||
+      v.remix_credit?.creator?.full_name ||
+      v.remix_of_creator_name ||
+      null;
     return {
       id: v.id,
       title: v.title || '',
       description: v.description || '',
       videoUrl: playUrl,
-      thumbnailUrl: v.thumbnail_url || v.video_url || playUrl || '',
+      thumbnailUrl,
+      trimStartSec: typeof v.trim_start_sec === 'number' ? v.trim_start_sec : null,
+      trimEndSec: typeof v.trim_end_sec === 'number' ? v.trim_end_sec : null,
       duration: v.duration || 0,
       views: Number(v.views ?? v.view_count ?? v.views_count) || 0,
       likes: v.likes || 0,
       comments: v.comments_count || 0,
       shares: v.shares || 0,
-      isLiked: false,
-      isSaved: false,
+      isLiked: Boolean(v.is_liked ?? myR === 'like'),
+      isSaved: Boolean(v.is_saved),
       hashtags: v.hashtags || [],
       user: {
         id: v.creator_id || v.creator?.id || '',
@@ -849,8 +2574,15 @@ export default function FeedScreen() {
       },
       music: v.music_title || 'Son original',
       isSponsored: v.is_sponsored || v.isSponsored || false,
+      dataSaverLowQuality: preferLow && Boolean(v.low_quality_playback_url || v.low_quality_url),
+      reactionCounts: rc,
+      myReaction: myR,
+      commentsDisabled: Boolean(v.comments_disabled),
+      remixCreditName: remixCredit ? String(remixCredit).replace(/^@/, '') : null,
+      remixKind: typeof v.remix_kind === 'string' ? v.remix_kind : null,
+      mediaType: String(v.media_type || 'video').toLowerCase() === 'photo' ? 'photo' : 'video',
     };
-  };
+  }, [effectiveDataSaver]);
 
   const loadFeed = async (pageNum: number = 1, reset: boolean = false) => {
     if (reset) setLoading(true);
@@ -859,42 +2591,84 @@ export default function FeedScreen() {
       setFeedEmptyMessage(null);
       let backendVideos: any[] = [];
       let pagination: { totalPages?: number } | undefined;
+      /** Pour « Pour toi » : nombre d’items renvoyés (vidéo + pub + bannière), pour heuristique `hasMore`. */
+      let rawFeedItemCount = 0;
 
       if (activeTab === 'foryou') {
-        const params: Record<string, string | number> = { page: pageNum, limit: 10 };
+        const params: Record<string, string | number> = { page: pageNum, limit: FEED_PAGE_LIMIT };
         if (reset && pageNum === 1) {
           params._ = Date.now();
         }
         const response = await apiClient.get('/feed', { params });
         const pkg = response.data?.data || response.data;
         const items = pkg?.items || [];
+        rawFeedItemCount = Array.isArray(items) ? items.length : 0;
         backendVideos = extractVideosFromFeedItems(items);
         pagination = pkg?.pagination;
-      } else {
-        const response = await apiClient.get(`/videos?page=${pageNum}&limit=10`);
+      } else if (activeTab === 'apprendre') {
+        /** Fil thématique : éducation / science / tech (preset backend `/videos/topic/apprendre`). */
+        const response = await apiClient.get('/videos/topic/apprendre', {
+          params: { page: pageNum, limit: FEED_PAGE_LIMIT },
+        });
         const data = response.data?.data || response.data;
         backendVideos = data?.videos || [];
         pagination = data?.pagination;
+        rawFeedItemCount = backendVideos.length;
+      } else if (activeTab === 'diversified') {
+        /** Fil « Explorer » — vidéos hors bulle utilisateur (créateurs non suivis). */
+        const response = await apiClient.get('/videos/diversified', {
+          params: { page: pageNum, limit: FEED_PAGE_LIMIT },
+        });
+        const data = response.data?.data || response.data;
+        backendVideos = data?.videos || [];
+        pagination = data?.pagination;
+        rawFeedItemCount = backendVideos.length;
+      } else {
+        const response = await apiClient.get('/videos', {
+          params: {
+            page: pageNum,
+            limit: FEED_PAGE_LIMIT,
+            following_only: 1,
+          },
+        });
+        const data = response.data?.data || response.data;
+        backendVideos = data?.videos || [];
+        pagination = data?.pagination;
+        rawFeedItemCount = backendVideos.length;
       }
 
       if (backendVideos.length > 0) {
         const transformed = backendVideos.map(transformVideo);
         if (reset) {
           setVideos(transformed);
-          setCurrentIndex(0);
+          setPlaybackIndex(0);
+          lastSettledPlaybackIndexRef.current = 0;
         } else {
           setVideos(prev => [...prev, ...transformed]);
         }
         setPage(pageNum);
-        setHasMore(pagination?.totalPages != null ? pageNum < (pagination.totalPages as number) : backendVideos.length >= 10);
+        const totalPages =
+          pagination?.totalPages != null && Number.isFinite(Number(pagination.totalPages))
+            ? Number(pagination.totalPages)
+            : null;
+        const moreByPagination = totalPages != null && pageNum < totalPages;
+        /** Page « pleine » côté API → il peut y avoir une suite même si `totalPages` est absent. */
+        const fullPageSlots =
+          activeTab === 'foryou' ? rawFeedItemCount >= FEED_PAGE_LIMIT : rawFeedItemCount >= FEED_PAGE_LIMIT;
+        const moreByHeuristic = totalPages == null && fullPageSlots;
+        setHasMore(Boolean(moreByPagination || moreByHeuristic));
       } else if (reset) {
         setVideos(FALLBACK_VIDEOS);
         setHasMore(false);
         setFeedEmptyMessage(
           activeTab === 'foryou'
             ? 'Aucune vidéo dans le fil « Pour toi ». Vérifiez le backend ou publiez du contenu.'
-            : 'Aucune vidéo à afficher pour les abonnements (liste générique comme sur la PWA). Suivez des créateurs pour enrichir ce fil.'
+            : activeTab === 'apprendre'
+              ? 'Aucune vidéo éducative pour le moment. Revenez bientôt — du nouveau contenu arrive chaque jour sur la science, la tech et l’apprentissage.'
+              : 'Aucune vidéo des comptes que vous suivez pour le moment. Les publications publiques et « réservées aux abonnés » de vos suivis apparaissent ici — suivez des créateurs pour remplir ce fil.'
         );
+      } else {
+        setHasMore(false);
       }
     } catch (err) {
       console.log('Feed vidéo indisponible', err);
@@ -913,11 +2687,15 @@ export default function FeedScreen() {
     }
   };
 
+  const loadFeedRef = useRef(loadFeed);
+  loadFeedRef.current = loadFeed;
+
   useEffect(() => {
-    setCurrentIndex(0);
+    setPlaybackIndex(0);
+    lastSettledPlaybackIndexRef.current = 0;
     void loadFeed(1, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- recharger le fil au changement d’onglet (Pour toi / Abonnés)
-  }, [activeTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recharger le fil au changement d’onglet ou mode économie
+  }, [activeTab, effectiveDataSaver]);
 
   const loadMore = () => {
     if (!loadingMore && hasMore) {
@@ -927,31 +2705,20 @@ export default function FeedScreen() {
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    loadFeed(1, true).finally(() => setRefreshing(false));
-  }, []);
+    pollFetchedRef.current.clear();
+    setPollByVideoId({});
+    void refreshLiveHubHint();
+    loadFeedRef.current(1, true).finally(() => setRefreshing(false));
+  }, [refreshLiveHubHint]);
 
-  const handleLike = async (videoId: string) => {
-    // Optimistic update
-    const target = videos.find(v => v.id === videoId);
-    const nextLiked = !(target?.isLiked ?? false);
-    setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isLiked: !v.isLiked, likes: v.isLiked ? v.likes - 1 : v.likes + 1 } : v));
-    try {
-      const response = await apiClient.post(`/videos/${videoId}/like`);
-      const data = response.data?.data || response.data;
-      // Sync with server state
-      setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isLiked: data.liked } : v));
-    } catch {
-      await offlineActionSyncService.enqueue('like_video', videoId, { liked: nextLiked });
-    }
+  const handleLike = (videoId: string) => {
+    void handleVideoReaction(videoId, 'like');
   };
 
-  const handleDoubleTapLike = async (videoId: string) => {
-    const video = videos.find(v => v.id === videoId);
-    if (video && !video.isLiked) {
-      setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isLiked: true, likes: v.likes + 1 } : v));
-      try { await apiClient.post(`/videos/${videoId}/like`); } catch {
-        await offlineActionSyncService.enqueue('like_video', videoId, { liked: true });
-      }
+  const handleDoubleTapLike = (videoId: string) => {
+    const video = videos.find((v) => v.id === videoId);
+    if (video && video.myReaction !== 'like' && !video.isLiked) {
+      void handleVideoReaction(videoId, 'like');
     }
   };
 
@@ -976,7 +2743,8 @@ export default function FeedScreen() {
     try {
       const response = await apiClient.post(`/users/${userId}/follow`);
       const data = response.data?.data || response.data;
-      setVideos(prev => prev.map(v => v.user.id === userId ? { ...v, user: { ...v.user, isFollowing: data.following } } : v));
+      const following = Boolean(data?.following);
+      setVideos(prev => prev.map(v => v.user.id === userId ? { ...v, user: { ...v.user, isFollowing: following } } : v));
     } catch {
       await offlineActionSyncService.enqueue('follow_user', userId, { following: nextFollowing });
     }
@@ -987,8 +2755,22 @@ export default function FeedScreen() {
     setShareData({
       title: video?.title || 'Vidéo AfriWonder',
       message: video?.description || 'Regarde cette vidéo sur AfriWonder !',
-      url: `https://afriwonder.onrender.com/video/${videoId}`,
+      url: getVideoSharePageUrl(videoId),
     });
+    if (video) {
+      setShareVideo({
+        id: video.id,
+        title: video.title,
+        description: video.description,
+        videoUrl: video.videoUrl,
+        thumbnailUrl: video.thumbnailUrl,
+        username: video.user.username,
+        creatorName: `${video.user.firstName} ${video.user.lastName}`.trim(),
+        creatorAvatar: video.user.avatar,
+      });
+    } else {
+      setShareVideo(null);
+    }
     setShareVisible(true);
     try { await apiClient.post(`/videos/${videoId}/share`); } catch {}
   };
@@ -998,205 +2780,531 @@ export default function FeedScreen() {
     setReportVisible(true);
   };
 
-  const openComments = (videoId: string, count: number) => {
+  const openHashtagSearch = useCallback((rawTag: string) => {
+    const t = String(rawTag || '')
+      .trim()
+      .replace(/^#+/, '');
+    if (!t) return;
+    router.push({ pathname: '/search', params: { q: `#${t}` } });
+  }, []);
+
+  const openComments = (videoId: string, count: number, creatorId?: string | null) => {
     setSelectedVideoId(videoId);
+    setSelectedVideoCreatorId(creatorId ?? null);
     setSelectedVideoComments(count);
     setCommentsVisible(true);
   };
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity testID="search-button" onPress={() => router.push('/search')} style={styles.headerSearchBtn}>
-          <Ionicons name="search" size={22} color="#FFF" />
-        </TouchableOpacity>
-        <View style={styles.headerTabs}>
-          <TouchableOpacity style={[styles.headerTab, activeTab === 'following' && styles.headerTabActive]} onPress={() => setActiveTab('following')}>
-            <Text style={[styles.headerTabText, activeTab === 'following' && styles.headerTabTextActive]}>Abonnes</Text>
-          </TouchableOpacity>
-          <View style={styles.headerDivider} />
-          <TouchableOpacity style={[styles.headerTab, activeTab === 'foryou' && styles.headerTabActive]} onPress={() => setActiveTab('foryou')}>
-            <Text style={[styles.headerTabText, activeTab === 'foryou' && styles.headerTabTextActive]}>Pour toi</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity testID="notifications-button" style={styles.headerIconBtn} onPress={() => router.push('/notifications')}>
-            <Ionicons name="notifications-outline" size={22} color="#FFF" />
-            <View style={styles.headerNotifDot} />
-          </TouchableOpacity>
-          <TouchableOpacity testID="live-hub-button" style={styles.headerIconBtn} onPress={() => router.push('/live')}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>LIVE</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.feedListClip}>
-        <ShopifyFlashList
-        style={styles.feedList}
-        ref={listRef}
-        data={videos}
-        onLayout={onListLayout}
-        renderItem={({ item }: { item: Video; index: number }) => (
-          <VideoItem
-            video={item}
-            slideHeight={feedItemHeight}
-            isActive={playbackAllowed && item.id === activeVideoId}
-            onLike={() => handleLike(item.id)}
-            onDoubleTapLike={() => handleDoubleTapLike(item.id)}
-            onComment={() => openComments(item.id, item.comments)}
-            onShare={() => handleShare(item.id)}
-            onSave={() => handleSave(item.id)}
-            onFollow={() => handleFollow(item.user.id)}
-            onReport={() => handleReport(item.id)}
-            onOpenProfile={() => {
-              if (!item.user.id) return;
-              router.push({ pathname: '/user/[id]', params: { id: item.user.id } });
-            }}
-            onOpenSound={() => openSoundMenu(item)}
-          />
-        )}
-        keyExtractor={(item: Video) => item.id}
-        showsVerticalScrollIndicator={false}
-        pagingEnabled={true}
-        bounces={false}
-        overScrollMode="never"
-        scrollEventThrottle={16}
-        estimatedItemSize={feedItemHeight}
-        drawDistance={
-          feedItemHeight > 0
-            ? feedItemHeight * (Platform.OS === 'android' ? 2 : 3)
-            : 600
-        }
-        viewabilityConfig={viewabilityConfigRef.current}
-        onViewableItemsChanged={onViewableItemsChanged.current}
-        onEndReached={loadMore}
-        onEndReachedThreshold={0.5}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
-        }
-        ListEmptyComponent={
-          loading ? null : (
-            <View
-              style={{
-                flex: 1,
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: height - 100,
-                paddingHorizontal: 28,
-              }}
-            >
-              <Ionicons name="videocam-outline" size={60} color="rgba(255,255,255,0.3)" />
-              <Text style={{ color: 'rgba(255,255,255,0.5)', marginTop: 16, fontSize: 16, textAlign: 'center' }}>
-                Aucune vidéo disponible
-              </Text>
-              {feedEmptyMessage ? (
-                <Text
-                  style={{
-                    color: 'rgba(255,255,255,0.35)',
-                    marginTop: 12,
-                    fontSize: 13,
-                    textAlign: 'center',
-                    lineHeight: 20,
-                  }}
-                >
-                  {feedEmptyMessage}
-                </Text>
-              ) : null}
+      {/* Header : accueil (TikTok 4 onglets) / Ami(e)s / Explorer standalone */}
+      {amisStandalone ? (
+        <View style={[styles.header, { paddingTop: feedHeaderTopPad, paddingBottom: 6 }]}>
+          <View style={styles.headerRow}>
+            <Text style={styles.friendsHeaderTitle} accessibilityRole="header">
+              Ami(e)s
+            </Text>
+            <View style={styles.headerRight}>
               <TouchableOpacity
-                style={{
-                  marginTop: 20,
-                  paddingVertical: 12,
-                  paddingHorizontal: 24,
-                  backgroundColor: Colors.primary,
-                  borderRadius: 24,
-                }}
-                onPress={() => loadFeed(1, true)}
-                activeOpacity={0.85}
+                style={styles.headerIconBtn}
+                onPress={() => router.push('/(tabs)/explore')}
+                accessibilityRole="button"
+                accessibilityLabel="Explorer"
               >
-                <Text style={{ color: '#000', fontWeight: '700', fontSize: 14 }}>Réessayer</Text>
+                <Ionicons name="compass-outline" size={22} color="#FFF" />
+              </TouchableOpacity>
+              <TouchableOpacity testID="notifications-button" style={styles.headerIconBtn} onPress={() => router.push('/notifications')}>
+                <Ionicons name="notifications-outline" size={22} color="#FFF" />
+                <View style={styles.headerNotifDot} />
+              </TouchableOpacity>
+              <TouchableOpacity testID="search-button" style={styles.headerIconBtn} onPress={() => router.push('/search')}>
+                <Ionicons name="search" size={22} color="#FFF" />
               </TouchableOpacity>
             </View>
-          )
-        }
-        />
+          </View>
+        </View>
+      ) : diversifiedStandalone ? (
+        <View style={[styles.header, { paddingTop: feedHeaderTopPad, paddingBottom: 6 }]}>
+          <View style={styles.headerRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.friendsHeaderTitle} accessibilityRole="header">
+                Explorer
+              </Text>
+              <Text style={styles.diversifiedSubtitle}>Sortez de votre bulle habituelle</Text>
+            </View>
+            <View style={styles.headerRight}>
+              <TouchableOpacity
+                style={styles.headerIconBtn}
+                onPress={() => router.push('/discover' as never)}
+                accessibilityRole="button"
+                accessibilityLabel="Découvrir — tendances"
+              >
+                <Ionicons name="flame-outline" size={22} color="#FFF" />
+              </TouchableOpacity>
+              <TouchableOpacity testID="search-button" style={styles.headerIconBtn} onPress={() => router.push('/search')}>
+                <Ionicons name="search" size={22} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      ) : (
+        <View style={[styles.header, { paddingTop: feedHeaderTopPad, paddingBottom: 6 }]}>
+          <View style={styles.headerRow}>
+            <View style={styles.headerLeft}>
+              <TouchableOpacity
+                testID="live-hub-button"
+                style={styles.headerLiveTiktokWrap}
+                onPress={() => router.push('/live')}
+                onLongPress={() => router.push('/settings/data-saver')}
+                delayLongPress={500}
+                accessibilityLabel={
+                  liveHubHasStreams
+                    ? 'Live — directs en cours (long press: data saver)'
+                    : 'Live — hub (long press: data saver)'
+                }
+              >
+                <View style={styles.headerLiveTvFrame}>
+                  <Text style={styles.headerLiveTvLabel}>LIVE</Text>
+                </View>
+                {liveHubHasStreams ? <View style={styles.headerLiveOnAirDot} /> : null}
+              </TouchableOpacity>
+            </View>
+            <View style={styles.headerTabs}>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Apprendre — éducation, science, technologie"
+                style={styles.headerTabTight}
+                onPress={() => setActiveTab('apprendre')}
+              >
+                <Text
+                  style={[
+                    styles.headerTabTextTiktok,
+                    activeTab === 'apprendre' && styles.headerTabTextTiktokActive,
+                  ]}
+                >
+                  Apprendre
+                </Text>
+                {activeTab === 'apprendre' ? <View style={styles.headerTabUnderline} /> : null}
+              </TouchableOpacity>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Explorer — contenus suggérés à découvrir"
+                style={styles.headerTabTight}
+                onPress={() => router.push('/(tabs)/explore')}
+              >
+                <Text style={styles.headerTabTextTiktok}>Explorer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Abonnements"
+                style={styles.headerTabTight}
+                onPress={() => setActiveTab('following')}
+              >
+                <Text style={[styles.headerTabTextTiktok, activeTab === 'following' && styles.headerTabTextTiktokActive]}>
+                  Following
+                </Text>
+                {activeTab === 'following' ? <View style={styles.headerTabUnderline} /> : null}
+              </TouchableOpacity>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Pour toi"
+                style={styles.headerTabTight}
+                onPress={() => setActiveTab('foryou')}
+              >
+                <Text style={[styles.headerTabTextTiktok, activeTab === 'foryou' && styles.headerTabTextTiktokActive]}>For You</Text>
+                {activeTab === 'foryou' ? <View style={styles.headerTabUnderline} /> : null}
+              </TouchableOpacity>
+            </View>
+            <View style={styles.headerRight}>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Découvrir — tendances"
+                style={styles.headerIconBtn}
+                onPress={() => router.push('/discover')}
+              >
+                <Ionicons name="compass-outline" size={25} color="#FFF" />
+              </TouchableOpacity>
+              <TouchableOpacity testID="search-button" style={styles.headerIconBtn} onPress={() => router.push('/search')}>
+                <Ionicons name="search-outline" size={26} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {activeTab === 'following' && !amisStandalone && !diversifiedStandalone ? (
+        <FollowingStoriesBar />
+      ) : null}
+
+      <View style={styles.feedListClip}>
+        <View style={styles.feedListInner}>
+        {Platform.OS === 'web' ? (
+          <FlatList<Video>
+            ref={listRef as React.RefObject<FlatList<Video>>}
+            style={styles.feedList}
+            data={videos}
+            onLayout={onListLayout}
+            renderItem={({ item }: { item: Video }) => (
+              <VideoItem
+                video={item}
+                slideHeight={feedItemHeight}
+                isActive={playbackAllowed && item.id === activeVideoId}
+                onLike={() => handleLike(item.id)}
+                onDoubleTapLike={() => handleDoubleTapLike(item.id)}
+                onComment={() => openComments(item.id, item.comments, item.user?.id)}
+                onShare={() => handleShare(item.id)}
+                onSave={() => handleSave(item.id)}
+                onFollow={() => handleFollow(item.user.id)}
+                onReport={() => handleReport(item.id)}
+                onOpenProfile={() => {
+                  if (!item.user.id) return;
+                  router.push({ pathname: '/user/[id]', params: { id: item.user.id } });
+                }}
+                onOpenSound={() => openSoundPage(item)}
+                onOpenHashtag={openHashtagSearch}
+                tapToPlayOnly={tapToPlayOnly}
+                reduceAnimations={reduceAnimations}
+                pollState={pollByVideoId[item.id]}
+                pollVoting={pollVoteVideoId === item.id}
+                onPollVote={(idx) => void votePoll(item.id, idx)}
+                onReactionPick={(type) => void handleVideoReaction(item.id, type)}
+              />
+            )}
+            keyExtractor={(item: Video) => item.id}
+            showsVerticalScrollIndicator={false}
+            pagingEnabled
+            decelerationRate="normal"
+            bounces={false}
+            scrollEventThrottle={32}
+            onScroll={handlePlaybackScroll}
+            removeClippedSubviews={false}
+            windowSize={effectiveDataSaver ? 2 : 5}
+            initialNumToRender={2}
+            maxToRenderPerBatch={2}
+            updateCellsBatchingPeriod={80}
+            getItemLayout={(_, index) => {
+              const h = Math.max(1, feedItemHeight);
+              return { length: h, offset: h * index, index };
+            }}
+            onScrollBeginDrag={onFeedScrollBeginDrag}
+            onScrollEndDrag={onFeedScrollEndDrag}
+            onMomentumScrollEnd={onFeedMomentumScrollEnd}
+            viewabilityConfig={viewabilityConfigRef.current}
+            onViewableItemsChanged={onViewableItemsChanged.current}
+            onEndReached={loadMore}
+            onEndReachedThreshold={effectiveDataSaver ? 0.2 : 0.4}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+            ListEmptyComponent={
+              loading ? null : (
+                <View
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: height - 100,
+                    paddingHorizontal: 28,
+                  }}
+                >
+                  <Ionicons
+                    name={activeTab === 'following' ? 'people-outline' : 'videocam-outline'}
+                    size={60}
+                    color="rgba(255,255,255,0.3)"
+                    accessibilityHidden
+                  />
+                  <Text style={{ color: 'rgba(255,255,255,0.75)', marginTop: 16, fontSize: 17, fontWeight: '700', textAlign: 'center' }}>
+                    {activeTab === 'following'
+                      ? 'Suivez des créateurs pour voir leur contenu ici'
+                      : t('feed.empty.title')}
+                  </Text>
+                  {feedEmptyMessage ? (
+                    <Text
+                      style={{
+                        color: 'rgba(255,255,255,0.45)',
+                        marginTop: 12,
+                        fontSize: 13,
+                        textAlign: 'center',
+                        lineHeight: 20,
+                      }}
+                    >
+                      {feedEmptyMessage}
+                    </Text>
+                  ) : null}
+                  {activeTab === 'following' ? (
+                    <TouchableOpacity
+                      style={{
+                        marginTop: 20,
+                        paddingVertical: 12,
+                        paddingHorizontal: 28,
+                        backgroundColor: Colors.primary,
+                        borderRadius: 24,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                      }}
+                      onPress={() => router.push('/(tabs)/explore')}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="compass" size={18} color="#000" />
+                      <Text style={{ color: '#000', fontWeight: '800', fontSize: 14 }}>Explorer</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={{
+                        marginTop: 20,
+                        paddingVertical: 12,
+                        paddingHorizontal: 24,
+                        backgroundColor: Colors.primary,
+                        borderRadius: 24,
+                      }}
+                      onPress={() => loadFeed(1, true)}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={{ color: '#000', fontWeight: '700', fontSize: 14 }}>{t('feed.empty.retry')}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )
+            }
+          />
+        ) : (
+          <ShopifyFlashList
+            style={styles.feedList}
+            ref={listRef}
+            data={videos}
+            onLayout={onListLayout}
+            renderItem={({ item }: { item: Video; index: number }) => (
+              <VideoItem
+                video={item}
+                slideHeight={feedItemHeight}
+                isActive={playbackAllowed && item.id === activeVideoId}
+                onLike={() => handleLike(item.id)}
+                onDoubleTapLike={() => handleDoubleTapLike(item.id)}
+                onComment={() => openComments(item.id, item.comments, item.user?.id)}
+                onShare={() => handleShare(item.id)}
+                onSave={() => handleSave(item.id)}
+                onFollow={() => handleFollow(item.user.id)}
+                onReport={() => handleReport(item.id)}
+                onOpenProfile={() => {
+                  if (!item.user.id) return;
+                  router.push({ pathname: '/user/[id]', params: { id: item.user.id } });
+                }}
+                onOpenSound={() => openSoundPage(item)}
+                onOpenHashtag={openHashtagSearch}
+                tapToPlayOnly={tapToPlayOnly}
+                reduceAnimations={reduceAnimations}
+                pollState={pollByVideoId[item.id]}
+                pollVoting={pollVoteVideoId === item.id}
+                onPollVote={(idx) => void votePoll(item.id, idx)}
+                onReactionPick={(type) => void handleVideoReaction(item.id, type)}
+              />
+            )}
+            keyExtractor={(item: Video) => item.id}
+            showsVerticalScrollIndicator={false}
+            pagingEnabled={false}
+            snapToInterval={feedItemHeight}
+            snapToAlignment="start"
+            decelerationRate="fast"
+            disableIntervalMomentum={Platform.OS === 'android'}
+            bounces={false}
+            overScrollMode="never"
+            scrollEventThrottle={16}
+            onScroll={handlePlaybackScroll}
+            onScrollBeginDrag={onFeedScrollBeginDrag}
+            onScrollEndDrag={onFeedScrollEndDrag}
+            onMomentumScrollEnd={onFeedMomentumScrollEnd}
+            estimatedItemSize={feedItemHeight}
+            drawDistance={
+              feedItemHeight > 0
+                ? feedItemHeight * (effectiveDataSaver ? 1 : Platform.OS === 'android' ? 2 : 3)
+                : 600
+            }
+            viewabilityConfig={viewabilityConfigRef.current}
+            onViewableItemsChanged={onViewableItemsChanged.current}
+            onEndReached={loadMore}
+            onEndReachedThreshold={effectiveDataSaver ? 0.2 : 0.5}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+            ListEmptyComponent={
+              loading ? null : (
+                <View
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: height - 100,
+                    paddingHorizontal: 28,
+                  }}
+                >
+                  <Ionicons
+                    name={activeTab === 'following' ? 'people-outline' : 'videocam-outline'}
+                    size={60}
+                    color="rgba(255,255,255,0.3)"
+                    accessibilityHidden
+                  />
+                  <Text style={{ color: 'rgba(255,255,255,0.75)', marginTop: 16, fontSize: 17, fontWeight: '700', textAlign: 'center' }}>
+                    {activeTab === 'following'
+                      ? 'Suivez des créateurs pour voir leur contenu ici'
+                      : t('feed.empty.title')}
+                  </Text>
+                  {feedEmptyMessage ? (
+                    <Text
+                      style={{
+                        color: 'rgba(255,255,255,0.45)',
+                        marginTop: 12,
+                        fontSize: 13,
+                        textAlign: 'center',
+                        lineHeight: 20,
+                      }}
+                    >
+                      {feedEmptyMessage}
+                    </Text>
+                  ) : null}
+                  {activeTab === 'following' ? (
+                    <TouchableOpacity
+                      style={{
+                        marginTop: 20,
+                        paddingVertical: 12,
+                        paddingHorizontal: 28,
+                        backgroundColor: Colors.primary,
+                        borderRadius: 24,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                      }}
+                      onPress={() => router.push('/(tabs)/explore')}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="compass" size={18} color="#000" />
+                      <Text style={{ color: '#000', fontWeight: '800', fontSize: 14 }}>Explorer</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={{
+                        marginTop: 20,
+                        paddingVertical: 12,
+                        paddingHorizontal: 24,
+                        backgroundColor: Colors.primary,
+                        borderRadius: 24,
+                      }}
+                      onPress={() => loadFeed(1, true)}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={{ color: '#000', fontWeight: '700', fontSize: 14 }}>{t('feed.empty.retry')}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )
+            }
+          />
+        )}
+        </View>
       </View>
 
-      {loading && <View style={styles.loadingOverlay}><ActivityIndicator size="large" color={Colors.primary} /></View>}
+      {loading && videos.length === 0 ? (
+        <View style={styles.skeletonLayer} pointerEvents="none">
+          <FeedSkeleton slideHeight={feedItemHeight} />
+        </View>
+      ) : loading && videos.length > 0 ? (
+        <View style={styles.loadingOverlay} accessibilityLabel={t('common.loading')}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      ) : null}
 
-      <CommentsModal visible={commentsVisible} onClose={() => setCommentsVisible(false)} videoId={selectedVideoId} commentsCount={selectedVideoComments} />
-      <ShareSheet visible={shareVisible} onClose={() => setShareVisible(false)} title={shareData.title} message={shareData.message} url={shareData.url} />
+      <CommentsModal
+        visible={commentsVisible}
+        onClose={() => setCommentsVisible(false)}
+        videoId={selectedVideoId}
+        commentsCount={selectedVideoComments}
+        videoCreatorId={selectedVideoCreatorId}
+        commentsDisabled={Boolean(videos.find((v) => v.id === selectedVideoId)?.commentsDisabled)}
+      />
+      <ShareSheet
+        visible={shareVisible}
+        onClose={() => {
+          setShareVisible(false);
+          setShareVideo(null);
+        }}
+        title={shareData.title}
+        message={shareData.message}
+        url={shareData.url}
+        video={shareVideo}
+      />
       <ReportModal visible={reportVisible} onClose={() => setReportVisible(false)} targetType={reportTarget.type} targetId={reportTarget.id} useModerationEndpoint />
 
-      <Modal visible={soundMenuVideo != null} transparent animationType="fade" onRequestClose={closeSoundMenu}>
-        <Pressable style={styles.soundModalBackdrop} onPress={closeSoundMenu}>
-          <View style={[styles.soundModalSheet, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
-            <Text style={styles.soundModalTitle}>Son</Text>
-            <Text style={styles.soundModalSubtitle} numberOfLines={3}>
-              {soundMenuVideo ? (soundMenuVideo.music || 'Son original').trim() : ''}
-            </Text>
-            <TouchableOpacity
-              style={styles.soundModalBtnPrimary}
-              activeOpacity={0.88}
-              onPress={() => {
-                const v = soundMenuVideo;
-                if (!v) return;
-                const music = (v.music || 'Son original').trim().slice(0, 200);
-                closeSoundMenu();
-                router.push({ pathname: '/sound-feed', params: { title: music } });
-              }}
-            >
-              <Ionicons name="albums-outline" size={20} color="#FFF" />
-              <Text style={styles.soundModalBtnPrimaryText}>Voir les vidéos avec ce son</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.soundModalBtnPrimary, { marginTop: 10, backgroundColor: isAuthenticated ? Colors.primary : 'rgba(255,255,255,0.2)' }]}
-              activeOpacity={0.88}
-              onPress={() => {
-                const v = soundMenuVideo;
-                if (!v) return;
-                const music = (v.music || 'Son original').trim().slice(0, 200);
-                closeSoundMenu();
-                if (!isAuthenticated) {
-                  router.push('/(auth)/login');
-                  return;
-                }
-                router.push({
-                  pathname: '/(tabs)/create',
-                  params: { useSoundTitle: music, useSoundFromVideoId: v.id },
-                } as any);
-              }}
-            >
-              <Ionicons name="add-circle-outline" size={22} color="#FFF" />
-              <Text style={styles.soundModalBtnPrimaryText}>{isAuthenticated ? 'Utiliser ce son' : 'Se connecter pour utiliser ce son'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.soundModalCancel} onPress={closeSoundMenu} accessibilityLabel="Fermer">
-              <Text style={styles.soundModalCancelText}>Annuler</Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  header: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.lg, zIndex: 100 },
-  headerSearchBtn: { position: 'absolute', left: Spacing.lg, top: 0, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerTabs: { flexDirection: 'row', alignItems: 'center' },
-  headerDivider: { width: 1, height: 16, backgroundColor: 'rgba(255,255,255,0.3)', marginHorizontal: Spacing.sm },
-  headerTab: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
-  headerTabActive: { },
-  headerTabText: { color: 'rgba(255,255,255,0.6)', fontSize: FontSizes.lg, fontWeight: '600' },
-  headerTabTextActive: { color: '#FFF', fontWeight: 'bold' },
-  headerRight: { position: 'absolute', right: Spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  headerIconBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 5 },
+  header: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: Spacing.lg, zIndex: 100 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
+  friendsHeaderTitle: { color: '#FFF', fontSize: FontSizes.lg, fontWeight: '800', flex: 1, minWidth: 0 },
+  diversifiedSubtitle: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '500', marginTop: 2 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
+  /** Entrée Live type TikTok : cadre « écran » avec LIVE dedans. */
+  headerLiveTiktokWrap: {
+    position: 'relative',
+    width: 48,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerLiveTvFrame: {
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    minWidth: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.15)',
+  },
+  headerLiveTvLabel: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+  },
+  headerLiveOnAirDot: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: Colors.primary,
+    borderWidth: 1.5,
+    borderColor: '#000',
+  },
+  headerTabs: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 0,
+    paddingHorizontal: 2,
+    gap: 2,
+  },
+  headerTabTight: { paddingHorizontal: 6, paddingVertical: Spacing.sm, alignItems: 'center' },
+  headerTabTextTiktok: {
+    color: 'rgba(255,255,255,0.60)',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  headerTabTextTiktokActive: { color: '#FFFFFF', fontWeight: '700' },
+  headerTabUnderline: {
+    marginTop: 3,
+    height: 2,
+    width: 20,
+    borderRadius: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 0, flexShrink: 0 },
+  headerIconBtn: { flexDirection: 'row', alignItems: 'center', minWidth: 44, minHeight: 44, paddingHorizontal: 4, justifyContent: 'center' },
   headerNotifDot: { position: 'absolute', top: 2, right: 2, width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#FF3D00', borderWidth: 1, borderColor: '#000' },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF0000', marginRight: 4 },
-  liveText: { color: '#FF4444', fontSize: FontSizes.xs, fontWeight: 'bold' },
   feedListClip: { flex: 1, overflow: 'hidden', backgroundColor: '#000' },
+  feedListInner: { flex: 1, minHeight: 0 },
   feedList: { flex: 1, overflow: 'hidden', backgroundColor: '#000' },
   /** `width: 100 %` évite un écart vs la cellule FlashList (sous-pixels) qui montrait les bords des slides voisines. */
   videoContainer: { width: '100%', alignSelf: 'stretch', position: 'relative', backgroundColor: '#000', overflow: 'hidden' },
@@ -1207,37 +3315,174 @@ const styles = StyleSheet.create({
   heartAnimation: { position: 'absolute', alignSelf: 'center', top: '35%' },
   topGradient: { position: 'absolute', top: 0, left: 0, right: 0, height: 120 },
   bottomGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 250 },
+  pollOverlay: { position: 'absolute', left: Spacing.md, right: 86, zIndex: 18, elevation: 18 },
+  reactionsTriggerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    marginBottom: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  reactionsTriggerText: {
+    color: 'rgba(255,255,255,0.95)',
+    fontSize: FontSizes.sm,
+    fontWeight: '700',
+  },
+  reactionsTriggerDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: Colors.primary,
+    marginLeft: 2,
+  },
+  similarPill: {
+    position: 'absolute',
+    alignSelf: 'center',
+    bottom: '30%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 22,
+    backgroundColor: 'rgba(28,28,28,0.78)',
+    zIndex: 24,
+    elevation: 24,
+  },
+  similarPillIconBox: {
+    width: 26,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  similarPillText: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+  similarModalRoot: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)' },
+  /** Colonne : aperçu au-dessus, feuille en bas (évite que `flex:1` sur l’aperçu écrase la grille sur le web). */
+  similarModalColumn: { flex: 1, justifyContent: 'flex-end' },
+  similarModalPreviewArea: {
+    flex: 1,
+    minHeight: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 40,
+  },
+  similarModalClose: { position: 'absolute', left: 16, top: 48, zIndex: 30, padding: 8 },
+  similarPreviewFrame: {
+    width: 128,
+    height: 200,
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.95)',
+  },
+  similarPreviewCorners: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 0,
+  },
+  similarPreviewImage: { width: '100%', height: '100%' },
+  similarSheet: {
+    backgroundColor: '#FAFAFA',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  similarGridScroll: { flex: 1, minHeight: 120 },
+  similarGridScrollContent: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    gap: 8,
+    rowGap: 14,
+    paddingBottom: 24,
+    width: '100%',
+    maxWidth: 560,
+  },
+  similarSheetGrab: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    marginBottom: 10,
+  },
+  similarSheetTitle: { fontSize: 17, fontWeight: '800', color: '#111', textAlign: 'center' },
+  similarSheetSubtitle: {
+    fontSize: 13,
+    color: 'rgba(0,0,0,0.55)',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  similarEmpty: { textAlign: 'center', color: '#666', marginTop: 20, fontSize: 14 },
+  similarCard: { borderRadius: 10, overflow: 'hidden', backgroundColor: '#FFF' },
+  similarCardImage: {
+    width: '100%',
+    minHeight: 168,
+    aspectRatio: 3 / 4,
+    backgroundColor: '#EAEAEA',
+  },
+  similarCardImagePlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  similarCardPlayBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  similarCardTitle: { fontSize: 12, fontWeight: '700', color: '#111', marginTop: 6, paddingHorizontal: 4 },
+  similarCardMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 4,
+    paddingBottom: 8,
+    marginTop: 4,
+  },
+  similarCardCreator: { fontSize: 11, color: '#444', maxWidth: '55%' },
+  similarCardLikes: { fontSize: 11, color: '#666', marginLeft: 2 },
+  reactionSheetRoot: { flex: 1, justifyContent: 'flex-end' },
+  reactionSheetDim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+  reactionSheetPanel: {
+    backgroundColor: '#141418',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  reactionSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  reactionSheetTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '800' },
+  reactionBurst: { position: 'absolute', alignSelf: 'center', top: '32%', left: 0, right: 0, alignItems: 'center', zIndex: 25 },
+  reactionBurstEmoji: { fontSize: 56, textAlign: 'center' },
+  remixCredit: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: FontSizes.sm,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
   sponsoredBadge: { position: 'absolute', top: 70, left: Spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,107,0,0.85)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: BorderRadius.pill },
   sponsoredText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
   actions: { position: 'absolute', right: 10, alignItems: 'center', gap: 16, zIndex: 20, elevation: 20 },
-  soundModalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'flex-end',
-  },
-  soundModalSheet: {
-    backgroundColor: '#1a1a24',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  soundModalTitle: { color: 'rgba(255,255,255,0.55)', fontSize: FontSizes.xs, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  soundModalSubtitle: { color: '#FFF', fontSize: FontSizes.lg, fontWeight: '700', marginTop: 6, marginBottom: Spacing.lg },
-  soundModalBtnPrimary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    paddingVertical: 14,
-    borderRadius: BorderRadius.lg,
-  },
-  soundModalBtnPrimaryText: { color: '#FFF', fontSize: FontSizes.md, fontWeight: '700' },
-  soundModalCancel: { alignItems: 'center', paddingVertical: 16 },
-  soundModalCancelText: { color: 'rgba(255,255,255,0.65)', fontSize: FontSizes.md, fontWeight: '600' },
   avatarContainer: { marginBottom: 8 },
   avatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: '#FFF' },
   followBadge: { position: 'absolute', bottom: -6, alignSelf: 'center', width: 20, height: 20, borderRadius: 10, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#000' },
@@ -1245,7 +3490,7 @@ const styles = StyleSheet.create({
   actionText: { color: '#FFF', fontSize: 12, marginTop: 2, fontWeight: '500', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   musicDisc: { width: 40, height: 40, borderRadius: 20, borderWidth: 6, borderColor: '#333', marginTop: 8, overflow: 'hidden' },
   musicDiscImage: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 14, overflow: 'hidden' },
-  bottomInfo: { position: 'absolute', left: Spacing.lg, right: 70, zIndex: 20, elevation: 20 },
+  bottomInfo: { position: 'absolute', left: Spacing.lg, right: 70, bottom: 24, zIndex: 20, elevation: 20 },
   userRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: Spacing.sm },
   username: { color: '#FFF', fontSize: FontSizes.md, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   followBtn: { backgroundColor: Colors.primary, paddingHorizontal: Spacing.md, paddingVertical: 3, borderRadius: BorderRadius.sm },
@@ -1271,7 +3516,87 @@ const styles = StyleSheet.create({
   },
   musicRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   musicText: { color: '#FFF', fontSize: FontSizes.sm, flex: 1 },
-  loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+  /** Zone tactile large + piste épaisse + thumb (style TikTok / PWA). */
+  videoProgressHit: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 45,
+    elevation: 45,
+    paddingTop: 14,
+    paddingBottom: 4,
+    justifyContent: 'flex-end',
+  },
+  videoProgressTrackWrap: {
+    width: '100%',
+  },
+  videoProgressTrack: {
+    position: 'relative',
+    height: 5,
+    width: '100%',
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.38)',
+    overflow: 'visible',
+  },
+  videoProgressFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+  },
+  videoProgressThumb: {
+    position: 'absolute',
+    top: '50%',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginTop: -6,
+    backgroundColor: '#FFFFFF',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.45)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 6,
+  },
+  videoProgressThumbScrubbing: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    marginTop: -8,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.95)',
+  },
+  scrubPreviewContainer: {
+    position: 'absolute',
+    left: Spacing.lg,
+    bottom: 72,
+    zIndex: 55,
+    elevation: 55,
+    alignItems: 'center',
+  },
+  scrubPreviewFrame: {
+    width: 92,
+    height: 148,
+    borderRadius: BorderRadius.md,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.95)',
+    overflow: 'hidden',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  scrubPreviewVideo: { width: '100%', height: '100%' },
+  scrubPreviewTimeText: {
+    marginTop: 6,
+    color: '#FFF',
+    fontSize: FontSizes.sm,
+    fontWeight: '700',
+    textShadowColor: 'rgba(0,0,0,0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' },
+  skeletonLayer: { ...StyleSheet.absoluteFillObject, zIndex: 4, backgroundColor: Colors.background },
   // Modals
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   shareHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.border, alignSelf: 'center', marginBottom: Spacing.md },
@@ -1284,15 +3609,55 @@ const styles = StyleSheet.create({
   commentContent: { flex: 1 },
   commentUser: { color: Colors.textSecondary, fontSize: FontSizes.sm, fontWeight: '600', marginBottom: 2 },
   commentText: { color: Colors.text, fontSize: FontSizes.md, marginBottom: 4 },
-  commentMeta: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  commentMetaColumn: { gap: 6, alignSelf: 'stretch' },
+  commentMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: Spacing.md },
   commentTime: { color: Colors.textMuted, fontSize: FontSizes.xs },
   commentReply: {},
   commentReplyText: { color: Colors.textSecondary, fontSize: FontSizes.xs, fontWeight: '600' },
-  commentLikeBtn: { alignItems: 'center', justifyContent: 'center', gap: 2 },
+  commentLikeBtn: { alignItems: 'center', justifyContent: 'center', gap: 2, alignSelf: 'flex-start' },
   commentLikeCount: { color: Colors.textSecondary, fontSize: 10 },
+  commentPinnedBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+  },
+  commentPinnedBadgeText: { color: '#fcd34d', fontSize: 10, fontWeight: '600' },
+  commentReactionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 2,
+    alignSelf: 'stretch',
+  },
+  commentReactionHit: {
+    minWidth: 36,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+    paddingVertical: 2,
+  },
+  commentReactionHitActive: {
+    backgroundColor: 'rgba(255, 107, 0, 0.28)',
+    borderRadius: BorderRadius.md,
+  },
+  commentReactionEmoji: { fontSize: 16 },
   commentInput: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.border, gap: Spacing.sm },
   commentInputAvatar: { width: 32, height: 32, borderRadius: 16 },
   commentTextInput: { flex: 1, backgroundColor: Colors.card || Colors.background, borderRadius: BorderRadius.pill, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, color: Colors.text, fontSize: FontSizes.md, maxHeight: 80 },
+  commentVoicePreviewBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 40,
+    minWidth: 0,
+  },
+  commentVoicePreviewPlayBtn: { padding: 4 },
+  commentVoicePreviewMeta: { color: Colors.textSecondary, fontSize: FontSizes.sm, fontWeight: '700', minWidth: 28 },
+  commentVoicePreviewInput: { flex: 1, minWidth: 0, maxHeight: 80 },
   commentRecordingBar: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.md, minHeight: 40 },
   commentRecordingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E53935', marginRight: Spacing.sm },
   commentRecordingText: { flex: 1, color: Colors.text, fontSize: FontSizes.sm },
@@ -1300,4 +3665,29 @@ const styles = StyleSheet.create({
   commentSendBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
   commentVoiceBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 8, borderRadius: BorderRadius.md, backgroundColor: 'rgba(255,107,0,0.12)' },
   commentVoiceLabel: { color: Colors.primary, fontSize: FontSizes.sm, fontWeight: '600' },
+  commentActionMenuOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  commentActionMenuSheet: {
+    backgroundColor: Colors.surface || '#1a1a2e',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 4,
+  },
+  commentActionMenuRow: { paddingVertical: 16, paddingHorizontal: Spacing.lg },
+  commentActionMenuSep: { height: StyleSheet.hairlineWidth, backgroundColor: Colors.border },
+  commentActionMenuText: { fontSize: FontSizes.md, color: Colors.text, fontWeight: '600' },
+  commentEditBlock: { marginBottom: 8 },
+  commentEditInput: {
+    backgroundColor: Colors.card || Colors.background,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    color: Colors.text,
+    fontSize: FontSizes.md,
+    minHeight: 44,
+    marginTop: 4,
+    textAlignVertical: 'top',
+  },
+  commentEditActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 16, marginTop: 8 },
+  commentEditBtn: { paddingVertical: 6, paddingHorizontal: 8 },
+  commentEditBtnTextMuted: { color: Colors.textMuted, fontWeight: '600' },
+  commentEditBtnTextPrimary: { color: Colors.primary, fontWeight: '700' },
 });

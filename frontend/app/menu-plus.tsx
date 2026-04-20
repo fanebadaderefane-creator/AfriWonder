@@ -14,13 +14,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
 import { useAuthStore } from '../src/store/authStore';
+import { goBackOrFallback } from '../src/utils/goBack';
 
 const SUPER_ADMIN_EMAIL = (
   process.env.EXPO_PUBLIC_SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com'
 ).toLowerCase();
 
-function isSuperAdmin(user: { email?: string } | null) {
-  return user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
+function isAdminUser(user: { email?: string; role?: string } | null) {
+  return (
+    user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL ||
+    user?.role === 'admin' ||
+    user?.role === 'super_admin' ||
+    user?.role === 'ADMIN'
+  );
 }
 
 type MenuRow = {
@@ -64,13 +70,17 @@ const MENU_SECTIONS: MenuSection[] = [
   },
   {
     title: 'SOCIAL & MESSAGERIE',
-    items: [{ label: 'Publications & Sondages', icon: 'bar-chart-outline', href: '/feed' }],
+    items: [
+      { label: 'Publications & Sondages', icon: 'bar-chart-outline', href: '/feed' },
+      { label: 'Défis', icon: 'flag-outline', href: '/challenges' },
+    ],
   },
   {
     title: 'CRÉATEURS & LIVE',
     items: [
       { label: 'Créer', icon: 'add-circle-outline', href: '/(tabs)/create' },
       { label: 'Outils créateurs', icon: 'sparkles-outline', href: '/creator/earnings' },
+      { label: 'Playlists', icon: 'albums-outline', href: '/playlists' },
       { label: 'Parrainage', icon: 'share-social-outline', href: '/referrals' },
       { label: 'Mes campagnes pub', icon: 'megaphone-outline', href: '/creator/ads', badge: 'Pub' },
     ],
@@ -91,6 +101,7 @@ const MENU_SECTIONS: MenuSection[] = [
   {
     title: 'PARAMÈTRES',
     items: [
+      { label: 'Settings and privacy', icon: 'settings-outline', href: '/settings/privacy' },
       { label: 'Paramètres', icon: 'settings-outline', href: '/settings' },
       { label: 'Statistiques', icon: 'stats-chart-outline', href: '/creator/earnings' },
       { label: 'Notifications', icon: 'notifications-outline', href: '/notifications' },
@@ -113,7 +124,7 @@ const MENU_SECTIONS: MenuSection[] = [
 export default function MenuPlusScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
-  const showAdmin = isSuperAdmin(user);
+  const showAdmin = isAdminUser(user);
 
   const sections = useMemo(
     () =>
@@ -132,7 +143,7 @@ export default function MenuPlusScreen() {
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.topBar}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => goBackOrFallback('/(tabs)')}
           style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.85 }]}
           accessibilityRole="button"
           accessibilityLabel="Retour"

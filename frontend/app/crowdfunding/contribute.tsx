@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, BorderRadius, FontSizes } from '../../src/theme/colors';
+import { Colors } from '../../src/theme/colors';
 import {
   SEED_PROJECTS,
   CROWDFUNDING_CATEGORIES,

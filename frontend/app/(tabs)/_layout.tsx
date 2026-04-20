@@ -1,32 +1,79 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Tabs } from 'expo-router';
-import { View, StyleSheet, TouchableOpacity, Platform, Text } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { View, StyleSheet, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius } from '../../src/theme/colors';
+import { MIN_TOUCH_TARGET } from '../../src/theme/designSystem';
+import { Colors } from '../../src/theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useAuthStore } from '../../src/store/authStore';
+import { isAdminUser } from '../../src/utils/adminAccess';
+import apiClient from '../../src/api/client';
+
+function useInboxUnreadTotal() {
+  const token = useAuthStore((s) => s.accessToken);
+  const [total, setTotal] = useState(0);
+
+  const refresh = useCallback(async () => {
+    if (!token) {
+      setTotal(0);
+      return;
+    }
+    try {
+      const res = await apiClient.get('/messages/conversations', { params: { page: 1, limit: 50 } });
+      const data = res.data?.data || res.data;
+      const convos = data?.conversations || [];
+      const sum = (Array.isArray(convos) ? convos : []).reduce(
+        (acc: number, c: { unread_count?: number }) => acc + (Number(c.unread_count) || 0),
+        0
+      );
+      setTotal(sum);
+    } catch {
+      setTotal(0);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void refresh();
+    const id = setInterval(() => void refresh(), 45000);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh])
+  );
+
+  return total;
+}
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = isAdminUser(user);
+  const inboxUnread = useInboxUnreadTotal();
+
+  const activeTint = '#FFFFFF';
+  const inactiveTint = 'rgba(255,255,255,0.55)';
 
   return (
     <Tabs
       screenOptions={{
-        /** Arrête le travail des onglets inactifs (vidéo / audio Accueil quand on va sur Découvrir, etc.). */
         freezeOnBlur: true,
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#0A0A0A',
-          borderTopWidth: 0.5,
-          borderTopColor: 'rgba(255,255,255,0.08)',
+          backgroundColor: '#000000',
+          borderTopWidth: 0,
           height: 65 + insets.bottom,
           paddingBottom: insets.bottom,
           paddingTop: 6,
           elevation: 0,
           shadowOpacity: 0,
         },
-        tabBarActiveTintColor: '#FFFFFF',
-        tabBarInactiveTintColor: '#666666',
+        tabBarActiveTintColor: activeTint,
+        tabBarInactiveTintColor: inactiveTint,
         tabBarShowLabel: true,
         tabBarLabelStyle: {
           fontSize: 10,
@@ -38,15 +85,21 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Accueil',
+          title: 'Home',
           tabBarIcon: ({ focused }) => (
             <View style={styles.tabIconContainer}>
-              <Ionicons
-                name={focused ? 'home' : 'home-outline'}
-                size={24}
-                color={focused ? '#FFFFFF' : '#666666'}
-              />
-              {focused && <View style={styles.activeIndicator} />}
+              <Ionicons name={focused ? 'home' : 'home-outline'} size={26} color={focused ? activeTint : inactiveTint} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="discover"
+        options={{
+          title: 'Discover',
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.tabIconContainer}>
+              <Ionicons name={focused ? 'compass' : 'compass-outline'} size={26} color={focused ? activeTint : inactiveTint} />
             </View>
           ),
         }}
@@ -54,15 +107,11 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="explore"
         options={{
-          title: 'Decouvrir',
+          title: 'Explorer',
+          href: null,
           tabBarIcon: ({ focused }) => (
             <View style={styles.tabIconContainer}>
-              <Ionicons
-                name={focused ? 'compass' : 'compass-outline'}
-                size={24}
-                color={focused ? '#FFFFFF' : '#666666'}
-              />
-              {focused && <View style={styles.activeIndicator} />}
+              <Ionicons name={focused ? 'telescope' : 'telescope-outline'} size={26} color={focused ? activeTint : inactiveTint} />
             </View>
           ),
         }}
@@ -74,14 +123,12 @@ export default function TabsLayout() {
           tabBarIcon: () => (
             <View style={styles.createWrapper}>
               <LinearGradient
-                colors={['#FF6B00', '#FF3D00', '#FF006E']}
+                colors={['#00F2EA', '#FF2D55']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
-                style={styles.createGradient}
+                style={styles.createOuterRing}
               >
-                <View style={styles.createInner}>
-                  <Ionicons name="add" size={30} color="#FFFFFF" />
-                </View>
+                <Ionicons name="add" size={30} color="#FFFFFF" />
               </LinearGradient>
             </View>
           ),
@@ -89,18 +136,21 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="market"
+        name="messages"
         options={{
-          title: 'Market',
+          title: 'Inbox',
           tabBarIcon: ({ focused }) => (
             <View style={styles.tabIconContainer}>
               <Ionicons
-                name={focused ? 'bag' : 'bag-outline'}
-                size={24}
-                color={focused ? '#FFFFFF' : '#666666'}
+                name={focused ? 'file-tray' : 'file-tray-outline'}
+                size={26}
+                color={focused ? activeTint : inactiveTint}
               />
-              {focused && <View style={styles.activeIndicator} />}
-              <View style={styles.badgeDot} />
+              {inboxUnread > 0 ? (
+                <View style={styles.inboxBadge}>
+                  <Text style={styles.inboxBadgeText}>{inboxUnread > 99 ? '99+' : String(inboxUnread)}</Text>
+                </View>
+              ) : null}
             </View>
           ),
         }}
@@ -108,16 +158,51 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profil',
+          title: 'Profile',
           tabBarIcon: ({ focused }) => (
             <View style={styles.tabIconContainer}>
-              <View style={[styles.profileIconRing, focused && styles.profileIconRingActive]}>
-                <Ionicons
-                  name={focused ? 'person' : 'person-outline'}
-                  size={20}
-                  color={focused ? '#FFFFFF' : '#666666'}
-                />
-              </View>
+              <Ionicons name={focused ? 'person' : 'person-outline'} size={26} color={focused ? activeTint : inactiveTint} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="friends"
+        options={{
+          title: 'Friends',
+          href: null,
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.tabIconContainer}>
+              <Ionicons name={focused ? 'people' : 'people-outline'} size={24} color={focused ? activeTint : inactiveTint} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="market"
+        options={{
+          title: 'Market',
+          href: null,
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.tabIconContainer}>
+              <Ionicons name={focused ? 'bag' : 'bag-outline'} size={24} color={focused ? activeTint : inactiveTint} />
+              <View style={[styles.badgeDot, { borderColor: '#000000' }]} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="admin"
+        options={{
+          title: 'Admin',
+          href: isAdmin ? '/(tabs)/admin' : null,
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.tabIconContainer}>
+              <Ionicons
+                name={focused ? 'shield-checkmark' : 'shield-checkmark-outline'}
+                size={24}
+                color={focused ? activeTint : inactiveTint}
+              />
             </View>
           ),
         }}
@@ -131,37 +216,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    minWidth: MIN_TOUCH_TARGET,
+    minHeight: MIN_TOUCH_TARGET,
   },
-  activeIndicator: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+  inboxBadge: {
+    position: 'absolute',
+    top: -2,
+    right: 2,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
     backgroundColor: Colors.primary,
-    marginTop: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#000',
+  },
+  inboxBadgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '800',
   },
   createWrapper: {
-    marginTop: -18,
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: MIN_TOUCH_TARGET,
+    minHeight: MIN_TOUCH_TARGET,
   },
-  createGradient: {
+  createOuterRing: {
     width: 50,
-    height: 50,
-    borderRadius: 16,
+    height: 38,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#FF6B00',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
+    shadowColor: '#FF2D55',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.45,
+    shadowRadius: 6,
     elevation: 8,
-  },
-  createInner: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   badgeDot: {
     position: 'absolute',
@@ -172,19 +265,5 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: '#FF3D00',
     borderWidth: 1.5,
-    borderColor: '#0A0A0A',
-  },
-  profileIconRing: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1.5,
-    borderColor: '#444',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileIconRingActive: {
-    borderColor: Colors.primary,
-    borderWidth: 2,
   },
 });
