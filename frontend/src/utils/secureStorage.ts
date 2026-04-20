@@ -2,8 +2,11 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Platform-aware secure storage
-// Uses SecureStore on native, AsyncStorage on web
+/**
+ * Stockage persistant des secrets / session (tokens, utilisateur sérialisé, etc.).
+ * - **Natif** : `expo-secure-store` (Keychain / Keystore).
+ * - **Web** : `@react-native-async-storage/async-storage` → `localStorage` (survit aux rechargements et fermetures d’onglet).
+ */
 export const secureStorage = {
   async getItem(key: string): Promise<string | null> {
     try {

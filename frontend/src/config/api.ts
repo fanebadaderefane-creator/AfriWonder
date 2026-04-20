@@ -5,8 +5,16 @@
 export const API_ROUTES = {
   LOGIN: '/auth/login',
   REGISTER: '/auth/register',
+  LOGOUT: '/auth/logout',
   REFRESH: '/auth/refresh',
   ME: '/auth/me',
+  GOOGLE_OAUTH: '/auth/google',
+  FACEBOOK_OAUTH: '/auth/facebook',
+  RESET_PASSWORD: '/auth/password/reset',
+  TWO_FA_ENABLE: '/auth/2fa/enable',
+  TWO_FA_VERIFY: '/auth/2fa/verify',
+
+  FEED: '/feed',
 
   VIDEOS: '/videos',
   VIDEO_LIKE: (id: string) => `/videos/${id}/like`,
@@ -14,10 +22,22 @@ export const API_ROUTES = {
   VIDEO_COMMENTS: (id: string) => `/videos/${id}/comments`,
 
   LIVES: '/live',
+  LIVE_START: '/live/start',
   LIVE_END: (id: string) => `/live/${id}/end`,
+  LIVE_GIFT: (id: string) => `/live/${id}/gift`,
+  LIVE_REPLAY: (id: string) => `/live/${id}/replay`,
+  LIVE_HIGHLIGHTS: (id: string) => `/live/${id}/highlights`,
 
   PRODUCTS: '/products',
   ORDERS: '/orders',
+  PAYMENTS_STRIPE: '/payments/stripe',
+  PAYMENTS_ORANGE: '/payments/orange-money',
+  PAYMENTS_WAVE: '/payments/wave',
+  PAYMENTS_MTN: '/payments/mobile-money',
+
+  BADGES: '/badges',
+  LEADERBOARD: '/leaderboard',
+  ACHIEVEMENTS: '/achievements',
 
   ADMIN_DASHBOARD: '/admin/dashboard',
   ADMIN_ANALYTICS_OVERVIEW: '/admin/analytics/overview',
@@ -36,9 +56,17 @@ export const API_ROUTES = {
   ADMIN_VERIFICATIONS: '/admin/verifications',
   ADMIN_MONETIZATION_REQUESTS: '/admin/monetization-requests',
   MODERATION_REPORTS: '/moderation/reports',
+  MODERATION_REPORT_REVIEW: (id: string) => `/moderation/reports/${id}/review`,
   ADMIN_BROADCAST: '/admin/broadcast-notification',
+  ADMIN_ANALYTICS: '/admin/analytics',
+  ADMIN_REPORTS: '/admin/reports',
+  ADMIN_MODERATION: '/admin/moderation',
+  ADMIN_TRANSACTIONS_EXPORT: '/admin/transactions/export',
+  ADMIN_CREATORS: '/admin/creators',
 
+  MOBILE_HEALTH: '/mobile/health',
   MOBILE_PUSH_TOKEN: '/mobile/push-token',
+  MOBILE_PUSH_TOKEN_DELETE: (token: string) => `/mobile/push-token/${encodeURIComponent(token)}`,
   MOBILE_SYNC: '/mobile/sync',
   MOBILE_DOWNLOAD_URL: (id: string) => `/mobile/videos/${id}/download-url`,
   MOBILE_RESOLVE_DEEPLINK: '/mobile/resolve-deeplink',

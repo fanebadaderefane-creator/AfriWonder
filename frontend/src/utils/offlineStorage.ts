@@ -1,7 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const CACHE_PREFIX = 'afriwonder_cache_';
-const CACHE_META_KEY = CACHE_PREFIX + 'meta';
 const DEFAULT_TTL = 1000 * 60 * 30; // 30 minutes
 
 interface CacheMeta {
@@ -69,7 +68,7 @@ export const OfflineStorage = {
         if (val) estimatedBytes += val.length * 2;
       }
       return { keys: cacheKeys.length, estimatedBytes };
-    } catch (e) {
+    } catch (_e) {
       return { keys: 0, estimatedBytes: 0 };
     }
   },

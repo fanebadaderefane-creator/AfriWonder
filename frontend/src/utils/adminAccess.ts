@@ -6,7 +6,13 @@ export const SUPER_ADMIN_EMAIL = (
 export function isAdminUser(user: { role?: string; email?: string } | null | undefined): boolean {
   if (!user) return false;
   const r = String(user.role || '').toLowerCase();
-  if (r === 'admin' || r === 'super_admin' || r === 'finance_admin' || r === 'moderation_admin') {
+  if (
+    r === 'admin' ||
+    r === 'super_admin' ||
+    r === 'finance_admin' ||
+    r === 'moderation_admin' ||
+    r === 'moderator'
+  ) {
     return true;
   }
   if (user.role === 'ADMIN') return true;
