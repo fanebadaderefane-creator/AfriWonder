@@ -61,4 +61,41 @@ describe('Live API (streaming + gifts)', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data).toBeDefined();
   });
+
+  it('POST /api/live/:id/chapters/:chapterId/republish — vidéo feed (replay + trim)', async () => {
+    const stream = await prisma.liveStream.create({
+      data: {
+        creator_id: user.id,
+        creator_name: user.full_name || user.username || 'Live User',
+        title: 'Live ended republish test',
+        status: 'ended',
+        stream_url: 'https://test.example/stream',
+        room_id: `room-repub-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        tags: [],
+        replay_url: 'https://cdn.example/replay-test.mp4',
+        duration_minutes: 5,
+        thumbnail_url: 'https://cdn.example/thumb.jpg',
+      },
+    });
+    const chapter = await prisma.liveReplayChapter.create({
+      data: {
+        live_id: stream.id,
+        title: 'Clip QA',
+        start_seconds: 12,
+        end_seconds: 48,
+      },
+    });
+    const res = await request(app)
+      .post(`/api/live/${stream.id}/chapters/${chapter.id}/republish`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data?.id).toBeDefined();
+    expect(res.body.data.trim_start_sec).toBe(12);
+    expect(res.body.data.trim_end_sec).toBe(48);
+    expect(res.body.data.video_url).toContain('replay-test');
+    await prisma.video.deleteMany({ where: { id: res.body.data.id } });
+    await prisma.liveReplayChapter.deleteMany({ where: { live_id: stream.id } });
+    await prisma.liveStream.deleteMany({ where: { id: stream.id } });
+  });
 });

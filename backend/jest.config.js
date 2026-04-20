@@ -1,3 +1,4 @@
+/** Lancer les tests avec `npm test` (ou `node --experimental-vm-modules node_modules/jest/bin/jest.js …`) : le preset ESM + `import.meta` dans le code source exigent ce flag, pas seul `npx jest`. */
 export default {
   preset: 'ts-jest/presets/default-esm',
   extensionsToTreatAsEsm: ['.ts'],

@@ -8,7 +8,9 @@ import app from '../src/app.js';
 import { prisma } from './setup.js';
 import bcrypt from 'bcryptjs';
 
-const TEST_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'admin@test.example.com';
+function uniqueEmail(prefix: string) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}@test.example.com`;
+}
 
 describe('Admin API', () => {
   let adminUser: any;
@@ -18,9 +20,12 @@ describe('Admin API', () => {
 
   beforeEach(async () => {
     const hashed = await bcrypt.hash('Test123!@#', 10);
+    const adminEmail = uniqueEmail('admin');
+    // requireAnyAdmin whitelist: align env with the created admin user email.
+    process.env.SUPER_ADMIN_EMAIL = adminEmail;
     adminUser = await prisma.user.create({
       data: {
-        email: TEST_ADMIN_EMAIL,
+        email: adminEmail,
         password_hash: hashed,
         username: `admin${Date.now()}`,
         full_name: 'Admin User',
@@ -29,7 +34,7 @@ describe('Admin API', () => {
     });
     normalUser = await prisma.user.create({
       data: {
-        email: `norm${Date.now()}@example.com`,
+        email: uniqueEmail('norm'),
         password_hash: hashed,
         username: `norm${Date.now()}`,
         full_name: 'Normal User',
@@ -39,15 +44,26 @@ describe('Admin API', () => {
     const adminLogin = await request(app)
       .post('/api/auth/login')
       .send({ email: adminUser.email, password: 'Test123!@#' });
+    expect(adminLogin.status).toBe(200);
     adminToken = adminLogin.body.data?.accessToken || '';
+    expect(adminToken).toBeTruthy();
     const normLogin = await request(app)
       .post('/api/auth/login')
       .send({ email: normalUser.email, password: 'Test123!@#' });
+    expect(normLogin.status).toBe(200);
     normalToken = normLogin.body.data?.accessToken || '';
+    expect(normalToken).toBeTruthy();
   });
 
   afterEach(async () => {
-    await prisma.user.deleteMany({});
+    // Ne jamais purger toute la DB de test: d'autres suites s'appuient sur des fixtures/seed.
+    // On nettoie uniquement ce que cette suite a créé.
+    if (adminUser?.id) {
+      await prisma.user.delete({ where: { id: adminUser.id } }).catch(() => {});
+    }
+    if (normalUser?.id) {
+      await prisma.user.delete({ where: { id: normalUser.id } }).catch(() => {});
+    }
   });
 
   describe('GET /api/admin/dashboard', () => {

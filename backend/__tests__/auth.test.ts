@@ -23,13 +23,16 @@ describe('Auth API', () => {
   });
 
   afterEach(async () => {
-    await prisma.user.deleteMany({});
+    // Ne pas purger toute la DB: garder la fixture plateforme et éviter des effets de bord inter-suites.
+    const platformId = process.env.PLATFORM_USER_ID || '00000000-0000-0000-0000-000000000000';
+    await prisma.user.deleteMany({ where: { id: { not: platformId } } });
   });
 
   describe('POST /api/auth/register', () => {
     it('devrait créer un nouvel utilisateur', async () => {
       const response = await request(app)
         .post('/api/auth/register')
+        .set('User-Agent', process.env.TEST_USER_AGENT || 'Mozilla/5.0')
         .send({
           email: 'newuser@example.com',
           password: 'NewPass123!@#',
@@ -48,6 +51,7 @@ describe('Auth API', () => {
       const plainPassword = 'SecretPass456!@#';
       await request(app)
         .post('/api/auth/register')
+        .set('User-Agent', process.env.TEST_USER_AGENT || 'Mozilla/5.0')
         .send({
           email: 'hashcheck@example.com',
           password: plainPassword,
@@ -68,6 +72,7 @@ describe('Auth API', () => {
     it('devrait rejeter un email déjà utilisé', async () => {
       const response = await request(app)
         .post('/api/auth/register')
+        .set('User-Agent', process.env.TEST_USER_AGENT || 'Mozilla/5.0')
         .send({
           email: testUser.email, // Utiliser l'email de l'utilisateur créé dans beforeEach
           password: 'Test123!@#',
@@ -82,6 +87,7 @@ describe('Auth API', () => {
     it('devrait valider les données requises', async () => {
       const response = await request(app)
         .post('/api/auth/register')
+        .set('User-Agent', process.env.TEST_USER_AGENT || 'Mozilla/5.0')
         .send({
           email: 'invalid-email'
         });
@@ -103,6 +109,7 @@ describe('Auth API', () => {
 
       const response = await request(app)
         .post('/api/auth/login')
+        .set('User-Agent', process.env.TEST_USER_AGENT || 'Mozilla/5.0')
         .send({
           email: testUser.email,
           password: 'Test123!@#'
@@ -118,6 +125,7 @@ describe('Auth API', () => {
     it('devrait rejeter un mot de passe incorrect', async () => {
       const response = await request(app)
         .post('/api/auth/login')
+        .set('User-Agent', process.env.TEST_USER_AGENT || 'Mozilla/5.0')
         .send({
           email: testUser.email,
           password: 'WrongPassword123!'
@@ -130,6 +138,7 @@ describe('Auth API', () => {
     it('devrait rejeter un email inexistant', async () => {
       const response = await request(app)
         .post('/api/auth/login')
+        .set('User-Agent', process.env.TEST_USER_AGENT || 'Mozilla/5.0')
         .send({
           email: 'nonexistent@example.com',
           password: 'Test123!@#'
@@ -153,6 +162,7 @@ describe('Auth API', () => {
       // Se connecter d'abord
       const loginResponse = await request(app)
         .post('/api/auth/login')
+        .set('User-Agent', process.env.TEST_USER_AGENT || 'Mozilla/5.0')
         .send({
           email: testUser.email,
           password: 'Test123!@#'
@@ -202,6 +212,7 @@ describe('Auth API', () => {
       // Se connecter d'abord
       const loginResponse = await request(app)
         .post('/api/auth/login')
+        .set('User-Agent', process.env.TEST_USER_AGENT || 'Mozilla/5.0')
         .send({
           email: testUser.email,
           password: 'Test123!@#'
@@ -214,6 +225,7 @@ describe('Auth API', () => {
 
       const response = await request(app)
         .post('/api/auth/refresh')
+        .set('User-Agent', process.env.TEST_USER_AGENT || 'Mozilla/5.0')
         .send({
           refreshToken: refreshToken
         });
@@ -231,6 +243,44 @@ describe('Auth API', () => {
         });
 
       expect(response.status).toBe(401);
+    });
+  });
+
+  describe('POST /api/auth/oauth/google (mobile)', () => {
+    const originalFetch = global.fetch;
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
+
+    it('devrait retourner des jetons avec un access_token Google simulé', async () => {
+      const uniqueEmail = `oauth_g_${Date.now()}@example.com`;
+      global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+        const u = String(input);
+        if (u.includes('googleapis.com/oauth2/v2/userinfo')) {
+          return {
+            ok: true,
+            json: async () => ({
+              id: 'google-test-sub-1',
+              email: uniqueEmail,
+              name: 'OAuth Google Test',
+              picture: 'https://example.com/avatar.png',
+            }),
+          } as Response;
+        }
+        return originalFetch(input);
+      }) as unknown as typeof fetch;
+
+      const res = await request(app)
+        .post('/api/auth/oauth/google')
+        .set('User-Agent', process.env.TEST_USER_AGENT || 'Mozilla/5.0')
+        .send({ accessToken: 'fake-google-access-token-1234567890' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data?.user?.email).toBe(uniqueEmail);
+      expect(res.body.data).toHaveProperty('accessToken');
+      expect(res.body.data).toHaveProperty('refreshToken');
     });
   });
 });

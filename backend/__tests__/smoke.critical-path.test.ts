@@ -44,6 +44,7 @@ describe('Smoke — Parcours critique', () => {
   it('3. Register', async () => {
     const res = await request(app)
       .post('/api/auth/register')
+      .set('User-Agent', process.env.TEST_USER_AGENT || 'Mozilla/5.0')
       .send({
         email: `new${Date.now()}@example.com`,
         password: 'NewPass123!@#',
@@ -57,6 +58,7 @@ describe('Smoke — Parcours critique', () => {
   it('4. Login', async () => {
     const res = await request(app)
       .post('/api/auth/login')
+      .set('User-Agent', process.env.TEST_USER_AGENT || 'Mozilla/5.0')
       .send({ email: testUser.email, password: 'Smoke123!@#' });
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveProperty('accessToken');

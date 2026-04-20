@@ -82,6 +82,11 @@ FACEBOOK_APP_ID=
 FACEBOOK_APP_SECRET=
 FACEBOOK_REDIRECT_URI=http://localhost:3000/api/auth/facebook/callback
 
+# Apple — Sign in with Apple (mobile Expo : POST /api/auth/oauth/apple)
+# Audience JWT = bundle iOS (ex. com.afriwonder.app) ou Services ID si vous l’utilisez à la place
+APPLE_IOS_CLIENT_ID=com.afriwonder.app
+APPLE_CLIENT_ID=
+
 # ============================================
 # PAYMENTS
 # ============================================

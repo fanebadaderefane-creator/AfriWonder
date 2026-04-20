@@ -50,4 +50,14 @@ describe('Messages API (chat)', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data).toBeDefined();
   });
+
+  it('GET /api/messages/conversations?inbox=requests returns 200', async () => {
+    const res = await request(app)
+      .get('/api/messages/conversations')
+      .query({ inbox: 'requests', page: 1, limit: 10 })
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data?.conversations)).toBe(true);
+  });
 });
