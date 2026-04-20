@@ -9,6 +9,8 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../../src/theme/colors';
 import apiClient from '../../src/api/client';
+import cartApi from '../../src/api/cartApi';
+import { featureFlags } from '../../src/config/featureFlags';
 
 // --- MOCK DATA ---
 const CATEGORIES = [
@@ -59,6 +61,28 @@ export default function MarketScreen() {
   const flashAnim = useRef(new Animated.Value(1)).current;
   const [realProducts, setRealProducts] = useState<any[]>([]);
   const [, setLoadingProducts] = useState(true);
+  const [productsError, setProductsError] = useState<string | null>(null);
+  const [cartCount, setCartCount] = useState(0);
+
+  // Vrai compteur du panier (remplace l'ancien badge en dur "3").
+  // Silencieux si non authentifié ou marketplace désactivé.
+  useEffect(() => {
+    if (!featureFlags.marketplace) return;
+    let mounted = true;
+    cartApi
+      .get()
+      .then((cart) => {
+        if (!mounted) return;
+        const count = (cart.items ?? []).reduce((s, i) => s + (i.quantity || 0), 0);
+        setCartCount(count);
+      })
+      .catch(() => {
+        // Ignorer (utilisateur non connecté / backend down) — on cache simplement le badge.
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const productWidth = (screenWidth - 48) / 2;
 
@@ -79,35 +103,41 @@ export default function MarketScreen() {
 
   const fetchProducts = async () => {
     setLoadingProducts(true);
+    setProductsError(null);
     try {
       const response = await apiClient.get('/products');
       const data = response.data?.data || response.data;
       const backendProducts = data?.products || [];
-      if (backendProducts.length > 0) {
-        const transformed = backendProducts.map((p: any) => ({
-          id: p.id,
-          name: p.name || '',
-          price: p.price || 0,
-          oldPrice: null,
-          image: p.images?.[0] || 'https://picsum.photos/300/400?random=99',
-          rating: p.seller?.seller_profile?.rating || 4.5,
-          reviews: p.seller?.seller_profile?.total_sales || 0,
-          seller: p.seller?.full_name || p.seller?.username || 'Vendeur',
-          sellerVerified: p.seller?.seller_profile?.is_verified || false,
-          freeDelivery: false,
-          isNew: new Date(p.created_at).getTime() > Date.now() - 30 * 24 * 60 * 60 * 1000,
-          isBestseller: (p.seller?.seller_profile?.total_sales || 0) > 20,
-          wishlisted: false,
-          description: p.description || '',
-          category: p.category || '',
-          currency: p.currency || 'XOF',
-          stock: p.stock || 0,
-          city: p.seller?.seller_profile?.city || '',
-        }));
-        setRealProducts(transformed);
-      }
+      const transformed = (backendProducts as any[]).map((p: any) => ({
+        id: p.id,
+        name: p.name || '',
+        price: p.price || 0,
+        oldPrice: null,
+        image: p.images?.[0] || null,
+        rating: p.seller?.seller_profile?.rating || 4.5,
+        reviews: p.seller?.seller_profile?.total_sales || 0,
+        seller: p.seller?.full_name || p.seller?.username || 'Vendeur',
+        sellerVerified: p.seller?.seller_profile?.is_verified || false,
+        freeDelivery: false,
+        isNew: new Date(p.created_at).getTime() > Date.now() - 30 * 24 * 60 * 60 * 1000,
+        isBestseller: (p.seller?.seller_profile?.total_sales || 0) > 20,
+        wishlisted: false,
+        description: p.description || '',
+        category: p.category || '',
+        currency: p.currency || 'XOF',
+        stock: p.stock || 0,
+        city: p.seller?.seller_profile?.city || '',
+      }));
+      setRealProducts(transformed);
     } catch (err) {
-      console.log('Using mock products for marketplace', err);
+      // Pas de fallback mock : on affiche un état d'erreur explicite plutôt
+      // que de faire croire à du contenu réel inexistant (audit du 20/04/2026).
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        || (err as { message?: string })?.message
+        || 'Impossible de charger les produits.';
+      setProductsError(msg);
+      setRealProducts([]);
     } finally {
       setLoadingProducts(false);
     }
@@ -130,8 +160,9 @@ export default function MarketScreen() {
     { id: 'free', label: 'Livr. gratuite', icon: 'car' },
   ];
 
-  // Use real products if loaded, fallback to mock
-  const displayProducts = realProducts.length > 0 ? realProducts : PRODUCTS;
+  // Source unique : produits du backend. En cas d'erreur, l'écran le signale
+  // explicitement (l'ancien fallback mock cachait les pannes API).
+  const displayProducts = realProducts;
 
   const filteredProducts = displayProducts.filter((p: any) => {
     const matchesFilter = activeFilter === 'all' ||
@@ -183,9 +214,11 @@ export default function MarketScreen() {
           </TouchableOpacity>
           <TouchableOpacity testID="cart-button" style={styles.headerActionBtn} onPress={() => router.push('/cart' as any)}>
             <Ionicons name="cart-outline" size={24} color="#FFF" />
-            <View style={styles.cartBadge}>
-              <Text style={styles.cartBadgeText}>3</Text>
-            </View>
+            {cartCount > 0 ? (
+              <View style={styles.cartBadge}>
+                <Text style={styles.cartBadgeText}>{cartCount > 99 ? '99+' : String(cartCount)}</Text>
+              </View>
+            ) : null}
           </TouchableOpacity>
         </View>
       </View>

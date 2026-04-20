@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, Share, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, Share, ActivityIndicator, Alert } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import apiClient from '../../src/api/client';
+import cartApi from '../../src/api/cartApi';
+import { featureFlags } from '../../src/config/featureFlags';
 
 const { width } = Dimensions.get('window');
 
@@ -34,6 +36,35 @@ export default function ProductDetailScreen() {
   const [quantity, setQuantity] = useState(1);
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
+  const [addingToCart, setAddingToCart] = useState(false);
+
+  const handleAddToCart = async (goToCart: boolean) => {
+    if (!product?.id) return;
+    if (!featureFlags.marketplace) {
+      Alert.alert(
+        'Bientôt disponible',
+        "Le panier marketplace sera activé prochainement. Merci de votre patience !"
+      );
+      return;
+    }
+    setAddingToCart(true);
+    try {
+      await cartApi.add(product.id, quantity);
+      if (goToCart) {
+        router.push('/cart' as any);
+      } else {
+        Alert.alert('Ajouté au panier', `${product.name} a bien été ajouté.`);
+      }
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        || (err as { message?: string })?.message
+        || 'Impossible d\'ajouter au panier.';
+      Alert.alert('Erreur', msg);
+    } finally {
+      setAddingToCart(false);
+    }
+  };
 
   useEffect(() => {
     const loadProduct = async () => {
@@ -254,11 +285,26 @@ export default function ProductDetailScreen() {
             color={isFavorite ? Colors.like : Colors.text}
           />
         </TouchableOpacity>
-        <TouchableOpacity testID="product-add-to-cart" style={styles.addToCartBtn} onPress={() => router.push('/cart')}>
-          <Ionicons name="cart" size={20} color={Colors.text} />
-          <Text style={styles.addToCartText}>Ajouter au panier</Text>
+        <TouchableOpacity
+          testID="product-add-to-cart"
+          style={[styles.addToCartBtn, addingToCart && { opacity: 0.6 }]}
+          onPress={() => handleAddToCart(false)}
+          disabled={addingToCart}
+        >
+          {addingToCart ? (
+            <ActivityIndicator color={Colors.text} />
+          ) : (
+            <>
+              <Ionicons name="cart" size={20} color={Colors.text} />
+              <Text style={styles.addToCartText}>Ajouter au panier</Text>
+            </>
+          )}
         </TouchableOpacity>
-        <TouchableOpacity style={styles.buyNowBtn}>
+        <TouchableOpacity
+          style={[styles.buyNowBtn, addingToCart && { opacity: 0.6 }]}
+          onPress={() => handleAddToCart(true)}
+          disabled={addingToCart}
+        >
           <Text style={styles.buyNowText}>Acheter</Text>
         </TouchableOpacity>
       </View>

@@ -24,7 +24,12 @@ function readEnvFlag(name: string, defaultValue: boolean): boolean {
  * Pour activer en prod, définir la variable d'env correspondante dans EAS Secrets.
  */
 export const featureFlags = {
-  /** Panier, checkout, orders. Aucun appel backend aujourd'hui (audit B5). */
+  /**
+   * Marketplace : panier, checkout, orders.
+   * Câblé sur `/api/cart`, `/api/orders`, `/api/addresses`, `/api/payments/*`.
+   * Désactivé par défaut tant que le backend prod n'est pas validé bout-en-bout :
+   * activer via `EXPO_PUBLIC_ENABLE_MARKETPLACE=1` dans EAS Secrets après QA.
+   */
   marketplace: readEnvFlag('EXPO_PUBLIC_ENABLE_MARKETPLACE', false),
   /** Contribution crowdfunding : projet local `SEED_PROJECTS` + OTP simulé (audit B6). */
   crowdfundingContribute: readEnvFlag('EXPO_PUBLIC_ENABLE_CROWDFUNDING_CONTRIBUTE', false),

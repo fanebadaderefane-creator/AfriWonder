@@ -1,34 +1,32 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+} from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
 import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
+import cartApi, { Cart, CartLineItem } from '../../src/api/cartApi';
 
-interface CartItem {
-  id: string;
-  name: string;
-  image: string;
-  price: number;
-  quantity: number;
-  seller: string;
-  size?: string;
-}
+type PaymentMethodId = 'orange_money' | 'wave' | 'wallet';
 
-const INITIAL_CART: CartItem[] = [
-  { id: 'c1', name: 'Robe Bogolan Premium', image: 'https://picsum.photos/100/100?random=90', price: 25000, quantity: 1, seller: 'Awa Mode', size: 'M' },
-  { id: 'c2', name: 'Bijoux traditionnels', image: 'https://picsum.photos/100/100?random=91', price: 15000, quantity: 2, seller: 'Artisanat Bamako' },
-  { id: 'c3', name: 'Huile de karite bio', image: 'https://picsum.photos/100/100?random=92', price: 3500, quantity: 1, seller: 'Bio Mali' },
-];
-
-const PAYMENT_METHODS = [
-  { id: 'orange', name: 'Orange Money', icon: 'phone-portrait', color: '#FF6B00' },
+const PAYMENT_METHODS: { id: PaymentMethodId; name: string; icon: keyof typeof Ionicons.glyphMap; color: string }[] = [
+  { id: 'orange_money', name: 'Orange Money', icon: 'phone-portrait', color: '#FF6B00' },
   { id: 'wave', name: 'Wave', icon: 'water', color: '#1DC1EC' },
-  { id: 'mtn', name: 'MTN MoMo', icon: 'phone-portrait', color: '#FFCC00' },
-  { id: 'card', name: 'Carte bancaire', icon: 'card', color: '#6C5CE7' },
+  { id: 'wallet', name: 'Mon portefeuille AfriWonder', icon: 'wallet', color: Colors.primary },
 ];
+
+const DELIVERY_FEE_FCFA = 1500;
 
 export default function CartScreen() {
   if (!featureFlags.marketplace) {
@@ -41,32 +39,183 @@ export default function CartScreen() {
     );
   }
   const insets = useSafeAreaInsets();
-  const [cart, setCart] = useState<CartItem[]>(INITIAL_CART);
-  const [selectedPayment, setSelectedPayment] = useState('orange');
+  const [cart, setCart] = useState<Cart | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [updatingProductId, setUpdatingProductId] = useState<string | null>(null);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentMethodId>('orange_money');
+  const [shippingAddress, setShippingAddress] = useState<string>('');
+  const [creating, setCreating] = useState(false);
 
-  const updateQuantity = (id: string, delta: number) => {
-    setCart(prev => prev.map(item =>
-      item.id === id
-        ? { ...item, quantity: Math.max(1, item.quantity + delta) }
-        : item
-    ));
+  const loadCart = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setError(null);
+    try {
+      const data = await cartApi.get();
+      setCart(data);
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message
+        || (err as { message?: string })?.message
+        || 'Impossible de charger votre panier. Vérifiez votre connexion.';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCart();
+  }, [loadCart]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadCart(true).finally(() => setRefreshing(false));
+  }, [loadCart]);
+
+  const updateQuantity = async (item: CartLineItem, delta: number) => {
+    const next = Math.max(0, item.quantity + delta);
+    setUpdatingProductId(item.productId);
+    try {
+      // Mise à jour optimiste
+      setCart((prev) => {
+        if (!prev) return prev;
+        if (next === 0) {
+          return { ...prev, items: prev.items.filter((i) => i.productId !== item.productId) };
+        }
+        return {
+          ...prev,
+          items: prev.items.map((i) => (i.productId === item.productId ? { ...i, quantity: next } : i)),
+        };
+      });
+      const updated = next === 0 ? await cartApi.remove(item.productId) : await cartApi.update(item.productId, next);
+      setCart(updated);
+    } catch (err) {
+      // Resync depuis le serveur si échec
+      const msg = (err as { message?: string })?.message ?? 'Action impossible.';
+      Alert.alert('Erreur', msg);
+      void loadCart(true);
+    } finally {
+      setUpdatingProductId(null);
+    }
   };
 
-  const removeItem = (id: string) => {
-    setCart(prev => prev.filter(item => item.id !== id));
+  const removeItem = async (item: CartLineItem) => {
+    setUpdatingProductId(item.productId);
+    try {
+      const updated = await cartApi.remove(item.productId);
+      setCart(updated);
+    } catch (err) {
+      const msg = (err as { message?: string })?.message ?? 'Suppression impossible.';
+      Alert.alert('Erreur', msg);
+    } finally {
+      setUpdatingProductId(null);
+    }
   };
 
-  const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const deliveryFee = 1500;
-  const total = subtotal + deliveryFee;
+  const items = cart?.items ?? [];
+  const subtotal = cart?.subtotal ?? items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const total = subtotal + DELIVERY_FEE_FCFA;
 
-  const handleCheckout = () => {
-    Alert.alert(
-      'Commande confirmee',
-      `Total: ${total.toLocaleString()} FCFA\nPaiement via ${PAYMENT_METHODS.find(p => p.id === selectedPayment)?.name}\n\nVotre commande sera livree dans 45-60 minutes.`,
-      [{ text: 'OK', onPress: () => router.back() }]
+  const handleCheckout = async () => {
+    if (!items.length) return;
+    if (!shippingAddress.trim()) {
+      Alert.alert(
+        'Adresse manquante',
+        "Renseignez d'abord une adresse de livraison.",
+        [
+          { text: 'Annuler', style: 'cancel' },
+          {
+            text: 'Saisir maintenant',
+            onPress: () =>
+              router.push({ pathname: '/checkout' as any, params: { paymentMethod: selectedPayment } }),
+          },
+        ]
+      );
+      return;
+    }
+    setCreating(true);
+    try {
+      const { default: ordersApi } = await import('../../src/api/ordersApi');
+      const result = await ordersApi.create({
+        shipping_address: shippingAddress.trim(),
+        payment_method: selectedPayment,
+        source: 'marketplace',
+      });
+      const firstOrder = result.mode === 'single' ? result.order : result.orders[0];
+      if (!firstOrder?.id) {
+        throw new Error('Réponse de commande invalide.');
+      }
+      // Redirection vers l'écran de paiement réel
+      if (selectedPayment === 'orange_money') {
+        router.replace({
+          pathname: '/checkout/orange-money' as any,
+          params: { orderId: firstOrder.id, amount: String(total) },
+        });
+      } else if (selectedPayment === 'wave') {
+        router.replace({
+          pathname: '/checkout/wave' as any,
+          params: { orderId: firstOrder.id, amount: String(total) },
+        });
+      } else {
+        // Wallet : appel direct payments/wallet/pay-order
+        const { default: apiClient } = await import('../../src/api/client');
+        await apiClient.post('/payments/wallet/pay-order', { orderId: firstOrder.id });
+        Alert.alert('Commande payée', 'Votre paiement par portefeuille a été pris en compte.', [
+          { text: 'OK', onPress: () => router.replace('/orders' as any) },
+        ]);
+      }
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        || (err as { message?: string })?.message
+        || 'Création de commande impossible.';
+      Alert.alert('Erreur', msg);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color={Colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Mon Panier</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Chargement du panier...</Text>
+        </View>
+      </View>
     );
-  };
+  }
+
+  if (error && !cart) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color={Colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Mon Panier</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.emptyState}>
+          <Ionicons name="cloud-offline-outline" size={64} color={Colors.textSecondary} />
+          <Text style={styles.emptyTitle}>Panier indisponible</Text>
+          <Text style={styles.emptySubtitle}>{error}</Text>
+          <TouchableOpacity style={styles.shopBtn} onPress={() => loadCart()}>
+            <Text style={styles.shopBtnText}>Réessayer</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -74,47 +223,60 @@ export default function CartScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Mon Panier ({cart.length})</Text>
+        <Text style={styles.headerTitle}>Mon Panier ({items.length})</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      {cart.length === 0 ? (
+      {items.length === 0 ? (
         <View style={styles.emptyState}>
           <Ionicons name="cart-outline" size={80} color={Colors.textMuted} />
           <Text style={styles.emptyTitle}>Panier vide</Text>
-          <Text style={styles.emptySubtitle}>Decouvrez nos produits sur le marketplace</Text>
-          <TouchableOpacity style={styles.shopBtn} onPress={() => router.push('/(tabs)/market')}>
+          <Text style={styles.emptySubtitle}>Découvrez nos produits sur le marketplace</Text>
+          <TouchableOpacity style={styles.shopBtn} onPress={() => router.push('/(tabs)/market' as any)}>
             <Text style={styles.shopBtnText}>Voir le marketplace</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-            {/* Cart Items */}
-            {cart.map((item) => (
-              <View key={item.id} style={styles.cartItem}>
-                <Image source={{ uri: item.image }} style={styles.itemImage} />
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+          >
+            {items.map((item) => (
+              <View key={item.productId} style={styles.cartItem}>
+                {item.image ? (
+                  <Image source={{ uri: item.image }} style={styles.itemImage} />
+                ) : (
+                  <View style={[styles.itemImage, styles.itemImageFallback]}>
+                    <Ionicons name="image-outline" size={28} color={Colors.textSecondary} />
+                  </View>
+                )}
                 <View style={styles.itemInfo}>
-                  <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
-                  <Text style={styles.itemSeller}>{item.seller}</Text>
-                  {item.size && <Text style={styles.itemSize}>Taille: {item.size}</Text>}
+                  <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
                   <Text style={styles.itemPrice}>{item.price.toLocaleString()} FCFA</Text>
                 </View>
                 <View style={styles.itemActions}>
-                  <TouchableOpacity onPress={() => removeItem(item.id)}>
+                  <TouchableOpacity onPress={() => removeItem(item)} disabled={updatingProductId === item.productId}>
                     <Ionicons name="trash-outline" size={18} color={Colors.error} />
                   </TouchableOpacity>
                   <View style={styles.quantityControls}>
                     <TouchableOpacity
                       style={styles.qtyBtn}
-                      onPress={() => updateQuantity(item.id, -1)}
+                      onPress={() => updateQuantity(item, -1)}
+                      disabled={updatingProductId === item.productId}
                     >
                       <Ionicons name="remove" size={16} color={Colors.text} />
                     </TouchableOpacity>
-                    <Text style={styles.qtyText}>{item.quantity}</Text>
+                    {updatingProductId === item.productId ? (
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    ) : (
+                      <Text style={styles.qtyText}>{item.quantity}</Text>
+                    )}
                     <TouchableOpacity
                       style={styles.qtyBtn}
-                      onPress={() => updateQuantity(item.id, 1)}
+                      onPress={() => updateQuantity(item, 1)}
+                      disabled={updatingProductId === item.productId}
                     >
                       <Ionicons name="add" size={16} color={Colors.text} />
                     </TouchableOpacity>
@@ -123,7 +285,6 @@ export default function CartScreen() {
               </View>
             ))}
 
-            {/* Payment Methods */}
             <Text style={styles.sectionTitle}>Mode de paiement</Text>
             {PAYMENT_METHODS.map((method) => (
               <TouchableOpacity
@@ -132,7 +293,7 @@ export default function CartScreen() {
                 onPress={() => setSelectedPayment(method.id)}
               >
                 <View style={[styles.paymentIcon, { backgroundColor: method.color }]}>
-                  <Ionicons name={method.icon as any} size={20} color="#FFFFFF" />
+                  <Ionicons name={method.icon} size={20} color="#FFFFFF" />
                 </View>
                 <Text style={styles.paymentName}>{method.name}</Text>
                 <View style={[styles.radioCircle, selectedPayment === method.id && styles.radioCircleActive]}>
@@ -141,32 +302,51 @@ export default function CartScreen() {
               </TouchableOpacity>
             ))}
 
-            {/* Order Summary */}
             <View style={styles.summary}>
-              <Text style={styles.summaryTitle}>Resume de la commande</Text>
+              <Text style={styles.summaryTitle}>Résumé de la commande</Text>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Sous-total</Text>
                 <Text style={styles.summaryValue}>{subtotal.toLocaleString()} FCFA</Text>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Livraison</Text>
-                <Text style={styles.summaryValue}>{deliveryFee.toLocaleString()} FCFA</Text>
+                <Text style={styles.summaryLabel}>Livraison estimée</Text>
+                <Text style={styles.summaryValue}>{DELIVERY_FEE_FCFA.toLocaleString()} FCFA</Text>
               </View>
               <View style={[styles.summaryRow, styles.totalRow]}>
                 <Text style={styles.totalLabel}>Total</Text>
                 <Text style={styles.totalValue}>{total.toLocaleString()} FCFA</Text>
               </View>
             </View>
+
+            <TouchableOpacity
+              style={styles.addressShortcut}
+              onPress={() =>
+                router.push({ pathname: '/checkout' as any, params: { paymentMethod: selectedPayment } })
+              }
+            >
+              <Ionicons name="location-outline" size={18} color={Colors.primary} />
+              <Text style={styles.addressShortcutText}>
+                {shippingAddress.trim() ? shippingAddress : 'Renseigner l\'adresse de livraison'}
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
+            </TouchableOpacity>
           </ScrollView>
 
-          {/* Checkout Button */}
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + Spacing.md }]}>
             <View style={styles.totalInfo}>
               <Text style={styles.bottomTotal}>Total</Text>
               <Text style={styles.bottomTotalValue}>{total.toLocaleString()} FCFA</Text>
             </View>
-            <TouchableOpacity style={styles.checkoutBtn} onPress={handleCheckout}>
-              <Text style={styles.checkoutText}>Commander</Text>
+            <TouchableOpacity
+              style={[styles.checkoutBtn, creating && styles.checkoutBtnDisabled]}
+              onPress={handleCheckout}
+              disabled={creating}
+            >
+              {creating ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.checkoutText}>Commander</Text>
+              )}
             </TouchableOpacity>
           </View>
         </>
@@ -176,10 +356,7 @@ export default function CartScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
+  container: { flex: 1, backgroundColor: Colors.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -187,34 +364,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.lg,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: FontSizes.xl, fontWeight: 'bold', color: Colors.text },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md },
+  loadingText: { color: Colors.textSecondary, fontSize: FontSizes.md },
   emptyState: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.xxl,
+    gap: Spacing.md,
   },
-  emptyTitle: {
-    color: Colors.text,
-    fontSize: FontSizes.xl,
-    fontWeight: 'bold',
-    marginTop: Spacing.lg,
-  },
-  emptySubtitle: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.md,
-    marginTop: Spacing.sm,
-  },
+  emptyTitle: { color: Colors.text, fontSize: FontSizes.xl, fontWeight: 'bold', marginTop: Spacing.lg },
+  emptySubtitle: { color: Colors.textSecondary, fontSize: FontSizes.md, textAlign: 'center' },
   shopBtn: {
     backgroundColor: Colors.primary,
     paddingHorizontal: Spacing.xxl,
@@ -222,15 +384,8 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     marginTop: Spacing.xl,
   },
-  shopBtnText: {
-    color: Colors.text,
-    fontSize: FontSizes.md,
-    fontWeight: '600',
-  },
-  scrollContent: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: 120,
-  },
+  shopBtnText: { color: '#FFFFFF', fontSize: FontSizes.md, fontWeight: '600' },
+  scrollContent: { paddingHorizontal: Spacing.xl, paddingBottom: 140 },
   cartItem: {
     flexDirection: 'row',
     backgroundColor: Colors.surface,
@@ -239,42 +394,13 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
     gap: Spacing.md,
   },
-  itemImage: {
-    width: 80,
-    height: 80,
-    borderRadius: BorderRadius.md,
-  },
-  itemInfo: {
-    flex: 1,
-  },
-  itemName: {
-    color: Colors.text,
-    fontSize: FontSizes.md,
-    fontWeight: '600',
-  },
-  itemSeller: {
-    color: Colors.textMuted,
-    fontSize: FontSizes.xs,
-  },
-  itemSize: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.xs,
-  },
-  itemPrice: {
-    color: Colors.primary,
-    fontSize: FontSizes.md,
-    fontWeight: 'bold',
-    marginTop: Spacing.xs,
-  },
-  itemActions: {
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-  },
-  quantityControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
+  itemImage: { width: 80, height: 80, borderRadius: BorderRadius.md, backgroundColor: Colors.card },
+  itemImageFallback: { alignItems: 'center', justifyContent: 'center' },
+  itemInfo: { flex: 1 },
+  itemName: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600' },
+  itemPrice: { color: Colors.primary, fontSize: FontSizes.md, fontWeight: 'bold', marginTop: Spacing.xs },
+  itemActions: { alignItems: 'flex-end', justifyContent: 'space-between' },
+  quantityControls: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   qtyBtn: {
     width: 28,
     height: 28,
@@ -283,11 +409,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  qtyText: {
-    color: Colors.text,
-    fontSize: FontSizes.md,
-    fontWeight: 'bold',
-  },
+  qtyText: { color: Colors.text, fontSize: FontSizes.md, fontWeight: 'bold', minWidth: 20, textAlign: 'center' },
   sectionTitle: {
     color: Colors.text,
     fontSize: FontSizes.lg,
@@ -306,22 +428,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  paymentOptionActive: {
-    borderColor: Colors.primary,
-  },
-  paymentIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  paymentName: {
-    flex: 1,
-    color: Colors.text,
-    fontSize: FontSizes.md,
-    fontWeight: '500',
-  },
+  paymentOptionActive: { borderColor: Colors.primary },
+  paymentIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  paymentName: { flex: 1, color: Colors.text, fontSize: FontSizes.md, fontWeight: '500' },
   radioCircle: {
     width: 22,
     height: 22,
@@ -331,40 +440,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  radioCircleActive: {
-    borderColor: Colors.primary,
-  },
-  radioInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: Colors.primary,
-  },
+  radioCircleActive: { borderColor: Colors.primary },
+  radioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: Colors.primary },
   summary: {
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     marginTop: Spacing.xxl,
   },
-  summaryTitle: {
-    color: Colors.text,
-    fontSize: FontSizes.lg,
-    fontWeight: 'bold',
-    marginBottom: Spacing.md,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.sm,
-  },
-  summaryLabel: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.md,
-  },
-  summaryValue: {
-    color: Colors.text,
-    fontSize: FontSizes.md,
-  },
+  summaryTitle: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: 'bold', marginBottom: Spacing.md },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: Spacing.sm },
+  summaryLabel: { color: Colors.textSecondary, fontSize: FontSizes.md },
+  summaryValue: { color: Colors.text, fontSize: FontSizes.md },
   totalRow: {
     borderTopWidth: 1,
     borderTopColor: Colors.border,
@@ -372,16 +459,18 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
     marginBottom: 0,
   },
-  totalLabel: {
-    color: Colors.text,
-    fontSize: FontSizes.lg,
-    fontWeight: 'bold',
+  totalLabel: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: 'bold' },
+  totalValue: { color: Colors.primary, fontSize: FontSizes.lg, fontWeight: 'bold' },
+  addressShortcut: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.md,
   },
-  totalValue: {
-    color: Colors.primary,
-    fontSize: FontSizes.lg,
-    fontWeight: 'bold',
-  },
+  addressShortcutText: { flex: 1, color: Colors.text, fontSize: FontSizes.md },
   bottomBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -392,27 +481,17 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     gap: Spacing.lg,
   },
-  totalInfo: {
-    flex: 1,
-  },
-  bottomTotal: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.sm,
-  },
-  bottomTotalValue: {
-    color: Colors.text,
-    fontSize: FontSizes.xl,
-    fontWeight: 'bold',
-  },
+  totalInfo: { flex: 1 },
+  bottomTotal: { color: Colors.textSecondary, fontSize: FontSizes.sm },
+  bottomTotalValue: { color: Colors.text, fontSize: FontSizes.xl, fontWeight: 'bold' },
   checkoutBtn: {
     backgroundColor: Colors.primary,
     paddingHorizontal: Spacing.xxxl,
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.md,
+    minWidth: 140,
+    alignItems: 'center',
   },
-  checkoutText: {
-    color: Colors.text,
-    fontSize: FontSizes.lg,
-    fontWeight: 'bold',
-  },
+  checkoutBtnDisabled: { opacity: 0.5 },
+  checkoutText: { color: '#FFFFFF', fontSize: FontSizes.lg, fontWeight: 'bold' },
 });
