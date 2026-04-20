@@ -11,10 +11,12 @@ import {
   Animated,
   Modal,
   Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import { Audio } from 'expo-av';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,7 +30,7 @@ function hapticLight() {
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 }
 
-export type StickerCategory = 'tout' | 'nature' | 'joie' | 'musique' | 'urban';
+export type StickerCategory = 'tout' | 'nature' | 'joie' | 'musique' | 'urban' | 'patrimoine';
 
 export const STICKER_TABS: { key: StickerCategory; label: string }[] = [
   { key: 'tout', label: 'Tout' },
@@ -36,6 +38,7 @@ export const STICKER_TABS: { key: StickerCategory; label: string }[] = [
   { key: 'joie', label: 'Joie' },
   { key: 'musique', label: 'Musique' },
   { key: 'urban', label: 'Urban' },
+  { key: 'patrimoine', label: 'Patrimoine' },
 ];
 
 /** Stickers & symboles — filtrables par onglet (sans drapeaux : unité culturelle). */
@@ -80,6 +83,10 @@ export const AFRICAN_STICKERS: { id: string; emoji: string; label: string; cat: 
   { id: 's38', emoji: '🎭', label: 'Masque', cat: 'joie' },
   { id: 's39', emoji: '🍲', label: 'Plat', cat: 'joie' },
   { id: 's40', emoji: '🧡', label: 'Orange', cat: 'joie' },
+  { id: 's41', emoji: '🧵', label: 'Kente', cat: 'patrimoine' },
+  { id: 's42', emoji: '🎨', label: 'Bogolan', cat: 'patrimoine' },
+  { id: 's43', emoji: '🏺', label: 'Terre cuite', cat: 'patrimoine' },
+  { id: 's44', emoji: '📿', label: 'Perles', cat: 'patrimoine' },
 ];
 
 const QUICK_EMOJIS = ['😂', '❤️', '🔥', '👏', '🙌', '✨', '💯', '🎉', '👀', '🤍', '🙏', '💃'];
@@ -88,6 +95,7 @@ const QUICK_TEXT_SNIPPETS = ['#AfriWonder', 'Merci 🙏', 'Téranga', '100% Afri
 
 const VIDEO_FILTERS = [
   { id: 'none', label: 'Original', overlay: 'transparent' },
+  { id: 'afrique_chaud', label: 'Africain chaud', overlay: 'rgba(255,120,40,0.2)' },
   { id: 'sahel', label: 'Sahel', overlay: 'rgba(255,165,0,0.15)' },
   { id: 'savane', label: 'Savane', overlay: 'rgba(200,150,50,0.2)' },
   { id: 'terre', label: 'Terre', overlay: 'rgba(160,82,45,0.18)' },
@@ -152,6 +160,8 @@ export interface StickerOverlay {
   size: number;
 }
 
+export type EditorTransitionId = 'none' | 'fade' | 'slide' | 'zoom';
+
 export interface VideoEditorResult {
   filter: string;
   texts: TextOverlay[];
@@ -162,6 +172,11 @@ export interface VideoEditorResult {
   speed: number;
   trimStart: number;
   trimEnd: number;
+  /** Grille des tiers — aide au cadrage (aperçu + métadonnées). */
+  gridEnabled: boolean;
+  /** URI locale d’un enregistrement voix (upload séparé à la publication). */
+  voiceOverUri: string | null;
+  transitionId: EditorTransitionId;
 }
 
 interface VideoEditorProps {
@@ -192,6 +207,17 @@ function EditorVideoWeb({ uri, speed }: { uri: string; speed: number }) {
     loop: true,
     autoPlay: true,
   });
+}
+
+function RuleOfThirdsGrid() {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <View style={[styles.gridLineV, { left: '33.33%' }]} />
+      <View style={[styles.gridLineV, { left: '66.66%' }]} />
+      <View style={[styles.gridLineH, { top: '33.33%' }]} />
+      <View style={[styles.gridLineH, { top: '66.66%' }]} />
+    </View>
+  );
 }
 
 function EditorVideoNative({ uri, speed }: { uri: string; speed: number }) {
@@ -285,9 +311,16 @@ const DraggableItem: React.FC<{
   );
 };
 
+const TRANSITION_OPTIONS: { id: EditorTransitionId; label: string }[] = [
+  { id: 'none', label: 'Aucune' },
+  { id: 'fade', label: 'Fondu' },
+  { id: 'slide', label: 'Glissé' },
+  { id: 'zoom', label: 'Zoom' },
+];
+
 const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel }) => {
   const insets = useSafeAreaInsets();
-  const [activeTab, setActiveTab] = useState<'trim' | 'filters' | 'text' | 'stickers' | 'music' | 'speed'>('filters');
+  const [activeTab, setActiveTab] = useState<'trim' | 'filters' | 'text' | 'stickers' | 'music' | 'speed' | 'voice'>('filters');
 
   const [selectedFilter, setSelectedFilter] = useState('none');
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
@@ -296,6 +329,11 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
   const [speed, setSpeed] = useState(1);
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(100);
+  const [gridEnabled, setGridEnabled] = useState(false);
+  const [transitionId, setTransitionId] = useState<EditorTransitionId>('none');
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [voiceOverUri, setVoiceOverUri] = useState<string | null>(null);
 
   const [showTextInput, setShowTextInput] = useState(false);
   const [newText, setNewText] = useState('');
@@ -303,6 +341,16 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
   const [textSize, setTextSize] = useState(24);
   const [stickerTab, setStickerTab] = useState<StickerCategory>('tout');
   const [musicGenre, setMusicGenre] = useState<string>('all');
+
+  useEffect(() => {
+    return () => {
+      const r = recordingRef.current;
+      if (r) {
+        r.stopAndUnloadAsync().catch(() => {});
+        recordingRef.current = null;
+      }
+    };
+  }, []);
 
   const musicGenres = React.useMemo(() => {
     const g = new Set<string>();
@@ -385,6 +433,9 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
       speed,
       trimStart,
       trimEnd,
+      gridEnabled,
+      voiceOverUri,
+      transitionId,
     });
   }, [
     onDone,
@@ -395,7 +446,51 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
     speed,
     trimStart,
     trimEnd,
+    gridEnabled,
+    voiceOverUri,
+    transitionId,
   ]);
+
+  const startVoiceRecording = useCallback(async () => {
+    if (Platform.OS === 'web') {
+      Alert.alert('Voix off', "L'enregistrement vocal est disponible sur l'application mobile (iOS / Android).");
+      return;
+    }
+    try {
+      const perm = await Audio.requestPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission', 'Le micro est nécessaire pour enregistrer une voix off.');
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      recordingRef.current = recording;
+      setIsRecording(true);
+      hapticLight();
+    } catch {
+      Alert.alert('Erreur', "Impossible de démarrer l'enregistrement vocal.");
+    }
+  }, []);
+
+  const stopVoiceRecording = useCallback(async () => {
+    const rec = recordingRef.current;
+    if (!rec) return;
+    try {
+      await rec.stopAndUnloadAsync();
+      const uri = rec.getURI() ?? null;
+      recordingRef.current = null;
+      setIsRecording(false);
+      if (uri) setVoiceOverUri(uri);
+      hapticLight();
+    } catch {
+      setIsRecording(false);
+    }
+  }, []);
+
+  const clearVoiceRecording = useCallback(() => {
+    setVoiceOverUri(null);
+    hapticLight();
+  }, []);
 
   const TEXT_COLORS = ['#FFFFFF', '#000000', '#FF3D00', '#FF6B00', '#FFEB3B', '#4CAF50', '#2196F3', '#9C27B0', '#FF1493', '#00BCD4'];
 
@@ -677,6 +772,62 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
     </View>
   );
 
+  const renderVoicePanel = () => (
+    <View style={styles.panelContent}>
+      <Text style={styles.panelTitle}>Voix & montage</Text>
+      <Text style={styles.panelHint}>
+        Enregistrez une piste vocale par-dessus la vidéo (upload à la publication). Les transitions et le montage multi-clips
+        seront appliqués côté serveur dans une prochaine version.
+      </Text>
+      <Text style={styles.panelSubtitle}>Voix off</Text>
+      {Platform.OS === 'web' ? (
+        <Text style={styles.voiceWebHint}>Enregistrement vocal : ouvrez AfriWonder sur téléphone pour cette étape.</Text>
+      ) : (
+        <View style={styles.voiceActions}>
+          {!isRecording ? (
+            <TouchableOpacity style={styles.voicePrimaryBtn} onPress={startVoiceRecording}>
+              <Ionicons name="mic" size={22} color="#FFF" />
+              <Text style={styles.voicePrimaryBtnText}>Enregistrer</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={[styles.voicePrimaryBtn, styles.voiceStopBtn]} onPress={stopVoiceRecording}>
+              <Ionicons name="stop" size={22} color="#FFF" />
+              <Text style={styles.voicePrimaryBtnText}>Arrêter</Text>
+            </TouchableOpacity>
+          )}
+          {voiceOverUri && !isRecording ? (
+            <TouchableOpacity style={styles.voiceSecondaryBtn} onPress={clearVoiceRecording}>
+              <Text style={styles.voiceSecondaryBtnText}>Effacer la piste</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      )}
+      {voiceOverUri ? (
+        <Text style={styles.voiceOkHint}>Piste vocale prête — elle sera envoyée avec la vidéo.</Text>
+      ) : null}
+      <Text style={styles.panelSubtitle}>Transition entre clips</Text>
+      <View style={styles.transitionRow}>
+        {TRANSITION_OPTIONS.map((t) => (
+          <TouchableOpacity
+            key={t.id}
+            style={[styles.transitionChip, transitionId === t.id && styles.transitionChipActive]}
+            onPress={() => {
+              hapticLight();
+              setTransitionId(t.id);
+            }}
+          >
+            <Text style={[styles.transitionChipText, transitionId === t.id && styles.transitionChipTextActive]}>{t.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <Text style={styles.panelSubtitle}>Découpe en segments</Text>
+      <Text style={styles.segmentHint}>
+        Pour l’instant, importez une seule vidéo. Le montage de plusieurs clips et l’assemblage automatique arriveront prochainement
+        dans le studio.
+      </Text>
+    </View>
+  );
+
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
       <LinearGradient colors={['#2a1a0a', '#0d0d0d', '#000000']} style={{ paddingTop: insets.top }}>
@@ -696,11 +847,22 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
       </LinearGradient>
 
       <View style={styles.videoPreviewContainer}>
+        <TouchableOpacity
+          style={[styles.gridToggleBtn, gridEnabled && styles.gridToggleBtnActive]}
+          onPress={() => {
+            hapticLight();
+            setGridEnabled((g) => !g);
+          }}
+          accessibilityLabel={gridEnabled ? 'Masquer la grille' : 'Afficher la grille des tiers'}
+        >
+          <Ionicons name="grid" size={20} color={gridEnabled ? '#111' : '#FFF'} />
+        </TouchableOpacity>
         {Platform.OS === 'web' ? (
           <EditorVideoWeb uri={videoUri} speed={speed} />
         ) : (
           <EditorVideoNative uri={videoUri} speed={speed} />
         )}
+        {gridEnabled ? <RuleOfThirdsGrid /> : null}
 
         {filterOverlay !== 'transparent' && selectedFilter !== 'noir' ? (
           <View style={[styles.filterOverlayView, { backgroundColor: filterOverlay }]} pointerEvents="none" />
@@ -756,12 +918,22 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
           </View>
         ) : null}
 
-        {selectedMusic !== 'm0' ? (
-          <View style={styles.musicBadge} pointerEvents="none">
-            <Ionicons name="musical-notes" size={12} color="#FFF" />
-            <Text style={styles.musicBadgeText} numberOfLines={1}>
-              {MUSIC_TRACKS.find((t) => t.id === selectedMusic)?.title}
-            </Text>
+        {(voiceOverUri || selectedMusic !== 'm0') ? (
+          <View style={styles.previewBadgesColumn} pointerEvents="none">
+            {voiceOverUri ? (
+              <View style={styles.voiceBadge}>
+                <Ionicons name="mic" size={12} color="#FFF" />
+                <Text style={styles.voiceBadgeText}>Voix off</Text>
+              </View>
+            ) : null}
+            {selectedMusic !== 'm0' ? (
+              <View style={styles.musicBadge}>
+                <Ionicons name="musical-notes" size={12} color="#FFF" />
+                <Text style={styles.musicBadgeText} numberOfLines={1}>
+                  {MUSIC_TRACKS.find((t) => t.id === selectedMusic)?.title}
+                </Text>
+              </View>
+            ) : null}
           </View>
         ) : null}
         <LinearGradient
@@ -772,7 +944,12 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
       </View>
 
       <LinearGradient colors={['#141414', '#0a0a0a']} style={styles.toolTabsWrap}>
-        <View style={styles.toolTabs}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.toolTabsScroll}
+          nestedScrollEnabled
+        >
           {(
             [
               { key: 'trim' as const, icon: 'cut-outline' as const, label: 'Découper' },
@@ -781,6 +958,7 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
               { key: 'stickers' as const, icon: 'happy-outline' as const, label: 'Stickers' },
               { key: 'music' as const, icon: 'musical-notes-outline' as const, label: 'Musique' },
               { key: 'speed' as const, icon: 'speedometer-outline' as const, label: 'Vitesse' },
+              { key: 'voice' as const, icon: 'mic-outline' as const, label: 'Voix' },
             ] as const
           ).map((tab) => (
             <TouchableOpacity
@@ -795,7 +973,7 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
               <Text style={[styles.toolTabLabel, activeTab === tab.key && styles.toolTabLabelActive]}>{tab.label}</Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
       </LinearGradient>
 
       <ScrollView style={styles.panelContainer} showsVerticalScrollIndicator={false} nestedScrollEnabled>
@@ -805,6 +983,7 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
         {activeTab === 'stickers' && renderStickersPanel()}
         {activeTab === 'music' && renderMusicPanel()}
         {activeTab === 'speed' && renderSpeedPanel()}
+        {activeTab === 'voice' && renderVoicePanel()}
       </ScrollView>
 
       <Modal visible={showTextInput} transparent animationType="fade">
@@ -875,6 +1054,26 @@ const styles = StyleSheet.create({
 
   videoPreviewContainer: { width: SCREEN_W, height: VIDEO_H, backgroundColor: '#111', position: 'relative' },
   videoPreview: { width: '100%', height: '100%' },
+  gridToggleBtn: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    zIndex: 200,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  gridToggleBtnActive: {
+    backgroundColor: 'rgba(255,215,0,0.95)',
+    borderColor: 'rgba(255,140,0,0.9)',
+  },
+  gridLineV: { position: 'absolute', top: 0, bottom: 0, width: 1, backgroundColor: 'rgba(255,255,255,0.4)' },
+  gridLineH: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.4)' },
   videoBottomFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 72 },
   filterOverlayView: { ...StyleSheet.absoluteFillObject },
   bwOverlay: {
@@ -901,10 +1100,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   speedBadgeText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
-  musicBadge: {
+  previewBadgesColumn: {
     position: 'absolute',
     bottom: 10,
     left: 10,
+    gap: 6,
+    maxWidth: SCREEN_W * 0.85,
+  },
+  musicBadge: {
     backgroundColor: 'rgba(0,0,0,0.7)',
     flexDirection: 'row',
     alignItems: 'center',
@@ -912,17 +1115,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
-    maxWidth: 200,
+    alignSelf: 'flex-start',
   },
   musicBadgeText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
+  voiceBadge: {
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  voiceBadgeText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
 
   toolTabsWrap: { borderTopWidth: 1, borderTopColor: 'rgba(255,107,0,0.25)' },
-  toolTabs: {
+  toolTabsScroll: {
     flexDirection: 'row',
     paddingVertical: 8,
-    paddingHorizontal: 4,
+    paddingHorizontal: 6,
+    gap: 4,
+    alignItems: 'stretch',
   },
-  toolTab: { flex: 1, alignItems: 'center', paddingVertical: 6, borderRadius: 10, marginHorizontal: 2 },
+  toolTab: { alignItems: 'center', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, marginHorizontal: 2, minWidth: 72 },
   toolTabActive: { backgroundColor: 'rgba(255,107,0,0.14)' },
   toolTabLabel: { color: Colors.textMuted, fontSize: 9, marginTop: 2, fontWeight: '500' },
   toolTabLabelActive: { color: Colors.primary, fontWeight: '700' },
@@ -1126,6 +1342,37 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontStyle: 'italic',
   },
+
+  voiceWebHint: { color: Colors.textMuted, fontSize: 13, lineHeight: 20, marginBottom: Spacing.sm },
+  voiceActions: { gap: Spacing.sm, marginBottom: Spacing.sm },
+  voicePrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: Colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: BorderRadius.full,
+  },
+  voiceStopBtn: { backgroundColor: '#C62828' },
+  voicePrimaryBtnText: { color: '#FFF', fontWeight: '700', fontSize: FontSizes.md },
+  voiceSecondaryBtn: { alignSelf: 'flex-start', paddingVertical: 8 },
+  voiceSecondaryBtnText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
+  voiceOkHint: { color: Colors.accent, fontSize: 12, marginBottom: Spacing.md },
+  transitionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.md },
+  transitionChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.full,
+    backgroundColor: '#222',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  transitionChipActive: { borderColor: Colors.primary, backgroundColor: 'rgba(255,107,0,0.14)' },
+  transitionChipText: { color: Colors.textMuted, fontSize: 12, fontWeight: '600' },
+  transitionChipTextActive: { color: Colors.primary },
+  segmentHint: { color: Colors.textMuted, fontSize: 12, lineHeight: 18, fontStyle: 'italic' },
 
   textInputModal: {
     flex: 1,

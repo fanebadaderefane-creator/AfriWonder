@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator, Platform,
+  View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator, Platform, ScrollView,
 } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,17 +16,21 @@ interface ReportModalProps {
 }
 
 const REASONS = [
+  { id: 'nudity', label: 'Nudité / Contenu adulte', icon: 'eye-off' },
+  { id: 'violence', label: 'Violence / Contenu choquant', icon: 'warning' },
+  { id: 'harassment', label: 'Harcèlement / Intimidation', icon: 'hand-left' },
+  { id: 'hate', label: 'Discours haineux / Discrimination', icon: 'ban' },
+  { id: 'misinformation', label: 'Fausses informations', icon: 'alert-circle' },
   { id: 'spam', label: 'Spam', icon: 'mail-unread' },
-  { id: 'harassment', label: 'Harcèlement', icon: 'hand-left' },
-  { id: 'nudity', label: 'Nudité / Contenu sexuel', icon: 'eye-off' },
-  { id: 'violence', label: 'Violence / Danger', icon: 'warning' },
+  { id: 'copyright', label: "Droits d'auteur (DMCA)", icon: 'document-text' },
+  { id: 'counterfeit', label: 'Produit contrefait (marketplace)', icon: 'pricetag-outline' },
   { id: 'scam', label: 'Arnaque / Fraude', icon: 'shield' },
   { id: 'other', label: 'Autre raison', icon: 'ellipsis-horizontal' },
 ];
 
 function severityForReason(reason: string): string {
-  if (['harassment', 'nudity', 'violence'].includes(reason)) return 'high';
-  if (reason === 'scam') return 'high';
+  if (['harassment', 'nudity', 'violence', 'hate', 'misinformation', 'copyright'].includes(reason)) return 'high';
+  if (reason === 'scam' || reason === 'counterfeit') return 'high';
   return 'medium';
 }
 
@@ -48,7 +52,7 @@ export default function ReportModal({
   onClose,
   targetType,
   targetId,
-  useModerationEndpoint = false,
+  useModerationEndpoint: _useModerationEndpoint = false,
 }: ReportModalProps) {
   const [reason, setReason] = useState('');
   const [description, setDescription] = useState('');
@@ -113,13 +117,15 @@ export default function ReportModal({
           <View style={styles.handle} />
           <Text style={styles.title}>Signaler</Text>
           <Text style={styles.subtitle}>Pourquoi signalez-vous ce contenu ?</Text>
-          {REASONS.map(r => (
-            <TouchableOpacity key={r.id} style={[styles.reasonRow, reason === r.id && styles.reasonActive]} onPress={() => setReason(r.id)}>
-              <Ionicons name={r.icon as any} size={20} color={reason === r.id ? Colors.primary : Colors.textSecondary} />
-              <Text style={[styles.reasonText, reason === r.id && { color: Colors.primary }]}>{r.label}</Text>
-              {reason === r.id && <Ionicons name="checkmark" size={18} color={Colors.primary} />}
-            </TouchableOpacity>
-          ))}
+          <ScrollView style={styles.reasonList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+            {REASONS.map(r => (
+              <TouchableOpacity key={r.id} style={[styles.reasonRow, reason === r.id && styles.reasonActive]} onPress={() => setReason(r.id)}>
+                <Ionicons name={r.icon as any} size={20} color={reason === r.id ? Colors.primary : Colors.textSecondary} />
+                <Text style={[styles.reasonText, reason === r.id && { color: Colors.primary }]}>{r.label}</Text>
+                {reason === r.id && <Ionicons name="checkmark" size={18} color={Colors.primary} />}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
           {!!reason && (
             <TextInput
               style={styles.descInput}
@@ -145,6 +151,7 @@ const styles = StyleSheet.create({
   handle: { width: 40, height: 4, backgroundColor: Colors.border, borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: Spacing.lg },
   title: { color: Colors.text, fontSize: FontSizes.xl, fontWeight: 'bold' },
   subtitle: { color: Colors.textSecondary, fontSize: FontSizes.sm, marginBottom: Spacing.lg },
+  reasonList: { maxHeight: 280 },
   reasonRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.md, paddingHorizontal: Spacing.md, borderRadius: BorderRadius.md, marginBottom: 4 },
   reasonActive: { backgroundColor: 'rgba(139,92,246,0.1)' },
   reasonText: { flex: 1, color: Colors.text, fontSize: FontSizes.md },

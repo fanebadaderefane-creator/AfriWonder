@@ -53,7 +53,7 @@ export function ReactionsBar({
       {showPicker && (
         <View style={styles.pickerContainer}>
           <View style={styles.picker}>
-            {REACTIONS.map((reaction, i) => (
+            {REACTIONS.map((reaction, _i) => (
               <TouchableOpacity
                 key={reaction.type}
                 style={[

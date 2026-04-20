@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import { Text, StyleSheet, Animated } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
-import { Colors, FontSizes, Spacing } from '../../theme/colors';
+import { FontSizes, Spacing } from '../../theme/colors';
+import { useAppTheme } from '../../theme/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 
 export const OfflineBanner: React.FC = () => {
+  const { colors } = useAppTheme();
   const [isOffline, setIsOffline] = useState(false);
   const [showReconnected, setShowReconnected] = useState(false);
   const [wasOffline, setWasOffline] = useState(false);
@@ -33,7 +35,7 @@ export const OfflineBanner: React.FC = () => {
       duration: 300,
       useNativeDriver: true,
     }).start();
-  }, [isOffline, showReconnected]);
+  }, [isOffline, showReconnected, slideAnim]);
 
   if (!isOffline && !showReconnected) return null;
 
@@ -43,14 +45,14 @@ export const OfflineBanner: React.FC = () => {
         styles.container,
         { 
           transform: [{ translateY: slideAnim }],
-          backgroundColor: isOffline ? Colors.error : Colors.success 
+          backgroundColor: isOffline ? colors.error : colors.success 
         }
       ]}
     >
       <Ionicons 
         name={isOffline ? "cloud-offline" : "cloud-done"} 
         size={18} 
-        color={Colors.text} 
+        color="#FFFFFF" 
       />
       <Text style={styles.text}>
         {isOffline ? 'Hors connexion' : 'Reconnecté ✓'}
@@ -74,7 +76,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   text: {
-    color: Colors.text,
+    color: '#FFFFFF',
     fontSize: FontSizes.sm,
     fontWeight: '600',
   },

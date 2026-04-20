@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, useWindowDimensions } from 'react-native';
 import { Shimmer, ShimmerCircle, ShimmerLine, ShimmerRect } from './Shimmer';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const GRID_GAP = 2;
 
