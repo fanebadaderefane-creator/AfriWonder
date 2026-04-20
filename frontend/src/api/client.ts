@@ -1,7 +1,7 @@
 import axios from 'axios';
-import { Platform } from 'react-native';
 import { secureStorage } from '../utils/secureStorage';
 import { getBackendOrigin } from '../config/backendBase';
+import { useAuthStore } from '../store/authStore';
 
 // Même route que la PWA : `/api/proxy` sur l’origine backend (Express, port 3000 en dev).
 const getProxyBaseUrl = () => getBackendOrigin();
@@ -26,6 +26,12 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   },
+});
+
+// Recalculer l’origine à chaque requête (host Metro / env peuvent être périmés au premier import).
+apiClient.interceptors.request.use((config) => {
+  config.baseURL = `${getProxyBaseUrl()}/api/proxy`;
+  return config;
 });
 
 // Request interceptor to add auth token
@@ -72,20 +78,34 @@ apiClient.interceptors.response.use(
           const data = response.data?.data || response.data;
           const { accessToken, refreshToken: newRefreshToken } = data;
           await secureStorage.setItem('accessToken', accessToken);
+          let nextRefresh = refreshToken;
           if (newRefreshToken) {
             await secureStorage.setItem('refreshToken', newRefreshToken);
+            nextRefresh = newRefreshToken;
           }
+
+          /** Garde Zustand aligné avec le stockage persistant (Web + natif). */
+          useAuthStore.setState({
+            accessToken,
+            refreshToken: typeof nextRefresh === 'string' ? nextRefresh : null,
+          });
 
           originalRequest.headers.Authorization = `Bearer ${accessToken}`;
           // Sans ceci, le retry garde `Content-Type: application/json` → multer ne reçoit pas le fichier (400).
           clearContentTypeForFormData(originalRequest);
           return apiClient(originalRequest);
         }
-      } catch (refreshError) {
+      } catch {
         // Refresh failed, user needs to re-login
         await secureStorage.deleteItem('accessToken');
         await secureStorage.deleteItem('refreshToken');
         await secureStorage.deleteItem('user');
+        useAuthStore.setState({
+          user: null,
+          accessToken: null,
+          refreshToken: null,
+          isAuthenticated: false,
+        });
       }
     }
 

@@ -15,6 +15,11 @@ const mobileApiClient = axios.create({
   },
 });
 
+mobileApiClient.interceptors.request.use((config) => {
+  config.baseURL = `${getMobileApiBaseUrl()}/api`;
+  return config;
+});
+
 /** Une seule course de refresh si plusieurs requêtes reçoivent 401 en parallèle. */
 let refreshInFlight: Promise<string | null> | null = null;
 
@@ -74,6 +79,7 @@ function isAuthProxyPath(config: AxiosRequestConfig): boolean {
     || u.includes('/proxy/auth/register')
     || u.includes('/proxy/auth/refresh')
     || u.includes('/proxy/auth/forgot-password')
+    || u.includes('/proxy/auth/oauth/')
   );
 }
 

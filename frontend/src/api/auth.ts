@@ -1,4 +1,3 @@
-import apiClient from './client';
 import mobileApiClient from './mobileClient';
 import { User } from '../store/authStore';
 
@@ -92,7 +91,7 @@ export const authApi = {
       await mobileApiClient.post('/proxy/auth/logout', {
         refreshToken: refreshToken || undefined,
       });
-    } catch (e) {
+    } catch {
       // Logout can fail silently - token will expire anyway
     }
   },
@@ -106,6 +105,42 @@ export const authApi = {
 
   refreshToken: async (refreshToken: string): Promise<AuthResponse> => {
     const response = await mobileApiClient.post('/proxy/auth/refresh', { refreshToken });
+    const result = unwrapResponse(response.data);
+    return {
+      user: normalizeUser(result.user),
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+    };
+  },
+
+  oauthGoogle: async (accessToken: string): Promise<AuthResponse> => {
+    const response = await mobileApiClient.post('/proxy/auth/oauth/google', { accessToken: accessToken.trim() });
+    const result = unwrapResponse(response.data);
+    return {
+      user: normalizeUser(result.user),
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+    };
+  },
+
+  oauthFacebook: async (accessToken: string): Promise<AuthResponse> => {
+    const response = await mobileApiClient.post('/proxy/auth/oauth/facebook', { accessToken: accessToken.trim() });
+    const result = unwrapResponse(response.data);
+    return {
+      user: normalizeUser(result.user),
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+    };
+  },
+
+  oauthApple: async (payload: {
+    identityToken: string;
+    user?: { email?: string; name?: { firstName?: string; lastName?: string } };
+  }): Promise<AuthResponse> => {
+    const response = await mobileApiClient.post('/proxy/auth/oauth/apple', {
+      identityToken: payload.identityToken.trim(),
+      user: payload.user,
+    });
     const result = unwrapResponse(response.data);
     return {
       user: normalizeUser(result.user),

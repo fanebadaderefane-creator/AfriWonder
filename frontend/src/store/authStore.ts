@@ -1,3 +1,9 @@
+/**
+ * Session utilisateur — source de vérité **persistée** : `secureStorage`
+ * (SecureStore iOS/Android, AsyncStorage sur Web). `loadStoredAuth` est appelé au boot (`_layout`)
+ * et au retour au premier plan (AppState) pour rester synchronisé avec le stockage.
+ * Les rafraîchissements de jetons (`apiClient` / `mobileClient`) mettent à jour disque + ce store.
+ */
 import { create } from 'zustand';
 import { secureStorage } from '../utils/secureStorage';
 
@@ -17,6 +23,14 @@ export interface User {
   replay_premium?: boolean;
   monetization_enabled?: boolean;
   account_suspended?: boolean;
+  data_saver_mode?: boolean;
+  preferred_language?: string | null;
+  timezone?: string | null;
+  theme?: string | null;
+  preferred_categories?: string[] | null;
+  messaging_e2e_enabled?: boolean;
+  messaging_read_receipts_enabled?: boolean;
+  messaging_cdc_moderation?: Record<string, unknown> | null;
   country?: string;
   followers?: number;
   following?: number;
@@ -53,6 +67,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await secureStorage.setItem('refreshToken', refreshToken);
       await secureStorage.setItem('user', JSON.stringify(user));
       set({ user, accessToken, refreshToken, isAuthenticated: true, isLoading: false });
+      void import('../services/notificationService').then((m) => m.default.syncPushTokenWithBackend());
     } catch (error) {
       console.error('Error storing auth:', error);
     }
@@ -60,6 +75,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     try {
+      try {
+        const [{ notificationService }, { default: mobileApiClient }] = await Promise.all([
+          import('../services/notificationService'),
+          import('../api/mobileClient'),
+        ]);
+        const token = notificationService.token;
+        if (token) {
+          await mobileApiClient.delete(`/mobile/push-token/${encodeURIComponent(token)}`);
+        }
+      } catch {
+        /* logout should not fail on push unregister */
+      }
       await secureStorage.deleteItem('accessToken');
       await secureStorage.deleteItem('refreshToken');
       await secureStorage.deleteItem('user');
@@ -90,7 +117,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   updateUser: (updates) => {
     const { user } = get();
     if (user) {
-      set({ user: { ...user, ...updates } });
+      const nextUser = { ...user, ...updates };
+      void secureStorage.setItem('user', JSON.stringify(nextUser)).catch(() => {});
+      set({ user: nextUser });
     }
   },
 }));
