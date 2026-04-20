@@ -17,11 +17,11 @@
         "NSMicrophoneUsageDescription": "Enregistrer des messages vocaux dans AfriChat",
         "NSCameraUsageDescription": "Prendre des photos et vidéos (profil, publication, messages, live streaming)",
         "NSPhotoLibraryUsageDescription": "Choisir des photos et vidéos (profil, publication, messages)",
+        "NSPhotoLibraryAddUsageDescription": "Enregistrer des photos et vidéos AfriWonder dans votre galerie",
         "NSLocationWhenInUseUsageDescription": "AfriWonder utilise votre position pour les services locaux et recommandations proches de vous.",
+        "NSContactsUsageDescription": "Trouver vos amis déjà sur AfriWonder à partir de vos contacts (synchronisation locale et opt-in).",
+        "NSFaceIDUsageDescription": "Authentifier rapidement les actions sensibles (paiement, accès au portefeuille).",
         "UIBackgroundModes": [
-          "audio",
-          "fetch",
-          "remote-notification",
           "audio",
           "fetch",
           "remote-notification"
@@ -41,9 +41,7 @@
         "CAMERA",
         "RECORD_AUDIO",
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
         "ACCESS_FINE_LOCATION",
-        "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
         "WAKE_LOCK"
       ]

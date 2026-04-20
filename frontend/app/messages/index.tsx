@@ -408,7 +408,7 @@ export default function MessagesListScreen() {
           <FlatList
             data={filteredUsers}
             renderItem={renderContactItem}
-            keyExtractor={(item) => item._id || item.id || Math.random().toString()}
+            keyExtractor={(item, index) => item._id || item.id || `contact-${index}`}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.conversationsList}
           />
