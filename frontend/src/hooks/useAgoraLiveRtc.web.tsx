@@ -12,18 +12,32 @@ export function useAgoraLiveRtc(_opts: {
   enabled: boolean;
   muted?: boolean;
   cameraFlipNonce?: number;
+  videoQuality?: import('../live/liveVideoQuality').LiveVideoQuality;
+  beautyEnabled?: boolean;
 }) {
-  const AgoraLocalView = useCallback(({ style }: { style?: StyleProp<ViewStyle> }) => null, []);
+  const AgoraLocalView = useCallback(({ style: _style }: { style?: StyleProp<ViewStyle> }) => null, []);
   const AgoraRemoteView = useCallback(
     ({ style }: { style?: StyleProp<ViewStyle> }) => <View style={style as ViewStyle} />,
     []
   );
+  const AgoraRemoteGrid = useCallback(
+    ({ style }: { style?: StyleProp<ViewStyle>; uids?: number[]; maxCells?: number }) => (
+      <View style={style as ViewStyle} />
+    ),
+    []
+  );
+
+  const toggleScreenShare = useCallback(async () => {
+    return { ok: false as const, message: "Partage d'écran : application native (hôte) uniquement." };
+  }, []);
 
   return {
     agoraJoined: false,
     agoraError: null as string | null,
-    remoteUid: null as number | null,
+    remoteUids: [] as number[],
     AgoraLocalView,
     AgoraRemoteView,
+    AgoraRemoteGrid,
+    toggleScreenShare,
   };
 }
