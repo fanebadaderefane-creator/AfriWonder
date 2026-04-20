@@ -1,0 +1,657 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "@chevrotain/cst-dts-gen": {
+      "name": "@chevrotain/cst-dts-gen",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "@chevrotain/gast",
+        "lodash"
+      ],
+      "effects": [],
+      "range": "10.0.0 - 10.5.0",
+      "nodes": [
+        "node_modules/@chevrotain/cst-dts-gen"
+      ],
+      "fixAvailable": true
+    },
+    "@chevrotain/gast": {
+      "name": "@chevrotain/gast",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "lodash"
+      ],
+      "effects": [],
+      "range": "<=10.5.0",
+      "nodes": [
+        "node_modules/@chevrotain/gast"
+      ],
+      "fixAvailable": true
+    },
+    "@hono/node-server": {
+      "name": "@hono/node-server",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1114170,
+          "name": "@hono/node-server",
+          "dependency": "@hono/node-server",
+          "title": "@hono/node-server has authorization bypass for protected static paths via encoded slashes in Serve Static Middleware",
+          "url": "https://github.com/advisories/GHSA-wc8c-qw6v-h7f6",
+          "severity": "high",
+          "cwe": [
+            "CWE-863"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+          },
+          "range": "<1.19.10"
+        },
+        {
+          "source": 1116281,
+          "name": "@hono/node-server",
+          "dependency": "@hono/node-server",
+          "title": "@hono/node-server: Middleware bypass via repeated slashes in serveStatic",
+          "url": "https://github.com/advisories/GHSA-92pp-h63x-v22m",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-22"
+          ],
+          "cvss": {
+            "score": 5.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+          },
+          "range": "<1.19.13"
+        }
+      ],
+      "effects": [
+        "@prisma/dev"
+      ],
+      "range": "<=1.19.12",
+      "nodes": [
+        "node_modules/@hono/node-server"
+      ],
+      "fixAvailable": {
+        "name": "prisma",
+        "version": "7.7.0",
+        "isSemVerMajor": false
+      }
+    },
+    "@mrleebo/prisma-ast": {
+      "name": "@mrleebo/prisma-ast",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "chevrotain"
+      ],
+      "effects": [
+        "@prisma/dev"
+      ],
+      "range": "0.4.2 - 0.13.1",
+      "nodes": [
+        "node_modules/@mrleebo/prisma-ast"
+      ],
+      "fixAvailable": {
+        "name": "prisma",
+        "version": "7.7.0",
+        "isSemVerMajor": false
+      }
+    },
+    "@prisma/config": {
+      "name": "@prisma/config",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "effect"
+      ],
+      "effects": [
+        "prisma"
+      ],
+      "range": "6.13.0-dev.1 - 6.19.2 || 6.20.0-dev.1 - 7.6.0-integration-feat-prisma-bootstrap.13",
+      "nodes": [
+        "node_modules/@prisma/config"
+      ],
+      "fixAvailable": {
+        "name": "prisma",
+        "version": "7.7.0",
+        "isSemVerMajor": false
+      }
+    },
+    "@prisma/dev": {
+      "name": "@prisma/dev",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@hono/node-server",
+        "@mrleebo/prisma-ast",
+        "hono"
+      ],
+      "effects": [
+        "prisma"
+      ],
+      "range": "<=0.22.0",
+      "nodes": [
+        "node_modules/@prisma/dev"
+      ],
+      "fixAvailable": {
+        "name": "prisma",
+        "version": "7.7.0",
+        "isSemVerMajor": false
+      }
+    },
+    "axios": {
+      "name": "axios",
+      "severity": "critical",
+      "isDirect": true,
+      "via": [
+        {
+          "source": 1116365,
+          "name": "axios",
+          "dependency": "axios",
+          "title": "Axios has a NO_PROXY Hostname Normalization Bypass Leads to SSRF",
+          "url": "https://github.com/advisories/GHSA-3p68-rc4w-qgx5",
+          "severity": "critical",
+          "cwe": [
+            "CWE-441",
+            "CWE-918"
+          ],
+          "cvss": {
+            "score": 0,
+            "vectorString": null
+          },
+          "range": "<1.15.0"
+        },
+        {
+          "source": 1116606,
+          "name": "axios",
+          "dependency": "axios",
+          "title": "Axios has Unrestricted Cloud Metadata Exfiltration via Header Injection Chain",
+          "url": "https://github.com/advisories/GHSA-fvcv-3m26-pcqx",
+          "severity": "critical",
+          "cwe": [
+            "CWE-113",
+            "CWE-444",
+            "CWE-918"
+          ],
+          "cvss": {
+            "score": 10,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"
+          },
+          "range": ">=1.0.0 <1.15.0"
+        }
+      ],
+      "effects": [],
+      "range": "<=1.14.0",
+      "nodes": [
+        "node_modules/axios"
+      ],
+      "fixAvailable": true
+    },
+    "chevrotain": {
+      "name": "chevrotain",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "@chevrotain/cst-dts-gen",
+        "@chevrotain/gast",
+        "lodash"
+      ],
+      "effects": [
+        "@mrleebo/prisma-ast"
+      ],
+      "range": "10.0.0 - 10.5.0",
+      "nodes": [
+        "node_modules/chevrotain"
+      ],
+      "fixAvailable": {
+        "name": "prisma",
+        "version": "7.7.0",
+        "isSemVerMajor": false
+      }
+    },
+    "effect": {
+      "name": "effect",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1115356,
+          "name": "effect",
+          "dependency": "effect",
+          "title": "Effect `AsyncLocalStorage` context lost/contaminated inside Effect fibers under concurrent load with RPC",
+          "url": "https://github.com/advisories/GHSA-38f7-945m-qr2g",
+          "severity": "high",
+          "cwe": [
+            "CWE-362"
+          ],
+          "cvss": {
+            "score": 7.4,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N"
+          },
+          "range": "<3.20.0"
+        }
+      ],
+      "effects": [
+        "@prisma/config"
+      ],
+      "range": "<3.20.0",
+      "nodes": [
+        "node_modules/effect"
+      ],
+      "fixAvailable": {
+        "name": "prisma",
+        "version": "7.7.0",
+        "isSemVerMajor": false
+      }
+    },
+    "follow-redirects": {
+      "name": "follow-redirects",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1116560,
+          "name": "follow-redirects",
+          "dependency": "follow-redirects",
+          "title": "follow-redirects leaks Custom Authentication Headers to Cross-Domain Redirect Targets",
+          "url": "https://github.com/advisories/GHSA-r4q5-vmmm-2653",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-200"
+          ],
+          "cvss": {
+            "score": 0,
+            "vectorString": null
+          },
+          "range": "<=1.15.11"
+        }
+      ],
+      "effects": [],
+      "range": "<=1.15.11",
+      "nodes": [
+        "node_modules/follow-redirects"
+      ],
+      "fixAvailable": true
+    },
+    "hono": {
+      "name": "hono",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1112644,
+          "name": "hono",
+          "dependency": "hono",
+          "title": "Hono vulnerable to XSS through ErrorBoundary component ",
+          "url": "https://github.com/advisories/GHSA-9r54-q6cx-xmh5",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-79"
+          ],
+          "cvss": {
+            "score": 4.7,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:L/I:L/A:N"
+          },
+          "range": "<4.11.7"
+        },
+        {
+          "source": 1112677,
+          "name": "hono",
+          "dependency": "hono",
+          "title": "Hono cache middleware ignores \"Cache-Control: private\" leading to Web Cache Deception",
+          "url": "https://github.com/advisories/GHSA-6wqw-2p9w-4vw4",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-524",
+            "CWE-613"
+          ],
+          "cvss": {
+            "score": 5.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+          },
+          "range": "<4.11.7"
+        },
+        {
+          "source": 1112678,
+          "name": "hono",
+          "dependency": "hono",
+          "title": "Hono IPv4 address validation bypass in IP Restriction Middleware allows IP spoofing",
+          "url": "https://github.com/advisories/GHSA-r354-f388-2fhh",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-185"
+          ],
+          "cvss": {
+            "score": 4.8,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N"
+          },
+          "range": "<4.11.7"
+        },
+        {
+          "source": 1112911,
+          "name": "hono",
+          "dependency": "hono",
+          "title": "Hono has an Arbitrary Key Read in Serve static Middleware (Cloudflare Workers Adapter)",
+          "url": "https://github.com/advisories/GHSA-w332-q679-j88p",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-200",
+            "CWE-284",
+            "CWE-668"
+          ],
+          "cvss": {
+            "score": 5.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+          },
+          "range": "<4.11.7"
+        },
+        {
+          "source": 1113311,
+          "name": "hono",
+          "dependency": "hono",
+          "title": "Hono added timing comparison hardening in basicAuth and bearerAuth",
+          "url": "https://github.com/advisories/GHSA-gq3j-xvxp-8hrf",
+          "severity": "low",
+          "cwe": [
+            "CWE-208"
+          ],
+          "cvss": {
+            "score": 3.7,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N"
+          },
+          "range": "<4.11.10"
+        },
+        {
+          "source": 1114004,
+          "name": "hono",
+          "dependency": "hono",
+          "title": "Hono Vulnerable to Cookie Attribute Injection via Unsanitized domain and path in setCookie()",
+          "url": "https://github.com/advisories/GHSA-5pq2-9x2x-5p6w",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-113",
+            "CWE-1113"
+          ],
+          "cvss": {
+            "score": 5.4,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N"
+          },
+          "range": "<4.12.4"
+        },
+        {
+          "source": 1114005,
+          "name": "hono",
+          "dependency": "hono",
+          "title": "Hono Vulnerable to SSE Control Field Injection via CR/LF in writeSSE()",
+          "url": "https://github.com/advisories/GHSA-p6xx-57qc-3wxr",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-74"
+          ],
+          "cvss": {
+            "score": 6.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N"
+          },
+          "range": "<4.12.4"
+        },
+        {
+          "source": 1114006,
+          "name": "hono",
+          "dependency": "hono",
+          "title": "Hono vulnerable to arbitrary file access via serveStatic vulnerability ",
+          "url": "https://github.com/advisories/GHSA-q5qw-h33p-qvwr",
+          "severity": "high",
+          "cwe": [
+            "CWE-177"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+          },
+          "range": "<4.12.4"
+        },
+        {
+          "source": 1114341,
+          "name": "hono",
+          "dependency": "hono",
+          "title": "Hono vulnerable to Prototype Pollution possible through __proto__ key allowed in parseBody({ dot: true })",
+          "url": "https://github.com/advisories/GHSA-v8w9-8mx6-g223",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-1321"
+          ],
+          "cvss": {
+            "score": 4.8,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N"
+          },
+          "range": "<4.12.7"
+        },
+        {
+          "source": 1116244,
+          "name": "hono",
+          "dependency": "hono",
+          "title": "Hono missing validation of cookie name on write path in setCookie()",
+          "url": "https://github.com/advisories/GHSA-26pp-8wgv-hjvm",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-113"
+          ],
+          "cvss": {
+            "score": 5.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+          },
+          "range": "<4.12.12"
+        },
+        {
+          "source": 1116277,
+          "name": "hono",
+          "dependency": "hono",
+          "title": "Hono: Non-breaking space prefix bypass in cookie name handling in getCookie()",
+          "url": "https://github.com/advisories/GHSA-r5rp-j6wh-rvv4",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-20"
+          ],
+          "cvss": {
+            "score": 4.8,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N"
+          },
+          "range": "<4.12.12"
+        },
+        {
+          "source": 1116278,
+          "name": "hono",
+          "dependency": "hono",
+          "title": "Hono has incorrect IP matching in ipRestriction() for IPv4-mapped IPv6 addresses",
+          "url": "https://github.com/advisories/GHSA-xpcf-pg52-r92g",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-180"
+          ],
+          "cvss": {
+            "score": 0,
+            "vectorString": null
+          },
+          "range": "<4.12.12"
+        },
+        {
+          "source": 1116279,
+          "name": "hono",
+          "dependency": "hono",
+          "title": "Hono: Path traversal in toSSG() allows writing files outside the output directory",
+          "url": "https://github.com/advisories/GHSA-xf4j-xp2r-rqqx",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-22"
+          ],
+          "cvss": {
+            "score": 0,
+            "vectorString": null
+          },
+          "range": ">=4.0.0 <=4.12.11"
+        },
+        {
+          "source": 1116280,
+          "name": "hono",
+          "dependency": "hono",
+          "title": "Hono: Middleware bypass via repeated slashes in serveStatic",
+          "url": "https://github.com/advisories/GHSA-wmmm-f939-6g9c",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-22"
+          ],
+          "cvss": {
+            "score": 5.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+          },
+          "range": "<4.12.12"
+        }
+      ],
+      "effects": [],
+      "range": "<=4.12.11",
+      "nodes": [
+        "node_modules/hono"
+      ],
+      "fixAvailable": true
+    },
+    "lodash": {
+      "name": "lodash",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1112455,
+          "name": "lodash",
+          "dependency": "lodash",
+          "title": "Lodash has Prototype Pollution Vulnerability in `_.unset` and `_.omit` functions",
+          "url": "https://github.com/advisories/GHSA-xxjr-mmjv-4gpg",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-1321"
+          ],
+          "cvss": {
+            "score": 6.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:L"
+          },
+          "range": ">=4.0.0 <=4.17.22"
+        },
+        {
+          "source": 1115806,
+          "name": "lodash",
+          "dependency": "lodash",
+          "title": "lodash vulnerable to Code Injection via `_.template` imports key names",
+          "url": "https://github.com/advisories/GHSA-r5fr-rjxr-66jc",
+          "severity": "high",
+          "cwe": [
+            "CWE-94"
+          ],
+          "cvss": {
+            "score": 8.1,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H"
+          },
+          "range": ">=4.0.0 <=4.17.23"
+        },
+        {
+          "source": 1115810,
+          "name": "lodash",
+          "dependency": "lodash",
+          "title": "lodash vulnerable to Prototype Pollution via array path bypass in `_.unset` and `_.omit`",
+          "url": "https://github.com/advisories/GHSA-f23m-r3pf-42rh",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-1321"
+          ],
+          "cvss": {
+            "score": 6.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:L"
+          },
+          "range": "<=4.17.23"
+        }
+      ],
+      "effects": [
+        "@chevrotain/cst-dts-gen",
+        "@chevrotain/gast",
+        "chevrotain"
+      ],
+      "range": "<=4.17.23",
+      "nodes": [
+        "node_modules/lodash"
+      ],
+      "fixAvailable": {
+        "name": "prisma",
+        "version": "7.7.0",
+        "isSemVerMajor": false
+      }
+    },
+    "nodemailer": {
+      "name": "nodemailer",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": [
+        {
+          "source": 1116270,
+          "name": "nodemailer",
+          "dependency": "nodemailer",
+          "title": "Nodemailer Vulnerable to SMTP Command Injection via CRLF in Transport name Option (EHLO/HELO) ",
+          "url": "https://github.com/advisories/GHSA-vvjj-xcjg-gr5g",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-93"
+          ],
+          "cvss": {
+            "score": 4.9,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:N"
+          },
+          "range": "<=8.0.4"
+        }
+      ],
+      "effects": [],
+      "range": "<=8.0.4",
+      "nodes": [
+        "node_modules/nodemailer"
+      ],
+      "fixAvailable": true
+    },
+    "prisma": {
+      "name": "prisma",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "@prisma/config",
+        "@prisma/dev"
+      ],
+      "effects": [],
+      "range": "6.13.0-dev.1 - 6.19.2 || 6.20.0-dev.1 - 7.6.0-integration-feat-prisma-bootstrap.13",
+      "nodes": [
+        "node_modules/prisma"
+      ],
+      "fixAvailable": {
+        "name": "prisma",
+        "version": "7.7.0",
+        "isSemVerMajor": false
+      }
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 6,
+      "high": 7,
+      "critical": 1,
+      "total": 14
+    },
+    "dependencies": {
+      "prod": 656,
+      "dev": 263,
+      "optional": 131,
+      "peer": 6,
+      "peerOptional": 0,
+      "total": 1054
+    }
+  }
+}

@@ -51,6 +51,8 @@ Pour une passe complète (plus long) :
 npm run test:all
 ```
 
+Playwright — smoke personas (`npm run test:e2e:personas`) : exporter `E2E_STAGING_EMAIL` / `E2E_STAGING_PASSWORD` et `E2E_ADMIN_EMAIL` / `E2E_ADMIN_PASSWORD`, **ou** copier `tests/e2e/playwright-credentials.sample` vers `tests/e2e/playwright-credentials.local` (fichier ignoré par git, non versionné).
+
 ## 3. Ce que le client peut exiger en revue
 
 - **Diff Git** de la session (ou PR) limité au besoin.
@@ -65,3 +67,7 @@ npm run test:all
 ## 5. Révision
 
 Adapter ce document si de nouvelles barrières CI ou de nouveaux livrables deviennent le standard minimal.
+
+## 6. Suivi étendu (phases 0–24)
+
+Pour un cahier des charges type « mega audit » : **`docs/PHASES_0_24_CONTRACT_TRACKER.md`**, journal racine **`AUDIT_JOURNAL.md`**, agrégation **`npm run report:final`** (ou `node scripts/generate-final-report.js`).
