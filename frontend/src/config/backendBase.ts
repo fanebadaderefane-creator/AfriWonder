@@ -14,6 +14,41 @@ import { orderedPrivateLanHostsFromStrings } from './devBackendHostUtils';
 export const DEFAULT_BACKEND_ORIGIN = 'http://localhost:3000';
 
 /**
+ * Sentinelle retournée en production native quand `EXPO_PUBLIC_BACKEND_URL` est absent.
+ * Volontairement invalide pour que les requêtes échouent **immédiatement** avec une erreur claire
+ * au lieu de taper silencieusement `localhost:3000` (qui pointe vers l'appareil en prod et timeout).
+ * Le TLD `.invalid` est réservé par la RFC 2606 et ne résoudra jamais.
+ */
+export const MISSING_BACKEND_URL_SENTINEL =
+  'https://backend-url-not-configured.invalid';
+
+let missingBackendUrlLogged = false;
+
+/**
+ * Log une seule fois (console + Sentry) quand on détecte un build natif release
+ * sans `EXPO_PUBLIC_BACKEND_URL`. Évite les logs répétés sur chaque appel API.
+ */
+function logMissingBackendUrlOnce(): void {
+  if (missingBackendUrlLogged) return;
+  missingBackendUrlLogged = true;
+  const msg =
+    '[AfriWonder] CRITICAL: EXPO_PUBLIC_BACKEND_URL is not set on this native production build. '
+    + 'All API/socket calls will fail fast instead of hitting localhost. '
+    + 'Configure EXPO_PUBLIC_BACKEND_URL in EAS secrets (e.g. https://api.afriwonder.com).';
+  console.error(msg);
+  try {
+    // Import dynamique pour éviter toute dépendance circulaire potentielle.
+
+    const mod = require('../lib/sentryMobile') as {
+      captureSentryMessage?: (m: string, l?: 'fatal' | 'error') => void;
+    };
+    mod.captureSentryMessage?.('missing_expo_public_backend_url', 'fatal');
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
  * Hôtes LAN dérivés du packager Expo (`experienceUrl`, etc.) quand Metro annonce aussi `192.168.x.x`.
  * MEmu / certains profils : `hostUri` = 127.0.0.1 alors que `exp://192.168…` est la vraie IP du PC —
  * dans ce cas `10.0.2.2` peut échouer (bridge / NAT), l’IP LAN fonctionne.
@@ -296,7 +331,9 @@ function rewriteLocalhostOriginForAndroidDev(origin: string): string {
  * - **Web en prod** : sans variable, chaîne vide = même origine que la page (si API derrière le même hôte).
  * - **iOS / Android en dev** : détails et ordre packager vs `10.0.2.2` → `.cursor/rules/mobile-android-backend-url.mdc`
  *   et `frontend/.env.example` (`EXPO_PUBLIC_BACKEND_URL`, `EXPO_PUBLIC_DEV_PC_LAN_HOST`, …).
- * - **Prod native** : sans variable → `localhost:3000` (peu utile ; préférer `EXPO_PUBLIC_BACKEND_URL`).
+ * - **Prod native** : sans variable → URL sentinelle invalide + log CRITIQUE (Sentry).
+ *   Ne pas retomber silencieusement sur `localhost:3000` : c'est un piège qui fait croire à un bug
+ *   backend alors que la variable d'env EAS manque.
  */
 export function getBackendOrigin(): string {
   const configured = readConfiguredOrigin();
@@ -320,5 +357,6 @@ export function getBackendOrigin(): string {
     return computeNativeDevBackendOriginSync();
   }
 
-  return DEFAULT_BACKEND_ORIGIN;
+  logMissingBackendUrlOnce();
+  return MISSING_BACKEND_URL_SENTINEL;
 }

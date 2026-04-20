@@ -29,3 +29,16 @@ export function initMobileSentry(): void {
     initialized = false;
   }
 }
+
+export function captureSentryMessage(
+  message: string,
+  level: 'fatal' | 'error' | 'warning' | 'info' = 'error',
+  extra?: Record<string, unknown>
+): void {
+  if (!initialized) return;
+  try {
+    Sentry.captureMessage(message, { level, extra });
+  } catch {
+    /* ignore */
+  }
+}
