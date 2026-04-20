@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 
 import { Input } from "@/components/ui/input";
 
-import { Heart, Send, Coins, ChevronDown, ChevronUp } from 'lucide-react';
+import { Heart, Send, Coins, ChevronDown, ChevronUp, Pin } from 'lucide-react';
 
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -39,7 +39,10 @@ export default function CommentSheet({
 
   user,
 
-  onRefresh
+  onRefresh,
+
+  /** Créateur de la vidéo — peut épingler des commentaires. */
+  videoCreatorId = null,
 
 }) {
 
@@ -205,79 +208,46 @@ export default function CommentSheet({
 
 
   const handleLikeComment = async (comment) => {
-
     if (!user) {
-
-      toast.error('Connectez-vous pour aimer');
-
+      toast.error('Connectez-vous pour réagir');
       return;
-
     }
-
-    
-
-    const isLiked = likedComments.has(comment.id);
-
-    
-
-    // Update local state immediately
-
-    setLikedComments(prev => {
-
-      const next = new Set(prev);
-
-      if (isLiked) {
-
-        next.delete(comment.id);
-
-      } else {
-
-        next.add(comment.id);
-
-      }
-
-      return next;
-
-    });
-
-
-
-    // Update comment likes in database
-
     try {
-
-      await api.entities.Comment.update(comment.id, {
-
-        likes: isLiked ? Math.max(0, (comment.likes || 0) - 1) : (comment.likes || 0) + 1
-
-      });
-
-    } catch (error) {
-
-      // Revert local state on error
-
-      setLikedComments(prev => {
-
+      const res = await api.commentSocial.react(comment.id, 'like');
+      setLikedComments((prev) => {
         const next = new Set(prev);
-
-        if (isLiked) {
-
-          next.add(comment.id);
-
-        } else {
-
-          next.delete(comment.id);
-
-        }
-
+        if (res?.my_reaction === 'like') next.add(comment.id);
+        else next.delete(comment.id);
         return next;
-
       });
-
-      toast.error('Erreur lors de la mise à jour');
-
+      onRefresh?.();
+    } catch (error) {
+      toast.error('Erreur lors de la réaction');
     }
+  };
 
+  const handleCommentReaction = async (comment, type) => {
+    if (!user) {
+      toast.error('Connectez-vous pour réagir');
+      return;
+    }
+    try {
+      await api.commentSocial.react(comment.id, type);
+      onRefresh?.();
+    } catch (error) {
+      toast.error('Erreur lors de la réaction');
+    }
+  };
+
+  const handlePinComment = async (comment) => {
+    if (!user || String(user.id) !== String(videoCreatorId)) return;
+    try {
+      await api.entities.Comment.update(comment.id, { is_pinned: !comment.is_pinned });
+      toast.success(comment.is_pinned ? 'Commentaire désépinglé' : 'Commentaire épinglé');
+      onRefresh?.();
+    } catch (error) {
+      toast.error('Impossible d’épingler');
+    }
   };
 
 
@@ -313,7 +283,7 @@ export default function CommentSheet({
     const isLong = text.length > MAX_COMMENT_LENGTH;
     const isExpanded = expandedComments.has(comment.id);
     const displayText = !isLong ? text : isExpanded ? text : `${text.slice(0, MAX_COMMENT_LENGTH)}…`;
-    const likeCount = (comment.likes || 0) + (likedComments.has(comment.id) ? 1 : 0);
+    const reactionTotal = Number(comment._count?.reactions ?? 0);
     const liked = likedComments.has(comment.id);
 
     return (
@@ -343,15 +313,33 @@ export default function CommentSheet({
                   Créateur
                 </span>
               )}
+              {comment.is_pinned ? (
+                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-200/95">
+                  Épinglé
+                </span>
+              ) : null}
             </div>
-            <CommentActions
-              comment={comment}
-              isOwnComment={isOwn}
-              onDelete={handleDeleteComment}
-              onEdit={handleEditComment}
-              onReport={() => toast.info('Signalement envoyé')}
-              className="-mr-1 -mt-1"
-            />
+            <div className="flex shrink-0 items-center gap-1">
+              {user?.id && String(videoCreatorId) === String(user.id) && !isReply ? (
+                <button
+                  type="button"
+                  onClick={() => handlePinComment(comment)}
+                  className="rounded-full p-1.5 text-white/45 hover:bg-white/10 hover:text-white/80"
+                  aria-label={comment.is_pinned ? 'Désépingler' : 'Épingler'}
+                  title={comment.is_pinned ? 'Désépingler' : 'Épingler'}
+                >
+                  <Pin className={cn('h-4 w-4', comment.is_pinned && 'text-amber-300')} />
+                </button>
+              ) : null}
+              <CommentActions
+                comment={comment}
+                isOwnComment={isOwn}
+                onDelete={handleDeleteComment}
+                onEdit={handleEditComment}
+                onReport={() => toast.info('Signalement envoyé')}
+                className="-mr-1 -mt-1"
+              />
+            </div>
           </div>
           <p className="mt-1 whitespace-pre-wrap break-words text-[15px] font-bold leading-snug tracking-[-0.01em] text-white">
             {displayText}
@@ -375,22 +363,54 @@ export default function CommentSheet({
               >
                 Répondre
               </button>
+              {user?.id ? (
+                <span className="flex items-center gap-1 text-[12px]">
+                  <button
+                    type="button"
+                    className="rounded px-1 text-base leading-none hover:bg-white/10"
+                    aria-label="Rire"
+                    onClick={() => handleCommentReaction(comment, 'laugh')}
+                  >
+                    😂
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded px-1 text-base leading-none hover:bg-white/10"
+                    aria-label="Feu"
+                    onClick={() => handleCommentReaction(comment, 'fire')}
+                  >
+                    🔥
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded px-1 text-base leading-none hover:bg-white/10"
+                    aria-label="Wow"
+                    onClick={() => handleCommentReaction(comment, 'wow')}
+                  >
+                    😮
+                  </button>
+                </span>
+              ) : null}
             </div>
-            <button
-              type="button"
-              onClick={() => handleLikeComment(comment)}
-              className="flex shrink-0 items-center gap-1.5 text-[12px] text-white/38 hover:text-white/55"
-              aria-label={liked ? 'Retirer le j’aime' : 'J’aime'}
-            >
-              <Heart
-                className={cn(
-                  'h-[18px] w-[18px] transition-colors',
-                  liked ? 'fill-red-500 text-red-500' : 'fill-transparent text-white/45'
-                )}
-                strokeWidth={liked ? 0 : 2}
-              />
-              <span className={cn('tabular-nums', liked && 'text-red-400/90')}>{likeCount}</span>
-            </button>
+            <div className="flex shrink-0 flex-col items-end gap-0.5">
+              <button
+                type="button"
+                onClick={() => handleLikeComment(comment)}
+                className="flex items-center gap-1.5 text-[12px] text-white/38 hover:text-white/55"
+                aria-label="J’aime"
+              >
+                <Heart
+                  className={cn(
+                    'h-[18px] w-[18px] transition-colors',
+                    liked ? 'fill-red-500 text-red-500' : 'fill-transparent text-white/45'
+                  )}
+                  strokeWidth={liked ? 0 : 2}
+                />
+              </button>
+              {reactionTotal > 0 ? (
+                <span className="text-[10px] tabular-nums text-white/35">{reactionTotal} réactions</span>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>

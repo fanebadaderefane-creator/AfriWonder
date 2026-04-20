@@ -367,6 +367,7 @@ export default function Landing() {
             <div className="hidden items-center gap-2 md:flex">
               <a
                 href="#auth"
+                data-testid="login-button"
                 className="rounded-full px-4 py-2 text-[13px] font-medium text-white/65 transition-colors hover:text-white"
               >
                 Se connecter
@@ -756,6 +757,7 @@ export default function Landing() {
                   <div className="inline-flex rounded-full bg-white/[0.05] p-1 ring-1 ring-inset ring-white/[0.08]">
                     <button
                       type="button"
+                      data-testid="auth-mode-login"
                       onClick={() => setAuthMode('login')}
                       className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${authMode === 'login' ? 'bg-white text-slate-950' : 'text-white/64 hover:text-white'}`}
                     >
@@ -763,6 +765,7 @@ export default function Landing() {
                     </button>
                     <button
                       type="button"
+                      data-testid="auth-mode-register"
                       onClick={() => setAuthMode('register')}
                       className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${authMode === 'register' ? 'bg-white text-slate-950' : 'text-white/64 hover:text-white'}`}
                     >
@@ -803,6 +806,7 @@ export default function Landing() {
                       <label className={LANDING_LABEL}>Email, nom d’utilisateur ou numéro</label>
                 <input
                         type="text"
+                        data-testid="login-email-input"
                         placeholder="votre@email.com ou +22370123456"
                         aria-label="Email, nom d’utilisateur ou numéro"
                         value={loginIdentifier}
@@ -815,6 +819,7 @@ export default function Landing() {
                       <label className={LANDING_LABEL}>Mot de passe</label>
                 <input
                   type="password"
+                  data-testid="login-password-input"
                   placeholder="••••••••"
                   aria-label="Mot de passe"
                   value={loginPassword}
@@ -825,6 +830,7 @@ export default function Landing() {
               </div>
               <button
                 type="submit"
+                data-testid="submit-login"
                 disabled={authLoading}
                       className="w-full rounded-2xl bg-white px-6 py-3 font-semibold text-slate-950 transition-colors hover:bg-white/92 disabled:opacity-50"
               >
@@ -1073,6 +1079,7 @@ export default function Landing() {
 
                     <label className={LANDING_LIST_ROW}>
                 <input
+                  id="acceptTerms"
                   type="checkbox"
                   checked={regAcceptTerms}
                   onChange={(e) => setRegAcceptTerms(e.target.checked)}
@@ -1088,6 +1095,7 @@ export default function Landing() {
 
               <button
                 type="submit"
+                data-testid="submit-register"
                 disabled={authLoading || !regAcceptTerms}
                       className="w-full rounded-2xl bg-white px-6 py-3 font-semibold text-slate-950 transition-colors hover:bg-white/92 disabled:opacity-50"
               >

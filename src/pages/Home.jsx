@@ -1005,36 +1005,81 @@ export default function Home() {
     };
   }, []);
 
+  const patchFeedVideoReactionFields = useCallback(
+    (videoId, /** @type {{ reaction_counts?: any; likes?: number; current_user_reaction?: string | null }} */ patch) => {
+      if (!videoId || !patch) return;
+      const uid = user?.id;
+      queryClient.setQueryData(queryKeyFeed(uid), (old) => {
+        if (!old?.pages || !Array.isArray(old.pages)) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page) => {
+            if (!Array.isArray(page)) return page;
+            return page.map((item) => {
+              const v = item?.video;
+              if (!v || String(v.id) !== String(videoId)) return item;
+              return { ...item, video: { ...v, ...patch } };
+            });
+          }),
+        };
+      });
+      queryClient.setQueryData(queryKeyVideos(uid), (old) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((v) => (String(v.id) === String(videoId) ? { ...v, ...patch } : v));
+      });
+    },
+    [queryClient, user?.id]
+  );
+
   const likeMutation = useMutation({
     mutationFn: async (/** @type {{video: any, type?: string | null}} */ { video, type = 'like' }) => {
       if (!user) {
-        return { isLiked: false, reaction: null, video: null };
+        return { isLiked: false, reaction: null, video: null, reaction_counts: null };
       }
       const isLiked = likedVideos.has(video.id);
       try {
         if (type === null) {
-          await api.videos.deleteReaction(video.id);
-          return { isLiked: false, reaction: null, video };
+          const cleared = await api.videos.deleteReaction(video.id);
+          const reaction_counts = cleared?.reaction_counts ?? null;
+          return { isLiked: false, reaction: null, video, reaction_counts };
         }
         const result = await api.videos.like(video.id, type);
         const reaction = result?.reaction ?? result?.data?.reaction ?? type;
         const newLiked = result?.liked ?? result?.data?.liked ?? true;
-        return { isLiked: newLiked, reaction, video };
+        const reaction_counts = result?.reaction_counts ?? result?.data?.reaction_counts ?? null;
+        return { isLiked: newLiked, reaction, video, reaction_counts };
       } catch (/** @type {any} */ error) {
         const status = error.response?.status;
         const body = error.response?.data;
         const likedFromError = body?.data?.liked ?? body?.liked;
         if (typeof likedFromError === 'boolean') {
-          return { isLiked: likedFromError, reaction: body?.data?.reaction ?? body?.reaction ?? null, video };
+          return {
+            isLiked: likedFromError,
+            reaction: body?.data?.reaction ?? body?.reaction ?? null,
+            video,
+            reaction_counts: body?.data?.reaction_counts ?? body?.reaction_counts ?? null,
+          };
         }
         if (status === 401) toast.error('Connectez-vous pour aimer');
         else toast.error('Erreur lors du like');
-        return { isLiked, reaction: null, video };
+        return { isLiked, reaction: null, video, reaction_counts: null };
       }
     },
     onSuccess: (data) => {
       if (data?.video) {
         dispatch({ type: 'TOGGLE_LIKE', videoId: data.video.id, liked: data.isLiked });
+        if (data.reaction_counts && typeof data.reaction_counts === 'object') {
+          const sumLikes = Object.values(data.reaction_counts).reduce(
+            (a, b) => a + (Number(b) || 0),
+            0
+          );
+          patchFeedVideoReactionFields(data.video.id, {
+            reaction_counts: data.reaction_counts,
+            likes: sumLikes,
+            current_user_reaction: data.isLiked ? data.reaction ?? null : null,
+          });
+        }
+        queryClient.invalidateQueries({ queryKey: ['feed-video-states', user?.id ?? 'guest'] });
         if (data.isLiked && user?.id && data.video?.creator_id) {
           try {
             NotificationService.notifyVideoLike(user.id, data.video.id, data.video.creator_id);
@@ -1053,6 +1098,18 @@ export default function Home() {
       likeScrollLockUntilRef.current = Date.now() + 400;
       if (!likeMutation.isPending) {
         likeMutation.mutate({ video, type: 'like' });
+      }
+      impactLight().catch(() => {});
+    },
+    [likeMutation]
+  );
+
+  const handleVideoReaction = useCallback(
+    (video, type) => {
+      if (!video || !type) return;
+      likeScrollLockUntilRef.current = Date.now() + 400;
+      if (!likeMutation.isPending) {
+        likeMutation.mutate({ video, type: String(type) });
       }
       impactLight().catch(() => {});
     },
@@ -1442,6 +1499,7 @@ export default function Home() {
 
         <div
           ref={containerRef}
+          data-testid="feed"
           onScroll={handleScroll}
           onTouchStart={(e) => {
             if (e.touches.length > 0) handlePullStart(e.touches[0].clientY);
@@ -1551,6 +1609,12 @@ export default function Home() {
                 isFollowing={userFollows.some((followedUser) => followedUser.id === slide.video.creator_id)}
                 setMuted={setMuted}
                 onLike={handleLike}
+                onReaction={handleVideoReaction}
+                userReaction={
+                  feedVideoStates?.reactionsByVideoId?.[String(slide.video.id)] ??
+                  slide.video?.current_user_reaction ??
+                  null
+                }
                 onComment={() => {
                   setSelectedVideo(slide.video);
                   setActiveModal('comments');
@@ -1728,6 +1792,7 @@ export default function Home() {
         isOpen={isCommentOverlayOpen}
         onClose={() => setActiveModal(null)}
         videoId={selectedVideo?.id}
+        videoCreatorId={selectedVideo?.creator_id}
         comments={comments}
         isLoading={commentsLoading}
         isError={commentsError}

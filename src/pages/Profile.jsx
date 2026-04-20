@@ -832,6 +832,23 @@ export default function Profile() {
 
       />
 
+      {isOwnProfile && (
+        <div className="mx-auto max-w-5xl px-4 mt-3 flex flex-wrap gap-2">
+          <Link
+            to={createPageUrl('SavedVideos')}
+            className="inline-flex items-center rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-white hover:bg-white/10"
+          >
+            Mes sauvegardes
+          </Link>
+          <Link
+            to={createPageUrl('ChallengesViral')}
+            className="inline-flex items-center rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-white hover:bg-white/10"
+          >
+            Challenges viraux
+          </Link>
+        </div>
+      )}
+
       <div className="mx-auto max-w-5xl px-4">
       {isOwnProfile && orderStats && (orderStats.order_count > 0 || orderStats.total_spent > 0) && (
         <ProfileSectionCard className="mt-4 p-4">

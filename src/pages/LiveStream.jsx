@@ -323,6 +323,11 @@ export default function LiveStreamPage() {
     onPollEnded: (poll) => {
       setPolls(prev => prev.filter(p => p.id !== poll.id));
     },
+    onRaiseHand: (payload) => {
+      if (payload?.raised) {
+        toast.info(`${payload.username ?? 'Spectateur'} a levé la main`, { duration: 4000 });
+      }
+    },
   });
 
   const { data: hostTokenData, isError: tokenError } = useQuery({

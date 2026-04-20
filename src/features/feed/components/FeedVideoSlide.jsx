@@ -1,5 +1,6 @@
 import React from 'react';
 import VideoCard from '@/components/video/VideoCard';
+import FeedVideoPoll from '@/components/video/FeedVideoPoll';
 import Download from 'lucide-react/icons/download';
 
 /**
@@ -21,6 +22,8 @@ export default function FeedVideoSlide({
   isFollowing,
   setMuted,
   onLike,
+  onReaction,
+  userReaction = null,
   onComment,
   onShare,
   onSave,
@@ -77,6 +80,20 @@ export default function FeedVideoSlide({
           </span>
         </div>
       )}
+      {!hideVideoHud && (
+        <div
+          className="pointer-events-auto absolute left-3 z-[100] max-w-[min(200px,calc(100%-5.5rem))]"
+          style={{
+            bottom: 'calc(11rem + env(safe-area-inset-bottom, 0px))',
+          }}
+        >
+          <FeedVideoPoll
+            videoId={String(video?.id || '')}
+            isActive={index === safeCurrentIndex}
+            compact
+          />
+        </div>
+      )}
       <VideoCard
         video={video}
         isActive={index === safeCurrentIndex}
@@ -95,6 +112,8 @@ export default function FeedVideoSlide({
         isMuted={isMuted}
         onMuteToggle={() => setMuted(!isMuted)}
         onLike={onLike}
+        onReaction={onReaction}
+        userReaction={userReaction}
         currentUser={currentUser}
         onComment={onComment}
         onShare={onShare}

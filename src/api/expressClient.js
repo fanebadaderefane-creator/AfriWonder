@@ -483,12 +483,12 @@ export const api = {
     },
     async getFeedVideoStates(ids = []) {
       if (!Array.isArray(ids) || ids.length === 0) {
-        return { likedIds: [], savedIds: [] };
+        return { likedIds: [], savedIds: [], reactionsByVideoId: {} };
       }
       const { data } = await axiosInstance.get('/me/feed-video-states', {
         params: { ids: ids.join(',') },
       });
-      return data.data ?? { likedIds: [], savedIds: [] };
+      return data.data ?? { likedIds: [], savedIds: [], reactionsByVideoId: {} };
     },
     async getSessions() {
       const { data } = await axiosInstance.get('/me/sessions');
@@ -644,6 +644,18 @@ export const api = {
     async getComments(id, params = {}, options = {}) {
       const timeoutMs = Number.isFinite(options?.timeoutMs) ? options.timeoutMs : 12000;
       const { data } = await axiosInstance.get(`/videos/${id}/comments`, { params, timeout: timeoutMs });
+      return data.data;
+    },
+    async getPoll(id) {
+      const { data } = await axiosInstance.get(`/videos/${id}/poll`);
+      return data.data;
+    },
+    async createPoll(id, options) {
+      const { data } = await axiosInstance.post(`/videos/${id}/poll`, { options });
+      return data.data;
+    },
+    async votePoll(id, option_index) {
+      const { data } = await axiosInstance.post(`/videos/${id}/poll/vote`, { option_index });
       return data.data;
     },
     async share(id) {
@@ -2158,8 +2170,10 @@ export const api = {
     },
   },
   saves: {
-    async toggle(videoId) {
-      const { data } = await axiosInstance.post('/saves', { video_id: videoId });
+    async toggle(videoId, collectionId = null) {
+      const body = { video_id: videoId };
+      if (collectionId) body.collection_id = collectionId;
+      const { data } = await axiosInstance.post('/saves', body);
       return data.data;
     },
     async list(params = {}) {
@@ -2170,6 +2184,45 @@ export const api = {
         ...params
       };
       const { data } = await axiosInstance.get('/saves', { params: requestParams });
+      return data.data;
+    },
+    async listCollections() {
+      const { data } = await axiosInstance.get('/saves/collections');
+      return data.data || [];
+    },
+    async createCollection(name) {
+      const { data } = await axiosInstance.post('/saves/collections', { name });
+      return data.data;
+    },
+    async renameCollection(collectionId, name) {
+      const { data } = await axiosInstance.patch(`/saves/collections/${collectionId}`, { name });
+      return data.data;
+    },
+  },
+  challenges: {
+    async viralTrending(limit = 15) {
+      const { data } = await axiosInstance.get('/challenges/viral/trending', { params: { limit } });
+      return data.data || [];
+    },
+    async viralCreate(payload) {
+      const { data } = await axiosInstance.post('/challenges/viral', payload);
+      return data.data;
+    },
+    async viralJoin(hashtag, videoId) {
+      const h = encodeURIComponent(String(hashtag || '').replace(/^#/, ''));
+      const { data } = await axiosInstance.post(`/challenges/viral/${h}/join`, { video_id: videoId });
+      return data.data;
+    },
+    async viralLeaderboard(challengeId, limit = 20) {
+      const { data } = await axiosInstance.get(`/challenges/viral/${challengeId}/leaderboard`, {
+        params: { limit },
+      });
+      return data.data || [];
+    },
+  },
+  commentSocial: {
+    async react(commentId, type = 'like') {
+      const { data } = await axiosInstance.post(`/comments/${commentId}/reaction`, { type });
       return data.data;
     },
   },

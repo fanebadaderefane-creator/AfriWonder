@@ -26,16 +26,17 @@ export function useLiveSocket(options) {
     onCoHostInvited,
     onCoHostAccepted,
     onCoHostRemoved,
+    onRaiseHand,
   } = options || {};
 
   const socketRef = useRef(null);
   const callbacksRef = useRef({ 
     onChat, onGift, onTip, onViewers, onLike, onEnded, onChatClear, onBanned,
-    onPollCreated, onPollUpdated, onPollEnded, onCoHostInvited, onCoHostAccepted, onCoHostRemoved
+    onPollCreated, onPollUpdated, onPollEnded, onCoHostInvited, onCoHostAccepted, onCoHostRemoved, onRaiseHand,
   });
   callbacksRef.current = { 
     onChat, onGift, onTip, onViewers, onLike, onEnded, onChatClear, onBanned,
-    onPollCreated, onPollUpdated, onPollEnded, onCoHostInvited, onCoHostAccepted, onCoHostRemoved
+    onPollCreated, onPollUpdated, onPollEnded, onCoHostInvited, onCoHostAccepted, onCoHostRemoved, onRaiseHand,
   };
 
   useEffect(() => {
@@ -104,6 +105,10 @@ export function useLiveSocket(options) {
 
     socket.on('live:cohost:removed', (payload) => {
       if (callbacksRef.current.onCoHostRemoved) callbacksRef.current.onCoHostRemoved(payload);
+    });
+
+    socket.on('live:raise-hand', (payload) => {
+      if (callbacksRef.current.onRaiseHand) callbacksRef.current.onRaiseHand(payload);
     });
 
     return () => {

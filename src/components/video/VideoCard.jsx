@@ -75,6 +75,17 @@ const FEED_ACTION_BUTTON_CLASS =
 const FEED_ACTION_LABEL_CLASS =
   'min-h-[13px] text-[10px] font-semibold leading-tight tabular-nums tracking-[-0.01em] text-white/82 drop-shadow-[0_1px_10px_rgba(0,0,0,0.55)]';
 
+/** Phase 23 — palette réactions feed (clés = `Like.type` côté API). */
+const FEED_VIDEO_REACTIONS = [
+  { type: 'like', emoji: '❤️', label: 'J’aime' },
+  { type: 'fire', emoji: '🔥', label: 'Fire' },
+  { type: 'laugh', emoji: '😂', label: 'Rire' },
+  { type: 'wow', emoji: '😮', label: 'Wow' },
+  { type: 'moving', emoji: '😢', label: 'Émouvant' },
+  { type: 'strong', emoji: '💪', label: 'Force' },
+  { type: 'african', emoji: '🌍', label: 'Africain' },
+];
+
 function FeedActionButton({
   children,
   className,
@@ -114,6 +125,10 @@ function VideoCardContent({
   video,
   isActive,
   onLike,
+  /** @type {(v: any, type: string) => void | undefined} — réaction explicite (API `/videos/:id/like` body `type`). */
+  onReaction,
+  /** Réaction courante de l’utilisateur (`Like.type`), ex. depuis `/me/feed-video-states`. */
+  userReaction = null,
   onComment,
   onShare,
   onSave,
@@ -204,6 +219,15 @@ function VideoCardContent({
     : (video.likes || 0);
   const [likeCount, setLikeCount] = useState(initialCount);
 
+  const reactionCountsKey = useMemo(() => {
+    if (!video.reaction_counts || typeof video.reaction_counts !== 'object') return '';
+    try {
+      return JSON.stringify(video.reaction_counts);
+    } catch {
+      return '';
+    }
+  }, [video.reaction_counts]);
+
   // Quand on change de vidéo, on resynchronise sur l'état serveur
   useEffect(() => {
     setLocalIsLiked(!!isLiked);
@@ -213,11 +237,14 @@ function VideoCardContent({
     } else {
       setLikeCount(video.likes || 0);
     }
-  }, [video.id]);
+  }, [video.id, reactionCountsKey, isLiked]);
   const [isAnimating, setIsAnimating] = useState(false);
   const [showParticles, setShowParticles] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
   const [floatingHearts, setFloatingHearts] = useState([]);
+  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
+  const [reactionBurstEmoji, setReactionBurstEmoji] = useState(/** @type {string | null} */ (null));
+  const [reactionBurstSeq, setReactionBurstSeq] = useState(0);
   const [actionFeedback, setActionFeedback] = useState({});
   const [hasFirstFrameRendered, setHasFirstFrameRendered] = useState(false);
   /** Pour timers de déblocage (évite closures périmées sur première frame / route). */
@@ -1906,6 +1933,24 @@ function VideoCardContent({
   /* ⛔ ZONE LECTURE VERROUILLÉE — FIN
    * Ci-dessous : affichage timer uniquement (ne pas y mettre de play/pause/src). */
 
+  const handlePickReactionType = useCallback(
+    (type) => {
+      if (!canLike) {
+        onRequireAuth?.();
+        return;
+      }
+      const def = FEED_VIDEO_REACTIONS.find((r) => r.type === type);
+      if (def) {
+        setReactionBurstSeq((n) => n + 1);
+        setReactionBurstEmoji(def.emoji);
+        window.setTimeout(() => setReactionBurstEmoji(null), 680);
+      }
+      onReaction?.(video, type);
+      setReactionPickerOpen(false);
+    },
+    [canLike, onRequireAuth, onReaction, video]
+  );
+
   // canplaythrough supprimÃ© : on dÃ©marre sur loadeddata (readyState >= 2) pour lecture immÃ©diate, pas dâ€™attente full buffer.
   const formatTime = (seconds) => {
     if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
@@ -2335,7 +2380,23 @@ function VideoCardContent({
           ) : null}
         </button>
 
-        <div className="relative flex flex-col items-center gap-1">
+        <div className="relative flex flex-col items-center gap-1 overflow-visible">
+          <AnimatePresence>
+            {reactionBurstEmoji ? (
+              <motion.span
+                key={reactionBurstSeq}
+                initial={{ opacity: 0, scale: 0.35, y: 6 }}
+                animate={{ opacity: 1, scale: 1.15, y: -42 }}
+                exit={{ opacity: 0, y: -56 }}
+                transition={{ duration: 0.55, ease: 'easeOut' }}
+                className="pointer-events-none absolute left-1/2 top-0 z-[240] -translate-x-1/2 text-[28px] leading-none drop-shadow-[0_4px_18px_rgba(0,0,0,0.75)]"
+                aria-hidden
+              >
+                {reactionBurstEmoji}
+              </motion.span>
+            ) : null}
+          </AnimatePresence>
+
           <FeedActionButton
             onClick={(e) => {
               e.preventDefault();
@@ -2352,24 +2413,34 @@ function VideoCardContent({
             pressed={localIsLiked}
             feedback={isAnimating}
           >
-            <motion.div
-              animate={
-                isAnimating
-                  ? {
-                      scale: [1, 1.22, 1],
-                      rotate: [0, -8, 8, 0],
-                    }
-                  : {}
-              }
-              transition={{ duration: 0.3, ease: 'easeOut' }}
-            >
-              <Heart
-                className={cn(
-                  'h-6 w-6 transition-colors duration-200 drop-shadow-[0_2px_14px_rgba(0,0,0,0.65)]',
-                  localIsLiked ? 'fill-red-500 text-red-500' : 'text-white'
-                )}
-              />
-            </motion.div>
+            <span className="relative inline-flex">
+              <motion.div
+                animate={
+                  isAnimating
+                    ? {
+                        scale: [1, 1.22, 1],
+                        rotate: [0, -8, 8, 0],
+                      }
+                    : {}
+                }
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+              >
+                <Heart
+                  className={cn(
+                    'h-6 w-6 transition-colors duration-200 drop-shadow-[0_2px_14px_rgba(0,0,0,0.65)]',
+                    localIsLiked ? 'fill-red-500 text-red-500' : 'text-white'
+                  )}
+                />
+              </motion.div>
+              {userReaction && userReaction !== 'like' ? (
+                <span
+                  className="pointer-events-none absolute -bottom-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-black/55 px-0.5 text-[11px] leading-none ring-1 ring-white/25"
+                  title={FEED_VIDEO_REACTIONS.find((r) => r.type === userReaction)?.label}
+                >
+                  {FEED_VIDEO_REACTIONS.find((r) => r.type === userReaction)?.emoji ?? '✨'}
+                </span>
+              ) : null}
+            </span>
           </FeedActionButton>
 
           <AnimatePresence>
@@ -2399,6 +2470,71 @@ function VideoCardContent({
           >
             <FeedActionLabel>{formatFeedCount(likeCount)}</FeedActionLabel>
           </motion.div>
+
+          {compact && reactionCounts ? (
+            <div
+              className="flex max-w-[3.25rem] flex-wrap justify-center gap-x-0.5 gap-y-0.5 text-[8px] font-semibold tabular-nums leading-tight text-white/62"
+              aria-label="Répartition des réactions"
+            >
+              {FEED_VIDEO_REACTIONS.map(({ type, emoji, label }) => {
+                const n = Number(reactionCounts[type] ?? 0);
+                if (!n) return null;
+                return (
+                  <span key={type} title={label}>
+                    {emoji}
+                    {n > 99 ? '⁺' : n}
+                  </span>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {compact && typeof onReaction === 'function' ? (
+            <div className="relative z-[230] mt-0.5 flex flex-col items-center gap-1">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setReactionPickerOpen((o) => !o);
+                }}
+                className="pointer-events-auto rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white/72 ring-1 ring-white/15 transition-colors hover:bg-white/10 hover:text-white"
+                aria-expanded={reactionPickerOpen}
+                aria-label="Choisir une réaction"
+              >
+                Réagir
+              </button>
+              <AnimatePresence>
+                {reactionPickerOpen ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                    transition={{ duration: 0.2, ease: 'easeOut' }}
+                    className="pointer-events-auto absolute bottom-[calc(100%+6px)] right-0 flex max-w-[210px] flex-wrap justify-end gap-1 rounded-2xl border border-white/14 bg-black/78 px-2 py-2 shadow-2xl backdrop-blur-md"
+                    style={{ touchAction: 'manipulation' }}
+                  >
+                    {FEED_VIDEO_REACTIONS.map((r) => (
+                      <button
+                        key={r.type}
+                        type="button"
+                        aria-label={r.label}
+                        title={r.label}
+                        className="flex h-9 w-9 items-center justify-center rounded-full text-lg transition-transform hover:bg-white/14 active:scale-90"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handlePickReactionType(r.type);
+                        }}
+                      >
+                        {r.emoji}
+                      </button>
+                    ))}
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-col items-center gap-1">
