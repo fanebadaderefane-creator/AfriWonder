@@ -150,6 +150,31 @@ describe('AfriWonder Mobile — flux critiques (contrats API mockés)', () => {
       const txs = res.data.data.transactions;
       expect(txs[0].status).toBe('completed');
     });
+
+    it('GET /coins/balance — vrai solde coins', async () => {
+      mocks.mockGet.mockResolvedValueOnce({
+        data: { data: { coins_balance: 525, currency: 'COIN' } },
+      });
+      const res = await mocks.mockGet('/coins/balance');
+      expect(res.data.data.coins_balance).toBe(525);
+    });
+
+    it('POST /coins/purchase — initie un achat coins', async () => {
+      mocks.mockPost.mockResolvedValueOnce({
+        data: {
+          data: {
+            reference_id: 'coins:coins-500:123',
+            payment_method: 'orange_money',
+            payment_url: 'https://om.example.com/pay',
+          },
+        },
+      });
+      const res = await mocks.mockPost('/coins/purchase', {
+        packageId: 'coins-500',
+        payment_method: 'orange_money',
+      });
+      expect(res.data.data.reference_id).toContain('coins:coins-500:');
+    });
   });
 
   describe('Live', () => {
@@ -189,6 +214,20 @@ describe('AfriWonder Mobile — flux critiques (contrats API mockés)', () => {
         end_seconds: 60,
       });
       expect(res.data.data.id).toBeDefined();
+    });
+
+    it('GET /live/gifts — catalogue backend live', async () => {
+      mocks.mockGet.mockResolvedValueOnce({
+        data: {
+          data: [
+            { id: 'gift-lion', name: 'Lion', price: 5000, coin_value: 1000 },
+            { id: 'gift-baobab', name: 'Baobab', price: 1000, coin_value: 200 },
+          ],
+        },
+      });
+      const res = await mocks.mockGet('/live/gifts');
+      expect(res.data.data.length).toBeGreaterThan(0);
+      expect(res.data.data[0].coin_value).toBeDefined();
     });
   });
 

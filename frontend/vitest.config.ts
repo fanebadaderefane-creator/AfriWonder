@@ -12,5 +12,9 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts', 'e2e/**/*.test.ts'],
     passWithNoTests: false,
+    pool: 'forks',
+    fileParallelism: false,
+    maxWorkers: 1,
+    minWorkers: 1,
   },
 });
