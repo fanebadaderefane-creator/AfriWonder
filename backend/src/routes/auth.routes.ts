@@ -9,6 +9,12 @@ import { validateBody } from '../utils/zodValidation.js';
 import jwt from 'jsonwebtoken';
 import { revokeRefreshToken } from '../services/refreshTokenBlacklist.service.js';
 import { revokeAccessToken } from '../services/accessTokenBlacklist.service.js';
+import {
+  fetchFacebookUserFromAccessToken,
+  fetchGoogleUserFromAccessToken,
+  syntheticAppleEmail,
+  verifyAppleIdentityToken,
+} from '../services/oauthMobileVerify.service.js';
 
 const router = Router();
 
@@ -63,6 +69,37 @@ const supabaseSessionSchema = z.object({
   access_token: z.string().min(20),
 });
 
+const oauthAccessTokenSchema = z
+  .object({
+    access_token: z.string().min(10).optional(),
+    accessToken: z.string().min(10).optional(),
+  })
+  .refine((d) => Boolean(d.access_token?.trim() || d.accessToken?.trim()), {
+    message: 'access_token ou accessToken requis',
+    path: ['accessToken'],
+  });
+
+const oauthAppleMobileSchema = z
+  .object({
+    identity_token: z.string().min(20).optional(),
+    identityToken: z.string().min(20).optional(),
+    user: z
+      .object({
+        email: z.string().email().optional(),
+        name: z
+          .object({
+            firstName: z.string().optional(),
+            lastName: z.string().optional(),
+          })
+          .optional(),
+      })
+      .optional(),
+  })
+  .refine((d) => Boolean(d.identity_token?.trim() || d.identityToken?.trim()), {
+    message: 'identity_token ou identityToken requis',
+    path: ['identityToken'],
+  });
+
 // POST /api/auth/supabase — JWT Supabase → JWT AfriWonder (migration Auth)
 router.post('/supabase', validateBody(supabaseSessionSchema), async (req, res, next) => {
   try {
@@ -78,6 +115,96 @@ router.post('/supabase', validateBody(supabaseSessionSchema), async (req, res, n
       return res.status(err.statusCode).json({
         success: false,
         error: { message: err.message || 'Erreur Supabase' },
+      });
+    }
+    next(error);
+  }
+});
+
+// POST /api/auth/oauth/google — mobile / Expo : access_token Google → JWT AfriWonder
+router.post('/oauth/google', validateBody(oauthAccessTokenSchema), async (req, res, next) => {
+  try {
+    const raw = (req.body.access_token || req.body.accessToken || '').trim();
+    const g = await fetchGoogleUserFromAccessToken(raw);
+    const result = await authService.socialLogin({
+      email: g.email,
+      full_name: g.name,
+      profile_image: g.picture,
+      provider: 'google',
+      provider_id: g.id,
+    });
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    const err = error as { statusCode?: number; message?: string };
+    if (err?.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        error: { message: err.message || 'Erreur Google OAuth' },
+      });
+    }
+    next(error);
+  }
+});
+
+// POST /api/auth/oauth/facebook — mobile / Expo
+router.post('/oauth/facebook', validateBody(oauthAccessTokenSchema), async (req, res, next) => {
+  try {
+    const raw = (req.body.access_token || req.body.accessToken || '').trim();
+    const fb = await fetchFacebookUserFromAccessToken(raw);
+    const result = await authService.socialLogin({
+      email: fb.email,
+      full_name: fb.name,
+      profile_image: fb.picture,
+      provider: 'facebook',
+      provider_id: fb.id,
+    });
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    const err = error as { statusCode?: number; message?: string };
+    if (err?.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        error: { message: err.message || 'Erreur Facebook OAuth' },
+      });
+    }
+    next(error);
+  }
+});
+
+// POST /api/auth/oauth/apple — mobile / Expo (identity_token vérifié côté serveur)
+router.post('/oauth/apple', validateBody(oauthAppleMobileSchema), async (req, res, next) => {
+  try {
+    const rawToken = (req.body.identity_token || req.body.identityToken || '').trim();
+    const audiences = [
+      process.env.APPLE_IOS_CLIENT_ID?.replace(/^["']|["']$/g, ''),
+      process.env.APPLE_CLIENT_ID?.replace(/^["']|["']$/g, ''),
+      'com.afriwonder.app',
+    ].filter(Boolean) as string[];
+
+    const apple = await verifyAppleIdentityToken(rawToken, audiences);
+    let email = apple.email || req.body.user?.email;
+    if (!email) {
+      email = syntheticAppleEmail(apple.sub);
+    }
+    const n = req.body.user?.name;
+    const full_name =
+      n && (n.firstName || n.lastName)
+        ? [n.firstName, n.lastName].filter(Boolean).join(' ').trim() || undefined
+        : undefined;
+
+    const result = await authService.socialLogin({
+      email,
+      full_name,
+      provider: 'apple',
+      provider_id: apple.sub,
+    });
+    res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    const err = error as { statusCode?: number; message?: string };
+    if (err?.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        error: { message: err.message || 'Erreur Apple Sign In' },
       });
     }
     next(error);

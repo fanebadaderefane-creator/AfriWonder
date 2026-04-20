@@ -1,19 +1,40 @@
 import { Router } from 'express';
-import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { z } from 'zod';
+import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import playlistService from '../services/playlist.service.js';
 
 import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 
+const playlistPatchSchema = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    description: z.union([z.string().max(2000), z.null()]).optional(),
+    isPublic: z.boolean().optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, { message: 'Au moins un champ requis' });
+
 const router = Router();
 
 // GET /api/playlists
-router.get('/', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
-    const result = await playlistService.getUserPlaylists(req.user!.id, page, limit);
+    const targetUserId = typeof req.query.user_id === 'string' ? String(req.query.user_id).trim() : '';
+    const viewerUserId = req.user?.id ?? null;
+
+    if (!targetUserId && !viewerUserId) {
+      return res.status(401).json({ success: false, error: { message: 'Connexion requise' } });
+    }
+
+    const result = await playlistService.getUserPlaylists({
+      targetUserId: targetUserId || String(viewerUserId),
+      viewerUserId,
+      page,
+      limit,
+    });
     res.json({ success: true, data: result });
   } catch (error: any) {
     next(error);
@@ -24,6 +45,25 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const playlist = await playlistService.getPlaylist(param(req, 'id'));
+    res.json({ success: true, data: playlist });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// PATCH /api/playlists/:id
+router.patch('/:id', authenticate, validateBody(playlistPatchSchema), async (req: AuthRequest, res, next) => {
+  try {
+    const { name, description, isPublic } = req.body as {
+      name?: string;
+      description?: string | null;
+      isPublic?: boolean;
+    };
+    const playlist = await playlistService.update(param(req, 'id'), req.user!.id, {
+      name,
+      description,
+      isPublic,
+    });
     res.json({ success: true, data: playlist });
   } catch (error: any) {
     next(error);

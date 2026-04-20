@@ -112,6 +112,35 @@ router.post('/campaigns', authenticate, validateBody(adsCampaignCreateBodySchema
   }
 });
 
+// POST /api/ads/campaigns/cpm — Campagne budget + CPM (Phase 9) — AVANT /campaigns/:id
+router.post('/campaigns/cpm', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const { name, budget_fcfa, cpm_fcfa, duration_days, ad_type, target_countries, target_cities, target_age_min, target_age_max, target_gender, target_interests } =
+      req.body || {};
+    if (!name || budget_fcfa == null) {
+      return res.status(400).json({ success: false, error: { message: 'name et budget_fcfa requis' } });
+    }
+    const campaign = await adsService.createCampaignCpmBudget({
+      advertiser_id: userId,
+      name: String(name),
+      budget_fcfa: Number(budget_fcfa),
+      cpm_fcfa: cpm_fcfa != null ? Number(cpm_fcfa) : undefined,
+      duration_days: duration_days != null ? Number(duration_days) : undefined,
+      ad_type,
+      target_countries,
+      target_cities,
+      target_age_min,
+      target_age_max,
+      target_gender,
+      target_interests,
+    });
+    res.json({ success: true, data: campaign });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /api/ads/campaigns - Mes campagnes
 router.get('/campaigns', authenticate, async (req: AuthRequest, res, next) => {
   try {

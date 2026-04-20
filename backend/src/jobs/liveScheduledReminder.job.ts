@@ -15,6 +15,7 @@ export async function processScheduledLiveReminders() {
     const upcomingLives = await prisma.liveStream.findMany({
       where: {
         status: 'scheduled',
+        scheduled_reminder_sent_at: null,
         scheduled_at: {
           gte: now,
           lte: in15Min,
@@ -56,6 +57,10 @@ export async function processScheduledLiveReminders() {
           } catch (_) {}
         }
         logger.info('Rappels live programmé envoyés', { streamId: stream.id, count: followers.length });
+        await prisma.liveStream.update({
+          where: { id: stream.id },
+          data: { scheduled_reminder_sent_at: new Date() },
+        });
       } catch (e) {
         logger.warn('Erreur rappel live', { streamId: stream.id, err: (e as Error).message });
       }

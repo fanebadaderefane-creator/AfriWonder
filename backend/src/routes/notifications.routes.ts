@@ -159,10 +159,59 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
       prisma.notification.count({ where: { user_id: userId, is_read: false } }),
     ]);
 
+    /**
+     * Enrichissement : on récupère l'avatar/nom de l'expéditeur via `from_user_id`
+     * (et fallback sur `data.from_user_id` / `data.userId` si présent dans le payload).
+     * Évite que les listes Inbox affichent un avatar gris générique.
+     */
+    const senderIdSet = new Set<string>();
+    for (const n of notifications) {
+      if (n.from_user_id) senderIdSet.add(n.from_user_id);
+      const data = (n as { data?: unknown }).data;
+      if (data && typeof data === 'object') {
+        const obj = data as Record<string, unknown>;
+        /** Champs possibles selon le type de notif : appels (`callerId`), messages, follows, etc. */
+        const candidates = [obj.from_user_id, obj.userId, obj.fromUserId, obj.callerId, obj.senderId, obj.actorId];
+        for (const candidate of candidates) {
+          if (typeof candidate === 'string' && candidate.trim()) senderIdSet.add(candidate.trim());
+        }
+      }
+    }
+    let userById = new Map<string, { id: string; username: string | null; full_name: string | null; profile_image: string | null }>();
+    if (senderIdSet.size > 0) {
+      const users = await prisma.user.findMany({
+        where: { id: { in: Array.from(senderIdSet) } },
+        select: { id: true, username: true, full_name: true, profile_image: true },
+      });
+      userById = new Map(users.map((u) => [u.id, u]));
+    }
+
+    const enriched = notifications.map((n) => {
+      const data = (n as { data?: unknown }).data;
+      const obj = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+      const senderId =
+        n.from_user_id ||
+        (typeof obj.from_user_id === 'string' && obj.from_user_id) ||
+        (typeof obj.userId === 'string' && obj.userId) ||
+        (typeof obj.fromUserId === 'string' && obj.fromUserId) ||
+        (typeof obj.callerId === 'string' && obj.callerId) ||
+        (typeof obj.senderId === 'string' && obj.senderId) ||
+        (typeof obj.actorId === 'string' && obj.actorId) ||
+        null;
+      const sender = senderId ? userById.get(senderId) : null;
+      return {
+        ...n,
+        from_user_id: senderId || n.from_user_id || null,
+        sender_avatar: sender?.profile_image || null,
+        sender_username: sender?.username || null,
+        sender_full_name: sender?.full_name || n.from_user_name || null,
+      };
+    });
+
     res.json({
       success: true,
       data: {
-        notifications,
+        notifications: enriched,
         unreadCount,
         pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
       },

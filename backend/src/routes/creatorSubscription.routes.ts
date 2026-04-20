@@ -1,5 +1,5 @@
 /**
- * CDC Phase 1 - Premium créateur (Basic 1000, Pro 3000 FCFA/mois)
+ * CDC Phase 1 - Premium créateur (Basic 1000, AfriWonder Pro 2500 FCFA/mois)
  */
 import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';

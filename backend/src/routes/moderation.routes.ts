@@ -9,6 +9,18 @@ import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 
 const router = Router();
 
+/** Aligné mobile admin (`isAdminUser`) + modérateurs classiques. */
+function hasModerationPrivilege(role: string | undefined): boolean {
+  const r = String(role || '').toLowerCase();
+  return (
+    r === 'admin' ||
+    r === 'super_admin' ||
+    r === 'moderator' ||
+    r === 'moderation_admin' ||
+    role === 'ADMIN'
+  );
+}
+
 // GET /api/moderation/reports
 router.get('/reports', authenticate, async (req: AuthRequest, res, next) => {
   try {
@@ -46,7 +58,7 @@ router.post('/report', authenticate, validateBody(jsonObjectBodySchema), async (
 // PUT /api/moderation/reports/:id/review
 router.put('/reports/:id/review', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
-    if (req.user!.role !== 'admin' && req.user!.role !== 'moderator') {
+    if (!hasModerationPrivilege(req.user!.role)) {
       return res.status(403).json({ success: false, error: 'Moderator access required' });
     }
     const { status, notes } = req.body;
@@ -63,7 +75,7 @@ router.put('/reports/:id/review', authenticate, validateBody(jsonObjectBodySchem
 // POST /api/moderation/strikes - CDC: Ajouter un strike (admin/mod)
 router.post('/strikes', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
-    if (req.user!.role !== 'admin' && req.user!.role !== 'moderator') {
+    if (!hasModerationPrivilege(req.user!.role)) {
       return res.status(403).json({ success: false, error: 'Moderator access required' });
     }
     const { userId, infraction, reason, contextType, contextId } = req.body;
@@ -86,7 +98,7 @@ router.post('/strikes', authenticate, validateBody(jsonObjectBodySchema), async 
 // GET /api/moderation/strikes/:userId
 router.get('/strikes/:userId', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    if (req.user!.role !== 'admin' && req.user!.role !== 'moderator') {
+    if (!hasModerationPrivilege(req.user!.role)) {
       return res.status(403).json({ success: false, error: 'Moderator access required' });
     }
     const strikes = await moderationSanctions.getStrikes(param(req, 'userId'));

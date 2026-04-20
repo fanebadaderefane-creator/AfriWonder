@@ -10,9 +10,9 @@ export const COMMISSION_VERTICALS = {
     // Dons créateurs: 85% créateur, 15% plateforme (priorité au début)
     tips_platform_pct: 0.15,
     tips_creator_pct: 0.85,
-    // CDC Live Streaming Mali : 85 % créateur, 15 % plateforme sur les dons/tips live
-    live_gift_creator_pct: 0.85,       // 85% créateur
-    live_gift_platform_pct: 0.15,      // 15% plateforme
+    // Phase 9 document : 70 % créateur, 30 % plateforme sur cadeaux / équivalent FCFA live
+    live_gift_creator_pct: 0.7,
+    live_gift_platform_pct: 0.3,
     ad_revenue_platform_pct: 1,        // 100% revenus pub
     creator_subscription_platform_pct: 0.20, // 20% (80% créateur)
   },

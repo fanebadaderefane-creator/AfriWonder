@@ -9,6 +9,8 @@ import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import { forceWebCompatTranscodePublishedVideo } from '../services/videoCompatTranscode.service.js';
 import { invalidateUserFeedCaches } from '../services/feedCache.service.js';
+import * as videoPollService from '../services/videoPoll.service.js';
+import { generateThumbnailForVideoId } from '../services/videoThumbnail.service.js';
 import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 import {
@@ -16,6 +18,8 @@ import {
   videoAddCommentBodySchema,
   videoChapterBodySchema,
   videoCreateBodySchema,
+  videoPollCreateBodySchema,
+  videoPollVoteBodySchema,
   videoReactionTypeBodySchema,
   videoRecordViewSchema,
   videoSubtitlesGenerateBodySchema,
@@ -51,9 +55,18 @@ function parsePageLimit(query: Record<string, unknown>, defaultLimit: number): {
 // GET /api/videos - Liste des vidéos
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
-    const { category, visibility = 'public', creator_id: creatorId, hashtag, search, tagged_for: taggedFor } = req.query;
+    const { category, visibility = 'public', creator_id: creatorId, hashtag, search, music_title: musicTitle, tagged_for: taggedFor } = req.query;
     const userId = req.user?.id;
     const { page, limit: limitValue } = parsePageLimit(req.query as Record<string, unknown>, 20);
+    const followingOnlyRaw = (req.query as Record<string, unknown>).following_only ?? (req.query as Record<string, unknown>).followingOnly;
+    const followingOnly =
+      String(followingOnlyRaw || '').toLowerCase() === '1' || String(followingOnlyRaw || '').toLowerCase() === 'true';
+    if (followingOnly && !userId) {
+      return res.status(401).json({
+        success: false,
+        error: { message: 'Connexion requise pour le fil des comptes suivis.' },
+      });
+    }
 
     const taggedForStr = typeof taggedFor === 'string' ? taggedFor.trim() : '';
     if (taggedForStr) {
@@ -74,7 +87,9 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
       creator_id: creatorId as string,
       hashtag: hashtag as string,
       search: search as string,
+      music_title: typeof musicTitle === 'string' ? musicTitle : undefined,
       tagged_for_user_id: taggedForStr || undefined,
+      following_only: followingOnly,
     });
 
     res.json({
@@ -107,6 +122,237 @@ router.get('/category/:id', optionalAuth, async (req: AuthRequest, res, next) =>
     });
   } catch (error) {
     next(error);
+  }
+});
+
+/**
+ * GET /api/videos/topic/:topic - Fil thématique
+ * Presets style TikTok / YouTube : on recherche les vidéos dont le titre, la description,
+ * les hashtags ou la catégorie contiennent l'un des mots-clés du preset.
+ * Exemple : `apprendre` → éducation, science, tech, tuto, cours, dev, code, maths, etc.
+ */
+const TOPIC_PRESETS: Record<string, { label: string; keywords: string[] }> = {
+  apprendre: {
+    label: 'Apprendre',
+    keywords: [
+      'apprendre', 'education', 'éducation', 'learn', 'learning', 'study', 'cours',
+      'tuto', 'tutorial', 'tutoriel', 'how to', 'comment', 'explique', 'explain',
+      'science', 'sciences', 'physique', 'chimie', 'biologie', 'maths', 'math', 'math\u00e9matiques',
+      'tech', 'technologie', 'technology', 'coding', 'programmation', 'code', 'developer',
+      'dev', 'informatique', 'ia', 'ai', 'intelligence artificielle',
+      'stem', 'ingenieur', 'ingénieur', 'engineering', 'robot', 'robotique',
+      'history', 'histoire', 'culture', 'geography', 'géographie',
+      'quran', 'coran', 'islam', 'religion',
+      'finance', 'économie', 'economy', 'business', 'entrepreneur',
+    ],
+  },
+  divertissement: {
+    label: 'Divertissement',
+    keywords: ['humour', 'comedy', 'drole', 'drôle', 'funny', 'prank', 'meme', 'sketch', 'gag'],
+  },
+  sport: {
+    label: 'Sport',
+    keywords: ['sport', 'football', 'foot', 'basket', 'tennis', 'running', 'fitness', 'gym'],
+  },
+};
+
+router.get('/topic/:topic', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const topic = param(req, 'topic').toLowerCase();
+    const preset = TOPIC_PRESETS[topic];
+    if (!preset) {
+      return res.status(404).json({
+        success: false,
+        error: { message: `Sujet inconnu : ${topic}` },
+      });
+    }
+    const { page, limit } = parsePageLimit(req.query as Record<string, unknown>, 20);
+    const skip = (page - 1) * limit;
+
+    const kwOr = preset.keywords.flatMap((kw) => [
+      { title: { contains: kw, mode: 'insensitive' as const } },
+      { description: { contains: kw, mode: 'insensitive' as const } },
+      { category: { contains: kw, mode: 'insensitive' as const } },
+      { video_hashtags: { some: { tag_name: { contains: kw, mode: 'insensitive' as const } } } },
+    ]);
+
+    const where: any = {
+      visibility: 'public',
+      video_url: { not: { contains: 'example.com' } },
+      OR: kwOr,
+    };
+
+    const [rows, total] = await Promise.all([
+      prisma.video.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: [{ views: 'desc' }, { created_at: 'desc' }],
+        include: {
+          creator: { select: { id: true, username: true, full_name: true, profile_image: true } },
+          video_hashtags: { select: { tag_name: true } },
+          _count: { select: { video_likes: true, video_comments: true } },
+        },
+      }),
+      prisma.video.count({ where }),
+    ]);
+
+    const videos = rows.map((video: any) => {
+      const { creator, _count, video_hashtags, ...videoData } = video;
+      let hashtags = video.hashtags;
+      if (typeof hashtags === 'string') {
+        try {
+          hashtags = JSON.parse(hashtags);
+        } catch {
+          hashtags = [];
+        }
+      }
+      if (!Array.isArray(hashtags) || hashtags.length === 0) {
+        hashtags = (video_hashtags || []).map((h: any) => h.tag_name);
+      }
+      const rawThumb = String(video.thumbnail_url || '').trim();
+      const vu = String(video.video_url || '').trim();
+      const looksImage =
+        /\.(jpe?g|png|gif|webp|avif)(\?|$)/i.test(vu) || /^data:image\//i.test(vu);
+      return {
+        ...videoData,
+        thumbnail_url: rawThumb || (looksImage ? vu : ''),
+        low_quality_playback_url: videoData.low_quality_url ?? null,
+        creator_id: creator?.id || video.creator_id,
+        creator_name: creator?.full_name || creator?.username || '',
+        creator_avatar: creator?.profile_image || '',
+        views: video.views ?? 0,
+        likes: _count?.video_likes || video.likes || 0,
+        comments_count: _count?.video_comments || video.comments_count || 0,
+        hashtags: Array.isArray(hashtags) ? hashtags : [],
+        media_type: video.media_type || 'video',
+      };
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        topic,
+        label: preset.label,
+        videos,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * GET /api/videos/diversified - Feed « Explorer » style TikTok.
+ * Objectif : sortir l'utilisateur de sa bulle habituelle.
+ *  - Exclut les vidéos des créateurs déjà suivis.
+ *  - Mélange les résultats par fenêtre glissante pour diversifier.
+ *  - Priorise les vidéos des créateurs récents / moins vus (découverte).
+ */
+router.get('/diversified', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user?.id;
+    const { page, limit } = parsePageLimit(req.query as Record<string, unknown>, 20);
+    const skip = (page - 1) * limit;
+
+    let excludedCreatorIds: string[] = [];
+    if (userId) {
+      const follows = await prisma.follow.findMany({
+        where: { follower_id: userId },
+        select: { following_id: true },
+      });
+      excludedCreatorIds = follows.map((f) => f.following_id);
+    }
+
+    const where: any = {
+      visibility: 'public',
+      video_url: { not: { contains: 'example.com' } },
+    };
+    if (excludedCreatorIds.length > 0) {
+      where.creator_id = { notIn: excludedCreatorIds };
+    }
+    if (userId) {
+      where.creator_id = where.creator_id
+        ? { ...where.creator_id, not: userId }
+        : { not: userId };
+    }
+
+    /**
+     * Sur-fetch × 3 pour mélanger ensuite côté serveur (diversité des créateurs).
+     * On prend les plus récentes + vues moyennes, pas uniquement les blockbusters,
+     * pour favoriser la découverte de nouveaux créateurs.
+     */
+    const overFetch = limit * 3;
+    const rows = await prisma.video.findMany({
+      where,
+      skip,
+      take: overFetch,
+      orderBy: [{ created_at: 'desc' }, { views: 'desc' }],
+      include: {
+        creator: { select: { id: true, username: true, full_name: true, profile_image: true } },
+        video_hashtags: { select: { tag_name: true } },
+        _count: { select: { video_likes: true, video_comments: true } },
+      },
+    });
+
+    // Diversité : max 2 vidéos par créateur dans la page.
+    const byCreator = new Map<string, number>();
+    const diversified: typeof rows = [];
+    for (const r of rows) {
+      const count = byCreator.get(r.creator_id) || 0;
+      if (count >= 2) continue;
+      byCreator.set(r.creator_id, count + 1);
+      diversified.push(r);
+      if (diversified.length >= limit) break;
+    }
+
+    const videos = diversified.map((video: any) => {
+      const { creator, _count, video_hashtags, ...videoData } = video;
+      let hashtags = video.hashtags;
+      if (typeof hashtags === 'string') {
+        try {
+          hashtags = JSON.parse(hashtags);
+        } catch {
+          hashtags = [];
+        }
+      }
+      if (!Array.isArray(hashtags) || hashtags.length === 0) {
+        hashtags = (video_hashtags || []).map((h: any) => h.tag_name);
+      }
+      const rawThumb = String(video.thumbnail_url || '').trim();
+      const vu = String(video.video_url || '').trim();
+      const looksImage =
+        /\.(jpe?g|png|gif|webp|avif)(\?|$)/i.test(vu) || /^data:image\//i.test(vu);
+      return {
+        ...videoData,
+        thumbnail_url: rawThumb || (looksImage ? vu : ''),
+        low_quality_playback_url: videoData.low_quality_url ?? null,
+        creator_id: creator?.id || video.creator_id,
+        creator_name: creator?.full_name || creator?.username || '',
+        creator_avatar: creator?.profile_image || '',
+        views: video.views ?? 0,
+        likes: _count?.video_likes || video.likes || 0,
+        comments_count: _count?.video_comments || video.comments_count || 0,
+        hashtags: Array.isArray(hashtags) ? hashtags : [],
+        media_type: video.media_type || 'video',
+      };
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        videos,
+        pagination: {
+          page,
+          limit,
+          total: videos.length,
+          totalPages: videos.length >= limit ? page + 1 : page,
+        },
+      },
+    });
+  } catch (error) {
+    return next(error);
   }
 });
 
@@ -174,6 +420,52 @@ router.post('/:id/view', optionalAuth, validateBody(videoRecordViewSchema), asyn
     });
 
     res.json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/videos/:id/poll — Sondage attaché (avant GET /:id)
+router.get('/:id/poll', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const data = await videoPollService.getVideoPollPayload(id, req.user?.id ?? null);
+    res.json({ success: true, data: data ?? null });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/videos/:id/poll — Créer un sondage (créateur uniquement)
+router.post('/:id/poll', authenticate, validateBody(videoPollCreateBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const result = await videoPollService.createVideoPoll(req.user!.id, id, req.body.options);
+    invalidateUserFeedCaches(req.user!.id).catch(() => {});
+    res.status(201).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/videos/:id/poll/vote — Voter (auth)
+router.post('/:id/poll/vote', authenticate, validateBody(videoPollVoteBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const result = await videoPollService.voteVideoPoll(req.user!.id, id, req.body.option_index);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/videos/:id/similar — suggestions (même type média : vidéo ou photo)
+router.get('/:id/similar', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const limit = parseInt(String(req.query.limit || '20'), 10) || 20;
+    const data = await videoService.listSimilar(id, req.user?.id, limit);
+    res.json({ success: true, data });
   } catch (error) {
     next(error);
   }
@@ -373,10 +665,14 @@ router.get('/:id/comments', optionalAuth, async (req: AuthRequest, res, next) =>
     const id = param(req, 'id');
     const { page = '1', limit = '50' } = req.query;
 
-    const comments = await videoService.getComments(id, {
-      page: parseInt(page as string),
-      limit: parseInt(limit as string),
-    });
+    const comments = await videoService.getComments(
+      id,
+      {
+        page: parseInt(page as string),
+        limit: parseInt(limit as string),
+      },
+      req.user?.id ?? null
+    );
 
     res.json({
       success: true,
@@ -487,6 +783,37 @@ router.post('/:id/transcode', authenticate, validateBody(jsonObjectBodySchema), 
       data: job,
       message: created ? 'Job de transcodage créé' : 'Un job est déjà en cours ou en attente',
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/videos/:id/thumbnail:generate - Générer une miniature (frame) si absente
+router.post('/:id/thumbnail:generate', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const timeSecRaw = (req.body as any)?.time_sec;
+    const forceRaw = (req.body as any)?.force;
+    const timeSec = typeof timeSecRaw === 'number' ? timeSecRaw : typeof timeSecRaw === 'string' ? Number(timeSecRaw) : undefined;
+    const force = forceRaw === true || forceRaw === '1' || forceRaw === 1;
+
+    // Sécurité: uniquement pour la lecture app → pas besoin de générer pour privé d'autrui
+    const row = await prisma.video.findUnique({
+      where: { id },
+      select: { id: true, creator_id: true, visibility: true },
+    });
+    if (!row) return res.status(404).json({ success: false, error: { message: 'Vidéo introuvable' } });
+    if (row.visibility !== 'public' && row.creator_id !== req.user!.id) {
+      return res.status(403).json({ success: false, error: { message: 'Accès non autorisé' } });
+    }
+
+    const out = await generateThumbnailForVideoId(id, { timeSec, force });
+    if (!out.ok) {
+      return res.status(422).json({ success: false, error: { message: out.error || 'Génération miniature échouée' }, data: out });
+    }
+
+    invalidateUserFeedCaches(row.creator_id).catch(() => {});
+    return res.json({ success: true, data: { thumbnail_url: out.thumbnail_url, skipped: out.skipped || null } });
   } catch (error) {
     next(error);
   }
@@ -690,6 +1017,19 @@ router.get('/:id/subtitles', authenticate, async (req: AuthRequest, res, next) =
 });
 // POST /api/videos/:id/subtitles/generate - Lancer génération STT
 router.post('/:id/subtitles/generate', authenticate, validateBody(videoSubtitlesGenerateBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const source = req.body.source as 'auto' | 'manual';
+    const gen = await subtitleService.requestGeneration(id, req.user!.id, source);
+    res.status(202).json({ success: true, data: gen, message: 'Génération lancée' });
+  } catch (e: any) {
+    if (e?.statusCode) return res.status(e.statusCode).json({ success: false, error: { message: e.message } });
+    next(e);
+  }
+});
+
+/** Alias CDC / intégrations : même comportement que `POST .../subtitles/generate`. */
+router.post('/:id/generate-captions', authenticate, validateBody(videoSubtitlesGenerateBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const id = param(req, 'id');
     const source = req.body.source as 'auto' | 'manual';

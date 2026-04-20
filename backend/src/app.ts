@@ -121,9 +121,11 @@ import filtersRoutes from './routes/filters.routes.js';
 import stickersRoutes from './routes/stickers.routes.js';
 import groupCallsRoutes from './routes/groupCalls.routes.js';
 import meRoutes from './routes/me.routes.js';
+import friendsRoutes from './routes/friends.routes.js';
 import loyaltyRoutes from './routes/loyalty.routes.js';
 import creatorsRoutes from './routes/creators.routes.js';
 import brandDealsRoutes from './routes/brandDeals.routes.js';
+import creatorMarketplaceRoutes from './routes/creatorMarketplace.routes.js';
 import publicServicesRoutes from './routes/publicServices.routes.js';
 import creatorSupportRoutes from './routes/creatorSupport.routes.js';
 import creatorSubscriptionRoutes from './routes/creatorSubscription.routes.js';
@@ -148,6 +150,8 @@ import mapPlacesRoutes from './routes/mapPlaces.routes.js';
 import aiRoutes from './routes/ai.routes.js';
 import searchRoutes from './routes/search.routes.js';
 import recommendationsRoutes from './routes/recommendations.routes.js';
+import mobileRoutes from './routes/mobile.routes.js';
+import coinsRoutes from './routes/coins.routes.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -221,6 +225,47 @@ applyPerformanceMiddleware(app);
 // Health check (AVANT anti-bot pour que curl/k8s/CI puissent appeler /health)
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), env: process.env.NODE_ENV || 'development' });
+});
+
+/** Uptime / load-balancers Vercel — même contrat que le brief (`GET /api/health`). */
+app.get('/api/health', async (_req, res) => {
+  const uptimeSeconds = Math.floor(process.uptime());
+  let db: 'ok' | 'error' = 'ok';
+  let redis: 'ok' | 'skipped' | 'error' = 'skipped';
+
+  try {
+    const prisma = (await import('./config/database.js')).default;
+    await prisma.$queryRaw`SELECT 1`;
+  } catch {
+    db = 'error';
+  }
+
+  try {
+    const redisClient = (await import('./config/redis.js')).default;
+    if (redisClient) {
+      if (!redisClient.isOpen) {
+        await redisClient.connect().catch(() => {});
+      }
+      if (redisClient.isOpen) {
+        await redisClient.ping();
+        redis = 'ok';
+      } else {
+        redis = 'error';
+      }
+    }
+  } catch {
+    redis = process.env.REDIS_URL?.trim() ? 'error' : 'skipped';
+  }
+
+  const degraded = db !== 'ok' || redis === 'error';
+  res.status(degraded ? 503 : 200).json({
+    status: degraded ? 'degraded' : 'ok',
+    db,
+    redis,
+    uptime_seconds: uptimeSeconds,
+    version: process.env.npm_package_version || '1.0.0',
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Prometheus metrics (CDC Observabilité) — format text/plain pour scraper
@@ -319,6 +364,8 @@ app.use('/api/proxy/auth/login', authLimiter);
 app.use('/api/proxy/auth/register', authLimiter);
 app.use('/api/proxy/auth/forgot-password', authLimiter);
 app.use('/api/proxy/auth/supabase', authLimiter);
+app.use('/api/auth/oauth', authLimiter);
+app.use('/api/proxy/auth/oauth', authLimiter);
 app.use('/api/payments', paymentLimiter); // 10 req/h
 app.use('/api/upload', uploadLimiter); // 20 req/h
 app.use('/api/proxy/upload', uploadLimiter); // même quota pour client Expo (baseURL /api/proxy)
@@ -402,14 +449,31 @@ app.use('/api/proxy/e2ee', e2eeRoutes);
 app.use('/api/proxy/ads', adsRoutes);
 app.use('/api/proxy/creator-dashboard', creatorDashboardRoutes);
 app.use('/api/proxy/withdrawals', withdrawalsRoutes);
+app.use('/api/proxy/coins', coinsRoutes);
 app.use('/api/proxy/posts', postsRoutes);
 app.use('/api/proxy/moderation', moderationRoutes);
 /** Console admin — même router que `/api/admin` pour `apiClient` Expo (`baseURL …/api/proxy`). */
 app.use('/api/proxy/admin', adminRoutes);
+/** APIs spécifiques mobile — alias proxy pour le client Expo quand il utilise `apiClient`. */
+app.use('/api/proxy/mobile', mobileRoutes);
 /** Sauvegardes vidéo — client Expo (`apiClient` → `GET/POST …/api/proxy/saves`). */
 app.use('/api/proxy/saves', savesRoutes);
+/** Réactions / social sur commentaires — client Expo (`POST …/api/proxy/comments/:id/reaction`). */
+app.use('/api/proxy/comments', commentsRoutes);
+/** Challenges (payants + viral hashtag) — proxy Expo. */
+app.use('/api/proxy/challenges', challengesRoutes);
+/** Playlists — client Expo (`apiClient` → `GET/POST …/api/proxy/playlists`). */
+app.use('/api/proxy/playlists', playlistsRoutes);
+/** Mini-apps — même router que `/api/mini-apps` pour `apiClient` Expo. */
+app.use('/api/proxy/mini-apps', miniAppsRoutes);
+/** APIs "me" (profil connecté, suggestions, etc.) — alias proxy pour `apiClient` Expo. */
+app.use('/api/proxy/me', meRoutes);
+/** APIs "friends" (mutual, contacts, block/report, presence) — alias proxy pour `apiClient` Expo. */
+app.use('/api/proxy/friends', friendsRoutes);
 /** Même auth / refresh que `apiClient` (Expo web) — avant le catch-all `/api/proxy`. */
 app.use('/api/proxy/upload', uploadRoutes);
+/** Stories — client Expo (`apiClient` → `GET/POST …/api/proxy/stories`). */
+app.use('/api/proxy/stories', storiesRoutes);
 app.use('/api/proxy', proxyRoutes);
 app.use('/api/comments', commentsRoutes);
 app.use('/api/users', userRoutes);
@@ -518,11 +582,13 @@ app.use('/api/filters', filtersRoutes);
 app.use('/api/stickers', stickersRoutes);
 app.use('/api/group-calls', groupCallsRoutes);
 app.use('/api/me', meRoutes);
+app.use('/api/friends', friendsRoutes);
 app.use('/api/group-buys', groupBuyRoutes);
 app.use('/api/ride-share', rideShareRoutes);
 app.use('/api/loyalty', loyaltyRoutes);
 app.use('/api/creators', creatorsRoutes);
 app.use('/api/brand-deals', brandDealsRoutes);
+app.use('/api/creator-marketplace', creatorMarketplaceRoutes);
 app.use('/api/public-services', publicServicesRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/recommendations', recommendationsRoutes);
@@ -532,6 +598,8 @@ app.use('/api/map-places', mapPlacesRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/creator-support', creatorSupportRoutes);
 app.use('/api/creator-subscription', creatorSubscriptionRoutes);
+app.use('/api/mobile', mobileRoutes);
+app.use('/api/coins', coinsRoutes);
 
 // Sentry error handler (avant notre errorHandler, désactivé en tests)
 if (process.env.SENTRY_DSN && process.env.NODE_ENV !== 'test') {

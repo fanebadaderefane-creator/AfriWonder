@@ -53,11 +53,14 @@ export const errorHandler = (
 
   function noop() {}
 
+  const opCode = (err as AppError & { code?: string }).code;
+
   res.status(effectiveStatusCode).json({
     success: false,
     error: {
       message: clientSafeMessage,
       ...(isDbConnectionError && { code: 'DATABASE_UNAVAILABLE' }),
+      ...(opCode && !isDbConnectionError ? { code: opCode } : {}),
       ...(process.env.NODE_ENV === 'development' && {
         stack: err.stack,
       }),

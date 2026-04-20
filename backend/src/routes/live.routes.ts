@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
+import multer from 'multer';
 import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import prisma from '../config/database.js';
@@ -8,10 +9,12 @@ import { startLiveRecording, stopLiveRecording } from '../services/liveRecording
 import { LIVE_CATEGORIES, LIVE_LANGUAGES, LIVE_AGE_RESTRICTIONS } from '../config/liveCategories.js';
 import { validateBody } from '../utils/zodValidation.js';
 import { logger } from '../utils/logger.js';
+import { generateThumbnailForLiveStreamId } from '../services/videoThumbnail.service.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 import {
   liveChapterSchema,
   liveChatSchema,
+  liveReplayChatSchema,
   liveCreatorSubscribeSchema,
   liveEndSchema,
   liveGiftSchema,
@@ -22,6 +25,11 @@ import {
   liveTipSchema,
   liveWalletRechargeSchema,
   liveWalletMockOrangeConfirmSchema,
+  liveRaiseHandSchema,
+  liveRaiseHandRespondSchema,
+  liveAgeAckSchema,
+  liveBellSubscribeSchema,
+  liveCaptionBroadcastSchema,
 } from '../schemas/highRiskBodies.js';
 
 const router = Router();
@@ -36,12 +44,35 @@ const giftLimiter = rateLimit({
 });
 
 const chatLimiter = rateLimit({
-  windowMs: 2 * 1000,
-  max: 1,
-  message: { success: false, error: 'Un message toutes les 2 secondes maximum.' },
+  windowMs: 60 * 1000,
+  max: 5,
+  message: { success: false, error: 'Maximum 5 messages par minute.' },
   keyGenerator: (req: any) => (req.user?.id || req.ip) + ':' + (req.params?.id || ''),
   standardHeaders: true,
   legacyHeaders: false,
+});
+
+const raiseHandLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 45,
+  message: { success: false, error: 'Trop de requêtes. Réessayez dans une minute.' },
+  keyGenerator: (req: any) => (req.user?.id || req.ip) + ':' + (req.params?.id || ''),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const sttLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { success: false, error: 'Trop de dictées. Réessayez dans une minute.' },
+  keyGenerator: (req: any) => String(req.user?.id || req.ip),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const sttUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
 });
 
 // GET /api/live/agora-status - Vérifier si Agora est configuré + test génération token (diagnostic, pas d'auth)
@@ -94,8 +125,20 @@ router.get('/', async (req, res, next) => {
     if (req.query.region) filters.region = req.query.region as string;
     if (req.query.language) filters.language = req.query.language as string;
     if (req.query.sortBy) filters.sortBy = req.query.sortBy as string;
+    const cid = typeof req.query.creator_id === 'string' ? req.query.creator_id.trim() : '';
+    if (cid) filters.creator_id = cid;
     const result = await liveService.listStreams(page, limit, filters);
     res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// DELETE /api/live/me/ended — Supprimer tous les replays terminés du créateur connecté (nettoyage)
+router.delete('/me/ended', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveService.deleteMyEndedStreams(req.user!.id);
+    res.json({ success: true, data });
   } catch (error: any) {
     next(error);
   }
@@ -140,6 +183,31 @@ router.get('/gifts', async (req, res, next) => {
     const category = req.query.category as string | undefined;
     const catalog = await liveService.getGiftCatalog(category);
     res.json({ success: true, data: catalog });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/live/economy — CDC 6.4 : taux indicatif coins ↔ USD (LIVE_COINS_PER_USD)
+router.get('/economy', (_req, res) => {
+  res.json({ success: true, data: liveService.getLiveEconomyMeta() });
+});
+
+// POST /api/live/creator/:creatorId/bell — CDC 6.3 : notifications « prochains lives » du créateur
+router.post('/creator/:creatorId/bell', authenticate, validateBody(liveBellSubscribeSchema), async (req: AuthRequest, res, next) => {
+  try {
+    const enabled = (req.body as { enabled?: boolean }).enabled === true;
+    const data = await liveService.setLiveBellSubscribe(req.user!.id, param(req, 'creatorId'), enabled);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+router.get('/creator/:creatorId/bell', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveService.getLiveBellSubscribed(req.user!.id, param(req, 'creatorId'));
+    res.json({ success: true, data });
   } catch (error: any) {
     next(error);
   }
@@ -316,10 +384,38 @@ router.post('/:id/start-scheduled', authenticate, validateBody(jsonObjectBodySch
   }
 });
 
-// GET /api/live/:id
-router.get('/:id', async (req, res, next) => {
+// POST /api/live/:id/thumbnail/generate — créateur uniquement ; FFmpeg → R2 (miniature replay)
+router.post('/:id/thumbnail/generate', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
-    const stream = await liveService.getStream(param(req, 'id'));
+    const force = Boolean((req.body as Record<string, unknown>)?.force);
+    const result = await generateThumbnailForLiveStreamId(param(req, 'id'), {
+      force,
+      userId: req.user?.id ?? null,
+    });
+    if (!result.ok) {
+      const status = result.error === 'Non autorisé' ? 403 : 400;
+      return res.status(status).json({ success: false, error: result.error });
+    }
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/live/:id/rtc-role — co-host accepté → host sur le lecteur Expo (auth)
+router.get('/:id/rtc-role', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveService.getRtcRoleForViewer(param(req, 'id'), req.user!.id);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/live/:id
+router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const stream = await liveService.getStream(param(req, 'id'), req.user?.id ?? null);
     res.json({ success: true, data: stream });
   } catch (error: any) {
     next(error);
@@ -353,7 +449,8 @@ router.post('/:id/join', authenticate, validateBody(liveSessionBodySchema), asyn
   try {
     const sessionId = req.body.sessionId || req.headers['x-session-id'] || req.user!.id + Date.now();
     const country = req.body.country;
-    const result = await liveService.joinViewer(param(req, 'id'), req.user!.id, String(sessionId), { country });
+    const city = req.body.city;
+    const result = await liveService.joinViewer(param(req, 'id'), req.user!.id, String(sessionId), { country, city });
     res.json({ success: true, data: result });
   } catch (error: any) {
     next(error);
@@ -366,6 +463,80 @@ router.post('/:id/leave', authenticate, validateBody(liveSessionBodySchema), asy
     const sessionId = req.body.sessionId || req.headers['x-session-id'] || req.user!.id + Date.now();
     await liveService.leaveViewer(param(req, 'id'), req.user!.id, String(sessionId));
     res.json({ success: true });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/:id/raise-hand — main levée (spectateurs / co-hosts)
+router.post('/:id/raise-hand', authenticate, validateBody(liveRaiseHandSchema), raiseHandLimiter, async (req: AuthRequest, res, next) => {
+  try {
+    const { raised } = req.body;
+    const data = await liveService.setRaiseHand(param(req, 'id'), req.user!.id, raised === true);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/:id/raise-hand/respond — CDC 6.3 : créateur accepte / refuse la demande de parole
+router.post(
+  '/:id/raise-hand/respond',
+  authenticate,
+  validateBody(liveRaiseHandRespondSchema),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const { userId, accept } = req.body as { userId: string; accept: boolean };
+      const data = await liveService.respondRaiseHand(param(req, 'id'), req.user!.id, userId, accept === true);
+      res.json({ success: true, data });
+    } catch (error: any) {
+      next(error);
+    }
+  },
+);
+
+// POST /api/live/:id/age-ack — CDC 6.1 : accusé réception serveur avant join (13+ / 18+)
+router.post('/:id/age-ack', authenticate, validateBody(liveAgeAckSchema), async (req: AuthRequest, res, next) => {
+  try {
+    const { restriction } = req.body as { restriction: '18+' | '13+' };
+    const data = await liveService.acknowledgeLiveAge(param(req, 'id'), req.user!.id, restriction);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/:id/stt — CDC 6.2 : dictée hôte → transcription (multipart field "audio")
+router.post(
+  '/:id/stt',
+  authenticate,
+  sttLimiter,
+  sttUpload.single('audio'),
+  async (req: AuthRequest, res, next) => {
+    try {
+      if (!req.file?.buffer?.length) {
+        return res.status(400).json({ success: false, error: 'Fichier audio requis (champ multipart "audio").' });
+      }
+      const mime = req.file.mimetype || 'application/octet-stream';
+      const data = await liveService.transcribeLiveHostDictation(
+        param(req, 'id'),
+        req.user!.id,
+        req.file.buffer,
+        mime,
+      );
+      res.json({ success: true, data });
+    } catch (error: any) {
+      next(error);
+    }
+  },
+);
+
+// POST /api/live/:id/caption — CDC 6.2 : sous-titres manuels hôte (temps réel)
+router.post('/:id/caption', authenticate, validateBody(liveCaptionBroadcastSchema), async (req: AuthRequest, res, next) => {
+  try {
+    const { text } = req.body as { text: string };
+    const data = await liveService.broadcastLiveCaption(param(req, 'id'), req.user!.id, text);
+    res.json({ success: true, data });
   } catch (error: any) {
     next(error);
   }
@@ -394,11 +565,46 @@ router.post('/:id/end', authenticate, validateBody(liveEndSchema), async (req: A
   }
 });
 
-// POST /api/live/:id/chat (anti-spam 1/2s via chatLimiter)
+// POST /api/live/:id/broadcast-timer — C : timer visible par tous (créateur uniquement)
+router.post('/:id/broadcast-timer', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const endRaw = (req.body as any)?.end_at_ms ?? (req.body as any)?.endAtMs;
+    const end_at_ms = typeof endRaw === 'number' ? endRaw : parseInt(String(endRaw || ''), 10);
+    const label = String((req.body as any)?.label ?? '');
+    const data = await liveService.setBroadcastTimer(param(req, 'id'), req.user!.id, { end_at_ms, label });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+router.delete('/:id/broadcast-timer', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveService.clearBroadcastTimer(param(req, 'id'), req.user!.id);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/:id/chat (5/min via chatLimiter + service)
 router.post('/:id/chat', authenticate, validateBody(liveChatSchema), chatLimiter, async (req: AuthRequest, res, next) => {
   try {
+    const { message, is_question } = req.body;
+    const chatMessage = await liveService.sendChatMessage(param(req, 'id'), req.user!.id, message, {
+      is_question: is_question === true,
+    });
+    res.json({ success: true, data: chatMessage });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/live/:id/replay/chat — commentaires après fin du live (distinct du chat live)
+router.post('/:id/replay/chat', authenticate, validateBody(liveReplayChatSchema), chatLimiter, async (req: AuthRequest, res, next) => {
+  try {
     const { message } = req.body;
-    const chatMessage = await liveService.sendChatMessage(param(req, 'id'), req.user!.id, message);
+    const chatMessage = await liveService.sendReplayComment(param(req, 'id'), req.user!.id, message);
     res.json({ success: true, data: chatMessage });
   } catch (error: any) {
     next(error);
@@ -480,6 +686,20 @@ router.post('/:id/chapters', authenticate, validateBody(liveChapterSchema), asyn
   }
 });
 
+// POST /api/live/:id/chapters/:chapterId/republish — moment fort → vidéo feed (replay + trim)
+router.post('/:id/chapters/:chapterId/republish', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const video = await liveService.republishReplayChapterToFeed(
+      param(req, 'id'),
+      param(req, 'chapterId'),
+      req.user!.id
+    );
+    res.status(201).json({ success: true, data: video });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // GET /api/live/:id/top-donors
 router.get('/:id/top-donors', async (req, res, next) => {
   try {
@@ -496,6 +716,17 @@ router.get('/:id/analytics', authenticate, async (req: AuthRequest, res, next) =
   try {
     const result = await liveService.getAnalytics(param(req, 'id'), req.user!.id);
     res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// PATCH /api/live/:id/replay-retention — créateur : durée de conservation replay (jours)
+router.patch('/:id/replay-retention', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const days = Number((req.body as { replay_retention_days?: unknown })?.replay_retention_days);
+    const stream = await liveService.updateStreamReplayRetention(param(req, 'id'), req.user!.id, days);
+    res.json({ success: true, data: stream });
   } catch (error: any) {
     next(error);
   }

@@ -468,6 +468,14 @@ io.on('connection', (socket) => {
     if (streamId) {
       socket.join(`stream:${streamId}`);
       logger.info('Socket joined live room', { streamId, socketId: socket.id });
+      try {
+        // C — envoyer l’état du timer commun s’il existe (reconnexion / arrivée tardive).
+        const liveSvc = require('./services/live.service.js').default;
+        const t = typeof liveSvc.getBroadcastTimer === 'function' ? liveSvc.getBroadcastTimer(streamId) : null;
+        if (t) socket.emit('live:timer', t);
+      } catch {
+        /* ignore */
+      }
     }
   });
 

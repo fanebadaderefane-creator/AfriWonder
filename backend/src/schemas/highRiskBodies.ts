@@ -164,7 +164,7 @@ export const liveCreatorSubscribeSchema = z.object({
 });
 
 export const liveStartSchema = z.object({
-  title: z.string().min(1).max(200),
+  title: z.string().min(1).max(80),
   description: z.string().max(10000).optional(),
   category: z.string().max(64).optional(),
   streamUrl: z.string().max(2048).optional(),
@@ -197,6 +197,8 @@ export const liveStartSchema = z.object({
 export const liveSessionBodySchema = z.object({
   sessionId: z.union([z.string().max(256), z.number()]).optional(),
   country: z.string().max(16).optional(),
+  /** Ville optionnelle (reverse geocode client) — analytics CDC. */
+  city: z.string().max(80).optional(),
 });
 
 export const liveEndSchema = z.object({
@@ -204,7 +206,18 @@ export const liveEndSchema = z.object({
 });
 
 export const liveChatSchema = z.object({
-  message: z.string().min(1).max(2000),
+  /**
+   * Limite transport : l’hôte/modération peut envoyer plus long (cf. `liveService.sendChatMessage`).
+   * CDC spectateur : 150 car. — appliqué dans le service pour les non-hôtes / non-mods.
+   */
+  message: z.string().min(1).max(500),
+  /** Marquer comme question (prioritaire sur la détection par « ? »). */
+  is_question: z.boolean().optional(),
+});
+
+/** Commentaires sur le replay (live terminé) — séparés du chat temps réel */
+export const liveReplayChatSchema = z.object({
+  message: z.string().min(1).max(150),
 });
 
 export const liveTipSchema = z.object({
@@ -223,7 +236,28 @@ export const liveGiftSchema = z.object({
 });
 
 export const liveReactionSchema = z.object({
-  type: z.enum(['like', 'heart', 'fire', 'thumbs']).optional().default('like'),
+  type: z.enum(['like', 'heart', 'fire', 'thumbs', 'clap']).optional().default('like'),
+});
+
+export const liveRaiseHandSchema = z.object({
+  raised: z.boolean(),
+});
+
+export const liveRaiseHandRespondSchema = z.object({
+  userId: z.string().min(1).max(80),
+  accept: z.boolean(),
+});
+
+export const liveAgeAckSchema = z.object({
+  restriction: z.enum(['18+', '13+']),
+});
+
+export const liveBellSubscribeSchema = z.object({
+  enabled: z.boolean(),
+});
+
+export const liveCaptionBroadcastSchema = z.object({
+  text: z.string().min(1).max(280),
 });
 
 export const liveChapterSchema = z.object({

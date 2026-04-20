@@ -9,6 +9,7 @@ import e2eeService from '../services/e2ee.service.js';
 import { logger } from '../utils/logger.js';
 import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+import prisma from '../config/database.js';
 import {
   messagesConversationArchiveSchema,
   messagesConversationDraftSchema,
@@ -29,6 +30,7 @@ import {
 } from '../schemas/highRiskBodies.js';
 
 const router = Router();
+const PRIVACY_SETTINGS_KEY = (userId: string) => `privacy_settings:${userId}`;
 
 const PAGE_MIN = 1;
 const LIMIT_MIN = 1;
@@ -113,12 +115,16 @@ router.get('/export', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
-// GET /api/messages/conversations
+// GET /api/messages/conversations — query inbox=all|primary|requests (défaut all = rétrocompat PWA)
 router.get('/conversations', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const { page, limit } = parsePageLimit(req.query as Record<string, unknown>, 20);
     const includeArchived = req.query.includeArchived === 'true';
-    const result = await messageService.getConversations(req.user!.id, page, limit, includeArchived);
+    const inboxRaw = typeof req.query.inbox === 'string' ? req.query.inbox.toLowerCase().trim() : '';
+    let inbox: 'all' | 'primary' | 'requests' = 'all';
+    if (inboxRaw === 'requests') inbox = 'requests';
+    else if (inboxRaw === 'primary') inbox = 'primary';
+    const result = await messageService.getConversations(req.user!.id, page, limit, includeArchived, inbox);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
     next(error);
@@ -128,7 +134,26 @@ router.get('/conversations', authenticate, async (req: AuthRequest, res, next) =
 // GET /api/messages/conversation/:userId
 router.get('/conversation/:userId', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const conversation = await messageService.getOrCreateConversation(req.user!.id, param(req, 'userId'), req.user!.id);
+    const requesterId = req.user!.id;
+    const targetId = param(req, 'userId');
+    if (requesterId !== targetId) {
+      const stored = await prisma.platformSettings.findUnique({ where: { key: PRIVACY_SETTINGS_KEY(targetId) } });
+      const settings = ((stored?.value as Record<string, unknown>) || {});
+      const dmRule = String(settings.direct_messages || 'friends');
+      if (dmRule === 'no_one') {
+        return res.status(403).json({ success: false, error: { message: "Cet utilisateur n'accepte pas les messages privés." } });
+      }
+      if (dmRule === 'friends') {
+        const [a, b] = await Promise.all([
+          prisma.follow.findFirst({ where: { follower_id: requesterId, following_id: targetId }, select: { id: true } }),
+          prisma.follow.findFirst({ where: { follower_id: targetId, following_id: requesterId }, select: { id: true } }),
+        ]);
+        if (!a || !b) {
+          return res.status(403).json({ success: false, error: { message: 'Messages autorisés uniquement entre amis.' } });
+        }
+      }
+    }
+    const conversation = await messageService.getOrCreateConversation(requesterId, targetId, requesterId);
     res.json({ success: true, data: conversation });
   } catch (error: unknown) {
     next(error);
@@ -207,6 +232,26 @@ router.patch('/conversations/:conversationId/notifications', authenticate, valid
       req.body?.muted === true
     );
     res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// POST /api/messages/conversations/:conversationId/dm-request/accept — accepter une demande de message (1-1)
+router.post('/conversations/:conversationId/dm-request/accept', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const data = await messageService.acceptDmRequest(param(req, 'conversationId'), req.user!.id);
+    res.json({ success: true, data });
+  } catch (error: unknown) {
+    next(error);
+  }
+});
+
+// POST /api/messages/conversations/:conversationId/dm-request/decline — refuser / supprimer la demande (1-1)
+router.post('/conversations/:conversationId/dm-request/decline', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const data = await messageService.declineDmRequest(param(req, 'conversationId'), req.user!.id);
+    res.json({ success: true, data });
   } catch (error: unknown) {
     next(error);
   }

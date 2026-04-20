@@ -11,6 +11,9 @@ const BLACKLISTED_IPS: Set<string> = new Set([
 ]);
 
 export const antiBotMiddleware = (req: Request, res: Response, next: NextFunction) => {
+  // Tests (Jest/supertest) utilisent des user-agents techniques → ne pas bloquer.
+  if (process.env.NODE_ENV === 'test') return next();
+
   const userAgent = req.headers['user-agent']?.toLowerCase() || '';
   const ip = req.ip || req.socket.remoteAddress || '';
 

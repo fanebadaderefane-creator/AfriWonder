@@ -13,7 +13,7 @@ const router = Router();
 
 /**
  * GET /api/search
- * Query: q (requis), type (all|videos|users|products), page, limit, category, hashtag, duration
+ * Query: q (requis), type (all|videos|users|products|sounds), page, limit, category, hashtag, duration
  */
 router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
@@ -27,7 +27,7 @@ router.get('/', optionalAuth, async (req: AuthRequest, res, next) => {
 
     const result = await globalSearch({
       q: q.trim(),
-      type: ['all', 'videos', 'users', 'products'].includes(type) ? type : 'all',
+      type: ['all', 'videos', 'users', 'products', 'sounds'].includes(type) ? type : 'all',
       page,
       limitPerType: limit,
       category: category?.trim() || undefined,

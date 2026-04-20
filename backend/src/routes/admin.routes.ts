@@ -20,6 +20,7 @@ import commissionSettingsService from '../services/commissionSettings.service.js
 import * as monetizationService from '../services/monetization.service.js';
 import { invalidateBannedWordsCache } from '../services/bannedWord.service.js';
 import experimentService from '../services/experiment.service.js';
+import * as coinPackageAdminService from '../services/coinPackageAdmin.service.js';
 import e2eeService from '../services/e2ee.service.js';
 import withdrawalService from '../services/withdrawal.service.js';
 import notificationService from '../services/notification.service.js';
@@ -894,6 +895,17 @@ router.get('/lives/history', authenticate, requireAnyAdmin, async (req: AuthRequ
   }
 });
 
+// POST /api/admin/lives/cleanup-ended — Supprimer tous les lives terminés (admin, ex. dev)
+router.post('/lives/cleanup-ended', authenticate, requireAnyAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const data = await liveService.deleteAllEndedStreamsAdmin();
+    await auditLog(req, 'live_cleanup_ended_all', 'live', 'bulk', { deleted: data.deleted });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // POST /api/admin/lives/:id/terminate
 router.post('/lives/:id/terminate', authenticate, requireAnyAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
@@ -1435,6 +1447,39 @@ router.post('/experiments', authenticate, requireAnyAdmin, validateBody(adminExp
     res.status(201).json({ success: true, data: experiment });
   } catch (error: any) {
     if (error?.statusCode === 400) return res.status(400).json({ success: false, error: { message: error.message } });
+    next(error);
+  }
+});
+
+// --- Phase 9 : packs coins (admin) ---
+router.get('/coin-packages', authenticate, requireAnyAdmin, async (_req: AuthRequest, res, next) => {
+  try {
+    const data = await coinPackageAdminService.adminListCoinPackages();
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/coin-packages', authenticate, requireAnyAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const created = await coinPackageAdminService.adminCreateCoinPackage(req.body || {});
+    await auditLog(req, 'coin_package_create', 'CoinPackage', created.id, { slug: created.slug });
+    res.status(201).json({ success: true, data: created });
+  } catch (error: any) {
+    if (error?.code === 'P2002') return res.status(400).json({ success: false, error: { message: 'Slug déjà utilisé' } });
+    next(error);
+  }
+});
+
+router.patch('/coin-packages/:id', authenticate, requireAnyAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const id = param(req, 'id');
+    const updated = await coinPackageAdminService.adminUpdateCoinPackage(id, req.body || {});
+    await auditLog(req, 'coin_package_update', 'CoinPackage', id);
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    if (error?.code === 'P2025') return res.status(404).json({ success: false, error: { message: 'Non trouvé' } });
     next(error);
   }
 });

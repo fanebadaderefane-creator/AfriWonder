@@ -12,6 +12,22 @@ import escrowService from '../services/escrow.service.js';
 
 const PLATFORM_USER_ID = process.env.PLATFORM_USER_ID || '00000000-0000-0000-0000-000000000000';
 
+async function ensurePlatformUser() {
+  // Certains tests (et/ou suites) peuvent supprimer des users: on re-garantit la fixture.
+  const existing = await prisma.user.findUnique({ where: { id: PLATFORM_USER_ID } });
+  if (existing) return;
+  await prisma.user.create({
+    data: {
+      id: PLATFORM_USER_ID,
+      email: 'platform@afriwonder.app',
+      username: 'platform',
+      password_hash: 'no-login',
+      full_name: 'AfriWonder Platform',
+      role: 'admin',
+    },
+  }).catch(() => {});
+}
+
 describe('OrderService', () => {
   // IDs de test réutilisables
   let testUserId: string;
@@ -31,6 +47,7 @@ describe('OrderService', () => {
     await prisma.sellerWallet.deleteMany();
     await prisma.sellerProfile.deleteMany();
     await prisma.user.deleteMany({ where: { id: { not: PLATFORM_USER_ID } } });
+    await ensurePlatformUser();
 
     // Créer un utilisateur de test
     const testUser = await prisma.user.create({
@@ -95,8 +112,9 @@ describe('OrderService', () => {
     });
     testCartId = testCart.id;
 
-    // Créer un wallet pour la plateforme (utilisateur déjà créé par setup)
+    // Créer un wallet pour la plateforme
     try {
+      await ensurePlatformUser();
       await prisma.wallet.create({
         data: {
           user_id: PLATFORM_USER_ID,

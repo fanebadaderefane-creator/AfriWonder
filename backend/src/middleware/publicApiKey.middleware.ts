@@ -24,6 +24,12 @@ type PublicApiUsageSnapshot = {
 const minuteBuckets = new Map<string, { count: number; resetAt: number }>();
 const dayBuckets = new Map<string, { count: number; resetAt: number }>();
 
+/** Test helper: clear counters between Jest files (in-memory store). */
+export function __resetPublicApiRateLimitsForTests() {
+  minuteBuckets.clear();
+  dayBuckets.clear();
+}
+
 function getAllowedKeys(): string[] {
   const envKeys = String(process.env.PUBLIC_API_KEYS || '')
     .split(',')

@@ -8,6 +8,11 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+const g = globalThis as unknown as {
+  __AFW_PG_POOL__?: Pool;
+  __AFW_PRISMA__?: PrismaClient;
+};
+
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 // Racine backend (src/config -> backend)
 const backendRoot = path.resolve(currentDir, '..', '..');
@@ -99,25 +104,31 @@ const poolMax = Number.isFinite(poolMaxEnv) && poolMaxEnv > 0
 
 // Avec hôte cloud (Supabase pooler, Neon…), le certificat peut être rejeté ("self-signed certificate in certificate chain").
 // On accepte la connexion TLS sans vérification stricte pour que Render/production puisse se connecter au pooler Supabase.
-const pool = new Pool({
-  connectionString,
-  max: poolMax,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 30000, // 30s pour éviter timeout lors de l'init (politiques de rétention, etc.)
-  ...(isCloudHost && { ssl: { rejectUnauthorized: false } }),
-});
+const pool =
+  g.__AFW_PG_POOL__ ??
+  new Pool({
+    connectionString,
+    max: poolMax,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 30000, // 30s pour éviter timeout lors de l'init (politiques de rétention, etc.)
+    ...(isCloudHost && { ssl: { rejectUnauthorized: false } }),
+  });
+g.__AFW_PG_POOL__ = pool;
 const adapter = new PrismaPg(pool);
 
 // Avec `adapter`, Prisma 7 peut inférer un PrismaClient partiel (TS perd certains modèles : pushSubscription, champs récents).
 // Le runtime expose bien toutes les déléguées — on aligne le typage sur PrismaClient complet.
-const prisma = new PrismaClient({
-  adapter,
-  log: process.env.NODE_ENV === 'development' 
-    ? ['query', 'error', 'warn'] 
-    : process.env.NODE_ENV === 'test'
-    ? []
-    : ['error'],
-}) as unknown as PrismaClient;
+const prisma =
+  g.__AFW_PRISMA__ ??
+  (new PrismaClient({
+    adapter,
+    log: process.env.NODE_ENV === 'development'
+      ? ['query', 'error', 'warn']
+      : process.env.NODE_ENV === 'test'
+        ? []
+        : ['error'],
+  }) as unknown as PrismaClient);
+g.__AFW_PRISMA__ = prisma;
 
 // Connexion : ne pas appeler $connect() ici avec process.exit(1) — ça tue le processus avant
 // httpServer.listen (index.ts) si la 1re tentative échoue ou course avec ensureDbConnected.

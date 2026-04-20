@@ -13,11 +13,34 @@ import * as paymentPreauthService from '../services/paymentPreauth.service.js';
 import * as creatorContractService from '../services/creatorContract.service.js';
 import { listMyCallHistory } from '../services/meCallHistory.service.js';
 import privacyService from '../services/privacy.service.js';
+import { getRecentContactMatchIds } from './friends.routes.js';
 
 import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 
 const router = Router();
+const PRIVACY_SETTINGS_KEY = (userId: string) => `privacy_settings:${userId}`;
+const PRIVACY_DEFAULTS = {
+  private_account: false,
+  following_list_visibility: 'everyone',
+  liked_videos_visibility: 'only_me',
+  comments: { who: 'everyone', filter_keywords: [] as string[] },
+  mentions: 'everyone',
+  direct_messages: 'friends',
+  /** Audience qui voit le statut "en ligne" / `last_seen` (everyone | friends | no_one). */
+  activity_status: 'no_one',
+  viewers: true,
+  downloads: true,
+  display_profile_when_sharing: true,
+  reuse_of_content: { duet: true, stitch: true, remix: true },
+  content_preferences: { disliked_tags: [] as string[] },
+  time_and_wellbeing: { screen_time_limit_min: null as number | null, break_reminder_min: null as number | null, restricted_mode: false },
+  language: { app_lang: 'fr', content_lang: ['fr'] as string[] },
+  display: { theme: 'system' },
+  accessibility: { auto_captions: false, reduce_motion: false, tts: false },
+  contacts_and_location: { contacts_allowed: false, location_allowed: false },
+  data_saver: false,
+};
 
 // GET /api/me/export — export JSON données personnelles (RGPD art. 20)
 router.get('/export', authenticate, async (req: AuthRequest, res, next) => {
@@ -141,6 +164,236 @@ router.get('/suggested-follows', authenticate, async (req: AuthRequest, res, nex
   }
 });
 
+/**
+ * GET /api/me/settings/privacy
+ * Préférences "Settings and privacy" persistantes par utilisateur.
+ */
+router.get('/settings/privacy', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const [stored, user] = await Promise.all([
+      prisma.platformSettings.findUnique({ where: { key: PRIVACY_SETTINGS_KEY(userId) } }),
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { is_private: true, data_saver_mode: true, theme: true, preferred_language: true },
+      }),
+    ]);
+    const saved = ((stored?.value as Record<string, unknown>) || {});
+    const settings = {
+      ...PRIVACY_DEFAULTS,
+      ...saved,
+      private_account: typeof user?.is_private === 'boolean' ? user.is_private : PRIVACY_DEFAULTS.private_account,
+      data_saver: typeof user?.data_saver_mode === 'boolean' ? user.data_saver_mode : PRIVACY_DEFAULTS.data_saver,
+      display: {
+        ...(PRIVACY_DEFAULTS.display || {}),
+        ...(((saved.display as Record<string, unknown>) || {})),
+        theme: (user?.theme || (saved.display as Record<string, unknown> | undefined)?.theme || 'system') as string,
+      },
+      language: {
+        ...(PRIVACY_DEFAULTS.language || {}),
+        ...(((saved.language as Record<string, unknown>) || {})),
+        app_lang: (user?.preferred_language || (saved.language as Record<string, unknown> | undefined)?.app_lang || 'fr') as string,
+      },
+    };
+    return res.json({ success: true, data: settings });
+  } catch (e) {
+    return next(e);
+  }
+});
+
+/**
+ * PUT /api/me/settings/privacy
+ * Sauvegarde des préférences + synchronisation des champs User supportés nativement.
+ */
+router.put('/settings/privacy', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const payload = (req.body || {}) as Record<string, unknown>;
+    const current = await prisma.platformSettings.findUnique({ where: { key: PRIVACY_SETTINGS_KEY(userId) } });
+    const previous = ((current?.value as Record<string, unknown>) || {});
+    const merged = { ...PRIVACY_DEFAULTS, ...previous, ...payload };
+
+    await prisma.platformSettings.upsert({
+      where: { key: PRIVACY_SETTINGS_KEY(userId) },
+      create: { key: PRIVACY_SETTINGS_KEY(userId), value: merged },
+      update: { value: merged },
+    });
+
+    const userPatch: Record<string, unknown> = {};
+    if (typeof merged.private_account === 'boolean') userPatch.is_private = merged.private_account;
+    if (typeof merged.data_saver === 'boolean') userPatch.data_saver_mode = merged.data_saver;
+    const display = (merged.display as Record<string, unknown> | undefined) || {};
+    if (typeof display.theme === 'string') userPatch.theme = display.theme;
+    const language = (merged.language as Record<string, unknown> | undefined) || {};
+    if (typeof language.app_lang === 'string') userPatch.preferred_language = language.app_lang;
+    if (Object.keys(userPatch).length > 0) {
+      await prisma.user.update({ where: { id: userId }, data: userPatch });
+    }
+
+    return res.json({ success: true, data: merged });
+  } catch (e) {
+    return next(e);
+  }
+});
+
+/** GET /api/me/settings/blocked — liste des comptes bloqués. */
+router.get('/settings/blocked', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const blocks = await prisma.userBlock.findMany({
+      where: { blocker_id: userId },
+      include: { blocked: { select: { id: true, username: true, full_name: true, profile_image: true } } },
+      orderBy: { created_at: 'desc' },
+    });
+    return res.json({ success: true, data: blocks.map((b) => b.blocked) });
+  } catch (e) {
+    return next(e);
+  }
+});
+
+/** DELETE /api/me/settings/blocked/:id — débloquer un compte. */
+router.delete('/settings/blocked/:id', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const targetId = param(req, 'id');
+    await prisma.userBlock.deleteMany({ where: { blocker_id: userId, blocked_id: targetId } });
+    return res.json({ success: true });
+  } catch (e) {
+    return next(e);
+  }
+});
+
+/**
+ * GET /api/me/friends-suggestions — suggestions enrichies pour l'écran « Find friends ».
+ *
+ * Renvoie les mêmes comptes que `suggested-follows`, mais enrichis avec :
+ *  - `preview_videos` : jusqu'à 4 dernières vidéos publiques (id, thumbnail_url, video_url,
+ *    created_at) pour afficher la bande de 4 aperçus 9:16 sous le nom,
+ *  - `mutual_count` : nombre d'amis en commun (estimé via abonnements croisés),
+ *  - `is_new_content` : true si au moins une vidéo publiée dans les dernières 24 h.
+ */
+router.get('/friends-suggestions', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const limit = Math.min(60, parseInt(String(req.query.limit), 10) || 24);
+    const users = await userService.getSuggestedUsersToFollow(userId, limit);
+    if (users.length === 0) {
+      return res.json({ success: true, data: { suggestions: [] } });
+    }
+
+    const userIds = users.map((u) => u.id);
+    const [myFollowingRows, followingMeRows, previewVideos, mutualRows] = await Promise.all([
+      prisma.follow.findMany({ where: { follower_id: userId }, select: { following_id: true } }),
+      prisma.follow.findMany({
+        where: {
+          follower_id: { in: userIds },
+          following_id: userId,
+        },
+        select: { follower_id: true },
+      }),
+      prisma.video.findMany({
+        where: {
+          creator_id: { in: userIds },
+          visibility: 'public',
+          video_url: { not: { contains: 'example.com' } },
+        },
+        select: {
+          id: true,
+          creator_id: true,
+          thumbnail_url: true,
+          video_url: true,
+          media_type: true,
+          created_at: true,
+        },
+        orderBy: { created_at: 'desc' },
+        take: userIds.length * 4,
+      }),
+      prisma.follow.findMany({
+        where: { following_id: { in: userIds } },
+        select: { follower_id: true, following_id: true },
+      }),
+    ]);
+
+    const myFollowing = new Set(myFollowingRows.map((f) => f.following_id));
+    const followsMe = new Set(followingMeRows.map((f) => f.follower_id));
+    const videosByUser = new Map<string, typeof previewVideos>();
+    for (const v of previewVideos) {
+      const arr = videosByUser.get(v.creator_id) || [];
+      if (arr.length < 4) arr.push(v);
+      videosByUser.set(v.creator_id, arr);
+    }
+    const mutualByUser = new Map<string, number>();
+    for (const row of mutualRows) {
+      if (myFollowing.has(row.follower_id)) {
+        mutualByUser.set(row.following_id, (mutualByUser.get(row.following_id) || 0) + 1);
+      }
+    }
+
+    const DAY_AGO = Date.now() - 24 * 3600 * 1000;
+
+    /** Ids trouvés récemment via la synchro contacts (24 h) — badge « From your contacts ». */
+    const contactMatchIds = getRecentContactMatchIds(userId);
+
+    const suggestions = users.map((u) => {
+      const videos = videosByUser.get(u.id) || [];
+      const fromContacts = contactMatchIds.has(u.id);
+      return {
+        id: u.id,
+        username: u.username,
+        full_name: u.full_name,
+        profile_image: u.profile_image,
+        is_verified: u.is_verified,
+        followers_count: u._count?.follows || 0,
+        mutual_count: mutualByUser.get(u.id) || 0,
+        is_following_me: followsMe.has(u.id),
+        is_new_content: videos.some((v) => v.created_at.getTime() >= DAY_AGO),
+        /** `contacts` (match via /friends/contacts/sync), `mutual` (amis en commun), ou `algo` (par défaut). */
+        source: fromContacts ? ('contacts' as const) : mutualByUser.get(u.id) ? ('mutual' as const) : ('algo' as const),
+        preview_videos: videos.map((v) => ({
+          id: v.id,
+          thumbnail_url: v.thumbnail_url,
+          video_url: v.video_url,
+          media_type: v.media_type,
+          created_at: v.created_at,
+        })),
+      };
+    });
+
+    return res.json({ success: true, data: { suggestions } });
+  } catch (e) {
+    return next(e);
+  }
+});
+
+/**
+ * POST /api/me/friends-suggestions/:id/dismiss — retirer un compte des suggestions.
+ * Marque une suggestion comme "rejetée" (24 h) via cache en mémoire.
+ */
+const DISMISSED_CACHE = new Map<string, Map<string, number>>();
+const DISMISS_TTL_MS = 24 * 3600 * 1000;
+
+router.post('/friends-suggestions/:id/dismiss', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const targetId = (req.params.id || '').trim();
+    if (!targetId) return res.status(400).json({ success: false, error: 'id requis' });
+    let userCache = DISMISSED_CACHE.get(userId);
+    if (!userCache) {
+      userCache = new Map();
+      DISMISSED_CACHE.set(userId, userCache);
+    }
+    userCache.set(targetId, Date.now());
+    // Purge entrées expirées
+    const now = Date.now();
+    for (const [k, ts] of userCache.entries()) {
+      if (now - ts > DISMISS_TTL_MS) userCache.delete(k);
+    }
+    return res.json({ success: true });
+  } catch (e) {
+    return next(e);
+  }
+});
+
 // GET /api/me/feed-video-states?ids=a,b,c — états like/save pour la fenêtre visible du feed
 router.get('/feed-video-states', authenticate, async (req: AuthRequest, res, next) => {
   try {
@@ -162,7 +415,7 @@ router.get('/feed-video-states', authenticate, async (req: AuthRequest, res, nex
           user_id: userId,
           video_id: { in: ids },
         },
-        select: { video_id: true },
+        select: { video_id: true, type: true },
       }),
       prisma.save.findMany({
         where: {
@@ -173,11 +426,17 @@ router.get('/feed-video-states', authenticate, async (req: AuthRequest, res, nex
       }),
     ]);
 
+    const reactionsByVideoId: Record<string, string> = {};
+    for (const row of likes) {
+      reactionsByVideoId[row.video_id] = row.type || 'like';
+    }
+
     res.json({
       success: true,
       data: {
         likedIds: likes.map((row) => row.video_id),
         savedIds: saves.map((row) => row.video_id),
+        reactionsByVideoId,
       },
     });
   } catch (e) {

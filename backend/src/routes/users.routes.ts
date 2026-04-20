@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import userService from '../services/user.service.js';
+import liveService from '../services/live.service.js';
 import { invalidateUserFeedCaches } from '../services/feedCache.service.js';
 
 import { validateBody } from '../utils/zodValidation.js';
@@ -157,16 +158,53 @@ router.get('/:id/stats', optionalAuth, async (req: AuthRequest, res, next) => {
   }
 });
 
+// GET /api/users/:id/live-gift-hall-of-fame — tops donateurs live (tous les lives du créateur)
+router.get('/:id/live-gift-hall-of-fame', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = param(req, 'id');
+    const limit = parseInt(String(req.query.limit || '24'), 10) || 24;
+    const rows = await liveService.getGiftHallOfFameForCreator(userId, limit);
+    res.json({ success: true, data: { supporters: rows } });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // GET /api/users/:id/liked-videos - Récupérer les vidéos likées d'un utilisateur
 router.get('/:id/liked-videos', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = param(req, 'id');
+    const viewerId = req.user?.id ?? null;
     const page = parseInt(req.query.page as string) || 1;
     // Si limit n'est pas spécifié ou est 0, récupérer toutes les vidéos
     const limitParam = req.query.limit as string;
     const limit = limitParam ? parseInt(limitParam) : 0;
-    const result = await userService.getLikedVideos(userId, page, limit);
+    const result = await userService.getLikedVideos(userId, page, limit, viewerId);
     res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/users/:id/share — deep_link + qr_code_data pour partage profil
+router.get('/:id/share', optionalAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = param(req, 'id');
+    const user = await userService.getById(userId, req.user?.id ?? null);
+    const handle = (user?.username || '').replace(/^@+/, '');
+    const baseUrl = process.env.PUBLIC_WEB_URL?.replace(/\/$/, '') || 'https://afri-wonder.vercel.app';
+    const deepLink = handle
+      ? `${baseUrl}/u/${encodeURIComponent(handle)}`
+      : `${baseUrl}/user/${encodeURIComponent(userId)}`;
+    return res.json({
+      success: true,
+      data: {
+        user_id: userId,
+        handle,
+        deep_link: deepLink,
+        qr_code_data: deepLink,
+      },
+    });
   } catch (error: any) {
     next(error);
   }

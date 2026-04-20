@@ -1,11 +1,14 @@
 /** CDC Live Streaming Mali — Catégories principales */
 export const LIVE_CATEGORIES = [
   { id: 'musique', name: 'Musique', icon: '🎵' },
-  { id: 'gaming', name: 'Gaming', icon: '🎮' },
+  { id: 'gaming', name: 'Jeux / Gaming', icon: '🎮' },
+  { id: 'qa', name: 'Q&A', icon: '❓' },
   { id: 'education', name: 'Éducation', icon: '📚' },
   { id: 'cuisine', name: 'Cuisine', icon: '🍳' },
+  { id: 'beauty', name: 'Beauté', icon: '✨' },
   { id: 'sport', name: 'Sport', icon: '⚽' },
   { id: 'art', name: 'Art', icon: '🎨' },
+  { id: 'actu', name: 'Actualités', icon: '📡' },
   { id: 'influenceurs', name: 'Influenceurs', icon: '⭐' },
   { id: 'entrepreneurs', name: 'Entrepreneurs', icon: '💼' },
   { id: 'journalisme', name: 'Journalisme', icon: '📰' },

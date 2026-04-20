@@ -42,7 +42,8 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
 router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const creatorId = req.user!.id;
-    const { brand_name, amount, currency, campaign_id, notes } = req.body || {};
+    const { brand_name, amount, currency, campaign_id, notes, deliverables, brief_url, brand_user_id, platform_fee_pct } =
+      req.body || {};
     if (!brand_name || !String(brand_name).trim()) {
       return res.status(400).json({ success: false, error: { message: 'brand_name requis' } });
     }
@@ -54,6 +55,11 @@ router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: A
         currency: currency ?? undefined,
         campaign_id: campaign_id ?? undefined,
         notes: notes ?? undefined,
+        deliverables: deliverables !== undefined ? deliverables : undefined,
+        brief_url: brief_url != null ? String(brief_url).trim() : undefined,
+        brand_user_id: brand_user_id != null ? String(brand_user_id).trim() : undefined,
+        platform_fee_pct:
+          platform_fee_pct != null && !Number.isNaN(Number(platform_fee_pct)) ? Number(platform_fee_pct) : 0.1,
         status: 'pending',
       },
     });
@@ -83,7 +89,8 @@ router.patch('/:id', authenticate, validateBody(jsonObjectBodySchema), async (re
   try {
     const id = param(req, 'id');
     const userId = req.user!.id;
-    const { brand_name, amount, currency, campaign_id, notes, status } = req.body || {};
+    const { brand_name, amount, currency, campaign_id, notes, status, deliverables, brief_url, brand_user_id, platform_fee_pct } =
+      req.body || {};
     const existing = await prisma.brandDeal.findFirst({ where: { id, creator_id: userId } });
     if (!existing) return res.status(404).json({ success: false, error: { message: 'Non trouvé' } });
     const data: Record<string, unknown> = {};
@@ -92,7 +99,16 @@ router.patch('/:id', authenticate, validateBody(jsonObjectBodySchema), async (re
     if (currency !== undefined) data.currency = currency;
     if (campaign_id !== undefined) data.campaign_id = campaign_id;
     if (notes !== undefined) data.notes = notes;
-    if (status !== undefined && ['pending', 'active', 'completed', 'rejected'].includes(status)) data.status = status;
+    if (deliverables !== undefined) data.deliverables = deliverables;
+    if (brief_url !== undefined) data.brief_url = brief_url != null ? String(brief_url).trim() : null;
+    if (brand_user_id !== undefined) data.brand_user_id = brand_user_id != null ? String(brand_user_id).trim() : null;
+    if (platform_fee_pct !== undefined && !Number.isNaN(Number(platform_fee_pct))) data.platform_fee_pct = Number(platform_fee_pct);
+    if (
+      status !== undefined &&
+      ['pending', 'active', 'completed', 'rejected', 'draft', 'signed', 'delivered', 'paid'].includes(status)
+    ) {
+      data.status = status;
+    }
     const updated = await prisma.brandDeal.update({
       where: { id },
       data: data as any,

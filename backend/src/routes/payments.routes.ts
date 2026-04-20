@@ -210,6 +210,7 @@ const processSuccessfulPaymentReference = async (referenceId: string, status: st
     ['promotion', () => import('../services/product.service.js').then(m => m.default.confirmPromotionPayment(referenceId))],
     ['flash_sale', () => import('../services/product.service.js').then(m => m.default.confirmFlashSalePayment(referenceId))],
     ['gift', () => import('../services/gift.service.js').then(m => m.default.confirmGiftPayment(referenceId))],
+    ['coins_purchase', () => import('../services/coins.service.js').then(m => m.default.confirmPurchase(referenceId))],
     ['certificate', () => import('../services/certificate.service.js').then(m => m.default.confirmVerificationPayment(referenceId))],
     ['shipping', () => import('../services/shipping.service.js').then(m => m.default.confirmShippingPayment(referenceId))],
   ] as const;
@@ -597,6 +598,7 @@ router.post('/webhook', async (req, res, next) => {
         ['campaign_contribution', () => import('../services/crowdfunding.service.js').then(m => m.default.confirmContribution(effectiveRef))],
         ['subscription', () => import('../services/subscription.service.js').then(m => m.default.confirmSubscription(effectiveRef))],
         ['order', () => import('../services/order.service.js').then(m => m.default.confirmPayment(effectiveRef))],
+        ['coins_purchase', () => import('../services/coins.service.js').then(m => m.default.confirmPurchase(effectiveRef))],
         ['service', () => import('../services/service.service.js').then(m => m.default.confirmServicePayment(effectiveRef))],
         ['course', () => import('../services/course.service.js').then(m => m.default.confirmCoursePayment(effectiveRef))],
         ['event', () => import('../services/event.service.js').then(m => m.default.confirmTicketPayment(effectiveRef))],

@@ -30,8 +30,14 @@ export const videoCreateBodySchema = z.object({
   category: z.string().max(64).optional(),
   hashtags: z.array(z.string().max(100)).max(50).optional(),
   music_title: z.string().max(200).optional(),
+  /** JSON stringifié : métadonnées éditeur (filtres, overlays, découpe, vitesse, etc.). */
+  editor_metadata: z.string().max(16000).optional(),
   media_type: z.enum(['video', 'image']).optional(),
   remix_of_id: z.string().max(64).optional(),
+  remix_kind: z.enum(['duet', 'stitch']).optional(),
+  challenge_id: z.string().max(64).optional().nullable(),
+  poll_options: z.array(z.string().min(1).max(200)).min(2).max(4).optional(),
+  comment_subscribers_first: z.boolean().optional(),
   subtitle_url: z.string().max(2048).optional(),
   download_allowed: z.boolean().optional(),
   is_premium: z.boolean().optional(),
@@ -39,6 +45,8 @@ export const videoCreateBodySchema = z.object({
   comment_visibility: z.string().max(32).optional(),
   hide_likes: z.boolean().optional(),
   scheduled_at: z.union([z.string().max(80), z.number(), z.null()]).optional(),
+  /** ISO 639-1 (`fr`, `en`, `bm`, `wo`, `ar`, …) — passé tel quel au champ Video.editor_metadata si non stocké directement. */
+  language: z.string().max(8).optional(),
 });
 
 export const videoUpdateBodySchema = z
@@ -53,8 +61,11 @@ export const videoUpdateBodySchema = z
     thumbnail_url: z.string().max(2048).optional(),
     comments_disabled: z.boolean().optional(),
     comment_visibility: z.string().max(32).optional(),
+    comment_subscribers_first: z.boolean().optional(),
     hide_likes: z.boolean().optional(),
     scheduled_at: z.union([z.string().max(80), z.number(), z.null()]).optional(),
+    remix_kind: z.enum(['duet', 'stitch']).optional().nullable(),
+    challenge_id: z.string().max(64).optional().nullable(),
   })
   .refine((d) => Object.values(d).some((v) => v !== undefined), {
     message: 'Au moins un champ de mise à jour est requis',
@@ -66,6 +77,18 @@ export const videoTrimBodySchema = z.object({
 });
 
 export const videoReactionTypeBodySchema = z.object({
+  type: z.string().max(32).optional().default('like'),
+});
+
+export const videoPollCreateBodySchema = z.object({
+  options: z.array(z.string().min(1).max(200)).min(2).max(4),
+});
+
+export const videoPollVoteBodySchema = z.object({
+  option_index: z.coerce.number().int().min(0).max(3),
+});
+
+export const commentReactionBodySchema = z.object({
   type: z.string().max(32).optional().default('like'),
 });
 
