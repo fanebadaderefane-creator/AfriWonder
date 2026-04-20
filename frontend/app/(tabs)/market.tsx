@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image,
-  RefreshControl, useWindowDimensions, Animated,
+  RefreshControl, useWindowDimensions, Animated, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,42 +12,37 @@ import apiClient from '../../src/api/client';
 import cartApi from '../../src/api/cartApi';
 import { featureFlags } from '../../src/config/featureFlags';
 
-// --- MOCK DATA ---
-const CATEGORIES = [
-  { id: '1', name: 'Mode', icon: 'shirt', color: '#FF6B6B', image: 'https://picsum.photos/120/120?random=40' },
-  { id: '2', name: 'Electronique', icon: 'phone-portrait', color: '#4ECDC4', image: 'https://picsum.photos/120/120?random=41' },
-  { id: '3', name: 'Alimentation', icon: 'fast-food', color: '#FFE66D', image: 'https://picsum.photos/120/120?random=42' },
-  { id: '4', name: 'Maison', icon: 'home', color: '#95E1D3', image: 'https://picsum.photos/120/120?random=43' },
-  { id: '5', name: 'Beaute', icon: 'sparkles', color: '#DDA0DD', image: 'https://picsum.photos/120/120?random=44' },
-  { id: '6', name: 'Sport', icon: 'football', color: '#98D8C8', image: 'https://picsum.photos/120/120?random=45' },
-  { id: '7', name: 'Artisanat', icon: 'color-palette', color: '#F8B500', image: 'https://picsum.photos/120/120?random=46' },
-  { id: '8', name: 'Auto', icon: 'car', color: '#6C5CE7', image: 'https://picsum.photos/120/120?random=47' },
-];
+function pickCategoryStyle(name: string): { icon: string; color: string } {
+  const n = name.toLowerCase();
+  if (n.includes('mode') || n.includes('vêt') || n.includes('vet')) return { icon: 'shirt', color: '#FF6B6B' };
+  if (n.includes('élect') || n.includes('elect') || n.includes('tech')) return { icon: 'phone-portrait', color: '#4ECDC4' };
+  if (n.includes('alim') || n.includes('food') || n.includes('nour')) return { icon: 'fast-food', color: '#FFE66D' };
+  if (n.includes('maison') || n.includes('home')) return { icon: 'home', color: '#95E1D3' };
+  if (n.includes('beaut') || n.includes('cosm')) return { icon: 'sparkles', color: '#DDA0DD' };
+  if (n.includes('sport')) return { icon: 'football', color: '#98D8C8' };
+  if (n.includes('artisan')) return { icon: 'color-palette', color: '#F8B500' };
+  if (n.includes('auto') || n.includes('voiture')) return { icon: 'car', color: '#6C5CE7' };
+  return { icon: 'grid', color: '#888' };
+}
 
-const FLASH_DEALS = [
-  { id: 'fd1', name: 'Ecouteurs Bluetooth', price: 8500, oldPrice: 15000, image: 'https://picsum.photos/200/200?random=50', discount: 43, soldCount: 234 },
-  { id: 'fd2', name: 'Robe Bogolan Luxe', price: 18000, oldPrice: 30000, image: 'https://picsum.photos/200/200?random=51', discount: 40, soldCount: 189 },
-  { id: 'fd3', name: 'Montre Connectee', price: 25000, oldPrice: 45000, image: 'https://picsum.photos/200/200?random=52', discount: 44, soldCount: 98 },
-  { id: 'fd4', name: 'Sac Cuir Artisanal', price: 12000, oldPrice: 22000, image: 'https://picsum.photos/200/200?random=53', discount: 45, soldCount: 156 },
-];
+function deriveCategoriesFromProducts(products: any[]) {
+  const counts = new Map<string, number>();
+  for (const p of products) {
+    const c = String(p.category || '').trim();
+    if (!c) continue;
+    counts.set(c, (counts.get(c) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([name], i) => ({
+      id: `cat-${i}-${name}`,
+      name,
+      ...pickCategoryStyle(name),
+    }));
+}
 
-const PRODUCTS = [
-  { id: 'p1', name: 'Robe Bogolan Premium', price: 25000, oldPrice: 35000, image: 'https://picsum.photos/300/400?random=20', rating: 4.8, reviews: 124, seller: 'Awa Mode', sellerVerified: true, freeDelivery: true, isNew: true, isBestseller: false, wishlisted: false },
-  { id: 'p2', name: 'Telephone Samsung A54', price: 185000, oldPrice: null, image: 'https://picsum.photos/300/400?random=21', rating: 4.5, reviews: 89, seller: 'Tech Mali', sellerVerified: true, freeDelivery: false, isNew: false, isBestseller: true, wishlisted: true },
-  { id: 'p3', name: 'Panier de fruits frais bio', price: 5000, oldPrice: 7500, image: 'https://picsum.photos/300/400?random=22', rating: 4.9, reviews: 234, seller: 'Marche Frais', sellerVerified: false, freeDelivery: true, isNew: false, isBestseller: false, wishlisted: false },
-  { id: 'p4', name: 'Bijoux traditionnels or', price: 15000, oldPrice: null, image: 'https://picsum.photos/300/400?random=23', rating: 4.7, reviews: 56, seller: 'Artisanat Bamako', sellerVerified: true, freeDelivery: false, isNew: true, isBestseller: false, wishlisted: false },
-  { id: 'p5', name: 'Sac en cuir veritable', price: 35000, oldPrice: 50000, image: 'https://picsum.photos/300/400?random=24', rating: 4.6, reviews: 78, seller: 'Cuir Sahel', sellerVerified: true, freeDelivery: true, isNew: false, isBestseller: true, wishlisted: true },
-  { id: 'p6', name: 'Huile de karite pure', price: 3500, oldPrice: 5000, image: 'https://picsum.photos/300/400?random=25', rating: 4.9, reviews: 312, seller: 'Bio Mali', sellerVerified: false, freeDelivery: true, isNew: false, isBestseller: false, wishlisted: false },
-  { id: 'p7', name: 'Bazin riche 10 metres', price: 45000, oldPrice: 60000, image: 'https://picsum.photos/300/400?random=26', rating: 4.8, reviews: 201, seller: 'Bazin Royal', sellerVerified: true, freeDelivery: false, isNew: false, isBestseller: true, wishlisted: false },
-  { id: 'p8', name: 'Chaussures cuir homme', price: 28000, oldPrice: null, image: 'https://picsum.photos/300/400?random=27', rating: 4.4, reviews: 67, seller: 'Sahel Shoes', sellerVerified: false, freeDelivery: true, isNew: true, isBestseller: false, wishlisted: false },
-];
-
-const RECOMMENDED = [
-  { id: 'r1', name: 'Tissu Wax Premium', price: 8000, image: 'https://picsum.photos/150/150?random=60', rating: 4.7, seller: 'Wax Africa' },
-  { id: 'r2', name: 'Beurre de karite', price: 2500, image: 'https://picsum.photos/150/150?random=61', rating: 4.9, seller: 'Bio Bamako' },
-  { id: 'r3', name: 'Bracelet perles', price: 3000, image: 'https://picsum.photos/150/150?random=62', rating: 4.6, seller: 'Perles Mali' },
-  { id: 'r4', name: 'The Kinkeliba', price: 1500, image: 'https://picsum.photos/150/150?random=63', rating: 4.8, seller: 'Herbes Sahel' },
-];
+const PLACEHOLDER_IMG = 'https://picsum.photos/300/400';
 
 const formatPrice = (p: number) => p.toLocaleString('fr-FR') + ' FCFA';
 
@@ -60,9 +55,23 @@ export default function MarketScreen() {
   const [activeFilter, setActiveFilter] = useState('all');
   const flashAnim = useRef(new Animated.Value(1)).current;
   const [realProducts, setRealProducts] = useState<any[]>([]);
-  const [, setLoadingProducts] = useState(true);
+  const [loadingProducts, setLoadingProducts] = useState(true);
   const [productsError, setProductsError] = useState<string | null>(null);
   const [cartCount, setCartCount] = useState(0);
+
+  const categoryChips = useMemo(() => deriveCategoriesFromProducts(realProducts), [realProducts]);
+  const flashProducts = useMemo(() => {
+    const bests = realProducts.filter((p: any) => p.isBestseller);
+    const src = bests.length >= 2 ? bests : realProducts;
+    return src.slice(0, 4);
+  }, [realProducts]);
+  const recommendedProducts = useMemo(
+    () =>
+      [...realProducts]
+        .sort((a: any, b: any) => (Number(b.rating) || 0) - (Number(a.rating) || 0))
+        .slice(0, 8),
+    [realProducts],
+  );
 
   // Vrai compteur du panier (remplace l'ancien badge en dur "3").
   // Silencieux si non authentifié ou marketplace désactivé.
@@ -113,7 +122,7 @@ export default function MarketScreen() {
         name: p.name || '',
         price: p.price || 0,
         oldPrice: null,
-        image: p.images?.[0] || null,
+        image: p.images?.[0] || PLACEHOLDER_IMG,
         rating: p.seller?.seller_profile?.rating || 4.5,
         reviews: p.seller?.seller_profile?.total_sales || 0,
         seller: p.seller?.full_name || p.seller?.username || 'Vendeur',
@@ -185,7 +194,7 @@ export default function MarketScreen() {
           if (results.length > 0) {
             const transformed = results.map((p: any) => ({
               id: p.id, name: p.name || '', price: p.price || 0, oldPrice: null,
-              image: p.images?.[0] || 'https://picsum.photos/300/400', rating: p.seller?.seller_profile?.rating || 4.5,
+              image: p.images?.[0] || PLACEHOLDER_IMG, rating: p.seller?.seller_profile?.rating || 4.5,
               reviews: p.seller?.seller_profile?.total_sales || 0, seller: p.seller?.full_name || 'Vendeur',
               sellerVerified: p.seller?.seller_profile?.is_verified || false, freeDelivery: false,
               isNew: false, isBestseller: false, wishlisted: false,
@@ -250,85 +259,104 @@ export default function MarketScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
       >
-        {/* Flash Deals Banner */}
-        <View style={styles.flashSection}>
-          <TouchableOpacity activeOpacity={0.9}>
-            <LinearGradient colors={['#FF3D00', '#FF6B00', '#FF9100']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.flashBanner}>
-              <View style={styles.flashLeft}>
-                <View style={styles.flashTitleRow}>
-                  <Animated.View style={{ opacity: flashAnim }}>
-                    <Ionicons name="flash" size={18} color="#FFD700" />
-                  </Animated.View>
-                  <Text style={styles.flashTitle}>FLASH DEALS</Text>
-                  <Animated.View style={{ opacity: flashAnim }}>
-                    <Ionicons name="flash" size={18} color="#FFD700" />
-                  </Animated.View>
-                </View>
-                <View style={styles.timerRow}>
-                  {['02', '14', '37'].map((t, i) => (
-                    <React.Fragment key={i}>
-                      {i > 0 && <Text style={styles.timerSep}>:</Text>}
-                      <View style={styles.timerBox}>
-                        <Text style={styles.timerText}>{t}</Text>
-                      </View>
-                    </React.Fragment>
-                  ))}
-                </View>
-              </View>
-              <Text style={styles.flashSeeAll}>Voir tout</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Flash Deal Cards */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.flashCards}>
-            {FLASH_DEALS.map(deal => (
-              <TouchableOpacity key={deal.id} style={styles.flashCard} activeOpacity={0.85}>
-                <Image source={{ uri: deal.image }} style={styles.flashImage} />
-                <View style={styles.flashDiscountBadge}>
-                  <Text style={styles.flashDiscountText}>-{deal.discount}%</Text>
-                </View>
-                <View style={styles.flashCardInfo}>
-                  <Text style={styles.flashPrice}>{formatPrice(deal.price)}</Text>
-                  <Text style={styles.flashOldPrice}>{formatPrice(deal.oldPrice)}</Text>
-                  <View style={styles.flashSoldBar}>
-                    <View style={[styles.flashSoldFill, { width: `${Math.min(deal.soldCount / 3, 100)}%` }]} />
-                  </View>
-                  <Text style={styles.flashSoldText}>{deal.soldCount} vendus</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Categories Grid */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Categories</Text>
-            <TouchableOpacity><Text style={styles.seeAll}>Voir tout</Text></TouchableOpacity>
+        {productsError ? (
+          <View style={styles.errorBanner}>
+            <Ionicons name="warning-outline" size={22} color="#FF6B00" />
+            <Text style={styles.errorBannerText}>{productsError}</Text>
+            <TouchableOpacity style={styles.errorRetry} onPress={() => void fetchProducts()} accessibilityRole="button">
+              <Text style={styles.errorRetryText}>Réessayer</Text>
+            </TouchableOpacity>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesRow}>
-            {CATEGORIES.map(cat => (
-              <TouchableOpacity key={cat.id} style={styles.categoryCard} activeOpacity={0.8}>
-                <View style={[styles.categoryIconBg, { backgroundColor: cat.color + '20' }]}>
-                  <Ionicons name={cat.icon as any} size={24} color={cat.color} />
-                </View>
-                <Text style={styles.categoryName}>{cat.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+        ) : null}
 
-        {/* Promo Banner */}
-        <TouchableOpacity style={styles.promoBanner} activeOpacity={0.9}>
-          <LinearGradient colors={['#6C5CE7', '#A29BFE']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.promoGradient}>
-            <View style={styles.promoContent}>
-              <View style={styles.promoBadge}><Text style={styles.promoBadgeText}>EXCLU</Text></View>
-              <Text style={styles.promoTitle}>-30% sur la mode</Text>
-              <Text style={styles.promoSubtitle}>Jusqu'au 31 juillet • Code: AFRI30</Text>
+        {loadingProducts && realProducts.length === 0 && !productsError ? (
+          <View style={styles.loadingBlock}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loadingText}>Chargement du catalogue…</Text>
+          </View>
+        ) : null}
+
+        {!loadingProducts && !productsError && realProducts.length === 0 ? (
+          <View style={styles.emptyBlock}>
+            <Ionicons name="storefront-outline" size={40} color="#666" />
+            <Text style={styles.emptyTitle}>Aucun produit</Text>
+            <Text style={styles.emptySub}>Le catalogue est vide pour le moment. Tirez pour actualiser.</Text>
+          </View>
+        ) : null}
+
+        {/* Mise en avant — uniquement à partir du catalogue API */}
+        {flashProducts.length > 0 ? (
+          <View style={styles.flashSection}>
+            <TouchableOpacity activeOpacity={0.9}>
+              <LinearGradient colors={['#FF3D00', '#FF6B00', '#FF9100']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.flashBanner}>
+                <View style={styles.flashLeft}>
+                  <View style={styles.flashTitleRow}>
+                    <Animated.View style={{ opacity: flashAnim }}>
+                      <Ionicons name="flash" size={18} color="#FFD700" />
+                    </Animated.View>
+                    <Text style={styles.flashTitle}>COUPS DE CŒUR</Text>
+                    <Animated.View style={{ opacity: flashAnim }}>
+                      <Ionicons name="flash" size={18} color="#FFD700" />
+                    </Animated.View>
+                  </View>
+                  <Text style={styles.flashSeeAll}>Sélection catalogue</Text>
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.flashCards}>
+              {flashProducts.map((deal: any) => {
+                const discount =
+                  deal.oldPrice && deal.price
+                    ? Math.max(0, Math.round((1 - deal.price / deal.oldPrice) * 100))
+                    : 0;
+                const uri = deal.image || PLACEHOLDER_IMG;
+                return (
+                  <TouchableOpacity
+                    key={deal.id}
+                    style={styles.flashCard}
+                    activeOpacity={0.85}
+                    onPress={() => router.push(`/product/${deal.id}` as any)}
+                  >
+                    <Image source={{ uri }} style={styles.flashImage} />
+                    {discount > 0 ? (
+                      <View style={styles.flashDiscountBadge}>
+                        <Text style={styles.flashDiscountText}>-{discount}%</Text>
+                      </View>
+                    ) : null}
+                    <View style={styles.flashCardInfo}>
+                      <Text style={styles.flashPrice}>{formatPrice(deal.price)}</Text>
+                      {deal.oldPrice ? (
+                        <Text style={styles.flashOldPrice}>{formatPrice(deal.oldPrice)}</Text>
+                      ) : null}
+                      <Text style={styles.flashSoldText} numberOfLines={1}>
+                        {deal.name}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {categoryChips.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Catégories</Text>
             </View>
-            <Ionicons name="gift" size={48} color="rgba(255,255,255,0.2)" />
-          </LinearGradient>
-        </TouchableOpacity>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesRow}>
+              {categoryChips.map((cat) => (
+                <TouchableOpacity key={cat.id} style={styles.categoryCard} activeOpacity={0.8}>
+                  <View style={[styles.categoryIconBg, { backgroundColor: `${cat.color}20` }]}>
+                    <Ionicons name={cat.icon as any} size={24} color={cat.color} />
+                  </View>
+                  <Text style={styles.categoryName}>{cat.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
 
         {/* Filter Pills */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
@@ -366,7 +394,10 @@ export default function MarketScreen() {
                 >
                   {/* Image */}
                   <View style={styles.productImageWrap}>
-                    <Image source={{ uri: product.image }} style={[styles.productImage, { height: productWidth * 1.2 }]} />
+                    <Image
+                      source={{ uri: product.image || PLACEHOLDER_IMG }}
+                      style={[styles.productImage, { height: productWidth * 1.2 }]}
+                    />
                     {/* Badges */}
                     {product.isNew && (
                       <View style={styles.newBadge}><Text style={styles.newBadgeText}>NEW</Text></View>
@@ -415,25 +446,33 @@ export default function MarketScreen() {
           </View>
         </View>
 
-        {/* Recommended */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recommande pour vous</Text>
+        {recommendedProducts.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Recommandés</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recommendedRow}>
+              {recommendedProducts.map((item: any) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.recommendedCard}
+                  activeOpacity={0.85}
+                  onPress={() => router.push(`/product/${item.id}` as any)}
+                >
+                  <Image source={{ uri: item.image || PLACEHOLDER_IMG }} style={styles.recommendedImage} />
+                  <Text style={styles.recommendedName} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  <Text style={styles.recommendedPrice}>{formatPrice(item.price)}</Text>
+                  <View style={styles.recommendedRating}>
+                    <Ionicons name="star" size={10} color="#FFD700" />
+                    <Text style={styles.recommendedRatingText}>{item.rating}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recommendedRow}>
-            {RECOMMENDED.map(item => (
-              <TouchableOpacity key={item.id} style={styles.recommendedCard} activeOpacity={0.85}>
-                <Image source={{ uri: item.image }} style={styles.recommendedImage} />
-                <Text style={styles.recommendedName} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.recommendedPrice}>{formatPrice(item.price)}</Text>
-                <View style={styles.recommendedRating}>
-                  <Ionicons name="star" size={10} color="#FFD700" />
-                  <Text style={styles.recommendedRatingText}>{item.rating}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+        ) : null}
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -443,6 +482,27 @@ export default function MarketScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
+
+  errorBanner: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#1A1A1A',
+    borderWidth: 1,
+    borderColor: '#333',
+    gap: 8,
+  },
+  errorBannerText: { color: '#EEE', fontSize: 13, lineHeight: 18 },
+  errorRetry: { alignSelf: 'flex-start', marginTop: 4 },
+  errorRetryText: { color: Colors.primary, fontWeight: '700', fontSize: 14 },
+
+  loadingBlock: { paddingVertical: 40, alignItems: 'center', gap: 12 },
+  loadingText: { color: '#888', fontSize: 13 },
+
+  emptyBlock: { paddingVertical: 48, paddingHorizontal: 24, alignItems: 'center', gap: 8 },
+  emptyTitle: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  emptySub: { color: '#888', fontSize: 13, textAlign: 'center' },
 
   // Header
   header: {

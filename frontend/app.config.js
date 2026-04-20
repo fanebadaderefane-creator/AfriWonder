@@ -12,14 +12,20 @@ module.exports = ({ config }) => {
   const projectId = UUID_RE.test(raw) ? raw : config.extra?.eas?.projectId;
 
   const googleServicesPath = path.join(__dirname, 'google-services.json');
+  const googleServiceInfoPath = path.join(__dirname, 'GoogleService-Info.plist');
   const android = { ...(config.android || {}) };
+  const ios = { ...(config.ios || {}) };
   if (fs.existsSync(googleServicesPath)) {
     android.googleServicesFile = './google-services.json';
+  }
+  if (fs.existsSync(googleServiceInfoPath)) {
+    ios.googleServicesFile = './GoogleService-Info.plist';
   }
 
   return {
     ...config,
     android,
+    ios,
     extra: {
       ...config.extra,
       ...(projectId

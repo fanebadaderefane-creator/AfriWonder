@@ -67,8 +67,20 @@ function RootLayoutContent() {
         event.preventDefault();
       }
     };
+    const onWindowError = (event: ErrorEvent) => {
+      const msg = String(event?.message || '').toLowerCase();
+      const code = String((event?.error as { code?: string } | undefined)?.code || '').toLowerCase();
+      const isTimeout = msg.includes('timeout exceeded') || code === 'econaborted';
+      if (isTimeout) {
+        event.preventDefault();
+      }
+    };
     window.addEventListener('unhandledrejection', onUnhandled);
-    return () => window.removeEventListener('unhandledrejection', onUnhandled);
+    window.addEventListener('error', onWindowError);
+    return () => {
+      window.removeEventListener('unhandledrejection', onUnhandled);
+      window.removeEventListener('error', onWindowError);
+    };
   }, []);
 
   /**

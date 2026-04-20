@@ -1,4 +1,6 @@
 import { io, Socket } from 'socket.io-client';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import { getBackendOrigin, DEFAULT_BACKEND_ORIGIN } from '../config/backendBase';
 
 /**
@@ -6,11 +8,56 @@ import { getBackendOrigin, DEFAULT_BACKEND_ORIGIN } from '../config/backendBase'
  * Recalculé à chaque connexion pour prendre en compte les changements d'origine
  * (probing Android dev, mise à jour de l'env runtime).
  */
+let socketConfigWarningShown = false;
+
+function readConfiguredSocketUrl(): string {
+  const extra = Constants.expoConfig?.extra as Record<string, string | undefined> | undefined;
+  const raw = (
+    extra?.EXPO_PUBLIC_SOCKET_URL
+    || process.env.EXPO_PUBLIC_SOCKET_URL
+    || ''
+  ).trim();
+  return raw.replace(/\/+$/, '');
+}
+
+function maybeWarnAboutSocketConfig(url: string): void {
+  if (socketConfigWarningShown) return;
+  if (typeof __DEV__ !== 'undefined' && __DEV__) return;
+  if (Platform.OS === 'web') return;
+
+  if (url.startsWith('http://')) {
+    socketConfigWarningShown = true;
+    console.warn(
+      '[AfriWonder] Native release should use secure socket URL (wss/https). '
+      + 'Set EXPO_PUBLIC_SOCKET_URL=wss://api.afriwonder.com or EXPO_PUBLIC_BACKEND_URL=https://api.afriwonder.com.'
+    );
+    return;
+  }
+
+  if (url.includes('.invalid')) {
+    socketConfigWarningShown = true;
+    console.error(
+      '[AfriWonder] Critical socket configuration: backend/socket URL is not configured for native release.'
+    );
+  }
+}
+
 function resolveSocketUrl(): string {
+  const configuredSocketUrl = readConfiguredSocketUrl();
+  if (configuredSocketUrl) {
+    maybeWarnAboutSocketConfig(configuredSocketUrl);
+    return configuredSocketUrl;
+  }
+
   const o = getBackendOrigin();
-  if (o) return o;
-  if (typeof window !== 'undefined') return window.location.origin;
-  return DEFAULT_BACKEND_ORIGIN;
+  if (o) {
+    maybeWarnAboutSocketConfig(o);
+    return o;
+  }
+  const fallback =
+    typeof window !== 'undefined' ? window.location.origin : DEFAULT_BACKEND_ORIGIN;
+  maybeWarnAboutSocketConfig(fallback);
+  return fallback;
 }
 
 /**

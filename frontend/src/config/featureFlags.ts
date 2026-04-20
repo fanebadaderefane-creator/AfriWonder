@@ -16,30 +16,26 @@ function readEnvFlag(name: string, defaultValue: boolean): boolean {
 }
 
 /**
- * Feature flags mobile. Défauts volontairement **fermés** pour les modules
- * dont la boucle UI ↔ backend n'est pas complète (audit du 20/04/2026) :
- * panier/checkout/orders, formations, news, hub services, crowdfunding
- * contribution, Stripe, appels WebRTC sur natif.
+ * Super-app : modules **ouverts par défaut** (données = API réelle, états erreur explicites).
+ * Désactiver un module : `EXPO_PUBLIC_ENABLE_<MODULE>=0` dans `.env` / EAS Secrets.
  *
- * Pour activer en prod, définir la variable d'env correspondante dans EAS Secrets.
+ * Exceptions :
+ * - **Stripe** : reste désactivé par défaut (activer quand le flux carte est validé).
+ * - **Appels natifs** : WebRTC non géré en runtime managé par défaut ; activer avec
+ *   `EXPO_PUBLIC_ENABLE_NATIVE_CALLS=1` sur build custom si vous intégrez `react-native-webrtc`.
  */
 export const featureFlags = {
-  /**
-   * Marketplace : panier, checkout, orders.
-   * Câblé sur `/api/cart`, `/api/orders`, `/api/addresses`, `/api/payments/*`.
-   * Désactivé par défaut tant que le backend prod n'est pas validé bout-en-bout :
-   * activer via `EXPO_PUBLIC_ENABLE_MARKETPLACE=1` dans EAS Secrets après QA.
-   */
-  marketplace: readEnvFlag('EXPO_PUBLIC_ENABLE_MARKETPLACE', false),
-  /** Contribution crowdfunding : projet local `SEED_PROJECTS` + OTP simulé (audit B6). */
-  crowdfundingContribute: readEnvFlag('EXPO_PUBLIC_ENABLE_CROWDFUNDING_CONTRIBUTE', false),
-  /** Courses / formations : écrans avec données locales constantes (audit B7). */
-  courses: readEnvFlag('EXPO_PUBLIC_ENABLE_COURSES', false),
-  /** News : placeholders statiques, pas de feed backend (audit B7). */
-  news: readEnvFlag('EXPO_PUBLIC_ENABLE_NEWS', false),
-  /** Services locaux (hors insurance) : vitrines statiques (audit B7). */
-  servicesHub: readEnvFlag('EXPO_PUBLIC_ENABLE_SERVICES_HUB', false),
-  /** Stripe / paiement carte : pas d'écran natif implémenté (audit B8). */
+  /** Marketplace : panier, checkout, commandes — API `/api/proxy/products`, `cart`, `orders`. */
+  marketplace: readEnvFlag('EXPO_PUBLIC_ENABLE_MARKETPLACE', true),
+  /** Contribution crowdfunding — API `/api/proxy/crowdfunding`. */
+  crowdfundingContribute: readEnvFlag('EXPO_PUBLIC_ENABLE_CROWDFUNDING_CONTRIBUTE', true),
+  /** Formations — API `/api/proxy/...` (courses). */
+  courses: readEnvFlag('EXPO_PUBLIC_ENABLE_COURSES', true),
+  /** Actualités — API news. */
+  news: readEnvFlag('EXPO_PUBLIC_ENABLE_NEWS', true),
+  /** Hub services (food, jobs, transport, etc.). */
+  servicesHub: readEnvFlag('EXPO_PUBLIC_ENABLE_SERVICES_HUB', true),
+  /** Paiement carte Stripe — à activer explicitement après validation conformité + implémentation. */
   stripe: readEnvFlag('EXPO_PUBLIC_ENABLE_STRIPE', false),
   /**
    * Appels audio/vidéo WebRTC.
