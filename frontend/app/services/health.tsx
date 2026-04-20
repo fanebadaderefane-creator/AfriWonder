@@ -4,6 +4,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { featureFlags } from '../../src/config/featureFlags';
+import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 
 const HEALTH_SERVICES = [
   { id: 'consult', name: 'Teleconsultation', icon: 'videocam', color: '#45B7D1', price: '5 000 FCFA' },
@@ -56,6 +58,9 @@ const DOCTORS = [
 ];
 
 export default function HealthScreen() {
+  if (!featureFlags.servicesHub) {
+    return <ComingSoonScreen title="Santé" description="La téléconsultation et les services santé seront bientôt disponibles." icon="medkit-outline" />;
+  }
   const insets = useSafeAreaInsets();
 
   return (

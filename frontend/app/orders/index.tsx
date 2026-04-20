@@ -4,6 +4,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { featureFlags } from '../../src/config/featureFlags';
+import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 
 const TABS = ['Tous', 'En cours', 'Livres', 'Annules'];
 
@@ -15,6 +17,15 @@ const ORDERS = [
 ];
 
 export default function OrdersScreen() {
+  if (!featureFlags.marketplace) {
+    return (
+      <ComingSoonScreen
+        title="Mes commandes"
+        description="L'historique des commandes marketplace sera bientôt disponible."
+        icon="receipt-outline"
+      />
+    );
+  }
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState(0);
 

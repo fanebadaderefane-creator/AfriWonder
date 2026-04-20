@@ -4,6 +4,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { featureFlags } from '../../src/config/featureFlags';
+import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 
 const VEHICLE_TYPES = [
   { id: 'moto', name: 'Moto', icon: 'bicycle', price: '500-1500', time: '5-15 min', color: '#4ECDC4' },
@@ -19,6 +21,9 @@ const RECENT_TRIPS = [
 ];
 
 export default function TransportScreen() {
+  if (!featureFlags.servicesHub) {
+    return <ComingSoonScreen title="Transport" description="Le module transport / VTC sera bientôt disponible." icon="car-outline" />;
+  }
   const insets = useSafeAreaInsets();
   const [pickup, setPickup] = useState('');
   const [destination, setDestination] = useState('');

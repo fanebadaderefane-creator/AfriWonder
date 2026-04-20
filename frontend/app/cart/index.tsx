@@ -4,6 +4,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { featureFlags } from '../../src/config/featureFlags';
+import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 
 interface CartItem {
   id: string;
@@ -29,6 +31,15 @@ const PAYMENT_METHODS = [
 ];
 
 export default function CartScreen() {
+  if (!featureFlags.marketplace) {
+    return (
+      <ComingSoonScreen
+        title="Panier"
+        description="Le module marketplace (panier, commandes) est en cours de finalisation. Il sera bientôt disponible."
+        icon="cart-outline"
+      />
+    );
+  }
   const insets = useSafeAreaInsets();
   const [cart, setCart] = useState<CartItem[]>(INITIAL_CART);
   const [selectedPayment, setSelectedPayment] = useState('orange');

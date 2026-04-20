@@ -4,6 +4,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { featureFlags } from '../../src/config/featureFlags';
+import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 
 const PROPERTY_TYPES = [
   { id: 'all', name: 'Tout' },
@@ -60,6 +62,9 @@ const PROPERTIES = [
 ];
 
 export default function RealEstateScreen() {
+  if (!featureFlags.servicesHub) {
+    return <ComingSoonScreen title="Immobilier" description="Le module immobilier sera bientôt disponible." icon="business-outline" />;
+  }
   const insets = useSafeAreaInsets();
   const [activeType, setActiveType] = useState('all');
 

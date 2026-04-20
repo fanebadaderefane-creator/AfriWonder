@@ -4,6 +4,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { featureFlags } from '../../src/config/featureFlags';
+import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 
 const EVENTS = [
   {
@@ -49,6 +51,9 @@ const EVENTS = [
 ];
 
 export default function EventsScreen() {
+  if (!featureFlags.servicesHub) {
+    return <ComingSoonScreen title="Événements" description="La billetterie événements sera bientôt disponible." icon="ticket-outline" />;
+  }
   const insets = useSafeAreaInsets();
 
   return (

@@ -4,6 +4,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { featureFlags } from '../../src/config/featureFlags';
+import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 
 const CART_ITEMS = [
   { id: '1', name: 'Robe Bogolan', price: 25000, qty: 1, seller: 'Awa Mode' },
@@ -18,6 +20,15 @@ const PAYMENT_METHODS = [
 ];
 
 export default function CheckoutScreen() {
+  if (!featureFlags.marketplace) {
+    return (
+      <ComingSoonScreen
+        title="Paiement"
+        description="Le tunnel de commande marketplace sera disponible très prochainement. Pour les recharges, utilisez Wallet → Recharger."
+        icon="bag-check-outline"
+      />
+    );
+  }
   const insets = useSafeAreaInsets();
   const [selectedPayment, setSelectedPayment] = useState('orange');
   const [phoneNumber, setPhoneNumber] = useState('');

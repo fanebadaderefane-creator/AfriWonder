@@ -23,6 +23,8 @@ import {
   formatFullCFA,
   getProgressPercent,
 } from '../../src/data/crowdfunding';
+import { featureFlags } from '../../src/config/featureFlags';
+import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 
 type Step = 'amount' | 'payment' | 'phone' | 'otp' | 'processing' | 'success';
 
@@ -43,6 +45,15 @@ const PAYMENT_METHODS: PaymentMethod[] = [
 const PRESET_AMOUNTS = [2500, 5000, 10000, 25000, 50000, 100000];
 
 export default function ContributeScreen() {
+  if (!featureFlags.crowdfundingContribute) {
+    return (
+      <ComingSoonScreen
+        title="Contribuer"
+        description="Les contributions directes aux projets crowdfunding seront bientôt disponibles. Vous pouvez déjà parcourir les projets en cours."
+        icon="heart-outline"
+      />
+    );
+  }
   const insets = useSafeAreaInsets();
   const { projectId, rewardId, rewardAmount } = useLocalSearchParams<{
     projectId: string;

@@ -11,6 +11,7 @@ import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import socketService from '../../src/services/socketService';
 import ReportModal from '../../src/components/ReportModal';
+import { featureFlags } from '../../src/config/featureFlags';
 
 const { width } = Dimensions.get('window');
 
@@ -887,42 +888,46 @@ export default function ChatScreen() {
             <Text style={styles.headerStatus}>{isContactTyping ? 'En train d\'ecrire...' : contact.online ? 'En ligne' : 'AfriChat'}</Text>
           </View>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.headerAction}
-          onPress={() =>
-            router.push({
-              pathname: '/messages/call' as any,
-              params: {
-                name: contact.name,
-                avatar: contact.avatar,
-                type: 'video',
-                otherUserId: String(contact.otherUserId || ''),
-                role: 'caller',
-              },
-            })
-          }
-          disabled={!contact.otherUserId}
-        >
-          <Ionicons name="videocam" size={22} color={Colors.text} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.headerAction}
-          onPress={() =>
-            router.push({
-              pathname: '/messages/call' as any,
-              params: {
-                name: contact.name,
-                avatar: contact.avatar,
-                type: 'audio',
-                otherUserId: String(contact.otherUserId || ''),
-                role: 'caller',
-              },
-            })
-          }
-          disabled={!contact.otherUserId}
-        >
-          <Ionicons name="call" size={22} color={Colors.text} />
-        </TouchableOpacity>
+        {featureFlags.callsOnNative ? (
+          <>
+            <TouchableOpacity
+              style={styles.headerAction}
+              onPress={() =>
+                router.push({
+                  pathname: '/messages/call' as any,
+                  params: {
+                    name: contact.name,
+                    avatar: contact.avatar,
+                    type: 'video',
+                    otherUserId: String(contact.otherUserId || ''),
+                    role: 'caller',
+                  },
+                })
+              }
+              disabled={!contact.otherUserId}
+            >
+              <Ionicons name="videocam" size={22} color={Colors.text} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerAction}
+              onPress={() =>
+                router.push({
+                  pathname: '/messages/call' as any,
+                  params: {
+                    name: contact.name,
+                    avatar: contact.avatar,
+                    type: 'audio',
+                    otherUserId: String(contact.otherUserId || ''),
+                    role: 'caller',
+                  },
+                })
+              }
+              disabled={!contact.otherUserId}
+            >
+              <Ionicons name="call" size={22} color={Colors.text} />
+            </TouchableOpacity>
+          </>
+        ) : null}
       </View>
 
       {dmRequest &&

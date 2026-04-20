@@ -4,6 +4,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import { featureFlags } from '../../src/config/featureFlags';
+import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 
 const TRACKING_STEPS = [
   { label: 'Commande confirmee', time: '25 Jun, 10:30', done: true },
@@ -14,6 +16,15 @@ const TRACKING_STEPS = [
 ];
 
 export default function OrderDetailScreen() {
+  if (!featureFlags.marketplace) {
+    return (
+      <ComingSoonScreen
+        title="Détail commande"
+        description="Le suivi de commande marketplace sera bientôt disponible."
+        icon="receipt-outline"
+      />
+    );
+  }
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams();
 

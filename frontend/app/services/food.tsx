@@ -4,6 +4,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { featureFlags } from '../../src/config/featureFlags';
+import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 
 const FOOD_CATEGORIES = [
   { id: 'all', name: 'Tout', emoji: '\ud83c\udf7d\ufe0f' },
@@ -66,6 +68,9 @@ const RESTAURANTS = [
 ];
 
 export default function FoodDeliveryScreen() {
+  if (!featureFlags.servicesHub) {
+    return <ComingSoonScreen title="Livraison repas" description="Le module livraison sera bientôt disponible." icon="restaurant-outline" />;
+  }
   const insets = useSafeAreaInsets();
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');

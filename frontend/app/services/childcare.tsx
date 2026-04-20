@@ -4,6 +4,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { featureFlags } from '../../src/config/featureFlags';
+import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 
 const SERVICES_LIST = [
   { id: 'c1', name: 'Garde a domicile', icon: 'home', color: '#FF6B6B', price: 'A partir de 5 000 FCFA/jour' },
@@ -19,6 +21,9 @@ const PROVIDERS = [
 ];
 
 export default function ChildcareScreen() {
+  if (!featureFlags.servicesHub) {
+    return <ComingSoonScreen title="Garde d'enfants" description="Les services de garde d'enfants seront bientôt disponibles." icon="happy-outline" />;
+  }
   const insets = useSafeAreaInsets();
 
   return (

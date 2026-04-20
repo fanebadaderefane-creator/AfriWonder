@@ -4,6 +4,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { featureFlags } from '../../src/config/featureFlags';
+import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 
 const TABS = ['Actualites', 'Sports', 'Tech', 'Culture', 'Economie'];
 
@@ -16,6 +18,15 @@ const NEWS = [
 ];
 
 export default function NewsScreen() {
+  if (!featureFlags.news) {
+    return (
+      <ComingSoonScreen
+        title="Actualités"
+        description="Le fil d'actualités sera bientôt disponible."
+        icon="newspaper-outline"
+      />
+    );
+  }
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState(0);
 

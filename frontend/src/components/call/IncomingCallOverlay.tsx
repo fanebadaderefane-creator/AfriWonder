@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import socketService from '../../services/socketService';
 import { useAuthStore } from '../../store/authStore';
+import { featureFlags } from '../../config/featureFlags';
 
 /**
  * Overlay d'appel entrant — global (monté dans `_layout.tsx`).
@@ -29,6 +30,10 @@ export function IncomingCallOverlay() {
 
   useEffect(() => {
     if (!myUserId) return;
+    // Pas d'overlay d'appel sur les plateformes où WebRTC n'est pas dispo
+    // (managé / Expo Go natif). Évite de proposer une action que l'app ne sait
+    // pas honorer (audit B9).
+    if (!featureFlags.callsOnNative) return;
     const onInvite = (payload: IncomingCall) => {
       if (!payload || payload.toUserId !== myUserId) return;
       setIncoming(payload);

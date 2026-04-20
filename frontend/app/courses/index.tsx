@@ -4,6 +4,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { featureFlags } from '../../src/config/featureFlags';
+import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 
 const CATEGORIES = ['Tout', 'Tech', 'Business', 'Langue', 'Art', 'Sante'];
 
@@ -16,6 +18,15 @@ const COURSES = [
 ];
 
 export default function CoursesScreen() {
+  if (!featureFlags.courses) {
+    return (
+      <ComingSoonScreen
+        title="Formations"
+        description="Le catalogue de formations en ligne sera bientôt disponible."
+        icon="school-outline"
+      />
+    );
+  }
   const insets = useSafeAreaInsets();
   const [activeCategory, setActiveCategory] = useState(0);
 

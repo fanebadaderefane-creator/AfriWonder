@@ -4,6 +4,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { featureFlags } from '../../src/config/featureFlags';
+import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 
 const { width } = Dimensions.get('window');
 
@@ -25,6 +27,9 @@ const ALERTS = [
 ];
 
 export default function VoyageScreen() {
+  if (!featureFlags.servicesHub) {
+    return <ComingSoonScreen title="Voyage" description="Le module voyage sera bientôt disponible." icon="airplane-outline" />;
+  }
   const insets = useSafeAreaInsets();
 
   return (

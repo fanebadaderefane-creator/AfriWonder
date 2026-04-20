@@ -4,6 +4,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { featureFlags } from '../../src/config/featureFlags';
+import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 
 const JOBS = [
   {
@@ -66,6 +68,9 @@ const JOB_TYPES = [
 ];
 
 export default function JobsScreen() {
+  if (!featureFlags.servicesHub) {
+    return <ComingSoonScreen title="Emplois" description="La place de marché des emplois sera bientôt disponible." icon="briefcase-outline" />;
+  }
   const insets = useSafeAreaInsets();
   const [activeFilter, setActiveFilter] = useState('all');
 

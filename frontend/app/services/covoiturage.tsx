@@ -4,6 +4,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { featureFlags } from '../../src/config/featureFlags';
+import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 
 const RIDES = [
   { id: 'r1', driver: 'Moussa T.', avatar: 'https://picsum.photos/50/50?random=220', from: 'Bamako', to: 'Segou', date: '28 Jun, 08:00', seats: 3, price: 5000, rating: 4.8 },
@@ -13,6 +15,9 @@ const RIDES = [
 ];
 
 export default function CovoiturageScreen() {
+  if (!featureFlags.servicesHub) {
+    return <ComingSoonScreen title="Covoiturage" description="Le module covoiturage sera bientôt disponible." icon="people-outline" />;
+  }
   const insets = useSafeAreaInsets();
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
