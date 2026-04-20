@@ -1,22 +1,58 @@
 import { io, Socket } from 'socket.io-client';
 import { getBackendOrigin, DEFAULT_BACKEND_ORIGIN } from '../config/backendBase';
 
-// Même hôte que l’API (en dev web : localhost:3000, pas le port Metro).
-const SOCKET_URL = (() => {
+/**
+ * Même hôte que l’API (en dev web : localhost:3000, pas le port Metro).
+ * Recalculé à chaque connexion pour prendre en compte les changements d'origine
+ * (probing Android dev, mise à jour de l'env runtime).
+ */
+function resolveSocketUrl(): string {
   const o = getBackendOrigin();
   if (o) return o;
   if (typeof window !== 'undefined') return window.location.origin;
   return DEFAULT_BACKEND_ORIGIN;
-})();
+}
 
+/**
+ * Contrat côté backend (`backend/src/index.ts` + `message.service.ts`) :
+ *   - Écoute : `message:join-conversation`, `message:leave-conversation`,
+ *              `message:typing-start`, `message:typing-stop`, `user:join`, `user:leave`,
+ *              `call:*`, `live:join-room`, `live:leave-room`.
+ *   - Émet   : `message:new`, `message:read`, `message:delivered`, `message:typing`,
+ *              `message:unread`, `message:deleted`, `message:updated`, `message:pinned`,
+ *              `call:*`, `live:*`.
+ *
+ * On conserve l'API publique historique (`sendMessage`, `joinConversation`,
+ * `startTyping`, `stopTyping`, `markRead`, listeners `new_message` / `user_typing` /
+ * `messages_read` / `authenticated`) pour ne pas casser les écrans consommateurs,
+ * et on alias les noms d'events en interne :
+ *   `message:new`     → expose aussi `new_message`
+ *   `message:typing`  → expose `user_typing` / `user_stop_typing`
+ *   `message:read`    → expose `messages_read`
+ *   `connect` (OK)    → expose aussi `authenticated` (le backend n'utilise pas de
+ *                       handshake applicatif, la connexion seule vaut auth).
+ * Le `sendMessage` socket est une **no-op** : l'envoi réel passe par REST
+ * `POST /messages/send`, et le backend rebroadcast `message:new` depuis le service REST.
+ */
 class SocketService {
   private socket: Socket | null = null;
   private listeners: Map<string, Set<Function>> = new Map();
+  private userContext: { id: string; name?: string } | null = null;
 
-  connect(token: string) {
+  /**
+   * Définir l'identité du user pour les événements qui nécessitent `userId` / `name`
+   * dans le payload (typing, recording). Appelé depuis `_layout.tsx` au login.
+   */
+  setUserContext(userId: string, name?: string) {
+    if (!userId) return;
+    this.userContext = { id: userId, name };
+  }
+
+  connect(_token: string) {
     if (this.socket?.connected) return;
 
-    this.socket = io(SOCKET_URL, {
+    const url = resolveSocketUrl();
+    this.socket = io(url, {
       transports: ['websocket', 'polling'],
       autoConnect: true,
       reconnection: true,
@@ -24,7 +60,7 @@ class SocketService {
       reconnectionDelay: 2000,
     });
 
-    /** Relais événements live, signalisation appels (`call:*`) et présence vers les abonnés. */
+    /** Relais live:* / call:* / presence:* / message:* aux abonnés applicatifs. */
     this.socket.onAny((event: string, ...args: unknown[]) => {
       if (typeof event !== 'string') return;
       if (
@@ -39,41 +75,26 @@ class SocketService {
 
     this.socket.on('connect', () => {
       console.log('[Socket] Connected:', this.socket?.id);
-      // Authenticate after connecting
-      this.socket?.emit('authenticate', { token });
+      // Pas de handshake applicatif côté backend — la connexion vaut auth.
+      // On synthétise `authenticated` pour préserver le contrat avec `_layout.tsx`.
+      this.notifyListeners('authenticated', { id: this.socket?.id });
     });
 
-    this.socket.on('authenticated', (data: any) => {
-      console.log('[Socket] Authenticated:', data);
-      this.notifyListeners('authenticated', data);
-    });
-
-    this.socket.on('auth_error', (data: any) => {
-      console.log('[Socket] Auth error:', data);
-    });
-
-    this.socket.on('new_message', (msg: any) => {
+    // Alias des events backend vers les noms attendus par les écrans.
+    this.socket.on('message:new', (msg: unknown) => {
       this.notifyListeners('new_message', msg);
     });
 
-    this.socket.on('user_typing', (data: any) => {
-      this.notifyListeners('user_typing', data);
+    this.socket.on('message:typing', (data: { userId?: string; typing?: boolean; name?: string }) => {
+      if (data?.typing === false) {
+        this.notifyListeners('user_stop_typing', data);
+      } else {
+        this.notifyListeners('user_typing', data);
+      }
     });
 
-    this.socket.on('user_stop_typing', (data: any) => {
-      this.notifyListeners('user_stop_typing', data);
-    });
-
-    this.socket.on('messages_read', (data: any) => {
+    this.socket.on('message:read', (data: unknown) => {
       this.notifyListeners('messages_read', data);
-    });
-
-    this.socket.on('notification', (data: any) => {
-      this.notifyListeners('notification', data);
-    });
-
-    this.socket.on('new_notification', (data: any) => {
-      this.notifyListeners('new_notification', data);
     });
 
     this.socket.on('disconnect', (reason: string) => {
@@ -81,8 +102,8 @@ class SocketService {
       this.notifyListeners('disconnected', { reason });
     });
 
-    this.socket.on('connect_error', (err: any) => {
-      console.log('[Socket] Connection error:', err.message);
+    this.socket.on('connect_error', (err: { message?: string }) => {
+      console.warn('[Socket] Connection error:', err?.message);
     });
   }
 
@@ -93,51 +114,74 @@ class SocketService {
     }
   }
 
-  // Send a message via Socket.IO
-  sendMessage(conversationId: string, content: string, type: string = 'text', replyTo?: any) {
-    this.socket?.emit('send_message', {
-      conversation_id: conversationId,
-      content,
-      type,
-      reply_to: replyTo,
-    });
+  /**
+   * @deprecated Le backend n'écoute pas `send_message` sur la socket.
+   * L'envoi réel est un `POST /api/messages/send` (voir `messages/[id].tsx`).
+   * Conservé pour compatibilité — no-op côté réseau.
+   */
+  sendMessage(_conversationId: string, _content: string, _type: string = 'text', _replyTo?: unknown) {
+    /* no-op : routé via REST ; le backend rebroadcast `message:new` depuis le service. */
   }
 
-  // Join a conversation room
   joinConversation(conversationId: string) {
-    this.socket?.emit('join_conversation', { conversation_id: conversationId });
+    if (!conversationId) return;
+    this.socket?.emit('message:join-conversation', conversationId);
   }
 
-  /** Annonce l'arrivée du user sur la plateforme — déclenche `broadcastPresence(true)` côté backend. */
-  joinUserRoom(userId: string) {
-    if (userId) this.socket?.emit('user:join', userId);
+  leaveConversation(conversationId: string) {
+    if (!conversationId) return;
+    this.socket?.emit('message:leave-conversation', conversationId);
   }
 
-  /** Annonce la sortie du user (logout / app fermée explicitement). */
+  joinUserRoom(userId: string, name?: string) {
+    if (!userId) return;
+    this.setUserContext(userId, name);
+    this.socket?.emit('user:join', userId);
+  }
+
   leaveUserRoom(userId: string) {
     if (userId) this.socket?.emit('user:leave', userId);
   }
 
-  // Typing indicators
   startTyping(conversationId: string) {
-    this.socket?.emit('typing', { conversation_id: conversationId });
+    if (!conversationId || !this.userContext?.id) return;
+    this.socket?.emit('message:typing-start', {
+      conversationId,
+      userId: this.userContext.id,
+      name: this.userContext.name,
+    });
   }
 
   stopTyping(conversationId: string) {
-    this.socket?.emit('stop_typing', { conversation_id: conversationId });
+    if (!conversationId || !this.userContext?.id) return;
+    this.socket?.emit('message:typing-stop', {
+      conversationId,
+      userId: this.userContext.id,
+    });
   }
 
-  // Mark messages as read
+  /**
+   * Le backend n'a pas de handler socket pour le "mark as read".
+   * On appelle l'endpoint REST `PUT /api/messages/:conversationId/read`,
+   * qui émet ensuite `message:read` aux autres participants.
+   * Import dynamique pour éviter toute dépendance circulaire avec `api/client`.
+   */
   markRead(conversationId: string) {
-    this.socket?.emit('mark_read', { conversation_id: conversationId });
+    if (!conversationId) return;
+    void import('../api/client').then((mod) => {
+      mod.default
+        .put(`/messages/${encodeURIComponent(conversationId)}/read`, {})
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn('[socket] markRead REST failed', msg);
+        });
+    });
   }
 
-  /** Émission générique (ex. événements custom côté serveur). */
   emit(event: string, data?: unknown) {
     this.socket?.emit(event, data);
   }
 
-  /** Rejoindre la room Socket `stream:{streamId}` (requis pour recevoir `live:gift`, chat, etc.). */
   joinLiveStream(streamId: string) {
     if (streamId) this.socket?.emit('live:join-room', streamId);
   }
@@ -146,7 +190,6 @@ class SocketService {
     if (streamId) this.socket?.emit('live:leave-room', streamId);
   }
 
-  // Event listener management
   on(event: string, callback: Function) {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
@@ -159,8 +202,14 @@ class SocketService {
     this.listeners.get(event)?.delete(callback);
   }
 
-  private notifyListeners(event: string, data: any) {
-    this.listeners.get(event)?.forEach(cb => cb(data));
+  private notifyListeners(event: string, data: unknown) {
+    this.listeners.get(event)?.forEach((cb) => {
+      try {
+        cb(data);
+      } catch (err) {
+        console.warn('[Socket] listener threw for', event, err);
+      }
+    });
   }
 
   get isConnected() {

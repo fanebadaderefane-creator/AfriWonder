@@ -20,12 +20,14 @@ export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const [showBalance, setShowBalance] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
-  const [balance, setBalance] = useState(0);
+  const [balance, setBalance] = useState<number | null>(null);
   const [coinsBalance, setCoinsBalance] = useState(0);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadWallet = useCallback(async () => {
+    setLoadError(null);
     try {
       const [walletRes, txRes, coinsRes] = await Promise.all([
         apiClient.get('/payments/wallet'),
@@ -52,9 +54,17 @@ export default function WalletScreen() {
         setTransactions([]);
       }
     } catch (err) {
-      console.log('Using mock wallet data', err);
-      setBalance(127500);
+      // NE JAMAIS afficher de solde fictif sur un écran financier : l'utilisateur pourrait
+      // croire avoir de l'argent qu'il n'a pas. On affiche un état d'erreur explicite.
+      console.error('[wallet] failed to load wallet', err);
+      setBalance(null);
       setCoinsBalance(0);
+      setTransactions([]);
+      setLoadError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Impossible de charger votre portefeuille. Vérifiez votre connexion et réessayez.'
+      );
     } finally { setIsLoading(false); }
   }, []);
 
@@ -84,6 +94,37 @@ export default function WalletScreen() {
     );
   }
 
+  if (loadError !== null && balance === null) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color={Colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Portefeuille</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.errorContainer}>
+          <Ionicons name="cloud-offline-outline" size={64} color={Colors.textSecondary} />
+          <Text style={styles.errorTitle}>Portefeuille indisponible</Text>
+          <Text style={styles.errorMessage}>{loadError}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => {
+              setIsLoading(true);
+              void loadWallet();
+            }}
+          >
+            <Ionicons name="refresh" size={18} color="#FFFFFF" />
+            <Text style={styles.retryButtonText}>Réessayer</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  const displayBalance = balance ?? 0;
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -108,7 +149,7 @@ export default function WalletScreen() {
             </TouchableOpacity>
           </View>
           <Text style={styles.balanceAmount}>
-            {showBalance ? `${balance.toLocaleString()} FCFA` : '\u2022\u2022\u2022\u2022\u2022\u2022\u2022'}
+            {showBalance ? `${displayBalance.toLocaleString()} FCFA` : '\u2022\u2022\u2022\u2022\u2022\u2022\u2022'}
           </Text>
           <View style={styles.balanceMeta}>
             <View style={styles.balanceMetaItem}>
@@ -415,5 +456,38 @@ const styles = StyleSheet.create({
   txAmount: {
     fontSize: FontSizes.md,
     fontWeight: 'bold',
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xxl,
+    gap: Spacing.md,
+  },
+  errorTitle: {
+    color: Colors.text,
+    fontSize: FontSizes.xl,
+    fontWeight: 'bold',
+    marginTop: Spacing.md,
+  },
+  errorMessage: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.md,
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.primary,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xxl,
+    borderRadius: BorderRadius.md,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: FontSizes.md,
+    fontWeight: '600',
   },
 });

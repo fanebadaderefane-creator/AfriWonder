@@ -173,18 +173,19 @@ function RootLayoutContent() {
   const accessToken = useAuthStore((s) => s.accessToken);
   useEffect(() => {
     if (!isAuthenticated || !accessToken || !user?.id) return;
+    const userName = user.username ?? user.display_name ?? undefined;
     socketService.connect(accessToken);
     const off = socketService.on('authenticated', () => {
-      socketService.joinUserRoom(user.id);
+      socketService.joinUserRoom(user.id, userName);
     });
     /** Si déjà connecté avant l'`useEffect`, on join directement. */
     if (socketService.isConnected) {
-      socketService.joinUserRoom(user.id);
+      socketService.joinUserRoom(user.id, userName);
     }
     return () => {
       off();
     };
-  }, [isAuthenticated, accessToken, user?.id]);
+  }, [isAuthenticated, accessToken, user?.id, user?.username, user?.display_name]);
 
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return;
