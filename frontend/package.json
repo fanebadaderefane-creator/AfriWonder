@@ -11,11 +11,14 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --pool=forks --maxWorkers=1 --minWorkers=1 --fileParallelism=false",
+    "test:coverage": "vitest run --pool=forks --maxWorkers=1 --minWorkers=1 --fileParallelism=false --coverage",
     "test:e2e": "vitest run e2e",
     "maestro:smoke": "maestro test maestro/smoke.yaml",
     "maestro:smoke:logged-in": "maestro test maestro/smoke-logged-in.yaml",
     "maestro:wallet": "maestro test maestro/payments-wallet-smoke.yaml",
-    "verify": "expo lint && npm run typecheck && vitest run",
+    "verify": "expo lint && npm run typecheck && npm run test:coverage",
+    "quality": "npm run verify",
+    "standards:mobile": "npm run verify",
     "eas:android:preview": "node ./scripts/eas-build-from-app-root.cjs --platform android --profile preview",
     "eas:android:production": "node ./scripts/eas-build-from-app-root.cjs --platform android --profile production"
   },
@@ -96,8 +99,23 @@
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.3",
-    "vitest": "^2.1.9"
+    "@vitest/coverage-v8": "^3.1.0",
+    "vitest": "^3.1.0"
   },
-  "private": true,
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+  "overrides": {
+    "postcss": "^8.5.10",
+    "uuid": "^14.0.0",
+    "esbuild": "^0.25.0",
+    "yaml": "2.8.3"
+  },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "expo-pip"
+        ]
+      }
+    }
+  },
+  "private": true
 }
