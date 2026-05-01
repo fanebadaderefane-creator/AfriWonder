@@ -6,18 +6,23 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Image,
   Alert,
   KeyboardAvoidingView,
   Platform,
   Animated,
+  ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '../../src/theme/colors';
 import { CROWDFUNDING_CATEGORIES } from '../../src/data/crowdfunding';
+import crowdfundingApi from '../../src/api/crowdfundingApi';
+import { useAuthStore } from '../../src/store/authStore';
+import { uploadImageForLive } from '../../src/live/uploadImageForLive';
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -38,13 +43,10 @@ const DURATION_OPTIONS = [
   { label: '90 jours', value: 90 },
 ];
 
-const PLACEHOLDER_IMAGES = Array.from({ length: 6 }, (_, i) => ({
-  id: `img${i}`,
-  uri: `https://picsum.photos/400/300?random=${300 + i}`,
-}));
 
 export default function CreateProjectScreen() {
   const insets = useSafeAreaInsets();
+  const user = useAuthStore((s) => s.user);
   const [step, setStep] = useState<Step>(1);
   const progressAnim = useRef(new Animated.Value(0.2)).current;
 
@@ -52,7 +54,11 @@ export default function CreateProjectScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
+  /** URLs après upload (`coverImage` API = première image ou champ URL) */
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [coverImageUrl, setCoverImageUrl] = useState('');
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [goalAmount, setGoalAmount] = useState('');
   const [duration, setDuration] = useState(30);
   const [rewards, setRewards] = useState<RewardForm[]>([]);
@@ -79,14 +85,141 @@ export default function CreateProjectScreen() {
   };
 
   const canProceedStep1 = title.length >= 5 && description.length >= 20 && category !== '';
-  const canProceedStep2 = selectedImages.length >= 1;
+  const canProceedStep2 = true;
   const canProceedStep3 = goalAmount.length > 0 && parseInt(goalAmount) >= 50000;
-  const canProceedStep5 = idType !== '' && idNumber.length >= 5 && acceptTerms;
+  const isAuthenticated = Boolean(user?.id);
+  const canProceedStep5 = isAuthenticated && idType !== '' && idNumber.length >= 5 && acceptTerms;
 
-  const toggleImage = (uri: string) => {
-    setSelectedImages(prev =>
-      prev.includes(uri) ? prev.filter(u => u !== uri) : prev.length < 5 ? [...prev, uri] : prev
-    );
+  const removeCampaignImage = (index: number) => {
+    setSelectedImages((prev) => {
+      const removed = prev[index];
+      if (typeof removed === 'string' && removed.startsWith('blob:')) {
+        URL.revokeObjectURL(removed);
+      }
+      const next = prev.filter((_, i) => i !== index);
+      setCoverImageUrl((url) => (url.trim() === removed ? next[0] ?? '' : url));
+      return next;
+    });
+  };
+
+  const pickWebImages = async (maxCount: number): Promise<string[]> => {
+    if (typeof document === 'undefined') return [];
+    return await new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.multiple = maxCount > 1;
+      // Firefox/WebView peuvent ignorer input.click() si display:none.
+      input.style.position = 'fixed';
+      input.style.left = '-9999px';
+      input.style.top = '0';
+      input.style.opacity = '0';
+      input.style.pointerEvents = 'none';
+      const cleanup = () => {
+        input.onchange = null;
+        if (input.parentNode) input.parentNode.removeChild(input);
+      };
+      input.onchange = () => {
+        const files = Array.from(input.files || []).slice(0, maxCount);
+        const localUris = files.map((f) => URL.createObjectURL(f));
+        cleanup();
+        resolve(localUris);
+      };
+      document.body.appendChild(input);
+      input.click();
+    });
+  };
+
+  const handlePickCampaignImages = async () => {
+    const isAuthenticated = Boolean(user?.id);
+    const room = 5 - selectedImages.length;
+    if (room <= 0) return;
+
+    // Web : fallback DOM input pour contourner les blocages intermittents de launchImageLibraryAsync.
+    if (Platform.OS === 'web') {
+      const webUris = await pickWebImages(room);
+      if (webUris.length === 0) return;
+      if (!isAuthenticated) {
+        setSelectedImages((prev) => [...prev, ...webUris].slice(0, 5));
+        setCoverImageUrl((prev) => (prev.trim() ? prev : webUris[0] ?? prev));
+        Alert.alert(
+          'Connexion requise',
+          'Vous pouvez prévisualiser les images, mais connectez-vous pour les téléverser et publier le projet.'
+        );
+        return;
+      }
+      setUploadingImages(true);
+      const uploaded: string[] = [];
+      try {
+        for (const uri of webUris) {
+          try {
+            uploaded.push(await uploadImageForLive(uri));
+          } catch (e: unknown) {
+            const msg =
+              (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+              (e as Error)?.message ||
+              'Vérifiez la connexion et réessayez.';
+            Alert.alert('Échec envoi image', msg);
+            break;
+          } finally {
+            URL.revokeObjectURL(uri);
+          }
+        }
+        if (uploaded.length > 0) {
+          setSelectedImages((prev) => [...prev, ...uploaded].slice(0, 5));
+          setCoverImageUrl((prev) => (prev.trim() ? prev : uploaded[0] ?? prev));
+        }
+      } finally {
+        setUploadingImages(false);
+      }
+      return;
+    }
+
+    if (!isAuthenticated) {
+      Alert.alert('Connexion requise', 'Connectez-vous pour téléverser des images depuis la galerie.');
+      return;
+    }
+
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission refusée', 'Autorisez l’accès à la photothèque pour ajouter des images.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.85,
+      selectionLimit: room,
+    });
+
+    if (result.canceled || result.assets.length === 0) return;
+
+    const assets = result.assets.slice(0, room).filter((a) => a.uri);
+    if (assets.length === 0) return;
+
+    setUploadingImages(true);
+    const uploaded: string[] = [];
+    try {
+      for (const asset of assets) {
+        try {
+          uploaded.push(await uploadImageForLive(asset.uri));
+        } catch (e: unknown) {
+          const msg =
+            (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+            (e as Error)?.message ||
+            'Vérifiez la connexion et réessayez.';
+          Alert.alert('Échec envoi image', msg);
+          break;
+        }
+      }
+      if (uploaded.length > 0) {
+        setSelectedImages((prev) => [...prev, ...uploaded].slice(0, 5));
+        setCoverImageUrl((prev) => (prev.trim() ? prev : uploaded[0] ?? prev));
+      }
+    } finally {
+      setUploadingImages(false);
+    }
   };
 
   const addReward = () => {
@@ -101,11 +234,64 @@ export default function CreateProjectScreen() {
   };
 
   const handleSubmit = () => {
-    Alert.alert(
-      'Projet soumis !',
-      'Votre projet a ete soumis pour verification. Notre equipe l\'examinera dans les 24-48 heures.',
-      [{ text: 'Super !', onPress: () => router.replace('/crowdfunding' as any) }]
-    );
+    if (!canProceedStep5) return;
+    void (async () => {
+      setSubmitting(true);
+      try {
+        const end = new Date();
+        end.setDate(end.getDate() + duration);
+        const rewardsPayload = rewards.map((r) => ({
+          id: r.id,
+          title: r.title,
+          description: r.description,
+          amount: parseInt(r.amount, 10) || 0,
+          limit: parseInt(r.limit, 10) || 999,
+          deliveryDate: r.deliveryDate,
+          icon: 'gift',
+          claimed: 0,
+        }));
+        const created = await crowdfundingApi.create({
+          title: title.trim(),
+          description: description.trim(),
+          goalAmount: parseInt(goalAmount, 10),
+          endDate: end.toISOString(),
+          category: category || undefined,
+          coverImage: coverImageUrl.trim() || undefined,
+          rewards: rewardsPayload.length > 0 ? rewardsPayload : undefined,
+        });
+        const st = (created as { status?: string }).status;
+        const isPending = st === 'pending';
+        Alert.alert(
+          isPending ? 'Campagne soumise' : 'Campagne créée',
+          isPending
+            ? 'Votre campagne est en attente de validation par l’équipe. Vous serez visible publiquement une fois approuvée.'
+            : 'Votre campagne est publiée. Partagez le lien pour collecter des fonds.',
+          [{ text: 'Voir la campagne', onPress: () => router.replace(`/crowdfunding/${created.id}` as any) }],
+        );
+      } catch (e: unknown) {
+        const status = (e as { response?: { status?: number } })?.response?.status;
+        if (status === 401) {
+          Alert.alert(
+            'Connexion requise',
+            'Votre session a expiré. Connectez-vous puis resoumettez votre projet.',
+            [
+              { text: 'Annuler', style: 'cancel' },
+              { text: 'Se connecter', onPress: () => router.push('/(auth)/login') },
+            ],
+          );
+          return;
+        }
+        const msg =
+          (e as { response?: { data?: { error?: { message?: string }; message?: string } } })?.response?.data?.error
+            ?.message ||
+          (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+          (e as { message?: string })?.message ||
+          'Création impossible. Vérifiez la connexion ou réessayez.';
+        Alert.alert('Erreur', msg);
+      } finally {
+        setSubmitting(false);
+      }
+    })();
   };
 
   const progressWidth = progressAnim.interpolate({
@@ -248,40 +434,67 @@ export default function CreateProjectScreen() {
           {step === 2 && (
             <View>
               <Text style={styles.sectionTitle}>Images du projet</Text>
-              <Text style={styles.sectionSubtitle}>Selectionnez 1 a 5 images pour illustrer votre projet</Text>
-
-              <View style={styles.imageGrid}>
-                {PLACEHOLDER_IMAGES.map(img => {
-                  const isSelected = selectedImages.includes(img.uri);
-                  return (
-                    <TouchableOpacity
-                      key={img.id}
-                      style={[styles.imageItem, isSelected && styles.imageItemSelected]}
-                      onPress={() => toggleImage(img.uri)}
-                      activeOpacity={0.8}
-                    >
-                      <Image source={{ uri: img.uri }} style={styles.imageThumb} />
-                      {isSelected && (
-                        <View style={styles.imageCheck}>
-                          <Ionicons name="checkmark-circle" size={28} color={Colors.primary} />
-                        </View>
-                      )}
-                      {isSelected && (
-                        <View style={styles.imageOrder}>
-                          <Text style={styles.imageOrderText}>
-                            {selectedImages.indexOf(img.uri) + 1}
-                          </Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <Text style={styles.imageHint}>
-                {selectedImages.length}/5 images selectionnees
-                {selectedImages.length === 0 ? ' (min 1)' : ''}
+              <Text style={styles.sectionSubtitle}>
+                Touchez la zone ci-dessous pour choisir jusqu’à 5 photos (envoi au serveur). Vous pouvez aussi coller une URL de couverture.
               </Text>
+
+              <TouchableOpacity
+                style={[
+                  styles.imagePlaceholderBox,
+                  (uploadingImages || selectedImages.length >= 5) && styles.imagePlaceholderBoxDisabled,
+                ]}
+                onPress={() => {
+                  if (uploadingImages || selectedImages.length >= 5) return;
+                  void handlePickCampaignImages();
+                }}
+                disabled={uploadingImages || selectedImages.length >= 5}
+                activeOpacity={0.75}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  selectedImages.length >= 5
+                    ? 'Limite de 5 photos atteinte'
+                    : 'Ajouter des photos — ouvrir la galerie'
+                }
+              >
+                {uploadingImages ? (
+                  <ActivityIndicator color={Colors.primary} size="large" />
+                ) : selectedImages.length === 0 ? (
+                  <>
+                    <Ionicons name="images-outline" size={40} color="#666" />
+                    <Text style={styles.imageHint}>Aucune image pour l’instant ({selectedImages.length}/5)</Text>
+                  </>
+                ) : (
+                  <View style={styles.imageGrid}>
+                    {selectedImages.map((uri, idx) => (
+                      <View key={`${uri}-${idx}`} style={styles.imageItem}>
+                        <Image source={{ uri }} style={styles.imageThumb} resizeMode="cover" />
+                        <TouchableOpacity
+                          style={styles.imageRemoveBtn}
+                          onPress={() => removeCampaignImage(idx)}
+                          accessibilityLabel="Retirer cette image"
+                          hitSlop={12}
+                        >
+                          <Ionicons name="close-circle" size={26} color="#FFF" />
+                        </TouchableOpacity>
+                        <View style={styles.imageOrder}>
+                          <Text style={styles.imageOrderText}>{idx + 1}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              <Text style={styles.label}>URL de couverture (optionnel)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="https://... (image de couverture de la campagne)"
+                placeholderTextColor="#555"
+                value={coverImageUrl}
+                onChangeText={setCoverImageUrl}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
 
               <TouchableOpacity
                 style={[styles.nextBtn, !canProceedStep2 && styles.nextBtnDisabled]}
@@ -365,7 +578,9 @@ export default function CreateProjectScreen() {
                 <Ionicons name="information-circle" size={18} color="#888" />
                 <View style={styles.infoCardText}>
                   <Text style={styles.infoTitle}>Commission AfriWonder</Text>
-                  <Text style={styles.infoDesc}>3% de commission sur le montant collecte en cas de succes. 0% si l'objectif n'est pas atteint.</Text>
+                  <Text style={styles.infoDesc}>
+                    5 % de commission sur le montant collecté en cas de succès. 0 % si l&apos;objectif n&apos;est pas atteint.
+                  </Text>
                 </View>
               </View>
 
@@ -566,14 +781,26 @@ export default function CreateProjectScreen() {
                 </Text>
               </TouchableOpacity>
 
+              {!isAuthenticated ? (
+                <View style={styles.authRequiredCard}>
+                  <Ionicons name="lock-closed" size={16} color="#FFB74D" />
+                  <Text style={styles.authRequiredText}>
+                    Connectez-vous pour soumettre le projet. Sans connexion, l&apos;API renverra 401.
+                  </Text>
+                  <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
+                    <Text style={styles.authRequiredLink}>Se connecter</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
               <TouchableOpacity
-                style={[styles.submitBtn, !canProceedStep5 && styles.nextBtnDisabled]}
-                onPress={canProceedStep5 ? handleSubmit : undefined}
-                disabled={!canProceedStep5}
+                style={[styles.submitBtn, (!canProceedStep5 || submitting) && styles.nextBtnDisabled]}
+                onPress={canProceedStep5 && !submitting ? handleSubmit : undefined}
+                disabled={!canProceedStep5 || submitting}
               >
                 <LinearGradient colors={['#4CAF50', '#2E7D32']} style={styles.nextBtnGradient}>
                   <Ionicons name="rocket" size={20} color="#FFF" />
-                  <Text style={styles.nextBtnText}>Soumettre le projet</Text>
+                  <Text style={styles.nextBtnText}>{submitting ? 'Envoi...' : 'Soumettre le projet'}</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -667,8 +894,21 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
 
-  // Images
-  imageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  // Images — zone cliquable (galerie)
+  imagePlaceholderBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    marginTop: 12,
+    minHeight: 120,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  imagePlaceholderBoxDisabled: { opacity: 0.55 },
+  imageGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start' },
   imageItem: {
     width: '31%',
     aspectRatio: 4 / 3,
@@ -679,6 +919,13 @@ const styles = StyleSheet.create({
   },
   imageItemSelected: { borderColor: Colors.primary },
   imageThumb: { width: '100%', height: '100%' },
+  imageRemoveBtn: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 14,
+  },
   imageCheck: { position: 'absolute', top: 4, right: 4 },
   imageOrder: {
     position: 'absolute',
@@ -844,6 +1091,18 @@ const styles = StyleSheet.create({
   },
   checkboxChecked: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   termsText: { color: '#AAA', fontSize: 13, flex: 1, lineHeight: 19 },
+  authRequiredCard: {
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#5A3A10',
+    backgroundColor: 'rgba(255,183,77,0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  authRequiredText: { color: '#FFD8A8', fontSize: 12, lineHeight: 18 },
+  authRequiredLink: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
 
   // Buttons
   nextBtn: { borderRadius: 14, overflow: 'hidden', marginTop: 24 },

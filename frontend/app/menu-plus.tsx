@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
 import { useAuthStore } from '../src/store/authStore';
 import { goBackOrFallback } from '../src/utils/goBack';
+import { featureFlags } from '../src/config/featureFlags';
 
 const SUPER_ADMIN_EMAIL = (
   process.env.EXPO_PUBLIC_SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com'
@@ -46,6 +47,10 @@ const MENU_SECTIONS: MenuSection[] = [
     title: 'Wallet & Paiements',
     items: [
       { label: 'Mon Wallet', icon: 'wallet-outline', href: '/wallet' },
+      { label: 'Envoyer de l\'argent', icon: 'send-outline', href: '/wallet/transfer' },
+      { label: 'Recharge crédit', icon: 'flash-outline', href: '/airtime', badge: 'Nouveau' },
+      { label: 'Payer factures', icon: 'receipt-outline', href: '/bills', badge: 'Nouveau' },
+      { label: 'Points fidélité', icon: 'ribbon-outline', href: '/loyalty' },
       { label: 'Abonnements', icon: 'diamond-outline', href: '/subscriptions' },
     ],
   },
@@ -82,7 +87,13 @@ const MENU_SECTIONS: MenuSection[] = [
       { label: 'Outils créateurs', icon: 'sparkles-outline', href: '/creator/earnings' },
       { label: 'Playlists', icon: 'albums-outline', href: '/playlists' },
       { label: 'Parrainage', icon: 'share-social-outline', href: '/referrals' },
+      { label: 'Brand Deals', icon: 'briefcase-outline', href: '/brand-deals', badge: 'Nouveau' },
       { label: 'Mes campagnes pub', icon: 'megaphone-outline', href: '/creator/ads', badge: 'Pub' },
+      ...(featureFlags.starCalls
+        ? ([
+            { label: 'Appels avec créateurs', icon: 'videocam-outline' as const, href: '/stars', badge: 'Talk with Stars' },
+          ] as MenuRow[])
+        : []),
     ],
   },
   {
@@ -101,8 +112,7 @@ const MENU_SECTIONS: MenuSection[] = [
   {
     title: 'PARAMÈTRES',
     items: [
-      { label: 'Settings and privacy', icon: 'settings-outline', href: '/settings/privacy' },
-      { label: 'Paramètres', icon: 'settings-outline', href: '/settings' },
+      { label: 'Confidentialité', icon: 'lock-closed-outline', href: '/settings/privacy' },
       { label: 'Statistiques', icon: 'stats-chart-outline', href: '/creator/earnings' },
       { label: 'Notifications', icon: 'notifications-outline', href: '/notifications' },
       { label: 'Langue', icon: 'globe-outline', href: '/settings/language' },
@@ -150,7 +160,7 @@ export default function MenuPlusScreen() {
         >
           <Ionicons name="arrow-back" size={22} color={Colors.text} />
         </Pressable>
-        <Text style={styles.topTitle}>Menu</Text>
+        <Text style={styles.topTitle}>Menu +</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -185,6 +195,27 @@ export default function MenuPlusScreen() {
               </View>
             </View>
           </LinearGradient>
+        ) : null}
+
+        {user ? (
+          <TouchableOpacity
+            style={styles.settingsHero}
+            activeOpacity={0.82}
+            onPress={() => router.push('/settings' as Href)}
+            accessibilityLabel="Paramètres du compte"
+            accessibilityRole="button"
+          >
+            <View style={styles.settingsHeroIconBox}>
+              <Ionicons name="settings-outline" size={24} color={Colors.primary} />
+            </View>
+            <View style={styles.settingsHeroText}>
+              <Text style={styles.settingsHeroTitle}>Paramètres</Text>
+              <Text style={styles.settingsHeroSub} numberOfLines={1}>
+                Compte, notifications, thème, langue…
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="rgba(255,107,0,0.6)" />
+          </TouchableOpacity>
         ) : null}
 
         {sections.map((section) => (
@@ -271,6 +302,29 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   profileHandle: { color: 'rgba(255,255,255,0.7)', fontSize: FontSizes.sm, marginTop: 4 },
+  settingsHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: 'rgba(255,107,0,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,0,0.35)',
+  },
+  settingsHeroIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.md,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsHeroText: { flex: 1, minWidth: 0 },
+  settingsHeroTitle: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: '800' },
+  settingsHeroSub: { color: 'rgba(255,255,255,0.7)', fontSize: FontSizes.sm, marginTop: 2 },
   section: { marginBottom: Spacing.lg },
   sectionTitle: {
     color: 'rgba(255,107,0,0.85)',

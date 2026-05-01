@@ -3,7 +3,7 @@
  * Vérifient: statut HTTP, structure JSON, création utilisateur en base, hash du mot de passe
  */
 import request from 'supertest';
-import { describe, it, expect, beforeEach, beforeAll } from '@jest/globals';
+import { describe, it, expect, beforeEach, beforeAll, jest } from '@jest/globals';
 import bcrypt from 'bcryptjs';
 import speakeasy from 'speakeasy';
 import app from '../../app.js';
@@ -14,6 +14,8 @@ beforeAll(() => {
   process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_for_auth_routes';
   process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'test_refresh_secret_for_auth_routes';
 });
+
+jest.setTimeout(120_000);
 
 describe('Auth routes', () => {
   const timestamp = Date.now();

@@ -28,6 +28,10 @@ export default function RealEstateScreen() {
   if (!featureFlags.servicesHub) {
     return <ComingSoonScreen title="Immobilier" description="Le module immobilier sera bientôt disponible." icon="business-outline" />;
   }
+  return <RealEstateContent />;
+}
+
+function RealEstateContent() {
   const insets = useSafeAreaInsets();
   const [activeType, setActiveType] = useState<typeof TYPES[number]['id']>('all');
   const [properties, setProperties] = useState<Property[]>([]);

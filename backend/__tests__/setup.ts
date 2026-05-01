@@ -73,12 +73,24 @@ beforeAll(async () => {
   const { default: client } = await import('../src/config/database.js');
   (global as any).__PRISMA__ = client;
 
-  try {
-    await client.$queryRaw`SELECT 1`;
-    console.log('✅ Connexion à la base de données de test réussie');
-  } catch (error: any) {
-    console.error('❌ Erreur de connexion à la base de données de test:', error);
-    throw error;
+  const maxAttempts = 10;
+  const delayMs = 3000;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await client.$queryRaw`SELECT 1`;
+      break;
+    } catch (error: any) {
+      if (attempt === maxAttempts) {
+        console.error('Erreur de connexion à la base de données de test:', error);
+        throw error;
+      }
+      if (process.env.DEBUG_TEST_SETUP === '1') {
+        console.warn(
+          `DB test indisponible (tentative ${attempt}/${maxAttempts}), nouvel essai dans ${delayMs}ms…`
+        );
+      }
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
   }
 
   const PLATFORM_USER_ID = process.env.PLATFORM_USER_ID!;
@@ -96,10 +108,11 @@ beforeAll(async () => {
         },
       });
     }
-    console.log('✅ Utilisateur plateforme créé/vérifié');
   } catch (err: any) {
     // Ignorer si l'email existe déjà (autre id) ou autre contrainte
-    console.warn('⚠️ Erreur création utilisateur plateforme:', err.message);
+    if (process.env.DEBUG_TEST_SETUP === '1') {
+      console.warn('Erreur création utilisateur plateforme:', err.message);
+    }
   }
 }, 60000);
 

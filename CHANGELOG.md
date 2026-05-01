@@ -1,5 +1,15 @@
 # Changelog - Améliorations pour atteindre 10/10
 
+## [1.0.0] - 2026-04-28
+
+### Automatisation standards (code/CI)
+
+- Script unifié `npm run verify:quality-gates` (standards diff + typecheck + eslint backend + mobile).
+- Script `npm run verify:test-coverage` (Jest backend + Vitest mobile + PWA, seuils 70 %).
+- Script `npm run verify:release-readiness` (cohérence `package.json` / `CHANGELOG.md`).
+- Garde-fous diff : `TODO` avec ticket, interdiction `console.log` / `localhost` / patterns secrets dans les ajouts.
+- Voir [docs/STANDARDS_CONFORMANCE_REPORT.md](docs/STANDARDS_CONFORMANCE_REPORT.md).
+
 ## [2026-02-01] - Améliorations Complètes
 
 ### ✨ Ajouté

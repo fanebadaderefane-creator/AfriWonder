@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert, ActivityIndicator } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -11,12 +12,17 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../theme/colors';
 import { extractOAuthAccessToken } from '../../utils/extractOAuthAccessToken';
 import {
   getGoogleOAuthEnv,
+  getFacebookAppId,
+  getOAuthMissingConfigHint,
   isGoogleOAuthConfiguredForPlatform,
   isFacebookOAuthConfigured,
   isAppleSignInDisabledByEnv,
-  resolveGoogleClientIds,
+  resolveGoogleClientIdsForNativeGoogleAuth,
 } from '../../config/oauthEnv';
-import { logOAuthRedirectDebugInfo } from '../../config/oauthRedirectUris';
+import {
+  getOAuthRedirectUriVariantsForConsole,
+  logOAuthRedirectDebugInfo,
+} from '../../config/oauthRedirectUris';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -35,6 +41,17 @@ const OAUTH_UNAVAILABLE_MESSAGE =
 const GOOGLE_ANDROID_SETUP_HINT =
   'Sur Android, Google exige un identifiant client dédié (EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID) et l’empreinte SHA-1 du certificat de l’app (debug, build EAS, signature Play) enregistrée dans Google Cloud pour le package com.afriwonder.app. En attendant, utilisez l’e-mail ou le téléphone.';
 
+/**
+ * Web : CSS globale peut forcer couleur du texte.
+ * Android (APK) : mode sombre forcé OEM / ripple peut rendre le libellé quasi invisible sur fond blanc — couleurs explicites.
+ */
+const oauthLabelContrastFix = (kind: 'googleDark' | 'facebookLight') =>
+  Platform.OS === 'web' || Platform.OS === 'android'
+    ? kind === 'googleDark'
+      ? ({ color: '#121212' } as const)
+      : ({ color: '#FFFFFF' } as const)
+    : null;
+
 function OAuthUnavailableButton({ kind }: { kind: 'google' | 'facebook' }) {
   const isGoogle = kind === 'google';
   return (
@@ -45,14 +62,20 @@ function OAuthUnavailableButton({ kind }: { kind: 'google' | 'facebook' }) {
           alertInfo('Google (Android)', GOOGLE_ANDROID_SETUP_HINT);
           return;
         }
-        alertInfo('Connexion', OAUTH_UNAVAILABLE_MESSAGE);
+        const devHint = typeof __DEV__ !== 'undefined' && __DEV__ ? getOAuthMissingConfigHint(Platform.OS) : '';
+        alertInfo('Connexion', OAUTH_UNAVAILABLE_MESSAGE + devHint);
       }}
       activeOpacity={0.85}
       accessibilityRole="button"
       accessibilityLabel={isGoogle ? 'Continuer avec Google' : 'Continuer avec Facebook'}
     >
       <Ionicons name={isGoogle ? 'logo-google' : 'logo-facebook'} size={22} color={isGoogle ? '#1a1a1a' : '#fff'} />
-      <Text style={isGoogle ? styles.providerBtnTextDark : styles.providerBtnTextLight}>
+      <Text
+        style={[
+          isGoogle ? styles.providerBtnTextDark : styles.providerBtnTextLight,
+          oauthLabelContrastFix(isGoogle ? 'googleDark' : 'facebookLight'),
+        ]}
+      >
         {isGoogle ? 'Continuer avec Google' : 'Continuer avec Facebook'}
       </Text>
     </TouchableOpacity>
@@ -67,7 +90,11 @@ function GoogleOAuthBlock({
   onDone: () => void;
 }) {
   const { setAuth } = useAuthStore();
-  const googleIds = useMemo(() => resolveGoogleClientIds(getGoogleOAuthEnv()), []);
+  const googleIds = useMemo(
+    () => resolveGoogleClientIdsForNativeGoogleAuth(Platform.OS, getGoogleOAuthEnv()),
+    [],
+  );
+  /** Pas de `redirectUri` custom : provider Expo. Expo Go Android utilise le client Web (voir `oauthEnv`). */
   const [, googleResponse, googlePrompt] = Google.useAuthRequest({
     webClientId: googleIds.webClientId,
     iosClientId: googleIds.iosClientId,
@@ -116,11 +143,15 @@ function GoogleOAuthBlock({
     const key = `${rawMsg}:${String((errObj.error as { code?: string } | undefined)?.code ?? '')}`;
     if (lastGoogleOAuthErrorKey.current === key) return;
     lastGoogleOAuthErrorKey.current = key;
+    const redirects = getOAuthRedirectUriVariantsForConsole();
+    const redirectHint = redirects.length
+      ? `\n\nURI de redirection à autoriser dans Google Cloud:\n- ${redirects.join('\n- ')}`
+      : '';
     const hint =
       Platform.OS === 'android'
-        ? '\n\nVérifiez la SHA-1 dans Google Cloud (debug / EAS / Play) pour com.afriwonder.app.'
+        ? '\n\nVérifiez aussi la SHA-1 dans Google Cloud (debug / EAS / Play) pour com.afriwonder.app.'
         : '';
-    alertInfo('Google', `${rawMsg}${hint}`);
+    alertInfo('Google', `${rawMsg}${hint}${redirectHint}`);
   }, [googleResponse]);
 
   return (
@@ -133,7 +164,7 @@ function GoogleOAuthBlock({
       activeOpacity={0.85}
     >
       <Ionicons name="logo-google" size={22} color="#1a1a1a" />
-      <Text style={styles.providerBtnTextDark}>Continuer avec Google</Text>
+      <Text style={[styles.providerBtnTextDark, oauthLabelContrastFix('googleDark')]}>Continuer avec Google</Text>
     </TouchableOpacity>
   );
 }
@@ -146,8 +177,10 @@ function FacebookOAuthBlock({
   onDone: () => void;
 }) {
   const { setAuth } = useAuthStore();
-  const appId = String(process.env.EXPO_PUBLIC_FACEBOOK_APP_ID || '').trim();
-  const [, fbResponse, fbPrompt] = Facebook.useAuthRequest({ clientId: appId });
+  const appId = getFacebookAppId();
+  const [, fbResponse, fbPrompt] = Facebook.useAuthRequest({
+    clientId: appId,
+  });
   const handledUrl = useRef<string | null>(null);
 
   useEffect(() => {
@@ -168,7 +201,11 @@ function FacebookOAuthBlock({
           (e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ||
           (e as Error)?.message ||
           'Connexion Facebook impossible';
-        alertInfo('Facebook', msg);
+        const redirects = getOAuthRedirectUriVariantsForConsole();
+        const redirectHint = redirects.length
+          ? `\n\nURI OAuth valides à ajouter dans Meta Developers:\n- ${redirects.join('\n- ')}`
+          : '';
+        alertInfo('Facebook', `${msg}${redirectHint}`);
         handledUrl.current = null;
       } finally {
         onBusy(false);
@@ -177,9 +214,13 @@ function FacebookOAuthBlock({
   }, [fbResponse, onBusy, onDone, setAuth]);
 
   return (
-    <TouchableOpacity style={[styles.providerBtn, styles.facebookBtn]} onPress={() => void fbPrompt()} activeOpacity={0.85}>
+    <TouchableOpacity
+      style={[styles.providerBtn, styles.facebookBtn]}
+      onPress={() => void fbPrompt()}
+      activeOpacity={0.85}
+    >
       <Ionicons name="logo-facebook" size={22} color="#fff" />
-      <Text style={styles.providerBtnTextLight}>Continuer avec Facebook</Text>
+      <Text style={[styles.providerBtnTextLight, oauthLabelContrastFix('facebookLight')]}>Continuer avec Facebook</Text>
     </TouchableOpacity>
   );
 }
@@ -258,7 +299,7 @@ function AppleOAuthBlock({
       accessibilityLabel="Continuer avec Apple"
     >
       <Ionicons name="logo-apple" size={22} color="#fff" />
-      <Text style={styles.providerBtnTextLight}>Continuer avec Apple</Text>
+      <Text style={[styles.providerBtnTextLight, oauthLabelContrastFix('facebookLight')]}>Continuer avec Apple</Text>
     </TouchableOpacity>
   );
 }
@@ -302,8 +343,9 @@ export function SocialOAuthButtons({ onAuthenticated }: { onAuthenticated: () =>
 const styles = StyleSheet.create({
   wrap: { marginBottom: Spacing.xl },
   dividerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.lg, gap: Spacing.md },
-  divider: { flex: 1, height: 1, backgroundColor: Colors.border },
-  dividerText: { color: Colors.textSecondary, fontSize: FontSizes.sm },
+  divider: { flex: 1, height: 1, backgroundColor: Colors.borderLight },
+  /** Lisible sur fond noir (évite « ou » quasi invisible). */
+  dividerText: { color: '#D0D0D8', fontSize: FontSizes.sm, fontWeight: '600' },
   btnCol: { gap: Spacing.md },
   providerBtn: {
     flexDirection: 'row',
@@ -314,7 +356,11 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     borderWidth: 1,
   },
-  googleBtn: { backgroundColor: '#fff', borderColor: Colors.border },
+  googleBtn: {
+    backgroundColor: '#fff',
+    borderColor: Colors.border,
+    ...(Platform.OS === 'android' ? { elevation: 1 } : {}),
+  },
   facebookBtn: { backgroundColor: '#1877F2', borderColor: '#1877F2' },
   appleBtn: { backgroundColor: '#000', borderColor: '#000' },
   providerBtnTextDark: { color: '#1a1a1a', fontSize: FontSizes.md, fontWeight: '600' },

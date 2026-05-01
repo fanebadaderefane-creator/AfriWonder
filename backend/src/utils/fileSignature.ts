@@ -3,8 +3,12 @@ type DetectedFileKind =
   | 'image/png'
   | 'image/webp'
   | 'image/gif'
+  | 'image/heic'
   | 'video/mp4'
   | 'video/quicktime'
+  | 'video/3gpp'
+  | 'video/3gpp2'
+  | 'audio/mpeg'
   | 'audio/webm'
   | 'video/webm'
   | 'audio/ogg'
@@ -36,9 +40,16 @@ export function detectFileSignature(buf: Buffer): DetectedFileKind {
   if (asciiAt(buf, 0, 4) === 'OggS') return 'audio/ogg';
   if (asciiAt(buf, 0, 4) === 'RIFF' && asciiAt(buf, 8, 4) === 'WAVE') return 'audio/wav';
   if (startsWithBytes(buf, [0x1a, 0x45, 0xdf, 0xa3])) return 'video/webm';
+  if (asciiAt(buf, 0, 3) === 'ID3') return 'audio/mpeg';
+  if (buf.length >= 2 && buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0) return 'audio/mpeg';
 
   if (asciiAt(buf, 4, 4) === 'ftyp') {
     const brand = asciiAt(buf, 8, 4);
+    if (brand.startsWith('3gp')) return 'video/3gpp';
+    if (brand.startsWith('3g2')) return 'video/3gpp2';
+    if (brand === 'heic' || brand === 'heix' || brand === 'hevc' || brand === 'hevx' || brand === 'mif1' || brand === 'msf1') {
+      return 'image/heic';
+    }
     if (brand === 'qt  ') return 'video/quicktime';
     return 'video/mp4';
   }
@@ -56,6 +67,8 @@ export function fileSignatureMatchesMime(buffer: Buffer, mime: string): boolean 
   if (normalizedMime === 'audio/webm' && detected === 'video/webm') return true;
   if (normalizedMime === 'video/webm' && detected === 'video/webm') return true;
   if (normalizedMime === 'audio/ogg' && detected === 'audio/ogg') return true;
+  if ((normalizedMime === 'audio/mp4' || normalizedMime === 'audio/x-m4a') && detected === 'video/mp4') return true;
+  if ((normalizedMime === 'image/heif' || normalizedMime === 'image/heic-sequence') && detected === 'image/heic') return true;
 
   return false;
 }

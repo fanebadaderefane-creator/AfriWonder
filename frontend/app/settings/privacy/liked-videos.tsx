@@ -15,7 +15,7 @@ export default function LikedVideosScreen() {
         onChange={(v) => void update({ liked_videos_visibility: v })}
         options={[
           { value: 'everyone', label: 'Everyone' },
-          { value: 'friends', label: 'Friends', description: 'Only mutual followers can see your likes.' },
+          { value: 'friends', label: 'Friends', description: 'Only mutual Wonder can see your likes.' },
           { value: 'only_me', label: 'Only you' },
         ]}
       />

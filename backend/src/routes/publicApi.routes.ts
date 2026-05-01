@@ -67,8 +67,8 @@ const opportunitiesHandler = async (req: any, res: any, next: any) => {
 
 router.get('/matching/opportunities', opportunitiesHandler);
 
-// Versioned routes (v1)
-v1.use(requirePublicApiKey, trackPublicApiUsage);
+// Versioned routes (v1) — ne pas réappliquer requirePublicApiKey ici : le parent `router` le fait
+// déjà (sinon 2× comptage rate-limit → 429 dès la 1ʳᵉ requête avec limit=1).
 v1.get('/health', (_req, res) => {
   res.json({
     success: true,

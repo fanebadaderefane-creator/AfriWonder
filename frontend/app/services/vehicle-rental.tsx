@@ -21,6 +21,10 @@ export default function VehicleRentalScreen() {
   if (!featureFlags.servicesHub) {
     return <ComingSoonScreen title="Location véhicule" description="La location de véhicules sera bientôt disponible." icon="car-sport-outline" />;
   }
+  return <VehicleRentalContent />;
+}
+
+function VehicleRentalContent() {
   const insets = useSafeAreaInsets();
   const [providers, setProviders] = useState<ServiceProvider[]>([]);
   const [loading, setLoading] = useState(true);

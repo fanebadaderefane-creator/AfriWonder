@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View, Switch } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View, Switch, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 /**
@@ -39,9 +39,50 @@ type ActionRow = Common & {
   onPress: () => void;
 };
 
-export type SettingsRowProps = NavigateRow | ToggleRow | ActionRow;
+type InfoRow = Common & {
+  variant: 'info';
+  /** Valeur courte affichée à droite (ex. "1,2 MB"). */
+  value?: string | null;
+};
+
+export type SettingsRowProps = NavigateRow | ToggleRow | ActionRow | InfoRow;
 
 export function SettingsRow(props: SettingsRowProps) {
+  if (props.variant === 'toggle') {
+    const t = props as ToggleRow;
+    return (
+      <View style={styles.touchable}>
+        <View style={styles.row}>
+          <Pressable
+            style={({ pressed }) => [styles.toggleLeft, pressed && styles.toggleLeftPressed]}
+            onPress={() => !t.disabled && t.onValueChange(!t.value)}
+            disabled={t.disabled}
+            accessibilityRole="button"
+            accessibilityLabel={t.label}
+            accessibilityState={{ checked: t.value }}
+          >
+            {t.icon ? <Ionicons name={t.icon} size={20} color="#373737" style={styles.icon} /> : null}
+            <Text style={[styles.label, t.disabled && styles.disabledLabel]} numberOfLines={2}>
+              {t.label}
+            </Text>
+            {t.notificationDot ? <View style={styles.dot} /> : null}
+          </Pressable>
+          <View style={styles.switchWrap} collapsable={false}>
+            <Switch
+              value={t.value}
+              onValueChange={t.onValueChange}
+              disabled={t.disabled}
+              trackColor={{ false: '#D9D9D9', true: '#FF2D55' }}
+              thumbColor="#FFF"
+              {...(Platform.OS === 'web' ? { style: styles.switchWeb } : {})}
+              hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+            />
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   const inner = (
     <View style={styles.row}>
       <View style={styles.left}>
@@ -63,13 +104,14 @@ export function SettingsRow(props: SettingsRowProps) {
     </View>
   );
 
-  if (props.variant === 'toggle') {
+  if (props.variant === 'info') {
     return <View style={styles.touchable}>{inner}</View>;
   }
+
   return (
     <TouchableOpacity
       activeOpacity={0.6}
-      onPress={props.onPress}
+      onPress={(props as NavigateRow | ActionRow).onPress}
       disabled={props.disabled}
       style={styles.touchable}
     >
@@ -80,14 +122,7 @@ export function SettingsRow(props: SettingsRowProps) {
 
 function renderRight(props: SettingsRowProps): React.ReactElement | null {
   if (props.variant === 'toggle') {
-    return (
-      <Switch
-        value={props.value}
-        onValueChange={props.onValueChange}
-        trackColor={{ false: '#D9D9D9', true: '#FF2D55' }}
-        thumbColor="#FFF"
-      />
-    );
+    return null;
   }
   if (props.variant === 'navigate') {
     return (
@@ -96,6 +131,13 @@ function renderRight(props: SettingsRowProps): React.ReactElement | null {
         <Ionicons name="chevron-forward" size={18} color="#B5B5B5" />
       </View>
     );
+  }
+  if (props.variant === 'info') {
+    return props.value ? (
+      <View style={styles.right}>
+        <Text style={styles.value} numberOfLines={1}>{props.value}</Text>
+      </View>
+    ) : null;
   }
   return null;
 }
@@ -128,7 +170,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     marginHorizontal: 12,
     borderRadius: 12,
-    overflow: 'hidden',
+    /** Web : `overflow: hidden` peut empêcher le `Switch` de recevoir les clics sur certaines versions RN. */
+    overflow: Platform.OS === 'web' ? 'visible' : 'hidden',
   },
   touchable: {
     paddingHorizontal: 14,
@@ -143,6 +186,26 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(0,0,0,0.07)',
   },
   left: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 },
+  toggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    maxWidth: '78%',
+    paddingVertical: 2,
+    marginRight: 8,
+  },
+  toggleLeftPressed: { opacity: 0.65 },
+  disabledLabel: { opacity: 0.45 },
+  switchWrap: {
+    flexShrink: 0,
+    zIndex: 2,
+    elevation: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  switchWeb: { cursor: 'pointer' } as const,
   icon: { marginRight: 14, width: 22 },
   label: { flexShrink: 1, color: '#161616', fontSize: 16, fontWeight: '600' },
   destructive: { color: '#FF2D55' },

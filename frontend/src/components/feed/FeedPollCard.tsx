@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../theme/colors';
 
 export type FeedPollPayload = {
@@ -13,30 +13,21 @@ export type FeedPollPayload = {
 };
 
 type Props = {
-  poll: FeedPollPayload | null | 'loading';
+  poll: FeedPollPayload;
   voting?: boolean;
   onVote: (optionIndex: number) => void | Promise<void>;
 };
 
 export default function FeedPollCard({ poll, voting, onVote }: Props) {
   const counts = useMemo(() => {
-    if (poll === 'loading' || !poll) return [] as number[];
     return Array.isArray(poll.counts) ? poll.counts : [];
   }, [poll]);
 
   const sumCounts = useMemo(() => {
-    if (poll === 'loading' || !poll) return 0;
     return counts.reduce((a, b) => a + (Number(b) || 0), 0);
-  }, [counts, poll]);
+  }, [counts]);
 
-  if (poll === 'loading') {
-    return (
-      <View style={styles.wrap}>
-        <ActivityIndicator color={Colors.primary} size="small" />
-      </View>
-    );
-  }
-  if (!poll || poll.expired || !poll.options?.length) return null;
+  if (poll.expired || !poll.options?.length) return null;
 
   return (
     <View style={styles.wrap} accessibilityLabel="Sondage vidéo">

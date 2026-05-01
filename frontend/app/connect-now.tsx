@@ -277,7 +277,7 @@ export default function ConnectNowScreen() {
                           alreadyFollowing && styles.followBtnTextSecondary,
                         ]}
                       >
-                        {alreadyFollowing ? 'Following' : 'Follow'}
+                        {alreadyFollowing ? 'Dans son Wonder' : 'Wonder'}
                       </Text>
                     </TouchableOpacity>
                   </View>

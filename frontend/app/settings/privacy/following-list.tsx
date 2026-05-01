@@ -8,14 +8,14 @@ export default function FollowingListScreen() {
   const { settings, update } = usePrivacySettings();
 
   return (
-    <SettingsScreen title="Following list">
+    <SettingsScreen title="Wonder list">
       <Text style={styles.intro}>Choose who can see the accounts you follow.</Text>
       <AudiencePicker<Visibility>
         value={settings.following_list_visibility}
         onChange={(v) => void update({ following_list_visibility: v })}
         options={[
           { value: 'everyone', label: 'Everyone' },
-          { value: 'friends', label: 'Friends', description: 'Only mutual followers can see this list.' },
+          { value: 'friends', label: 'Friends', description: 'Only mutual Wonder can see this list.' },
           { value: 'only_me', label: 'Only you' },
         ]}
       />

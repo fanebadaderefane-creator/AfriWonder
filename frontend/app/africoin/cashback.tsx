@@ -59,7 +59,7 @@ export default function AfricoinCashbackScreen() {
           <View style={styles.stepN}>
             <Text style={styles.stepNText}>4</Text>
           </View>
-          <Text style={styles.stepT}>Recharge pour débloquer des cadeaux spéciaux (catalogue à venir).</Text>
+          <Text style={styles.stepT}>Recharge ton AfriCoin pour gagner du cashback sur chaque commande et chaque transfert.</Text>
         </View>
 
         <TouchableOpacity onPress={() => router.push('/terms' as never)}>

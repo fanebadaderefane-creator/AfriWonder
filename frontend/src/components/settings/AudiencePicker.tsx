@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 /**
  * Liste exclusive type "audience" (Everyone / Friends / Only me / No one).
- * Réutilisée par : Activity status, Following list, Liked videos, Mentions, Comments, Direct messages.
+ * Réutilisée par : Activity status, Wonder list, Liked videos, Mentions, Comments, Direct messages.
  */
 export type AudienceOption<T extends string> = {
   value: T;

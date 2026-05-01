@@ -39,6 +39,17 @@ export type GiftCatalogRow = {
   animation_url?: string | null;
 };
 
+const FALLBACK_GIFT_CATALOG: GiftCatalogRow[] = [
+  { id: 'afw-rose', name: 'Rose', icon: '🌹', price: 1, coin_value: 1, rarity: 'common' },
+  { id: 'afw-like', name: 'Like', icon: '❤️', price: 2, coin_value: 2, rarity: 'common' },
+  { id: 'afw-fire', name: 'Flamme', icon: '🔥', price: 5, coin_value: 5, rarity: 'rare' },
+  { id: 'afw-star', name: 'Star', icon: '⭐', price: 10, coin_value: 10, rarity: 'epic' },
+  { id: 'afw-crown', name: 'Couronne', icon: '👑', price: 50, coin_value: 50, rarity: 'legendary' },
+  { id: 'afw-car', name: 'Voiture', icon: '🚗', price: 120, coin_value: 120, rarity: 'legendary' },
+  { id: 'afw-plane', name: 'Avion', icon: '✈️', price: 200, coin_value: 200, rarity: 'legendary' },
+  { id: 'afw-castle', name: 'Château', icon: '🏰', price: 500, coin_value: 500, rarity: 'legendary' },
+];
+
 function rarityColor(rarity?: string | null): string {
   switch (String(rarity || '').toLowerCase()) {
     case 'legendary':
@@ -167,7 +178,7 @@ const GiftAnimationBubble: React.FC<{
     ]);
     anim.start(() => onRemove(gift.id));
     return () => anim.stop();
-  }, [gift.id, gift.giftId, gift.rarity, onRemove, opacity, scale, translateY]);
+  }, [gift.id, gift.giftId, gift.giftName, gift.rarity, onRemove, opacity, scale, translateY]);
 
   const comboLabel = gift.combo > 1 ? ` · COMBO ×${gift.combo}` : '';
 
@@ -244,8 +255,7 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
       const res = await apiClient.get('/live/gifts');
       const raw = res.data?.data ?? res.data;
       const list = Array.isArray(raw) ? raw : raw?.catalog ?? [];
-      setCatalog(
-        (list as GiftCatalogRow[]).map((g) => ({
+      const mapped = (list as GiftCatalogRow[]).map((g) => ({
           id: String(g.id),
           name: String(g.name),
           icon: String(g.icon || '🎁'),
@@ -254,10 +264,10 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
           category: g.category,
           rarity: g.rarity,
           animation_url: g.animation_url,
-        })),
-      );
+        }));
+      setCatalog(mapped.length > 0 ? mapped : FALLBACK_GIFT_CATALOG);
     } catch {
-      setCatalog([]);
+      setCatalog(FALLBACK_GIFT_CATALOG);
     } finally {
       setCatalogLoading(false);
     }
@@ -270,9 +280,14 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
       const raw = d?.coins_balance ?? d?.coinsBalance ?? d?.balance ?? 0;
       setBalanceCoins(Math.round(Number(raw)) || 0);
     } catch {
-      setBalanceCoins(0);
+      const userAny = user as Record<string, unknown> | null;
+      const fallback =
+        Number(
+          userAny?.coins_balance ?? userAny?.coinsBalance ?? userAny?.balance ?? userAny?.wallet_balance ?? 0,
+        ) || 0;
+      setBalanceCoins(Math.max(0, Math.round(fallback)));
     }
-  }, []);
+  }, [user]);
 
   const loadPackages = useCallback(async () => {
     setPackagesLoading(true);
@@ -308,7 +323,14 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
       return;
     }
     if (totalCoins > balanceCoins) {
-      setShowRecharge(true);
+      Alert.alert(
+        'Solde insuffisant',
+        `Il faut ${totalCoins.toLocaleString('fr-FR')} coins, votre solde est ${balanceCoins.toLocaleString('fr-FR')} coins.`,
+        [
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Recharger', onPress: () => setShowRecharge(true) },
+        ],
+      );
       return;
     }
     setSending(true);
@@ -323,7 +345,11 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
       setBalanceCoins((prev) => Math.max(0, prev - totalCoins));
       setSelectedGift(null);
       setQuantity(1);
-      Alert.alert('Cadeau envoyé', `${selectedGift.name} ×${quantity} — merci !`);
+      if (Platform.OS !== 'web') {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      }
+      // UX type TikTok: envoi instantané, pas de popup bloquante.
+      onClose();
     } catch (e: unknown) {
       const err = e as { response?: { data?: { error?: string; message?: string } } };
       const msg =
@@ -371,7 +397,11 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
       Alert.alert('Merci !', `Votre solde : ${r.coins_balance.toLocaleString('fr-FR')} coins.`);
       void loadBalance();
     } catch (e: unknown) {
-      Alert.alert('Achat in-app', String((e as Error)?.message || e));
+      const native = (e as Error)?.message ? String((e as Error).message) : '';
+      const msg = native && !/^\[object|undefined|null$/i.test(native)
+        ? native
+        : 'Achat annulé ou indisponible. Réessayez depuis le store.';
+      Alert.alert('Achat in-app', msg);
     }
   };
 

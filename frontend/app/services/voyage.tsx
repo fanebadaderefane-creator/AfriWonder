@@ -24,6 +24,10 @@ export default function VoyageScreen() {
   if (!featureFlags.servicesHub) {
     return <ComingSoonScreen title="Voyage" description="Le module voyage sera bientôt disponible." icon="airplane-outline" />;
   }
+  return <VoyageContent />;
+}
+
+function VoyageContent() {
   const insets = useSafeAreaInsets();
   const [providers, setProviders] = useState<ServiceProvider[]>([]);
   const [loading, setLoading] = useState(true);

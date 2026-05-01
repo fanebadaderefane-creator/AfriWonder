@@ -12,6 +12,15 @@ let fail = 0;
 
 console.log('=== Audit sécurité AfriWonder ===\n');
 
+// 0. Policy diff sécurité/qualité (secrets, localhost, console.log, TODO sans ticket)
+try {
+  execSync('node scripts/enforce-engineering-standards.mjs', { cwd: process.cwd(), stdio: 'inherit' });
+  console.log('   ✅ Policy diff (standards ingénierie) validée');
+} catch {
+  console.log('   ⚠️ Policy diff: violations détectées');
+  fail = 1;
+}
+
 // 1. npm audit backend
 try {
   execSync('npm audit --audit-level=high', { cwd: join(process.cwd(), 'backend'), stdio: 'inherit' });

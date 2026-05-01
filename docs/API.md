@@ -5,20 +5,40 @@ La source de vérité est l'OpenAPI générée côté backend et exposée par Sw
 - `GET /api-docs` (interface Swagger)
 - `GET /api/openapi.json` (spécification OpenAPI JSON)
 
+> Important: ce fichier est un index rapide. En cas de doute, vérifier Swagger/OpenAPI avant tout audit.
+
 ## Authentification
 
 Les requêtes protégées utilisent `Authorization: Bearer <token>`.
 Certaines routes navigateur utilisent aussi les cookies httpOnly (`access_token`, `refresh_token`) avec protection CSRF.
 
-## Endpoints (exemples)
+## Endpoints critiques (mobile + web)
 
 - Auth: `POST /api/auth/login`, `POST /api/auth/logout`, `POST /api/auth/refresh`
-- Vidéos: `GET /api/videos`, `POST /api/videos`, `POST /api/videos/:id/like`
+- Feed/Vidéos: `GET /api/feed`, `GET /api/videos`, `POST /api/videos`, `POST /api/videos/:id/like`
+- Discover/Search: `GET /api/search`, `GET /api/search/suggest`, `GET /api/recommendations`
+- Messages/Inbox: `GET /api/messages/conversations`, `GET /api/messages/:conversationId`, `POST /api/messages/send`
+- Profil utilisateurs: `GET /api/users/:id`, `PUT /api/users/me`, `POST /api/users/:id/follow`
+- Live streaming: `GET /api/live`, `POST /api/live/start`, `GET /api/live/:id/token`, `POST /api/live/:id/gift`
 - Marketplace: `GET /api/products`, `POST /api/orders`, `PUT /api/orders/:id/status`
-- Paiements: `POST /api/payments/orange-money`, `GET /api/payments/:id/status`
-- Appels: `POST /api/calls/initiate`, `GET /api/calls/turn-credentials`
+- Paiements: `POST /api/payments/orange-money`, `POST /api/payments/stripe`, `POST /api/payments/wave`, `GET /api/payments/:id/status`
+- Appels/WebRTC: `POST /api/calls/initiate`, `GET /api/calls/turn-credentials`
+- Mobile API dédiée: `GET /api/mobile/health`, `POST /api/mobile/push-token`, `POST /api/mobile/sync`
 - RGPD — export données (JSON immédiat): `GET /api/me/export` ou `GET /api/users/me/export`
 - RGPD — suppression compte (demande + délai, annulation possible): `DELETE /api/users/me` (body optionnel `{ "reason": "..." }`), ou `POST /api/privacy/delete-account`
+
+## Alias mobile Expo (`/api/proxy/*`)
+
+Le client mobile Expo utilise `.../api/proxy` comme baseURL. Les routes backend exposent donc aussi des alias:
+
+- `POST /api/proxy/auth/login`
+- `GET /api/proxy/search`
+- `GET /api/proxy/messages/conversations`
+- `GET /api/proxy/users/:id`
+- `POST /api/proxy/live/start`
+- `POST /api/proxy/payments/orange-money`
+
+Ces alias pointent vers les mêmes routeurs Express que les routes `/api/*`.
 
 ## Codes de réponse
 

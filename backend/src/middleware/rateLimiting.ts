@@ -22,22 +22,46 @@ const isWebhookPath = (path: string) =>
   /^\/api\/payments\/[^/]+\/webhook/.test(path);
 
 // Skip rate limiting only in test mode (Jest/smoke tests).
+// SÉCURITÉ : En production, AUCUN bypass n'est autorisé (même via x-e2e-test ou User-Agent Playwright)
+// car ces signaux sont triviaux à falsifier → brute-force login / spam inscriptions.
 // Dev and staging environments are intentionally NOT bypassed — a staging server running
 // NODE_ENV=development must still enforce limits to prevent brute-force attacks.
 const shouldSkipAuthLimiterForE2E = (req: any) => {
   if (process.env.NODE_ENV === 'test') return true;
+  if (process.env.NODE_ENV === 'production') return false;
   const explicitE2EHeader = String(req.headers?.['x-e2e-test'] || '').toLowerCase() === '1';
   const userAgent = String(req.headers?.['user-agent'] || '').toLowerCase();
   const playwrightClient = userAgent.includes('playwright');
   return explicitE2EHeader || playwrightClient;
 };
 
-/** Skip rate limiting only in test mode; dev/staging enforce limits normally. */
+/** En dev local, ne pas bloquer l'app web/Expo avec des 429 pendant le hot-reload. */
+const isLocalDevRequest = (req: any): boolean => {
+  if (process.env.NODE_ENV !== 'development') return false;
+  const origin = String(req.headers?.origin || '').toLowerCase();
+  const host = String(req.headers?.host || '').toLowerCase();
+  const ip = String(req.ip || '');
+  const localhostOrigin =
+    origin.includes('localhost') ||
+    origin.includes('127.0.0.1') ||
+    origin.includes('::1');
+  const localhostHost =
+    host.includes('localhost') ||
+    host.includes('127.0.0.1') ||
+    host.includes('::1');
+  const localhostIp = ip === '::1' || ip === '127.0.0.1' || ip.endsWith(':127.0.0.1');
+  return localhostOrigin || localhostHost || localhostIp;
+};
+
+/** Skip rate limiting only in test mode; dev/staging enforce limits normally.
+ * SÉCURITÉ : en production, aucun bypass (`x-e2e-test` / UA Playwright) n'est accepté.
+ */
 const shouldSkipGeneralLimiterForE2E = (req: any) => {
   if (process.env.NODE_ENV === 'test') return true;
+  if (process.env.NODE_ENV === 'production') return false;
   const explicitE2EHeader = String(req.headers?.['x-e2e-test'] || '').toLowerCase() === '1';
   const userAgent = String(req.headers?.['user-agent'] || '').toLowerCase();
-  return explicitE2EHeader || userAgent.includes('playwright');
+  return explicitE2EHeader || userAgent.includes('playwright') || isLocalDevRequest(req);
 };
 
 /** JWT décodé sans DB — suffisant pour clé de quota par compte (audit : 100 req/min par user). */
@@ -87,7 +111,7 @@ export const authLimiter = rateLimit({
   max: 5, // 5 tentatives login/minute
   message: { success: false, error: 'Trop de tentatives de connexion. Réessayez dans 1 minute.' },
   skipSuccessfulRequests: true, // Ne compte que les échecs
-  skip: (req) => shouldSkipAuthLimiterForE2E(req),
+  skip: (req) => shouldSkipAuthLimiterForE2E(req) || isLocalDevRequest(req),
   store: makeRedisStore('rl:auth:')
 });
 

@@ -1,0 +1,119 @@
+name: 🐛 Bug report
+description: Signaler un comportement incorrect dans AfriWonder
+title: "[Bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de signaler ce bug. Plus le rapport est précis, plus la correction sera rapide.
+        Avant de poster, vérifie qu'il n'existe pas déjà un ticket similaire.
+
+  - type: dropdown
+    id: launch_priority
+    attributes:
+      label: Priorité directive lancement (P1 / P2 / P3)
+      description: |
+        Voir `docs/OPERATIONAL_DIRECTIVE_LAUNCH.md` — **P1** bloque la release, **P2** doit être traité ou arbitré par le lead avant le freeze, **P3** documenté.  
+        Indicatif : P1 ≈ SEV-1, P2 ≈ SEV-2, P3 ≈ SEV-3/4.
+      options:
+        - P3 — mineur (cosmétique, texte, espacement)
+        - P2 — majeur (comportement incorrect, erreur visible)
+        - P1 — bloquant (crash, écran inaccessible, perte de données, boucle)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Sévérité estimée (SEV — alignement runbook)
+      description: |
+        - **SEV-1** : app inaccessible / crash massif / fuite données
+        - **SEV-2** : feature majeure cassée (paiement, login, feed)
+        - **SEV-3** : comportement incorrect non bloquant
+        - **SEV-4** : bug mineur / cosmétique
+      options:
+        - SEV-4 — mineur / cosmétique
+        - SEV-3 — non bloquant
+        - SEV-2 — feature majeure cassée
+        - SEV-1 — bloquant / crash massif
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Plateforme touchée
+      multiple: true
+      options:
+        - Mobile Android
+        - Mobile iOS
+        - Web PWA
+        - Backend API
+        - Admin dashboard
+      default: 0
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Appareil / OS / version app
+      placeholder: "Tecno Spark 8, Android 11, AfriWonder 1.2.3"
+    validations:
+      required: true
+
+  - type: input
+    id: network
+    attributes:
+      label: Réseau
+      placeholder: "Wifi / 4G Orange Mali / 3G instable"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Étapes pour reproduire
+      description: Liste numérotée précise.
+      placeholder: |
+        1. Ouvrir l'app
+        2. Aller sur l'onglet Wallet
+        3. Cliquer sur « Recharger »
+        4. Voir l'erreur
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportement attendu
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Comportement observé
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / captures / Sentry
+      description: |
+        - Capture vidéo si possible (mobile : record screen).
+        - Lien Sentry si erreur côté backend.
+        - **Ne colle aucune PII (email, téléphone, token).**
+      render: text
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: J'ai vérifié qu'aucun ticket similaire n'existe.
+          required: true
+        - label: Je n'ai inclus aucune donnée personnelle dans ce rapport.
+          required: true

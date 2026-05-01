@@ -133,7 +133,10 @@ class MessageService {
     });
   }
 
-  private async appendDmRequestMeta(conversation: Record<string, any> | null, viewerId: string) {
+  private async appendDmRequestMeta(
+    conversation: Record<string, any> | null,
+    viewerId: string
+  ): Promise<Record<string, any> | null> {
     if (!conversation) return conversation;
     if (conversation.is_group) {
       return { ...conversation, dm_request: null };

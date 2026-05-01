@@ -1,11 +1,12 @@
 // AfriWonder full review PR - CodeRabbit
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import speakeasy from 'speakeasy';
 import { Prisma } from '@prisma/client';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
+import { sendViaResend } from '../utils/transactionalEmail.js';
 import * as earlyAccessService from './earlyAccess.service.js';
 import * as referralService from './referral.service.js';
 import { isRefreshTokenRevoked, revokeRefreshToken } from './refreshTokenBlacklist.service.js';
@@ -31,6 +32,84 @@ function normalizePhone(phone?: string) {
 }
 
 class AuthService {
+  private passwordChangeFlagKey(userId: string) {
+    return `force_password_change:${userId}`;
+  }
+
+  private async isPasswordChangeRequired(userId: string) {
+    const row = await prisma.platformSettings.findUnique({
+      where: { key: this.passwordChangeFlagKey(userId) },
+      select: { value: true },
+    });
+    return Boolean((row?.value as Record<string, unknown> | null)?.required === true);
+  }
+
+  private async setPasswordChangeRequired(
+    userId: string,
+    required: boolean,
+    metadata?: Record<string, unknown>
+  ) {
+    const key = this.passwordChangeFlagKey(userId);
+    if (!required) {
+      await prisma.platformSettings.deleteMany({ where: { key } });
+      return;
+    }
+    const value = {
+      required: true,
+      set_at: new Date().toISOString(),
+      ...metadata,
+    } as Prisma.InputJsonValue;
+    const existing = await prisma.platformSettings.findUnique({
+      where: { key },
+      select: { id: true },
+    });
+    if (existing) {
+      await prisma.platformSettings.update({
+        where: { key },
+        data: { value },
+      });
+      return;
+    }
+    await prisma.platformSettings.create({
+      data: {
+        id: `settings-${randomUUID()}`,
+        key,
+        value,
+      },
+    });
+  }
+
+  private assertPasswordStrength(password: string) {
+    const passwordMinLength = 8;
+    if (password.length < passwordMinLength) {
+      const error: any = new Error(`Le mot de passe doit contenir au moins ${passwordMinLength} caractères`);
+      error.statusCode = 400;
+      throw error;
+    }
+    if (!/[a-zA-Z]/.test(password)) {
+      const error: any = new Error('Le mot de passe doit contenir au moins une lettre');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (!/\d/.test(password)) {
+      const error: any = new Error('Le mot de passe doit contenir au moins un chiffre');
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  private getPasswordResetSecret() {
+    return String(process.env.PASSWORD_RESET_SECRET || process.env.JWT_SECRET || '').trim();
+  }
+
+  private buildPasswordResetUrl(token: string) {
+    const base =
+      String(process.env.FRONTEND_PASSWORD_RESET_URL || process.env.CORS_ORIGIN || 'http://localhost:5173').trim();
+    const root = base.replace(/\/+$/, '');
+    const path = root.includes('/reset-password') ? root : `${root}/reset-password`;
+    return `${path}?token=${encodeURIComponent(token)}`;
+  }
+
   private assertJwtSecurity() {
     const jwtSecret = String(process.env.JWT_SECRET || '').trim();
     const refreshSecret = String(process.env.JWT_REFRESH_SECRET || '').trim();
@@ -90,22 +169,7 @@ class AuthService {
     const phoneDerivedEmail = phoneTrimmed ? `phone_${phoneTrimmed.replace(/\D/g, '')}@phone.afriwonder.local` : '';
 
     // Force du mot de passe : min 8 caractères, au moins une lettre et un chiffre (sécurité / consolidation)
-    const passwordMinLength = 8;
-    if (data.password.length < passwordMinLength) {
-      const error: any = new Error(`Le mot de passe doit contenir au moins ${passwordMinLength} caractères`);
-      error.statusCode = 400;
-      throw error;
-    }
-    if (!/[a-zA-Z]/.test(data.password)) {
-      const error: any = new Error('Le mot de passe doit contenir au moins une lettre');
-      error.statusCode = 400;
-      throw error;
-    }
-    if (!/\d/.test(data.password)) {
-      const error: any = new Error('Le mot de passe doit contenir au moins un chiffre');
-      error.statusCode = 400;
-      throw error;
-    }
+    this.assertPasswordStrength(data.password);
 
     // Username : alphanum + underscore, 3–30 caractères
     if (usernameTrimmed.length < 3 || usernameTrimmed.length > 30) {
@@ -154,6 +218,7 @@ class AuthService {
           profile_image: true,
           role: true,
           created_at: true,
+          login_alerts_enabled: true,
         },
       });
     } catch (e) {
@@ -314,6 +379,21 @@ class AuthService {
       });
     }
 
+    const mustChangePassword = await this.isPasswordChangeRequired(user.id);
+    if (mustChangePassword) {
+      const secret = this.getPasswordResetSecret();
+      const resetToken = jwt.sign(
+        { userId: user.id, purpose: 'password_reset' },
+        secret,
+        { expiresIn: process.env.PASSWORD_RESET_EXPIRES_IN || '30m' } as SignOptions
+      );
+      const err: any = new Error('Changement de mot de passe requis');
+      err.statusCode = 403;
+      err.code = 'PASSWORD_CHANGE_REQUIRED';
+      err.data = { resetToken };
+      throw err;
+    }
+
     // Générer les tokens
     const tokens = this.generateTokens(user.id, user.email);
 
@@ -328,9 +408,173 @@ class AuthService {
         profile_image: user.profile_image,
         role: user.role,
         is_afriwonder_pro: user.is_afriwonder_pro,
+        login_alerts_enabled: user.login_alerts_enabled,
+        created_at: user.created_at,
       },
       two_factor_verified: !!twoFactor?.is_enabled,
       ...tokens,
+    };
+  }
+
+  async requestPasswordReset(identifier: string) {
+    const identifierTrimmed = String(identifier || '').trim();
+    if (!identifierTrimmed) return { success: true };
+
+    const normalizedPhone = normalizePhone(identifierTrimmed);
+    const phoneDerivedEmail = normalizedPhone ? `phone_${normalizedPhone.replace(/\D/g, '')}@phone.afriwonder.local` : '';
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: identifierTrimmed.toLowerCase() },
+          ...(phoneDerivedEmail ? [{ email: phoneDerivedEmail }] : []),
+          { username: identifierTrimmed },
+        ],
+      },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+      },
+    });
+
+    // Ne jamais révéler si le compte existe.
+    if (!user) return { success: true };
+
+    const secret = this.getPasswordResetSecret();
+    if (!secret) {
+      logger.error('Password reset secret missing (PASSWORD_RESET_SECRET or JWT_SECRET)');
+      return { success: true };
+    }
+
+    const token = jwt.sign(
+      { userId: user.id, purpose: 'password_reset' },
+      secret,
+      { expiresIn: process.env.PASSWORD_RESET_EXPIRES_IN || '30m' } as SignOptions
+    );
+
+    const resetUrl = this.buildPasswordResetUrl(token);
+    const subject = 'Réinitialisation du mot de passe AfriWonder';
+    const text =
+      `Bonjour,\n\n` +
+      `Vous avez demandé la réinitialisation de votre mot de passe.\n` +
+      `Cliquez sur ce lien (valide 30 minutes):\n${resetUrl}\n\n` +
+      `Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.\n`;
+    const html =
+      `<p>Bonjour,</p>` +
+      `<p>Vous avez demandé la réinitialisation de votre mot de passe.</p>` +
+      `<p><a href="${resetUrl}">Réinitialiser mon mot de passe</a></p>` +
+      `<p>Ce lien est valide pendant 30 minutes.</p>` +
+      `<p>Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>`;
+
+    const sent = await sendViaResend({
+      to: user.email,
+      subject,
+      text,
+      html,
+    });
+
+    if (!sent) {
+      logger.warn('Password reset email not sent via provider', { userId: user.id });
+      if (process.env.NODE_ENV !== 'production') {
+        logger.info('Password reset fallback URL (dev only)', { userId: user.id, resetUrl });
+      }
+    }
+
+    return { success: true };
+  }
+
+  async resetPasswordWithToken(token: string, newPassword: string) {
+    this.assertPasswordStrength(newPassword);
+    const secret = this.getPasswordResetSecret();
+    if (!secret) {
+      const err: any = new Error('Configuration reset password indisponible');
+      err.statusCode = 503;
+      throw err;
+    }
+
+    let decoded: { userId?: string; purpose?: string };
+    try {
+      decoded = jwt.verify(token, secret) as { userId?: string; purpose?: string };
+    } catch {
+      const err: any = new Error('Lien de réinitialisation invalide ou expiré');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (!decoded?.userId || decoded.purpose !== 'password_reset') {
+      const err: any = new Error('Lien de réinitialisation invalide');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const password_hash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: decoded.userId },
+      data: { password_hash },
+    });
+    await this.setPasswordChangeRequired(decoded.userId, false);
+    return { success: true };
+  }
+
+  async adminIssueTemporaryPassword(targetUserId: string, adminId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, email: true, username: true },
+    });
+    if (!user) {
+      const err: any = new Error('Utilisateur non trouvé');
+      err.statusCode = 404;
+      throw err;
+    }
+    const temporaryPassword = randomBytes(9).toString('base64url');
+    const password_hash = await bcrypt.hash(temporaryPassword, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password_hash },
+    });
+    await this.setPasswordChangeRequired(user.id, true, {
+      set_by: adminId,
+      reason: 'admin_temporary_password',
+    });
+    const loginUrl =
+      process.env.FRONTEND_URL?.trim() ||
+      process.env.FRONTEND_BASE_URL?.trim() ||
+      'http://localhost:8081';
+    const safeUsername = user.username || user.email || 'utilisateur';
+    const html = `
+      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
+        <h2>AfriWonder - Mot de passe temporaire</h2>
+        <p>Bonjour ${safeUsername},</p>
+        <p>Un administrateur a genere un mot de passe temporaire pour votre compte.</p>
+        <p><strong>Mot de passe temporaire:</strong> ${temporaryPassword}</p>
+        <p>Connectez-vous puis changez immediatement votre mot de passe depuis l'ecran obligatoire.</p>
+        <p><a href="${loginUrl}">Se connecter a AfriWonder</a></p>
+        <p>Si vous n'etes pas a l'origine de cette action, contactez le support AfriWonder.</p>
+      </div>
+    `;
+    const sent = await sendViaResend({
+      to: user.email,
+      subject: 'AfriWonder - Votre mot de passe temporaire',
+      text: `Votre mot de passe temporaire AfriWonder est: ${temporaryPassword}. Connectez-vous puis changez immediatement votre mot de passe.`,
+      html,
+    });
+    if (!sent) {
+      logger.warn('Temporary password email not sent via provider', { userId: user.id, email: user.email });
+      if (process.env.NODE_ENV !== 'production') {
+        logger.info('Temporary password fallback (dev only)', {
+          userId: user.id,
+          email: user.email,
+          temporaryPassword,
+        });
+      }
+    }
+    return {
+      userId: user.id,
+      email: user.email,
+      username: user.username,
+      temporaryPassword,
+      emailSent: sent,
+      mustChangeOnNextLogin: true,
     };
   }
 
@@ -409,6 +653,7 @@ class AuthService {
         replay_premium: true,
         monetization_enabled: true,
         is_afriwonder_pro: true,
+        login_alerts_enabled: true,
       },
     });
 
@@ -437,6 +682,7 @@ class AuthService {
       role: true,
       created_at: true,
       apple_id: true,
+      login_alerts_enabled: true,
     } as const;
 
     let user =
@@ -623,6 +869,7 @@ class AuthService {
         profile_image: true,
         role: true,
         created_at: true,
+        login_alerts_enabled: true,
       },
     });
 
@@ -670,6 +917,49 @@ class AuthService {
       accessToken,
       refreshToken,
     };
+  }
+
+  /**
+   * Changement de mot de passe pour un utilisateur déjà authentifié.
+   * Comptes purement OAuth (password_hash vide) : erreur 400 explicite.
+   */
+  async changePasswordForLoggedInUser(userId: string, currentPassword: string, newPassword: string) {
+    this.assertPasswordStrength(newPassword);
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { password_hash: true },
+    });
+    if (!user) {
+      const err: any = new Error('Utilisateur non trouvé');
+      err.statusCode = 404;
+      throw err;
+    }
+    const hash = (user.password_hash || '').trim();
+    if (!hash) {
+      const err: any = new Error(
+        'Compte connecté via un fournisseur externe. Utilisez « Mot de passe oublié » pour définir un mot de passe, ou le support AfriWonder.',
+      );
+      err.statusCode = 400;
+      err.code = 'OAUTH_NO_PASSWORD';
+      throw err;
+    }
+    const ok = await bcrypt.compare(currentPassword, hash);
+    if (!ok) {
+      const err: any = new Error('Mot de passe actuel incorrect');
+      err.statusCode = 401;
+      throw err;
+    }
+    if (currentPassword === newPassword) {
+      const err: any = new Error('Le nouveau mot de passe doit être différent de l’actuel');
+      err.statusCode = 400;
+      throw err;
+    }
+    const password_hash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { password_hash },
+    });
+    return { success: true };
   }
 }
 

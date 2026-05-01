@@ -1,11 +1,12 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { isExpoGoApp } from '../config/expoRuntime';
 import { registerMobilePushToken } from './mobileApiService';
 import { secureStorage } from '../utils/secureStorage';
 
 type ExpoNotifications = typeof import('expo-notifications');
 
-const isExpoGo = Constants.appOwnership === 'expo';
+const isExpoGo = isExpoGoApp();
 
 /** Placeholder dans app.json tant que le vrai `eas.projectId` n’est pas configuré. */
 const PLACEHOLDER_EAS_PROJECT_ID = '00000000-0000-4000-8000-000000000000';
@@ -24,27 +25,35 @@ class NotificationService {
   private handlerConfigured = false;
   private notificationsMod: ExpoNotifications | null = null;
 
-  /** Ne charge pas expo-notifications dans Expo Go (SDK 53+ : push retiré + erreurs au chargement du module). */
+  /**
+   * Web : pas de module push natif (voir `initialize`). Sans retour hâtif ici, `import('expo-notifications')`
+   * au boot via `onNotificationResponse` dans `_layout` peut échouer (chunk async) → rejection non gérée + overlay rouge.
+   * Expo Go natif : SDK 53+ push retiré / erreurs au chargement du module.
+   */
   private async loadNotifications(): Promise<ExpoNotifications | null> {
-    if (isExpoGo && Platform.OS !== 'web') {
+    if (Platform.OS === 'web') return null;
+    if (isExpoGo) return null;
+    if (this.notificationsMod) return this.notificationsMod;
+    try {
+      const mod = await import('expo-notifications');
+      this.notificationsMod = mod;
+      if (!this.handlerConfigured) {
+        mod.setNotificationHandler({
+          handleNotification: async () => ({
+            shouldShowAlert: true,
+            shouldPlaySound: true,
+            shouldSetBadge: true,
+            shouldShowBanner: true,
+            shouldShowList: true,
+          }),
+        });
+        this.handlerConfigured = true;
+      }
+      return mod;
+    } catch (err) {
+      console.log('[Notifications] loadNotifications:', err);
       return null;
     }
-    if (this.notificationsMod) return this.notificationsMod;
-    const mod = await import('expo-notifications');
-    this.notificationsMod = mod;
-    if (!this.handlerConfigured) {
-      mod.setNotificationHandler({
-        handleNotification: async () => ({
-          shouldShowAlert: true,
-          shouldPlaySound: true,
-          shouldSetBadge: true,
-          shouldShowBanner: true,
-          shouldShowList: true,
-        }),
-      });
-      this.handlerConfigured = true;
-    }
-    return mod;
   }
 
   async initialize() {
@@ -103,6 +112,14 @@ class NotificationService {
           importance: Notifications.AndroidImportance.HIGH,
           vibrationPattern: [0, 250, 250, 250],
           sound: 'default',
+        });
+
+        await Notifications.setNotificationChannelAsync('calls', {
+          name: 'Appels',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 400, 250, 400],
+          sound: 'default',
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
         });
       }
 

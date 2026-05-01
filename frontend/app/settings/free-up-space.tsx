@@ -56,9 +56,9 @@ export default function FreeUpSpaceScreen() {
         }
       }
       await compute();
-      Alert.alert('Free up space', 'Local cache cleared.');
+      Alert.alert('Espace libéré', 'Le cache local a bien été vidé.');
     } catch {
-      Alert.alert('Error', 'Could not clear all caches.');
+      Alert.alert('Cache non vidé', 'Une partie du cache n’a pas pu être supprimée. Réessayez dans quelques instants.');
     } finally {
       setPurging(false);
     }
@@ -75,10 +75,10 @@ export default function FreeUpSpaceScreen() {
         </TouchableOpacity>
       </View>
 
-      <SettingsSection title="What will be cleared">
-        <SettingsRow variant="navigate" icon="server-outline" label="HTTP cache" onPress={() => {}} />
-        <SettingsRow variant="navigate" icon="document-outline" label="Drafts" onPress={() => {}} />
-        <SettingsRow variant="navigate" icon="cloud-download-outline" label="Offline videos" onPress={() => {}} />
+      <SettingsSection title="Ce qui sera effacé">
+        <SettingsRow variant="info" icon="server-outline" label="Cache HTTP (images, pages, réponses API)" />
+        <SettingsRow variant="info" icon="document-outline" label="Brouillons de publications non envoyés" />
+        <SettingsRow variant="info" icon="cloud-download-outline" label="Vidéos en cache hors-ligne" />
       </SettingsSection>
     </SettingsScreen>
   );

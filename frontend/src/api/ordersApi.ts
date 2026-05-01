@@ -63,7 +63,7 @@ export interface CreateOrderPayload {
   /** Méthode de paiement : `orange_money`, `wave`, `wallet`, `stripe`, etc. */
   payment_method: string;
   /** Optionnel — sinon le panier serveur est utilisé. */
-  items?: Array<{ productId: string; quantity: number }>;
+  items?: { productId: string; quantity: number }[];
   shipping_city?: string;
   source?: 'marketplace' | 'live';
   live_id?: string;

@@ -6,7 +6,7 @@ import { router } from 'expo-router';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { useAuthStore } from '../../src/store/authStore';
 import { updateMobileDeviceSettings } from '../../src/services/mobileApiService';
-import { formatDataEstimateBytes, useDataSaver } from '../../src/dataSaver/DataSaverContext';
+import { formatDataEstimateBytes, useDataSaver, useTodayDataUsage } from '../../src/dataSaver/DataSaverContext';
 import { MIN_TOUCH_TARGET } from '../../src/theme/designSystem';
 
 export default function DataSaverScreen() {
@@ -15,7 +15,6 @@ export default function DataSaverScreen() {
   const updateUser = useAuthStore((s) => s.updateUser);
   const [enabled, setEnabled] = useState(Boolean(user?.data_saver_mode));
   const {
-    todayUsageBytes,
     refreshTodayUsage,
     autoSlowNetwork,
     effectiveDataSaver,
@@ -23,6 +22,7 @@ export default function DataSaverScreen() {
     reduceAnimations,
     setReduceAnimations,
   } = useDataSaver();
+  const todayUsageBytes = useTodayDataUsage();
 
   useEffect(() => {
     setEnabled(Boolean(user?.data_saver_mode));

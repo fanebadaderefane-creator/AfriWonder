@@ -62,6 +62,10 @@ export default function OrderDetailScreen() {
       />
     );
   }
+  return <OrderDetailContent />;
+}
+
+function OrderDetailContent() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [order, setOrder] = useState<Order | null>(null);

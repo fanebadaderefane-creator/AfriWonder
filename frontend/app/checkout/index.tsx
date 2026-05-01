@@ -20,11 +20,13 @@ import cartApi, { Cart } from '../../src/api/cartApi';
 import ordersApi from '../../src/api/ordersApi';
 import apiClient from '../../src/api/client';
 
-type PaymentMethodId = 'orange_money' | 'wave' | 'wallet';
+type PaymentMethodId = 'orange_money' | 'wave' | 'mtn_money' | 'moov_money' | 'wallet';
 
 const PAYMENT_METHODS: { id: PaymentMethodId; name: string; icon: keyof typeof Ionicons.glyphMap; color: string }[] = [
   { id: 'orange_money', name: 'Orange Money', icon: 'phone-portrait', color: '#FF6B00' },
   { id: 'wave', name: 'Wave', icon: 'water', color: '#1DC1EC' },
+  { id: 'mtn_money', name: 'MTN Mobile Money', icon: 'phone-portrait', color: '#FFCC00' },
+  { id: 'moov_money', name: 'Moov Money', icon: 'phone-portrait', color: '#0066CC' },
   { id: 'wallet', name: 'Mon portefeuille', icon: 'wallet', color: Colors.primary },
 ];
 
@@ -40,6 +42,10 @@ export default function CheckoutScreen() {
       />
     );
   }
+  return <CheckoutContent />;
+}
+
+function CheckoutContent() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ paymentMethod?: string }>();
 
@@ -158,6 +164,11 @@ export default function CheckoutScreen() {
         router.replace({
           pathname: '/checkout/wave' as any,
           params: { orderId: order.id, amount: String(total) },
+        });
+      } else if (paymentMethod === 'mtn_money' || paymentMethod === 'moov_money') {
+        router.replace({
+          pathname: '/checkout/mobile-money' as any,
+          params: { orderId: order.id, amount: String(total), provider: paymentMethod },
         });
       } else {
         await apiClient.post('/payments/wallet/pay-order', { orderId: order.id });

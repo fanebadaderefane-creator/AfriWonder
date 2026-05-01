@@ -1,7 +1,74 @@
+import type { Prisma } from '@prisma/client';
 import prisma from '../config/database.js';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
+
+/** Publications « photo » (modèle Video) à mélanger avec les posts Moments. */
+const MOMENTS_PHOTO_MEDIA_TYPES = ['image', 'photo'] as const;
+
+function buildMomentsPhotoVideoWhere(opts: { userId?: string; viewerId?: string }): Prisma.VideoWhereInput {
+  const now = new Date();
+  const base: Prisma.VideoWhereInput = {
+    video_url: { not: { contains: 'example.com' } },
+    algo_tier: { not: 'dead' },
+    media_type: { in: [...MOMENTS_PHOTO_MEDIA_TYPES] },
+    OR: [{ scheduled_at: null }, { scheduled_at: { lte: now } }],
+  };
+  if (!opts.userId) {
+    return { ...base, visibility: 'public' };
+  }
+  const w: Prisma.VideoWhereInput = { ...base, creator_id: opts.userId };
+  if (opts.viewerId && opts.userId && opts.viewerId !== opts.userId) {
+    w.visibility = 'public';
+  } else {
+    w.visibility = { not: 'archived' };
+  }
+  return w;
+}
+
+/** Forme proche d’un `Post` API pour le client Moments (`feed.tsx`). */
+function mapPhotoVideoToMomentRow(v: {
+  id: string;
+  creator_id: string;
+  title: string;
+  description: string | null;
+  video_url: string;
+  thumbnail_url: string | null;
+  visibility: string;
+  scheduled_at: Date | null;
+  comments_count: number;
+  created_at: Date;
+  updated_at: Date;
+  creator: { id: string; username: string | null; full_name: string | null; profile_image: string | null };
+}): Record<string, unknown> {
+  const img =
+    (typeof v.thumbnail_url === 'string' && v.thumbnail_url.trim()) || String(v.video_url || '').trim();
+  const textParts = [v.title, v.description].map((x) => String(x || '').trim()).filter(Boolean);
+  return {
+    id: v.id,
+    user_id: v.creator_id,
+    text: textParts.join('\n\n') || '',
+    created_at: v.created_at,
+    updated_at: v.updated_at,
+    visibility: v.visibility,
+    scheduled_at: v.scheduled_at,
+    is_pinned: false,
+    image_url: img || null,
+    images: img
+      ? [{ id: `pvimg-${v.id}`, post_id: v.id, image_url: img, position: 0 }]
+      : [],
+    user: {
+      id: v.creator.id,
+      username: v.creator.username,
+      full_name: v.creator.full_name,
+      profile_image: v.creator.profile_image,
+    },
+    poll: null,
+    _count: { comments: v.comments_count ?? 0 },
+    moment_from_video: true,
+  };
+}
 
 /** Normalise le champ `images` (tableau d’URLs) — évite perte si format inattendu côté client. */
 function normalizeImageUrlsInput(images: unknown): string[] {
@@ -117,7 +184,54 @@ export async function listPosts(options: {
     delete where.OR;
   }
 
-  const [rows, total] = await Promise.all([
+  const mergePhotoMoments =
+    !options.includeScheduled &&
+    options.visibility !== 'archived' &&
+    options.visibility == null;
+
+  if (!mergePhotoMoments) {
+    const [rows, total] = await Promise.all([
+      prisma.post.findMany({
+        where,
+        include: {
+          user: { select: { id: true, username: true, full_name: true, profile_image: true } },
+          poll: true,
+          images: { orderBy: { position: 'asc' } },
+          _count: { select: { comments: true } },
+        },
+        orderBy: [{ is_pinned: 'desc' }, { created_at: 'desc' }],
+        skip,
+        take: limit,
+      }),
+      prisma.post.count({ where }),
+    ]);
+
+    const posts = await Promise.all(
+      rows.map(async (post) => {
+        const p = post as any;
+        if (p.poll && p.poll.id) {
+          p.poll_results = await getPollResults(p.poll.id);
+          if (options.viewerId) {
+            const myVote = await prisma.postPollVote.findUnique({
+              where: { poll_id_user_id: { poll_id: p.poll.id, user_id: options.viewerId } },
+              select: { option_index: true },
+            });
+            p.my_poll_vote = myVote?.option_index ?? null;
+          }
+        }
+        return p;
+      })
+    );
+    return { posts, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  const photoWhere = buildMomentsPhotoVideoWhere({
+    userId: options.userId,
+    viewerId: options.viewerId,
+  });
+  const poolSize = Math.min(300, Math.max(80, skip + limit * 3));
+
+  const [postRows, photoVideos, postTotal, videoPhotoTotal] = await Promise.all([
     prisma.post.findMany({
       where,
       include: {
@@ -127,15 +241,38 @@ export async function listPosts(options: {
         _count: { select: { comments: true } },
       },
       orderBy: [{ is_pinned: 'desc' }, { created_at: 'desc' }],
-      skip,
-      take: limit,
+      take: poolSize,
+      skip: 0,
+    }),
+    prisma.video.findMany({
+      where: photoWhere,
+      include: {
+        creator: { select: { id: true, username: true, full_name: true, profile_image: true } },
+      },
+      orderBy: { created_at: 'desc' },
+      take: poolSize,
+      skip: 0,
     }),
     prisma.post.count({ where }),
+    prisma.video.count({ where: photoWhere }),
   ]);
 
+  const synthetic = photoVideos.map((v) => mapPhotoVideoToMomentRow(v as any));
+  const combined = [...postRows, ...synthetic].sort((a, b) => {
+    const ap = (a as { is_pinned?: boolean }).is_pinned ? 1 : 0;
+    const bp = (b as { is_pinned?: boolean }).is_pinned ? 1 : 0;
+    if (ap !== bp) return bp - ap;
+    return new Date((b as { created_at: Date }).created_at).getTime()
+      - new Date((a as { created_at: Date }).created_at).getTime();
+  });
+  const paged = combined.slice(skip, skip + limit);
+
   const posts = await Promise.all(
-    rows.map(async (post) => {
-      const p = post as any;
+    paged.map(async (row) => {
+      if ((row as { moment_from_video?: boolean }).moment_from_video) {
+        return row;
+      }
+      const p = row as any;
       if (p.poll && p.poll.id) {
         p.poll_results = await getPollResults(p.poll.id);
         if (options.viewerId) {
@@ -149,7 +286,9 @@ export async function listPosts(options: {
       return p;
     })
   );
-  return { posts, total, page, limit, totalPages: Math.ceil(total / limit) };
+
+  const total = postTotal + videoPhotoTotal;
+  return { posts, total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) };
 }
 
 export async function getPostById(postId: string, viewerId?: string) {

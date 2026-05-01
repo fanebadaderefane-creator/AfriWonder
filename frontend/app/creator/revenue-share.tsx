@@ -34,7 +34,6 @@ const WITHDRAWAL_METHODS = [
   { id: 'orange-money', name: 'Orange Money', icon: 'phone-portrait' as const, color: '#FF6600', fee: '1 %', minAmount: 5000 },
   { id: 'wave', name: 'Wave', icon: 'water' as const, color: '#1DC3E2', fee: '0,5 %', minAmount: 2000 },
   { id: 'moov-money', name: 'MTN MoMo', icon: 'phone-portrait' as const, color: '#FFCC00', fee: '1 %', minAmount: 5000 },
-  { id: 'bank_transfer', name: 'Virement bancaire', icon: 'business' as const, color: '#3B82F6', fee: '2 %', minAmount: 50_000 },
 ];
 
 type DashboardMonetization = {
@@ -116,13 +115,6 @@ export default function RevenueShareScreen() {
   };
 
   const requestWithdrawal = (methodId: string) => {
-    if (methodId === 'bank_transfer') {
-      Alert.alert(
-        'Bientôt disponible',
-        'Le virement bancaire arrive prochainement. Utilisez Orange Money ou Wave pour l’instant.',
-      );
-      return;
-    }
     const balance = Number(dashboard?.revenues?.total_fcfa) || 0;
     const minAmount = WITHDRAWAL_METHODS.find((m) => m.id === methodId)?.minAmount ?? 5000;
     if (balance < minAmount) {
@@ -199,7 +191,7 @@ export default function RevenueShareScreen() {
             <Ionicons name="flash" size={28} color={Colors.primary} />
             <Text style={styles.enableTitle}>Demander la monétisation</Text>
             <Text style={styles.enableDesc}>
-              Vous remplissez les conditions AfriWonder (abonnés, vues 30 jours, vidéos, engagement, compte vérifié).
+              Vous remplissez les conditions AfriWonder (Wonder, vues 30 jours, vidéos, engagement, compte vérifié).
               Envoyez une demande : validation par l’équipe sous quelques jours.
             </Text>
             <TouchableOpacity style={styles.enableBtn} onPress={() => void requestMonetization()}>
@@ -222,7 +214,7 @@ export default function RevenueShareScreen() {
             <Text style={styles.conditionsReason}>{mon.status.reason || 'Conditions non encore remplies.'}</Text>
             {conditions?.subscribers ? (
               <Text style={styles.condLine}>
-                Abonnés : {fmtNum(conditions.subscribers.current)} / {fmtNum(conditions.subscribers.required)}
+                Wonder : {fmtNum(conditions.subscribers.current)} / {fmtNum(conditions.subscribers.required)}
                 {conditions.subscribers.met ? ' ✓' : ''}
               </Text>
             ) : null}
@@ -278,7 +270,7 @@ export default function RevenueShareScreen() {
               {nextTier ? (
                 <View style={styles.tierProgress}>
                   <Text style={styles.tierProgressText}>
-                    Prochain palier : {nextTier.name} ({fmtNum(nextTier.minFollowers)} abonnés)
+                    Prochain palier : {nextTier.name} ({fmtNum(nextTier.minFollowers)} Wonder)
                   </Text>
                   <View style={styles.tierBar}>
                     <View
@@ -289,7 +281,7 @@ export default function RevenueShareScreen() {
                     />
                   </View>
                   <Text style={styles.tierProgressSub}>
-                    {fmtNum(followers)} / {fmtNum(nextTier.minFollowers)} abonnés
+                    {fmtNum(followers)} / {fmtNum(nextTier.minFollowers)} Wonder
                   </Text>
                 </View>
               ) : null}
@@ -336,7 +328,7 @@ export default function RevenueShareScreen() {
                     {tier.name}
                   </Text>
                   <Text style={styles.tierRowReq}>
-                    {tier.minFollowers === 0 ? 'Aucun minimum' : `${fmtNum(tier.minFollowers)}+ abonnés`}
+                    {tier.minFollowers === 0 ? 'Aucun minimum' : `${fmtNum(tier.minFollowers)}+ Wonder`}
                   </Text>
                 </View>
                 <Text style={styles.tierRowRate}>

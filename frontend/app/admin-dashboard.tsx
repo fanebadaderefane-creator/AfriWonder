@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Dimensions,
   ActivityIndicator,
   Alert,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -56,6 +57,11 @@ export default function AdminDashboardScreen() {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [stats, setStats] = useState<Record<string, number>>({});
   const [users, setUsers] = useState<any[]>([]);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [allUsersPage, setAllUsersPage] = useState(1);
+  const [allUsersTotalPages, setAllUsersTotalPages] = useState(1);
+  const [allUsersLoadingMore, setAllUsersLoadingMore] = useState(false);
+  const [userSearch, setUserSearch] = useState('');
   const [reports, setReports] = useState<any[]>([]);
   const [alerts, setAlerts] = useState<{
     pending_reports?: number;
@@ -68,6 +74,8 @@ export default function AdminDashboardScreen() {
     revenue?: { marketplace_revenue_fcfa?: number; completed_orders?: number };
     content?: { videos_uploaded?: number; lives_started_in_period?: number };
   }>({});
+  const [tempResetEmail, setTempResetEmail] = useState('');
+  const [issuingTempPassword, setIssuingTempPassword] = useState(false);
 
   const isAdmin = isAdminUser(user);
 
@@ -114,7 +122,11 @@ export default function AdminDashboardScreen() {
 
       if (usersRes.status === 'fulfilled') {
         const ud = usersRes.value.data?.data ?? usersRes.value.data;
-        setUsers(Array.isArray(ud?.users) ? ud.users : []);
+        const firstPageUsers = Array.isArray(ud?.users) ? ud.users : [];
+        setUsers(firstPageUsers);
+        setAllUsers(firstPageUsers);
+        setAllUsersPage(1);
+        setAllUsersTotalPages(Number(ud?.pagination?.totalPages) || 1);
       }
       if (reportsRes.status === 'fulfilled') {
         const rd = reportsRes.value.data?.data ?? reportsRes.value.data;
@@ -198,6 +210,23 @@ export default function AdminDashboardScreen() {
     }
   };
 
+  const handleRestoreUser = async (userId: string) => {
+    try {
+      await apiClient.patch(`/admin/users/${userId}/suspend`, {
+        suspended: false,
+        reason: 'Restauration depuis la console admin mobile',
+      });
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, account_suspended: false } : u)),
+      );
+      setAllUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, account_suspended: false } : u)),
+      );
+    } catch {
+      /* ignore */
+    }
+  };
+
   const handleResolveReport = async (reportId: string, action: 'remove' | 'warn' | 'dismiss') => {
     try {
       const status = action === 'dismiss' ? 'dismissed' : 'resolved';
@@ -216,6 +245,57 @@ export default function AdminDashboardScreen() {
       Alert.alert('Signalement', String(msg));
     }
   };
+
+  const handleIssueTemporaryPassword = async () => {
+    const email = tempResetEmail.trim().toLowerCase();
+    if (!email) {
+      Alert.alert('Champ requis', "Entre l'email de l'utilisateur.");
+      return;
+    }
+    setIssuingTempPassword(true);
+    try {
+      const res = await apiClient.post('/admin/users/temporary-password/by-email', { email });
+      const data = res.data?.data ?? res.data;
+      Alert.alert(
+        'Mot de passe temporaire généré',
+        `Email: ${data?.email || email}\nMot de passe temporaire: ${data?.temporaryPassword || '(non reçu)'}\n\nL'utilisateur devra changer son mot de passe à la prochaine connexion.`
+      );
+      setTempResetEmail('');
+    } catch (e: any) {
+      const msg = e?.response?.data?.error || e?.response?.data?.message || 'Action refusée ou erreur réseau';
+      Alert.alert('Erreur', String(msg));
+    } finally {
+      setIssuingTempPassword(false);
+    }
+  };
+
+  const loadMoreUsers = useCallback(async () => {
+    if (allUsersLoadingMore || allUsersPage >= allUsersTotalPages) return;
+    setAllUsersLoadingMore(true);
+    try {
+      const nextPage = allUsersPage + 1;
+      const res = await apiClient.get(API_ROUTES.ADMIN_USERS, {
+        params: { page: nextPage, limit: 20 },
+      });
+      const data = res.data?.data ?? res.data;
+      const nextUsers = Array.isArray(data?.users) ? data.users : [];
+      setAllUsers((prev) => [...prev, ...nextUsers]);
+      setAllUsersPage(nextPage);
+      setAllUsersTotalPages(Number(data?.pagination?.totalPages) || allUsersTotalPages);
+    } catch {
+      /* ignore */
+    } finally {
+      setAllUsersLoadingMore(false);
+    }
+  }, [allUsersLoadingMore, allUsersPage, allUsersTotalPages]);
+
+  const filteredAllUsers = useMemo(() => {
+    const q = userSearch.trim().toLowerCase();
+    if (!q) return allUsers;
+    return allUsers.filter((u) =>
+      [u?.full_name, u?.username, u?.email].some((v) => String(v || '').toLowerCase().includes(q))
+    );
+  }, [allUsers, userSearch]);
 
   if (!isAdmin) {
     return (
@@ -314,6 +394,18 @@ export default function AdminDashboardScreen() {
           <>
             {activeTab === 'overview' && (
               <>
+                <TouchableOpacity
+                  style={styles.superAppBanner}
+                  onPress={() => router.push('/(admin)/super-app' as never)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="rocket" size={22} color="#FFF" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.superAppBannerTitle}>Super-app — Modules avancés</Text>
+                    <Text style={styles.superAppBannerSub}>Tontines, bus, hôtels, factures, épargne, cartes, live commerce, médecins</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={22} color="#FFF" />
+                </TouchableOpacity>
                 <View style={styles.kpiGrid}>
                   {kpis.map((kpi, i) => (
                     <LinearGradient
@@ -480,6 +572,27 @@ export default function AdminDashboardScreen() {
             {activeTab === 'users' && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Utilisateurs récents ({users.length})</Text>
+                <View style={styles.tempResetWrap}>
+                  <TextInput
+                    style={styles.tempResetInput}
+                    placeholder="Email pour mot de passe temporaire"
+                    placeholderTextColor={Colors.textMuted}
+                    value={tempResetEmail}
+                    onChangeText={setTempResetEmail}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="email-address"
+                  />
+                  <TouchableOpacity
+                    style={[styles.tempResetBtn, issuingTempPassword && styles.tempResetBtnDisabled]}
+                    onPress={() => void handleIssueTemporaryPassword()}
+                    disabled={issuingTempPassword}
+                  >
+                    <Text style={styles.tempResetBtnText}>
+                      {issuingTempPassword ? 'Génération...' : 'Générer mot de passe temporaire'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 {users.map((u) => (
                   <View key={u.id} style={styles.userRow}>
                     <View style={styles.userAvatar}>
@@ -493,11 +606,14 @@ export default function AdminDashboardScreen() {
                     </View>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                       {u.account_suspended ? (
-                        <View style={[styles.badge, { backgroundColor: 'rgba(239,68,68,0.2)' }]}>
-                          <Text style={{ color: '#EF4444', fontSize: 10, fontWeight: '700' }}>
-                            SUSPENDU
+                        <TouchableOpacity
+                          style={[styles.badge, { backgroundColor: 'rgba(16,185,129,0.15)' }]}
+                          onPress={() => void handleRestoreUser(u.id)}
+                        >
+                          <Text style={{ color: '#10B981', fontSize: 10, fontWeight: '700' }}>
+                            Restaurer
                           </Text>
-                        </View>
+                        </TouchableOpacity>
                       ) : (
                         <TouchableOpacity
                           style={[styles.badge, { backgroundColor: 'rgba(239,68,68,0.15)' }]}
@@ -519,6 +635,74 @@ export default function AdminDashboardScreen() {
                   </View>
                 ))}
                 {users.length === 0 ? <Text style={styles.emptyText}>Aucun utilisateur</Text> : null}
+
+                <Text style={[styles.sectionTitle, { marginTop: Spacing.lg }]}>
+                  Tous les utilisateurs ({filteredAllUsers.length}
+                  {userSearch.trim() ? ` filtrés / ${allUsers.length}` : ''})
+                </Text>
+                <TextInput
+                  style={styles.tempResetInput}
+                  placeholder="Rechercher par nom, pseudo ou email"
+                  placeholderTextColor={Colors.textMuted}
+                  value={userSearch}
+                  onChangeText={setUserSearch}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {filteredAllUsers.map((u) => (
+                  <View key={`all-${u.id}`} style={styles.userRow}>
+                    <View style={styles.userAvatar}>
+                      <Text style={styles.userAvatarText}>
+                        {(u.full_name || u.username || 'U')[0].toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.userName}>{u.full_name || u.username}</Text>
+                      <Text style={styles.userEmail}>{u.email}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {u.account_suspended ? (
+                        <TouchableOpacity
+                          style={[styles.badge, { backgroundColor: 'rgba(16,185,129,0.15)' }]}
+                          onPress={() => void handleRestoreUser(u.id)}
+                        >
+                          <Text style={{ color: '#10B981', fontSize: 10, fontWeight: '700' }}>
+                            Restaurer
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={[styles.badge, { backgroundColor: 'rgba(239,68,68,0.15)' }]}
+                          onPress={() => void handleBanUser(u.id)}
+                        >
+                          <Text style={{ color: '#EF4444', fontSize: 10, fontWeight: '600' }}>
+                            Suspendre
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      {u.is_verified ? (
+                        <View style={[styles.badge, { backgroundColor: 'rgba(16,185,129,0.2)' }]}>
+                          <Text style={{ color: '#10B981', fontSize: 10, fontWeight: '700' }}>
+                            VÉRIFIÉ
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+                {allUsersPage < allUsersTotalPages ? (
+                  <TouchableOpacity
+                    style={[styles.tempResetBtn, { marginTop: Spacing.sm }]}
+                    onPress={() => void loadMoreUsers()}
+                    disabled={allUsersLoadingMore}
+                  >
+                    <Text style={styles.tempResetBtnText}>
+                      {allUsersLoadingMore
+                        ? 'Chargement...'
+                        : `Charger plus (${allUsersPage}/${allUsersTotalPages})`}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             )}
 
@@ -681,6 +865,15 @@ const styles = StyleSheet.create({
   tabText: { fontSize: FontSizes.sm, color: Colors.textSecondary, fontWeight: '600' },
   tabTextActive: { color: '#FFF' },
   kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: Spacing.xl, gap: 10 },
+  superAppBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    marginHorizontal: Spacing.xl, marginTop: Spacing.md,
+    paddingVertical: Spacing.md, paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.lg,
+  },
+  superAppBannerTitle: { color: '#FFF', fontSize: FontSizes.md, fontWeight: '800' },
+  superAppBannerSub: { color: 'rgba(255,255,255,0.85)', fontSize: FontSizes.xs, marginTop: 2 },
   kpiCard: {
     width: (width - 50) / 2,
     padding: 16,
@@ -777,6 +970,33 @@ const styles = StyleSheet.create({
   userAvatarText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
   userName: { color: Colors.text, fontWeight: '600', fontSize: FontSizes.md },
   userEmail: { color: Colors.textSecondary, fontSize: FontSizes.xs },
+  tempResetWrap: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  tempResetInput: {
+    backgroundColor: Colors.background,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    color: Colors.text,
+    fontSize: FontSizes.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  tempResetBtn: {
+    backgroundColor: Colors.primary + '33',
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.sm,
+    alignItems: 'center',
+  },
+  tempResetBtnDisabled: { opacity: 0.6 },
+  tempResetBtnText: { color: Colors.primary, fontSize: FontSizes.sm, fontWeight: '700' },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   emptyText: { color: Colors.textMuted, textAlign: 'center', paddingVertical: 30 },
   reportCard: {

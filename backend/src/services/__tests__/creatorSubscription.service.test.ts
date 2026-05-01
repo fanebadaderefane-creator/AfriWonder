@@ -22,9 +22,9 @@ describe('creatorSubscription.service', () => {
       expect(CREATOR_TIERS.basic.price_fcfa).toBe(1000);
       expect(CREATOR_TIERS.basic.label).toBe('Basic');
     });
-    it('Pro = 3000 FCFA/mois', () => {
-      expect(CREATOR_TIERS.pro.price_fcfa).toBe(3000);
-      expect(CREATOR_TIERS.pro.label).toBe('Pro');
+    it('Pro = 2500 FCFA/mois (Phase 9 — AfriWonder Pro)', () => {
+      expect(CREATOR_TIERS.pro.price_fcfa).toBe(2500);
+      expect(CREATOR_TIERS.pro.label).toBe('AfriWonder Pro');
     });
   });
 
@@ -56,17 +56,22 @@ describe('creatorSubscription.service', () => {
 
   describe('expireSubscriptions', () => {
     it('met à jour les abonnements expirés', async () => {
+      jest
+        .spyOn(prisma.creatorSubscription, 'findMany')
+        .mockResolvedValueOnce([
+          { creator_id: 'c1', tier: 'basic' as const },
+          { creator_id: 'c2', tier: 'pro' as const },
+        ] as any);
       jest.spyOn(prisma.creatorSubscription, 'updateMany').mockResolvedValueOnce({ count: 2 });
+      jest.spyOn(prisma.creatorSubscription, 'findFirst').mockResolvedValue(null);
+      jest.spyOn(prisma.user, 'update').mockResolvedValue({} as any);
 
       const count = await service.expireSubscriptions();
 
       expect(count).toBe(2);
       expect(prisma.creatorSubscription.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({
-            status: 'active',
-            expires_at: expect.any(Object),
-          }),
+          where: { status: 'active', expires_at: { lt: expect.any(Date) } },
           data: { status: 'expired' },
         })
       );

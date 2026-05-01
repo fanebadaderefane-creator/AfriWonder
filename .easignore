@@ -1,0 +1,24 @@
+# Avec l’intégration Git (EAS par défaut), EAS n’applique que le `.easignore` à la racine
+# (voir https://expo.fyi/eas-build-archive). `frontend/.easignore` seul n’est pris en compte
+# qu’avec EAS_NO_VCS + EAS_PROJECT_ROOT=frontend (ex. `npm run eas:android:preview` dans frontend).
+#
+# Ici on réduit l’archive sans toucher à `frontend/` (ex. `frontend/src/` reste inclus).
+
+# API Node — inutile pour l’APK
+/backend/
+
+# PWA (Vite) — hors périmètre EAS ; ne pas confondre avec `frontend/src/`
+/src/
+
+# Docs et outils
+/docs/
+/sdk/
+/e2e/
+/tests/
+/playwright-report/
+/test-results/
+
+# Archives / rapports
+coverage/
+**/*.log
+*.pack

@@ -52,9 +52,15 @@ describe('Securite API', () => {
   });
 
   describe('Anti-bot', () => {
-    it('User-Agent bot retourne 403', async () => {
-      const res = await request(app).get('/api/videos').set('User-Agent', 'Googlebot/2.1');
-      expect(res.status).toBe(403);
+    it('User-Agent bot retourne 403 (hors NODE_ENV=test, où le middleware est neutralisé pour Jest)', async () => {
+      const previous = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'development';
+      try {
+        const res = await request(app).get('/api/videos').set('User-Agent', 'Googlebot/2.1');
+        expect(res.status).toBe(403);
+      } finally {
+        process.env.NODE_ENV = previous;
+      }
     });
   });
 });

@@ -8,30 +8,26 @@ import {
   Animated,
   Dimensions,
   Platform,
-  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Colors } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import socketService from '../../src/services/socketService';
 import { useAuthStore } from '../../src/store/authStore';
 import apiClient from '../../src/api/client';
+import { profileAvatarUri } from '../../src/utils/avatarFallback';
+import { startLoopingCallRing } from '../../src/call/callRingtone';
+import { tryLoadReactNativeWebRtc } from '../../src/call/tryLoadReactNativeWebRtc';
 
 const { width } = Dimensions.get('window');
 
 /**
- * Appel direct WebRTC 1-1 (audio / vidéo).
+ * Appel audio/vidéo 1-1 — web (navigateur) ou Android/iOS (`react-native-webrtc` dans l’app installée).
  *
- *  - Sur **web** : utilise les API natives `RTCPeerConnection` + `getUserMedia` du navigateur,
- *    avec signalisation Socket.IO via `call:invite`, `call:accept`, `call:signal`, `call:end`
- *    (déjà relayés côté backend `backend/src/index.ts`). TURN credentials récupérées depuis
- *    `GET /api/calls/turn-credentials`.
- *  - Sur **natif** (Expo Go) : `react-native-webrtc` n'est pas dispo en runtime managé. On affiche
- *    l'écran d'appel avec un message clair indiquant que l'appel doit être pris depuis le web.
- *    Les contrôles UX restent identiques (mute / haut-parleur / vidéo on/off / raccrocher).
- *
- *  Paramètres acceptés via `useLocalSearchParams` :
+ *  Paramètres `useLocalSearchParams` :
  *  - `name`         : nom à afficher
  *  - `avatar`       : URL avatar
  *  - `type`         : `audio` (défaut) ou `video`
@@ -46,6 +42,13 @@ type SignalPayload =
   | { kind: 'ice'; candidate: RTCIceCandidateInit | null };
 
 const CALL_RING_MS = 30_000;
+const isWebRuntime = Platform.OS === 'web';
+const nativeWebRTC: any = tryLoadReactNativeWebRtc();
+const RTCPeerConnectionImpl: any = isWebRuntime ? RTCPeerConnection : nativeWebRTC?.RTCPeerConnection;
+const RTCIceCandidateImpl: any = isWebRuntime ? RTCIceCandidate : nativeWebRTC?.RTCIceCandidate;
+const RTCSessionDescriptionImpl: any = isWebRuntime ? RTCSessionDescription : nativeWebRTC?.RTCSessionDescription;
+const mediaDevicesImpl: any = isWebRuntime ? navigator?.mediaDevices : nativeWebRTC?.mediaDevices;
+const RTCViewNative: any = nativeWebRTC?.RTCView;
 
 function newCallId(): string {
   return `call-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -58,6 +61,10 @@ export default function CallScreen() {
   const avatar = String(params.avatar || '');
   const isVideo = String(params.type) === 'video';
   const otherUserId = String(params.otherUserId || '').trim();
+  const peerAvatarUri = useMemo(
+    () => profileAvatarUri(avatar, name.trim() || 'Contact'),
+    [avatar, name],
+  );
   const role = (String(params.role || 'caller') === 'receiver' ? 'receiver' : 'caller') as 'caller' | 'receiver';
   const initialCallId = String(params.callId || '').trim();
 
@@ -78,7 +85,7 @@ export default function CallScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /** Refs WebRTC (web only). Sur natif, ces refs restent vides — UI de fallback. */
+  /** Refs PeerConnection + flux média (web et natif lorsque l’appel démarre). */
   const pcRef = useRef<any>(null);
   const localStreamRef = useRef<any>(null);
   const remoteStreamRef = useRef<any>(null);
@@ -87,12 +94,19 @@ export default function CallScreen() {
   const remoteAudioElRef = useRef<HTMLAudioElement | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const startedAtRef = useRef<number | null>(null);
+  const [remoteStreamUrl, setRemoteStreamUrl] = useState<string>('');
+  const [localStreamUrl, setLocalStreamUrl] = useState<string>('');
 
   const stopAllMedia = useCallback(() => {
-    if (Platform.OS !== 'web') return;
     try {
-      const local = localStreamRef.current as MediaStream | null;
-      local?.getTracks().forEach((t) => t.stop());
+      const local = localStreamRef.current as MediaStream | { getTracks?: () => { stop?: () => void }[] } | null;
+      local?.getTracks?.().forEach((t) => {
+        try {
+          t.stop?.();
+        } catch {
+          /* ignore */
+        }
+      });
     } catch {
       /* ignore */
     }
@@ -104,7 +118,11 @@ export default function CallScreen() {
       /* ignore */
     }
     pcRef.current = null;
-  }, []);
+    if (!isWebRuntime) {
+      setLocalStreamUrl('');
+      setRemoteStreamUrl('');
+    }
+  }, [isWebRuntime]);
 
   const finishCall = useCallback(
     (reason: 'ended' | 'failed' | 'declined' = 'ended') => {
@@ -114,7 +132,7 @@ export default function CallScreen() {
       if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
       stopAllMedia();
       if (otherUserId && myUserId) {
-        socketService.emit('call:end', {
+        void socketService.ensureConnectedEmit('call:end', {
           callId: callIdRef.current,
           fromUserId: myUserId,
           toUserId: otherUserId,
@@ -165,11 +183,14 @@ export default function CallScreen() {
   }, [callState]);
 
   /**
-   * Bootstrap WebRTC sur web : récupère TURN, crée la PeerConnection, ouvre micro/caméra,
-   * démarre la signalisation socket.io.
+   * Bootstrap PeerConnection : web (navigateur) ou natif (`react-native-webrtc` présent dans la build).
    */
   useEffect(() => {
-    if (Platform.OS !== 'web') return;
+    const canRunCalls =
+      isWebRuntime ||
+      Boolean(nativeWebRTC && RTCPeerConnectionImpl && mediaDevicesImpl?.getUserMedia);
+    if (!canRunCalls) return;
+
     if (!otherUserId) {
       setErrorMsg('Identifiant du correspondant manquant.');
       return;
@@ -182,20 +203,28 @@ export default function CallScreen() {
     let cancelled = false;
 
     const setupRemoteEl = (stream: MediaStream) => {
-      if (isVideo && remoteVideoElRef.current) {
+      if (isWebRuntime && isVideo && remoteVideoElRef.current) {
         remoteVideoElRef.current.srcObject = stream;
         remoteVideoElRef.current.play().catch(() => {});
       }
-      if (remoteAudioElRef.current) {
+      if (isWebRuntime && remoteAudioElRef.current) {
         remoteAudioElRef.current.srcObject = stream;
         remoteAudioElRef.current.play().catch(() => {});
+      }
+      if (!isWebRuntime) {
+        const url = (stream as any)?.toURL?.();
+        if (url) setRemoteStreamUrl(url);
       }
     };
 
     const setupLocalEl = (stream: MediaStream) => {
-      if (isVideo && localVideoElRef.current) {
+      if (isWebRuntime && isVideo && localVideoElRef.current) {
         localVideoElRef.current.srcObject = stream;
         localVideoElRef.current.play().catch(() => {});
+      }
+      if (!isWebRuntime) {
+        const url = (stream as any)?.toURL?.();
+        if (url) setLocalStreamUrl(url);
       }
     };
 
@@ -229,7 +258,10 @@ export default function CallScreen() {
       const sig = payload.signal;
       try {
         if (sig.kind === 'sdp' && sig.sdp) {
-          await pc.setRemoteDescription(sig.sdp as RTCSessionDescriptionInit);
+          const remoteDescription = isWebRuntime
+            ? (sig.sdp as RTCSessionDescriptionInit)
+            : new RTCSessionDescriptionImpl(sig.sdp);
+          await pc.setRemoteDescription(remoteDescription);
           await flushPendingIce();
           if (sig.sdp.type === 'offer') {
             const ans = await pc.createAnswer();
@@ -239,7 +271,8 @@ export default function CallScreen() {
         } else if (sig.kind === 'ice') {
           if (!sig.candidate) return;
           if (pc.remoteDescription) {
-            await pc.addIceCandidate(sig.candidate);
+            const ice = isWebRuntime ? sig.candidate : new RTCIceCandidateImpl(sig.candidate);
+            await pc.addIceCandidate(ice);
           } else {
             pendingIceRef.current.push(sig.candidate);
           }
@@ -304,10 +337,10 @@ export default function CallScreen() {
           /* TURN non configuré : STUN seul (LAN / réseaux ouverts). */
         }
 
-        const pc = new RTCPeerConnection({ iceServers });
+        const pc = new RTCPeerConnectionImpl({ iceServers });
         pcRef.current = pc;
 
-        const remoteStream = new MediaStream();
+        const remoteStream = isWebRuntime ? new MediaStream() : new nativeWebRTC.MediaStream();
         remoteStreamRef.current = remoteStream;
 
         pc.ontrack = (ev: RTCTrackEvent) => {
@@ -331,19 +364,38 @@ export default function CallScreen() {
           }
         };
 
+        if (!isWebRuntime) {
+          try {
+            await Audio.setAudioModeAsync({
+              playsInSilentModeIOS: true,
+              allowsRecordingIOS: true,
+              interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+              interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+              shouldDuckAndroid: true,
+              playThroughEarpieceAndroid: false,
+              staysActiveInBackground: false,
+            });
+          } catch {
+            /* ignore */
+          }
+        }
+
         const constraints: MediaStreamConstraints = {
           audio: true,
           video: isVideo
             ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
             : false,
         };
-        const local = await navigator.mediaDevices.getUserMedia(constraints);
+        if (!mediaDevicesImpl?.getUserMedia) {
+          throw new Error('MEDIA_DEVICES_UNAVAILABLE');
+        }
+        const local = await mediaDevicesImpl.getUserMedia(constraints);
         if (cancelled) {
-          local.getTracks().forEach((t) => t.stop());
+          local.getTracks().forEach((t: any) => t.stop());
           return;
         }
         localStreamRef.current = local;
-        local.getTracks().forEach((t) => pc.addTrack(t, local));
+        local.getTracks().forEach((t: any) => pc.addTrack(t, local));
         setupLocalEl(local);
 
         // Persist côté backend (création directCall row).
@@ -357,9 +409,8 @@ export default function CallScreen() {
           .catch(() => {});
 
         if (role === 'caller') {
-          // Notifie l'invité via Socket.io. On attend ensuite `call:accept` (handlePeerAccepted)
-          // avant de créer l'offre SDP — sinon le receveur n'a pas encore son listener prêt.
-          socketService.emit('call:invite', {
+          // Notifie l'invité via Socket.io (+ push côté serveur). Attendre la connexion socket (cold start / réseau).
+          const invited = await socketService.ensureConnectedEmit('call:invite', {
             callId: callIdRef.current,
             fromUserId: myUserId,
             toUserId: otherUserId,
@@ -367,6 +418,11 @@ export default function CallScreen() {
             callerName: user?.full_name || user?.username || 'Quelqu’un',
             callerAvatar: user?.profile_image || user?.avatar || '',
           });
+          if (!invited) {
+            setErrorMsg('Connexion indisponible. Réessayez.');
+            finishCall('failed');
+            return;
+          }
 
           ringTimeoutRef.current = setTimeout(() => {
             if (callState !== 'connected') {
@@ -375,14 +431,18 @@ export default function CallScreen() {
             }
           }, CALL_RING_MS);
         } else {
-          // Receveur : on a TOUT préparé (PC + listeners + getUserMedia) avant d'émettre `accept`.
-          // L'offer SDP du caller arrivera ensuite via `call:signal` et `handleSignal` la traitera.
-          socketService.emit('call:accept', {
+          // Receveur : PC prêt avant accept — indispensable si l’app a été ouverte depuis une notification push.
+          const accepted = await socketService.ensureConnectedEmit('call:accept', {
             callId: callIdRef.current,
             fromUserId: myUserId,
             toUserId: otherUserId,
             type: isVideo ? 'video' : 'audio',
           });
+          if (!accepted) {
+            setErrorMsg('Connexion indisponible. Réessayez.');
+            finishCall('failed');
+            return;
+          }
           setCallState('connecting');
         }
       } catch (e: any) {
@@ -411,6 +471,20 @@ export default function CallScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [otherUserId, myUserId, isVideo, role]);
 
+  /** Tonalité d’attente pendant que le correspondant ne décroche pas (mobile + module d’appel présent). */
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    if (!nativeWebRTC) return;
+    if (role !== 'caller' || callState !== 'ringing') return;
+    let stopOutgoing: (() => Promise<void>) | null = null;
+    void startLoopingCallRing(0.58, { preset: 'outgoing' }).then((fn) => {
+      stopOutgoing = fn;
+    });
+    return () => {
+      void stopOutgoing?.();
+    };
+  }, [role, callState]);
+
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
     const s = secs % 60;
@@ -421,9 +495,12 @@ export default function CallScreen() {
   const toggleMute = useCallback(() => {
     setMuted((m) => {
       const next = !m;
-      if (Platform.OS === 'web') {
+      if (isWebRuntime) {
         const local = localStreamRef.current as MediaStream | null;
         local?.getAudioTracks().forEach((t) => (t.enabled = !next));
+      } else {
+        const local = localStreamRef.current as any;
+        local?.getAudioTracks?.().forEach((t: any) => (t.enabled = !next));
       }
       return next;
     });
@@ -434,36 +511,56 @@ export default function CallScreen() {
     if (!isVideo) return;
     setCameraOff((v) => {
       const next = !v;
-      if (Platform.OS === 'web') {
+      if (isWebRuntime) {
         const local = localStreamRef.current as MediaStream | null;
         local?.getVideoTracks().forEach((t) => (t.enabled = !next));
+      } else {
+        const local = localStreamRef.current as any;
+        local?.getVideoTracks?.().forEach((t: any) => (t.enabled = !next));
       }
       return next;
     });
   }, [isVideo]);
 
   const toggleSpeaker = useCallback(() => {
-    setSpeakerOn((v) => !v);
-    if (Platform.OS === 'web' && remoteAudioElRef.current) {
-      try {
-        remoteAudioElRef.current.muted = speakerOn ? true : false;
-      } catch {
-        /* ignore */
+    setSpeakerOn((v) => {
+      const next = !v;
+      if (isWebRuntime && remoteAudioElRef.current) {
+        try {
+          remoteAudioElRef.current.muted = next ? false : true;
+        } catch {
+          /* ignore */
+        }
       }
-    }
-  }, [speakerOn]);
+      if (!isWebRuntime && Platform.OS !== 'web') {
+        void Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          allowsRecordingIOS: true,
+          interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+          interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: !next,
+          staysActiveInBackground: false,
+        }).catch(() => {});
+      }
+      return next;
+    });
+  }, [isWebRuntime]);
 
   const endCall = useCallback(() => finishCall('ended'), [finishCall]);
 
   const callStatusLabel = useMemo(() => {
+    if (!isWebRuntime && !nativeWebRTC) {
+      return 'Appel indisponible.';
+    }
     if (errorMsg) return errorMsg;
     if (callState === 'ringing') return 'Appel en cours…';
-    if (callState === 'connecting') return 'Connexion…';
+    if (callState === 'connecting') return isVideo ? 'Connexion vidéo…' : 'Connexion…';
     if (callState === 'connected') return formatTime(duration);
     return 'Appel terminé';
-  }, [callState, duration, errorMsg]);
+  }, [callState, duration, errorMsg, isVideo]);
 
-  const isWeb = Platform.OS === 'web';
+  const isWeb = isWebRuntime;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
@@ -496,10 +593,12 @@ export default function CallScreen() {
                 background: '#0b111d',
               },
             })
+          ) : remoteStreamUrl && RTCViewNative ? (
+            <RTCViewNative streamURL={remoteStreamUrl} style={styles.nativeVideoFill} objectFit="cover" />
           ) : (
             <View style={styles.videoPlaceholder}>
-              <Ionicons name="videocam-off" size={48} color="rgba(255,255,255,0.3)" />
-              <Text style={styles.videoPlaceholderText}>Appel vidéo : ouvrez sur le web</Text>
+              <ActivityIndicator size="large" color={Colors.primary} />
+              <Text style={styles.videoPlaceholderText}>Connexion vidéo...</Text>
             </View>
           )}
           {!cameraOff && (
@@ -514,36 +613,34 @@ export default function CallScreen() {
                   muted: true,
                   style: { width: '100%', height: '100%', objectFit: 'cover' },
                 })
+              ) : localStreamUrl && RTCViewNative ? (
+                <RTCViewNative streamURL={localStreamUrl} style={styles.nativeVideoFill} objectFit="cover" mirror />
               ) : (
-                <Image
-                  source={{ uri: avatar || 'https://i.pravatar.cc/150?img=8' }}
-                  style={styles.selfViewImage}
-                />
+                <Image source={{ uri: peerAvatarUri }} style={styles.selfViewImage} />
               )}
             </View>
           )}
         </View>
       ) : (
         <View style={styles.audioBackground}>
-          <Animated.View
-            style={[
-              styles.pulseRing,
-              {
-                transform: [{ scale: pulseAnim }],
-                opacity: callState === 'ringing' ? 0.3 : 0,
-              },
-            ]}
-          />
-          <Image source={{ uri: avatar || 'https://i.pravatar.cc/150' }} style={styles.callerAvatar} />
+          <View style={styles.avatarRingWrap}>
+            <Animated.View
+              style={[
+                styles.pulseRing,
+                {
+                  transform: [{ scale: pulseAnim }],
+                  opacity: callState === 'ringing' ? 0.3 : 0,
+                },
+              ]}
+            />
+            <Image source={{ uri: peerAvatarUri }} style={styles.callerAvatar} />
+          </View>
         </View>
       )}
 
       <View style={styles.callInfo}>
         <Text style={styles.callerName}>{name || 'Contact'}</Text>
         <Text style={styles.callStatus}>{callStatusLabel}</Text>
-        {!isWeb ? (
-          <Text style={styles.nativeHint}>Les appels audio/vidéo sont disponibles sur le web pour le moment.</Text>
-        ) : null}
       </View>
 
       <View style={styles.controls}>
@@ -601,6 +698,7 @@ const styles = StyleSheet.create({
   },
   videoPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   videoPlaceholderText: { color: 'rgba(255,255,255,0.55)', fontSize: 14, marginTop: 12 },
+  nativeVideoFill: { width: '100%', height: '100%' },
   selfView: {
     position: 'absolute',
     top: 80,
@@ -615,12 +713,26 @@ const styles = StyleSheet.create({
   },
   selfViewImage: { width: '100%', height: '100%' },
   audioBackground: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
-  pulseRing: { position: 'absolute', width: 180, height: 180, borderRadius: 90, borderWidth: 3, borderColor: Colors.primary },
+  avatarRingWrap: {
+    width: 180,
+    height: 180,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pulseRing: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    borderWidth: 3,
+    borderColor: Colors.primary,
+  },
   callerAvatar: { width: 130, height: 130, borderRadius: 65, borderWidth: 3, borderColor: 'rgba(255,255,255,0.2)' },
   callInfo: { alignItems: 'center', paddingVertical: 20, paddingHorizontal: 24 },
   callerName: { color: '#FFF', fontSize: 26, fontWeight: 'bold', marginBottom: 6, textAlign: 'center' },
   callStatus: { color: 'rgba(255,255,255,0.7)', fontSize: 16 },
-  nativeHint: { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 10, textAlign: 'center', maxWidth: 280 },
   controls: { width: '100%', alignItems: 'center', paddingBottom: 30 },
   controlsRow: { flexDirection: 'row', justifyContent: 'center', gap: 24, marginBottom: 30 },
   controlBtn: {

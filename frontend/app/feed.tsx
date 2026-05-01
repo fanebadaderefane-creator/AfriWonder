@@ -16,6 +16,7 @@ import ReportModal from '../src/components/ReportModal';
 import apiClient from '../src/api/client';
 import { useAuthStore } from '../src/store/authStore';
 import { Image as ExpoImage } from 'expo-image';
+import { profileAvatarUri, uiAvatarFromSeed } from '../src/utils/avatarFallback';
 
 const GRID_GAP = 2;
 
@@ -90,6 +91,8 @@ interface Post {
   id: string;
   /** Auteur (pour savoir si le menu « Supprimer » s’affiche). */
   authorId: string;
+  /** Publication issue du fil photo (Video `media_type` image) — API commentaires / suppression différentes. */
+  momentSource?: 'post' | 'video';
   user: { name: string; avatar: string; verified: boolean; };
   timeAgo: string;
   content: string;
@@ -132,8 +135,7 @@ interface MomentStoryRing {
 const EMPTY_REACTIONS = { like: 0, love: 0, wow: 0, haha: 0, sad: 0, angry: 0 };
 
 function defaultAvatarForUserId(userId: string): string {
-  const q = encodeURIComponent(userId.slice(0, 12) || 'user');
-  return `https://ui-avatars.com/api/?name=${q}&background=1a1a1a&color=fff&size=128`;
+  return uiAvatarFromSeed(userId.slice(0, 12) || 'user');
 }
 
 function buildMomentStoryRings(
@@ -143,7 +145,7 @@ function buildMomentStoryRings(
   const uid = normalizeId(me?.id);
   const selfAvatar =
     String(me?.profile_image || me?.avatar || '').trim()
-    || (uid ? defaultAvatarForUserId(uid) : 'https://i.pravatar.cc/150?img=10');
+    || (uid ? defaultAvatarForUserId(uid) : uiAvatarFromSeed('Moi'));
   const add: MomentStoryRing = {
     id: 'add',
     userId: uid || 'me',
@@ -258,7 +260,10 @@ function normalizeId(s: string | undefined | null): string {
 function mapApiPostToFeedPost(p: Record<string, unknown>): Post {
   const user = (p.user as Record<string, unknown>) || {};
   const name = String(user.full_name || user.username || 'Utilisateur').trim() || 'Utilisateur';
-  const avatar = String(user.profile_image || user.profileImage || '').trim() || 'https://i.pravatar.cc/150?img=10';
+  const avatar = profileAvatarUri(
+    String(user.profile_image || user.profileImage || '').trim(),
+    name,
+  );
   const authorId = extractPostAuthorId(p);
   const images = collectPostImageUrls(p);
   const created =
@@ -271,9 +276,15 @@ function mapApiPostToFeedPost(p: Record<string, unknown>): Post {
       ? countRaw._count.comments
       : Number(countRaw.comments_count ?? countRaw.commentsCount ?? 0) || 0;
 
+  const fromVideo =
+    p.moment_from_video === true
+    || p.momentFromVideo === true
+    || String(p.moment_from_video || '').toLowerCase() === 'true';
+
   return {
     id: String(p.id),
     authorId,
+    momentSource: fromVideo ? 'video' : 'post',
     user: { name, avatar, verified: false },
     timeAgo: formatTimeAgo(created),
     content: String(p.text || '').trim(),
@@ -298,7 +309,7 @@ export default function FeedScreen() {
   /** Menu ⋯ : plusieurs options (web + natif), pas un seul confirm navigateur. */
   const [postMenuPost, setPostMenuPost] = useState<Post | null>(null);
   /** Signalement avec raison (ReportModal → /moderation/report). */
-  const [reportPostId, setReportPostId] = useState<string | null>(null);
+  const [reportTarget, setReportTarget] = useState<{ id: string; contentType: 'post' | 'video' } | null>(null);
   const [commentsModalPost, setCommentsModalPost] = useState<Post | null>(null);
   const [commentsList, setCommentsList] = useState<MomentCommentRow[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -319,7 +330,7 @@ export default function FeedScreen() {
   }, []);
 
   const { data: feedData, isLoading, isOffline, refresh } = useOfflineData<MomentsFeedPayload>({
-    cacheKey: 'moments_feed_api_v3',
+    cacheKey: 'moments_feed_api_v4',
     fallbackData: MOMENTS_FEED_FALLBACK,
     fetcher: fetchMomentsFeed,
     ttl: 1000 * 60 * 2,
@@ -359,12 +370,16 @@ export default function FeedScreen() {
     setPostReactions(prev => ({ ...prev, [postId]: reaction }));
   }, []);
 
-  const loadCommentsForPost = useCallback(async (postId: string) => {
+  const loadCommentsForPost = useCallback(async (target: Post) => {
     setCommentsLoading(true);
     try {
-      const res = await apiClient.get(`/posts/${encodeURIComponent(postId)}/comments`, {
-        params: { page: 1, limit: 50 },
-      });
+      const isVideo = target.momentSource === 'video';
+      const res = await apiClient.get(
+        isVideo
+          ? `/videos/${encodeURIComponent(target.id)}/comments`
+          : `/posts/${encodeURIComponent(target.id)}/comments`,
+        { params: { page: 1, limit: 50 } },
+      );
       const inner = (res.data as { data?: { comments?: MomentCommentRow[] } })?.data ?? res.data;
       const arr = Array.isArray(inner?.comments) ? inner.comments : [];
       setCommentsList(arr);
@@ -404,7 +419,7 @@ export default function FeedScreen() {
       setCommentDraft('');
       setReplyingToComment(null);
       setEditingCommentId(null);
-      void loadCommentsForPost(post.id);
+      void loadCommentsForPost(post);
     },
     [isAuthenticated, loadCommentsForPost],
   );
@@ -420,7 +435,13 @@ export default function FeedScreen() {
   const toggleMomentCommentReaction = useCallback(
     async (commentId: string, type: string = 'like') => {
       try {
-        const res = await apiClient.post(`/posts/comments/${encodeURIComponent(commentId)}/reaction`, { type });
+        const isVideo = commentsModalPost?.momentSource === 'video';
+        const res = await apiClient.post(
+          isVideo
+            ? `/comments/${encodeURIComponent(commentId)}/reaction`
+            : `/posts/comments/${encodeURIComponent(commentId)}/reaction`,
+          { type },
+        );
         const inner = (res.data as { data?: { reaction_counts?: Record<string, number>; my_reaction?: string | null } })?.data ?? res.data;
         const nextCounts =
           inner?.reaction_counts && typeof inner.reaction_counts === 'object'
@@ -447,7 +468,7 @@ export default function FeedScreen() {
         showMomentCommentError(err.response?.data?.error?.message || err.message || 'Impossible de liker ce commentaire.');
       }
     },
-    [showMomentCommentError],
+    [commentsModalPost?.momentSource, showMomentCommentError],
   );
 
   const submitMomentComment = useCallback(async () => {
@@ -456,8 +477,18 @@ export default function FeedScreen() {
     if (!post || !text || commentSending) return;
     setCommentSending(true);
     try {
+      const isVideo = post.momentSource === 'video';
       if (editingCommentId) {
-        await apiClient.patch(`/posts/comments/${encodeURIComponent(editingCommentId)}`, { content: text });
+        if (isVideo) {
+          await apiClient.put(`/comments/${encodeURIComponent(editingCommentId)}`, { content: text });
+        } else {
+          await apiClient.patch(`/posts/comments/${encodeURIComponent(editingCommentId)}`, { content: text });
+        }
+      } else if (isVideo) {
+        await apiClient.post(`/videos/${encodeURIComponent(post.id)}/comment`, {
+          content: text,
+          ...(replyingToComment ? { parent_id: replyingToComment.id } : {}),
+        });
       } else {
         await apiClient.post(`/posts/${encodeURIComponent(post.id)}/comments`, {
           content: text,
@@ -467,7 +498,7 @@ export default function FeedScreen() {
       setCommentDraft('');
       setReplyingToComment(null);
       setEditingCommentId(null);
-      await loadCommentsForPost(post.id);
+      await loadCommentsForPost(post);
       await refresh();
     } catch (e: unknown) {
       const err = e as { response?: { data?: { error?: { message?: string } } }; message?: string };
@@ -500,13 +531,18 @@ export default function FeedScreen() {
       const runDelete = async () => {
         if (!commentsModalPost) return;
         try {
-          await apiClient.delete(`/posts/comments/${encodeURIComponent(comment.id)}`);
+          const isVideo = commentsModalPost.momentSource === 'video';
+          await apiClient.delete(
+            isVideo
+              ? `/comments/${encodeURIComponent(comment.id)}`
+              : `/posts/comments/${encodeURIComponent(comment.id)}`,
+          );
           if (editingCommentId === comment.id) {
             setEditingCommentId(null);
             setCommentDraft('');
           }
           if (replyingToComment?.id === comment.id) setReplyingToComment(null);
-          await loadCommentsForPost(commentsModalPost.id);
+          await loadCommentsForPost(commentsModalPost);
           await refresh();
         } catch (e: unknown) {
           const err = e as { response?: { data?: { error?: { message?: string } } }; message?: string };
@@ -588,7 +624,11 @@ export default function FeedScreen() {
 
   const performDeletePost = useCallback(async (post: Post) => {
     try {
-      await apiClient.delete(`/posts/${encodeURIComponent(post.id)}`);
+      const path =
+        post.momentSource === 'video'
+          ? `/videos/${encodeURIComponent(post.id)}`
+          : `/posts/${encodeURIComponent(post.id)}`;
+      await apiClient.delete(path);
       setPostReactions((prev) => {
         const next = { ...prev };
         delete next[post.id];
@@ -745,7 +785,7 @@ export default function FeedScreen() {
         <View style={styles.headerRight}>
           <TouchableOpacity
             style={styles.headerBtn}
-            onPress={() => Alert.alert('Recherche', 'Recherche dans Moments : bientôt disponible.')}
+            onPress={() => router.push({ pathname: '/search', params: { tab: 'posts' } } as never)}
             accessibilityLabel="Recherche"
           >
             <Ionicons name="search-outline" size={22} color="#FFF" />
@@ -811,8 +851,10 @@ export default function FeedScreen() {
         <View style={styles.createPost}>
           <Image
             source={{
-              uri: String(user?.profile_image || user?.avatar || '').trim()
-                || (viewerId ? defaultAvatarForUserId(viewerId) : 'https://i.pravatar.cc/150?img=10'),
+              uri: profileAvatarUri(
+                String(user?.profile_image || user?.avatar || '').trim(),
+                viewerId || user?.username || 'Moi',
+              ),
             }}
             style={styles.createAvatar}
           />
@@ -976,20 +1018,6 @@ export default function FeedScreen() {
                 <TouchableOpacity
                   style={styles.postMenuRow}
                   onPress={() => {
-                    closePostMenu();
-                    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.alert === 'function') {
-                      window.alert('Modification de publication : bientôt disponible.');
-                    } else {
-                      Alert.alert('Modifier', 'Bientôt disponible.');
-                    }
-                  }}
-                >
-                  <Ionicons name="create-outline" size={22} color="#EEE" style={styles.postMenuIcon} />
-                  <Text style={styles.postMenuRowText}>Modifier</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.postMenuRow}
-                  onPress={() => {
                     const p = postMenuPost;
                     closePostMenu();
                     confirmDeleteInBrowser(p);
@@ -1032,7 +1060,12 @@ export default function FeedScreen() {
                   onPress={() => {
                     const p = postMenuPost;
                     closePostMenu();
-                    if (p?.id) setReportPostId(p.id);
+                    if (p?.id) {
+                      setReportTarget({
+                        id: p.id,
+                        contentType: p.momentSource === 'video' ? 'video' : 'post',
+                      });
+                    }
                   }}
                 >
                   <Ionicons name="flag-outline" size={22} color="#EEE" style={styles.postMenuIcon} />
@@ -1138,10 +1171,10 @@ export default function FeedScreen() {
       </Modal>
 
       <ReportModal
-        visible={reportPostId != null}
-        onClose={() => setReportPostId(null)}
-        targetType="post"
-        targetId={reportPostId ?? ''}
+        visible={reportTarget != null}
+        onClose={() => setReportTarget(null)}
+        targetType={reportTarget?.contentType ?? 'post'}
+        targetId={reportTarget?.id ?? ''}
         useModerationEndpoint
       />
     </View>

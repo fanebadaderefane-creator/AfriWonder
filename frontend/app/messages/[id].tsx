@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, KeyboardAvoidingView, Platform, Dimensions, ActivityIndicator, Modal, Alert, Pressable, Animated, Linking } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,9 +9,14 @@ import { useAuthStore } from '../../src/store/authStore';
 import * as Clipboard from 'expo-clipboard';
 import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import * as Location from 'expo-location';
+import * as Contacts from 'expo-contacts';
 import socketService from '../../src/services/socketService';
 import ReportModal from '../../src/components/ReportModal';
 import { featureFlags } from '../../src/config/featureFlags';
+import { profileAvatarUri } from '../../src/utils/avatarFallback';
+import { appendBlobOrFileField, formatContactShareLine, openMaps } from '../../src/screens/messages/messageAttachmentUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -21,10 +26,14 @@ interface Message {
   isMine: boolean;
   time: string;
   status: 'sent' | 'delivered' | 'read';
-  type: 'text' | 'image' | 'voice' | 'document' | 'audio' | 'video';
+  type: 'text' | 'image' | 'voice' | 'document' | 'audio' | 'video' | 'location' | 'contact' | 'file';
   imageUri?: string;
   thumbnailUri?: string;
   voiceDuration?: string;
+  locationLat?: number;
+  locationLng?: number;
+  locationLabel?: string;
+  contactShareLine?: string;
   replyTo?: { id: string; name: string; text: string };
   date?: string;
   reactions?: { emoji: string; count: number; myReaction: boolean }[];
@@ -37,7 +46,13 @@ interface Message {
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
-async function appendUploadFile(formData: globalThis.FormData, uri: string, index: number, kind: 'image' | 'video' | 'audio') {
+async function appendUploadFile(
+  formData: globalThis.FormData,
+  uri: string,
+  index: number,
+  kind: 'image' | 'video' | 'audio',
+  opts?: { mimeType?: string | null; fileName?: string | null },
+) {
   if (Platform.OS === 'web') {
     const res = await fetch(uri);
     const blob = await res.blob();
@@ -49,11 +64,45 @@ async function appendUploadFile(formData: globalThis.FormData, uri: string, inde
     formData.append('file', new File([blob], `upload_${index}.${ext}`, { type: mime }));
     return;
   }
-  const raw = (uri.split('.').pop() || '').split('?')[0] || '';
-  const ext = raw.replace(/[^a-z0-9]/gi, '').slice(0, 8) || (kind === 'video' ? 'mp4' : kind === 'audio' ? 'm4a' : 'jpg');
-  const mimeType =
-    kind === 'video' ? 'video/mp4' : kind === 'audio' ? 'audio/m4a' : 'image/jpeg';
+  const providedMime = String(opts?.mimeType || '').toLowerCase().trim();
+  const providedName = String(opts?.fileName || '').trim();
+  const rawExtFromUri = (uri.split('.').pop() || '').split('?')[0] || '';
+  const rawExtFromName = (providedName.split('.').pop() || '').split('?')[0] || '';
+  const rawExt = (rawExtFromName || rawExtFromUri).toLowerCase();
+
+  let ext = rawExt.replace(/[^a-z0-9]/gi, '').slice(0, 8);
+  let mimeType = providedMime;
+
+  if (!mimeType) {
+    if (kind === 'video') mimeType = ext === 'webm' ? 'video/webm' : ext === 'mov' ? 'video/quicktime' : 'video/mp4';
+    else if (kind === 'audio') mimeType = ext === 'wav' ? 'audio/wav' : ext === 'mp3' ? 'audio/mpeg' : 'audio/m4a';
+    else mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+  }
+
+  if (!ext) {
+    if (mimeType.includes('png')) ext = 'png';
+    else if (mimeType.includes('webp')) ext = 'webp';
+    else if (mimeType.includes('gif')) ext = 'gif';
+    else if (mimeType.includes('webm')) ext = 'webm';
+    else if (mimeType.includes('quicktime')) ext = 'mov';
+    else if (mimeType.includes('mpeg')) ext = 'mp3';
+    else if (mimeType.includes('wav')) ext = 'wav';
+    else ext = kind === 'video' ? 'mp4' : kind === 'audio' ? 'm4a' : 'jpg';
+  }
+
   formData.append('file', { uri, name: `upload_${index}.${ext}`, type: mimeType } as any);
+}
+
+function resolvePickerMediaTypes(): any {
+  const picker = ImagePicker as unknown as {
+    MediaType?: { Images?: unknown; Videos?: unknown };
+    MediaTypeOptions?: { All?: unknown };
+  };
+  // SDK 53+: preferer `MediaType` (nouvelle API), fallback legacy si absent.
+  if (picker.MediaType?.Images && picker.MediaType?.Videos) {
+    return [picker.MediaType.Images, picker.MediaType.Videos];
+  }
+  return picker.MediaTypeOptions?.All ?? ['images', 'videos'];
 }
 
 export default function ChatScreen() {
@@ -66,7 +115,10 @@ export default function ChatScreen() {
   const [contact, setContact] = useState({
     name: (paramName as string) || 'Contact',
     username: '' as string,
-    avatar: (paramAvatar as string) || `https://i.pravatar.cc/150?u=${conversationId}`,
+    avatar: profileAvatarUri(
+      paramAvatar as string | undefined,
+      String(paramName || '').trim() || 'Contact',
+    ),
     online: false,
     lastSeen: '',
     otherUserId: (paramOtherUserId as string) || '',
@@ -98,6 +150,8 @@ export default function ChatScreen() {
   // Forward modal
   const [forwardModalVisible, setForwardModalVisible] = useState(false);
   const [conversations, setConversations] = useState<any[]>([]);
+  const [contactPickerOpen, setContactPickerOpen] = useState(false);
+  const [contactsForPick, setContactsForPick] = useState<Contacts.ExistingContact[]>([]);
   const [recipientUserId, setRecipientUserId] = useState<string>(typeof paramOtherUserId === 'string' ? paramOtherUserId : '');
 
   // Voice recording state
@@ -146,19 +200,48 @@ export default function ChatScreen() {
           const rt = m.reply_to;
           const replyName = rt?.sender?.full_name || rt?.sender?.username || '';
           const isDeleted = !!m.is_deleted || !!m.deleted_for_all_at;
+          const msgType = String(m.type || 'text').toLowerCase();
+          const latRaw = m.location_lat;
+          const lngRaw = m.location_lng;
+          const lat =
+            latRaw == null || latRaw === ''
+              ? undefined
+              : typeof latRaw === 'number'
+                ? latRaw
+                : Number(latRaw);
+          const lng =
+            lngRaw == null || lngRaw === ''
+              ? undefined
+              : typeof lngRaw === 'number'
+                ? lngRaw
+                : Number(lngRaw);
           transformed.push({
             id: m.id,
             text: isDeleted ? 'Ce message a ete supprime' : (m.content || ''),
             isMine: m.sender_id === currentUserId,
             time: msgDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
             status: String(m.status || '').toLowerCase() === 'read' ? 'read' : 'delivered',
-            type: (m.type || 'text') as any,
+            type: (m.type || 'text') as Message['type'],
             imageUri: m.media_url || undefined,
             thumbnailUri: m.thumbnail_url || undefined,
             replyTo: rt ? { id: rt.id, name: replyName, text: rt.content || '' } : undefined,
             forwarded: !!m.forwarded_from_message_id,
             edited: !!m.is_edited,
             deleted: isDeleted,
+            ...(msgType === 'location' &&
+            lat != null &&
+            lng != null &&
+            !Number.isNaN(lat) &&
+            !Number.isNaN(lng)
+              ? {
+                  locationLat: lat,
+                  locationLng: lng,
+                  locationLabel: typeof m.location_label === 'string' ? m.location_label : undefined,
+                }
+              : {}),
+            ...(msgType === 'contact'
+              ? { contactShareLine: typeof m.contact_name === 'string' ? m.contact_name : undefined }
+              : {}),
           });
         });
         setMessages(transformed);
@@ -170,6 +253,22 @@ export default function ChatScreen() {
       setMessages([{ id: 'd1', text: '', isMine: false, time: '', status: 'read', type: 'text', date: "Aujourd'hui" }]);
     } finally { setLoading(false); }
   }, [conversationId, currentUserId]);
+
+  const ensureRecipientUserId = useCallback(async (): Promise<string | null> => {
+    if (recipientUserId) return recipientUserId;
+    try {
+      const res = await apiClient.get(`/messages/conversations/id/${encodeURIComponent(conversationId)}`);
+      const conv = res.data?.data;
+      if (!conv || !currentUserId) return null;
+      const other = conv.user1_id === currentUserId ? conv.user2 : conv.user1;
+      const rid = typeof other?.id === 'string' ? other.id : '';
+      if (!rid) return null;
+      setRecipientUserId(rid);
+      return rid;
+    } catch {
+      return null;
+    }
+  }, [recipientUserId, conversationId, currentUserId]);
 
   // Socket.IO real-time connection
   useEffect(() => {
@@ -189,15 +288,46 @@ export default function ChatScreen() {
     // Listen for new messages
     const unsubMsg = socketService.on('new_message', (msg: any) => {
       if (msg.conversation_id === conversationId && msg.sender_id !== currentUserId) {
+        const msgType = String(msg.type || 'text').toLowerCase();
+        const latRaw = msg.location_lat;
+        const lngRaw = msg.location_lng;
+        const lat =
+          latRaw == null || latRaw === ''
+            ? undefined
+            : typeof latRaw === 'number'
+              ? latRaw
+              : Number(latRaw);
+        const lng =
+          lngRaw == null || lngRaw === ''
+            ? undefined
+            : typeof lngRaw === 'number'
+              ? lngRaw
+              : Number(lngRaw);
         const newMsg: Message = {
           id: msg.id,
           text: msg.content || '',
           isMine: false,
           time: new Date(msg.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
           status: 'read',
-          type: (msg.type || 'text') as any,
+          type: (msg.type || 'text') as Message['type'],
+          imageUri: msg.media_url || undefined,
+          thumbnailUri: msg.thumbnail_url || undefined,
           replyTo: msg.reply_to,
           forwarded: !!msg.forwarded_from,
+          ...(msgType === 'location' &&
+          lat != null &&
+          lng != null &&
+          !Number.isNaN(lat) &&
+          !Number.isNaN(lng)
+            ? {
+                locationLat: lat,
+                locationLng: lng,
+                locationLabel: typeof msg.location_label === 'string' ? msg.location_label : undefined,
+              }
+            : {}),
+          ...(msgType === 'contact'
+            ? { contactShareLine: typeof msg.contact_name === 'string' ? msg.contact_name : undefined }
+            : {}),
         };
         setMessages(prev => [...prev, newMsg]);
         socketService.markRead(conversationId);
@@ -462,21 +592,32 @@ export default function ChatScreen() {
         setMessages(prev => [...prev, voiceMsg]);
 
         try {
-          if (!recipientUserId) return;
+          const rid = await ensureRecipientUserId();
+          if (!rid) {
+            Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
+            setMessages(prev => prev.filter(m => m.id !== tempId));
+            return;
+          }
           const formData = new FormData();
-          await appendUploadFile(formData, uri, 0, 'audio');
+          await appendUploadFile(formData, uri, 0, 'audio', { mimeType: 'audio/m4a' });
           const uploadRes = await apiClient.post('/upload/audio', formData, { timeout: 120000, maxBodyLength: Infinity, maxContentLength: Infinity });
           const ud = uploadRes.data?.data;
           const mediaUrl = ud?.file_url || ud?.url || '';
-          if (!mediaUrl) return;
+          if (!mediaUrl) {
+            setMessages(prev => prev.filter(m => m.id !== tempId));
+            return;
+          }
           await apiClient.post('/messages/send', {
-            recipientId: recipientUserId,
+            recipientId: rid,
             content: `Vocal ${formatDuration(duration)}`,
             type: 'voice',
             media_url: mediaUrl,
           });
-          setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'delivered' } : m));
-        } catch {}
+          setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'delivered', imageUri: mediaUrl } : m));
+        } catch {
+          setMessages(prev => prev.filter(m => m.id !== tempId));
+          Alert.alert('Erreur', "Impossible d'envoyer le vocal.");
+        }
       }
     } catch (err) {
       console.log('Stop recording error:', err);
@@ -533,22 +674,35 @@ export default function ChatScreen() {
 
   // ===== IMAGE/VIDEO PICKER =====
 
-  const pickImage = async (useCamera: boolean = false) => {
+  const pickImage = useCallback(async (useCamera: boolean = false) => {
     setShowAttach(false);
     try {
       let result;
       if (useCamera) {
         const perm = await ImagePicker.requestCameraPermissionsAsync();
         if (!perm.granted) { Alert.alert('Permission', 'Autorisez la camera'); return; }
-        result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images', 'videos'], quality: 0.7 });
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: resolvePickerMediaTypes(),
+          quality: 0.7,
+          allowsEditing: false,
+        });
       } else {
         const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!perm.granted) { Alert.alert('Permission', 'Autorisez la galerie'); return; }
-        result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], quality: 0.7, allowsMultipleSelection: false });
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: resolvePickerMediaTypes(),
+          quality: 0.7,
+          allowsMultipleSelection: false,
+        });
       }
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
         const isVideo = asset.type === 'video';
+        const rid = await ensureRecipientUserId();
+        if (!rid) {
+          Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
+          return;
+        }
         const tempId = Date.now().toString();
         const mediaMsg: Message = {
           id: tempId,
@@ -556,34 +710,336 @@ export default function ChatScreen() {
           isMine: true,
           time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
           status: 'sent',
-          type: 'image',
+          type: isVideo ? 'video' : 'image',
           imageUri: asset.uri,
         };
         setMessages(prev => [...prev, mediaMsg]);
 
         try {
-          if (!recipientUserId) return;
           const formData = new FormData();
-          await appendUploadFile(formData, asset.uri, 0, isVideo ? 'video' : 'image');
+          await appendUploadFile(formData, asset.uri, 0, isVideo ? 'video' : 'image', {
+            mimeType: asset.mimeType ?? null,
+            fileName: asset.fileName ?? null,
+          });
           const path = isVideo ? '/upload/video' : '/upload/image';
           const uploadRes = await apiClient.post(path, formData, { timeout: 300000, maxBodyLength: Infinity, maxContentLength: Infinity });
           const ud = uploadRes.data?.data;
           const mediaUrl = ud?.file_url || ud?.url || '';
-          if (!mediaUrl) return;
+          if (!mediaUrl) {
+            setMessages(prev => prev.filter(m => m.id !== tempId));
+            return;
+          }
           await apiClient.post('/messages/send', {
-            recipientId: recipientUserId,
+            recipientId: rid,
             content: isVideo ? 'Video' : 'Photo',
             type: isVideo ? 'video' : 'image',
             media_url: mediaUrl,
             thumbnail_url: ud?.thumbnail_url,
           });
-          setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'delivered' } : m));
-        } catch {}
+          setMessages(prev => prev.map(m => m.id === tempId ? {
+            ...m,
+            status: 'delivered',
+            imageUri: mediaUrl,
+            thumbnailUri: ud?.thumbnail_url || m.thumbnailUri,
+            type: isVideo ? 'video' : 'image',
+          } : m));
+        } catch (err: any) {
+          const backendError =
+            err?.response?.data?.error?.message ||
+            err?.response?.data?.error ||
+            err?.response?.data?.message ||
+            (typeof err?.message === 'string' ? err.message : '');
+          setMessages(prev => prev.filter(m => m.id !== tempId));
+          Alert.alert(
+            'Erreur',
+            backendError
+              ? String(backendError)
+              : `Impossible d'envoyer ${isVideo ? 'la vidéo' : "l'image"}.`,
+          );
+        }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.log('Picker error:', err);
+      const msg =
+        err?.message ||
+        "Impossible d'ouvrir la caméra/galerie sur cet appareil.";
+      Alert.alert('Erreur', String(msg));
     }
-  };
+  }, [ensureRecipientUserId]);
+
+  const pickDocumentAttachment = useCallback(async () => {
+    setShowAttach(false);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      const rid = await ensureRecipientUserId();
+      if (!rid) {
+        Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
+        return;
+      }
+      const tempId = Date.now().toString();
+      const label = asset.name || 'Document';
+      const optimistic: Message = {
+        id: tempId,
+        text: label,
+        isMine: true,
+        time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        status: 'sent',
+        type: 'file',
+        imageUri: asset.uri,
+      };
+      setMessages((prev) => [...prev, optimistic]);
+      try {
+        const formData = new FormData();
+        await appendBlobOrFileField(formData, asset.uri, asset.name, asset.mimeType || 'application/pdf', 'document');
+        const uploadRes = await apiClient.post('/upload/document', formData, {
+          timeout: 300000,
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+        });
+        const ud = uploadRes.data?.data;
+        const mediaUrl = ud?.file_url || ud?.url || '';
+        if (!mediaUrl) {
+          setMessages((prev) => prev.filter((m) => m.id !== tempId));
+          Alert.alert('Erreur', 'Upload du document impossible.');
+          return;
+        }
+        await apiClient.post('/messages/send', {
+          recipientId: rid,
+          content: label.slice(0, 500),
+          type: 'file',
+          media_url: mediaUrl,
+        });
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...m, status: 'delivered', imageUri: mediaUrl } : m)),
+        );
+      } catch {
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        Alert.alert('Erreur', "Impossible d'envoyer le document.");
+      }
+    } catch {
+      Alert.alert('Erreur', 'Sélection du document annulée ou impossible.');
+    }
+  }, [ensureRecipientUserId]);
+
+  const shareLocationAttachment = useCallback(async () => {
+    setShowAttach(false);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission', 'Autorisez la localisation pour envoyer votre position.');
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      let label = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      try {
+        const places = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+        const p = places[0];
+        if (p) {
+          const bits = [p.street, p.city || p.subregion, p.region].filter(Boolean);
+          if (bits.length) label = bits.join(', ').slice(0, 400);
+        }
+      } catch {
+        /* géocodage optionnel */
+      }
+      const rid = await ensureRecipientUserId();
+      if (!rid) {
+        Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
+        return;
+      }
+      const tempId = Date.now().toString();
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: tempId,
+          text: label,
+          isMine: true,
+          time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+          status: 'sent',
+          type: 'location',
+          locationLat: lat,
+          locationLng: lng,
+          locationLabel: label,
+        },
+      ]);
+      try {
+        const response = await apiClient.post('/messages/send', {
+          recipientId: rid,
+          content: label,
+          type: 'location',
+          location_lat: lat,
+          location_lng: lng,
+          location_label: label,
+        });
+        const sentMsg = response.data?.data;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempId ? { ...m, id: sentMsg?.id || tempId, status: 'delivered' } : m,
+          ),
+        );
+      } catch {
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        Alert.alert('Erreur', "Impossible d'envoyer la position.");
+      }
+    } catch {
+      Alert.alert('Erreur', 'Position indisponible. Vérifiez le GPS.');
+    }
+  }, [ensureRecipientUserId]);
+
+  const openNativeContactPicker = useCallback(async () => {
+    setShowAttach(false);
+    if (Platform.OS === 'web') {
+      Alert.alert(
+        'Contact',
+        "Le partage depuis le carnet d'adresses est disponible sur l'application mobile.",
+      );
+      return;
+    }
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission', "Autorisez l'accès aux contacts pour partager une carte contact.");
+        return;
+      }
+      const { data } = await Contacts.getContactsAsync({ pageSize: 250 });
+      const usable = data.filter((c) => formatContactShareLine(c).length > 0);
+      setContactsForPick(usable);
+      setContactPickerOpen(true);
+    } catch {
+      Alert.alert('Erreur', 'Impossible de lire les contacts.');
+    }
+  }, []);
+
+  const sendPickedContact = useCallback(
+    async (c: Contacts.ExistingContact) => {
+      setContactPickerOpen(false);
+      const line = formatContactShareLine(c);
+      const rid = await ensureRecipientUserId();
+      if (!rid) {
+        Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
+        return;
+      }
+      const tempId = Date.now().toString();
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: tempId,
+          text: line,
+          isMine: true,
+          time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+          status: 'sent',
+          type: 'contact',
+          contactShareLine: line,
+        },
+      ]);
+      try {
+        const response = await apiClient.post('/messages/send', {
+          recipientId: rid,
+          content: line.slice(0, 500),
+          type: 'contact',
+          contact_name: line.slice(0, 200),
+        });
+        const sentMsg = response.data?.data;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempId ? { ...m, id: sentMsg?.id || tempId, status: 'delivered' } : m,
+          ),
+        );
+      } catch {
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        Alert.alert('Erreur', "Impossible d'envoyer le contact.");
+      }
+    },
+    [ensureRecipientUserId],
+  );
+
+  const pickAudioFileAttachment = useCallback(async () => {
+    setShowAttach(false);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['audio/*', 'audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/wav'],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      const rid = await ensureRecipientUserId();
+      if (!rid) {
+        Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
+        return;
+      }
+      const tempId = Date.now().toString();
+      const label = asset.name || 'Audio';
+      const optimistic: Message = {
+        id: tempId,
+        text: label,
+        isMine: true,
+        time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        status: 'sent',
+        type: 'audio',
+        imageUri: asset.uri,
+      };
+      setMessages((prev) => [...prev, optimistic]);
+      try {
+        const formData = new FormData();
+        await appendBlobOrFileField(
+          formData,
+          asset.uri,
+          asset.name,
+          asset.mimeType || 'audio/mpeg',
+          'audio',
+        );
+        const uploadRes = await apiClient.post('/upload/audio', formData, {
+          timeout: 120000,
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+        });
+        const ud = uploadRes.data?.data;
+        const mediaUrl = ud?.file_url || ud?.url || '';
+        if (!mediaUrl) {
+          setMessages((prev) => prev.filter((m) => m.id !== tempId));
+          Alert.alert('Erreur', 'Upload audio impossible.');
+          return;
+        }
+        await apiClient.post('/messages/send', {
+          recipientId: rid,
+          content: label.slice(0, 500),
+          type: 'audio',
+          media_url: mediaUrl,
+        });
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...m, status: 'delivered', imageUri: mediaUrl } : m)),
+        );
+      } catch {
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        Alert.alert('Erreur', "Impossible d'envoyer le fichier audio.");
+      }
+    } catch {
+      Alert.alert('Erreur', 'Sélection audio annulée ou impossible.');
+    }
+  }, [ensureRecipientUserId]);
+
+  const openCallScreen = useCallback(
+    (type: 'audio' | 'video') => {
+      if (!contact.otherUserId) return;
+      router.push({
+        pathname: '/messages/call' as any,
+        params: {
+          name: contact.name,
+          avatar: contact.avatar,
+          type,
+          otherUserId: String(contact.otherUserId || ''),
+          role: 'caller',
+        },
+      });
+    },
+    [contact.avatar, contact.name, contact.otherUserId],
+  );
 
   // ===== CONTEXT MENU ACTIONS =====
 
@@ -802,14 +1258,51 @@ export default function ChatScreen() {
               <Ionicons name="ban-outline" size={14} color="rgba(255,255,255,0.4)" />
               <Text style={styles.deletedText}>{item.text}</Text>
             </View>
-          ) : item.type === 'voice' ? (
+          ) : item.type === 'location' &&
+            item.locationLat != null &&
+            item.locationLng != null &&
+            !Number.isNaN(item.locationLat) &&
+            !Number.isNaN(item.locationLng) ? (
+            <TouchableOpacity
+              style={styles.locationBubble}
+              onPress={() =>
+                openMaps(item.locationLat!, item.locationLng!, item.locationLabel || item.text)
+              }
+              activeOpacity={0.85}
+            >
+              <Ionicons name="location" size={22} color={Colors.primary} />
+              <Text style={styles.locationBubbleText} numberOfLines={4}>
+                {item.locationLabel || item.text}
+              </Text>
+            </TouchableOpacity>
+          ) : item.type === 'contact' ? (
+            <View style={styles.contactBubble}>
+              <Ionicons name="person-circle" size={32} color={Colors.primary} />
+              <Text style={styles.contactBubbleText} numberOfLines={5}>
+                {item.contactShareLine || item.text}
+              </Text>
+            </View>
+          ) : item.type === 'file' && item.imageUri ? (
+            <TouchableOpacity
+              style={styles.fileBubble}
+              onPress={() => item.imageUri && Linking.openURL(item.imageUri)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="document-attach" size={26} color="#FFF" />
+              <Text style={styles.fileBubbleName} numberOfLines={2}>
+                {item.text}
+              </Text>
+            </TouchableOpacity>
+          ) : item.type === 'voice' || item.type === 'audio' ? (
             <TouchableOpacity style={styles.voiceBubble} onPress={() => playAudio(item)} activeOpacity={0.7}>
               <Ionicons name={playingAudioId === item.id ? 'pause' : 'play'} size={28} color="#FFF" />
               <View style={styles.voiceWaveContainer}>
                 <View style={styles.voiceWaveTrack}>
                   <View style={[styles.voiceWaveProgress, { width: playingAudioId === item.id ? `${audioProgress * 100}%` : '0%' }]} />
                 </View>
-                <Text style={styles.voiceDurationText}>{item.voiceDuration || '0:00'}</Text>
+                <Text style={styles.voiceDurationText}>
+                  {item.voiceDuration || (item.type === 'audio' ? 'Fichier audio' : '0:00')}
+                </Text>
               </View>
               <View style={[styles.voiceMicBadge, { backgroundColor: item.isMine ? '#005C4B' : '#1F2C34' }]}>
                 <Ionicons name="mic" size={14} color={Colors.primary} />
@@ -821,7 +1314,18 @@ export default function ChatScreen() {
               activeOpacity={0.85}
               onPress={() => item.imageUri && Linking.openURL(item.imageUri)}
             >
-              <Image source={{ uri: item.thumbnailUri || item.imageUri }} style={styles.chatImage} resizeMode="cover" />
+              {item.thumbnailUri || (item.imageUri && !String(item.imageUri).startsWith('file:')) ? (
+                <Image
+                  source={{ uri: item.thumbnailUri || item.imageUri }}
+                  style={styles.chatImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.videoLocalPlaceholder}>
+                  <Ionicons name="videocam" size={28} color="rgba(255,255,255,0.9)" />
+                  <Text style={styles.videoLocalPlaceholderText}>Video locale...</Text>
+                </View>
+              )}
               <View style={styles.videoPlayOverlay}>
                 <Ionicons name="play-circle" size={44} color="rgba(255,255,255,0.95)" />
               </View>
@@ -852,14 +1356,23 @@ export default function ChatScreen() {
     );
   };
 
-  const ATTACHMENT_OPTIONS = [
+  const ATTACHMENT_OPTIONS = useMemo(
+    () => [
     { icon: 'camera', label: 'Camera', color: '#FF6B6B', action: () => pickImage(true) },
     { icon: 'images', label: 'Galerie', color: '#4ECDC4', action: () => pickImage(false) },
-    { icon: 'document', label: 'Document', color: '#45B7D1', action: () => setShowAttach(false) },
-    { icon: 'location', label: 'Position', color: '#FF6B00', action: () => setShowAttach(false) },
-    { icon: 'person', label: 'Contact', color: '#96CEB4', action: () => setShowAttach(false) },
-    { icon: 'musical-notes', label: 'Audio', color: '#DDA0DD', action: () => setShowAttach(false) },
-  ];
+      { icon: 'document', label: 'Document', color: '#45B7D1', action: () => void pickDocumentAttachment() },
+      { icon: 'location', label: 'Position', color: '#FF6B00', action: () => void shareLocationAttachment() },
+      { icon: 'person', label: 'Contact', color: '#96CEB4', action: () => void openNativeContactPicker() },
+      { icon: 'musical-notes', label: 'Audio', color: '#DDA0DD', action: () => void pickAudioFileAttachment() },
+    ],
+    [
+      pickImage,
+      pickDocumentAttachment,
+      shareLocationAttachment,
+      openNativeContactPicker,
+      pickAudioFileAttachment,
+    ],
+  );
 
   const CONTEXT_MENU_ITEMS = [
     { icon: 'arrow-undo', label: 'Repondre', action: handleReply },
@@ -892,36 +1405,14 @@ export default function ChatScreen() {
           <>
             <TouchableOpacity
               style={styles.headerAction}
-              onPress={() =>
-                router.push({
-                  pathname: '/messages/call' as any,
-                  params: {
-                    name: contact.name,
-                    avatar: contact.avatar,
-                    type: 'video',
-                    otherUserId: String(contact.otherUserId || ''),
-                    role: 'caller',
-                  },
-                })
-              }
+              onPress={() => openCallScreen('video')}
               disabled={!contact.otherUserId}
             >
               <Ionicons name="videocam" size={22} color={Colors.text} />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.headerAction}
-              onPress={() =>
-                router.push({
-                  pathname: '/messages/call' as any,
-                  params: {
-                    name: contact.name,
-                    avatar: contact.avatar,
-                    type: 'audio',
-                    otherUserId: String(contact.otherUserId || ''),
-                    role: 'caller',
-                  },
-                })
-              }
+              onPress={() => openCallScreen('audio')}
               disabled={!contact.otherUserId}
             >
               <Ionicons name="call" size={22} color={Colors.text} />
@@ -1154,8 +1645,8 @@ export default function ChatScreen() {
               const other = item.other || {};
               const name = item.is_group ? (item.group_name || 'Groupe') : (other.full_name || other.username || 'Contact');
               const avatar = item.is_group
-                ? (item.group_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}`)
-                : (other.profile_image || `https://i.pravatar.cc/150?u=${other.id || item.id}`);
+                ? profileAvatarUri(item.group_avatar, name)
+                : profileAvatarUri(other.profile_image, name);
               return (
                 <TouchableOpacity style={styles.forwardItem} onPress={() => doForward(item.id)}>
                   <Image source={{ uri: avatar }} style={styles.forwardAvatar} />
@@ -1164,6 +1655,37 @@ export default function ChatScreen() {
                 </TouchableOpacity>
               );
             }}
+          />
+        </View>
+      </Modal>
+
+      <Modal visible={contactPickerOpen} transparent animationType="slide" onRequestClose={() => setContactPickerOpen(false)}>
+        <View style={styles.contactPickerModal}>
+          <View style={styles.contactPickerHeader}>
+            <TouchableOpacity onPress={() => setContactPickerOpen(false)} accessibilityRole="button">
+              <Text style={styles.contactPickerCancel}>Annuler</Text>
+            </TouchableOpacity>
+            <Text style={styles.contactPickerTitle}>Choisir un contact</Text>
+            <View style={{ width: 72 }} />
+          </View>
+          <FlatList
+            data={contactsForPick}
+            keyExtractor={(c) => c.id}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item: c }) => (
+              <TouchableOpacity style={styles.contactPickRow} onPress={() => void sendPickedContact(c)}>
+                <Ionicons name="person-circle-outline" size={40} color={Colors.textSecondary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.contactPickName} numberOfLines={2}>
+                    {formatContactShareLine(c)}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={
+              <Text style={styles.contactPickEmpty}>Aucun contact disponible.</Text>
+            }
           />
         </View>
       </Modal>
@@ -1274,6 +1796,34 @@ const styles = StyleSheet.create({
   forwardItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, gap: Spacing.md },
   forwardAvatar: { width: 44, height: 44, borderRadius: 22 },
   forwardName: { flex: 1, color: Colors.text, fontSize: FontSizes.md },
+  locationBubble: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4, maxWidth: 280 },
+  locationBubbleText: { color: '#E9EDEF', fontSize: FontSizes.md, flex: 1 },
+  contactBubble: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4, maxWidth: 280 },
+  contactBubbleText: { color: '#E9EDEF', fontSize: FontSizes.md, flex: 1 },
+  fileBubble: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6, maxWidth: 280 },
+  fileBubbleName: { color: '#E9EDEF', fontSize: FontSizes.sm, flex: 1 },
+  contactPickerModal: { flex: 1, backgroundColor: Colors.background, marginTop: 72 },
+  contactPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  contactPickerCancel: { color: Colors.primary, fontSize: FontSizes.md },
+  contactPickerTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: 'bold' },
+  contactPickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+  },
+  contactPickName: { color: Colors.text, fontSize: FontSizes.md },
+  contactPickEmpty: { color: Colors.textMuted, textAlign: 'center', marginTop: Spacing.xl, paddingHorizontal: Spacing.lg },
   // Voice bubble
   voiceBubble: { flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 200 },
   voiceWaveContainer: { flex: 1 },
@@ -1291,6 +1841,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.25)',
     borderRadius: 8,
   },
+  videoLocalPlaceholder: {
+    width: 220,
+    height: 280,
+    borderRadius: 8,
+    marginBottom: 4,
+    backgroundColor: '#1f2c34',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  videoLocalPlaceholderText: { color: 'rgba(255,255,255,0.8)', fontSize: 12 },
   dmRequestFooter: {
     backgroundColor: Colors.background,
     borderTopWidth: StyleSheet.hairlineWidth,

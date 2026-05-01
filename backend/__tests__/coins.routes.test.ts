@@ -1,27 +1,45 @@
 import request from 'supertest';
-import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, jest } from '@jest/globals';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import app from '../src/app.js';
 import { prisma } from './setup.js';
 
+async function withRetry<T>(fn: () => Promise<T>, attempts = 4, delayMs = 200): Promise<T> {
+  let lastError: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (i < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+  throw lastError;
+}
+
 describe('Coins API', () => {
+  jest.setTimeout(120_000);
   let user: any;
   let token = '';
 
   beforeAll(async () => {
     const hashed = await bcrypt.hash('Coins123!@#', 10);
-    user = await prisma.user.create({
+    user = await withRetry(() =>
+      prisma.user.create({
       data: {
         email: `coins${Date.now()}@example.com`,
         password_hash: hashed,
         username: `coinsuser${Date.now()}`,
         full_name: 'Coins User',
       },
+    })
+    );
+    token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET as string, {
+      expiresIn: '1h',
     });
-    const login = await request(app)
-      .post('/api/auth/login')
-      .send({ email: user.email, password: 'Coins123!@#' });
-    token = login.body.data?.accessToken || '';
   });
 
   afterAll(async () => {

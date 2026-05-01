@@ -1,10 +1,13 @@
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { beforeEach, describe, expect, it } from '@jest/globals';
 import app from '../app.js';
 import { prisma } from './setup.js';
 
 describe('Returns routes', () => {
+  const makeTestToken = (user: { id: string; email: string }) =>
+    jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
   let testCounter = 0;
   let buyerToken = '';
   let sellerToken = '';
@@ -12,6 +15,7 @@ describe('Returns routes', () => {
   let adminToken = '';
   let buyerId = '';
   let sellerId = '';
+  let productId = '';
   let orderId = '';
   let returnId = '';
 
@@ -83,6 +87,7 @@ describe('Returns routes', () => {
         images: ['https://example.com/r1.jpg'],
       },
     });
+    productId = product.id;
 
     const order = await prisma.order.create({
       data: {
@@ -108,25 +113,10 @@ describe('Returns routes', () => {
     });
     orderId = order.id;
 
-    const buyerLogin = await request(app)
-      .post('/api/auth/login')
-      .send({ email: buyer.email, password: 'ReturnTest123!@#' });
-    buyerToken = buyerLogin.body.data.accessToken;
-
-    const sellerLogin = await request(app)
-      .post('/api/auth/login')
-      .send({ email: seller.email, password: 'ReturnTest123!@#' });
-    sellerToken = sellerLogin.body.data.accessToken;
-
-    const strangerLogin = await request(app)
-      .post('/api/auth/login')
-      .send({ email: stranger.email, password: 'ReturnTest123!@#' });
-    strangerToken = strangerLogin.body.data.accessToken;
-
-    const adminLogin = await request(app)
-      .post('/api/auth/login')
-      .send({ email: admin.email, password: 'ReturnTest123!@#' });
-    adminToken = adminLogin.body.data.accessToken;
+    buyerToken = makeTestToken(buyer);
+    sellerToken = makeTestToken(seller);
+    strangerToken = makeTestToken(stranger);
+    adminToken = makeTestToken(admin);
 
     const created = await request(app)
       .post(`/api/returns/${orderId}`)
@@ -141,7 +131,7 @@ describe('Returns routes', () => {
   });
 
   it('allows buyer to create return request', async () => {
-    const product = await prisma.product.findFirstOrThrow();
+    const product = await prisma.product.findUniqueOrThrow({ where: { id: productId } });
     const secondOrder = await prisma.order.create({
       data: {
         user_id: buyerId,

@@ -35,6 +35,10 @@ export default function EventsScreen() {
   if (!featureFlags.servicesHub) {
     return <ComingSoonScreen title="Événements" description="La billetterie événements sera bientôt disponible." icon="ticket-outline" />;
   }
+  return <EventsContent />;
+}
+
+function EventsContent() {
   const insets = useSafeAreaInsets();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);

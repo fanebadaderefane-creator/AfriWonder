@@ -23,6 +23,10 @@ export default function HealthScreen() {
   if (!featureFlags.servicesHub) {
     return <ComingSoonScreen title="Santé" description="La téléconsultation et les services santé seront bientôt disponibles." icon="medkit-outline" />;
   }
+  return <HealthContent />;
+}
+
+function HealthContent() {
   const insets = useSafeAreaInsets();
   const [activeSpecialty, setActiveSpecialty] = useState(0);
   const [doctors, setDoctors] = useState<Doctor[]>([]);

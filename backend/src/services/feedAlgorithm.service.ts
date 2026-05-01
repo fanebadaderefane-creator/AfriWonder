@@ -9,6 +9,8 @@ export async function getAlgorithmFeed(options: {
   page?: number;
   userId?: string;
   deviceId?: string;
+  /** Pays client (header) ou profil — boost FYP localisation. */
+  country?: string;
   category?: string;
   hashtag?: string;
   mediaType?: 'video' | 'image';
@@ -19,6 +21,7 @@ export async function getAlgorithmFeed(options: {
     page: options.page,
     userId: options.userId,
     deviceId: options.deviceId,
+    country: options.country,
     category: options.category,
     hashtag: options.hashtag,
     mediaType: options.mediaType,

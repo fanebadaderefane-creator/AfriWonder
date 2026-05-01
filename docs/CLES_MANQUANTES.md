@@ -1,6 +1,12 @@
-# Clés manquantes — récapitulatif (sans secrets réels)
+# Clés manquantes — historique / template (sans secrets réels)
 
 > **Sécurité :** ce fichier ne doit **jamais** contenir d’identifiants, MSISDN, codes marchands ou clés d’API réels. Toute valeur sensible appartient uniquement à des variables d’environnement locales ou à un gestionnaire de secrets (Doppler, vault hébergeur, etc.), pas au dépôt Git.
+>
+> **Important audit :** ce document n’est pas une preuve d’environnement cassé. C’est une checklist historique.
+> Pour l’état réel de préparation production, utiliser:
+> - `backend/scripts/check-prod-env.js`
+> - `docs/CONFIGURATION_COMPLETE_TOUTES_CLES.md`
+> - `GET /api/mobile/health` (capabilities live/push/turn)
 
 ## Ancien service / intégrations (exemples de noms de variables)
 

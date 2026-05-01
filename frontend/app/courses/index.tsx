@@ -29,6 +29,10 @@ export default function CoursesScreen() {
       />
     );
   }
+  return <CoursesContent />;
+}
+
+function CoursesContent() {
   const insets = useSafeAreaInsets();
   const [activeCategory, setActiveCategory] = useState(0);
   const [courses, setCourses] = useState<Course[]>([]);

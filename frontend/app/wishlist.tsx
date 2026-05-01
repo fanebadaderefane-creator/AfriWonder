@@ -17,7 +17,6 @@ import { router } from 'expo-router';
 import wishlistApi, { WishlistRow } from '../src/api/wishlistApi';
 import cartApi from '../src/api/cartApi';
 import { toAbsoluteMediaUrl } from '../src/utils/absoluteMediaUrl';
-import { featureFlags } from '../src/config/featureFlags';
 import { ImageOrPlaceholder } from '../src/components/common/ImageOrPlaceholder';
 
 const { width } = Dimensions.get('window');
@@ -85,10 +84,6 @@ export default function WishlistScreen() {
   };
 
   const handleAddToCart = async (row: WishlistRow) => {
-    if (!featureFlags.marketplace) {
-      Alert.alert('Bientôt disponible', 'Le marketplace sera activé prochainement.');
-      return;
-    }
     const pid = row.product_id || row.product?.id;
     if (!pid) return;
     setCartBusyId(pid);

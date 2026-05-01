@@ -11,6 +11,78 @@ function isWebhookPath(path: string): boolean {
   );
 }
 
+function normalizeRequestPath(path: string): string {
+  if (!path || typeof path !== 'string') return '';
+  let p = path.split('?')[0];
+  if (p.includes('://')) {
+    try {
+      p = new URL(p).pathname;
+    } catch {
+      /* garde la chaîne brute si parsing impossible */
+    }
+  }
+  return p.replace(/\/+$/, '') || '/';
+}
+
+function isAuthApiPath(path: string): boolean {
+  const p = normalizeRequestPath(path);
+  return (
+    p.startsWith('/api/auth/') ||
+    p === '/api/auth' ||
+    p.startsWith('/api/proxy/auth/') ||
+    p === '/api/proxy/auth'
+  );
+}
+
+/**
+ * APK / Expo / WebView : pas d’origine HTTP(S) “navigateur”, ou schémas natifs —
+ * ce n’est pas le cas d’usage CSRF classique (onglet malveillant + cookies session).
+ * En prod comme en dev : on laisse passer pour éviter de bloquer les comptes existants.
+ */
+function shouldBypassCsrfOriginCheck(originHeader: string, refererHeader: string): boolean {
+  const o = String(originHeader || '').trim();
+  const r = String(refererHeader || '').trim();
+  if (!o && !r) return true;
+
+  for (const raw of [o, r].filter(Boolean)) {
+    const lower = raw.toLowerCase();
+    if (lower === 'null') return true;
+    if (
+      lower.startsWith('capacitor://') ||
+      lower.startsWith('ionic://') ||
+      lower.startsWith('file://')
+    ) {
+      return true;
+    }
+    if (lower.startsWith('exp://') || lower.startsWith('exps://')) return true;
+    if (lower.startsWith('react-native://')) return true;
+  }
+  return false;
+}
+
+/**
+ * Expo Web / Metro (:8081, :8082, …) et tests locaux : navigateur envoie souvent une origine
+ * `http://localhost:*` absente de `CORS_ORIGIN`, alors qu’un cookie de session tiers existe —
+ * le garde CSRF bloque à tort (`invalid origin`). En prod on reste strict.
+ */
+function isLocalDevTrustedBrowserOrigin(originHeader: string, refererHeader: string): boolean {
+  if (process.env.NODE_ENV === 'production') return false;
+  const raw = (originHeader || refererHeader || '').trim();
+  if (!raw) return false;
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.toLowerCase();
+    return (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '[::1]' ||
+      host.endsWith('.localhost')
+    );
+  } catch {
+    return false;
+  }
+}
+
 function sanitizeString(value: string): string {
   return value
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
@@ -49,6 +121,11 @@ export const csrfProtectionMiddleware = (req: Request, res: Response, next: Next
   if (isWebhookPath(req.path)) {
     return next();
   }
+  // API token-based auth endpoints: ne pas appliquer de contrôle CSRF d'origine.
+  // Ces routes n'utilisent pas de session cookie browser classique.
+  if (isAuthApiPath(req.path) || isAuthApiPath(req.originalUrl || '')) {
+    return next();
+  }
 
   const authHeader = String(req.headers.authorization || '');
   const hasBearerToken = authHeader.startsWith('Bearer ');
@@ -70,14 +147,23 @@ export const csrfProtectionMiddleware = (req: Request, res: Response, next: Next
     return next();
   }
 
-  const origin = String(req.headers.origin || '');
-  const referer = String(req.headers.referer || '');
-  const allowed =
+  const origin = String(req.headers.origin || '').trim();
+  const referer = String(req.headers.referer || '').trim();
+
+  if (shouldBypassCsrfOriginCheck(origin, referer)) {
+    return next();
+  }
+
+  let allowed =
     allowedOrigins.some((base) => origin.startsWith(base) || referer.startsWith(base)) ||
     origin.endsWith('.vercel.app') ||
     (referer && referer.includes('.vercel.app')) ||
     origin.includes('afriwonder.com') ||
     (referer && referer.includes('afriwonder.com'));
+
+  if (!allowed && isLocalDevTrustedBrowserOrigin(origin, referer)) {
+    allowed = true;
+  }
 
   if (!allowed) {
     return res.status(403).json({

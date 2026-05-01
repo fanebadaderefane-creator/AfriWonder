@@ -50,11 +50,12 @@ describe('requestProtection.middleware', () => {
   it('csrfProtectionMiddleware blocks cookie unsafe requests with invalid origin', () => {
     process.env.CORS_ORIGIN = 'http://localhost:5173';
     process.env.APP_URL = 'http://localhost:3000';
+    // CSRF n’est pas appliqué sur les chemins /api/auth/* (voir isAuthApiPath) ; tester une route API hors auth.
     process.env.NODE_ENV = 'development';
 
     const req: any = {
       method: 'POST',
-      path: '/api/auth/logout',
+      path: '/api/orders',
       headers: {
         cookie: 'access_token=abc',
         origin: 'http://evil.example',
@@ -86,6 +87,138 @@ describe('requestProtection.middleware', () => {
     csrfProtectionMiddleware(req, res, next);
 
     expect(next).toHaveBeenCalled();
+  });
+
+  it('csrfProtectionMiddleware allows Expo Web localhost origin in development (cookie + no bearer)', () => {
+    process.env.CORS_ORIGIN = 'http://localhost:5173';
+    process.env.APP_URL = 'http://localhost:3000';
+    process.env.NODE_ENV = 'development';
+
+    const req: any = {
+      method: 'POST',
+      path: '/api/orders',
+      headers: {
+        cookie: 'some_session=1',
+        origin: 'http://localhost:8081',
+      },
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    csrfProtectionMiddleware(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('csrfProtectionMiddleware still blocks unknown localhost in production', () => {
+    process.env.CORS_ORIGIN = 'http://localhost:5173';
+    process.env.APP_URL = 'http://localhost:3000';
+    process.env.NODE_ENV = 'production';
+
+    const req: any = {
+      method: 'POST',
+      path: '/api/orders',
+      headers: {
+        cookie: 'some_session=1',
+        origin: 'http://localhost:8081',
+      },
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    csrfProtectionMiddleware(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('csrfProtectionMiddleware allows cookie requests without Origin/Referer (React Native / APK)', () => {
+    process.env.CORS_ORIGIN = 'https://app.afriwonder.com';
+    process.env.APP_URL = 'https://api.afriwonder.com';
+    process.env.NODE_ENV = 'production';
+
+    const req: any = {
+      method: 'POST',
+      path: '/api/orders',
+      headers: {
+        cookie: 'some_session=1',
+      },
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    csrfProtectionMiddleware(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('csrfProtectionMiddleware allows cookie + capacitor:// origin in production (APK / hybrid)', () => {
+    process.env.CORS_ORIGIN = 'https://app.afriwonder.com';
+    process.env.APP_URL = 'https://api.afriwonder.com';
+    process.env.NODE_ENV = 'production';
+
+    const req: any = {
+      method: 'POST',
+      path: '/api/orders',
+      headers: {
+        cookie: 'some_session=1',
+        origin: 'capacitor://localhost',
+      },
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    csrfProtectionMiddleware(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('csrfProtectionMiddleware allows cookie + exp:// origin in production (Expo)', () => {
+    process.env.CORS_ORIGIN = 'https://app.afriwonder.com';
+    process.env.APP_URL = 'https://api.afriwonder.com';
+    process.env.NODE_ENV = 'production';
+
+    const req: any = {
+      method: 'POST',
+      path: '/api/orders',
+      headers: {
+        cookie: 'some_session=1',
+        origin: 'exp://192.168.1.5:8081',
+      },
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    csrfProtectionMiddleware(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('csrfProtectionMiddleware skips CSRF for login when path only on originalUrl', () => {
+    process.env.CORS_ORIGIN = 'https://app.afriwonder.com';
+    process.env.APP_URL = 'https://api.afriwonder.com';
+    process.env.NODE_ENV = 'production';
+
+    const req: any = {
+      method: 'POST',
+      path: '/',
+      originalUrl: '/api/proxy/auth/login',
+      headers: {
+        cookie: 'sid=1',
+        origin: 'https://evil.example',
+      },
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    csrfProtectionMiddleware(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
   });
 
   it('cachePolicyMiddleware sets public cache for products GET', () => {

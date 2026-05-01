@@ -18,6 +18,7 @@ import apiClient from '../../src/api/client';
 import notificationService from '../../src/services/notificationService';
 import socketService from '../../src/services/socketService';
 import { useAuthStore } from '../../src/store/authStore';
+import { navigateFromStarBookingNotification } from '../../src/utils/starBookingPushNavigation';
 
 interface Notification {
   id: string;
@@ -219,6 +220,15 @@ export default function NotificationsScreen() {
 
   const handleNotifPress = (n: Notification) => {
     if (!n.read) void markAsRead(n.id);
+    if (
+      navigateFromStarBookingNotification({
+        type: n.type,
+        reference_type: n.reference_type,
+        reference_id: n.reference_id,
+      })
+    ) {
+      return;
+    }
     const data = n.data || {};
     switch (n.type) {
       case 'message':

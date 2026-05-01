@@ -17,13 +17,15 @@ import apiClient from '../../src/api/client';
 import { useAuthStore } from '../../src/store/authStore';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import socketService from '../../src/services/socketService';
+import { useAppTheme } from '../../src/theme/ThemeContext';
+import type { AppPalette } from '../../src/theme/themePalettes';
 
 /**
- * Inbox style TikTok = écran d'entrée de l'onglet « Inbox ».
+ * Inbox = écran d'entrée de l'onglet « Inbox » (accents alignés marque AfriWonder / orange).
  *
  *  - En haut : grand bloc « Messages » qui mène à `/messages` (UI WhatsApp existante).
  *  - Filtres horizontaux : All activity / Likes & saves / Comments & mentions /
- *    Followers / Du AfriWonder.
+ *    Dans ton Wonder / Du AfriWonder.
  *  - Liste de notifications regroupées par section (Today / Yesterday / This week /
  *    Older) consommée depuis `GET /api/notifications`.
  *  - Tap sur une ligne : marque lue (`PUT /:id/read`) puis navigue vers
@@ -33,10 +35,12 @@ import socketService from '../../src/services/socketService';
  *  La messagerie (DM) reste intégralement dispo via `/messages` — ne pas dupliquer ici.
  */
 
-const INK = '#161616';
-const MUTED = '#8C8C8C';
-const DIVIDER = 'rgba(0,0,0,0.07)';
-const ACCENT = '#FF2D55';
+const INK_LIGHT = '#161616';
+const MUTED_LIGHT = '#8C8C8C';
+const DIVIDER_LIGHT = 'rgba(0,0,0,0.07)';
+const INK_DARK = '#F5F5F5';
+const MUTED_DARK = '#A0A0A0';
+const DIVIDER_DARK = 'rgba(255,255,255,0.08)';
 
 type FilterId = 'all' | 'likes' | 'comments' | 'followers' | 'system';
 
@@ -44,7 +48,7 @@ const FILTERS: { id: FilterId; label: string; icon: React.ComponentProps<typeof 
   { id: 'all', label: 'All activity', icon: 'sparkles-outline' },
   { id: 'likes', label: 'Likes', icon: 'heart-outline' },
   { id: 'comments', label: 'Comments', icon: 'chatbubble-outline' },
-  { id: 'followers', label: 'Followers', icon: 'person-add-outline' },
+  { id: 'followers', label: 'Dans ton Wonder', icon: 'person-add-outline' },
   { id: 'system', label: 'From AfriWonder', icon: 'megaphone-outline' },
 ];
 
@@ -100,17 +104,20 @@ function classify(type: string): FilterId {
   return 'system';
 }
 
-function notifIcon(type: string): { name: React.ComponentProps<typeof Ionicons>['name']; color: string } {
+function notifIcon(
+  type: string,
+  colors: AppPalette,
+): { name: React.ComponentProps<typeof Ionicons>['name']; color: string } {
   const t = type.toLowerCase();
-  if (LIKE_TYPES.has(t)) return { name: 'heart', color: '#FF4757' };
-  if (t === 'comment' || t === 'reply') return { name: 'chatbubble', color: '#3B82F6' };
-  if (t === 'mention') return { name: 'at', color: '#8B5CF6' };
-  if (FOLLOW_TYPES.has(t)) return { name: 'person-add', color: '#10B981' };
-  if (t === 'live' || t === 'live_started') return { name: 'radio', color: '#EF4444' };
-  if (t === 'gift' || t === 'tip') return { name: 'gift', color: '#FFD700' };
-  if (t === 'achievement') return { name: 'trophy', color: '#FFD700' };
-  if (t === 'order' || t === 'payment') return { name: 'cart', color: '#F59E0B' };
-  return { name: 'notifications', color: '#6B7280' };
+  if (LIKE_TYPES.has(t)) return { name: 'heart', color: colors.like };
+  if (t === 'comment' || t === 'reply') return { name: 'chatbubble', color: colors.info };
+  if (t === 'mention') return { name: 'at', color: colors.primaryLight };
+  if (FOLLOW_TYPES.has(t)) return { name: 'person-add', color: colors.primary };
+  if (t === 'live' || t === 'live_started') return { name: 'radio', color: colors.live };
+  if (t === 'gift' || t === 'tip') return { name: 'gift', color: colors.accent };
+  if (t === 'achievement') return { name: 'trophy', color: colors.accent };
+  if (t === 'order' || t === 'payment') return { name: 'cart', color: colors.warning };
+  return { name: 'notifications', color: colors.textMuted };
 }
 
 function formatRelative(date: Date): string {
@@ -211,7 +218,7 @@ function fallbackTitle(type: string, message: string): string {
   if (LIKE_TYPES.has(t)) return 'New like';
   if (t === 'comment') return 'New comment';
   if (t === 'mention') return 'You were mentioned';
-  if (FOLLOW_TYPES.has(t)) return 'New follower';
+  if (FOLLOW_TYPES.has(t)) return 'Nouveau Wonder';
   if (t === 'live' || t === 'live_started') return 'A creator is live';
   return 'New notification';
 }
@@ -244,6 +251,12 @@ function mapNotification(api: ApiNotification): Notif {
 
 export default function InboxScreen() {
   const insets = useSafeAreaInsets();
+  const { colors, mode } = useAppTheme();
+  const ink = mode === 'light' ? INK_LIGHT : INK_DARK;
+  const muted = mode === 'light' ? MUTED_LIGHT : MUTED_DARK;
+  const divider = mode === 'light' ? DIVIDER_LIGHT : DIVIDER_DARK;
+  const unreadRowTint =
+    mode === 'light' ? 'rgba(230, 90, 0, 0.09)' : 'rgba(255, 107, 0, 0.14)';
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const [filter, setFilter] = useState<FilterId>('all');
   const [items, setItems] = useState<Notif[]>([]);
@@ -272,14 +285,14 @@ export default function InboxScreen() {
     try {
       const res = await apiClient.get('/messages/conversations', { params: { page: 1, limit: 5 } });
       const data = res.data?.data ?? res.data;
-      const convos: Array<{
+      const convos: {
         unread_count?: number;
         last_message_text?: string;
         is_group?: boolean;
         group_name?: string;
         group_avatar?: string;
         other?: { full_name?: string; username?: string; profile_image?: string };
-      }> = Array.isArray(data?.conversations) ? data.conversations : [];
+      }[] = Array.isArray(data?.conversations) ? data.conversations : [];
       const total = convos.reduce((acc, c) => acc + (Number(c.unread_count) || 0), 0);
       setUnreadMessages(total);
       const top = convos.find((c) => (c.last_message_text || '').trim().length > 0) || convos[0];
@@ -375,11 +388,19 @@ export default function InboxScreen() {
 
   if (!isAuthenticated) {
     return (
-      <View style={[styles.root, { paddingTop: insets.top + 30, alignItems: 'center', justifyContent: 'center' }]}>
-        <Ionicons name="notifications-outline" size={56} color={MUTED} />
-        <Text style={styles.emptyTitle}>Sign in to view your inbox</Text>
-        <Text style={styles.emptySub}>Likes, comments and messages appear here.</Text>
-        <TouchableOpacity style={styles.signInBtn} onPress={() => router.push('/(auth)/login')}>
+      <View
+        style={[
+          styles.root,
+          { paddingTop: insets.top + 30, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
+        ]}
+      >
+        <Ionicons name="notifications-outline" size={56} color={muted} />
+        <Text style={[styles.emptyTitle, { color: ink }]}>Sign in to view your inbox</Text>
+        <Text style={[styles.emptySub, { color: muted }]}>Likes, comments and messages appear here.</Text>
+        <TouchableOpacity
+          style={[styles.signInBtn, { backgroundColor: colors.primary }]}
+          onPress={() => router.push('/(auth)/login')}
+        >
           <Text style={styles.signInBtnText}>Sign in</Text>
         </TouchableOpacity>
       </View>
@@ -387,13 +408,13 @@ export default function InboxScreen() {
   }
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Inbox</Text>
+    <View style={[styles.root, { paddingTop: insets.top, backgroundColor: colors.background }]}>
+      <View style={[styles.header, { borderBottomColor: divider }]}>
+        <Text style={[styles.headerTitle, { color: ink }]}>Inbox</Text>
         <View style={{ flexDirection: 'row', gap: 4 }}>
           {totalUnread > 0 ? (
             <TouchableOpacity onPress={() => void markAllRead()} style={styles.headerBtn} accessibilityLabel="Mark all read">
-              <Ionicons name="checkmark-done-outline" size={22} color={INK} />
+              <Ionicons name="checkmark-done-outline" size={22} color={ink} />
             </TouchableOpacity>
           ) : null}
           <TouchableOpacity
@@ -401,7 +422,7 @@ export default function InboxScreen() {
             style={styles.headerBtn}
             accessibilityLabel="Notification settings"
           >
-            <Ionicons name="settings-outline" size={20} color={INK} />
+            <Ionicons name="settings-outline" size={20} color={ink} />
           </TouchableOpacity>
         </View>
       </View>
@@ -410,27 +431,27 @@ export default function InboxScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 60 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ACCENT} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
       >
         <TouchableOpacity
-          style={styles.messagesCard}
+          style={[styles.messagesCard, { backgroundColor: colors.card }]}
           activeOpacity={0.85}
           onPress={() => router.push('/messages')}
         >
-          <View style={styles.messagesIconCircle}>
+          <View style={[styles.messagesIconCircle, { backgroundColor: colors.primary }]}>
             <Ionicons name="paper-plane" size={22} color="#FFF" />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <View style={styles.messagesTitleRow}>
-              <Text style={styles.messagesTitle}>Messages</Text>
+              <Text style={[styles.messagesTitle, { color: ink }]}>Messages</Text>
               {unreadMessages > 0 ? (
-                <View style={styles.unreadPill}>
+                <View style={[styles.unreadPill, { backgroundColor: colors.primary }]}>
                   <Text style={styles.unreadPillText}>{unreadMessages > 99 ? '99+' : unreadMessages}</Text>
                 </View>
               ) : null}
             </View>
-            <Text style={styles.messagesPreview} numberOfLines={1}>
+            <Text style={[styles.messagesPreview, { color: muted }]} numberOfLines={1}>
               {latestMessage?.preview
                 ? `${latestMessage.name || ''} · ${latestMessage.preview}`
                 : 'Tap to start chatting'}
@@ -439,7 +460,7 @@ export default function InboxScreen() {
           {latestMessage?.avatar ? (
             <Image source={{ uri: latestMessage.avatar }} style={styles.messagesPreviewAvatar} />
           ) : null}
-          <Ionicons name="chevron-forward" size={18} color={MUTED} />
+          <Ionicons name="chevron-forward" size={18} color={muted} />
         </TouchableOpacity>
 
         <ScrollView
@@ -453,23 +474,27 @@ export default function InboxScreen() {
               <TouchableOpacity
                 key={f.id}
                 onPress={() => setFilter(f.id)}
-                style={[styles.filterChip, active && styles.filterChipActive]}
+                style={[
+                  styles.filterChip,
+                  { backgroundColor: colors.surface },
+                  active && { backgroundColor: colors.primary },
+                ]}
                 activeOpacity={0.85}
               >
-                <Ionicons name={f.icon} size={14} color={active ? '#FFF' : INK} />
-                <Text style={[styles.filterText, active && styles.filterTextActive]}>{f.label}</Text>
+                <Ionicons name={f.icon} size={14} color={active ? '#FFF' : ink} />
+                <Text style={[styles.filterText, { color: ink }, active && styles.filterTextActive]}>{f.label}</Text>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
 
         {loading ? (
-          <ActivityIndicator color={ACCENT} style={{ marginTop: 30 }} />
+          <ActivityIndicator color={colors.primary} style={{ marginTop: 30 }} />
         ) : filtered.length === 0 ? (
           <View style={styles.emptyWrap}>
-            <Ionicons name="chatbubbles-outline" size={56} color={MUTED} />
-            <Text style={styles.emptyTitle}>Nothing here yet</Text>
-            <Text style={styles.emptySub}>
+            <Ionicons name="chatbubbles-outline" size={56} color={muted} />
+            <Text style={[styles.emptyTitle, { color: ink }]}>Nothing here yet</Text>
+            <Text style={[styles.emptySub, { color: muted }]}>
               {filter === 'all'
                 ? 'Likes, comments, mentions and follows will appear in your Inbox.'
                 : 'No notifications match this filter.'}
@@ -479,45 +504,52 @@ export default function InboxScreen() {
           (['today', 'yesterday', 'week', 'older'] as const).map((b) =>
             buckets[b].length === 0 ? null : (
               <View key={b} style={{ marginTop: 14 }}>
-                <Text style={styles.sectionLabel}>{bucketLabel(b)}</Text>
+                <Text style={[styles.sectionLabel, { color: muted }]}>{bucketLabel(b)}</Text>
                 {buckets[b].map((n) => {
-                  const ic = notifIcon(n.type);
+                  const ic = notifIcon(n.type, colors);
                   return (
                     <TouchableOpacity
                       key={n.id}
                       onPress={() => void onTapNotif(n)}
                       activeOpacity={0.7}
-                      style={[styles.notifRow, !n.read && styles.notifRowUnread]}
+                      style={[
+                        styles.notifRow,
+                        { borderBottomColor: divider },
+                        !n.read && { backgroundColor: unreadRowTint },
+                      ]}
                     >
                       <View style={styles.notifAvatarWrap}>
                         {n.avatar ? (
-                          <Image source={{ uri: n.avatar }} style={styles.notifAvatar} />
+                          <Image source={{ uri: n.avatar }} style={[styles.notifAvatar, { backgroundColor: colors.border }]} />
                         ) : (
-                          <View style={[styles.notifAvatar, styles.notifAvatarFallback]}>
-                            <Ionicons name="person" size={20} color="#FFF" />
+                          <View style={[styles.notifAvatar, styles.notifAvatarFallback, { backgroundColor: colors.border }]}>
+                            <Ionicons name="person" size={20} color={colors.textSecondary} />
                           </View>
                         )}
-                        <View style={[styles.notifIconBadge, { backgroundColor: ic.color }]}>
+                        <View style={[styles.notifIconBadge, { backgroundColor: ic.color, borderColor: colors.background }]}>
                           <Ionicons name={ic.name} size={11} color="#FFF" />
                         </View>
                       </View>
 
                       <View style={{ flex: 1, minWidth: 0 }}>
                         {n.title ? (
-                          <Text style={styles.notifTitle} numberOfLines={1}>
+                          <Text style={[styles.notifTitle, { color: ink }]} numberOfLines={1}>
                             {n.title}
                           </Text>
                         ) : null}
-                        <Text style={styles.notifMessage} numberOfLines={2}>
+                        <Text style={[styles.notifMessage, { color: colors.textSecondary }]} numberOfLines={2}>
                           {n.message || 'New activity on your profile'}
                         </Text>
-                        <Text style={styles.notifTime}>{formatRelative(n.createdAt)}</Text>
+                        <Text style={[styles.notifTime, { color: muted }]}>{formatRelative(n.createdAt)}</Text>
                       </View>
 
                       {n.thumbnail ? (
-                        <Image source={{ uri: toAbsoluteMediaUrl(n.thumbnail) }} style={styles.notifThumb} />
+                        <Image
+                          source={{ uri: toAbsoluteMediaUrl(n.thumbnail) }}
+                          style={[styles.notifThumb, { backgroundColor: colors.border }]}
+                        />
                       ) : null}
-                      {!n.read ? <View style={styles.unreadDot} /> : null}
+                      {!n.read ? <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} /> : null}
                     </TouchableOpacity>
                   );
                 })}
@@ -531,7 +563,7 @@ export default function InboxScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FFFFFF' },
+  root: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -539,9 +571,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: DIVIDER,
   },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: INK },
+  headerTitle: { fontSize: 22, fontWeight: '800' },
   headerBtn: {
     width: 40,
     height: 40,
@@ -557,7 +588,6 @@ const styles = StyleSheet.create({
     gap: 12,
     marginHorizontal: 14,
     marginTop: 14,
-    backgroundColor: '#F7F7F8',
     borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 12,
@@ -566,20 +596,18 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: ACCENT,
     alignItems: 'center',
     justifyContent: 'center',
   },
   messagesTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  messagesTitle: { fontSize: 16, fontWeight: '800', color: INK },
+  messagesTitle: { fontSize: 16, fontWeight: '800' },
   unreadPill: {
     paddingHorizontal: 7,
     paddingVertical: 1,
     borderRadius: 10,
-    backgroundColor: ACCENT,
   },
   unreadPillText: { color: '#FFF', fontSize: 11, fontWeight: '800' },
-  messagesPreview: { color: MUTED, fontSize: 13, marginTop: 2 },
+  messagesPreview: { fontSize: 13, marginTop: 2 },
   messagesPreviewAvatar: { width: 32, height: 32, borderRadius: 16, marginRight: 4 },
 
   /* Filtres */
@@ -591,15 +619,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 18,
-    backgroundColor: '#F1F1F2',
   },
-  filterChipActive: { backgroundColor: '#000' },
-  filterText: { color: INK, fontWeight: '600', fontSize: 13 },
+  filterText: { fontWeight: '600', fontSize: 13 },
   filterTextActive: { color: '#FFF' },
 
   /* Sections + lignes notif */
   sectionLabel: {
-    color: MUTED,
     fontSize: 13,
     fontWeight: '700',
     paddingHorizontal: 16,
@@ -615,11 +640,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: DIVIDER,
   },
-  notifRowUnread: { backgroundColor: 'rgba(255,45,85,0.04)' },
   notifAvatarWrap: { position: 'relative' },
-  notifAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#E5E5E7' },
+  notifAvatar: { width: 44, height: 44, borderRadius: 22 },
   notifAvatarFallback: { alignItems: 'center', justifyContent: 'center' },
   notifIconBadge: {
     position: 'absolute',
@@ -631,25 +654,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: '#FFFFFF',
   },
-  notifTitle: { color: INK, fontSize: 14, fontWeight: '700' },
-  notifMessage: { color: '#3B3B3B', fontSize: 14, marginTop: 1 },
-  notifTime: { color: MUTED, fontSize: 12, marginTop: 4 },
-  notifThumb: { width: 44, height: 56, borderRadius: 6, backgroundColor: '#E5E5E7' },
+  notifTitle: { fontSize: 14, fontWeight: '700' },
+  notifMessage: { fontSize: 14, marginTop: 1 },
+  notifTime: { fontSize: 12, marginTop: 4 },
+  notifThumb: { width: 44, height: 56, borderRadius: 6 },
   unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: ACCENT,
     marginLeft: 4,
   },
 
   /* Empty / login */
   emptyWrap: { paddingHorizontal: 24, paddingVertical: 60, alignItems: 'center' },
-  emptyTitle: { color: INK, fontSize: 16, fontWeight: '700', marginTop: 14 },
+  emptyTitle: { fontSize: 16, fontWeight: '700', marginTop: 14 },
   emptySub: {
-    color: MUTED,
     fontSize: 13,
     textAlign: 'center',
     marginTop: 6,
@@ -660,7 +680,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
     paddingHorizontal: 22,
     paddingVertical: 12,
-    backgroundColor: ACCENT,
     borderRadius: 8,
   },
   signInBtnText: { color: '#FFF', fontWeight: '700', fontSize: 14 },

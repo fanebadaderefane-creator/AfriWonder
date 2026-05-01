@@ -89,6 +89,8 @@ const AuthenticatedApp = () => {
     '/articles',
     '/dashboard',
     '/features',
+    '/Crowdfunding',
+    '/CampaignDetails',
   ];
 
   // Redirect to Landing ONLY if not authenticated AND on a non-public page

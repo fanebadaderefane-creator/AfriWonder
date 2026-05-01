@@ -4,6 +4,13 @@
 
 AfriWonder est une super-app vidéo africaine construite avec une PWA React/Vite, une application mobile **Expo (React Native)** dans `frontend/` et un backend Node.js/Express/Prisma.
 
+## Cible canonique (audit)
+
+- Mobile de référence: `frontend/` (Expo React Native iOS/Android).
+- Backend de référence: `backend/` (Node.js/Express/Prisma).
+- Source de vérité API: `GET /api/openapi.json` et `GET /api-docs`.
+- Les dossiers historiques/expérimentaux (ex: `mobile/`, `mobile-afriwonder/`, `flutter_app/`) ne définissent pas la cible de livraison actuelle.
+
 ## Diagramme cible
 
 ```mermaid

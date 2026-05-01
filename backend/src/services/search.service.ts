@@ -175,7 +175,7 @@ export async function globalSearch(options: GlobalSearchOptions): Promise<Global
   let videos = Array.isArray(videosResult) ? videosResult : [];
   let users = Array.isArray(usersResult) ? usersResult : [];
   let products = Array.isArray(productsResult) ? productsResult : [];
-  let sounds = Array.isArray(soundsResult) ? soundsResult : [];
+  const sounds = Array.isArray(soundsResult) ? soundsResult : [];
 
   const normalizedTerm = normalizeSearchText(term.replace(/^#/, ''));
 

@@ -3,6 +3,7 @@
 import './bootstrap-env.js';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import jwt from 'jsonwebtoken';
 import { initSentry } from './config/sentry.js';
 import app from './app.js';
 import prisma from './config/database.js';
@@ -13,7 +14,9 @@ import { startAccountDeletionJobs } from './jobs/accountDeletion.job.js';
 import { startDataRetentionJob, initializeRetentionPolicies } from './jobs/dataRetention.job.js';
 import { startAdsExpirationJob } from './jobs/adsExpiration.job.js';
 import { startLiveScheduledReminderJob } from './jobs/liveScheduledReminder.job.js';
+import { startStarCallReminderJob } from './jobs/starCallReminder.job.js';
 import { startScheduledMessagesJob } from './jobs/scheduledMessages.job.js';
+import { startCrowdfundingFailedRefundsJob } from './jobs/crowdfundingRefunds.job.js';
 import { startModerationTimeoutJob } from './jobs/moderationTimeout.job.js';
 import { startE2eeMonitoringAlertJob } from './jobs/e2eeMonitoringAlert.job.js';
 import { initRedis } from './utils/cache.js';
@@ -179,7 +182,7 @@ httpServer.timeout = LONG_HTTP_MS;
 httpServer.keepAliveTimeout = LONG_HTTP_MS + 1000;
 httpServer.headersTimeout = LONG_HTTP_MS + 2000;
 
-const corsOrigins = [
+const corsOrigins: (string | RegExp)[] = [
   ...(process.env.CORS_ORIGIN || '')
     .split(',')
     .map((s) => s.trim())
@@ -197,13 +200,59 @@ const corsOrigins = [
   'https://afriwonder.vercel.app',
   'https://afriwonder.com',
   'https://www.afriwonder.com',
-  /\.vercel\.app$/, // Préviews Vercel
-].filter(Boolean);
+];
+// SÉCURITÉ : les préviews Vercel (*.vercel.app) ne sont autorisées QUE hors production
+// pour éviter qu'un domaine de preview malveillant (afriwonder-fake.vercel.app) n'ouvre
+// un socket authentifié vers l'API prod avec credentials.
+if (process.env.NODE_ENV !== 'production' && process.env.CORS_ALLOW_VERCEL_PREVIEW === 'true') {
+  corsOrigins.push(/\.vercel\.app$/);
+}
 const io = new Server(httpServer, {
   cors: {
     origin: corsOrigins.length > 0 ? corsOrigins : 'http://localhost:5173',
     credentials: true,
     methods: ['GET', 'POST']
+  }
+});
+
+// SÉCURITÉ : authentification JWT obligatoire à la connexion Socket.io.
+// Le token est transmis via socket.handshake.auth.token (client : io(url, { auth: { token } })).
+// Sans cela, n'importe qui pouvait rejoindre `user:${victimId}` via `user:join` et recevoir
+// messages, notifications, signalements d'appels, cadeaux live, etc.
+io.use((socket, next) => {
+  try {
+    const rawToken =
+      (socket.handshake.auth && (socket.handshake.auth as any).token) ||
+      (socket.handshake.headers?.authorization?.startsWith('Bearer ')
+        ? socket.handshake.headers.authorization.slice(7)
+        : '') ||
+      (socket.handshake.query?.token as string | undefined);
+
+    if (!rawToken || typeof rawToken !== 'string') {
+      // On autorise les connexions anonymes (feed public, live viewer non-logué)
+      // mais on ne rejoint AUCUNE room personnelle. socket.data.userId reste undefined.
+      return next();
+    }
+
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      logger.error('Socket.io: JWT_SECRET non configuré — refus connexion authentifiée');
+      return next(new Error('server_misconfigured'));
+    }
+
+    const decoded = jwt.verify(rawToken, secret) as { userId?: string; id?: string };
+    const uid = decoded.userId || decoded.id;
+    if (!uid) return next(new Error('invalid_token_payload'));
+
+    (socket.data as { userId?: string }).userId = uid;
+    return next();
+  } catch (err) {
+    logger.warn('Socket.io handshake rejected', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    // Token fourni mais invalide → on rejette la connexion pour éviter qu'un
+    // client forge un token puis passe par la branche anonyme.
+    return next(new Error('unauthorized'));
   }
 });
 
@@ -243,22 +292,27 @@ async function ensureDbConnected() {
 io.on('connection', (socket) => {
   logger.info('WebSocket client connected', { socketId: socket.id });
 
-  socket.on('user:join', (userId: string) => {
-    if (userId) {
-      socket.join(`user:${userId}`);
-      socketToUserId.set(socket.id, userId);
-      broadcastPresence(userId, true).catch((e) => logger.warn('Presence online', { err: e instanceof Error ? e.message : String(e) }));
-      logger.info('User joined room', { userId, socketId: socket.id });
+  // SÉCURITÉ : l'userId provient STRICTEMENT du JWT vérifié dans io.use() ci-dessus.
+  // Tout userId fourni par le client est ignoré pour empêcher l'usurpation de rooms privées.
+  socket.on('user:join', (_clientUserId?: string) => {
+    const userId = (socket.data as { userId?: string }).userId;
+    if (!userId) {
+      logger.warn('user:join rejeté (socket non authentifié)', { socketId: socket.id });
+      return;
     }
+    socket.join(`user:${userId}`);
+    socketToUserId.set(socket.id, userId);
+    broadcastPresence(userId, true).catch((e) => logger.warn('Presence online', { err: e instanceof Error ? e.message : String(e) }));
+    logger.info('User joined room', { userId, socketId: socket.id });
   });
 
-  socket.on('user:leave', (userId: string) => {
-    if (userId) {
-      socket.leave(`user:${userId}`);
-      socketToUserId.delete(socket.id);
-      if (!hasActiveSocketForUser(userId)) {
-        broadcastPresence(userId, false).catch((e) => logger.warn('Presence offline', { err: e instanceof Error ? e.message : String(e) }));
-      }
+  socket.on('user:leave', (_clientUserId?: string) => {
+    const userId = (socket.data as { userId?: string }).userId;
+    if (!userId) return;
+    socket.leave(`user:${userId}`);
+    socketToUserId.delete(socket.id);
+    if (!hasActiveSocketForUser(userId)) {
+      broadcastPresence(userId, false).catch((e) => logger.warn('Presence offline', { err: e instanceof Error ? e.message : String(e) }));
     }
   });
 
@@ -288,6 +342,89 @@ io.on('connection', (socket) => {
 
   socket.on('message:leave-group', (groupId: string) => {
     if (groupId) socket.leave(`group:${groupId}`);
+  });
+
+  // =========================
+  // RIDE / DELIVERY TRACKING
+  // =========================
+  // Rooms : `ride:<rideId>` ou `shipment:<shipmentId>`
+  //
+  // Clients côté chauffeur émettent `ride:location` avec { rideId, lat, lng, heading, speed }
+  // Clients côté passager écoutent `ride:location` dans la room pour afficher la position.
+  // Statut change → `ride:status` broadcast.
+  socket.on('ride:join', (rideId: string) => {
+    const userId = (socket.data as { userId?: string }).userId;
+    if (!rideId || !userId) return;
+    socket.join(`ride:${rideId}`);
+  });
+
+  socket.on('ride:leave', (rideId: string) => {
+    if (rideId) socket.leave(`ride:${rideId}`);
+  });
+
+  socket.on('ride:location', (payload: { rideId: string; lat: number; lng: number; heading?: number; speed?: number }) => {
+    const userId = (socket.data as { userId?: string }).userId;
+    if (!payload?.rideId || !userId) return;
+    if (typeof payload.lat !== 'number' || typeof payload.lng !== 'number') return;
+    // Broadcast à la room (passager + chauffeur) mais pas à l'émetteur
+    socket.to(`ride:${payload.rideId}`).emit('ride:location', {
+      rideId: payload.rideId,
+      driverId: userId,
+      lat: payload.lat,
+      lng: payload.lng,
+      heading: payload.heading,
+      speed: payload.speed,
+      timestamp: Date.now(),
+    });
+  });
+
+  socket.on('ride:status', (payload: { rideId: string; status: string; eta_min?: number }) => {
+    const userId = (socket.data as { userId?: string }).userId;
+    if (!payload?.rideId || !userId) return;
+    socket.to(`ride:${payload.rideId}`).emit('ride:status', {
+      rideId: payload.rideId,
+      status: payload.status,
+      eta_min: payload.eta_min,
+      updatedBy: userId,
+      timestamp: Date.now(),
+    });
+  });
+
+  // Même pattern pour les livraisons marketplace/food
+  socket.on('shipment:join', (shipmentId: string) => {
+    const userId = (socket.data as { userId?: string }).userId;
+    if (!shipmentId || !userId) return;
+    socket.join(`shipment:${shipmentId}`);
+  });
+
+  socket.on('shipment:leave', (shipmentId: string) => {
+    if (shipmentId) socket.leave(`shipment:${shipmentId}`);
+  });
+
+  socket.on('shipment:location', (payload: { shipmentId: string; lat: number; lng: number; heading?: number }) => {
+    const userId = (socket.data as { userId?: string }).userId;
+    if (!payload?.shipmentId || !userId) return;
+    if (typeof payload.lat !== 'number' || typeof payload.lng !== 'number') return;
+    socket.to(`shipment:${payload.shipmentId}`).emit('shipment:location', {
+      shipmentId: payload.shipmentId,
+      driverId: userId,
+      lat: payload.lat,
+      lng: payload.lng,
+      heading: payload.heading,
+      timestamp: Date.now(),
+    });
+  });
+
+  socket.on('shipment:status', (payload: { shipmentId: string; status: string; eta_min?: number }) => {
+    const userId = (socket.data as { userId?: string }).userId;
+    if (!payload?.shipmentId || !userId) return;
+    socket.to(`shipment:${payload.shipmentId}`).emit('shipment:status', {
+      shipmentId: payload.shipmentId,
+      status: payload.status,
+      eta_min: payload.eta_min,
+      updatedBy: userId,
+      timestamp: Date.now(),
+    });
   });
 
   socket.on('message:typing-start', (payload: { conversationId: string; userId: string; name?: string }) => {
@@ -404,7 +541,7 @@ io.on('connection', (socket) => {
             message: `${meta.callerName || 'Votre contact'} n’a pas répondu`,
             reference_type: 'direct_call',
             reference_id: meta.callId,
-            data: { callId: meta.callId, callerId: meta.fromUserId, type: meta.type },
+            data: { callId: meta.callId, callerId: meta.fromUserId, callMediaType: meta.type },
           });
           await notificationService.create(meta.toUserId, {
             type: 'call_missed',
@@ -412,7 +549,7 @@ io.on('connection', (socket) => {
             message: `Vous avez manqué un appel ${meta.type === 'video' ? 'vidéo' : 'audio'}`,
             reference_type: 'direct_call',
             reference_id: meta.callId,
-            data: { callId: meta.callId, callerId: meta.fromUserId, type: meta.type },
+            data: { callId: meta.callId, callerId: meta.fromUserId, callMediaType: meta.type },
           });
         } catch (err) {
           logger.warn('Missed call notifications failed', { callId: meta.callId, err });
@@ -436,7 +573,7 @@ io.on('connection', (socket) => {
         data: {
           callId,
           callerId,
-          type: payload.type || 'audio',
+          callMediaType: callType,
           callerName: payload.callerName || '',
           callerAvatar: payload.callerAvatar || '',
           actions: [
@@ -589,7 +726,9 @@ async function startServer() {
         startDataRetentionJob();
         startAdsExpirationJob();
         startLiveScheduledReminderJob();
+        startStarCallReminderJob();
         startScheduledMessagesJob();
+        startCrowdfundingFailedRefundsJob();
         startModerationTimeoutJob();
         startE2eeMonitoringAlertJob();
 

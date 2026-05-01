@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, useWindowDimensions } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  useWindowDimensions,
+  InteractionManager,
+  Platform,
+} from 'react-native';
 import { Colors } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,13 +19,13 @@ import { ExploreGridSkeleton } from '../../src/components/SkeletonScreens';
 import apiClient from '../../src/api/client';
 import { useAuthStore } from '../../src/store/authStore';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
-import { SmartThumbnail, isVideoUrl } from '../../src/components/SmartThumbnail';
+import { SmartThumbnail, isLikelyRecordingUrl, isVideoUrl } from '../../src/components/SmartThumbnail';
+import {
+  ensureVideoFrameLocalUri,
+  queuePrefetchDiscoverFrames,
+} from '../../src/utils/videoFrameExtractCache';
 
 const GRID_GAP = 2;
-
-const DEFAULT_STORIES = [
-  { id: 'add', name: 'Moi', avatar: '', isAdd: true, hasNew: false },
-];
 
 type ExploreCreatorRow = {
   id: string;
@@ -26,12 +36,25 @@ type ExploreCreatorRow = {
 
 const USERS_PAGE_LIMIT = 50;
 const VIDEOS_PAGE_LIMIT = 100;
-const MAX_USER_PAGES = 100;
+// PERF : précédemment 100 pages = jusqu'à 5000 users chargés au mount de Discover
+// (timeout, ANR sur 3G, pression backend). On borne à 3 pages (150 users) — le reste
+// doit venir via la barre de recherche + suggestions serveur dédiées.
+const MAX_USER_PAGES = 3;
 
 function generatedAvatarFromLabel(label: string) {
   const safe = (label || '?').trim().slice(0, 48) || '?';
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(safe)}&background=FF6B00&color=fff&size=128&bold=true`;
 }
+
+const DEFAULT_STORIES = [
+  {
+    id: 'add',
+    name: 'Moi',
+    avatar: generatedAvatarFromLabel('Moi'),
+    isAdd: true,
+    hasNew: false,
+  },
+];
 
 function profileDisplayName(u: { full_name?: string; username?: string; email?: string }) {
   const full = (u.full_name || '').trim();
@@ -65,7 +88,8 @@ async function fetchAllUsersFromApi(): Promise<any[]> {
   return users;
 }
 
-const MAX_VIDEO_PAGES = 60;
+// PERF + stabilité téléphone : 1 page (100 vids) pour agréger les créateurs de la barre « stories ».
+const MAX_VIDEO_PAGES = 1;
 
 type PublicVideoCreatorAgg = {
   id: string;
@@ -142,6 +166,42 @@ const SERVICES_ROW2 = [
 
 const formatNum = (n: number) =>
   n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(n);
+
+/** Évite d’afficher la photo de profil comme « miniature vidéo » si l’API la met par erreur dans `thumbnail_url`. */
+function isSameAsCreatorAvatar(mediaUrl: string, creatorAbs: string) {
+  const a = (mediaUrl || '').trim();
+  const b = (creatorAbs || '').trim();
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const base = (u: string) => u.toLowerCase().split('?')[0].split('#')[0];
+  return base(a) === base(b);
+}
+
+const pathLooksStreamManifest = (u: string) => {
+  const low = (u || '').toLowerCase();
+  if (low.includes('format=m3u8') || low.includes('type=m3u8')) return true;
+  return /\.(m3u8|mpd)(\?|#|$)/i.test((u || '').split('?')[0] || '');
+};
+
+/**
+ * Choisit une source pour `expo-video-thumbnails` : d’abord un flux **non-HLS** (souvent MP4 ou
+ * CDN sans extension, cf. `isLikelyRecordingUrl`), sinon HLS. L’ancien code exigeait `isVideoUrl`
+ * (fichier avec extension) sur `video_url` : sans `.mp4` explicite, on retombait sur le HLS, que
+ * le natif ne décode pas ici — d’où toute la grille en gris.
+ */
+function pickFrameExtractUrl(absVid: string, absLow: string, absHls: string) {
+  const asVideo = (u: string) => u && (isVideoUrl(u) || isLikelyRecordingUrl(u));
+  for (const u of [absVid, absLow]) {
+    if (!u) continue;
+    if (pathLooksStreamManifest(u)) continue;
+    if (asVideo(u)) return u;
+  }
+  for (const u of [absVid, absLow, absHls]) {
+    if (!u) continue;
+    if (asVideo(u)) return u;
+  }
+  return '';
+}
 
 type TrendingHashtag = { tag: string; count: number; countFormatted: string };
 
@@ -282,25 +342,29 @@ export default function DiscoverScreen() {
       const transformed: ExploreTile[] =
         backendVideos.length > 0
           ? backendVideos.map((v: any, i: number) => {
-              const absThumb = toAbsoluteMediaUrl(v.thumbnail_url || '').trim();
               const absLow = toAbsoluteMediaUrl(v.low_quality_url || v.low_quality_playback_url || '').trim();
               const absVid = toAbsoluteMediaUrl(v.video_url || '').trim();
               const absHls = toAbsoluteMediaUrl(v.hls_url || '').trim();
-              const posterStatic =
-                absThumb && !isVideoUrl(absThumb)
-                  ? absThumb
-                  : absLow && !isVideoUrl(absLow)
-                    ? absLow
-                    : '';
-              const videoForFrame =
-                absVid && isVideoUrl(absVid)
-                  ? absVid
-                  : absLow && isVideoUrl(absLow)
-                    ? absLow
-                    : absHls && isVideoUrl(absHls)
-                      ? absHls
-                      : '';
-              const image = posterStatic || videoForFrame || absThumb || absLow || absVid || absHls;
+              const creatorAbs = toAbsoluteMediaUrl(String(v.creator_avatar || '').trim());
+              /** Comme le fil Home : toute URL image côté API (pas seulement `thumbnail_url`). */
+              const posterStatic = (() => {
+                for (const raw of [v.thumbnail_url, v.poster_url, v.cover_url, v.preview_image_url]) {
+                  const abs = toAbsoluteMediaUrl(String(raw || '').trim());
+                  if (!abs) continue;
+                  if (isVideoUrl(abs)) continue;
+                  if (/\.(m3u8|mpd)/i.test(abs.split('?')[0] || '')) continue;
+                  if (isSameAsCreatorAvatar(abs, creatorAbs)) continue;
+                  return abs;
+                }
+                if (absLow && !isVideoUrl(absLow) && !/\.(m3u8|mpd)/i.test(absLow)) {
+                  if (isSameAsCreatorAvatar(absLow, creatorAbs)) return '';
+                  return absLow;
+                }
+                return '';
+              })();
+              const videoForFrame = pickFrameExtractUrl(absVid, absLow, absHls);
+              /** Grille Discover : ne jamais passer l'URL vidéo comme `uri` (évite N lecteurs `expo-video`). */
+              const image = posterStatic;
               return {
                 id: v.id || `e${i}`,
                 image,
@@ -316,21 +380,47 @@ export default function DiscoverScreen() {
                 likes: v.likes || 0,
                 title: v.title || '',
                 creator_name: v.creator_name || '',
-                creator_avatar: toAbsoluteMediaUrl(v.creator_avatar || '').trim(),
+                creator_avatar: creatorAbs,
               };
             })
           : [];
-      setExploreItems(transformed);
-      try {
-        const liveRes = await apiClient.get('/live', {
-          params: { status: 'live', limit: 12, sortBy: 'viewers' },
-        });
-        const ld = liveRes.data?.data ?? liveRes.data;
-        const streams = Array.isArray(ld?.streams) ? (ld.streams as LiveStripItem[]) : [];
-        setLiveStrip(streams);
-      } catch {
-        setLiveStrip([]);
+      /**
+       * Préchauffage en arrière-plan (natif) : pas d’attente — la grille s’affiche tout de suite,
+       * les miniatures arrivent au fil de l’eau.
+       */
+      if (transformed.length && Platform.OS !== 'web') {
+        const urls = transformed.map((t) => t.videoUrl);
+        const startFrameWarm = () => {
+          queueMicrotask(() => {
+            const cap = Platform.OS === 'android' ? 20 : 32;
+            queuePrefetchDiscoverFrames(urls, cap);
+            for (const t of transformed) {
+              const u = (t.videoUrl || '').trim();
+              if (u) void ensureVideoFrameLocalUri(u);
+            }
+          });
+        };
+        if (Platform.OS === 'android') {
+          /* Après 1er rendu : moins d’I/O + décodeur en rafale (OOM / sortie du process). */
+          InteractionManager.runAfterInteractions(startFrameWarm);
+        } else {
+          startFrameWarm();
+        }
       }
+      setExploreItems(transformed);
+      /** Ne pas await le « live » : l’appel pouvait bloquer 1s+ avant `isLoading: false` → onglet figé. */
+      void (async () => {
+        try {
+          const liveRes = await apiClient.get('/live', {
+            params: { status: 'live', limit: 12, sortBy: 'viewers' },
+          });
+          const ld = liveRes.data?.data ?? liveRes.data;
+          const streams = Array.isArray(ld?.streams) ? (ld.streams as LiveStripItem[]) : [];
+          setLiveStrip(streams);
+        } catch {
+          setLiveStrip([]);
+        }
+      })();
     } catch {
       setExploreItems([]);
       setLiveStrip([]);
@@ -355,9 +445,26 @@ export default function DiscoverScreen() {
   }, [loadDiscoverVideos]);
 
   useEffect(() => {
-    void loadRealCreatorsAsStories();
-    void loadTrendingHashtags();
-  }, [loadRealCreatorsAsStories, loadTrendingHashtags]);
+    const t = setTimeout(() => {
+      void loadTrendingHashtags();
+    }, 400);
+    return () => clearTimeout(t);
+  }, [loadTrendingHashtags]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const t = setTimeout(() => {
+      if (cancelled) return;
+      InteractionManager.runAfterInteractions(() => {
+        if (cancelled) return;
+        void loadRealCreatorsAsStories();
+      });
+    }, 8000);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [loadRealCreatorsAsStories]);
 
   if (isLoading && exploreItems.length === 0) {
     return (
@@ -408,7 +515,10 @@ export default function DiscoverScreen() {
         </View>
       </TouchableOpacity>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        removeClippedSubviews={Platform.OS === 'android'}
+      >
         {/* Categories — hashtags thèmes */}
         <ScrollView
           horizontal
@@ -631,6 +741,25 @@ export default function DiscoverScreen() {
         <TouchableOpacity
           style={styles.momentsBanner}
           activeOpacity={0.8}
+          onPress={() => router.push('/feed' as never)}
+        >
+          <LinearGradient
+            colors={['#6C4AB6', '#4A2C8A']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.promoGradient}
+          >
+            <View style={styles.promoLeft}>
+              <Text style={styles.promoTitle}>Moments</Text>
+              <Text style={styles.promoSubtitle}>Découvrez ce que font vos amis</Text>
+            </View>
+            <Ionicons name="people" size={40} color="rgba(255,255,255,0.35)" />
+          </LinearGradient>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.crowdfundingBanner}
+          activeOpacity={0.8}
           onPress={() => router.push('/crowdfunding' as any)}
         >
           <LinearGradient
@@ -707,6 +836,8 @@ export default function DiscoverScreen() {
                     posterUrl={(item as any).posterUrl}
                     uri={item.image}
                     videoUrl={(item as any).videoUrl}
+                    videoIdForServerThumbnail={item.id}
+                    extractPosterFromVideo
                     style={{ width: tileSize, height: tileHeight }}
                     tileSize={tileSize}
                     tileHeight={tileHeight}
@@ -850,7 +981,8 @@ const styles = StyleSheet.create({
   },
   serviceName: { color: '#CCC', fontSize: 11, fontWeight: '500' as const, textAlign: 'center' as const },
   promoBanner: { marginHorizontal: 16, marginBottom: 10, borderRadius: 16, overflow: 'hidden' },
-  momentsBanner: { marginHorizontal: 16, marginBottom: 16, borderRadius: 16, overflow: 'hidden' },
+  momentsBanner: { marginHorizontal: 16, marginBottom: 10, borderRadius: 16, overflow: 'hidden' },
+  crowdfundingBanner: { marginHorizontal: 16, marginBottom: 16, borderRadius: 16, overflow: 'hidden' },
   promoGradient: { flexDirection: 'row', alignItems: 'center', padding: 16 },
   promoLeft: { flex: 1 },
   promoNewBadge: {

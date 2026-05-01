@@ -48,6 +48,10 @@ export default function CovoiturageScreen() {
   if (!featureFlags.servicesHub) {
     return <ComingSoonScreen title="Covoiturage" description="Le module covoiturage sera bientôt disponible." icon="people-outline" />;
   }
+  return <CovoiturageContent />;
+}
+
+function CovoiturageContent() {
   const insets = useSafeAreaInsets();
   const [rides, setRides] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);

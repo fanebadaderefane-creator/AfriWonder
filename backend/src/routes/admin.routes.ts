@@ -25,6 +25,7 @@ import e2eeService from '../services/e2ee.service.js';
 import withdrawalService from '../services/withdrawal.service.js';
 import notificationService from '../services/notification.service.js';
 import liveService from '../services/live.service.js';
+import { authService } from '../services/auth.service.js';
 import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 import {
@@ -914,7 +915,7 @@ router.post('/lives/:id/terminate', authenticate, requireAnyAdmin, validateBody(
       return res.status(404).json({ success: false, error: 'Live introuvable' });
     }
     const ended = await liveService.endStream(stream.id, stream.creator_id, {
-      replay_url: stream.replay_url || null,
+      replay_url: stream.replay_url || undefined,
     });
     await auditLog(req, 'live_terminate', 'live', stream.id, { reason: req.body?.reason });
     res.json({ success: true, data: ended });
@@ -1145,6 +1146,57 @@ router.patch('/users/:id/suspend', authenticate, requireAnyAdmin, validateBody(a
     const updated = await prisma.user.update({ where: { id: userId }, data });
     await auditLog(req, suspended ? 'user_suspend' : 'user_unsuspend', 'user', userId, { reason });
     res.json({ success: true, data: { id: updated.id, account_suspended: updated.account_suspended } });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/admin/users/:id/temporary-password - Super admin: mot de passe temporaire + changement obligatoire
+router.post('/users/:id/temporary-password', authenticate, requireAnyAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const userId = param(req, 'id');
+    const target = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    if (!target) return res.status(404).json({ success: false, error: 'Utilisateur non trouvé' });
+    if (target.role === 'super_admin' && req.user?.role !== 'super_admin') {
+      return res.status(403).json({ success: false, error: 'Seul un super_admin peut réinitialiser un super_admin' });
+    }
+    const result = await authService.adminIssueTemporaryPassword(userId, req.user!.id);
+    await auditLog(req, 'issue_temporary_password', 'user', userId, {
+      forced_password_change: true,
+    });
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/admin/users/temporary-password/by-email - Super admin: reset temporaire via email
+router.post('/users/temporary-password/by-email', authenticate, requireAnyAdmin, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'email requis' });
+    }
+    const target = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, role: true },
+    });
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Utilisateur non trouvé' });
+    }
+    if (target.role === 'super_admin' && req.user?.role !== 'super_admin') {
+      return res.status(403).json({ success: false, error: 'Seul un super_admin peut réinitialiser un super_admin' });
+    }
+    const result = await authService.adminIssueTemporaryPassword(target.id, req.user!.id);
+    await auditLog(req, 'issue_temporary_password', 'user', target.id, {
+      forced_password_change: true,
+      via: 'email',
+      email,
+    });
+    res.json({ success: true, data: result });
   } catch (error: any) {
     next(error);
   }

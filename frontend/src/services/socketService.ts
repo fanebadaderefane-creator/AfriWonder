@@ -83,8 +83,49 @@ function resolveSocketUrl(): string {
  */
 class SocketService {
   private socket: Socket | null = null;
+  /** Évite le spam : handshake peut renvoyer `unauthorized` avant une reconnexion réussie. */
+  private loggedUnauthorizedOnce = false;
   private listeners: Map<string, Set<Function>> = new Map();
   private userContext: { id: string; name?: string } | null = null;
+  private currentToken: string | null = null;
+
+  /**
+   * Émet uniquement lorsque la connexion est prête ; sinon attend `connect` jusqu'à `timeoutMs`.
+   * Indispensable quand l’utilisateur ouvre l’écran d’appel depuis une notification (cold start).
+   */
+  async ensureConnectedEmit(event: string, data?: unknown, timeoutMs = 22000): Promise<boolean> {
+    const sock = this.socket;
+    if (!sock) return false;
+    if (sock.connected) {
+      sock.emit(event, data);
+      return true;
+    }
+    return await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        try {
+          sock.off('connect', onConnect);
+        } catch {
+          /* ignore */
+        }
+        resolve(false);
+      }, timeoutMs);
+      const onConnect = () => {
+        clearTimeout(timer);
+        try {
+          sock.off('connect', onConnect);
+        } catch {
+          /* ignore */
+        }
+        try {
+          sock.emit(event, data);
+          resolve(true);
+        } catch {
+          resolve(false);
+        }
+      };
+      sock.once('connect', onConnect);
+    });
+  }
 
   /**
    * Définir l'identité du user pour les événements qui nécessitent `userId` / `name`
@@ -95,8 +136,17 @@ class SocketService {
     this.userContext = { id: userId, name };
   }
 
-  connect(_token: string) {
+  /**
+   * Connexion au serveur Socket.io avec JWT obligatoire.
+   * Le backend (`backend/src/index.ts` `io.use()`) vérifie le token et remplit
+   * `socket.data.userId`. Sans token, le serveur accepte la connexion anonyme mais
+   * refuse `user:join` (pas de room privée) → messages / notifications inaccessibles.
+   */
+  connect(token?: string) {
     if (this.socket?.connected) return;
+
+    this.loggedUnauthorizedOnce = false;
+    this.currentToken = token?.trim() || null;
 
     const url = resolveSocketUrl();
     this.socket = io(url, {
@@ -105,16 +155,20 @@ class SocketService {
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 2000,
+      // JWT transmis au handshake — vérifié côté serveur par io.use().
+      auth: this.currentToken ? { token: this.currentToken } : undefined,
     });
 
-    /** Relais live:* / call:* / presence:* / message:* aux abonnés applicatifs. */
+    /** Relais live:* / call:* / presence:* / message:* / ride:* / shipment:* aux abonnés applicatifs. */
     this.socket.onAny((event: string, ...args: unknown[]) => {
       if (typeof event !== 'string') return;
       if (
         event.startsWith('live:') ||
         event.startsWith('call:') ||
         event.startsWith('presence:') ||
-        event.startsWith('message:')
+        event.startsWith('message:') ||
+        event.startsWith('ride:') ||
+        event.startsWith('shipment:')
       ) {
         this.notifyListeners(event, args[0]);
       }
@@ -150,7 +204,15 @@ class SocketService {
     });
 
     this.socket.on('connect_error', (err: { message?: string }) => {
-      console.warn('[Socket] Connection error:', err?.message);
+      const msg = String(err?.message || '');
+      if (/unauthorized/i.test(msg)) {
+        if (typeof __DEV__ !== 'undefined' && __DEV__ && !this.loggedUnauthorizedOnce) {
+          this.loggedUnauthorizedOnce = true;
+          console.log('[Socket] Handshake refusé une fois (token / timing) — reconnexion automatique.');
+        }
+        return;
+      }
+      console.warn('[Socket] Connection error:', msg || err);
     });
   }
 
@@ -215,14 +277,18 @@ class SocketService {
    */
   markRead(conversationId: string) {
     if (!conversationId) return;
-    void import('../api/client').then((mod) => {
-      mod.default
-        .put(`/messages/${encodeURIComponent(conversationId)}/read`, {})
-        .catch((err: unknown) => {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.warn('[socket] markRead REST failed', msg);
-        });
-    });
+    void import('../api/client')
+      .then((mod) => {
+        return mod.default
+          .put(`/messages/${encodeURIComponent(conversationId)}/read`, {})
+          .catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn('[socket] markRead REST failed', msg);
+          });
+      })
+      .catch(() => {
+        /* import dynamique ou client indisponible */
+      });
   }
 
   emit(event: string, data?: unknown) {

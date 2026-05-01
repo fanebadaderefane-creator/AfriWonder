@@ -2,14 +2,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
+import { Colors, Spacing } from '../../src/theme/colors';
+import { transportScreenStyles as styles } from '../../src/screens/services/transportScreen.styles';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -29,6 +29,10 @@ export default function TransportScreen() {
   if (!featureFlags.servicesHub) {
     return <ComingSoonScreen title="Transport" description="Le module transport / VTC sera bientôt disponible." icon="car-outline" />;
   }
+  return <TransportContent />;
+}
+
+function TransportContent() {
   const insets = useSafeAreaInsets();
   const [pickup, setPickup] = useState('');
   const [destination, setDestination] = useState('');
@@ -224,104 +228,3 @@ export default function TransportScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.lg,
-  },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: FontSizes.xl, fontWeight: 'bold', color: Colors.text },
-  content: { paddingHorizontal: Spacing.xl, paddingBottom: 120 },
-  formCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-  },
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.sm },
-  inputDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.success },
-  inputDotEnd: { backgroundColor: Colors.primary },
-  input: { flex: 1, color: Colors.text, fontSize: FontSizes.md, padding: 0 },
-  divider: { height: 1, backgroundColor: Colors.border, marginVertical: 4, marginLeft: 22 },
-  sectionTitle: {
-    color: Colors.text,
-    fontSize: FontSizes.lg,
-    fontWeight: 'bold',
-    marginTop: Spacing.xxl,
-    marginBottom: Spacing.md,
-  },
-  vehicleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  vehicleCard: {
-    flex: 1,
-    minWidth: '22%',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    paddingVertical: Spacing.md,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  vehicleCardActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '15' },
-  vehicleName: { color: Colors.textSecondary, fontSize: FontSizes.sm, fontWeight: '500' },
-  vehicleNameActive: { color: Colors.primary, fontWeight: '700' },
-  centerSmall: { alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.xxl },
-  loadingText: { color: Colors.textSecondary, fontSize: FontSizes.sm },
-  errorText: { color: Colors.textSecondary, fontSize: FontSizes.sm, textAlign: 'center' },
-  emptyText: { color: Colors.textSecondary, fontSize: FontSizes.sm, textAlign: 'center', paddingHorizontal: Spacing.lg },
-  retryBtn: {
-    marginTop: Spacing.sm,
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md,
-  },
-  retryText: { color: '#FFFFFF', fontSize: FontSizes.sm, fontWeight: '600' },
-  driverCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
-  },
-  driverIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.primary + '20',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  driverName: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600' },
-  driverMeta: { flexDirection: 'row', gap: Spacing.md, marginTop: 2, flexWrap: 'wrap' },
-  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { color: Colors.textSecondary, fontSize: FontSizes.xs },
-  availableBadge: {
-    backgroundColor: Colors.success + '20',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
-    borderRadius: BorderRadius.sm,
-  },
-  availableText: { color: Colors.success, fontSize: FontSizes.xs, fontWeight: '600' },
-  bottomBar: {
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    backgroundColor: Colors.background,
-  },
-  primaryBtn: {
-    backgroundColor: Colors.primary,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-    alignItems: 'center',
-  },
-  primaryBtnDisabled: { opacity: 0.5 },
-  primaryBtnText: { color: '#FFFFFF', fontSize: FontSizes.md, fontWeight: 'bold' },
-});

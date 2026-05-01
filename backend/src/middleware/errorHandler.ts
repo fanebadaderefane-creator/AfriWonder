@@ -22,9 +22,21 @@ export const errorHandler = (
     /Circuit breaker|upstream database|Can't reach database|connection.*refused|ECONNREFUSED|P1001/i.test(rawMessage);
   const effectiveStatusCode =
     isDbConnectionError ? 503 : statusCode;
-  const message = isDbConnectionError
+  let message = isDbConnectionError
     ? 'Service temporairement indisponible. Réessayez dans quelques instants.'
     : rawMessage;
+
+  /** Colonne/table absente → schéma DB souvent en retard sur prisma/schema.prisma */
+  const prismaCode = (err as { code?: string }).code;
+  const prismaSchemaMismatch = prismaCode === 'P2022' || prismaCode === 'P2021';
+  if (
+    process.env.NODE_ENV === 'development' &&
+    prismaSchemaMismatch &&
+    !isDbConnectionError
+  ) {
+    message =
+      `${rawMessage} — Cause fréquente : migrations non appliquées sur cette base. Dans backend/, exécutez « npx prisma migrate deploy » (prod/staging) ou « npx prisma migrate dev » (local), puis redémarrez le serveur API.`;
+  }
 
   const isProduction = process.env.NODE_ENV === 'production';
   const hideInternalDetails =
@@ -33,7 +45,9 @@ export const errorHandler = (
     err.isOperational !== true &&
     !isDbConnectionError;
   const clientSafeMessage = hideInternalDetails
-    ? 'Une erreur interne est survenue. Réessayez plus tard.'
+    ? prismaSchemaMismatch
+      ? 'Erreur serveur : schéma base de données incompatible (migrations Prisma à appliquer).'
+      : 'Une erreur interne est survenue. Réessayez plus tard.'
     : message;
 
   logger.error(rawMessage, err, {

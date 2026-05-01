@@ -29,6 +29,10 @@ export default function JobsScreen() {
   if (!featureFlags.servicesHub) {
     return <ComingSoonScreen title="Emplois" description="La place de marché des emplois sera bientôt disponible." icon="briefcase-outline" />;
   }
+  return <JobsContent />;
+}
+
+function JobsContent() {
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
   const [jobs, setJobs] = useState<Job[]>([]);

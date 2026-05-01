@@ -1,63 +1,122 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Image,
-  TextInput, KeyboardAvoidingView, Platform, Alert,
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../../src/theme/colors';
+import apiClient from '../../src/api/client';
+import { useAuthStore } from '../../src/store/authStore';
+import { profileAvatarUri, avatarSeedFromUserFields } from '../../src/utils/avatarFallback';
+import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
 
-const CONTACTS = [
-  { id: 'u1', name: 'Aminata Diallo', avatar: 'https://i.pravatar.cc/80?img=1', selected: false },
-  { id: 'u2', name: 'Moussa Ndiaye', avatar: 'https://i.pravatar.cc/80?img=2', selected: false },
-  { id: 'u3', name: 'Awa Kone', avatar: 'https://i.pravatar.cc/80?img=3', selected: false },
-  { id: 'u4', name: 'Ibrahim Toure', avatar: 'https://i.pravatar.cc/80?img=4', selected: false },
-  { id: 'u5', name: 'Mariam Sangare', avatar: 'https://i.pravatar.cc/80?img=5', selected: false },
-  { id: 'u6', name: 'Fatoumata Diarra', avatar: 'https://i.pravatar.cc/80?img=9', selected: false },
-  { id: 'u7', name: 'Boubacar Diallo', avatar: 'https://i.pravatar.cc/80?img=7', selected: false },
-  { id: 'u8', name: 'Seydou Keita', avatar: 'https://i.pravatar.cc/80?img=30', selected: false },
-  { id: 'u9', name: 'Kadiatou Toure', avatar: 'https://i.pravatar.cc/80?img=25', selected: false },
-  { id: 'u10', name: 'Oumar Coulibaly', avatar: 'https://i.pravatar.cc/80?img=12', selected: false },
-];
+type ContactRow = { id: string; name: string; avatar: string };
 
 export default function NewGroupScreen() {
   const insets = useSafeAreaInsets();
+  const me = useAuthStore((s) => s.user);
   const [step, setStep] = useState<1 | 2>(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
   const [groupDesc, setGroupDesc] = useState('');
+  const [contacts, setContacts] = useState<ContactRow[]>([]);
+  const [loadingContacts, setLoadingContacts] = useState(true);
+  const [creating, setCreating] = useState(false);
+
+  const loadUsers = useCallback(async () => {
+    setLoadingContacts(true);
+    try {
+      const res = await apiClient.get('/users', { params: { page: 1, limit: 100 } });
+      const data = res.data?.data ?? res.data;
+      let users = data?.users ?? (Array.isArray(data) ? data : []);
+      if (!Array.isArray(users)) users = [];
+      const myId = me?.id;
+      const rows: ContactRow[] = users
+        .filter((u: any) => u?.id && u.id !== myId && (u.username || u.full_name))
+        .map((u: any) => ({
+          id: String(u.id),
+          name: String(u.full_name || u.username || 'Utilisateur').trim(),
+          avatar: profileAvatarUri(
+            u.profile_image,
+            avatarSeedFromUserFields({
+              full_name: u.full_name,
+              username: u.username,
+              fallbackLabel: 'Contact',
+            }),
+          ),
+        }));
+      setContacts(rows);
+    } catch {
+      setContacts([]);
+    } finally {
+      setLoadingContacts(false);
+    }
+  }, [me?.id]);
+
+  useEffect(() => {
+    void loadUsers();
+  }, [loadUsers]);
 
   const toggleContact = (id: string) => {
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
-  const filteredContacts = searchQuery
-    ? CONTACTS.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : CONTACTS;
+  const filteredContacts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return contacts;
+    return contacts.filter((c) => c.name.toLowerCase().includes(q));
+  }, [contacts, searchQuery]);
 
-  const selectedContacts = CONTACTS.filter(c => selectedIds.includes(c.id));
+  const selectedContacts = useMemo(
+    () => contacts.filter((c) => selectedIds.includes(c.id)),
+    [contacts, selectedIds],
+  );
 
-  const handleCreate = () => {
-    Alert.alert('Groupe cree !', `Le groupe "${groupName}" a ete cree avec ${selectedIds.length} membres.`, [
-      { text: 'Super', onPress: () => router.replace('/messages' as any) },
-    ]);
+  const handleCreate = async () => {
+    const name = groupName.trim();
+    if (!name) return;
+    setCreating(true);
+    try {
+      await apiClient.post('/messages/groups', {
+        name,
+        memberIds: selectedIds,
+      });
+      Alert.alert('Groupe créé', 'Votre groupe a été créé.', [
+        { text: 'OK', onPress: () => router.replace('/messages' as any) },
+      ]);
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        || (err as { message?: string })?.message
+        || 'Création impossible.';
+      Alert.alert('Erreur', msg);
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => step === 1 ? router.back() : setStep(1)} style={styles.headerBtn}>
+          <TouchableOpacity onPress={() => (step === 1 ? router.back() : setStep(1))} style={styles.headerBtn}>
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}>{step === 1 ? 'Nouveau groupe' : 'Infos du groupe'}</Text>
             <Text style={styles.headerSubtitle}>
-              {step === 1 ? `${selectedIds.length} selectionne(s)` : 'Etape 2/2'}
+              {step === 1 ? `${selectedIds.length} sélectionné(s)` : 'Étape 2/2'}
             </Text>
           </View>
           {step === 1 ? (
@@ -71,24 +130,23 @@ export default function NewGroupScreen() {
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
-              style={[styles.createBtn, !groupName && { opacity: 0.3 }]}
-              onPress={groupName ? handleCreate : undefined}
-              disabled={!groupName}
+              style={[styles.createBtn, (!groupName.trim() || creating) && { opacity: 0.3 }]}
+              onPress={groupName.trim() && !creating ? () => void handleCreate() : undefined}
+              disabled={!groupName.trim() || creating}
             >
-              <Ionicons name="checkmark" size={20} color="#FFF" />
+              {creating ? <ActivityIndicator color="#FFF" size="small" /> : <Ionicons name="checkmark" size={20} color="#FFF" />}
             </TouchableOpacity>
           )}
         </View>
 
         {step === 1 ? (
           <View style={{ flex: 1 }}>
-            {/* Search */}
             <View style={styles.searchContainer}>
               <View style={styles.searchBar}>
                 <Ionicons name="search" size={16} color="#888" />
                 <TextInput
                   style={styles.searchInput}
-                  placeholder="Rechercher un contact..."
+                  placeholder="Rechercher un utilisateur..."
                   placeholderTextColor="#666"
                   value={searchQuery}
                   onChangeText={setSearchQuery}
@@ -96,12 +154,11 @@ export default function NewGroupScreen() {
               </View>
             </View>
 
-            {/* Selected contacts chips */}
             {selectedContacts.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
-                {selectedContacts.map(c => (
+                {selectedContacts.map((c) => (
                   <TouchableOpacity key={c.id} style={styles.chip} onPress={() => toggleContact(c.id)}>
-                    <Image source={{ uri: c.avatar }} style={styles.chipAvatar} />
+                    <ImageOrPlaceholder uri={c.avatar} style={styles.chipAvatar} icon="person" iconSize={14} />
                     <Text style={styles.chipName}>{c.name.split(' ')[0]}</Text>
                     <Ionicons name="close" size={14} color="#888" />
                   </TouchableOpacity>
@@ -109,69 +166,55 @@ export default function NewGroupScreen() {
               </ScrollView>
             )}
 
-            {/* Contacts list */}
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {filteredContacts.map(contact => {
-                const isSelected = selectedIds.includes(contact.id);
-                return (
-                  <TouchableOpacity
-                    key={contact.id}
-                    style={styles.contactRow}
-                    onPress={() => toggleContact(contact.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Image source={{ uri: contact.avatar }} style={styles.contactAvatar} />
-                    <Text style={styles.contactName}>{contact.name}</Text>
-                    <View style={[styles.checkCircle, isSelected && styles.checkCircleActive]}>
-                      {isSelected && <Ionicons name="checkmark" size={14} color="#FFF" />}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-              <View style={{ height: 40 }} />
-            </ScrollView>
+            {loadingContacts ? (
+              <View style={styles.loadingBox}>
+                <ActivityIndicator color={Colors.primary} />
+              </View>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {filteredContacts.map((contact) => {
+                  const isSelected = selectedIds.includes(contact.id);
+                  return (
+                    <TouchableOpacity
+                      key={contact.id}
+                      style={styles.contactRow}
+                      onPress={() => toggleContact(contact.id)}
+                    >
+                      <ImageOrPlaceholder uri={contact.avatar} style={styles.contactAvatar} icon="person" iconSize={22} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.contactName}>{contact.name}</Text>
+                      </View>
+                      <View style={[styles.checkCircle, isSelected && styles.checkCircleSelected]}>
+                        {isSelected ? <Ionicons name="checkmark" size={18} color="#FFF" /> : null}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+                {filteredContacts.length === 0 ? (
+                  <Text style={styles.emptyHint}>Aucun utilisateur à afficher.</Text>
+                ) : null}
+              </ScrollView>
+            )}
           </View>
         ) : (
-          <ScrollView contentContainerStyle={styles.stepTwoContent} keyboardShouldPersistTaps="handled">
-            {/* Group avatar */}
-            <TouchableOpacity style={styles.groupAvatarPicker}>
-              <LinearGradient colors={['#FF6B00', '#FF3D00']} style={styles.groupAvatarGradient}>
-                <Ionicons name="camera" size={28} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.groupAvatarHint}>Ajouter une photo</Text>
-            </TouchableOpacity>
-
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.step2Content}>
             <Text style={styles.label}>Nom du groupe *</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ex: Famille Bamako"
-              placeholderTextColor="#555"
+              placeholder="Ex: Famille, Équipe projet..."
+              placeholderTextColor="#666"
               value={groupName}
               onChangeText={setGroupName}
-              maxLength={50}
             />
-
             <Text style={styles.label}>Description (optionnel)</Text>
             <TextInput
-              style={[styles.input, { minHeight: 80 }]}
-              placeholder="Decrivez ce groupe..."
-              placeholderTextColor="#555"
+              style={[styles.input, styles.textArea]}
+              placeholder="Objectif du groupe..."
+              placeholderTextColor="#666"
               value={groupDesc}
               onChangeText={setGroupDesc}
               multiline
-              maxLength={200}
             />
-
-            {/* Members preview */}
-            <Text style={styles.label}>Membres ({selectedIds.length})</Text>
-            <View style={styles.membersPreview}>
-              {selectedContacts.map(c => (
-                <View key={c.id} style={styles.memberChip}>
-                  <Image source={{ uri: c.avatar }} style={styles.memberAvatar} />
-                  <Text style={styles.memberName}>{c.name.split(' ')[0]}</Text>
-                </View>
-              ))}
-            </View>
           </ScrollView>
         )}
       </View>
@@ -180,62 +223,89 @@ export default function NewGroupScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+  container: { flex: 1, backgroundColor: '#0a0a0a' },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 12, paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
   },
-  headerBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  headerBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   headerCenter: { flex: 1, alignItems: 'center' },
   headerTitle: { color: '#FFF', fontSize: 17, fontWeight: '700' },
-  headerSubtitle: { color: '#888', fontSize: 11, marginTop: 1 },
-  nextBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-  nextBtnText: { color: Colors.primary, fontSize: 14, fontWeight: '700' },
+  headerSubtitle: { color: '#888', fontSize: 12, marginTop: 2 },
+  nextBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFF',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  nextBtnText: { color: Colors.primary, fontWeight: '700', fontSize: 14 },
   createBtn: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primary,
-    alignItems: 'center', justifyContent: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-
-  searchContainer: { paddingHorizontal: 16, paddingBottom: 8 },
+  searchContainer: { padding: 16 },
   searchBar: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#1A1A1A',
-    borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, gap: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    gap: 8,
   },
-  searchInput: { flex: 1, color: '#FFF', fontSize: 14 },
-
-  chipsRow: { paddingHorizontal: 16, gap: 8, paddingBottom: 10 },
+  searchInput: { flex: 1, color: '#FFF', paddingVertical: 12, fontSize: 15 },
+  chipsRow: { paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
   chip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#1A1A1A', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
   chipAvatar: { width: 24, height: 24, borderRadius: 12 },
-  chipName: { color: '#CCC', fontSize: 12, fontWeight: '500' },
-
+  chipName: { color: '#FFF', fontSize: 13 },
   contactRow: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16,
-    paddingVertical: 10, gap: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
   },
-  contactAvatar: { width: 44, height: 44, borderRadius: 22 },
-  contactName: { flex: 1, color: '#FFF', fontSize: 15, fontWeight: '500' },
+  contactAvatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
+  contactName: { color: '#FFF', fontSize: 16, fontWeight: '600' },
   checkCircle: {
-    width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#444',
-    alignItems: 'center', justifyContent: 'center',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    borderColor: '#666',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  checkCircleActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-
-  stepTwoContent: { paddingHorizontal: 16, paddingTop: 16 },
-  groupAvatarPicker: { alignItems: 'center', marginBottom: 24 },
-  groupAvatarGradient: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
-  groupAvatarHint: { color: Colors.primary, fontSize: 13, fontWeight: '600', marginTop: 8 },
-
-  label: { color: '#CCC', fontSize: 13, fontWeight: '600', marginBottom: 8, marginTop: 16 },
+  checkCircleSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  loadingBox: { padding: 40, alignItems: 'center' },
+  emptyHint: { color: '#888', textAlign: 'center', padding: 24 },
+  step2Content: { padding: 20 },
+  label: { color: '#FFF', fontSize: 14, fontWeight: '600', marginBottom: 8, marginTop: 12 },
   input: {
-    backgroundColor: '#111', borderRadius: 12, padding: 14, color: '#FFF',
-    fontSize: 15, borderWidth: 1, borderColor: '#222',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    padding: 14,
+    color: '#FFF',
+    fontSize: 16,
   },
-
-  membersPreview: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 },
-  memberChip: { alignItems: 'center', width: 60 },
-  memberAvatar: { width: 44, height: 44, borderRadius: 22, marginBottom: 4 },
-  memberName: { color: '#AAA', fontSize: 10, textAlign: 'center' },
+  textArea: { minHeight: 100, textAlignVertical: 'top' },
 });

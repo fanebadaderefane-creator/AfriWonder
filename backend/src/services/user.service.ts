@@ -160,45 +160,51 @@ class UserService {
   }
 
   async getById(userId: string, requesterId?: string) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        full_name: true,
-        profile_image: true,
-        profile_cover_url: true,
-        bio: true,
-        location: true,
-        website: true,
-        role: true,
-        is_verified: true,
-        is_private: true,
-        created_at: true,
-        seller_profile: {
-          select: {
-            id: true,
-            store_name: true,
-            store_description: true,
-            country: true,
-            city: true,
-            rating: true,
-            total_sales: true,
-            is_verified: true,
-            status: true,
+    const [user, likesAgg] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          full_name: true,
+          profile_image: true,
+          profile_cover_url: true,
+          bio: true,
+          location: true,
+          website: true,
+          role: true,
+          is_verified: true,
+          is_private: true,
+          created_at: true,
+          seller_profile: {
+            select: {
+              id: true,
+              store_name: true,
+              store_description: true,
+              country: true,
+              city: true,
+              rating: true,
+              total_sales: true,
+              is_verified: true,
+              status: true,
+            },
+          },
+          _count: {
+            select: {
+              videos: true,
+              following: true,
+              follows: true,
+              products: true,
+            },
           },
         },
-        _count: {
-          select: {
-            videos: true,
-            following: true,
-            follows: true,
-            products: true,
-          },
-        },
-      },
-    });
+      }),
+      prisma.video.aggregate({
+        where: { creator_id: userId },
+        _sum: { likes: true },
+      }),
+    ]);
 
     if (!user) {
       const error: any = new Error('Utilisateur non trouvé');
@@ -220,6 +226,7 @@ class UserService {
 
     return {
       ...user,
+      total_likes: likesAgg._sum.likes ?? 0,
       isFollowing,
     };
   }

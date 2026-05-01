@@ -260,7 +260,14 @@ export async function ensureE2eeBootstrap(userId: string | undefined | null): Pr
   if (!(await initWebCryptoIfNeeded())) return null;
   let p = bootstrapInflight.get(userId);
   if (p) return p;
-  p = runBootstrapBody(userId);
+  /** Ne jamais rejeter : sinon après `import()` (fetchThenEval web) une erreur axios « Network Error » peut remonter en overlay rouge même si l’appelant a un `.catch()`. */
+  p = runBootstrapBody(userId).catch((err: unknown) => {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('[AfriWonder] E2EE bootstrap ignoré (API ou crypto) :', msg);
+    }
+    return null;
+  });
   bootstrapInflight.set(userId, p);
   p.finally(() => {
     if (bootstrapInflight.get(userId) === p) bootstrapInflight.delete(userId);

@@ -22,6 +22,10 @@ export default function FoodDeliveryScreen() {
   if (!featureFlags.servicesHub) {
     return <ComingSoonScreen title="Livraison repas" description="Le module livraison sera bientôt disponible." icon="restaurant-outline" />;
   }
+  return <FoodDeliveryContent />;
+}
+
+function FoodDeliveryContent() {
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);

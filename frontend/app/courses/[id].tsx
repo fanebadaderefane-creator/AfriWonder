@@ -272,7 +272,7 @@ export default function CourseDetailScreen() {
 
         <Text style={styles.sectionTitle}>Leçons</Text>
         {lessons.length === 0 ? (
-          <Text style={styles.noLessons}>Le programme sera bientôt détaillé ici.</Text>
+          <Text style={styles.noLessons}>Aucune leçon publiée pour cette formation.</Text>
         ) : (
           lessons.map((mod, index) => (
             <View key={mod.id} style={styles.moduleCard}>

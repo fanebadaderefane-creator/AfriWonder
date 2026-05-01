@@ -115,7 +115,12 @@ export default function ReportModal({
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
         <View style={styles.sheet} onStartShouldSetResponder={() => true}>
           <View style={styles.handle} />
-          <Text style={styles.title}>Signaler</Text>
+          <View style={styles.headerRow}>
+            <Text style={styles.title}>Signaler</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={10} accessibilityLabel="Fermer le signalement">
+              <Ionicons name="close" size={22} color={Colors.text} />
+            </TouchableOpacity>
+          </View>
           <Text style={styles.subtitle}>Pourquoi signalez-vous ce contenu ?</Text>
           <ScrollView style={styles.reasonList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
             {REASONS.map(r => (
@@ -149,13 +154,18 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
   sheet: { backgroundColor: Colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: Spacing.xl, paddingBottom: 40 },
   handle: { width: 40, height: 4, backgroundColor: Colors.border, borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: Spacing.lg },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   title: { color: Colors.text, fontSize: FontSizes.xl, fontWeight: 'bold' },
   subtitle: { color: Colors.textSecondary, fontSize: FontSizes.sm, marginBottom: Spacing.lg },
   reasonList: { maxHeight: 280 },
   reasonRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.md, paddingHorizontal: Spacing.md, borderRadius: BorderRadius.md, marginBottom: 4 },
-  reasonActive: { backgroundColor: 'rgba(139,92,246,0.1)' },
+  reasonActive: { backgroundColor: `${Colors.primary}1A` },
   reasonText: { flex: 1, color: Colors.text, fontSize: FontSizes.md },
   descInput: { backgroundColor: Colors.background, borderRadius: BorderRadius.md, padding: Spacing.md, color: Colors.text, height: 80, textAlignVertical: 'top', marginVertical: Spacing.sm },
-  reportBtn: { backgroundColor: '#E91E63', borderRadius: BorderRadius.md, padding: Spacing.lg, alignItems: 'center', marginTop: Spacing.md },
+  reportBtn: { backgroundColor: Colors.primary, borderRadius: BorderRadius.md, padding: Spacing.lg, alignItems: 'center', marginTop: Spacing.md },
   reportBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: FontSizes.md },
 });

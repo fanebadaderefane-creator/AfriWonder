@@ -1,5 +1,5 @@
 // AfriWonder full review PR - CodeRabbit
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { authService } from '../services/auth.service.js';
 import { authenticate, AuthRequest, getAccessTokenFromRequest } from '../middleware/auth.js';
 import { logger } from '../utils/logger.js';
@@ -15,8 +15,15 @@ import {
   syntheticAppleEmail,
   verifyAppleIdentityToken,
 } from '../services/oauthMobileVerify.service.js';
+import { postAuthLoginAlertFromRequest } from '../services/loginAlert.service.js';
 
 const router = Router();
+
+/** Alertes de connexion + enregistrement session (ne bloque pas la réponse). */
+function schedulePostAuthLoginAlert(userId: string | undefined, req: Request) {
+  if (!userId) return;
+  void postAuthLoginAlertFromRequest(userId, req);
+}
 
 /** Message utilisateur quand JWT n’est pas configuré (détail complet seulement hors prod). */
 function userFacingJwtConfigMessage(context: 'login' | 'register'): string {
@@ -65,6 +72,20 @@ const logoutSchema = z.object({
   refresh_token: z.string().min(10).optional(),
 });
 
+const forgotPasswordSchema = z.object({
+  identifier: z.string().min(2),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(10),
+  newPassword: z.string().min(8),
+});
+
+const changePasswordWhenLoggedInSchema = z.object({
+  currentPassword: z.string().min(1).max(256),
+  newPassword: z.string().min(8).max(256),
+});
+
 const supabaseSessionSchema = z.object({
   access_token: z.string().min(20),
 });
@@ -105,6 +126,7 @@ router.post('/supabase', validateBody(supabaseSessionSchema), async (req, res, n
   try {
     const result = await authService.loginWithSupabaseAccessToken(req.body.access_token);
     setAuthCookies(res, result.accessToken, result.refreshToken);
+    schedulePostAuthLoginAlert(result.user?.id, req);
     res.json({
       success: true,
       data: result,
@@ -133,6 +155,7 @@ router.post('/oauth/google', validateBody(oauthAccessTokenSchema), async (req, r
       provider: 'google',
       provider_id: g.id,
     });
+    schedulePostAuthLoginAlert(result.user?.id, req);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
     const err = error as { statusCode?: number; message?: string };
@@ -158,6 +181,7 @@ router.post('/oauth/facebook', validateBody(oauthAccessTokenSchema), async (req,
       provider: 'facebook',
       provider_id: fb.id,
     });
+    schedulePostAuthLoginAlert(result.user?.id, req);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
     const err = error as { statusCode?: number; message?: string };
@@ -198,6 +222,7 @@ router.post('/oauth/apple', validateBody(oauthAppleMobileSchema), async (req, re
       provider: 'apple',
       provider_id: apple.sub,
     });
+    schedulePostAuthLoginAlert(result.user?.id, req);
     res.json({ success: true, data: result });
   } catch (error: unknown) {
     const err = error as { statusCode?: number; message?: string };
@@ -226,6 +251,8 @@ router.post('/register', validateBody(registerSchema), async (req, res, next) =>
     });
 
     setAuthCookies(res, result.accessToken, result.refreshToken);
+
+    schedulePostAuthLoginAlert(result.user?.id, req);
 
     res.status(201).json({
       success: true,
@@ -281,6 +308,8 @@ router.post('/login', validateBody(loginSchema), async (req, res, next) => {
 
     setAuthCookies(res, result.accessToken, result.refreshToken);
 
+    schedulePostAuthLoginAlert(result.user?.id, req);
+
     res.json({
       success: true,
       data: result,
@@ -302,11 +331,40 @@ router.post('/login', validateBody(loginSchema), async (req, res, next) => {
         error: {
           message: isConfigError ? userFacingJwtConfigMessage('login') : error.message,
           code: error.code,
+          data: error.data,
         },
       });
     }
 
     // Sinon, passer à l'error handler global
+    next(error);
+  }
+});
+
+// POST /api/auth/forgot-password
+router.post('/forgot-password', validateBody(forgotPasswordSchema), async (req, res, next) => {
+  try {
+    await authService.requestPasswordReset(req.body.identifier);
+    res.json({
+      success: true,
+      message:
+        'Si un compte existe avec cet identifiant, un lien de réinitialisation a été envoyé.',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/auth/password/reset
+router.post('/password/reset', validateBody(resetPasswordSchema), async (req, res, next) => {
+  try {
+    const { token, newPassword } = req.body;
+    await authService.resetPasswordWithToken(token, newPassword);
+    res.json({
+      success: true,
+      message: 'Mot de passe réinitialisé avec succès',
+    });
+  } catch (error) {
     next(error);
   }
 });
@@ -386,6 +444,22 @@ router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
     next(error);
   }
 });
+
+// POST /api/auth/password/change — utilisateur connecté (appli mobile / web)
+router.post(
+  '/password/change',
+  authenticate,
+  validateBody(changePasswordWhenLoggedInSchema),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      await authService.changePasswordForLoggedInUser(req.user!.id, currentPassword, newPassword);
+      res.json({ success: true, message: 'Mot de passe modifié' });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 // GET /api/auth/google - Initiate Google OAuth
 router.get('/google', async (req, res, next) => {
@@ -481,14 +555,22 @@ router.get('/google/callback', async (req, res, next) => {
 
     setAuthCookies(res, result.accessToken, result.refreshToken);
 
-    // IMPORTANT: Rediriger vers /Landing avec les tokens, qui redirigera ensuite vers / (AfriWonder)
+    // SÉCURITÉ : les tokens voyagent dans le FRAGMENT (#) et non dans la query string (?).
+    // - Le fragment n'est PAS envoyé au serveur web → pas de fuite dans les logs Nginx/Vercel.
+    // - Les navigateurs ne transmettent PAS le fragment dans l'en-tête Referer.
+    // - Les cookies httpOnly posés ci-dessus couvrent les clients cookie-based.
+    // Le front lit `window.location.hash` pour récupérer token & refresh, puis nettoie l'URL.
     const frontendUrl = process.env.CORS_ORIGIN || 'http://localhost:5173';
-    const redirectUrl = new URL(`${frontendUrl}/Landing`);
-    redirectUrl.searchParams.set('token', result.accessToken);
-    redirectUrl.searchParams.set('refresh', result.refreshToken);
-    
-    logger.info('Google OAuth - Redirection vers AfriWonder', { redirectUrl: redirectUrl.toString() });
-    res.redirect(redirectUrl.toString());
+    const fragment = new URLSearchParams({
+      token: result.accessToken,
+      refresh: result.refreshToken,
+      provider: 'google',
+    }).toString();
+    const redirectUrl = `${frontendUrl}/Landing#${fragment}`;
+
+    // Ne jamais logguer l'URL complète (contient les tokens même en fragment).
+    logger.info('Google OAuth - Redirection vers AfriWonder', { landing: `${frontendUrl}/Landing` });
+    res.redirect(redirectUrl);
   } catch (error) {
     logger.error('Google OAuth - Erreur inattendue', error);
     res.redirect(`${process.env.CORS_ORIGIN || 'http://localhost:5173'}/Landing?error=oauth_failed`);
@@ -580,14 +662,17 @@ router.get('/facebook/callback', async (req, res, next) => {
 
     setAuthCookies(res, result.accessToken, result.refreshToken);
 
-    // IMPORTANT: Rediriger vers /Landing avec les tokens, qui redirigera ensuite vers / (AfriWonder)
+    // SÉCURITÉ : tokens dans le fragment (#) — voir commentaire côté Google callback.
     const frontendUrl = process.env.CORS_ORIGIN || 'http://localhost:5173';
-    const redirectUrl = new URL(`${frontendUrl}/Landing`);
-    redirectUrl.searchParams.set('token', result.accessToken);
-    redirectUrl.searchParams.set('refresh', result.refreshToken);
-    
-    logger.info('Facebook OAuth - Redirection vers AfriWonder', { redirectUrl: redirectUrl.toString() });
-    res.redirect(redirectUrl.toString());
+    const fragment = new URLSearchParams({
+      token: result.accessToken,
+      refresh: result.refreshToken,
+      provider: 'facebook',
+    }).toString();
+    const redirectUrl = `${frontendUrl}/Landing#${fragment}`;
+
+    logger.info('Facebook OAuth - Redirection vers AfriWonder', { landing: `${frontendUrl}/Landing` });
+    res.redirect(redirectUrl);
   } catch (error) {
     logger.error('Facebook OAuth - Erreur inattendue', error);
     res.redirect(`${process.env.CORS_ORIGIN || 'http://localhost:5173'}/Landing?error=oauth_failed`);

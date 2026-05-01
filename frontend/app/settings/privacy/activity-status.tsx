@@ -18,7 +18,7 @@ export default function ActivityStatusScreen() {
         onChange={(v) => void update({ activity_status: v })}
         options={[
           { value: 'everyone', label: 'Everyone', description: 'Anyone on AfriWonder can see when you were active.' },
-          { value: 'friends', label: 'Friends', description: 'Only mutual followers can see your activity status.' },
+          { value: 'friends', label: 'Friends', description: 'Only mutual Wonder can see your activity status.' },
           { value: 'no_one', label: 'No one', description: 'No one can see when you were last active.' },
         ]}
       />

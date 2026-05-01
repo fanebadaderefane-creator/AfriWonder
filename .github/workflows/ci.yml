@@ -16,7 +16,110 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Manuel durabilité ch.4 — max 400 lignes modifiées (additions + déletions).
+  pr-line-budget:
+    name: Taille PR (≤ 400 lignes)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier la taille de la PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.setFailed('Contexte pull_request manquant');
+              return;
+            }
+            const total = (pr.additions || 0) + (pr.deletions || 0);
+            const max = 400;
+            if (total > max) {
+              core.setFailed(
+                `PR > ${max} lignes modifiées (${total} = +${pr.additions} -${pr.deletions}). Découper (manuel ch.4).`
+              );
+            } else {
+              core.info(`PR OK : ${total} lignes (≤ ${max})`);
+            }
+      - name: Push (hors PR)
+        if: github.event_name != 'pull_request'
+        run: echo "Pas de garde taille sur push direct vers main/develop."
+
+  # Gate P0 : le code DOIT typer et linter proprement avant toute autre étape.
+  # Ajouté suite à l'audit QA (docs/AUDIT_QA_LAUNCH_READY.md) — empêche une
+  # régression type comme `video.service.ts:limitValue` (crash runtime) de
+  # repasser en prod.
+  typecheck-and-lint:
+    name: Typecheck + lint (gate bloquant)
+    needs: [pr-line-budget]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend deps
+        working-directory: backend
+        run: npm ci
+
+      - name: Install mobile deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Quality gates (standards + typecheck + lint)
+        env:
+          ENGINEERING_STANDARDS_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: npm run verify:quality-gates
+
+  # Tests unitaires Expo / React Native (Vitest) — exigence ch.2 « tout PR passe les tests ».
+  test-mobile-expo:
+    name: Tests unitaires (Expo)
+    needs: typecheck-and-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install mobile deps
+        working-directory: frontend
+        run: npm ci
+      # Ch.2 : couverture ≥ 70 % sur le périmètre défini dans `frontend/vitest.config.ts`.
+      # Ch.2.4 : cible durée &lt; 5 min — avertissement si dépassé (comme le job backend Jest).
+      - name: Vitest (mobile + couverture)
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          npm run test:coverage
+          end=$(date +%s)
+          dur=$((end-start))
+          echo "Durée suite Vitest mobile (npm run test:coverage) : ${dur}s (cible < 300s, manuel ch.2.4)"
+          if [ "$dur" -gt 300 ]; then
+            echo "::warning::Suite unitaires Expo / Vitest a dépassé 5 min (${dur}s). Optimiser la suite ou le runner."
+          fi
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          CI: 'true'
+
+      - name: npm audit (mobile)
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
   test-backend:
+    needs: typecheck-and-lint
     runs-on: ubuntu-latest
     timeout-minutes: 20
     
@@ -70,9 +173,20 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afriwonder_test
       
-      - name: Run tests
+      # Ch.2.4 : durée max 5 min pour la suite Jest (hors webhooks ci-dessous).
+      - name: Run tests (Jest + couverture, cible < 5 min)
         working-directory: backend
-        run: npm run test:coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          npm run test:coverage
+          end=$(date +%s)
+          dur=$((end-start))
+          echo "Durée suite Jest (npm run test:coverage) : ${dur}s (cible < 300s, manuel ch.2.4)"
+          if [ "$dur" -gt 300 ]; then
+            echo "::warning::Suite unitaires backend Jest a dépassé 5 min (${dur}s). Cible manuel ch.2.4 : optimiser la suite (durées variables sur runners CI)."
+          fi
         env:
           NODE_OPTIONS: --max-old-space-size=4096
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afriwonder_test
@@ -112,6 +226,7 @@ jobs:
         run: npm audit --audit-level=high
 
   test-frontend:
+    needs: typecheck-and-lint
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -128,16 +243,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Release readiness (package version vs CHANGELOG)
+        run: npm run verify:release-readiness
+
       - name: Run linter
         run: npm run lint
 
       - name: Enforce root docs policy
         run: npm run verify:root-docs
 
-      - name: Run tests
-        run: npm run test:ci:frontend
+      # Ch.2.2 : couverture ≥ 70 % sur le périmètre `coverage.include` de `vitest.config.js` (PWA Vite).
+      - name: Run tests (Vitest + couverture)
+        run: npm run test:coverage
         env:
           NODE_OPTIONS: --max-old-space-size=6144
+          CI: 'true'
 
       - name: Build
         run: npm run build
@@ -148,6 +268,7 @@ jobs:
         run: npm audit --audit-level=high
 
   security-audit:
+    needs: [pr-line-budget]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -163,11 +284,25 @@ jobs:
       - name: Security audit
         run: node scripts/security-audit.js
 
+  # Optionnel : sans SNYK_TOKEN on ne lance pas Snyk (évite `if: secrets.…` au niveau job, mal supporté par les linters de workflow).
   security-scan:
+    needs: [pr-line-budget]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run Snyk Security Scan
+      - name: Détecter SNYK_TOKEN
+        id: snyk_token
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          if [ -n "$SNYK_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "SNYK_TOKEN absent — scan Snyk ignoré (fork ou secret non configuré)."
+          fi
+      - name: Snyk Security Scan
+        if: steps.snyk_token.outputs.present == 'true'
         uses: snyk/actions/node@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -176,7 +311,7 @@ jobs:
 
   test-e2e:
     runs-on: ubuntu-latest
-    needs: [test-backend, test-frontend]
+    needs: [test-backend, test-frontend, test-mobile-expo]
     timeout-minutes: 55
 
     services:
@@ -311,7 +446,7 @@ jobs:
   deploy-vercel:
     runs-on: ubuntu-latest
     if: success() && github.ref == 'refs/heads/main'
-    needs: [test-backend, test-frontend, test-e2e]
+    needs: [test-backend, test-frontend, test-mobile-expo, test-e2e]
     steps:
       - name: Trigger Vercel deployment
         run: |
@@ -327,7 +462,7 @@ jobs:
   notify-on-failure:
     runs-on: ubuntu-latest
     if: failure() && github.ref == 'refs/heads/main'
-    needs: [test-backend, test-frontend, test-e2e]
+    needs: [test-backend, test-frontend, test-mobile-expo, test-e2e]
     steps:
       - name: Alert CI failure
         run: |

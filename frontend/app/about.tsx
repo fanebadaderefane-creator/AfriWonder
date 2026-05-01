@@ -1,9 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { profileAvatarUri } from '../src/utils/avatarFallback';
+import { ImageOrPlaceholder } from '../src/components/common/ImageOrPlaceholder';
 
 const SECTIONS = [
   { title: 'Notre Mission', text: 'AfriWonder est la premiere super-application africaine, concue pour connecter les communautes du Mali, du Senegal et de la Cote d\'Ivoire. Notre plateforme reunit commerce, services, divertissement et finance dans une seule application.' },
@@ -18,9 +20,9 @@ const STATS = [
 ];
 
 const TEAM = [
-  { name: 'Abdoulaye Fane', role: 'Fondateur & CEO', image: 'https://picsum.photos/100/100?random=60' },
-  { name: 'Aminata Diallo', role: 'CTO', image: 'https://picsum.photos/100/100?random=61' },
-  { name: 'Moussa Traore', role: 'Design Lead', image: 'https://picsum.photos/100/100?random=62' },
+  { name: 'Abdoulaye Fane', role: 'Fondateur & CEO' },
+  { name: 'Aminata Diallo', role: 'CTO' },
+  { name: 'Moussa Traore', role: 'Design Lead' },
 ];
 
 export default function AboutScreen() {
@@ -70,7 +72,12 @@ export default function AboutScreen() {
         <Text style={styles.sectionTitle}>Notre Equipe</Text>
         {TEAM.map((member, i) => (
           <View key={i} style={styles.teamMember}>
-            <Image source={{ uri: member.image }} style={styles.memberImage} />
+            <ImageOrPlaceholder
+              uri={profileAvatarUri(undefined, member.name)}
+              style={styles.memberImage}
+              icon="person"
+              iconSize={28}
+            />
             <View>
               <Text style={styles.memberName}>{member.name}</Text>
               <Text style={styles.memberRole}>{member.role}</Text>

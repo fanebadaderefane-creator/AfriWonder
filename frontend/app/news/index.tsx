@@ -44,6 +44,10 @@ export default function NewsScreen() {
       />
     );
   }
+  return <NewsContent />;
+}
+
+function NewsContent() {
   const insets = useSafeAreaInsets();
   const [activeCategory, setActiveCategory] = useState(0);
   const [articles, setArticles] = useState<NewsArticle[]>([]);

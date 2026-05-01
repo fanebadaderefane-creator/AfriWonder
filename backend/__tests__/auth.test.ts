@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import app from '../src/app.js';
 import { prisma } from './setup.js';
 import bcrypt from 'bcryptjs';

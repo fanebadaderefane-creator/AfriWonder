@@ -85,6 +85,19 @@ agenthub/agents/youtube/db
 
 memory/test_credentials.md
 
+# Fichiers contenant des secrets (historique — à ne plus recréer)
+backend/ENV_SUPABASE_CONFIGURER.txt
+**/ENV_*CONFIGURER*.txt
+env.local.CONFIGURER
+**/*.CONFIGURER
+google-service-account.json
+GoogleService-Info.plist
+google-services.json
+# Secrets générés pour rotation (voir scripts/ROTATE_SECRETS.md)
+scripts/SECRETS_*.env
+scripts/secrets-*.env
+**/SECRETS_PROD_*
+
 # Mobile development
 android-sdk/-e 
 # Environment files

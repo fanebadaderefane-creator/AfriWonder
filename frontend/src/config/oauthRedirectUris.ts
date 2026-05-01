@@ -1,13 +1,31 @@
 import * as AuthSession from 'expo-auth-session';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 /**
- * URI calculée comme `expo-auth-session` / `expo-linking` pour l’environnement actuel.
- * À déclarer chez **Google** (client OAuth de type Web) et **Facebook** (URI de redirection OAuth).
+ * Même logique que `expo-auth-session/providers/google` (`native: ${applicationId}:/oauthredirect`).
+ * En Expo Go → souvent `exp://IP:port/...` ; en APK/AAB → `com.afriwonder.app:/oauthredirect`.
+ */
+function googleProviderStyleRedirectNative(): string {
+  const pkg =
+    Platform.OS === 'ios'
+      ? String(Constants.expoConfig?.ios?.bundleIdentifier || 'com.afriwonder.app').trim()
+      : String(Constants.expoConfig?.android?.package || 'com.afriwonder.app').trim();
+  return `${pkg}:/oauthredirect`;
+}
+
+/**
+ * URI alignée sur le flux Google réel (`SocialOAuthButtons` ne force plus de `scheme` custom).
+ * À déclarer chez **Google** (client Web → redirections) ; Facebook peut utiliser les mêmes `exp://…` en Expo Go.
  */
 export function getComputedOAuthRedirectUri(): string {
   try {
-    return AuthSession.makeRedirectUri();
+    if (Platform.OS === 'web') {
+      return AuthSession.makeRedirectUri();
+    }
+    return AuthSession.makeRedirectUri({
+      native: googleProviderStyleRedirectNative(),
+    });
   } catch {
     return '';
   }
@@ -52,12 +70,26 @@ export function getExpoOAuthRedirectHelpLines(): string[] {
   return lines;
 }
 
+/** Une seule fois par chargement JS (évite de croire à une erreur à chaque visite de /login). */
+let oauthRedirectHelpLogged = false;
+
 /**
- * Affiche dans la console Metro (uniquement en `__DEV__`) les URI à copier-coller
- * dans Google Cloud (client Web) et Meta (Facebook Login). Ouvre l’écran connexion / inscription pour déclencher.
+ * Affiche dans la console (uniquement en `__DEV__`) les URI à déclarer chez Google / Meta.
+ *
+ * Ce n’est **pas** un diagnostic : le message peut s’afficher même si la console Google est déjà correcte.
+ * Désactiver : `EXPO_PUBLIC_OAUTH_CONSOLE_HELP=0` dans `frontend/.env` puis redémarrer Metro.
+ * Forcer à chaque ouverture de l’écran : `EXPO_PUBLIC_OAUTH_CONSOLE_HELP=verbose`.
  */
 export function logOAuthRedirectDebugInfo(): void {
   if (typeof __DEV__ === 'undefined' || !__DEV__) return;
+  const helpMode = String(process.env.EXPO_PUBLIC_OAUTH_CONSOLE_HELP ?? '')
+    .trim()
+    .toLowerCase();
+  if (helpMode === '0' || helpMode === 'false' || helpMode === 'off' || helpMode === 'no') return;
+  const verbose = helpMode === 'verbose' || helpMode === 'always' || helpMode === '1';
+  if (oauthRedirectHelpLogged && !verbose) return;
+  oauthRedirectHelpLogged = true;
+
   const variants = getOAuthRedirectUriVariantsForConsole();
   const slug = getExpoSlug();
   const owner = typeof process !== 'undefined' ? String(process.env?.EXPO_PUBLIC_EXPO_ACCOUNT || '').trim() : '';
@@ -70,10 +102,13 @@ export function logOAuthRedirectDebugInfo(): void {
 
   const lines: string[] = [
     '',
-    '━━━━━━━━ AfriWonder · OAuth (localhost) — quoi faire avec ça ? ━━━━━━━━',
+    '━━━━━━━━ AfriWonder · OAuth — aide développement (pas une erreur) ━━━━━━━━',
+    '',
+    'Si Google / Meta sont déjà configurés, tu peux ignorer ce bloc ou le masquer :',
+    'EXPO_PUBLIC_OAUTH_CONSOLE_HELP=0 dans frontend/.env (puis redémarrer Metro).',
     '',
     'Sur le WEB en dev, ① est souvent http://localhost:8081 — c’est NORMAL.',
-    'Tu dois la déclarer chez Google et Facebook comme « URI de redirection » (voir plus bas).',
+    'À déclarer chez Google (client Web) et Facebook comme « URI de redirection » si ce n’est pas fait :',
     '',
     '① URI(s) à copier dans « URI de redirection autorisées » (Google) et « URI OAuth valides » (Facebook) :',
   ];
@@ -84,6 +119,8 @@ export function logOAuthRedirectDebugInfo(): void {
     '',
     'Google (même client Web) → section « Origines JavaScript autorisées » : ajoutez aussi :',
     `   • ${primaryNoSlash}`,
+    '',
+    'Si Google affiche encore une erreur : ouvre « détails de l’erreur » sur leur page et copie la valeur exacte de redirect_uri= dans les URI autorisées.',
     '',
     '② Uniquement si tu testes avec Expo Go sur TÉLÉPHONE (pas le navigateur) : ajoute aussi :',
     `   ${proxy}`
@@ -98,6 +135,5 @@ export function logOAuthRedirectDebugInfo(): void {
     '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
     ''
   );
-  // eslint-disable-next-line no-console
   console.log(lines.join('\n'));
 }

@@ -2,12 +2,26 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   isGoogleOAuthConfiguredForPlatform,
   resolveGoogleClientIds,
+  resolveGoogleClientIdsForAuthSession,
   isFacebookOAuthConfigured,
   isAppleSignInDisabledByEnv,
+  getGoogleOAuthEnv,
+  getFacebookAppId,
 } from './oauthEnv';
+
+const extraHolder = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
+
+vi.mock('expo-constants', () => ({
+  default: {
+    get expoConfig() {
+      return { extra: extraHolder.current };
+    },
+  },
+}));
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  extraHolder.current = {};
 });
 
 describe('oauthEnv', () => {
@@ -36,14 +50,47 @@ describe('oauthEnv', () => {
     });
   });
 
+  it('resolveGoogleClientIdsForAuthSession replie iOS vers webClientId sur plateforme web', () => {
+    const env = { web: '', ios: 'ios.apps.googleusercontent.com', android: '' };
+    const r = resolveGoogleClientIdsForAuthSession('web', env);
+    expect(r.webClientId).toBe('ios.apps.googleusercontent.com');
+    expect(r.iosClientId).toBe('ios.apps.googleusercontent.com');
+  });
+
+  it('resolveGoogleClientIdsForAuthSession ne replie pas Android vers web', () => {
+    const env = { web: '', ios: '', android: 'and.apps.googleusercontent.com' };
+    const r = resolveGoogleClientIdsForAuthSession('web', env);
+    expect(r.webClientId).toBeUndefined();
+  });
+
   it('isGoogleOAuthConfiguredForPlatform exige le bon client', () => {
     const onlyIos = { web: '', ios: 'i.apps.googleusercontent.com', android: '' };
     expect(isGoogleOAuthConfiguredForPlatform('ios', onlyIos)).toBe(true);
     expect(isGoogleOAuthConfiguredForPlatform('android', onlyIos)).toBe(false);
+    expect(isGoogleOAuthConfiguredForPlatform('web', onlyIos)).toBe(true);
 
     const onlyWeb = { web: 'w.apps.googleusercontent.com', ios: '', android: '' };
     expect(isGoogleOAuthConfiguredForPlatform('android', onlyWeb)).toBe(false);
     expect(isGoogleOAuthConfiguredForPlatform('ios', onlyWeb)).toBe(true);
+    expect(isGoogleOAuthConfiguredForPlatform('web', onlyWeb)).toBe(true);
+
+    const onlyAndroid = { web: '', ios: '', android: 'a.apps.googleusercontent.com' };
+    expect(isGoogleOAuthConfiguredForPlatform('web', onlyAndroid)).toBe(false);
+    expect(isGoogleOAuthConfiguredForPlatform('android', onlyAndroid)).toBe(true);
+  });
+
+  it('lit les IDs OAuth depuis extra.afwOAuth si process.env est vide', () => {
+    extraHolder.current = {
+      afwOAuth: {
+        googleWebClientId: 'extra-web.apps.googleusercontent.com',
+        facebookAppId: '999888',
+      },
+    };
+    vi.stubEnv('EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID', '');
+    vi.stubEnv('EXPO_PUBLIC_FACEBOOK_APP_ID', '');
+    expect(getGoogleOAuthEnv().web).toContain('extra-web');
+    expect(getFacebookAppId()).toBe('999888');
+    expect(isFacebookOAuthConfigured()).toBe(true);
   });
 
   it('isFacebookOAuthConfigured', () => {
