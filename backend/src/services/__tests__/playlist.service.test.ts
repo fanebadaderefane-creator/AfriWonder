@@ -27,13 +27,16 @@ describe('PlaylistService', () => {
       .spyOn(prisma.playlist, 'count')
       .mockResolvedValueOnce(0);
 
-    const res = await service.getUserPlaylists('user1', 1, 5);
+    const res = await service.getUserPlaylists({
+      targetUserId: 'user1',
+      page: 1,
+      limit: 5,
+    });
 
+    // Sans viewerUserId, seules les playlists publiques de l’utilisateur ciblé
     expect(findManySpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {
-          OR: [{ user_id: 'user1' }, { is_public: true }],
-        },
+        where: { user_id: 'user1', is_public: true },
         take: 5,
       })
     );

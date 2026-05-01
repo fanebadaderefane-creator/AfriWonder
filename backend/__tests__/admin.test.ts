@@ -207,4 +207,21 @@ describe('Admin API', () => {
       expect(Array.isArray(res.body.data.alerts)).toBe(true);
     });
   });
+
+  describe('Super-app admin (proxy) — crowdfunding', () => {
+    it('GET /api/proxy/admin/super-app/crowdfunding retourne 401 sans token', async () => {
+      const res = await request(app).get('/api/proxy/admin/super-app/crowdfunding');
+      expect(res.status).toBe(401);
+    });
+
+    it('GET /api/proxy/admin/super-app/kpis inclut le bloc crowdfunding', async () => {
+      const res = await request(app)
+        .get('/api/proxy/admin/super-app/kpis')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data?.crowdfunding).toBeDefined();
+      expect(res.body.data.crowdfunding).toHaveProperty('active');
+      expect(res.body.data.crowdfunding).toHaveProperty('suspended');
+    });
+  });
 });

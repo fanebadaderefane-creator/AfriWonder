@@ -1,10 +1,13 @@
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { beforeEach, describe, expect, it } from '@jest/globals';
 import app from '../app.js';
 import { prisma } from './setup.js';
 
 describe('Shipments routes', () => {
+  const makeTestToken = (user: { id: string; email: string }) =>
+    jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
   let testCounter = 0;
   let buyerToken = '';
   let sellerToken = '';
@@ -142,29 +145,9 @@ describe('Shipments routes', () => {
       },
     });
 
-    const buyerLogin = await request(app)
-      .post('/api/auth/login')
-      .send({ email: buyer.email, password: 'ShipTest123!@#' });
-    if (buyerLogin.status !== 200) {
-      throw new Error(`Buyer login failed: ${buyerLogin.status} ${JSON.stringify(buyerLogin.body)}`);
-    }
-    buyerToken = buyerLogin.body.data.accessToken;
-
-    const sellerLogin = await request(app)
-      .post('/api/auth/login')
-      .send({ email: seller.email, password: 'ShipTest123!@#' });
-    if (sellerLogin.status !== 200) {
-      throw new Error(`Seller login failed: ${sellerLogin.status} ${JSON.stringify(sellerLogin.body)}`);
-    }
-    sellerToken = sellerLogin.body.data.accessToken;
-
-    const strangerLogin = await request(app)
-      .post('/api/auth/login')
-      .send({ email: stranger.email, password: 'ShipTest123!@#' });
-    if (strangerLogin.status !== 200) {
-      throw new Error(`Stranger login failed: ${strangerLogin.status} ${JSON.stringify(strangerLogin.body)}`);
-    }
-    strangerToken = strangerLogin.body.data.accessToken;
+    buyerToken = makeTestToken(buyer);
+    sellerToken = makeTestToken(seller);
+    strangerToken = makeTestToken(stranger);
   });
 
   it('allows buyer to read shipment timeline', async () => {

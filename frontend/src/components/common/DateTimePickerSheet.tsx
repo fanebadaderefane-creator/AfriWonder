@@ -113,7 +113,7 @@ export function DateTimePickerSheet({ visible, value, minDate, onClose, onConfir
     /** Lundi = index 0 (Europe). `getDay()` retourne 0 pour dimanche → on remappe. */
     const firstWeekday = (first.getDay() + 6) % 7;
     const days = daysInMonth(year, month0);
-    const cells: Array<Date | null> = [];
+    const cells: (Date | null)[] = [];
     for (let i = 0; i < firstWeekday; i++) cells.push(null);
     for (let d = 1; d <= days; d++) cells.push(new Date(year, month0, d));
     while (cells.length % 7 !== 0) cells.push(null);

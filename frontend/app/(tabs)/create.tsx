@@ -185,7 +185,7 @@ const COMMENT_VISIBILITY_OPTIONS: Option[] = [
 
 const VISIBILITY_OPTIONS: { value: 'public' | 'followers' | 'private'; label: string; sub: string; icon: any }[] = [
   { value: 'public', label: 'Public', sub: 'Tout le monde', icon: 'globe-outline' },
-  { value: 'followers', label: 'Abonnés', sub: 'Vos abonnés seulement', icon: 'people-outline' },
+  { value: 'followers', label: 'Dans ton Wonder', sub: 'Dans ton Wonder seulement', icon: 'people-outline' },
   { value: 'private', label: 'Privé', sub: 'Vous seul', icon: 'lock-closed-outline' },
 ];
 
@@ -314,7 +314,7 @@ export default function CreateScreen() {
   /**
    * Options de publication TikTok-like (capture 1/2) :
    *  - `category` / `language` / `musicTitle` (métadonnées créateur)
-   *  - `visibility` Public/Followers/Private (`public|followers|private`)
+   *  - `visibility` Public/Wonder/Privé (`public|followers|private`)
    *  - `hideLikes` / `commentsDisabled` / `commentVisibility` (everyone/friends/no_one)
    *  - `scheduledAt` ISO datetime futur (publication différée)
    *  - `customThumbnail` (uri locale → uploadée au moment du publish)
@@ -371,7 +371,7 @@ export default function CreateScreen() {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      mediaTypes: ['videos'],
       allowsEditing: true,
       quality: 0.8,
     });
@@ -392,7 +392,7 @@ export default function CreateScreen() {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsMultipleSelection: true,
       quality: 0.8,
       selectionLimit: 10,
@@ -419,7 +419,7 @@ export default function CreateScreen() {
     }
     setCountdownTick(null);
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      mediaTypes: ['videos'],
       allowsEditing: true,
       quality: 0.8,
     });
@@ -603,7 +603,10 @@ export default function CreateScreen() {
       }
     } catch (error: any) {
       console.error('Publish error:', error);
-      const msg = error.response?.data?.error?.message || error.response?.data?.detail || error.message || 'Erreur lors de la publication';
+      const isNetworkError = !error?.response && String(error?.message || '').toLowerCase().includes('network');
+      const msg = isNetworkError
+        ? "Impossible d'envoyer la vidéo: connexion backend interrompue. Vérifiez que l'API tourne et réessayez."
+        : error.response?.data?.error?.message || error.response?.data?.detail || error.message || 'Erreur lors de la publication';
       Alert.alert('Erreur', msg);
     } finally {
       setUploading(false);
@@ -641,7 +644,7 @@ export default function CreateScreen() {
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [9, 16],
         quality: 0.85,
@@ -792,7 +795,7 @@ export default function CreateScreen() {
               <TouchableOpacity style={styles.addMediaBtn} onPress={async () => {
                 const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
                 if (status !== 'granted') return;
-                const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsMultipleSelection: true, quality: 0.8, selectionLimit: 5 });
+                const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, quality: 0.8, selectionLimit: 5 });
                 if (!result.canceled && result.assets.length > 0) {
                   setSelectedMedia(result.assets.map(a => ({ uri: a.uri, type: 'image' })));
                 }
@@ -1067,7 +1070,7 @@ export default function CreateScreen() {
           }}
           accessibilityLabel="Go Live"
         >
-          <LinearGradient colors={['#E91E63', '#9C27B0']} style={styles.goLiveHeroGrad}>
+          <LinearGradient colors={[Colors.primary, Colors.primaryDark]} style={styles.goLiveHeroGrad}>
             <Ionicons name="radio" size={32} color="#FFF" />
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.goLiveHeroTitle}>Go Live</Text>
@@ -1374,7 +1377,7 @@ const styles = StyleSheet.create({
   thumbnailBtnText: { color: Colors.text, fontSize: FontSizes.sm, fontWeight: '600' },
   thumbnailRemove: { padding: 4 },
 
-  /* Visibilité (Public / Followers / Privé) */
+  /* Visibilité (Public / Wonder / Privé) */
   visibilityList: { gap: 8, marginTop: 4 },
   visibilityRow: {
     flexDirection: 'row',

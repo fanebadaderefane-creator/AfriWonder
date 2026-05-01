@@ -40,10 +40,18 @@
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",
-        "READ_EXTERNAL_STORAGE",
         "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
         "VIBRATE",
-        "WAKE_LOCK"
+        "WAKE_LOCK",
+        "POST_NOTIFICATIONS",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
+        "READ_MEDIA_AUDIO",
+        "READ_CONTACTS"
+      ],
+      "blockedPermissions": [
+        "com.google.android.gms.permission.AD_ID"
       ]
     },
     "web": {
@@ -56,15 +64,17 @@
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": true
+            "usesCleartextTraffic": false,
+            "minSdkVersion": 29
           }
         }
       ],
       "expo-router",
+      "expo-web-browser",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-image.png",
+          "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#000000"
@@ -75,12 +85,6 @@
       "expo-secure-store",
       "expo-sqlite",
       "expo-video",
-      [
-        "expo-local-authentication",
-        {
-          "faceIDPermission": "AfriWonder utilise Face ID pour proteger rapidement vos donnees sensibles."
-        }
-      ],
       [
         "expo-notifications",
         {

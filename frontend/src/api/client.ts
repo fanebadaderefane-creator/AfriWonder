@@ -1,4 +1,5 @@
 import axios from 'axios';
+import Constants from 'expo-constants';
 import { secureStorage } from '../utils/secureStorage';
 import { getBackendOrigin } from '../config/backendBase';
 import { useAuthStore } from '../store/authStore';
@@ -44,6 +45,15 @@ apiClient.interceptors.request.use(
       }
     } catch (error) {
       console.error('Error getting token:', error);
+    }
+    /** Empreinte stable par installation Expo — alertes de connexion (éviter `import()` ici : chunk async → Network Error sur le web). */
+    try {
+      const raw = Constants.installationId || Constants.sessionId;
+      if (raw && typeof raw === 'string' && config.headers) {
+        (config.headers as Record<string, string>)['X-AFW-Device-Id'] = raw.slice(0, 128);
+      }
+    } catch {
+      /* ignore */
     }
     clearContentTypeForFormData(config);
     return config;

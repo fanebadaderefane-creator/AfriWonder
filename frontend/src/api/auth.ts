@@ -6,6 +6,10 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface ForgotPasswordRequest {
+  identifier: string;
+}
+
 export interface RegisterRequest {
   username: string;
   password: string;
@@ -42,6 +46,8 @@ function normalizeUser(backendUser: any): User {
     firstName: nameParts[0] || '',
     lastName: nameParts.slice(1).join(' ') || '',
     avatar: backendUser.profile_image || '',
+    login_alerts_enabled:
+      typeof backendUser.login_alerts_enabled === 'boolean' ? backendUser.login_alerts_enabled : undefined,
   };
 }
 
@@ -53,13 +59,37 @@ function unwrapResponse(responseData: any): any {
   return responseData;
 }
 
+/**
+ * Compatibilité backend:
+ * - priorité: `/api/proxy/auth/*` (contrat Expo historique)
+ * - fallback: `/api/auth/*` quand l'environnement courant n'expose pas `/proxy` (404)
+ */
+async function withAuthProxyFallback<T>(
+  callProxy: () => Promise<T>,
+  callDirect: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await callProxy();
+  } catch (error: any) {
+    if (error?.response?.status === 404) {
+      return callDirect();
+    }
+    throw error;
+  }
+}
+
 export const authApi = {
   login: async (data: LoginRequest): Promise<AuthResponse> => {
-    // Route auth via local proxy to bypass anti-bot detection on PWA backend
-    const response = await mobileApiClient.post('/proxy/auth/login', {
-      identifier: data.identifier,
-      password: data.password,
-    });
+    const response = await withAuthProxyFallback(
+      () => mobileApiClient.post('/proxy/auth/login', {
+        identifier: data.identifier,
+        password: data.password,
+      }),
+      () => mobileApiClient.post('/auth/login', {
+        identifier: data.identifier,
+        password: data.password,
+      }),
+    );
     const result = unwrapResponse(response.data);
     return {
       user: normalizeUser(result.user),
@@ -69,15 +99,18 @@ export const authApi = {
   },
 
   register: async (data: RegisterRequest): Promise<AuthResponse> => {
-    // Route auth via local proxy to bypass anti-bot detection on PWA backend
-    const response = await mobileApiClient.post('/proxy/auth/register', {
+    const payload = {
       username: data.username,
       password: data.password,
       email: data.email || undefined,
       phone: data.phone || undefined,
       full_name: data.full_name || undefined,
       referral_code: data.referral_code || undefined,
-    });
+    };
+    const response = await withAuthProxyFallback(
+      () => mobileApiClient.post('/proxy/auth/register', payload),
+      () => mobileApiClient.post('/auth/register', payload),
+    );
     const result = unwrapResponse(response.data);
     return {
       user: normalizeUser(result.user),
@@ -88,23 +121,31 @@ export const authApi = {
 
   logout: async (refreshToken?: string): Promise<void> => {
     try {
-      await mobileApiClient.post('/proxy/auth/logout', {
-        refreshToken: refreshToken || undefined,
-      });
+      const payload = { refreshToken: refreshToken || undefined };
+      await withAuthProxyFallback(
+        () => mobileApiClient.post('/proxy/auth/logout', payload),
+        () => mobileApiClient.post('/auth/logout', payload),
+      );
     } catch {
       // Logout can fail silently - token will expire anyway
     }
   },
 
   getMe: async (): Promise<User> => {
-    // getMe needs auth header - use proxy to bypass anti-bot
-    const response = await mobileApiClient.get('/proxy/auth/me');
+    const response = await withAuthProxyFallback(
+      () => mobileApiClient.get('/proxy/auth/me'),
+      () => mobileApiClient.get('/auth/me'),
+    );
     const result = unwrapResponse(response.data);
     return normalizeUser(result);
   },
 
   refreshToken: async (refreshToken: string): Promise<AuthResponse> => {
-    const response = await mobileApiClient.post('/proxy/auth/refresh', { refreshToken });
+    const payload = { refreshToken };
+    const response = await withAuthProxyFallback(
+      () => mobileApiClient.post('/proxy/auth/refresh', payload),
+      () => mobileApiClient.post('/auth/refresh', payload),
+    );
     const result = unwrapResponse(response.data);
     return {
       user: normalizeUser(result.user),
@@ -113,8 +154,28 @@ export const authApi = {
     };
   },
 
+  forgotPassword: async (data: ForgotPasswordRequest): Promise<void> => {
+    const payload = { identifier: data.identifier };
+    await withAuthProxyFallback(
+      () => mobileApiClient.post('/proxy/auth/forgot-password', payload),
+      () => mobileApiClient.post('/auth/forgot-password', payload),
+    );
+  },
+
+  resetPassword: async (token: string, newPassword: string): Promise<void> => {
+    const payload = { token, newPassword };
+    await withAuthProxyFallback(
+      () => mobileApiClient.post('/proxy/auth/password/reset', payload),
+      () => mobileApiClient.post('/auth/password/reset', payload),
+    );
+  },
+
   oauthGoogle: async (accessToken: string): Promise<AuthResponse> => {
-    const response = await mobileApiClient.post('/proxy/auth/oauth/google', { accessToken: accessToken.trim() });
+    const payload = { accessToken: accessToken.trim() };
+    const response = await withAuthProxyFallback(
+      () => mobileApiClient.post('/proxy/auth/oauth/google', payload),
+      () => mobileApiClient.post('/auth/oauth/google', payload),
+    );
     const result = unwrapResponse(response.data);
     return {
       user: normalizeUser(result.user),
@@ -124,7 +185,11 @@ export const authApi = {
   },
 
   oauthFacebook: async (accessToken: string): Promise<AuthResponse> => {
-    const response = await mobileApiClient.post('/proxy/auth/oauth/facebook', { accessToken: accessToken.trim() });
+    const payload = { accessToken: accessToken.trim() };
+    const response = await withAuthProxyFallback(
+      () => mobileApiClient.post('/proxy/auth/oauth/facebook', payload),
+      () => mobileApiClient.post('/auth/oauth/facebook', payload),
+    );
     const result = unwrapResponse(response.data);
     return {
       user: normalizeUser(result.user),
@@ -137,10 +202,14 @@ export const authApi = {
     identityToken: string;
     user?: { email?: string; name?: { firstName?: string; lastName?: string } };
   }): Promise<AuthResponse> => {
-    const response = await mobileApiClient.post('/proxy/auth/oauth/apple', {
+    const body = {
       identityToken: payload.identityToken.trim(),
       user: payload.user,
-    });
+    };
+    const response = await withAuthProxyFallback(
+      () => mobileApiClient.post('/proxy/auth/oauth/apple', body),
+      () => mobileApiClient.post('/auth/oauth/apple', body),
+    );
     const result = unwrapResponse(response.data);
     return {
       user: normalizeUser(result.user),

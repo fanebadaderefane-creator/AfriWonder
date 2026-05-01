@@ -7,6 +7,26 @@ import { logger } from '../utils/logger.js';
 import { sendViaResend } from '../utils/transactionalEmail.js';
 import axios from 'axios';
 
+/**
+ * Émet un événement Socket.io vers la room `user:${userId}`.
+ * Import dynamique pour casser le cycle `message.service` ↔ `notification.service`.
+ * Fire-and-forget : toute erreur est journalisée sans propagation.
+ */
+async function emitToUserRoomSafe(userId: string, event: string, payload: unknown): Promise<void> {
+  try {
+    const mod = await import('./message.service.js');
+    if (typeof mod.emitToUserRoom === 'function') {
+      mod.emitToUserRoom(userId, event, payload);
+    }
+  } catch (err) {
+    logger.warn('emitToUserRoomSafe failed', {
+      userId,
+      event,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 /** Envoyer un SMS (stub: log en dev, integrer Twilio ou Africa's Talking en prod) */
 async function sendSms(phone: string, message: string): Promise<void> {
   const normalized = phone.replace(/\D/g, '');
@@ -149,9 +169,23 @@ class NotificationService {
       return toAbs(`/Profile?userId=${encodeURIComponent(rid)}`);
     }
 
+    /** Appels payés Stars — éviter la branche générique `call` (DirectCall PWA) qui ferait matcher `star_call_*`. */
+    if (rt === 'star_booking' && rid) {
+      if (t === 'star_call_reminder_10min' || t === 'star_call_ready') {
+        return toAbs(`/stars/call/${encodeURIComponent(rid)}`);
+      }
+      return toAbs('/stars/bookings');
+    }
+
     if (t.includes('call') && rid) {
       const caller = typeof d.callerId === 'string' && d.callerId ? d.callerId : '';
-      const callType = typeof d.type === 'string' && d.type ? d.type : '';
+      const rawMedia =
+        typeof d.callMediaType === 'string'
+          ? d.callMediaType
+          : typeof d.type === 'string' && d.type !== 'call_incoming' && d.type !== 'call_missed'
+            ? d.type
+            : '';
+      const callType = rawMedia === 'video' || rawMedia === 'audio' ? rawMedia : '';
       const q = new URLSearchParams({ mode: 'incoming', callId: rid });
       if (caller) q.set('callerId', caller);
       if (callType) q.set('type', callType);
@@ -281,7 +315,13 @@ class NotificationService {
    * `EXPO_ACCESS_TOKEN` (expo.dev) optionnel pour débit / contrôle.
    */
   private async sendExpoPushBatch(
-    items: { to: string; title: string; body: string; data: Record<string, string> }[],
+    items: {
+      to: string;
+      title: string;
+      body: string;
+      data: Record<string, string>;
+      channelId?: string;
+    }[],
   ): Promise<boolean> {
     if (items.length === 0) return false;
     const accessToken = process.env.EXPO_ACCESS_TOKEN?.trim();
@@ -297,7 +337,7 @@ class NotificationService {
       body: m.body,
       sound: 'default',
       priority: 'high',
-      channelId: 'default',
+      channelId: m.channelId || 'default',
       data: m.data,
     }));
     try {
@@ -392,13 +432,27 @@ class NotificationService {
     }
 
     const expoData = expoStringData(dataObj);
-    const expoMessages: { to: string; title: string; body: string; data: Record<string, string> }[] = [];
+    const incomingCallExpo =
+      String(dataObj.type || '') === 'call_incoming';
+    const expoMessages: {
+      to: string;
+      title: string;
+      body: string;
+      data: Record<string, string>;
+      channelId?: string;
+    }[] = [];
     const legacyRegistrationIds: string[] = [];
     for (const sub of mobilePushSubscriptions) {
       const parsed = parseMobilePushEndpoint(sub.endpoint);
       if (!parsed?.token) continue;
       if (parsed.token.startsWith('ExponentPushToken')) {
-        expoMessages.push({ to: parsed.token, title, body: message, data: expoData });
+        expoMessages.push({
+          to: parsed.token,
+          title,
+          body: message,
+          data: expoData,
+          channelId: incomingCallExpo ? 'calls' : undefined,
+        });
       } else {
         legacyRegistrationIds.push(parsed.token);
       }
@@ -575,6 +629,13 @@ class NotificationService {
     const payloadData: Record<string, unknown> = {
       ...(data.data && typeof data.data === 'object' ? data.data : {}),
     };
+    payloadData.type = data.type;
+    if (data.reference_type != null && String(data.reference_type).trim() !== '') {
+      payloadData.reference_type = data.reference_type;
+    }
+    if (data.reference_id != null && String(data.reference_id).trim() !== '') {
+      payloadData.reference_id = data.reference_id;
+    }
     const actionUrl = this.buildPushDeepLink(
       data.type,
       data.reference_type,
@@ -599,6 +660,25 @@ class NotificationService {
     });
 
     logger.info('Notification creee', { notificationId: notification.id, userId, type: data.type });
+
+    // Temps réel : informer l'app mobile/PWA via Socket.io. L'écran `notifications`
+    // (Expo: `app/notifications/index.tsx`) écoute `new_notification` et `notification`.
+    // On émet les DEUX noms pour compatibilité ascendante avec les clients déjà déployés.
+    const realtimePayload = {
+      id: notification.id,
+      type: data.type,
+      title: data.title,
+      message: data.message,
+      reference_type: data.reference_type,
+      reference_id: data.reference_id,
+      action_url: actionUrl,
+      data: payloadData,
+      created_at: notification.created_at,
+      is_read: false,
+    };
+    emitToUserRoomSafe(userId, 'new_notification', realtimePayload);
+    emitToUserRoomSafe(userId, 'notification', realtimePayload);
+
     this.dispatchAdditionalChannels(userId, {
       type: data.type,
       title: data.title,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -180,7 +180,7 @@ export default function WalletScreen() {
               onPress={() => {
               if (action.id === 'topup') router.push('/wallet/recharge');
               if (action.id === 'send') router.push('/wallet/transfer');
-              if (action.id === 'receive') Alert.alert('Recevoir', 'Partagez votre numéro pour recevoir un paiement');
+              if (action.id === 'receive') router.push('/wallet/qr-pay' as never);
               if (action.id === 'withdraw') router.push('/creator/withdraw');
               if (action.id === 'coins') router.push('/wallet/coins' as any);
             }}

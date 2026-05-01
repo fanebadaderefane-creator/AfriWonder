@@ -4,24 +4,26 @@
 import request from 'supertest';
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import app from '../src/app.js';
 import { prisma } from './setup.js';
 
-const TEST_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'admin@test.example.com';
-
 describe('Exchange rates API', () => {
+  const makeTestToken = (user: { id: string; email: string }) =>
+    jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
   let userToken: string;
   let adminToken: string;
   const ts = Date.now();
 
   beforeEach(async () => {
     const base = `rexch${ts}${Math.random().toString(36).slice(2, 6)}`;
+    const adminEmail = `${base}-admin@example.com`;
     const password = 'RateTest123!@#';
     const passwordHash = await bcrypt.hash(password, 10);
 
     const admin = await prisma.user.create({
       data: {
-        email: TEST_ADMIN_EMAIL,
+        email: adminEmail,
         username: `${base}-admin`,
         full_name: 'Admin User',
         password_hash: passwordHash,
@@ -39,15 +41,8 @@ describe('Exchange rates API', () => {
       },
     });
 
-    const adminLogin = await request(app)
-      .post('/api/auth/login')
-      .send({ email: admin.email, password });
-    adminToken = adminLogin.body.data?.accessToken || '';
-
-    const userLogin = await request(app)
-      .post('/api/auth/login')
-      .send({ email: user.email, password });
-    userToken = userLogin.body.data?.accessToken || '';
+    adminToken = makeTestToken(admin);
+    userToken = makeTestToken(user);
 
     await prisma.exchangeRate.deleteMany({});
   });
@@ -56,10 +51,7 @@ describe('Exchange rates API', () => {
     await prisma.exchangeRate.deleteMany({});
     await prisma.user.deleteMany({
       where: {
-        OR: [
-          { email: { contains: 'rexch' } },
-          { email: TEST_ADMIN_EMAIL },
-        ],
+        email: { contains: 'rexch' },
       },
     });
   });

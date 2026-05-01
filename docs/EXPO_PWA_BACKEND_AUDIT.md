@@ -1,5 +1,13 @@
 # Audit Expo React Native vs backend PWA (AfriWonder)
 
+> ⚠️ **Document de migration partiellement obsolète.**
+> Certaines lignes "non monté" concernent un état intermédiaire et peuvent être fausses aujourd’hui.
+> Pour un audit release, utiliser en priorité:
+> - `docs/MOBILE_RELEASE_README.md`
+> - `docs/API.md`
+> - `backend/src/app.ts`
+> - `GET /api/openapi.json`
+
 Document de synthèse : runtime, cartographie des appels API, parité feed, écrans encore partiellement mockés. Mis à jour lors de l’implémentation du plan d’audit (avril 2026). **Branchement avril 2026** : montures Express supplémentaires sous `/api/proxy/*` (payments, messages, crowdfunding, live, ads, creator-dashboard, withdrawals, posts, moderation) et bascule des écrans Expo listés dans la section 3 vers `apiClient` (plus d’appels fonctionnels à `/mobile/*` hors auth `mobileClient`).
 
 ## 1. Runtime cible (`npm run dev` / production)

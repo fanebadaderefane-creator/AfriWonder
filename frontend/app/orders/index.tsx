@@ -64,6 +64,10 @@ export default function OrdersScreen() {
       />
     );
   }
+  return <OrdersContent />;
+}
+
+function OrdersContent() {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState(0);
   const [orders, setOrders] = useState<Order[]>([]);

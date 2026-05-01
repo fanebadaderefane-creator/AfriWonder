@@ -10,6 +10,7 @@ export const API_ROUTES = {
   ME: '/auth/me',
   GOOGLE_OAUTH: '/auth/google',
   FACEBOOK_OAUTH: '/auth/facebook',
+  FORGOT_PASSWORD: '/auth/forgot-password',
   RESET_PASSWORD: '/auth/password/reset',
   TWO_FA_ENABLE: '/auth/2fa/enable',
   TWO_FA_VERIFY: '/auth/2fa/verify',

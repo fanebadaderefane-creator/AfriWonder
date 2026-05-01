@@ -26,7 +26,7 @@ const REAL_USER_SQL = Prisma.sql`(SELECT id FROM "User" u WHERE u.email NOT LIKE
 
 class AdminService {
   async getDashboard() {
-    const userWhere = { ...realUserWhere(false), account_suspended: false };
+    const activeUsersWhere = { ...realUserWhere(false), account_suspended: false };
     const [
       totalUsers,
       totalVideos,
@@ -36,7 +36,8 @@ class AdminService {
       recentUsers,
       recentOrders,
     ] = await Promise.all([
-      prisma.user.count({ where: userWhere }),
+      // KPI "Utilisateurs" = total brut en base (aucun filtre).
+      prisma.user.count(),
       prisma.video.count({
         where: { creator: realUserWhere(false) },
       }),
@@ -51,7 +52,7 @@ class AdminService {
         _sum: { total_amount: true },
       }),
       prisma.user.findMany({
-        where: userWhere,
+        where: activeUsersWhere,
         take: 10,
         orderBy: { created_at: 'desc' },
         select: {

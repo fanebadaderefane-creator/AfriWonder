@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,9 @@ import {
   ActivityIndicator,
   Platform,
   Image,
+  InteractionManager,
+  AppState,
+  type AppStateStatus,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,36 +23,121 @@ import { useAuthStore } from '../src/store/authStore';
 import apiClient from '../src/api/client';
 import { secureStorage } from '../src/utils/secureStorage';
 import { toAbsoluteMediaUrl } from '../src/utils/absoluteMediaUrl';
+import { ProfileAvatarCropModal } from '../src/components/profile/ProfileAvatarCropModal';
+
+/** Images uniquement (contrat expo-image-picker : `'images' | 'videos' | …`). */
+function resolveProfilePickerMediaTypes(): 'images' {
+  return 'images';
+}
+
+function isImagePickerErrorResult(value: unknown): value is ImagePicker.ImagePickerErrorResult {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'code' in value &&
+    typeof (value as { code?: unknown }).code === 'string' &&
+    !('canceled' in value)
+  );
+}
 
 function mimeForImageExt(ext: string): string {
-  const e = String(ext || '').toLowerCase().replace(/^\./, '');
+  const e = String(ext || '')
+    .toLowerCase()
+    .replace(/^\./, '');
   if (e === 'jpg' || e === 'jpeg') return 'image/jpeg';
   if (e === 'png') return 'image/png';
   if (e === 'webp') return 'image/webp';
   if (e === 'gif') return 'image/gif';
+  if (e === 'heic' || e === 'heif') return 'image/heic';
   return 'image/jpeg';
 }
 
-/** Web : FormData attend un File ; natif : objet `{ uri, name, type }`. */
-async function appendProfileImageToFormData(formData: FormData, uri: string) {
+type ProfileImagePickMeta = { mimeType?: string | null; fileName?: string | null };
+
+/** Web : FormData attend un File ; natif : objet `{ uri, name, type }` (MIME depuis le picker si URI sans extension). */
+async function appendProfileImageToFormData(
+  formData: FormData,
+  uri: string,
+  opts?: ProfileImagePickMeta
+) {
   if (Platform.OS === 'web') {
     const res = await fetch(uri);
     const blob = await res.blob();
-    let mime = String(blob.type || '').toLowerCase().trim();
+    let mime = String(blob.type || '')
+      .toLowerCase()
+      .trim();
     if (!mime || mime === 'application/octet-stream') mime = 'image/jpeg';
-    const ext =
-      mime.includes('png') ? 'png'
-        : mime.includes('webp') ? 'webp'
-          : mime.includes('gif') ? 'gif'
+    const ext = mime.includes('png')
+      ? 'png'
+      : mime.includes('webp')
+        ? 'webp'
+        : mime.includes('gif')
+          ? 'gif'
+          : mime.includes('heic') || mime.includes('heif')
+            ? 'heic'
             : 'jpg';
     const name = `profile.${ext}`;
     formData.append('file', new File([blob], name, { type: mime }));
     return;
   }
-  const raw = (uri.split('.').pop() || '').split('?')[0] || '';
-  const ext = raw.replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'jpg';
-  const mimeType = mimeForImageExt(ext);
+  const providedMime = String(opts?.mimeType || '')
+    .toLowerCase()
+    .trim();
+  const providedName = String(opts?.fileName || '').trim();
+  const rawExtFromUri = (uri.split('.').pop() || '').split('?')[0] || '';
+  const rawExtFromName = (providedName.split('.').pop() || '').split('?')[0] || '';
+  const rawExt = (rawExtFromName || rawExtFromUri).toLowerCase();
+
+  let ext = rawExt.replace(/[^a-z0-9]/gi, '').slice(0, 8);
+  let mimeType = providedMime;
+
+  if (!mimeType) {
+    mimeType = mimeForImageExt(ext);
+  }
+  if (!ext) {
+    if (mimeType.includes('png')) ext = 'png';
+    else if (mimeType.includes('webp')) ext = 'webp';
+    else if (mimeType.includes('gif')) ext = 'gif';
+    else if (mimeType.includes('heic') || mimeType.includes('heif')) ext = 'heic';
+    else ext = 'jpg';
+  }
+
   formData.append('file', { uri, name: `profile.${ext}`, type: mimeType } as any);
+}
+
+function formatAvatarUploadError(e: unknown): string {
+  const ax = e as {
+    message?: string;
+    code?: string;
+    response?: { status?: number; data?: { error?: string | { message?: string } } };
+  };
+  if (ax?.response?.status === 401) {
+    return 'Session expirée. Reconnectez-vous puis réessayez.';
+  }
+  if (ax?.response?.status === 403) {
+    return 'Action refusée. Vérifiez vos droits puis réessayez.';
+  }
+  if (
+    ax?.code === 'ECONNABORTED' ||
+    String(ax?.message || '')
+      .toLowerCase()
+      .includes('timeout')
+  ) {
+    return 'Délai dépassé. Réessayez avec une photo plus légère ou un meilleur réseau.';
+  }
+  if (String(ax?.message || '') === 'Network Error') {
+    return 'Réseau instable pendant l’envoi. Vérifiez le Wi‑Fi / données puis réessayez.';
+  }
+  const msg = ax?.response?.data?.error;
+  const str =
+    typeof msg === 'string'
+      ? msg
+      : msg && typeof msg === 'object' && 'message' in msg
+        ? String((msg as { message?: string }).message)
+        : e instanceof Error
+          ? e.message
+          : 'Upload impossible';
+  return String(str).slice(0, 280);
 }
 
 export default function ProfileEditScreen() {
@@ -64,6 +152,9 @@ export default function ProfileEditScreen() {
     toAbsoluteMediaUrl(user?.profile_image || user?.avatar || '').trim()
   );
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarDraft, setAvatarDraft] = useState<(ProfileImagePickMeta & { uri: string }) | null>(
+    null
+  );
 
   React.useEffect(() => {
     if (!user?.id) return;
@@ -78,7 +169,10 @@ export default function ProfileEditScreen() {
         setWebsite(d.website != null ? String(d.website) : '');
         setLocation(d.location != null ? String(d.location) : '');
         const img = d.profile_image != null ? String(d.profile_image) : '';
-        setAvatarDisplayUri(toAbsoluteMediaUrl(img).trim() || toAbsoluteMediaUrl(user.profile_image || user.avatar || '').trim());
+        setAvatarDisplayUri(
+          toAbsoluteMediaUrl(img).trim() ||
+            toAbsoluteMediaUrl(user.profile_image || user.avatar || '').trim()
+        );
       } catch {
         if (cancelled) return;
         setFullName(user.full_name || '');
@@ -91,20 +185,35 @@ export default function ProfileEditScreen() {
     };
   }, [user?.id, user?.full_name, user?.bio, user?.avatar, user?.profile_image]);
 
-  const uploadAvatarFromUri = async (uri: string) => {
+  const uploadAvatarFromUri = async (uri: string, meta?: ProfileImagePickMeta) => {
     if (!user?.id) {
       Alert.alert('Session', 'Veuillez vous reconnecter.');
       return;
     }
     setUploadingAvatar(true);
     try {
-      const formData = new FormData();
-      await appendProfileImageToFormData(formData, uri);
-      const uploadRes = await apiClient.post('/upload/image', formData, {
-        timeout: 120000,
-        maxBodyLength: Infinity,
-        maxContentLength: Infinity,
-      });
+      /** Network Error transitoire (Wi‑Fi qui décroche, HTTP/1.1 keep‑alive cassé) → 1 retry court. */
+      const doUpload = async () => {
+        const formData = new FormData();
+        await appendProfileImageToFormData(formData, uri, meta);
+        return apiClient.post('/upload/image', formData, {
+          timeout: 120000,
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+        });
+      };
+      let uploadRes;
+      try {
+        uploadRes = await doUpload();
+      } catch (firstErr: unknown) {
+        const msg = String((firstErr as { message?: string })?.message || '');
+        if (msg === 'Network Error') {
+          await new Promise(r => setTimeout(r, 800));
+          uploadRes = await doUpload();
+        } else {
+          throw firstErr;
+        }
+      }
       const fileUrl = uploadRes.data?.data?.file_url || uploadRes.data?.file_url;
       if (!fileUrl || typeof fileUrl !== 'string') {
         throw new Error('Réponse upload invalide');
@@ -123,25 +232,79 @@ export default function ProfileEditScreen() {
       };
       updateUser(merged);
       await secureStorage.setItem('user', JSON.stringify(merged));
+      setAvatarDraft(null);
       Alert.alert('Photo', 'Photo de profil mise à jour.');
     } catch (e: unknown) {
-      const msg =
-        e && typeof e === 'object' && 'response' in e
-          ? (e as { response?: { data?: { error?: string | { message?: string } } } }).response?.data?.error
-          : undefined;
-      const str =
-        typeof msg === 'string'
-          ? msg
-          : msg && typeof msg === 'object' && 'message' in msg
-            ? String((msg as { message?: string }).message)
-            : e instanceof Error
-              ? e.message
-              : 'Upload impossible';
-      Alert.alert('Erreur', String(str).slice(0, 220));
+      Alert.alert('Erreur', formatAvatarUploadError(e));
     } finally {
       setUploadingAvatar(false);
     }
   };
+
+  const openAvatarPreviewFromAsset = (asset: ImagePicker.ImagePickerAsset) => {
+    const uri = asset.uri?.trim();
+    if (!uri) return;
+    if (asset.type === 'video') {
+      Alert.alert('Format', 'Choisissez une photo, pas une vidéo.');
+      return;
+    }
+    setAvatarDraft({
+      uri,
+      mimeType: asset.mimeType ?? null,
+      fileName: asset.fileName ?? null,
+    });
+  };
+
+  const scheduleAvatarPreview = (asset: ImagePicker.ImagePickerAsset) => {
+    InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => openAvatarPreviewFromAsset(asset));
+    });
+  };
+
+  const scheduleAvatarPreviewRef = useRef(scheduleAvatarPreview);
+  scheduleAvatarPreviewRef.current = scheduleAvatarPreview;
+
+  const lastScheduledPickerRef = useRef<{ key: string; at: number } | null>(null);
+
+  /** Évite double traitement si `AppState` + `launch*` renvoient le même asset (Android). */
+  const scheduleAvatarPreviewDeduped = useCallback((asset: ImagePicker.ImagePickerAsset) => {
+    const uri = asset.uri?.trim();
+    if (!uri) return;
+    const key = `${uri}|${asset.assetId ?? ''}|${String(asset.fileName ?? '')}`;
+    const now = Date.now();
+    const prev = lastScheduledPickerRef.current;
+    if (prev && prev.key === key && now - prev.at < 1000) return;
+    lastScheduledPickerRef.current = { key, at: now };
+    scheduleAvatarPreviewRef.current(asset);
+  }, []);
+
+  /**
+   * Sur Android, le système peut détruire la MainActivity après le picker : la promesse de
+   * `launchImageLibraryAsync` ne se résout pas, mais le résultat est récupérable ici au retour.
+   * @see https://docs.expo.dev/versions/latest/sdk/image-picker/#imagepickergetpendingresultasync
+   */
+  React.useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const flushPending = async () => {
+      try {
+        const pending = await ImagePicker.getPendingResultAsync();
+        if (pending == null || isImagePickerErrorResult(pending)) return;
+        if (pending.canceled || !pending.assets?.[0]?.uri) return;
+        scheduleAvatarPreviewDeduped(pending.assets[0]);
+      } catch {
+        /* ignore */
+      }
+    };
+
+    void flushPending();
+
+    const onAppState = (next: AppStateStatus) => {
+      if (next === 'active') void flushPending();
+    };
+    const sub = AppState.addEventListener('change', onAppState);
+    return () => sub.remove();
+  }, [scheduleAvatarPreviewDeduped]);
 
   const pickAvatarFromLibrary = async () => {
     try {
@@ -152,18 +315,22 @@ export default function ProfileEditScreen() {
           return;
         }
       }
-      // Sur le web, `allowsEditing` + `aspect` peut empêcher l’ouverture du sélecteur (comportement Expo).
+      /**
+       * Ne pas utiliser `allowsEditing` / crop natif sur Android : retour fréquent = fermeture de l’app
+       * (activité crop + RN New Architecture). L’aperçu dans la modale suffit.
+       */
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: Platform.OS !== 'web',
-        ...(Platform.OS !== 'web' ? { aspect: [1, 1] as [number, number] } : {}),
-        quality: 0.88,
+        mediaTypes: resolveProfilePickerMediaTypes(),
+        allowsEditing: false,
+        quality: Platform.OS === 'android' ? 0.85 : 0.88,
       });
       if (result.canceled || !result.assets[0]?.uri) return;
-      await uploadAvatarFromUri(result.assets[0].uri);
-    } catch (err) {
-      console.warn('pickAvatarFromLibrary', err);
-      Alert.alert('Galerie', "Impossible d'ouvrir la galerie. Réessayez ou vérifiez les permissions du navigateur / de l'app.");
+      scheduleAvatarPreviewDeduped(result.assets[0]);
+    } catch {
+      Alert.alert(
+        'Galerie',
+        "Impossible d'ouvrir la galerie. Réessayez ou vérifiez les permissions du navigateur / de l'app."
+      );
     }
   };
 
@@ -175,14 +342,12 @@ export default function ProfileEditScreen() {
         return;
       }
       const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.88,
+        allowsEditing: false,
+        quality: Platform.OS === 'android' ? 0.85 : 0.88,
       });
       if (result.canceled || !result.assets[0]?.uri) return;
-      await uploadAvatarFromUri(result.assets[0].uri);
-    } catch (err) {
-      console.warn('pickAvatarFromCamera', err);
+      scheduleAvatarPreviewDeduped(result.assets[0]);
+    } catch {
       Alert.alert('Caméra', 'Impossible d’ouvrir la caméra.');
     }
   };
@@ -212,11 +377,16 @@ export default function ProfileEditScreen() {
           firstName: fn.split(' ')[0],
           lastName: fn.split(' ').slice(1).join(' '),
           profile_image: updated.profile_image ?? user.profile_image,
-          avatar: toAbsoluteMediaUrl(String(updated.profile_image || user.profile_image || user.avatar || '')).trim() || user.avatar,
+          avatar:
+            toAbsoluteMediaUrl(
+              String(updated.profile_image || user.profile_image || user.avatar || '')
+            ).trim() || user.avatar,
         };
         updateUser(merged);
         await secureStorage.setItem('user', JSON.stringify(merged));
-        Alert.alert('Profil', 'Modifications enregistrées.', [{ text: 'OK', onPress: () => router.back() }]);
+        Alert.alert('Profil', 'Modifications enregistrées.', [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
       }
     } catch (e: any) {
       const msg = e?.response?.data?.error?.message || e?.message;
@@ -236,8 +406,25 @@ export default function ProfileEditScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      <ProfileAvatarCropModal
+        visible={Boolean(avatarDraft)}
+        uri={avatarDraft?.uri ?? ''}
+        accent={Colors.primary}
+        onCancel={() => !uploadingAvatar && setAvatarDraft(null)}
+        onConfirm={async croppedUri => {
+          await uploadAvatarFromUri(croppedUri, {
+            mimeType: 'image/jpeg',
+            fileName: 'profile.jpg',
+          });
+        }}
+      />
+
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Retour">
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityLabel="Retour"
+        >
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Modifier le profil</Text>
@@ -256,7 +443,11 @@ export default function ProfileEditScreen() {
           >
             <View style={styles.avatarWrap}>
               {avatarDisplayUri ? (
-                <Image source={{ uri: avatarDisplayUri }} style={styles.avatarImg} accessibilityLabel="Photo de profil" />
+                <Image
+                  source={{ uri: avatarDisplayUri }}
+                  style={styles.avatarImg}
+                  accessibilityLabel="Photo de profil"
+                />
               ) : (
                 <View style={[styles.avatarImg, styles.avatarPlaceholder]}>
                   <Ionicons name="person" size={48} color={Colors.textMuted} />
@@ -270,7 +461,10 @@ export default function ProfileEditScreen() {
             </View>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.avatarBtn, Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : null]}
+            style={[
+              styles.avatarBtn,
+              Platform.OS === 'web' ? ({ cursor: 'pointer' } as object) : null,
+            ]}
             onPress={() => {
               void pickAvatarFromLibrary();
             }}
@@ -413,7 +607,13 @@ const styles = StyleSheet.create({
     minWidth: 200,
   },
   avatarBtnSecondaryText: { color: Colors.primary, fontSize: 14, fontWeight: '700' },
-  label: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: 8, marginTop: 14 },
+  label: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 8,
+    marginTop: 14,
+  },
   input: {
     backgroundColor: '#1A1A1A',
     borderRadius: 12,

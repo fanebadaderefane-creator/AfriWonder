@@ -146,7 +146,7 @@ export default function ShareSheet({ visible, onClose, title, message, url, vide
   const [downloading, setDownloading] = useState(false);
   const [offlineSaving, setOfflineSaving] = useState(false);
 
-  /** "Send to" — followers + following dédupliqués (DM dans l'app, comme TikTok). */
+  /** "Send to" — Wonder + Dans ton Wonder dédupliqués (DM dans l'app, comme TikTok). */
   const currentUser = useAuthStore((s) => s.user);
   const [friends, setFriends] = useState<SendToFriend[]>([]);
   const [friendsLoading, setFriendsLoading] = useState(false);

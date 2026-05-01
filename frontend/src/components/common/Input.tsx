@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, TextInput, Text, StyleSheet, TouchableOpacity, ViewStyle } from 'react-native';
+import { View, TextInput, Text, StyleSheet, TouchableOpacity, ViewStyle, Platform } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -63,6 +63,8 @@ export const Input: React.FC<InputProps> = ({
           onBlur={() => setIsFocused(false)}
           multiline={multiline}
           numberOfLines={numberOfLines}
+          selectionColor={Colors.primary}
+          underlineColorAndroid="transparent"
         />
         {secureTextEntry && (
           <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
@@ -95,7 +97,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.borderLight,
     paddingHorizontal: Spacing.md,
   },
   inputFocused: {
@@ -112,6 +114,14 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontSize: FontSizes.md,
     paddingVertical: Spacing.md,
+    minHeight: Platform.OS === 'android' ? 48 : undefined,
+    /* Web : fond explicite (autofill). Android : évite texte/cadre « disparus » sur certains APK (thème OEM / secureTextEntry). */
+    ...(Platform.OS === 'web'
+      ? { backgroundColor: Colors.surface }
+      : {}),
+    ...(Platform.OS === 'android'
+      ? { backgroundColor: Colors.surface, includeFontPadding: false }
+      : {}),
   },
   multilineInput: {
     minHeight: 100,

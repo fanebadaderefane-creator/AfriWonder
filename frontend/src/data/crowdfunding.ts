@@ -1,4 +1,6 @@
-// AfriWonder Crowdfunding Mock Data
+import { uiAvatarFromSeed } from '../utils/avatarFallback';
+
+// AfriWonder Crowdfunding Mock Data (sans picsum / pravatar — avatars via initiales)
 
 export interface CrowdfundingCreator {
   id: string;
@@ -21,6 +23,16 @@ export interface Reward {
   icon: string;
 }
 
+/** Jalons escrow (JSON Prisma `milestones`) — libération partielle. */
+export interface CrowdfundingMilestone {
+  id: string;
+  label: string;
+  amount_target: number;
+  amount_released?: number;
+  status: string;
+  released_at?: string;
+}
+
 export interface CrowdfundingProject {
   id: string;
   title: string;
@@ -39,6 +51,10 @@ export interface CrowdfundingProject {
   createdAt: string;
   updates: number;
   comments: number;
+  /** Statut API : active, funded, failed, suspended… */
+  status?: string;
+  /** Présent si la campagne définit des jalons (porteur). */
+  milestones?: CrowdfundingMilestone[];
 }
 
 export interface CrowdfundingCategory {
@@ -67,11 +83,7 @@ export const SEED_PROJECTS: CrowdfundingProject[] = [
     title: 'Ecole Numerique de Bamako',
     shortDescription: 'Offrir un acces au numerique a 500 enfants de Bamako avec des tablettes et une connexion internet.',
     description: 'Notre projet vise a equiper une ecole primaire de Bamako avec 50 tablettes educatives, une connexion internet fiable et des contenus pedagogiques adaptes. Plus de 500 enfants pourront beneficier d\'un enseignement moderne et connecte.\n\nNous avons deja identifie l\'ecole partenaire et negocie les tarifs avec les fournisseurs. Les premiers equipements seront livres des que l\'objectif sera atteint a 60%.\n\nChaque contribution compte pour offrir un avenir meilleur a ces enfants.',
-    images: [
-      'https://picsum.photos/800/500?random=200',
-      'https://picsum.photos/800/500?random=201',
-      'https://picsum.photos/800/500?random=202',
-    ],
+    images: [] as string[],
     goal: 5000000,
     raised: 3250000,
     backers: 189,
@@ -80,7 +92,7 @@ export const SEED_PROJECTS: CrowdfundingProject[] = [
     creator: {
       id: 'u1',
       name: 'Aminata Diallo',
-      avatar: 'https://i.pravatar.cc/150?img=1',
+      avatar: uiAvatarFromSeed('Aminata Diallo'),
       location: 'Bamako, Mali',
       isVerified: true,
       projectsCount: 3,
@@ -102,10 +114,7 @@ export const SEED_PROJECTS: CrowdfundingProject[] = [
     title: 'Centre de Sante Communautaire Sikasso',
     shortDescription: 'Construire un centre de sante moderne pour les habitants de Sikasso et les villages environnants.',
     description: 'Le projet consiste a batir un centre de sante communautaire a Sikasso, equipe de materiel medical moderne. Ce centre servira plus de 10 000 habitants de la region qui doivent actuellement parcourir plus de 50 km pour acceder aux soins.\n\nLe terrain est deja acquis et les plans architecturaux sont prets. Les travaux commenceront des que 50% de l\'objectif sera atteint.',
-    images: [
-      'https://picsum.photos/800/500?random=210',
-      'https://picsum.photos/800/500?random=211',
-    ],
+    images: [] as string[],
     goal: 10000000,
     raised: 7800000,
     backers: 456,
@@ -114,7 +123,7 @@ export const SEED_PROJECTS: CrowdfundingProject[] = [
     creator: {
       id: 'u2',
       name: 'Dr. Moussa Keita',
-      avatar: 'https://i.pravatar.cc/150?img=3',
+      avatar: uiAvatarFromSeed('Dr Moussa Keita'),
       location: 'Sikasso, Mali',
       isVerified: true,
       projectsCount: 2,
@@ -136,10 +145,7 @@ export const SEED_PROJECTS: CrowdfundingProject[] = [
     title: 'Studio Musique Jeunes Artistes',
     shortDescription: 'Creer un studio d\'enregistrement professionnel pour les jeunes talents musicaux de Bamako.',
     description: 'Bamako regorge de talents musicaux mais les jeunes artistes n\'ont pas acces a des studios professionnels. Notre projet va creer un espace creatif avec un studio d\'enregistrement haut de gamme, ouvert et accessible a tous les jeunes artistes.\n\nLe studio proposera des seances d\'enregistrement a prix reduit et des formations gratuites en production musicale.',
-    images: [
-      'https://picsum.photos/800/500?random=220',
-      'https://picsum.photos/800/500?random=221',
-    ],
+    images: [] as string[],
     goal: 2000000,
     raised: 850000,
     backers: 67,
@@ -148,7 +154,7 @@ export const SEED_PROJECTS: CrowdfundingProject[] = [
     creator: {
       id: 'u3',
       name: 'Ibrahima Sangare',
-      avatar: 'https://i.pravatar.cc/150?img=5',
+      avatar: uiAvatarFromSeed('Ibrahima Sangare'),
       location: 'Bamako, Mali',
       isVerified: true,
       projectsCount: 1,
@@ -169,11 +175,7 @@ export const SEED_PROJECTS: CrowdfundingProject[] = [
     title: 'Ferme Solaire Communautaire Mopti',
     shortDescription: 'Installer une ferme solaire pour electrifier 3 villages de la region de Mopti.',
     description: 'Plus de 5 000 habitants de trois villages de Mopti n\'ont pas acces a l\'electricite. Ce projet installera des panneaux solaires et un systeme de stockage pour fournir une energie propre et durable.\n\nL\'electricite permettra l\'eclairage des maisons, le fonctionnement de pompes a eau et la conservation des aliments.',
-    images: [
-      'https://picsum.photos/800/500?random=230',
-      'https://picsum.photos/800/500?random=231',
-      'https://picsum.photos/800/500?random=232',
-    ],
+    images: [] as string[],
     goal: 8000000,
     raised: 4500000,
     backers: 234,
@@ -182,7 +184,7 @@ export const SEED_PROJECTS: CrowdfundingProject[] = [
     creator: {
       id: 'u4',
       name: 'Awa Traore',
-      avatar: 'https://i.pravatar.cc/150?img=9',
+      avatar: uiAvatarFromSeed('Awa Traore'),
       location: 'Mopti, Mali',
       isVerified: true,
       projectsCount: 2,
@@ -204,10 +206,7 @@ export const SEED_PROJECTS: CrowdfundingProject[] = [
     title: 'Application Mobile AgriConnect',
     shortDescription: 'Developper une app mobile pour connecter les agriculteurs maliens aux marches et a la meteo.',
     description: 'AgriConnect est une application mobile qui permettra aux agriculteurs de la region de Segou de consulter les prix du marche en temps reel, recevoir des alertes meteo et echanger des conseils agricoles.\n\nL\'application fonctionnera meme hors connexion grace a un systeme de cache intelligent.',
-    images: [
-      'https://picsum.photos/800/500?random=240',
-      'https://picsum.photos/800/500?random=241',
-    ],
+    images: [] as string[],
     goal: 3000000,
     raised: 1200000,
     backers: 95,
@@ -216,7 +215,7 @@ export const SEED_PROJECTS: CrowdfundingProject[] = [
     creator: {
       id: 'u5',
       name: 'Oumar Coulibaly',
-      avatar: 'https://i.pravatar.cc/150?img=12',
+      avatar: uiAvatarFromSeed('Oumar Coulibaly'),
       location: 'Segou, Mali',
       isVerified: true,
       projectsCount: 1,
@@ -237,10 +236,7 @@ export const SEED_PROJECTS: CrowdfundingProject[] = [
     title: 'Cooperative Karite des Femmes de Koulikoro',
     shortDescription: 'Aider 200 femmes a creer une cooperative de production et vente de beurre de karite.',
     description: 'Ce projet soutient 200 femmes de Koulikoro dans la creation d\'une cooperative de karite. Les fonds serviront a acheter du materiel de production moderne, former les femmes aux techniques de transformation et creer une marque commerciale.\n\nLe karite de Koulikoro est repute pour sa qualite exceptionnelle.',
-    images: [
-      'https://picsum.photos/800/500?random=250',
-      'https://picsum.photos/800/500?random=251',
-    ],
+    images: [] as string[],
     goal: 4000000,
     raised: 2800000,
     backers: 178,
@@ -249,7 +245,7 @@ export const SEED_PROJECTS: CrowdfundingProject[] = [
     creator: {
       id: 'u6',
       name: 'Fatoumata Camara',
-      avatar: 'https://i.pravatar.cc/150?img=20',
+      avatar: uiAvatarFromSeed('Fatoumata Camara'),
       location: 'Koulikoro, Mali',
       isVerified: true,
       projectsCount: 2,
@@ -271,9 +267,7 @@ export const SEED_PROJECTS: CrowdfundingProject[] = [
     title: 'Jardin Maraicher Bio de Kati',
     shortDescription: 'Creer un jardin maraicher biologique pour nourrir les familles de Kati avec des legumes frais.',
     description: 'Le jardin maraicher bio de Kati s\'etendra sur 2 hectares et fournira des legumes frais et biologiques a plus de 1 000 familles. Le projet prevoit un systeme d\'irrigation goutte-a-goutte et des formations en agriculture biologique.',
-    images: [
-      'https://picsum.photos/800/500?random=260',
-    ],
+    images: [] as string[],
     goal: 1500000,
     raised: 750000,
     backers: 112,
@@ -282,7 +276,7 @@ export const SEED_PROJECTS: CrowdfundingProject[] = [
     creator: {
       id: 'u7',
       name: 'Sekou Doumbia',
-      avatar: 'https://i.pravatar.cc/150?img=15',
+      avatar: uiAvatarFromSeed('Sekou Doumbia'),
       location: 'Kati, Mali',
       isVerified: false,
       projectsCount: 1,
@@ -303,10 +297,7 @@ export const SEED_PROJECTS: CrowdfundingProject[] = [
     title: 'Bibliotheque Mobile pour les Villages',
     shortDescription: 'Un camion-bibliotheque pour apporter des livres dans 20 villages isoles du Mali.',
     description: 'Ce projet innovant transformera un vehicule en bibliotheque mobile qui circulera dans 20 villages isoles de la region de Tombouctou. Le camion transportera plus de 2 000 livres en francais, bambara et arabe.',
-    images: [
-      'https://picsum.photos/800/500?random=270',
-      'https://picsum.photos/800/500?random=271',
-    ],
+    images: [] as string[],
     goal: 6000000,
     raised: 1800000,
     backers: 145,
@@ -315,7 +306,7 @@ export const SEED_PROJECTS: CrowdfundingProject[] = [
     creator: {
       id: 'u8',
       name: 'Kadiatou Toure',
-      avatar: 'https://i.pravatar.cc/150?img=25',
+      avatar: uiAvatarFromSeed('Kadiatou Toure'),
       location: 'Tombouctou, Mali',
       isVerified: true,
       projectsCount: 1,

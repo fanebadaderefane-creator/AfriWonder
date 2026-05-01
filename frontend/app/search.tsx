@@ -1,10 +1,13 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import apiClient from '../src/api/client';
+import { profileAvatarUri } from '../src/utils/avatarFallback';
+import { ImageOrPlaceholder } from '../src/components/common/ImageOrPlaceholder';
 
 const TABS = ['Tous', 'Hashtags', 'Utilisateurs', 'Vidéos', 'Sons', 'Produits', 'Posts'];
 const TAB_TYPES: Record<string, string> = {
@@ -86,7 +89,12 @@ export default function SearchScreen() {
   const renderUser = ({ item }: any) => (
     <View style={styles.userRow}>
       <TouchableOpacity style={styles.userRowMain} onPress={() => goUser(item)} activeOpacity={0.85}>
-        <Image source={{ uri: item.profile_image || `https://i.pravatar.cc/100?u=${item.id}` }} style={styles.userAvatar} />
+        <ImageOrPlaceholder
+          uri={profileAvatarUri(item.profile_image, item.id)}
+          style={styles.userAvatar}
+          icon="person"
+          iconSize={22}
+        />
         <View style={{ flex: 1 }}>
           <Text style={styles.userName}>{item.full_name || item.username}</Text>
           <Text style={styles.userHandle}>@{item.username}</Text>
@@ -100,7 +108,13 @@ export default function SearchScreen() {
 
   const renderVideo = ({ item }: any) => (
     <TouchableOpacity style={styles.videoRow} onPress={() => goVideo(item)} activeOpacity={0.85}>
-      <Image source={{ uri: item.thumbnail_url || item.video_url }} style={styles.videoThumb} />
+      <ExpoImage
+        source={{ uri: item.thumbnail_url || item.video_url }}
+        style={styles.videoThumb}
+        cachePolicy="memory-disk"
+        transition={120}
+        contentFit="cover"
+      />
       <View style={{ flex: 1 }}>
         <Text style={styles.videoTitle} numberOfLines={2}>{item.title || 'Vidéo'}</Text>
         <Text style={styles.videoMeta}>{item.creator_name} • {(item.views || 0).toLocaleString()} vues</Text>
@@ -131,7 +145,13 @@ export default function SearchScreen() {
 
   const renderProduct = ({ item }: any) => (
     <TouchableOpacity style={styles.videoRow}>
-      <Image source={{ uri: item.images?.[0] || '' }} style={styles.videoThumb} />
+      <ExpoImage
+        source={{ uri: item.images?.[0] || '' }}
+        style={styles.videoThumb}
+        cachePolicy="memory-disk"
+        transition={120}
+        contentFit="cover"
+      />
       <View style={{ flex: 1 }}>
         <Text style={styles.videoTitle} numberOfLines={2}>{item.name || 'Produit'}</Text>
         <Text style={[styles.videoMeta, { color: '#FF6B00' }]}>{(item.price || 0).toLocaleString()} FCFA</Text>
@@ -141,7 +161,12 @@ export default function SearchScreen() {
 
   const renderPost = ({ item }: any) => (
     <TouchableOpacity style={styles.videoRow}>
-      <Image source={{ uri: item.user?.profile_image || `https://i.pravatar.cc/100?u=${item.user_id || item.id}` }} style={styles.userAvatar} />
+      <ImageOrPlaceholder
+        uri={profileAvatarUri(item.user?.profile_image, item.user_id || item.id)}
+        style={styles.userAvatar}
+        icon="person"
+        iconSize={22}
+      />
       <View style={{ flex: 1 }}>
         <Text style={styles.userName} numberOfLines={1}>{item.user?.full_name || item.user?.username || 'Publication'}</Text>
         <Text style={styles.videoMeta} numberOfLines={2}>{item.text || '—'}</Text>
@@ -228,6 +253,10 @@ export default function SearchScreen() {
           keyExtractor={(item, i) => `${item._type}-${item.id || i}`}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 40 }}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          removeClippedSubviews
         />
       )}
     </View>

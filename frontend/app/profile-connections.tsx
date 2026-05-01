@@ -13,7 +13,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import apiClient from '../src/api/client';
-import { toAbsoluteMediaUrl } from '../src/utils/absoluteMediaUrl';
+import { profileAvatarUri } from '../src/utils/avatarFallback';
 import { Colors, Spacing, FontSizes, BorderRadius } from '../src/theme/colors';
 import { useAuthStore } from '../src/store/authStore';
 
@@ -89,9 +89,9 @@ export default function ProfileConnectionsScreen() {
   };
 
   const confirmUnfollow = (item: Row) => {
-    Alert.alert('Ne plus suivre', `@${item.username || item.full_name || 'ce compte'} ?`, [
+    Alert.alert('Retirer du Wonder', `@${item.username || item.full_name || 'ce compte'} ?`, [
       { text: 'Annuler', style: 'cancel' },
-      { text: 'Ne plus suivre', style: 'destructive', onPress: () => void toggleFollow(item) },
+      { text: 'Retirer', style: 'destructive', onPress: () => void toggleFollow(item) },
     ]);
   };
 
@@ -101,7 +101,7 @@ export default function ProfileConnectionsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Retour">
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>{m === 'following' ? 'Suivi(e)s' : 'Abonnés'}</Text>
+        <Text style={styles.title}>{m === 'following' ? 'Wonder' : 'Dans ton Wonder'}</Text>
         <View style={{ width: 40 }} />
       </View>
       {loading ? (
@@ -114,7 +114,7 @@ export default function ProfileConnectionsScreen() {
           keyExtractor={(it) => it.id}
           contentContainerStyle={{ paddingBottom: 40 }}
           renderItem={({ item }) => {
-            const uri = toAbsoluteMediaUrl(item.profile_image || '').trim() || `https://i.pravatar.cc/100?u=${item.id}`;
+            const uri = profileAvatarUri(item.profile_image, item.id);
             const q = item.username ? `@${item.username}` : item.full_name || '';
             const isSelf = user?.id === item.id;
             const showFollow = Boolean(user?.id) && !isSelf;
@@ -148,13 +148,13 @@ export default function ProfileConnectionsScreen() {
                     onPress={() => (following ? confirmUnfollow(item) : void toggleFollow(item))}
                     disabled={busy}
                     activeOpacity={0.85}
-                    accessibilityLabel={following ? 'Ne plus suivre' : 'Suivre en retour'}
+                    accessibilityLabel={following ? 'Retirer du Wonder' : 'Wonder back'}
                   >
                     {busy ? (
                       <ActivityIndicator size="small" color={following ? Colors.primary : '#FFF'} />
                     ) : (
                       <Text style={[styles.followBtnText, following && styles.followBtnTextOutline]}>
-                        {following ? 'Abonné' : m === 'followers' ? 'Suivre en retour' : 'Suivre'}
+                        {following ? 'Dans son Wonder' : m === 'followers' ? 'Wonder back' : 'Wonder'}
                       </Text>
                     )}
                   </TouchableOpacity>

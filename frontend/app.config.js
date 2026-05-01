@@ -22,12 +22,27 @@ module.exports = ({ config }) => {
     ios.googleServicesFile = './GoogleService-Info.plist';
   }
 
+  /** OAuth : lues au chargement de la config (Expo charge déjà `.env` → `process.env`). Réinjectées dans `extra` pour le runtime web/mobile si l’inline Metro des `EXPO_PUBLIC_*` est vide. */
+  const strip = (v) => String(v ?? '')
+    .trim()
+    .replace(/^['"]|['"]$/g, '');
+  const afwOAuth = {};
+  const gw = strip(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID);
+  const gi = strip(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID);
+  const ga = strip(process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID);
+  const fb = strip(process.env.EXPO_PUBLIC_FACEBOOK_APP_ID);
+  if (gw) afwOAuth.googleWebClientId = gw;
+  if (gi) afwOAuth.googleIosClientId = gi;
+  if (ga) afwOAuth.googleAndroidClientId = ga;
+  if (fb) afwOAuth.facebookAppId = fb;
+
   return {
     ...config,
     android,
     ios,
     extra: {
       ...config.extra,
+      ...(Object.keys(afwOAuth).length ? { afwOAuth } : {}),
       ...(projectId
         ? {
             eas: {

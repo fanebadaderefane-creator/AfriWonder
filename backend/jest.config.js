@@ -41,14 +41,13 @@ export default {
   setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],
   testTimeout: 30000,
   maxWorkers: 1,
-  // Seuils progressifs vers 80 % — raised from 30 % after auth + live + messages tests added.
-  // Cible long terme : 80 % une fois les services Video, Payment et Notification couverts.
+  // Manuel durabilité ch.2.2 : couverture minimale 70 % sur ce périmètre (`collectCoverageFrom`).
   coverageThreshold: {
     global: {
-      statements: 55,
-      branches: 32,
-      functions: 52,
-      lines: 55,
+      statements: 70,
+      branches: 70,
+      functions: 70,
+      lines: 70,
     },
   },
   // Désactivé en CI pour éviter exit code 1 quand des handles (ex. pool PG)

@@ -213,6 +213,7 @@ const processSuccessfulPaymentReference = async (referenceId: string, status: st
     ['coins_purchase', () => import('../services/coins.service.js').then(m => m.default.confirmPurchase(referenceId))],
     ['certificate', () => import('../services/certificate.service.js').then(m => m.default.confirmVerificationPayment(referenceId))],
     ['shipping', () => import('../services/shipping.service.js').then(m => m.default.confirmShippingPayment(referenceId))],
+    ['star_booking', () => import('../services/starCall.service.js').then(m => m.default.confirmBookingAfterOrangeMoney(referenceId))],
   ] as const;
 
   for (const [type, fn] of handlers) {
@@ -523,7 +524,20 @@ router.post('/orange-money/verify', authenticate, validateBody(paymentVerifySche
         // Continuer
       }
 
-      // 16. Vérifier si c'est un certificat
+      // 16. Talk with Stars — Orange Money (orderId = StarBooking.id)
+      try {
+        const starCallService = (await import('../services/starCall.service.js')).default;
+        await starCallService.confirmBookingAfterOrangeMoney(orderId);
+        logger.info('Réservation star confirmée (verify Orange Money)', { orderId });
+        return res.json({ success: true, data: result, type: 'star_booking' });
+      } catch (error) {
+        const skip = error instanceof Error && error.message === 'STAR_BOOKING_PAYMENT_SKIP';
+        if (!skip && error instanceof Error) {
+          logger.warn('Star booking Orange Money verify — erreur', { orderId, message: error.message });
+        }
+      }
+
+      // 17. Vérifier si c'est un certificat
       try {
         const certificateService = (await import('../services/certificate.service.js')).default;
         await certificateService.confirmVerificationPayment(orderId);
@@ -599,6 +613,7 @@ router.post('/webhook', async (req, res, next) => {
         ['subscription', () => import('../services/subscription.service.js').then(m => m.default.confirmSubscription(effectiveRef))],
         ['order', () => import('../services/order.service.js').then(m => m.default.confirmPayment(effectiveRef))],
         ['coins_purchase', () => import('../services/coins.service.js').then(m => m.default.confirmPurchase(effectiveRef))],
+        ['star_booking', () => import('../services/starCall.service.js').then(m => m.default.confirmBookingAfterOrangeMoney(effectiveRef))],
         ['service', () => import('../services/service.service.js').then(m => m.default.confirmServicePayment(effectiveRef))],
         ['course', () => import('../services/course.service.js').then(m => m.default.confirmCoursePayment(effectiveRef))],
         ['event', () => import('../services/event.service.js').then(m => m.default.confirmTicketPayment(effectiveRef))],
@@ -645,7 +660,13 @@ router.post('/orange-money/webhook', async (req, res, next) => {
     try {
       result = await paymentService.verifyOrangeMoneyPayment(orderId, { status, pay_token });
     } catch (err) {
-      if (process.env.ORANGE_MONEY_ENV === 'test' || process.env.ORANGE_MONEY_TRUST_WEBHOOK === '1') {
+      // SÉCURITÉ : la "confiance aveugle" au webhook (TRUST_WEBHOOK) est strictement
+      // interdite en production — sinon un webhook forgé (ou une fuite de signature)
+      // permettrait de créditer n'importe quel orderId. On ne tolère cette branche
+      // qu'en environnement NON-production (sandbox / tests / staging explicite).
+      const isNonProd = process.env.NODE_ENV !== 'production';
+      const trustEnabled = process.env.ORANGE_MONEY_TRUST_WEBHOOK === '1';
+      if (isNonProd && (process.env.ORANGE_MONEY_ENV === 'test' || trustEnabled)) {
         result = { success: true };
       } else {
         logWebhookError('orange_money', (err as Error).message, body);
@@ -653,7 +674,11 @@ router.post('/orange-money/webhook', async (req, res, next) => {
       }
     }
 
-    if (!result.success && process.env.ORANGE_MONEY_TRUST_WEBHOOK !== '1') {
+    // En prod, on exige TOUJOURS result.success issu de la vérification provider,
+    // peu importe ORANGE_MONEY_TRUST_WEBHOOK.
+    const trustAllowed =
+      process.env.NODE_ENV !== 'production' && process.env.ORANGE_MONEY_TRUST_WEBHOOK === '1';
+    if (!result.success && !trustAllowed) {
       logWebhookProcessed('orange_money', orderId, 'ignored');
       return res.json({ success: true, received: true, processed: false });
     }
@@ -791,6 +816,13 @@ router.post('/orange-money/webhook', async (req, res, next) => {
         await liveService.confirmWalletRecharge(orderId);
         logger.info('Recharge wallet live confirmée via webhook', { orderId });
       } catch (error) {}
+
+      // 18. Talk with Stars — réservation payée Orange Money (order_id = StarBooking.id)
+      try {
+        const starCallService = (await import('../services/starCall.service.js')).default;
+        await starCallService.confirmBookingAfterOrangeMoney(orderId);
+        logger.info('Réservation star confirmée via webhook Orange Money', { orderId });
+      } catch (error) {}
     }
 
     logWebhookProcessed('orange_money', orderId, 'processed');
@@ -871,7 +903,10 @@ router.post('/moov/webhook', async (req, res, next) => {
     }
 
     const result = await paymentService.verifyMoovMoneyPayment(orderId, { status, transaction_id });
-    if (!result.success && process.env.MOOV_MONEY_TRUST_WEBHOOK !== '1') {
+    // SÉCURITÉ : même politique que Orange Money — TRUST_WEBHOOK interdit en production.
+    const moovTrustAllowed =
+      process.env.NODE_ENV !== 'production' && process.env.MOOV_MONEY_TRUST_WEBHOOK === '1';
+    if (!result.success && !moovTrustAllowed) {
       logWebhookProcessed('moov_money', orderId, 'ignored');
       return res.json({ success: true, received: true, processed: false });
     }

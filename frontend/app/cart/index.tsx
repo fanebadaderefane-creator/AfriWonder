@@ -38,6 +38,10 @@ export default function CartScreen() {
       />
     );
   }
+  return <CartContent />;
+}
+
+function CartContent() {
   const insets = useSafeAreaInsets();
   const [cart, setCart] = useState<Cart | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,7 +49,7 @@ export default function CartScreen() {
   const [error, setError] = useState<string | null>(null);
   const [updatingProductId, setUpdatingProductId] = useState<string | null>(null);
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethodId>('orange_money');
-  const [shippingAddress, setShippingAddress] = useState<string>('');
+  const [shippingAddress, _setShippingAddress] = useState<string>('');
   const [creating, setCreating] = useState(false);
 
   const loadCart = useCallback(async (silent = false) => {

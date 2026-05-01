@@ -60,7 +60,7 @@ export default function SettingsPrivacyHub() {
         <SettingsRow
           variant="navigate"
           icon="people-outline"
-          label="Following list"
+          label="Wonder list"
           value={AUDIENCE_LABEL[settings.following_list_visibility]}
           onPress={() => router.push('/settings/privacy/following-list' as never)}
         />

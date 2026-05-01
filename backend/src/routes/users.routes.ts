@@ -190,7 +190,7 @@ router.get('/:id/liked-videos', optionalAuth, async (req: AuthRequest, res, next
 router.get('/:id/share', optionalAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = param(req, 'id');
-    const user = await userService.getById(userId, req.user?.id ?? null);
+    const user = await userService.getById(userId, req.user?.id ?? undefined);
     const handle = (user?.username || '').replace(/^@+/, '');
     const baseUrl = process.env.PUBLIC_WEB_URL?.replace(/\/$/, '') || 'https://afri-wonder.vercel.app';
     const deepLink = handle

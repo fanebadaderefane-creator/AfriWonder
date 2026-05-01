@@ -3,6 +3,8 @@ import * as Device from 'expo-device';
 import { NativeModules, Platform } from 'react-native';
 import { stripApiSuffix, stripTrailingSlash } from '../utils/urlNormalize';
 import { orderedPrivateLanHostsFromStrings } from './devBackendHostUtils';
+import { unsafeBackendOriginReasonForNativeRelease } from './nativeReleaseBackendUrlSafety';
+import { shouldHoldUiForAndroidDevBackendProbe } from './androidDevProbeUiPolicy';
 
 /**
  * Même défaut dev que la PWA (racine `.env.example`) : `VITE_API_URL=http://localhost:3000/api`.
@@ -23,6 +25,24 @@ export const MISSING_BACKEND_URL_SENTINEL =
   'https://backend-url-not-configured.invalid';
 
 let missingBackendUrlLogged = false;
+let unsafeReleaseBackendUrlLogged = false;
+
+function envTruth(raw: string | undefined): boolean {
+  const v = (raw ?? '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+}
+
+/**
+ * Builds internes / staging VPN : autoriser une origine « non publique » explicitement.
+ * À utiliser uniquement pour des APK non distribués sur le Play Store.
+ */
+function allowUnsafeBackendUrlOnNativeRelease(): boolean {
+  const extra = Constants.expoConfig?.extra as Record<string, string | undefined> | undefined;
+  return envTruth(
+    process.env.EXPO_PUBLIC_ALLOW_UNSAFE_BACKEND_URL_ON_NATIVE_RELEASE
+      ?? extra?.EXPO_PUBLIC_ALLOW_UNSAFE_BACKEND_URL_ON_NATIVE_RELEASE
+  );
+}
 
 /**
  * Log une seule fois (console + Sentry) quand on détecte un build natif release
@@ -37,12 +57,35 @@ function logMissingBackendUrlOnce(): void {
     + 'Configure EXPO_PUBLIC_BACKEND_URL in EAS secrets (e.g. https://api.afriwonder.com).';
   console.error(msg);
   try {
-    // Import dynamique pour éviter toute dépendance circulaire potentielle.
-
+    // `require` synchrone : chargement optionnel Sentry sans cycle ESM (voir règle mobile Android URL).
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require('../lib/sentryMobile') as {
       captureSentryMessage?: (m: string, l?: 'fatal' | 'error') => void;
     };
     mod.captureSentryMessage?.('missing_expo_public_backend_url', 'fatal');
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * APK release avec `EXPO_PUBLIC_BACKEND_URL` en LAN / localhost / HTTP : échec réseau garanti hors Wi‑Fi dev.
+ * Retourne une sentinelle invalide + log critique (comme URL absente).
+ */
+function logUnsafeReleaseBackendUrlOnce(reason: string): void {
+  if (unsafeReleaseBackendUrlLogged) return;
+  unsafeReleaseBackendUrlLogged = true;
+  const msg =
+    `[AfriWonder] CRITICAL: EXPO_PUBLIC_BACKEND_URL is not suitable for this native production build (${reason}). `
+    + 'Use a public HTTPS origin (e.g. https://api.example.com) in EAS env/secrets for Play Store builds. '
+    + 'Optional escape hatch for internal APK only: EXPO_PUBLIC_ALLOW_UNSAFE_BACKEND_URL_ON_NATIVE_RELEASE=1.';
+  console.error(msg);
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('../lib/sentryMobile') as {
+      captureSentryMessage?: (m: string, l?: 'fatal' | 'error') => void;
+    };
+    mod.captureSentryMessage?.(`unsafe_expo_public_backend_url:${reason}`, 'fatal');
   } catch {
     /* ignore */
   }
@@ -300,6 +343,20 @@ function readConfiguredOrigin(): string {
   return stripApiSuffix(raw);
 }
 
+/** `EXPO_PUBLIC_BACKEND_URL` renseignée (dev .env ou extra EAS) — le probe LAN Android n’est pas indispensable pour l’UI. */
+export function hasExplicitBackendOriginConfigured(): boolean {
+  return readConfiguredOrigin().length > 0;
+}
+
+/** Voir `androidDevProbeUiPolicy` — évite l’écran noir prolongé quand l’URL backend est déjà connue. */
+export function shouldBlockUiUntilAndroidDevBackendProbe(): boolean {
+  return shouldHoldUiForAndroidDevBackendProbe({
+    platformOs: Platform.OS,
+    isDev: typeof __DEV__ !== 'undefined' && !!__DEV__,
+    hasExplicitBackendOrigin: hasExplicitBackendOriginConfigured(),
+  });
+}
+
 /**
  * `EXPO_PUBLIC_BACKEND_URL=http://localhost:3000` sur l’émulateur / appareil Android pointe vers
  * l’appareil lui-même, pas le PC — réécriture vers l’alias hôte (10.0.2.2, 10.0.3.2 Genymotion).
@@ -316,6 +373,15 @@ function rewriteLocalhostOriginForAndroidDev(origin: string): string {
   const h = u.hostname.toLowerCase();
   if (h !== 'localhost' && h !== '127.0.0.1' && h !== '[::1]' && h !== '::1') {
     return origin;
+  }
+  /**
+   * `localhost` forcé dans `.env` casse souvent Expo Go sur téléphone réel :
+   * il faut d'abord tenter l'IP LAN du packager, puis seulement les alias émulateur.
+   */
+  const packagerHosts = packagerPrivateLanHostsOrdered();
+  if (packagerHosts.length > 0) {
+    u.hostname = packagerHosts[0];
+    return stripApiSuffix(u.origin);
   }
   const special = androidDevEmulatorBackendOrigin();
   const replacementHost = special ? new URL(special).hostname : '10.0.2.2';
@@ -334,10 +400,26 @@ function rewriteLocalhostOriginForAndroidDev(origin: string): string {
  * - **Prod native** : sans variable → URL sentinelle invalide + log CRITIQUE (Sentry).
  *   Ne pas retomber silencieusement sur `localhost:3000` : c'est un piège qui fait croire à un bug
  *   backend alors que la variable d'env EAS manque.
+ * - **Prod native avec URL « dev »** (HTTP, LAN, localhost, 127.0.0.1) → même sentinelle + log,
+ *   sauf `EXPO_PUBLIC_ALLOW_UNSAFE_BACKEND_URL_ON_NATIVE_RELEASE=1` (APK internes uniquement).
  */
 export function getBackendOrigin(): string {
   const configured = readConfiguredOrigin();
-  if (configured) return rewriteLocalhostOriginForAndroidDev(configured);
+  if (configured) {
+    const isNativeRelease =
+      Platform.OS !== 'web'
+      && (typeof __DEV__ === 'undefined' || !__DEV__);
+
+    if (isNativeRelease && !allowUnsafeBackendUrlOnNativeRelease()) {
+      const unsafeReason = unsafeBackendOriginReasonForNativeRelease(configured);
+      if (unsafeReason) {
+        logUnsafeReleaseBackendUrlOnce(unsafeReason);
+        return MISSING_BACKEND_URL_SENTINEL;
+      }
+    }
+
+    return rewriteLocalhostOriginForAndroidDev(configured);
+  }
 
   if (Platform.OS === 'web') {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {

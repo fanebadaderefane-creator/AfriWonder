@@ -25,6 +25,8 @@ import { useAuthStore } from '../src/store/authStore';
 import { toAbsoluteMediaUrl } from '../src/utils/absoluteMediaUrl';
 import { SmartThumbnail } from '../src/components/SmartThumbnail';
 import { extractOAuthAccessToken } from '../src/utils/extractOAuthAccessToken';
+import { getPublicWebOrigin } from '../src/config/shareUrls';
+import { getFacebookAppId } from '../src/config/oauthEnv';
 
 /**
  * Écran « Find friends ».
@@ -38,7 +40,7 @@ import { extractOAuthAccessToken } from '../src/utils/extractOAuthAccessToken';
  *
  * Section suggestions :
  *  - `GET /api/me/friends-suggestions` (preview_videos, mutual_count, is_new_content).
- *  - Follow back → `POST /users/:id/follow` → "Following" (gris) → vérifie mutual via
+ *  - Wonder back → `POST /users/:id/follow` → "Dans son Wonder" (gris) → vérifie mutual via
  *    `GET /api/friends/mutual?ids=…` → bascule "Friends" si réciproque.
  *  - Remove     → `POST /api/me/friends-suggestions/:id/dismiss` (retire 24 h).
  *  - Menu "…"   → Modal avec Not interested / Block (`/api/friends/:id/block`) /
@@ -49,7 +51,7 @@ const TEXT_MAIN = '#000000';
 const TEXT_MUTED = 'rgba(0,0,0,0.60)';
 const DIVIDER = 'rgba(0,0,0,0.10)';
 const CHIP_BG = '#F1F1F2';
-const LIVE_PINK = '#FF2D55';
+const LIVE_PINK = '#FF6B00';
 
 type PreviewVideo = {
   id: string;
@@ -74,6 +76,15 @@ type Suggestion = {
 };
 
 type FollowState = 'idle' | 'following' | 'friends' | 'removed';
+type FriendReportReason =
+  | 'nudity'
+  | 'violence'
+  | 'harassment'
+  | 'hate'
+  | 'spam'
+  | 'scam'
+  | 'copyright'
+  | 'other';
 
 type Method = {
   id: string;
@@ -160,8 +171,20 @@ export default function FindFriendsScreen() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [follow, setFollow] = useState<Record<string, FollowState>>({});
   const [menuFor, setMenuFor] = useState<Suggestion | null>(null);
+  const [reportFor, setReportFor] = useState<Suggestion | null>(null);
+  const [reportReason, setReportReason] = useState<FriendReportReason>('harassment');
+  const [reportDetails, setReportDetails] = useState('');
+  const [reportSending, setReportSending] = useState(false);
 
-  const fbAppId = String(process.env.EXPO_PUBLIC_FACEBOOK_APP_ID || '').trim();
+  const notify = useCallback((title: string, message: string) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert(`${title}\n\n${message}`);
+      return;
+    }
+    Alert.alert(title, message);
+  }, []);
+
+  const fbAppId = getFacebookAppId();
   const [, fbResponse, fbPrompt] = Facebook.useAuthRequest({
     clientId: fbAppId || '000000000000000',
     scopes: ['public_profile', 'email', 'user_friends'],
@@ -242,9 +265,32 @@ export default function FindFriendsScreen() {
   }, [fbResponse, loadSuggestions]);
 
   const inviteHandle = (user?.username || '').replace(/^@+/, '');
+  const [referralCode, setReferralCode] = useState<string>('');
+
+  // Récupère (au mount) le code de parrainage du user connecté pour l'embarquer
+  // dans le lien d'invitation → growth loop « invité → inscription → crédit parrain »
+  // fonctionnelle dès J1. Sans ?ref=, le backend ne peut pas attribuer le parrainage.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await apiClient.get('/referrals/stats');
+        const data = res.data?.data ?? res.data;
+        const code = String(data?.code ?? '').trim();
+        if (!cancelled && code) setReferralCode(code);
+      } catch {
+        /* Pas de code dispo → lien partagé sans ref (non bloquant). */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const inviteFriends = useCallback(async () => {
     const handle = inviteHandle || 'user';
-    const url = `https://afri-wonder.vercel.app/u/${encodeURIComponent(handle)}`;
+    // Origin dynamique (shareUrls.ts) : prod vs preview vs custom domain.
+    const origin = getPublicWebOrigin().replace(/\/+$/, '');
+    const qs = referralCode ? `?ref=${encodeURIComponent(referralCode)}` : '';
+    const url = `${origin}/u/${encodeURIComponent(handle)}${qs}`;
     const msg = `Rejoignez-moi sur AfriWonder — @${handle}\n${url}`;
     if (Platform.OS === 'web') {
       try {
@@ -268,7 +314,7 @@ export default function FindFriendsScreen() {
     } catch {
       /* annulé */
     }
-  }, [inviteHandle]);
+  }, [inviteHandle, referralCode]);
 
   const handleMethod = useCallback(
     (id: string) => {
@@ -379,13 +425,30 @@ export default function FindFriendsScreen() {
   }, []);
 
   const handleReport = useCallback(async (s: Suggestion) => {
-    try {
-      await apiClient.post(`/friends/${s.id}/report`, { reason: 'inappropriate_profile' });
-      Alert.alert('Merci', "Signalement envoyé. L'équipe Safety l'examinera sous 24 h.");
-    } catch {
-      Alert.alert('Erreur', 'Signalement impossible.');
-    }
+    setReportReason('harassment');
+    setReportDetails('');
+    setReportFor(s);
   }, []);
+
+  const submitReport = useCallback(async () => {
+    if (!reportFor) return;
+    setReportSending(true);
+    try {
+      const details = reportDetails.trim();
+      await apiClient.post(`/friends/${reportFor.id}/report`, {
+        reason: reportReason,
+        ...(details ? { details } : {}),
+      });
+      setFollow((f) => ({ ...f, [reportFor.id]: 'removed' }));
+      setReportFor(null);
+      setReportDetails('');
+      notify('Merci', "Signalement envoyé avec succès. L'équipe Safety l'examinera sous 24 h.");
+    } catch {
+      notify('Erreur', 'Signalement impossible.');
+    } finally {
+      setReportSending(false);
+    }
+  }, [notify, reportDetails, reportFor, reportReason]);
 
   const openUser = useCallback((s: Suggestion) => {
     router.push({ pathname: '/user/[id]', params: { id: s.id } } as never);
@@ -394,11 +457,11 @@ export default function FindFriendsScreen() {
   const followLabel = (state: FollowState, s: Suggestion): string => {
     switch (state) {
       case 'friends':
-        return 'Friends';
+        return 'Amis';
       case 'following':
-        return 'Following';
+        return 'Dans son Wonder';
       default:
-        return s.is_following_me ? 'Follow back' : 'Follow';
+        return s.is_following_me ? 'Wonder back' : 'Wonder';
     }
   };
 
@@ -650,11 +713,9 @@ export default function FindFriendsScreen() {
         onRequestClose={() => setMenuFor(null)}
       >
         <Pressable style={styles.modalBackdrop} onPress={() => setMenuFor(null)}>
-          <Pressable
+          <View
             style={styles.modalSheet}
-            onPress={(e) => {
-              e.stopPropagation();
-            }}
+            onStartShouldSetResponder={() => true}
           >
             <View style={styles.modalGrab} />
             <TouchableOpacity
@@ -680,7 +741,7 @@ export default function FindFriendsScreen() {
             <TouchableOpacity
               style={styles.modalItem}
               onPress={() => {
-                if (menuFor) void handleReport(menuFor);
+                if (menuFor) handleReport(menuFor);
                 setMenuFor(null);
               }}
             >
@@ -693,7 +754,99 @@ export default function FindFriendsScreen() {
             >
               <Text style={[styles.modalItemText, { fontWeight: '700' }]}>Annuler</Text>
             </TouchableOpacity>
-          </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Formulaire de signalement détaillé */}
+      <Modal
+        transparent
+        animationType="fade"
+        visible={reportFor !== null}
+        onRequestClose={() => {
+          if (!reportSending) setReportFor(null);
+        }}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => {
+            if (!reportSending) setReportFor(null);
+          }}
+        >
+          <View style={styles.reportSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.reportHeaderRow}>
+              <Text style={styles.reportTitle}>Signaler ce compte</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  if (!reportSending) setReportFor(null);
+                }}
+                hitSlop={10}
+                disabled={reportSending}
+                accessibilityLabel="Fermer le signalement"
+              >
+                <Ionicons name="close" size={22} color={TEXT_MAIN} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.reportSub}>
+              Donne une raison précise pour aider l&apos;équipe modération.
+            </Text>
+            {[
+              { key: 'nudity', label: 'Nudité / contenu adulte' },
+              { key: 'violence', label: 'Violence / contenu choquant' },
+              { key: 'harassment', label: 'Harcèlement / intimidation' },
+              { key: 'hate', label: 'Discours haineux / discrimination' },
+              { key: 'spam', label: 'Spam' },
+              { key: 'scam', label: 'Arnaque / fraude' },
+              { key: 'copyright', label: 'Droit d’auteur (DMCA)' },
+              { key: 'other', label: 'Autre raison' },
+            ].map((item) => {
+              const active = reportReason === item.key;
+              return (
+                <TouchableOpacity
+                  key={item.key}
+                  style={styles.reportReasonRow}
+                  onPress={() => setReportReason(item.key as FriendReportReason)}
+                  disabled={reportSending}
+                >
+                  <Ionicons
+                    name={active ? 'radio-button-on' : 'radio-button-off'}
+                    size={18}
+                    color={active ? LIVE_PINK : TEXT_MUTED}
+                  />
+                  <Text style={styles.reportReasonText}>{item.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+            <TextInput
+              value={reportDetails}
+              onChangeText={setReportDetails}
+              editable={!reportSending}
+              placeholder="Détail optionnel (ex: date, captures, contexte)"
+              placeholderTextColor={TEXT_MUTED}
+              style={styles.reportInput}
+              multiline
+              numberOfLines={3}
+              maxLength={400}
+            />
+            <View style={styles.reportActions}>
+              <TouchableOpacity
+                style={styles.reportCancelBtn}
+                onPress={() => setReportFor(null)}
+                disabled={reportSending}
+              >
+                <Text style={styles.reportCancelText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.reportSendBtn, reportSending && { opacity: 0.7 }]}
+                onPress={() => void submitReport()}
+                disabled={reportSending}
+              >
+                <Text style={styles.reportSendText}>
+                  {reportSending ? 'Envoi...' : 'Envoyer le signalement'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </Pressable>
       </Modal>
     </View>
@@ -737,7 +890,7 @@ const styles = StyleSheet.create({
     color: TEXT_MAIN,
     fontSize: 15,
     paddingVertical: 0,
-    ...(Platform.OS === 'web' ? { outlineWidth: 0, outlineStyle: 'none' } : {}),
+    ...(Platform.OS === 'web' ? ({ outlineWidth: 0, outlineStyle: 'none' } as any) : {}),
   },
   methodsWrap: { paddingHorizontal: 16, paddingVertical: 8 },
   methodRow: {
@@ -874,4 +1027,58 @@ const styles = StyleSheet.create({
     marginTop: 6,
     justifyContent: 'center',
   },
+  reportSheet: {
+    marginHorizontal: 14,
+    marginTop: 40,
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: DIVIDER,
+  },
+  reportHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  reportTitle: { color: TEXT_MAIN, fontSize: 17, fontWeight: '800' },
+  reportSub: { color: TEXT_MUTED, fontSize: 12, marginTop: 4, marginBottom: 10 },
+  reportReasonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 7,
+  },
+  reportReasonText: { color: TEXT_MAIN, fontSize: 14 },
+  reportInput: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: DIVIDER,
+    borderRadius: 8,
+    padding: 10,
+    color: TEXT_MAIN,
+    fontSize: 13,
+    minHeight: 72,
+    textAlignVertical: 'top' as const,
+    ...(Platform.OS === 'web' ? ({ outlineWidth: 0, outlineStyle: 'none' } as any) : {}),
+  },
+  reportActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  reportCancelBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: CHIP_BG,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportCancelText: { color: TEXT_MAIN, fontWeight: '700' },
+  reportSendBtn: {
+    flex: 1.5,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: LIVE_PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportSendText: { color: '#FFF', fontWeight: '700' },
 });

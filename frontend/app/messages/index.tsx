@@ -1,5 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, ActivityIndicator, RefreshControl, Alert, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  Image,
+  TextInput,
+  ActivityIndicator,
+  RefreshControl,
+  Alert,
+  ScrollView,
+  Modal,
+  Pressable,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +23,7 @@ import apiClient from '../../src/api/client';
 import socketService from '../../src/services/socketService';
 import { useAuthStore } from '../../src/store/authStore';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { profileAvatarUri } from '../../src/utils/avatarFallback';
 
 const TABS = ['Discussions', 'Statuts', 'Appels'];
 
@@ -78,13 +93,13 @@ export default function MessagesListScreen() {
   const [showContacts, setShowContacts] = useState(false);
   const [requestCount, setRequestCount] = useState(0);
   const [storyFeed, setStoryFeed] = useState<StoryFeedItem[]>([]);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
 
   /** Avatar du compte connecté — utilisé sur la carte « Mon statut » de l'onglet Statuts. */
-  const myAvatarUri =
-    toAbsoluteMediaUrl(currentUser?.profile_image || currentUser?.avatar || '') ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(
-      currentUser?.full_name || currentUser?.username || 'Moi',
-    )}&background=FF6B00&color=fff`;
+  const myAvatarUri = profileAvatarUri(
+    toAbsoluteMediaUrl(currentUser?.profile_image || currentUser?.avatar || ''),
+    currentUser?.full_name || currentUser?.username || 'Moi',
+  );
   const myFullName = currentUser?.full_name || currentUser?.username || 'Mon statut';
 
   const loadStories = useCallback(async () => {
@@ -139,8 +154,8 @@ export default function MessagesListScreen() {
           ? (c.group_name || 'Groupe')
           : (other.full_name || other.username || 'Contact');
         const avatar = c.is_group
-          ? (c.group_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=333&color=fff`)
-          : (other.profile_image || `https://i.pravatar.cc/150?u=${other.id || c.id}`);
+          ? profileAvatarUri(c.group_avatar, displayName)
+          : profileAvatarUri(other.profile_image, displayName);
         return {
           id: c.id,
           name: displayName,
@@ -444,7 +459,12 @@ export default function MessagesListScreen() {
           <TouchableOpacity testID="messages-new-group" style={styles.headerActionBtn} onPress={() => router.push('/messages/new-group' as any)}>
             <Ionicons name="people-circle" size={24} color={Colors.text} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerActionBtn}>
+          <TouchableOpacity
+            style={styles.headerActionBtn}
+            onPress={() => setHeaderMenuOpen(true)}
+            accessibilityLabel="Menu AfriChat"
+            accessibilityRole="button"
+          >
             <Ionicons name="ellipsis-vertical" size={22} color={Colors.text} />
           </TouchableOpacity>
         </View>
@@ -616,6 +636,105 @@ export default function MessagesListScreen() {
       >
         <Ionicons name={activeTab === 0 ? 'chatbubble' : activeTab === 1 ? 'camera' : 'call'} size={24} color="#FFF" />
       </TouchableOpacity>
+
+      <Modal
+        visible={headerMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setHeaderMenuOpen(false)}
+        statusBarTranslucent
+      >
+        <View style={styles.headerMenuRoot}>
+          <Pressable
+            style={styles.headerMenuBackdrop}
+            onPress={() => setHeaderMenuOpen(false)}
+            accessibilityLabel="Fermer le menu"
+          />
+          <View style={[styles.headerMenuCard, { paddingBottom: insets.bottom + Spacing.lg }]}>
+            <View style={styles.headerMenuHandle} />
+            <Text style={styles.headerMenuTitle}>AfriChat</Text>
+            <TouchableOpacity
+              style={styles.headerMenuRow}
+              onPress={() => {
+                setHeaderMenuOpen(false);
+                setShowContacts(true);
+              }}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="chatbubble-ellipses-outline" size={22} color={Colors.text} />
+              <Text style={styles.headerMenuRowText}>Nouvelle discussion</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerMenuRow}
+              onPress={() => {
+                setHeaderMenuOpen(false);
+                router.push('/messages/new-group' as never);
+              }}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="people-circle-outline" size={22} color={Colors.text} />
+              <Text style={styles.headerMenuRowText}>Nouveau groupe</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerMenuRow}
+              onPress={() => {
+                setHeaderMenuOpen(false);
+                setSearchVisible(true);
+              }}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="search-outline" size={22} color={Colors.text} />
+              <Text style={styles.headerMenuRowText}>Rechercher une conversation</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerMenuRow}
+              onPress={() => {
+                setHeaderMenuOpen(false);
+                router.push('/messages/requests' as never);
+              }}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="mail-unread-outline" size={22} color={Colors.text} />
+              <Text style={styles.headerMenuRowText}>Demandes de messages</Text>
+              {requestCount > 0 && (
+                <View style={styles.headerMenuBadge}>
+                  <Text style={styles.headerMenuBadgeText}>{requestCount > 9 ? '9+' : requestCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerMenuRow}
+              onPress={() => {
+                setHeaderMenuOpen(false);
+                router.push('/settings/privacy/direct-messages' as never);
+              }}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="lock-closed-outline" size={22} color={Colors.text} />
+              <Text style={styles.headerMenuRowText}>Confidentialité (messages)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerMenuRow}
+              onPress={() => {
+                setHeaderMenuOpen(false);
+                router.push('/settings' as never);
+              }}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="settings-outline" size={22} color={Colors.text} />
+              <Text style={styles.headerMenuRowText}>Paramètres</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.headerMenuRow, styles.headerMenuRowLast]}
+              onPress={() => setHeaderMenuOpen(false)}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="close-outline" size={22} color={Colors.textSecondary} />
+              <Text style={[styles.headerMenuRowText, { color: Colors.textSecondary }]}>Fermer</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -738,4 +857,50 @@ const styles = StyleSheet.create({
   callAction: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   // FAB
   fab: { position: 'absolute', right: 20, width: 56, height: 56, borderRadius: 16, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', elevation: 8, shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
+  headerMenuRoot: { flex: 1, justifyContent: 'flex-end' },
+  headerMenuBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+  headerMenuCard: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: BorderRadius.lg,
+    borderTopRightRadius: BorderRadius.lg,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderColor: Colors.border,
+  },
+  headerMenuHandle: {
+    alignSelf: 'center',
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.border,
+    marginBottom: Spacing.md,
+  },
+  headerMenuTitle: {
+    fontSize: FontSizes.md,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: Spacing.sm,
+  },
+  headerMenuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+  },
+  headerMenuRowLast: { borderBottomWidth: 0 },
+  headerMenuRowText: { flex: 1, fontSize: FontSizes.md, color: Colors.text, fontWeight: '500' },
+  headerMenuBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: Colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  headerMenuBadgeText: { color: '#FFF', fontSize: 11, fontWeight: '800' },
 });

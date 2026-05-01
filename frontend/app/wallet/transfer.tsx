@@ -4,11 +4,7 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-const QUICK_CONTACTS = [
-  { id: '1', name: 'Aminata', phone: '+223 70 12 34 56', avatar: 'https://i.pravatar.cc/150?img=1' },
-  { id: '2', name: 'Moussa', phone: '+223 76 98 76 54', avatar: 'https://i.pravatar.cc/150?img=2' },
-  { id: '3', name: 'Awa', phone: '+223 66 45 67 89', avatar: 'https://i.pravatar.cc/150?img=3' },
-];
+import apiClient from '../../src/api/client';
 
 const AMOUNTS = [500, 1000, 2000, 5000, 10000, 25000];
 
@@ -19,14 +15,36 @@ export default function TransferScreen() {
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const newIdempotencyKey = (): string =>
+    `wt_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+  const callTransferApi = async (numAmount: number) => {
+    const target = recipientPhone.trim();
+    const isUsername = target.startsWith('@');
+    const payload: Record<string, unknown> = {
+      amount: numAmount,
+      description: description.trim() || undefined,
+    };
+    if (isUsername) {
+      payload.recipient_username = target.replace(/^@+/, '');
+    } else {
+      payload.recipient_phone = target;
+    }
+
+    const res = await apiClient.post('/wallet/transfer', payload, {
+      headers: { 'Idempotency-Key': newIdempotencyKey() },
+    });
+    return res.data?.data;
+  };
+
   const handleTransfer = async () => {
     const numAmount = parseFloat(amount);
     if (!recipientPhone.trim()) {
-      Alert.alert('Erreur', 'Veuillez saisir le numéro du destinataire');
+      Alert.alert('Destinataire manquant', 'Saisissez un numéro de téléphone ou un @username.');
       return;
     }
     if (!numAmount || numAmount <= 0) {
-      Alert.alert('Erreur', 'Veuillez saisir un montant valide');
+      Alert.alert('Montant invalide', 'Saisissez un montant supérieur à 0 FCFA.');
       return;
     }
 
@@ -40,15 +58,28 @@ export default function TransferScreen() {
           onPress: async () => {
             setLoading(true);
             try {
+              const data = await callTransferApi(numAmount);
+              const newBalance = data?.sender_balance_after;
               Alert.alert(
-                'Transfert P2P',
-                'L’API Node n’expose pas encore d’endpoint « envoyer à un numéro » depuis le portefeuille. Utilisez le retrait (Mobile Money) ou un paiement via marketplace / pourboire.',
-                [{ text: 'OK' }]
+                'Transfert effectué ✅',
+                newBalance != null
+                  ? `Montant: ${numAmount.toLocaleString()} FCFA\nNouveau solde: ${Number(newBalance).toLocaleString()} FCFA`
+                  : `Montant: ${numAmount.toLocaleString()} FCFA envoyé.`,
+                [{ text: 'OK', onPress: () => router.back() }],
               );
-            } finally { setLoading(false); }
+            } catch (err: any) {
+              const msg =
+                err?.response?.data?.error?.message ||
+                err?.response?.data?.message ||
+                err?.message ||
+                'Échec du transfert';
+              Alert.alert('Erreur', msg);
+            } finally {
+              setLoading(false);
+            }
           },
         },
-      ]
+      ],
     );
   };
 
@@ -69,29 +100,28 @@ export default function TransferScreen() {
         {/* Recipient */}
         <Text style={styles.sectionTitle}>Destinataire</Text>
         <View style={styles.inputContainer}>
-          <Ionicons name="call" size={20} color={Colors.textSecondary} />
+          <Ionicons name="person" size={20} color={Colors.textSecondary} />
           <TextInput
             style={styles.phoneInput}
-            placeholder="Numéro de téléphone"
+            placeholder="Numéro ou @username"
             placeholderTextColor={Colors.textMuted}
-            keyboardType="phone-pad"
+            keyboardType="default"
+            autoCapitalize="none"
+            autoCorrect={false}
             value={recipientPhone}
             onChangeText={setRecipientPhone}
           />
         </View>
 
-        {/* Quick Contacts */}
-        <Text style={styles.subLabel}>Contacts fréquents</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickContacts}>
-          {QUICK_CONTACTS.map((c) => (
-            <TouchableOpacity key={c.id} style={styles.quickContact} onPress={() => setRecipientPhone(c.phone)}>
-              <View style={styles.quickAvatar}>
-                <Text style={styles.quickAvatarText}>{c.name[0]}</Text>
-              </View>
-              <Text style={styles.quickName} numberOfLines={1}>{c.name}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <Text style={styles.subLabel}>Contacts</Text>
+        <TouchableOpacity
+          style={styles.contactsBtn}
+          onPress={() => router.push('/sync-contacts' as never)}
+        >
+          <Ionicons name="people-outline" size={18} color={Colors.text} />
+          <Text style={styles.contactsBtnText}>Choisir depuis mes contacts</Text>
+          <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
+        </TouchableOpacity>
 
         {/* Amount */}
         <Text style={styles.sectionTitle}>Montant</Text>
@@ -165,11 +195,18 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md, paddingHorizontal: Spacing.lg, borderWidth: 1, borderColor: Colors.border, gap: Spacing.sm,
   },
   phoneInput: { flex: 1, color: Colors.text, fontSize: FontSizes.lg, paddingVertical: Spacing.lg },
-  quickContacts: { gap: Spacing.lg, paddingBottom: Spacing.sm },
-  quickContact: { alignItems: 'center', gap: 6 },
-  quickAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
-  quickAvatarText: { color: '#FFF', fontSize: FontSizes.lg, fontWeight: 'bold' },
-  quickName: { color: Colors.textSecondary, fontSize: FontSizes.xs, maxWidth: 60, textAlign: 'center' },
+  contactsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  contactsBtnText: { flex: 1, color: Colors.text, fontSize: FontSizes.md },
   amountInputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.xl },
   amountInput: { flex: 1, color: Colors.text, fontSize: 32, fontWeight: 'bold' },
   currency: { color: Colors.textSecondary, fontSize: FontSizes.xl },

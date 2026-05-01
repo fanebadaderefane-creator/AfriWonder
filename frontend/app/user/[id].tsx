@@ -20,6 +20,7 @@ import { Colors, Spacing, FontSizes, BorderRadius } from '../../src/theme/colors
 import { useAuthStore } from '../../src/store/authStore';
 import { CreatorAvatar } from '../../src/components/CreatorAvatar';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { profileAvatarUri } from '../../src/utils/avatarFallback';
 import { buildPostItemFromVideo, type ProfileGridPostItem } from '../../src/utils/buildProfileVideoGridItem';
 import { sortVideosWithPinnedFirst, type ProfileVideoSortMode } from '../../src/utils/profileVideoSort';
 import { SmartThumbnail } from '../../src/components/SmartThumbnail';
@@ -367,7 +368,7 @@ export default function PublicUserProfileScreen() {
           params: {
             id: String(convId),
             name,
-            avatar: avatar || `https://i.pravatar.cc/150?u=${profile.id}`,
+            avatar: profileAvatarUri(avatar, profile.id),
             otherUserId: profile.id,
           },
         });
@@ -547,11 +548,11 @@ export default function PublicUserProfileScreen() {
             <View style={styles.statsTiktok}>
               <View style={styles.statCell}>
                 <Text style={styles.statNumTiktok}>{formatNumber(followingCount)}</Text>
-                <Text style={styles.statLabelTiktok}>Suivis</Text>
+                <Text style={styles.statLabelTiktok}>Wonder</Text>
               </View>
               <View style={styles.statCell}>
                 <Text style={styles.statNumTiktok}>{formatNumber(followersCount)}</Text>
-                <Text style={styles.statLabelTiktok}>Abonnés</Text>
+                <Text style={styles.statLabelTiktok}>Dans son Wonder</Text>
               </View>
               <View style={styles.statCell}>
                 <Text style={styles.statNumTiktok}>{formatNumber(likesCount)}</Text>
@@ -619,7 +620,7 @@ export default function PublicUserProfileScreen() {
                       <ActivityIndicator color={profile.isFollowing ? Colors.primary : '#FFF'} />
                     ) : (
                       <Text style={[styles.followBtnText, profile.isFollowing && styles.followBtnTextOutline]}>
-                        {profile.isFollowing ? 'Abonné' : 'Suivre'}
+                        {profile.isFollowing ? 'Dans son Wonder' : 'Wonder'}
                       </Text>
                     )}
                   </TouchableOpacity>

@@ -9,6 +9,7 @@ import { containsBannedWord } from './bannedWord.service.js';
 import notificationService from './notification.service.js';
 import { scheduleCompatTranscodeAfterPublish } from './videoCompatTranscode.service.js';
 import { scheduleLowQualityRenditionAfterPublish } from './videoLowQualityRendition.service.js';
+import { generateThumbnailForVideoId } from './videoThumbnail.service.js';
 
 /**
  * Mots vides (FR / EN / simplifiés pour AR) — filtrés lors de l'extraction de mots-clés
@@ -120,7 +121,33 @@ const VIDEO_LIST_FALLBACK_SELECT_NO_LOW_Q = `SELECT v.id, v.title, v.description
          ORDER BY v.created_at DESC
          LIMIT $1 OFFSET $2`;
 
+const inFlightAutoThumbnailVideoIds = new Set<string>();
+
 class VideoService {
+  private scheduleThumbnailBackfillIfMissing(video: {
+    id?: string | null;
+    media_type?: string | null;
+    thumbnail_url?: string | null;
+  }): void {
+    const videoId = String(video.id || '').trim();
+    if (!videoId) return;
+    const mediaType = String(video.media_type || 'video').toLowerCase();
+    if (mediaType !== 'video') return;
+    if (String(video.thumbnail_url || '').trim()) return;
+    if (inFlightAutoThumbnailVideoIds.has(videoId)) return;
+
+    inFlightAutoThumbnailVideoIds.add(videoId);
+    generateThumbnailForVideoId(videoId, { timeSec: 1 })
+      .catch((err) => {
+        logger.warn('Auto thumbnail backfill failed', {
+          videoId,
+          err: (err as Error)?.message || String(err),
+        });
+      })
+      .finally(() => {
+        inFlightAutoThumbnailVideoIds.delete(videoId);
+      });
+  }
   /**
    * Normalise une URL vidéo/image UNIQUEMENT à l'upload
    * Décodage récursif puis réencodage propre
@@ -138,7 +165,7 @@ class VideoService {
       // Décoder récursivement si nécessaire
       let decoded = filename;
       let previous = '';
-      let maxIterations = 5;
+      const maxIterations = 5;
       
       for (let i = 0; i < maxIterations; i++) {
         previous = decoded;
@@ -197,7 +224,7 @@ class VideoService {
           videos: [],
           pagination: {
             page,
-            limit: limitValue,
+            limit: limit || 0,
             total: 0,
             totalPages: 0,
           },
@@ -213,7 +240,7 @@ class VideoService {
           videos: [],
           pagination: {
             page,
-            limit: limitValue,
+            limit: limit || 0,
             total: 0,
             totalPages: 0,
           },
@@ -409,6 +436,7 @@ class VideoService {
     // Formater les vidéos pour correspondre au format attendu par le frontend
     // IMPORTANT: Ne JAMAIS modifier les URLs ici - elles doivent être stables pour React
     const formattedVideos = videos.map((video: any) => {
+      this.scheduleThumbnailBackfillIfMissing(video);
       const { creator, _count, video_hashtags, ...videoData } = video;
       // Parser les hashtags depuis JSON ou video_hashtags
       let hashtags = video.hashtags;
@@ -593,6 +621,8 @@ class VideoService {
     }
     delete formattedVideo._count;
 
+    this.scheduleThumbnailBackfillIfMissing(video as any);
+
     return formattedVideo;
   }
 
@@ -627,7 +657,33 @@ class VideoService {
     if (userId && userId === video.creator_id) return { recorded: false, views: video.views };
 
     const minWatch = watchSeconds >= 3 || watchPercent >= 25;
-    if (!minWatch) return { recorded: false, views: video.views };
+    if (!minWatch) {
+      /** FYP 4.2 — enregistrer les skips rapides (< 3 s / < 25 %) pour pénaliser dans l’algo. */
+      if (userId) {
+        try {
+          const existing = await prisma.viewHistory.findFirst({
+            where: { user_id: userId, video_id: videoId },
+          });
+          const payload = {
+            watch_seconds: Math.round(watchSeconds),
+            watch_percent: watchPercent,
+            completed: false,
+            category: video.category ?? undefined,
+            updated_at: new Date(),
+          };
+          if (existing) {
+            await prisma.viewHistory.update({ where: { id: existing.id }, data: payload });
+          } else {
+            await prisma.viewHistory.create({
+              data: { user_id: userId, video_id: videoId, ...payload },
+            });
+          }
+        } catch {
+          /* non bloquant */
+        }
+      }
+      return { recorded: false, views: video.views };
+    }
 
     const timeBucket = Math.floor(Date.now() / 1000 / 1800);
 
@@ -883,6 +939,15 @@ class VideoService {
     if ((video.media_type || 'video') === 'video' && video.video_url) {
       scheduleCompatTranscodeAfterPublish(video.id, video.video_url);
       scheduleLowQualityRenditionAfterPublish(video.id);
+      // Thumbnail manquante à l'upload: générer automatiquement une frame tôt dans la vidéo.
+      if (!video.thumbnail_url) {
+        generateThumbnailForVideoId(video.id, { timeSec: 1 }).catch((err) => {
+          logger.warn('Auto thumbnail generation failed after upload', {
+            videoId: video.id,
+            err: (err as Error)?.message || String(err),
+          });
+        });
+      }
     }
 
     GamificationEngine.onVideoUpload(data.creator_id).catch((e) =>

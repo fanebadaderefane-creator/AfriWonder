@@ -91,6 +91,23 @@ import translateRoutes from './routes/translate.routes.js';
 import sellerRoutes from './routes/seller.routes.js';
 // Legal & Privacy
 import legalRoutes from './routes/legal.routes.js';
+// Pages HTML publiques (Privacy, Terms, Account Deletion) — Play Store requis
+import publicPagesRoutes from './routes/publicPages.routes.js';
+// Tontines digitales — épargne rotative africaine
+import tontinesRoutes from './routes/tontines.routes.js';
+// Billets bus Mali + hôtels
+import busRoutes from './routes/bus.routes.js';
+import hotelsRoutes from './routes/hotels.routes.js';
+// Vague 5-8 super-app
+import liveCommerceRoutes from './routes/liveCommerce.routes.js';
+import utilityBillsRoutes from './routes/utilityBills.routes.js';
+import savingsRoutes from './routes/savings.routes.js';
+import virtualCardsRoutes from './routes/virtualCards.routes.js';
+// Admin super-app — KPIs + contrôles des modules ajoutés
+import adminSuperAppRoutes from './routes/adminSuperApp.routes.js';
+// Appels vidéo payants (User ↔ Star) — module ISOLÉ, ne dépend d'aucun autre module
+import starsRoutes from './routes/stars.routes.js';
+import starsAdminRoutes from './routes/starsAdmin.routes.js';
 import privacyRoutes from './routes/privacy.routes.js';
 // Super-app (Transport, Food, Utilities, Tickets, Health, Property, Insurance)
 import ridesRoutes from './routes/rides.routes.js';
@@ -152,6 +169,11 @@ import searchRoutes from './routes/search.routes.js';
 import recommendationsRoutes from './routes/recommendations.routes.js';
 import mobileRoutes from './routes/mobile.routes.js';
 import coinsRoutes from './routes/coins.routes.js';
+import walletRoutes from './routes/wallet.routes.js';
+// Nouveaux modules super-app J1 : véhicule / garde d'enfants (CRUD minimal sur
+// ServiceProvider + Property, extensibles au fur et à mesure que les données réelles arrivent).
+import vehicleRentalRoutes from './routes/vehicle-rental.routes.js';
+import childcareRoutes from './routes/child-care.routes.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -208,7 +230,20 @@ const corsOptions: cors.CorsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'baggage', 'sentry-trace', 'X-Device-Id', 'X-Requested-With', 'X-Webhook-Secret', 'X-Payment-Webhook-Secret', 'X-Cron-Secret', 'X-Live-Cleanup-Secret'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'baggage',
+    'sentry-trace',
+    'X-Device-Id',
+    /** Client Expo / PWA — alertes de connexion (`frontend/src/api/client.ts`) */
+    'X-AFW-Device-Id',
+    'X-Requested-With',
+    'X-Webhook-Secret',
+    'X-Payment-Webhook-Secret',
+    'X-Cron-Secret',
+    'X-Live-Cleanup-Secret',
+  ],
 };
 app.options('*', cors(corsOptions));
 app.use(cors(corsOptions));
@@ -282,12 +317,16 @@ app.get('/metrics', async (req, res) => {
     res.status(500).set('Content-Type', 'text/plain').send('# Error generating metrics\n');
   }
 });
-// Test Sentry backend (dev) — GET /test-sentry pour déclencher une erreur
-app.get('/test-sentry', (req, res) => {
-  const err = new Error('[AfriWonder] Test Sentry Backend - ' + new Date().toISOString())
-  Sentry.captureException(err)
-  res.json({ ok: true, message: 'Erreur envoyée à Sentry. Vérifie https://fbf-global-el.sentry.io/issues/?project=4510885269209168' })
-})
+// Test Sentry backend (dev uniquement) — GET /test-sentry pour déclencher une erreur.
+// SÉCURITÉ : désactivé en production pour éviter (a) polluer Sentry par un attaquant
+// et (b) exposer un endpoint de diagnostic non authentifié.
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/test-sentry', (req, res) => {
+    const err = new Error('[AfriWonder] Test Sentry Backend - ' + new Date().toISOString())
+    Sentry.captureException(err)
+    res.json({ ok: true, message: 'Erreur envoyée à Sentry.' })
+  })
+}
 
 app.get('/health/ready', async (req, res) => {
   try {
@@ -454,6 +493,8 @@ app.use('/api/proxy/posts', postsRoutes);
 app.use('/api/proxy/moderation', moderationRoutes);
 /** Console admin — même router que `/api/admin` pour `apiClient` Expo (`baseURL …/api/proxy`). */
 app.use('/api/proxy/admin', adminRoutes);
+/** Super-app admin (KPIs, tontines, crowdfunding, …) — `apiClient` → `/api/proxy/admin/super-app/*`. */
+app.use('/api/proxy/admin/super-app', adminSuperAppRoutes);
 /** APIs spécifiques mobile — alias proxy pour le client Expo quand il utilise `apiClient`. */
 app.use('/api/proxy/mobile', mobileRoutes);
 /** Sauvegardes vidéo — client Expo (`apiClient` → `GET/POST …/api/proxy/saves`). */
@@ -486,6 +527,31 @@ app.use('/api/proxy/courses', coursesRoutes);
 app.use('/api/proxy/news', newsRoutes);
 /** Communautés — client Expo (`apiClient` → `GET …/api/proxy/communities`). */
 app.use('/api/proxy/communities', communitiesRoutes);
+/** Appels WebRTC / TURN — client Expo (`GET …/api/proxy/calls/turn-credentials`). */
+app.use('/api/proxy/calls', callsRoutes);
+/** Commandes marketplace — client Expo (`GET/POST …/api/proxy/orders`). */
+app.use('/api/proxy/orders', orderRoutes);
+/** RGPD / 2FA / cookies — client Expo `apiClient` → `…/api/proxy/privacy/*` */
+app.use('/api/proxy/privacy', privacyRoutes);
+/** Alias mobile Expo pour les modules super-app et growth. Sans ces montages,
+ *  les appels `apiClient.get('/events'|'/referrals'|'/jobs'|'/properties'|'/rides'|'/doctors')
+ *  tombaient sur le catch-all `/api/proxy` qui ne sert que `/media` → 404 systématique. */
+app.use('/api/proxy/events', eventsRoutes);
+app.use('/api/proxy/referrals', referralsRoutes);
+app.use('/api/proxy/jobs', jobsRoutes);
+app.use('/api/proxy/properties', propertiesRoutes);
+app.use('/api/proxy/rides', ridesRoutes);
+app.use('/api/proxy/drivers', driversRoutes);
+// Télémédecine : même flag que le montage principal (TELEMEDICINE_ENABLED en prod).
+// La variable `telemedicineEnabled` réelle est définie plus bas pour le montage principal ;
+// on recalcule ici pour garder les deux blocs indépendants et éviter un reorder du fichier.
+const telemedicineProxyEnabled =
+  process.env.NODE_ENV !== 'production' || process.env.TELEMEDICINE_ENABLED === 'true';
+if (telemedicineProxyEnabled) {
+  app.use('/api/proxy/doctors', doctorsRoutes);
+  app.use('/api/proxy/appointments', appointmentsRoutes);
+  app.use('/api/proxy/pharmacies', pharmaciesRoutes);
+}
 app.use('/api/proxy', proxyRoutes);
 app.use('/api/comments', commentsRoutes);
 app.use('/api/users', userRoutes);
@@ -558,6 +624,23 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/translate', translateRoutes);
 app.use('/api/seller', sellerRoutes);
 app.use('/api/legal', legalRoutes);
+app.use('/api/tontines', tontinesRoutes);
+app.use('/api/bus', busRoutes);
+app.use('/api/hotels', hotelsRoutes);
+app.use('/api/live-commerce', liveCommerceRoutes);
+app.use('/api/utility-bills', utilityBillsRoutes);
+app.use('/api/savings', savingsRoutes);
+app.use('/api/virtual-cards', virtualCardsRoutes);
+app.use('/api/admin/super-app', adminSuperAppRoutes);
+// Paid Video Calls (User ↔ Star) — routes publiques + admin séparées
+app.use('/api/stars', starsRoutes);
+app.use('/api/admin/stars', starsAdminRoutes);
+/** Alias mobile / Expo (`apiClient` baseURL `…/api/proxy`). Même router que `/api/stars`. */
+app.use('/api/proxy/stars', starsRoutes);
+app.use('/api/proxy/admin/stars', starsAdminRoutes);
+// Pages HTML publiques (hors /api) : /privacy, /terms, /account/delete, /
+// Exigence Google Play Store : URLs publiques sans auth, servies en HTTPS.
+app.use('/', publicPagesRoutes);
 app.use('/api/privacy', privacyRoutes);
 // Super-app
 app.use('/api/rides', ridesRoutes);
@@ -612,6 +695,21 @@ app.use('/api/creator-support', creatorSupportRoutes);
 app.use('/api/creator-subscription', creatorSubscriptionRoutes);
 app.use('/api/mobile', mobileRoutes);
 app.use('/api/coins', coinsRoutes);
+app.use('/api/wallet', walletRoutes);
+app.use('/api/proxy/wallet', walletRoutes);
+app.use('/api/vehicle-rental', vehicleRentalRoutes);
+app.use('/api/proxy/vehicle-rental', vehicleRentalRoutes);
+app.use('/api/childcare', childcareRoutes);
+app.use('/api/proxy/childcare', childcareRoutes);
+// Alias proxy supplémentaires pour les modules super-app utilitaires
+// (utilisés par les nouveaux écrans mobile airtime/bills/loyalty/brand-deals).
+app.use('/api/proxy/airtime', airtimeRoutes);
+app.use('/api/proxy/bills', billsRoutes);
+app.use('/api/proxy/loyalty', loyaltyRoutes);
+app.use('/api/proxy/brand-deals', brandDealsRoutes);
+app.use('/api/proxy/tickets', ticketsRoutes);
+app.use('/api/proxy/restaurants', restaurantsRoutes);
+app.use('/api/proxy/food-orders', foodOrdersRoutes);
 
 // Sentry error handler (avant notre errorHandler, désactivé en tests)
 if (process.env.SENTRY_DSN && process.env.NODE_ENV !== 'test') {

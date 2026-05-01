@@ -31,6 +31,8 @@ export interface User {
   messaging_e2e_enabled?: boolean;
   messaging_read_receipts_enabled?: boolean;
   messaging_cdc_moderation?: Record<string, unknown> | null;
+  /** Alertes e-mail lors d’une connexion depuis un nouvel appareil / navigateur (serveur). */
+  login_alerts_enabled?: boolean;
   country?: string;
   followers?: number;
   following?: number;
@@ -67,7 +69,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await secureStorage.setItem('refreshToken', refreshToken);
       await secureStorage.setItem('user', JSON.stringify(user));
       set({ user, accessToken, refreshToken, isAuthenticated: true, isLoading: false });
-      void import('../services/notificationService').then((m) => m.default.syncPushTokenWithBackend());
+      void import('../services/notificationService')
+        .then((m) => m.default.syncPushTokenWithBackend())
+        .catch(() => {});
     } catch (error) {
       console.error('Error storing auth:', error);
     }

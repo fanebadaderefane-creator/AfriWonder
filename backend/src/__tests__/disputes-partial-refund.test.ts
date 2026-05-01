@@ -1,10 +1,16 @@
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import jwt from 'jsonwebtoken';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import app from '../app.js';
 import { prisma } from './setup.js';
 
+/** Suite lourde (escrow, wallets) : DB distante / pooler peut dépasser 30s. */
+jest.setTimeout(120_000);
+
 describe('Disputes partial refund', () => {
+  const makeTestToken = (user: { id: string; email: string }) =>
+    jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
   let buyer: any;
   let seller: any;
   let admin: any;
@@ -42,10 +48,10 @@ describe('Disputes partial refund', () => {
         full_name: 'Seller Partial',
       },
     });
-    const TEST_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'admin@test.example.com';
+    const adminEmail = process.env.SUPER_ADMIN_EMAIL || 'admin@test.example.com';
     admin = await prisma.user.create({
       data: {
-        email: TEST_ADMIN_EMAIL,
+        email: adminEmail,
         username: `admin_partial_${ts}`,
         password_hash: pwd,
         full_name: 'Admin Partial',
@@ -107,10 +113,7 @@ describe('Disputes partial refund', () => {
     });
     disputeId = dispute.id;
 
-    const adminLogin = await request(app)
-      .post('/api/auth/login')
-      .send({ email: admin.email, password: 'Test123!@#' });
-    adminToken = adminLogin.body.data.accessToken;
+    adminToken = makeTestToken(admin);
   });
 
   afterEach(async () => {

@@ -505,6 +505,9 @@ router.post('/', authenticate, validateBody(videoCreateBodySchema), async (req: 
 
     const video = await videoService.create(videoData);
 
+    const { invalidateAllFeedResponseCaches } = await import('../services/feedCache.service.js');
+    invalidateAllFeedResponseCaches().catch(() => {});
+
     res.status(201).json({
       success: true,
       data: video,

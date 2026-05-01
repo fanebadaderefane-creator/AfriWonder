@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { Prisma } from '@prisma/client';
 import prisma from '../config/database.js';
 import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
@@ -422,10 +423,11 @@ router.put('/device-settings', authenticate, validateBody(jsonObjectBodySchema),
       if (!isSchemaColumnError(err)) throw err;
 
       const key = `mobile_settings:${userId}`;
+      const jsonValue = data as Prisma.InputJsonValue;
       const stored = await prisma.platformSettings.upsert({
         where: { key },
-        create: { key, value: data },
-        update: { value: data },
+        create: { key, value: jsonValue },
+        update: { value: jsonValue },
       });
 
       return res.json({

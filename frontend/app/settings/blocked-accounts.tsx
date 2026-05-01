@@ -39,7 +39,7 @@ export default function BlockedAccountsScreen() {
       await apiClient.delete(`/me/settings/blocked/${id}`);
       setItems((prev) => prev.filter((u) => u.id !== id));
     } catch {
-      Alert.alert('Error', 'Unable to unblock this account.');
+      Alert.alert('Déblocage impossible', 'Ce compte n’a pas pu être débloqué. Vérifiez votre connexion et réessayez.');
     }
   };
 

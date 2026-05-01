@@ -34,6 +34,8 @@ model User {
   /// Abonnement AfriWonder Pro créateur (Phase 9) — dérivé aussi de CreatorSubscription ; flag cache rapide UI.
   is_afriwonder_pro            Boolean                   @default(false)
   data_saver_mode              Boolean                   @default(false)
+  /// E-mail d’alerte lors d’une connexion depuis un appareil / navigateur non vu récemment.
+  login_alerts_enabled         Boolean                   @default(true)
   shadow_banned                Boolean                   @default(false)
   referral_code                String?                   @unique
   /// Lien compte Supabase Auth (migration Phase 1) — optionnel
@@ -63,6 +65,7 @@ model User {
   certificates                 Certificate[]
   civic_petitions_created      CivicPetition[]
   comments                     Comment[]
+  cf_comments                  CrowdfundingComment[]
   communities_created          Community[]
   community_members            CommunityMember[]
   company_profile              CompanyProfile?
@@ -75,6 +78,7 @@ model User {
   group_messages_sent          GroupMessage[]
   coupons_created              Coupon[]
   courses_created              Course[]
+  crowdfunding_campaigns     Campaign[]
   course_providers             CourseProvider?
   course_reviews               CourseReview[]
   course_wishlist              CourseWishlist[]
@@ -241,6 +245,25 @@ model User {
   live_age_acknowledgments    LiveAgeAcknowledgment[]
   live_bell_subscriptions     LiveCreatorBellSubscriber[] @relation("LiveBellSubscriber")
   live_bell_watchers          LiveCreatorBellSubscriber[] @relation("LiveBellCreator")
+  tontines_created            Tontine[]                   @relation("TontineCreator")
+  tontine_memberships         TontineMember[]             @relation("TontineMemberUser")
+  tontine_cycles_received     TontineCycle[]              @relation("TontineCycleBeneficiary")
+  bus_bookings                BusBooking[]                @relation("BusBookingPassenger")
+  hotel_bookings              HotelBooking[]              @relation("HotelBookingGuest")
+  savings_plans               SavingsPlan[]               @relation("SavingsPlanOwner")
+  utility_bill_payments       UtilityBillPayment[]        @relation("UtilityBillUser")
+  live_pinned_products        LivePinnedProduct[]         @relation("LivePinnedProductPinner")
+
+  // ==========================================================================
+  // PAID VIDEO CALLS (User ↔ Star) — vague 9
+  // ==========================================================================
+  star_profile                StarProfile?                @relation("StarProfileOwner")
+  star_bookings_as_fan        StarBooking[]               @relation("StarBookingFan")
+  star_bookings_as_star       StarBooking[]               @relation("StarBookingStar")
+  star_ratings_given          StarRating[]                @relation("StarRatingFan")
+  star_ratings_received       StarRating[]                @relation("StarRatingStar")
+  star_disputes_opened        StarDispute[]               @relation("StarDisputeOpener")
+  star_dispute_messages       StarDisputeMessage[]        @relation("StarDisputeAuthor")
 }
 
 /// Demande de monétisation — créateur envoie, admin valide
@@ -1182,6 +1205,7 @@ model Product {
   is_preorder       Boolean   @default(false)
   preorder_available_at DateTime?
   live_products     LiveStreamProduct[]
+  live_pinned       LivePinnedProduct[]
 
   @@index([status])
   @@index([seller_id, is_merchandising])
@@ -1591,6 +1615,7 @@ model LiveStream {
   top_donors            LiveTopDonor[]
   viewers               LiveViewer[]
   age_acknowledgments   LiveAgeAcknowledgment[]
+  pinned_products       LivePinnedProduct[]
 
   @@index([creator_id])
   @@index([status])
@@ -3754,6 +3779,7 @@ model Payout {
 model Campaign {
   id             String         @id @default(uuid())
   creator_id     String
+  creator        User           @relation(fields: [creator_id], references: [id], onDelete: Cascade)
   title          String
   description    String
   goal_amount    Float
@@ -3767,13 +3793,54 @@ model Campaign {
   report_count   Int            @default(0)
   fraud_flag     Boolean        @default(false)
   milestones     Json?
+  /// Catégorie affichage (agriculture, education, etc.)
+  category       String?
+  /// URL absolue ou chemin CDN — couverture campagne
+  cover_image    String?
+  /// Paliers de récompenses saisis à la création (JSON, mobile + admin)
+  rewards_data   Json?
   contributions  Contribution[]
   escrow_wallet  Wallet?        @relation("CampaignEscrow")
+  cf_updates     CrowdfundingUpdate[]
+  cf_comments    CrowdfundingComment[]
 
   @@index([creator_id])
   @@index([status])
   @@index([end_date])
   @@index([fraud_flag])
+  @@index([category])
+}
+
+/// Actualités publiées par le porteur (fil d’updates).
+model CrowdfundingUpdate {
+  id          String   @id @default(uuid())
+  campaign_id String
+  campaign    Campaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+  title       String
+  content     String
+  image_url   String?
+  created_at  DateTime @default(now())
+
+  @@index([campaign_id])
+  @@map("cf_campaign_updates")
+}
+
+/// Commentaires / discussion sous une campagne (utilisateurs connectés).
+model CrowdfundingComment {
+  id          String   @id @default(uuid())
+  campaign_id String
+  campaign    Campaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+  user_id     String
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  content     String
+  parent_id   String?
+  parent      CrowdfundingComment?  @relation("CfCommentThread", fields: [parent_id], references: [id], onDelete: SetNull)
+  replies     CrowdfundingComment[] @relation("CfCommentThread")
+  created_at  DateTime @default(now())
+
+  @@index([campaign_id])
+  @@index([user_id])
+  @@map("cf_campaign_comments")
 }
 
 model Contribution {
@@ -5969,4 +6036,584 @@ model CreatorContract {
 
   @@index([creator_id])
   @@index([type])
+}
+
+// =====================================================
+// TONTINES DIGITALES — épargne rotative africaine
+// =====================================================
+// Une Tontine réunit N membres qui contribuent chacun un montant fixe à
+// chaque cycle. À chaque cycle, un membre reçoit la totalité des contributions
+// selon un ordre prédéfini (aléatoire ou voté). La rotation continue jusqu'à
+// ce que chaque membre ait reçu son tour, puis la tontine se termine.
+
+model Tontine {
+  id                  String          @id @default(uuid())
+  name                String
+  description         String?
+  creator_id          String
+  /// XOF / autre
+  currency            String          @default("XOF")
+  /// Montant que chaque membre paie à chaque cycle
+  contribution_amount Float
+  /// Nombre total de membres attendus (taille du cercle)
+  max_members         Int
+  /// 'weekly' / 'biweekly' / 'monthly'
+  frequency           String          @default("monthly")
+  /// 'draft' (invitation) / 'active' (démarrée) / 'completed' / 'cancelled'
+  status              String          @default("draft")
+  /// Date de début du 1er cycle (après que tous les membres acceptent)
+  starts_at           DateTime?
+  /// Date de fin attendue (calculée à partir de frequency × max_members)
+  ends_at             DateTime?
+  /// Ordre de passage : 'random' ou 'manual'
+  payout_order_mode   String          @default("random")
+  /// Code d'invitation partageable (entrée via lien)
+  invite_code         String          @unique
+  /// Règles additionnelles (pénalité retard, caution, etc.)
+  rules               Json?
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @updatedAt
+  creator             User            @relation("TontineCreator", fields: [creator_id], references: [id], onDelete: Cascade)
+  members             TontineMember[]
+  cycles              TontineCycle[]
+
+  @@index([creator_id])
+  @@index([status])
+  @@index([invite_code])
+}
+
+model TontineMember {
+  id           String   @id @default(uuid())
+  tontine_id   String
+  user_id      String
+  /// Ordre de passage (1 = 1er bénéficiaire, ...)
+  payout_order Int
+  /// 'invited' / 'accepted' / 'declined' / 'removed'
+  status       String   @default("invited")
+  joined_at    DateTime @default(now())
+  updated_at   DateTime @updatedAt
+  tontine      Tontine  @relation(fields: [tontine_id], references: [id], onDelete: Cascade)
+  user         User     @relation("TontineMemberUser", fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([tontine_id, user_id])
+  @@index([tontine_id])
+  @@index([user_id])
+  @@index([status])
+}
+
+model TontineCycle {
+  id                  String    @id @default(uuid())
+  tontine_id          String
+  /// 1, 2, 3, ... (ordre du cycle dans la tontine)
+  cycle_number        Int
+  /// User qui reçoit le pot à ce cycle
+  beneficiary_user_id String
+  /// Montant total distribué = contribution × nb membres
+  total_amount        Float
+  /// 'pending' (à venir) / 'collecting' (en cours) / 'completed' / 'defaulted'
+  status              String    @default("pending")
+  /// Date d'ouverture des contributions
+  opens_at            DateTime
+  /// Date limite pour contribuer
+  due_at              DateTime
+  /// Date de versement au bénéficiaire
+  paid_at             DateTime?
+  /// Map userId → { paid: bool, amount: number, paid_at: Date }
+  contributions       Json?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  tontine             Tontine   @relation(fields: [tontine_id], references: [id], onDelete: Cascade)
+  beneficiary         User      @relation("TontineCycleBeneficiary", fields: [beneficiary_user_id], references: [id], onDelete: Cascade)
+
+  @@unique([tontine_id, cycle_number])
+  @@index([tontine_id])
+  @@index([beneficiary_user_id])
+  @@index([status])
+  @@index([due_at])
+}
+
+// =====================================================
+// BUS TICKETS — réservation de billets bus Mali
+// =====================================================
+
+model BusCompany {
+  id          String       @id @default(uuid())
+  name        String       @unique
+  logo_url    String?
+  description String?
+  phone       String?
+  is_active   Boolean      @default(true)
+  created_at  DateTime     @default(now())
+  routes      BusRoute[]
+
+  @@index([name])
+}
+
+model BusRoute {
+  id             String     @id @default(uuid())
+  company_id     String
+  origin_city    String
+  destination_city String
+  departure_time String
+  arrival_time   String
+  duration_min   Int
+  price_fcfa     Float
+  bus_type       String     @default("standard")
+  seats_total    Int        @default(50)
+  days_of_week   Int[]      @default([0, 1, 2, 3, 4, 5, 6])
+  is_active      Boolean    @default(true)
+  created_at     DateTime   @default(now())
+  updated_at     DateTime   @updatedAt
+  company        BusCompany @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  bookings       BusBooking[]
+
+  @@index([company_id])
+  @@index([origin_city, destination_city])
+  @@index([is_active])
+}
+
+model BusBooking {
+  id              String   @id @default(uuid())
+  route_id        String
+  passenger_id    String
+  passenger_name  String
+  passenger_phone String
+  travel_date     DateTime
+  seats           Int      @default(1)
+  seat_numbers    String[] @default([])
+  total_fcfa      Float
+  status          String   @default("pending")
+  payment_status  String   @default("unpaid")
+  payment_method  String?
+  reference       String   @unique
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  route           BusRoute @relation(fields: [route_id], references: [id], onDelete: Cascade)
+  passenger       User     @relation("BusBookingPassenger", fields: [passenger_id], references: [id], onDelete: Cascade)
+
+  @@index([route_id])
+  @@index([passenger_id])
+  @@index([travel_date])
+  @@index([status])
+}
+
+// =====================================================
+// HOTEL BOOKINGS
+// =====================================================
+
+model Hotel {
+  id              String         @id @default(uuid())
+  name            String
+  description     String?
+  address         String
+  city            String
+  country         String         @default("ML")
+  lat             Float?
+  lng             Float?
+  star_rating     Float?
+  amenities       String[]       @default([])
+  images          String[]       @default([])
+  phone           String?
+  email           String?
+  price_fcfa_from Float?
+  is_active       Boolean        @default(true)
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+  rooms           HotelRoom[]
+  bookings        HotelBooking[]
+
+  @@index([city])
+  @@index([is_active])
+}
+
+model HotelRoom {
+  id          String   @id @default(uuid())
+  hotel_id    String
+  name        String
+  description String?
+  capacity    Int      @default(2)
+  price_fcfa  Float
+  images      String[] @default([])
+  amenities   String[] @default([])
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  hotel       Hotel    @relation(fields: [hotel_id], references: [id], onDelete: Cascade)
+  bookings    HotelBooking[]
+
+  @@index([hotel_id])
+}
+
+model HotelBooking {
+  id             String     @id @default(uuid())
+  hotel_id       String
+  room_id        String
+  guest_id       String
+  check_in       DateTime
+  check_out      DateTime
+  nights         Int
+  guests_count   Int        @default(1)
+  total_fcfa     Float
+  status         String     @default("pending")
+  payment_status String     @default("unpaid")
+  payment_method String?
+  reference      String     @unique
+  notes          String?
+  created_at     DateTime   @default(now())
+  updated_at     DateTime   @updatedAt
+  hotel          Hotel      @relation(fields: [hotel_id], references: [id], onDelete: Cascade)
+  room           HotelRoom  @relation(fields: [room_id], references: [id], onDelete: Cascade)
+  guest          User       @relation("HotelBookingGuest", fields: [guest_id], references: [id], onDelete: Cascade)
+
+  @@index([hotel_id])
+  @@index([guest_id])
+  @@index([check_in])
+  @@index([status])
+}
+
+// =====================================================
+// LIVE COMMERCE — produits épinglés sur un live stream
+// =====================================================
+model LivePinnedProduct {
+  id             String     @id @default(uuid())
+  live_stream_id String
+  product_id     String
+  pinned_by      String
+  order_index    Int        @default(0)
+  is_flash_deal  Boolean    @default(false)
+  flash_price    Float?
+  flash_ends_at  DateTime?
+  clicks_count   Int        @default(0)
+  created_at     DateTime   @default(now())
+  live_stream    LiveStream @relation(fields: [live_stream_id], references: [id], onDelete: Cascade)
+  product        Product    @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  pinner         User       @relation("LivePinnedProductPinner", fields: [pinned_by], references: [id], onDelete: Cascade)
+
+  @@unique([live_stream_id, product_id])
+  @@index([live_stream_id])
+  @@index([pinned_by])
+}
+
+// =====================================================
+// ÉPARGNE PROGRAMMÉE — auto-débit récurrent du wallet
+// =====================================================
+model SavingsPlan {
+  id                   String                  @id @default(uuid())
+  user_id              String
+  name                 String
+  target_amount        Float?
+  target_date          DateTime?
+  contribution_amount  Float
+  frequency            String                  @default("weekly")
+  next_debit_at        DateTime
+  currency             String                  @default("XOF")
+  balance              Float                   @default(0)
+  status               String                  @default("active")
+  created_at           DateTime                @default(now())
+  updated_at           DateTime                @updatedAt
+  user                 User                    @relation("SavingsPlanOwner", fields: [user_id], references: [id], onDelete: Cascade)
+  transactions         SavingsPlanTransaction[]
+
+  @@index([user_id])
+  @@index([status])
+  @@index([next_debit_at])
+}
+
+model SavingsPlanTransaction {
+  id         String      @id @default(uuid())
+  plan_id    String
+  amount     Float
+  kind       String      @default("contribution")
+  status     String      @default("completed")
+  note       String?
+  created_at DateTime    @default(now())
+  plan       SavingsPlan @relation(fields: [plan_id], references: [id], onDelete: Cascade)
+
+  @@index([plan_id])
+  @@index([kind])
+}
+
+// =====================================================
+// FACTURES — agrégateur (EDM, Somagep, Canal+, Orange TV, Malitel Internet...)
+// =====================================================
+model UtilityBillProvider {
+  id              String               @id @default(uuid())
+  slug            String               @unique
+  name            String
+  category        String
+  logo_url        String?
+  country         String               @default("ML")
+  fields_schema   Json
+  is_active       Boolean              @default(true)
+  provider_config Json?
+  created_at      DateTime             @default(now())
+  updated_at      DateTime             @updatedAt
+  payments        UtilityBillPayment[]
+
+  @@index([category])
+  @@index([is_active])
+}
+
+model UtilityBillPayment {
+  id              String              @id @default(uuid())
+  user_id         String
+  provider_id     String
+  account_ref     String
+  amount_fcfa     Float
+  status          String              @default("pending")
+  payment_method  String?
+  reference       String              @unique
+  metadata        Json?
+  receipt_url     String?
+  created_at      DateTime            @default(now())
+  updated_at      DateTime            @updatedAt
+  user            User                @relation("UtilityBillUser", fields: [user_id], references: [id], onDelete: Cascade)
+  provider        UtilityBillProvider @relation(fields: [provider_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([provider_id])
+  @@index([status])
+}
+
+// =====================================================
+// PAID VIDEO CALLS — User ↔ Star (module isolé, vague 9)
+//   - Profil star (prix, max/jour, actif)
+//   - Règles de disponibilité (récurrentes ou ponctuelles)
+//   - Slots calculés à la volée (pas stockés)
+//   - Booking avec escrow (wallet.locked_balance + LedgerEntry)
+//   - Session d'appel (Agora communication) + extensions +5 min
+//   - Notes & avis, litiges, audit
+//
+//   Aucun de ces modèles ne réutilise / ne modifie les tables
+//   existantes (ServiceBooking, Appointment, DirectCall, Wallet…).
+//   Ils vivent dans leur propre namespace `star_*`.
+// =====================================================
+model StarProfile {
+  id                      String      @id @default(uuid())
+  user_id                 String      @unique
+  /// ID public unique 5-6 chiffres (ex: 77555). Affiché sur le profil. Auto-attribué.
+  display_id              Int?        @unique
+  /// Catégorie visible (Musicians, Comedians, Coachs, Influencer, Media, Mentors, Other)
+  category                String?     @db.VarChar(40)
+  /// Code pays ISO-2 (ML, CI, SN, …) — utilisé pour le badge sur le profil
+  country                 String?     @db.VarChar(2)
+  /// Niveau d'abonnement star : 'standard' (gratuit) | 'premium' (mise en avant)
+  tier                    String      @default("standard") @db.VarChar(20)
+  /// Mode star actif / en pause — kill-switch utilisateur
+  is_active               Boolean     @default(false)
+  /// Profil vérifié manuellement par l'équipe plateforme
+  is_verified             Boolean     @default(false)
+  /// Mise en avant par l'équipe (homepage hero / stories vedettes)
+  is_featured             Boolean     @default(false)
+  /// Bannissement depuis le mode star (anti-abus)
+  is_banned               Boolean     @default(false)
+  ban_reason              String?
+  headline                String?     @db.VarChar(200)
+  bio                     String?     @db.VarChar(2000)
+  languages               String[]    @default([])
+  tags                    String[]    @default([])
+  /// Prix par durée, en FCFA (XOF). null = durée non proposée.
+  price_fcfa_5min         Float?
+  price_fcfa_10min        Float?
+  price_fcfa_15min        Float?
+  /// Nb max d'appels acceptés par jour (anti-surcharge)
+  max_calls_per_day       Int         @default(8)
+  /// Nb max d'extensions par appel
+  max_extensions_per_call Int         @default(4)
+  currency                String      @default("XOF")
+  /// Score agrégé (0-5) basé sur StarRating
+  rating_avg              Float       @default(0)
+  rating_count            Int         @default(0)
+  calls_completed         Int         @default(0)
+  calls_no_show           Int         @default(0)
+  total_earnings_fcfa     Float       @default(0)
+  created_at              DateTime    @default(now())
+  updated_at              DateTime    @updatedAt
+  user                    User        @relation("StarProfileOwner", fields: [user_id], references: [id], onDelete: Cascade)
+  availability_rules      StarAvailabilityRule[]
+  bookings                StarBooking[]           @relation("StarProfileBookings")
+  ratings                 StarRating[]            @relation("StarProfileRatings")
+
+  @@index([is_active])
+  @@index([is_verified])
+  @@index([rating_avg])
+  @@index([category])
+  @@index([tier])
+  @@index([is_featured])
+}
+
+model StarAvailabilityRule {
+  id              String      @id @default(uuid())
+  star_profile_id String
+  /// 0 = dimanche, 1 = lundi, …, 6 = samedi. null si `specific_date` défini.
+  day_of_week     Int?
+  /// Date ponctuelle (override le récurrent) — 00:00 UTC minuit du jour.
+  specific_date   DateTime?   @db.Date
+  /// 'HH:MM' 24h inclusif
+  start_time      String      @db.VarChar(5)
+  /// 'HH:MM' 24h exclusif (doit être > start_time)
+  end_time        String      @db.VarChar(5)
+  /// Fuseau horaire de la star (IANA). Ex: "Africa/Bamako"
+  timezone        String      @default("UTC") @db.VarChar(64)
+  is_blocked      Boolean     @default(false)
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+  star_profile    StarProfile @relation(fields: [star_profile_id], references: [id], onDelete: Cascade)
+
+  @@index([star_profile_id])
+  @@index([day_of_week])
+  @@index([specific_date])
+}
+
+model StarBooking {
+  id                       String        @id @default(uuid())
+  star_profile_id          String
+  fan_user_id              String
+  star_user_id             String
+  /// Copie pour audit en cas de suppression du profil
+  price_fcfa               Float
+  /// 5 | 10 | 15
+  duration_minutes         Int
+  extra_minutes            Int           @default(0)
+  currency                 String        @default("XOF")
+  /// Début prévu (UTC)
+  scheduled_start_at       DateTime
+  /// Fin prévue (UTC) = scheduled_start_at + duration_minutes + extra_minutes
+  scheduled_end_at         DateTime
+  /// Moment réel où les deux parties ont rejoint (le timer démarre ici)
+  actually_started_at      DateTime?
+  actually_ended_at        DateTime?
+  /// pending_payment | confirmed | ongoing | completed | cancelled | no_show_fan | no_show_star | disputed | refunded
+  status                   String        @default("pending_payment")
+  /// wallet | mobile_money | card (copié depuis Transaction au débit)
+  payment_method           String?
+  payment_transaction_id   String?
+  payout_transaction_id    String?
+  platform_fee_fcfa        Float         @default(0)
+  star_earnings_fcfa       Float         @default(0)
+  /// Canal Agora associé — unique par booking, deviné = `star-call:<id>`
+  agora_channel            String        @unique
+  /// Nonce incrémenté à chaque demande de token pour éviter le replay
+  agora_token_nonce        Int           @default(0)
+  /// Note interne fan (conditions, contexte)
+  fan_notes                String?       @db.VarChar(500)
+  cancel_reason            String?
+  cancelled_by             String?
+  cancelled_at             DateTime?
+  refund_amount_fcfa       Float         @default(0)
+  reminder_sent_at         DateTime?
+  created_at               DateTime      @default(now())
+  updated_at               DateTime      @updatedAt
+  star_profile             StarProfile   @relation("StarProfileBookings", fields: [star_profile_id], references: [id], onDelete: Cascade)
+  fan                      User          @relation("StarBookingFan",  fields: [fan_user_id],  references: [id], onDelete: Cascade)
+  star                     User          @relation("StarBookingStar", fields: [star_user_id], references: [id], onDelete: Cascade)
+  call_session             StarCallSession?
+  extensions               StarBookingExtension[]
+  rating                   StarRating?
+  disputes                 StarDispute[]
+
+  @@index([star_profile_id])
+  @@index([fan_user_id])
+  @@index([star_user_id])
+  @@index([status])
+  @@index([scheduled_start_at])
+}
+
+model StarCallSession {
+  id                  String      @id @default(uuid())
+  booking_id          String      @unique
+  /// Agora UID numérique du fan (dérivé)
+  fan_uid             Int
+  /// Agora UID numérique de la star (dérivé)
+  star_uid            Int
+  fan_joined_at       DateTime?
+  star_joined_at      DateTime?
+  /// Instant où TOUS les participants sont présents (timer business)
+  both_present_at     DateTime?
+  last_heartbeat_at   DateTime?
+  end_reason          String?
+  ended_at            DateTime?
+  created_at          DateTime    @default(now())
+  updated_at          DateTime    @updatedAt
+  booking             StarBooking @relation(fields: [booking_id], references: [id], onDelete: Cascade)
+
+  @@index([booking_id])
+}
+
+model StarBookingExtension {
+  id                     String      @id @default(uuid())
+  booking_id             String
+  /// Toujours 5 minutes pour V1 (évolutif)
+  minutes                Int         @default(5)
+  price_fcfa             Float
+  platform_fee_fcfa      Float       @default(0)
+  star_earnings_fcfa     Float       @default(0)
+  transaction_id         String?
+  /// pending | confirmed | refunded
+  status                 String      @default("pending")
+  created_at             DateTime    @default(now())
+  booking                StarBooking @relation(fields: [booking_id], references: [id], onDelete: Cascade)
+
+  @@index([booking_id])
+  @@index([status])
+}
+
+model StarRating {
+  id              String      @id @default(uuid())
+  booking_id      String      @unique
+  star_profile_id String
+  fan_user_id     String
+  star_user_id    String
+  /// 1–5
+  rating          Int
+  review          String?     @db.VarChar(1000)
+  /// Fan trouvé le comportement correct ?
+  is_positive     Boolean     @default(true)
+  /// Masqué par la modération en cas d'abus
+  is_hidden       Boolean     @default(false)
+  created_at      DateTime    @default(now())
+  booking         StarBooking @relation(fields: [booking_id], references: [id], onDelete: Cascade)
+  star_profile    StarProfile @relation("StarProfileRatings", fields: [star_profile_id], references: [id], onDelete: Cascade)
+  fan             User        @relation("StarRatingFan",  fields: [fan_user_id],  references: [id], onDelete: Cascade)
+  star            User        @relation("StarRatingStar", fields: [star_user_id], references: [id], onDelete: Cascade)
+
+  @@index([star_profile_id])
+  @@index([is_hidden])
+}
+
+model StarDispute {
+  id              String               @id @default(uuid())
+  booking_id      String
+  opener_user_id  String
+  /// open | resolved_refund_full | resolved_refund_partial | resolved_rejected | cancelled
+  status          String               @default("open")
+  reason          String               @db.VarChar(80)
+  description     String?              @db.VarChar(2000)
+  evidence_urls   String[]             @default([])
+  resolved_by     String?
+  resolution_note String?              @db.VarChar(2000)
+  resolved_at     DateTime?
+  refund_amount_fcfa Float              @default(0)
+  created_at      DateTime             @default(now())
+  updated_at      DateTime             @updatedAt
+  booking         StarBooking          @relation(fields: [booking_id], references: [id], onDelete: Cascade)
+  opener          User                 @relation("StarDisputeOpener", fields: [opener_user_id], references: [id], onDelete: Cascade)
+  messages        StarDisputeMessage[]
+
+  @@index([booking_id])
+  @@index([status])
+  @@index([opener_user_id])
+}
+
+model StarDisputeMessage {
+  id          String      @id @default(uuid())
+  dispute_id  String
+  author_id   String
+  body        String      @db.VarChar(2000)
+  is_admin    Boolean     @default(false)
+  created_at  DateTime    @default(now())
+  dispute     StarDispute @relation(fields: [dispute_id], references: [id], onDelete: Cascade)
+  author      User        @relation("StarDisputeAuthor", fields: [author_id], references: [id], onDelete: Cascade)
+
+  @@index([dispute_id])
 }

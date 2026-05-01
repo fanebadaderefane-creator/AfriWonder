@@ -45,6 +45,10 @@ export default function ContributeScreen() {
       />
     );
   }
+  return <ContributeContent />;
+}
+
+function ContributeContent() {
   const insets = useSafeAreaInsets();
   const { projectId, rewardId, rewardAmount } = useLocalSearchParams<{
     projectId: string;
@@ -111,10 +115,12 @@ export default function ContributeScreen() {
         phone: phone.trim(),
         rewardTier: rewardId ?? null,
       });
+      const contributionId =
+        result.id ?? (typeof result.contribution?.id === 'string' ? result.contribution.id : undefined);
       if (result.paymentUrl) {
         // Ouvre le checkout Orange Money dans une WebView in-app puis revient.
         const browser = await WebBrowser.openAuthSessionAsync(result.paymentUrl, 'afriwonder://crowdfunding/return');
-        if (browser.type === 'cancel' || browser.type === 'dismiss') {
+        if (browser.type !== 'success') {
           // L'utilisateur a fermé sans valider — on revient à l'étape téléphone
           setStep('phone');
           Alert.alert(
@@ -122,6 +128,13 @@ export default function ContributeScreen() {
             'Vous avez fermé l\'écran de paiement avant de confirmer. Vous pouvez réessayer.'
           );
           return;
+        }
+        if (contributionId && browser.type === 'success') {
+          try {
+            await crowdfundingApi.confirmContribution(contributionId);
+          } catch {
+            /* Webhook ou double confirmation — ignorer */
+          }
         }
       }
       setStep('success');

@@ -43,7 +43,7 @@ export interface RestaurantListResponse {
 
 export interface FoodOrderInput {
   restaurant_id: string;
-  items: Array<{ menu_item_id: string; quantity: number; notes?: string }>;
+  items: { menu_item_id: string; quantity: number; notes?: string }[];
   total_amount: number;
   delivery_address: string;
   delivery_lat?: number;
@@ -60,14 +60,14 @@ export interface FoodOrder {
   status: string;
   total_amount: number;
   created_at?: string;
-  items?: Array<{
+  items?: {
     id: string;
     menu_item_id: string;
     quantity: number;
     unit_price: number;
     name?: string;
-  }>;
-  status_history?: Array<{ status: string; created_at: string; note?: string }>;
+  }[];
+  status_history?: { status: string; created_at: string; note?: string }[];
 }
 
 function unwrap<T>(payload: unknown): T {

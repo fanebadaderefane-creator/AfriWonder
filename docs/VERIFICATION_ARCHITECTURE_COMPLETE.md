@@ -1,5 +1,13 @@
 # 🔍 VÉRIFICATION ARCHITECTURE COMPLÈTE - AFRIWONDER
 
+> ⚠️ **Document obsolète (snapshot ancien).**
+> Ne pas utiliser pour un audit de release 2026+.
+> Références canoniques:
+> - `docs/ARCHITECTURE.md`
+> - `docs/API.md`
+> - `docs/MOBILE_RELEASE_README.md`
+> - `GET /api/openapi.json`
+
 **Date** : 3 Février 2026  
 **Objectif** : Vérifier que toute l'architecture est complète avant synchronisation frontend
 

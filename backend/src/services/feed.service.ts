@@ -50,6 +50,7 @@ class FeedService {
       limit: limit + 20,
       userId: options.userId,
       deviceId: options.deviceId,
+      country: options.country,
       category: options.category,
       hashtag: options.hashtag,
       mediaType: options.mediaType,

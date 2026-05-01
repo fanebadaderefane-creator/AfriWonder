@@ -115,6 +115,20 @@ export function canAccessModeration(role: string): boolean {
   return role === 'super_admin' || role === 'admin' || role === 'moderation_admin';
 }
 
+/**
+ * Traiter les signalements (liste, revue, strikes) — aligné console admin mobile.
+ * Inclut : modérateurs classiques, rôles modération, et email SUPER_ADMIN_EMAIL (même si le JWT a finance_admin / user, etc.).
+ */
+export function canReviewModerationReports(req: AuthRequest): boolean {
+  if (!req.user?.id) return false;
+  const role = String(req.user.role || '');
+  const r = role.toLowerCase();
+  if (r === 'moderator') return true;
+  if (canAccessModeration(role)) return true;
+  if (isAllowedAdminEmail(req.user.email)) return true;
+  return false;
+}
+
 export function canAccessSupport(role: string): boolean {
   return role === 'super_admin' || role === 'admin' || role === 'support_admin';
 }

@@ -16,12 +16,27 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../src/store/authStore';
 import apiClient from '../src/api/client';
 import { toAbsoluteMediaUrl } from '../src/utils/absoluteMediaUrl';
 
 const { width } = Dimensions.get('window');
+
+/**
+ * Lecteur vidéo stories utilisant `expo-video` (recommandé Expo 54+).
+ * Autoplay + muet tant que l'utilisateur n'a pas cliqué — conforme aux
+ * guidelines iOS/Android de lecture automatique.
+ */
+function StoryVideoPlayer({ url, style }: { url: string; style: any }) {
+  const player = useVideoPlayer(url || '', (p) => {
+    p.loop = true;
+    p.muted = true;
+    p.play();
+  });
+  return <VideoView player={player} style={style} contentFit="cover" nativeControls={false} />;
+}
 
 function firstParam(v: string | string[] | undefined): string {
   if (v == null) return '';
@@ -316,7 +331,7 @@ export default function StoriesScreen() {
         <View style={[styles.externalCaptionWrap, { paddingBottom: insets.bottom + Spacing.xl }]}>
           <Text style={styles.externalCaption}>
             {externalPreview
-              ? 'Aperçu depuis le fil Moments. Les stories dédiées arriveront ici bientôt.'
+              ? 'Aperçu d’un moment partagé par ce créateur.'
               : 'Pas d’image publique sur ce moment — profil du créateur.'}
           </Text>
         </View>
@@ -362,12 +377,7 @@ export default function StoriesScreen() {
               })}
             </View>
           ) : (
-            <View style={[styles.storyFullImage, styles.storyLoading]}>
-              <Ionicons name="videocam" size={64} color="rgba(255,255,255,0.5)" />
-              <Text style={{ color: 'rgba(255,255,255,0.7)', marginTop: 12 }}>
-                Vidéo — appuyez pour ouvrir
-              </Text>
-            </View>
+            <StoryVideoPlayer url={url} style={styles.storyFullImage} />
           )
         )}
         <View style={styles.storyHeader}>
@@ -395,10 +405,7 @@ export default function StoriesScreen() {
         {!isVideo ? (
           <Image source={{ uri: url }} style={styles.storyFullImage} />
         ) : (
-          <View style={[styles.storyFullImage, { backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' }]}>
-            <Ionicons name="videocam" size={64} color="rgba(255,255,255,0.5)" />
-            <Text style={{ color: 'rgba(255,255,255,0.7)', marginTop: 12 }}>Vidéo — lecture complète bientôt</Text>
-          </View>
+          <StoryVideoPlayer url={url} style={styles.storyFullImage} />
         )}
         <View style={styles.storyHeader}>
           <View style={styles.storyProgress}>

@@ -1,5 +1,12 @@
 # Exécution audit PDF — « AfriWonder Audit Complet » (01 avril 2026)
 
+> ⚠️ **Archive d’exécution d’audit (datée).**
+> Ce document ne définit pas la cible mobile actuelle.
+> Références release à jour:
+> - `docs/ARCHITECTURE.md`
+> - `docs/MOBILE_RELEASE_README.md`
+> - `docs/API.md`
+
 Document source : rapport confidentiel *AUDIT COMPLET · ARCHITECTURE · BUSINESS PLAN* (19 pages).  
 Ce fichier relie **chaque grande exigence** du PDF à l’**état du dépôt** et aux **actions hors code** restantes.
 

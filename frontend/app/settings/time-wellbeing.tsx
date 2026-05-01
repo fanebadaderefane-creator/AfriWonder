@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Text, StyleSheet, View, TouchableOpacity, Modal, Pressable } from 'react-native';
+import { Text, StyleSheet, TouchableOpacity, Modal, Pressable } from 'react-native';
 import { SettingsScreen } from '../../src/components/settings/SettingsScreen';
 import { SettingsRow, SettingsSection } from '../../src/components/settings/SettingsRow';
 import usePrivacySettings from '../../src/hooks/usePrivacySettings';

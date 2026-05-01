@@ -160,6 +160,8 @@ export default function LiveStreamScreen() {
   const hostSttRecRef = useRef<InstanceType<typeof Audio.Recording> | null>(null);
   const [, setBroadcastTimerTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const liveIdRef = useRef<string | null>(null);
+  const liveStartedAtMsRef = useRef<number | null>(null);
   const [camPerm, requestCamPerm] = useCameraPermissions();
   const [previewFacing, setPreviewFacing] = useState<'front' | 'back'>('front');
 
@@ -193,6 +195,17 @@ export default function LiveStreamScreen() {
       if (typeof s.viewers_count === 'number') setViewerCount(s.viewers_count);
       if (typeof s.total_likes === 'number') setTotalLikes(s.total_likes);
       if (typeof s.total_gifts_amount === 'number') setTotalGifts(s.total_gifts_amount);
+      const startedAtRaw = s.started_at;
+      const startedAtMs =
+        typeof startedAtRaw === 'string'
+          ? Date.parse(startedAtRaw)
+          : startedAtRaw instanceof Date
+            ? startedAtRaw.getTime()
+            : NaN;
+      if (Number.isFinite(startedAtMs) && startedAtMs > 0) {
+        liveStartedAtMsRef.current = startedAtMs;
+        setLiveTime(Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000)));
+      }
       if (typeof s.goal_amount === 'number') setGoalAmount(s.goal_amount);
       if (typeof s.goal_target === 'number' && s.goal_target > 0) setGoalTarget(s.goal_target);
       if (typeof s.peak_viewers === 'number') setPeakViewers((p) => Math.max(p, s.peak_viewers as number));
@@ -475,11 +488,15 @@ export default function LiveStreamScreen() {
   }, [accessToken]);
 
   useEffect(() => {
+    liveIdRef.current = liveId;
+  }, [liveId]);
+
+  useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      if (liveId) socketService.leaveLiveStream(liveId);
+      if (liveIdRef.current) socketService.leaveLiveStream(liveIdRef.current);
     };
-  }, [liveId]);
+  }, []);
 
   useEffect(() => {
     if (!liveId || phase !== 'live') return;
@@ -730,8 +747,17 @@ export default function LiveStreamScreen() {
 
       setLiveId(id);
       setPhase('live');
+      liveStartedAtMsRef.current = Date.now();
+      setLiveTime(0);
       if (timerRef.current) clearInterval(timerRef.current);
-      timerRef.current = setInterval(() => setLiveTime((prev) => prev + 1), 1000);
+      timerRef.current = setInterval(() => {
+        const started = liveStartedAtMsRef.current;
+        if (!started) {
+          setLiveTime((prev) => prev + 1);
+          return;
+        }
+        setLiveTime(Math.max(0, Math.floor((Date.now() - started) / 1000)));
+      }, 1000);
       void fetchTopDonors(id);
     } catch (e: unknown) {
       const err = e as { response?: { data?: { error?: string; detail?: string; message?: string } } };
@@ -757,6 +783,7 @@ export default function LiveStreamScreen() {
             clearInterval(timerRef.current);
             timerRef.current = null;
           }
+          liveStartedAtMsRef.current = null;
           try {
             if (liveId) await apiClient.post(`/live/${liveId}/end`, {});
             setPhase('ended');
@@ -1004,7 +1031,7 @@ export default function LiveStreamScreen() {
             ))}
           </View>
           <View style={styles.rowBetween}>
-            <Text style={styles.label}>Planifier (followers notifiés)</Text>
+            <Text style={styles.label}>Planifier (Wonder notifié)</Text>
             <Switch value={scheduleMode} onValueChange={setScheduleMode} />
           </View>
           {scheduleMode ? (

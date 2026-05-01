@@ -19,12 +19,12 @@ export interface EventItem {
   endDate?: string;
   status?: string;
   ticket_price?: number;
-  ticket_types?: Array<{
+  ticket_types?: {
     id: string;
     name: string;
     price: number;
     quantity_available?: number;
-  }>;
+  }[];
   organizer?: { id: string; username?: string; display_name?: string; avatar?: string };
 }
 

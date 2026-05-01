@@ -796,7 +796,7 @@ class LiveService {
     if (filters?.language) where.language = filters.language;
 
     const sortBy = filters?.sortBy || 'viewers';
-    let orderBy: any[] = [{ status: 'asc' }];
+    const orderBy: any[] = [{ status: 'asc' }];
     if (sortBy === 'recent') orderBy.push({ started_at: 'desc' });
     else if (sortBy === 'popularity') orderBy.push({ total_gifts_amount: 'desc' }, { total_likes: 'desc' });
     else if (sortBy === 'duration') orderBy.push({ duration_minutes: 'desc' });
@@ -874,11 +874,21 @@ class LiveService {
       }
 
       // 2. Catégories préférées basées sur l'historique
-      const userLivesHistory = await prisma.liveViewer.findMany({
-        where: { user_id: userId },
-        include: { live_stream: { select: { category: true } } },
-        take: 50,
-      });
+      let userLivesHistory: Array<{ live_stream: { category: string | null } | null }> = [];
+      try {
+        userLivesHistory = await prisma.liveViewer.findMany({
+          where: { user_id: userId },
+          include: { live_stream: { select: { category: true } } },
+          take: 50,
+        });
+      } catch (error) {
+        // Compat dev: certaines bases locales n'ont pas encore les colonnes LiveViewer.
+        // On continue sans personnalisation plutôt que casser la route en 500.
+        logger.warn('Live recommendations history unavailable, fallback to popular lives', {
+          userId,
+          error: error instanceof Error ? error.message : 'unknown_error',
+        });
+      }
       const categoryCounts = new Map<string, number>();
       userLivesHistory.forEach(v => {
         if (v.live_stream?.category) {
@@ -952,7 +962,7 @@ class LiveService {
       where.category = options.category;
     }
 
-    let orderBy: any[] = [{ viewers_count: 'desc' }, { started_at: 'desc' }];
+    const orderBy: any[] = [{ viewers_count: 'desc' }, { started_at: 'desc' }];
     if (options?.type === 'followed' && userId) {
       const following = await prisma.follow.findMany({
         where: { follower_id: userId },

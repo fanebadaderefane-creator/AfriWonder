@@ -1,19 +1,26 @@
 import '../src/polyfills';
 import { initMobileSentry } from '../src/lib/sentryMobile';
 import { Stack, router } from 'expo-router';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
+import { useFonts } from 'expo-font';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import { useAuthStore } from '../src/store/authStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OfflineBanner } from '../src/components/common/OfflineBanner';
 import { ToastProvider } from '../src/components/common/ToastProvider';
 import { IncomingCallOverlay } from '../src/components/call/IncomingCallOverlay';
 import socketService from '../src/services/socketService';
 import { ThemeProvider, useAppTheme } from '../src/theme/ThemeContext';
 import { View, StyleSheet, Platform, AppState } from 'react-native';
-import { probeAndroidDevBackendOrigin } from '../src/config/backendBase';
+import {
+  probeAndroidDevBackendOrigin,
+  shouldBlockUiUntilAndroidDevBackendProbe,
+} from '../src/config/backendBase';
 import { LanguageProvider } from '../src/i18n/LanguageContext';
 import notificationService from '../src/services/notificationService';
 import { resolveMobileDeepLink } from '../src/services/mobileApiService';
@@ -21,8 +28,15 @@ import { normalizeIncomingMobileUrl, toAfriwonderResolveUrl } from '../src/utils
 import offlineActionSyncService from '../src/services/offlineActionSyncService';
 import { RouteErrorFallback } from '../src/components/common/RouteErrorFallback';
 import { DataSaverProvider } from '../src/dataSaver/DataSaverContext';
+import { navigateFromStarBookingNotification } from '../src/utils/starBookingPushNavigation';
+import { navigateToIncomingCallFromPush } from '../src/call/incomingCallPushNavigation';
+import { isExpoGoApp } from '../src/config/expoRuntime';
 
 initMobileSentry();
+
+void SplashScreen.preventAutoHideAsync().catch(() => {
+  /* Expo Go / OEM : keep-awake parfois indisponible — éviter promesse rejetée non gérée */
+});
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,60 +53,68 @@ function RootLayoutContent() {
   const user = useAuthStore((s) => s.user);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
-  /** Android dev : détecte `10.0.2.2` vs IP LAN (MEmu) avant le premier appel API. */
-  const [androidDevBackendProbeDone, setAndroidDevBackendProbeDone] = useState(
-    () => !(Platform.OS === 'android' && typeof __DEV__ !== 'undefined' && __DEV__)
-  );
+  /** Évite un double `router.push` si cold start + listener reçoivent la même notif d’appel. */
+  const lastHandledIncomingCallIdRef = useRef<string | null>(null);
+
+  const tryOpenIncomingCallFromPush = useCallback((data: Record<string, unknown> | undefined) => {
+    if (!data || String(data.type || '') !== 'call_incoming') return false;
+    const callId = String(data.callId || data.reference_id || '').trim();
+    if (!callId) return false;
+    if (lastHandledIncomingCallIdRef.current === callId) return true;
+    const opened = navigateToIncomingCallFromPush(data);
+    if (opened) lastHandledIncomingCallIdRef.current = callId;
+    return opened;
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) lastHandledIncomingCallIdRef.current = null;
+  }, [isAuthenticated]);
+
+  /** Android dev : probe LAN (MEmu) si pas d’URL explicite ; sinon pas d’écran noir global avant la stack. */
+  const [androidDevBackendProbeDone, setAndroidDevBackendProbeDone] = useState(() => {
+    if (!(Platform.OS === 'android' && typeof __DEV__ !== 'undefined' && __DEV__)) {
+      return true;
+    }
+    return !shouldBlockUiUntilAndroidDevBackendProbe();
+  });
 
   useEffect(() => {
     if (!(Platform.OS === 'android' && typeof __DEV__ !== 'undefined' && __DEV__)) return;
-    void probeAndroidDevBackendOrigin().then(() => setAndroidDevBackendProbeDone(true));
-  }, []);
 
-  /**
-   * Dev guardrail (web): certains appels réseau peuvent expirer pendant le bootstrap
-   * (backend lent / route indisponible) et remonter en `unhandledrejection`, ce qui
-   * affiche un écran rouge bloquant.
-   *
-   * On ignore uniquement les timeouts réseau connus pour garder l'app navigable.
-   */
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const onUnhandled = (event: PromiseRejectionEvent) => {
-      const reason = event?.reason as { message?: string; code?: string } | undefined;
-      const msg = String(reason?.message || event?.reason || '').toLowerCase();
-      const code = String(reason?.code || '').toLowerCase();
-      const isTimeout = msg.includes('timeout exceeded') || code === 'econaborted';
-      if (isTimeout) {
-        event.preventDefault();
-      }
-    };
-    const onWindowError = (event: ErrorEvent) => {
-      const msg = String(event?.message || '').toLowerCase();
-      const code = String((event?.error as { code?: string } | undefined)?.code || '').toLowerCase();
-      const isTimeout = msg.includes('timeout exceeded') || code === 'econaborted';
-      if (isTimeout) {
-        event.preventDefault();
-      }
-    };
-    window.addEventListener('unhandledrejection', onUnhandled);
-    window.addEventListener('error', onWindowError);
+    const finishProbe = () => setAndroidDevBackendProbeDone(true);
+    let safetyTimeout: ReturnType<typeof setTimeout> | undefined;
+    if (shouldBlockUiUntilAndroidDevBackendProbe()) {
+      safetyTimeout = setTimeout(finishProbe, 15000);
+    }
+
+    void probeAndroidDevBackendOrigin().finally(() => {
+      if (safetyTimeout) clearTimeout(safetyTimeout);
+      finishProbe();
+    });
+
     return () => {
-      window.removeEventListener('unhandledrejection', onUnhandled);
-      window.removeEventListener('error', onWindowError);
+      if (safetyTimeout) clearTimeout(safetyTimeout);
     };
   }, []);
 
   /**
    * Persistance session (Expo / React Native) : au retour au premier plan, relire SecureStore / AsyncStorage
    * pour garder `useAuthStore` aligné avec le disque (tokens rafraîchis ailleurs, restauration OS, etc.).
+   *
+   * PERF : throttle 5 min — sur 3G/4G instable, l'utilisateur revient souvent au premier plan
+   * (notifications, multitâche). Relire SecureStore + appel API à chaque foreground = latence
+   * + saccade visible avant que l'écran ne réagisse. 5 min suffit pour rattraper un refresh externe.
    */
   const appStateRef = useRef(AppState.currentState);
+  const lastAuthReloadRef = useRef(0);
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
       const prev = appStateRef.current;
       appStateRef.current = next;
       if (next === 'active' && (prev === 'background' || prev === 'inactive')) {
+        const now = Date.now();
+        if (now - lastAuthReloadRef.current < 5 * 60 * 1000) return;
+        lastAuthReloadRef.current = now;
         void loadStoredAuth();
       }
     });
@@ -150,8 +172,31 @@ function RootLayoutContent() {
     void notificationService
       .onNotificationResponse((response) => {
         const data = response.notification.request.content.data as
-          | { type?: string; conversationId?: string; videoId?: string }
+          | {
+              type?: string;
+              conversationId?: string;
+              videoId?: string;
+              reference_type?: string;
+              reference_id?: string;
+              callId?: string;
+              callerId?: string;
+              callMediaType?: string;
+              callerName?: string;
+              callerAvatar?: string;
+            }
           | undefined;
+        if (
+          navigateFromStarBookingNotification({
+            type: data?.type,
+            reference_type: data?.reference_type,
+            reference_id: data?.reference_id,
+          })
+        ) {
+          return;
+        }
+        if (tryOpenIncomingCallFromPush(data as Record<string, unknown> | undefined)) {
+          return;
+        }
         if (data?.type === 'message' && data?.conversationId) {
           router.push({ pathname: '/messages/[id]', params: { id: data.conversationId } });
         } else if (data?.type === 'mention' && data?.videoId) {
@@ -162,6 +207,9 @@ function RootLayoutContent() {
       })
       .then((sub) => {
         subscription = sub;
+      })
+      .catch(() => {
+        /* Web / chunk expo-notifications indisponible : non bloquant */
       });
 
     return () => {
@@ -169,7 +217,23 @@ function RootLayoutContent() {
       urlSubscription.remove();
       offlineSyncCleanup?.();
     };
-  }, [loadStoredAuth]);
+  }, [loadStoredAuth, tryOpenIncomingCallFromPush]);
+
+  /** App ouverte depuis une notification d’appel (app tuée ou arrière-plan). */
+  useEffect(() => {
+    if (!isAuthenticated || Platform.OS === 'web' || isExpoGoApp()) return;
+    void (async () => {
+      try {
+        const Notifications = await import('expo-notifications');
+        const last = await Notifications.getLastNotificationResponseAsync();
+        if (!last?.notification) return;
+        const data = last.notification.request.content.data as Record<string, unknown>;
+        tryOpenIncomingCallFromPush(data);
+      } catch {
+        /* module ou réponse indisponible */
+      }
+    })();
+  }, [isAuthenticated, tryOpenIncomingCallFromPush]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -185,7 +249,7 @@ function RootLayoutContent() {
   const accessToken = useAuthStore((s) => s.accessToken);
   useEffect(() => {
     if (!isAuthenticated || !accessToken || !user?.id) return;
-    const userName = user.username ?? user.display_name ?? undefined;
+    const userName = user.username ?? undefined;
     socketService.connect(accessToken);
     const off = socketService.on('authenticated', () => {
       socketService.joinUserRoom(user.id, userName);
@@ -197,18 +261,22 @@ function RootLayoutContent() {
     return () => {
       off();
     };
-  }, [isAuthenticated, accessToken, user?.id, user?.username, user?.display_name]);
+  }, [isAuthenticated, accessToken, user?.id, user?.username]);
 
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return;
     void import('../src/services/e2eeMobileService')
-      .then((m) => {
-        if (typeof m.ensureE2eeBootstrap === 'function') {
-          return m.ensureE2eeBootstrap(user.id);
+      .then(async (m) => {
+        try {
+          if (typeof m.ensureE2eeBootstrap === 'function') {
+            await m.ensureE2eeBootstrap(user.id);
+          }
+        } catch {
+          /* import ou bootstrap : ne jamais faire planter l’app (web + fetchThenEval) */
         }
       })
       .catch(() => {
-        /* Expo Go / sans module natif quick-crypto : E2EE indisponible, non bloquant */
+        /* chunk E2EE indisponible : non bloquant */
       });
   }, [isAuthenticated, user?.id]);
 
@@ -298,13 +366,38 @@ function RootLayoutContent() {
 }
 
 export default function RootLayout() {
+  const iconFontMap = useMemo(
+    () => ({
+      ...Ionicons.font,
+      ...MaterialCommunityIcons.font,
+    }),
+    []
+  );
+  const [iconFontsLoaded, iconFontError] = useFonts(iconFontMap);
+
+  useEffect(() => {
+    if (iconFontsLoaded || iconFontError) {
+      void SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [iconFontsLoaded, iconFontError]);
+
+  if (!iconFontsLoaded && !iconFontError) {
+    return (
+      <GestureHandlerRootView style={styles.fill}>
+        <View style={[styles.fill, { backgroundColor: '#000' }]} />
+      </GestureHandlerRootView>
+    );
+  }
+
   return (
     <GestureHandlerRootView style={styles.fill}>
-      <ThemeProvider>
-        <DataSaverProvider>
-          <RootLayoutContent />
-        </DataSaverProvider>
-      </ThemeProvider>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <DataSaverProvider>
+            <RootLayoutContent />
+          </DataSaverProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

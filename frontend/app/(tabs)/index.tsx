@@ -10,6 +10,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import apiClient from '../../src/api/client';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import ShareSheet, { type ShareVideoContext } from '../../src/components/ShareSheet';
 import { getVideoSharePageUrl } from '../../src/config/shareUrls';
@@ -17,12 +18,14 @@ import ReportModal from '../../src/components/ReportModal';
 import CommentReportModal from '../../src/components/CommentReportModal';
 import { CreatorAvatar } from '../../src/components/CreatorAvatar';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { profileAvatarUri } from '../../src/utils/avatarFallback';
 import { SmartThumbnail } from '../../src/components/SmartThumbnail';
 import { Audio } from 'expo-av';
 import offlineActionSyncService from '../../src/services/offlineActionSyncService';
 import { FeedSkeleton } from '../../src/components/feed/FeedSkeleton';
 import { useLanguage } from '../../src/i18n/LanguageContext';
 import { useDataSaver } from '../../src/dataSaver/DataSaverContext';
+import { useFeedAutoplayFromSettings } from '../../src/hooks/useFeedAutoplayFromSettings';
 import FeedPollCard, { type FeedPollPayload } from '../../src/components/feed/FeedPollCard';
 import VideoReactionBar, { reactionEmojiForType } from '../../src/components/feed/VideoReactionBar';
 import { addRecentlyViewedVideo } from '../../src/utils/recentlyViewedVideos';
@@ -168,6 +171,7 @@ const FALLBACK_VIDEOS: Video[] = [];
  * et `hasMore` se basait sur le nombre de vidéos → pagination coupée trop tôt.
  */
 const FEED_PAGE_LIMIT = 28;
+const TTFF_SENT_KEYS = new Set<string>();
 
 interface VideoItemProps {
   video: Video;
@@ -193,7 +197,7 @@ interface VideoItemProps {
   onReactionPick: (type: string) => void | Promise<void>;
 }
 
-const VideoItem: React.FC<VideoItemProps> = ({
+const VideoItemImpl: React.FC<VideoItemProps> = ({
   video,
   isActive,
   slideHeight,
@@ -244,24 +248,29 @@ const VideoItem: React.FC<VideoItemProps> = ({
   const trimEndRef = useRef<number | null>(null);
   const prevVideoIdRef = useRef(video.id);
   const markViewedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playbackStartAtRef = useRef<number | null>(null);
+  const firstFrameMeasuredRef = useRef(false);
 
   /**
    * Refs lues par `useVideoPlayer` (setup synchrone au changement de source) : les mettre à jour
    * avant tout hook suivant, sinon FlashList recycle avec `isActive` vrai mais ref encore `false`.
-   * Reset `isPaused` / barre au changement de `video.id` pendant le rendu pour éviter que l’effet
-   * lecture/pause ne voie un `isPaused` obsolète et appelle `pause()` avant le flush du state.
+   *
+   * PERF : on NE FAIT PLUS de `setState` pendant le render (interdit en React 19, cause un
+   * double rendu sur chaque cellule recyclée). Le reset état/UI au changement de `video.id`
+   * est déplacé dans un `useLayoutEffect` ci-dessous.
    */
   isActiveRef.current = isActive;
-  if (prevVideoIdRef.current !== video.id) {
+  isPausedRef.current = isPaused;
+
+  useLayoutEffect(() => {
+    if (prevVideoIdRef.current === video.id) return;
     prevVideoIdRef.current = video.id;
     setIsPaused(tapToPlayOnly);
     setProgressPct(0);
     setShowScrubPreview(false);
     setScrubTimeSec(0);
     isPausedRef.current = tapToPlayOnly;
-  } else {
-    isPausedRef.current = isPaused;
-  }
+  }, [video.id, tapToPlayOnly]);
 
   // Historique "Vue récente" : marquer comme vue seulement si la slide reste active un minimum (éviter les faux scrolls).
   useEffect(() => {
@@ -327,6 +336,45 @@ const VideoItem: React.FC<VideoItemProps> = ({
     }
   }, [video.id, video.mediaType]);
 
+  const safePlay = useCallback((target: { play: () => unknown }) => {
+    try {
+      const result = target.play();
+      if (result && typeof (result as Promise<unknown>).catch === 'function') {
+        (result as Promise<unknown>).catch(() => {
+          // Web: le navigateur peut annuler un fetch média pendant un changement d'écran.
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const sendFirstFrameMetric = useCallback(
+    (ttffMs: number) => {
+      const key = `${video.id}:${video.videoUrl}`;
+      if (TTFF_SENT_KEYS.has(key)) return;
+      // Envoyer systématiquement les cas lents, + un échantillon des cas rapides.
+      if (ttffMs < 1200 && Math.random() > 0.15) return;
+      TTFF_SENT_KEYS.add(key);
+      void apiClient
+        .post('/analytics', {
+          entityType: 'video_playback',
+          entityId: video.id,
+          metricType: 'first_frame_ms',
+          metricValue: ttffMs,
+          metadata: {
+            source: 'mobile_feed',
+            url_kind: /\.m3u8($|\?)/i.test(String(video.videoUrl || '')) ? 'hls' : 'file',
+            data_saver_low_quality: Boolean(video.dataSaverLowQuality),
+            media_type: video.mediaType || 'video',
+            platform: Platform.OS,
+          },
+        })
+        .catch(() => {});
+    },
+    [video.id, video.videoUrl, video.dataSaverLowQuality, video.mediaType]
+  );
+
   /** Mode économie / réseau lent : aligner la pause sans attendre un changement de vidéo. */
   useEffect(() => {
     setIsPaused(tapToPlayOnly);
@@ -335,24 +383,33 @@ const VideoItem: React.FC<VideoItemProps> = ({
   const player = useVideoPlayer(video.videoUrl, (p) => {
     p.loop = true;
     p.muted = !isActiveRef.current;
-    p.timeUpdateEventInterval = 0.25;
-    if (isActiveRef.current) {
-      p.play();
-    }
+    // PERF : 1Hz au lieu de 4Hz → 75% de re-renders en moins sur la cellule active.
+    // La barre de progression reste fluide à l'œil ; le scrub reste réactif (pan responder).
+    p.timeUpdateEventInterval = 1;
+    if (isActiveRef.current) safePlay(p);
   });
 
   /** Web / certains runtimes : premier `play()` peut échouer avant `readyToPlay`. */
   useEventListener(player, 'statusChange', ({ status }) => {
     if (status !== 'readyToPlay') return;
     if (!isActiveRef.current || isPausedRef.current) return;
-    void Promise.resolve().then(() => {
-      try {
-        player.play();
-      } catch {
-        /* ignore */
-      }
-    });
+    if (!firstFrameMeasuredRef.current && playbackStartAtRef.current != null) {
+      firstFrameMeasuredRef.current = true;
+      const ttffMs = Math.max(0, Math.round(Date.now() - playbackStartAtRef.current));
+      sendFirstFrameMetric(ttffMs);
+    }
+    void Promise.resolve().then(() => safePlay(player));
   });
+
+  useEffect(() => {
+    firstFrameMeasuredRef.current = false;
+    playbackStartAtRef.current = null;
+  }, [video.id, video.videoUrl]);
+
+  useEffect(() => {
+    if (!isActive || isPaused || firstFrameMeasuredRef.current) return;
+    if (playbackStartAtRef.current == null) playbackStartAtRef.current = Date.now();
+  }, [isActive, isPaused, video.id, video.videoUrl]);
 
   /** Recyclage FlashList / nouveau média : sauter au début du clip si extrait live. */
   useEffect(() => {
@@ -382,13 +439,17 @@ const VideoItem: React.FC<VideoItemProps> = ({
     try {
       const d = player.duration;
       if (d > 0 && Number.isFinite(d)) {
+        let pct = 0;
         if (ts != null && te != null && te > ts) {
           const span = te - ts;
           const rel = Math.min(span, Math.max(0, currentTime - ts));
-          setProgressPct(Math.min(100, Math.max(0, (rel / span) * 100)));
+          pct = (rel / span) * 100;
         } else {
-          setProgressPct(Math.min(100, Math.max(0, (currentTime / d) * 100)));
+          pct = (currentTime / d) * 100;
         }
+        const next = Math.min(100, Math.max(0, Math.round(pct)));
+        // PERF : ne déclencher un re-render que si le % entier change réellement.
+        setProgressPct((prev) => (prev === next ? prev : next));
       }
     } catch {
       /* ignore */
@@ -441,13 +502,11 @@ const VideoItem: React.FC<VideoItemProps> = ({
     setShowScrubPreview(false);
     if (!isActiveRef.current || !player) return;
     try {
-      if (wasPlayingBeforeScrubRef.current && !isPausedRef.current) {
-        player.play();
-      }
+      if (wasPlayingBeforeScrubRef.current && !isPausedRef.current) safePlay(player);
     } catch {
       /* ignore */
     }
-  }, [player]);
+  }, [player, safePlay]);
 
   const progressPanResponder = useMemo(
     () =>
@@ -519,20 +578,14 @@ const VideoItem: React.FC<VideoItemProps> = ({
     try {
       player.muted = isMuted;
       if (!isPaused) {
-        void Promise.resolve().then(() => {
-          try {
-            player.play();
-          } catch (e) {
-            console.log('Player play error:', e);
-          }
-        });
+        void Promise.resolve().then(() => safePlay(player));
       } else {
         player.pause();
       }
     } catch (e) {
-      console.log('Player play/pause error:', e);
+      if (__DEV__) console.log('Player play/pause error:', e);
     }
-  }, [isActive, isPaused, isMuted, player, video.id]);
+  }, [isActive, isPaused, isMuted, player, safePlay, video.id]);
 
   /** Estimation consommation data (Phase 14 — Afrique). */
   useEffect(() => {
@@ -624,61 +677,78 @@ const VideoItem: React.FC<VideoItemProps> = ({
 
   const heartFilled = video.myReaction === 'like' || video.isLiked;
 
+  const readyPoll: FeedPollPayload | null =
+    pollState && typeof pollState === 'object' && !pollState.expired && Array.isArray(pollState.options) && pollState.options.length > 0
+      ? pollState
+      : null;
+
   return (
     <View style={[styles.videoContainer, { height: itemHeight }]}>
-      <TouchableWithoutFeedback onPress={handleTap}>
-        <View style={styles.videoWrapper}>
-          <VideoView style={styles.video} player={player} contentFit="cover" nativeControls={false} />
+      {/* Native VideoView capte les touches : pas de propagation vers Touchable*. Couche Pressable au-dessus (cf. web OK). */}
+      <View style={styles.videoWrapper}>
+        <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+          <VideoView
+            style={styles.video}
+            player={player}
+            contentFit="cover"
+            nativeControls={false}
+            {...(Platform.OS === 'android' ? ({ surfaceType: 'textureView' } as const) : {})}
+          />
+        </View>
+        <Pressable
+          style={styles.videoTapTarget}
+          onPress={handleTap}
+          accessibilityRole="button"
+          accessibilityLabel={isPaused ? 'Lire la vidéo' : 'Mettre en pause la vidéo'}
+        />
 
-          {/* Pause icon */}
-          {isPaused && isActive && (
-            <View style={styles.pauseOverlay}>
-              <View style={styles.pauseCircle}>
-                <Ionicons name="play" size={40} color="#FFF" />
-              </View>
+        {/* Pause icon — pointerEvents none pour que le tap traverse jusqu’au Pressable */}
+        {isPaused && isActive && (
+          <View style={styles.pauseOverlay} pointerEvents="none">
+            <View style={styles.pauseCircle}>
+              <Ionicons name="play" size={40} color="#FFF" />
             </View>
+          </View>
           )}
 
-          {isPaused && isActive && !similarOpen ? (
-            <TouchableOpacity
-              testID="similar-find-pill"
-              style={styles.similarPill}
-              onPress={() => void openSimilarSheet()}
-              activeOpacity={0.88}
-              accessibilityRole="button"
-              accessibilityLabel="Trouver des contenus similaires"
-            >
-              <View style={styles.similarPillIconBox}>
-                <Ionicons name="search" size={14} color="#FFF" />
-              </View>
-              <Text style={styles.similarPillText}>Trouver des similaires</Text>
-              <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.95)" />
-            </TouchableOpacity>
-          ) : null}
+        {isPaused && isActive && !similarOpen ? (
+          <TouchableOpacity
+            testID="similar-find-pill"
+            style={styles.similarPill}
+            onPress={() => void openSimilarSheet()}
+            activeOpacity={0.88}
+            accessibilityRole="button"
+            accessibilityLabel="Trouver des contenus similaires"
+          >
+            <View style={styles.similarPillIconBox}>
+              <Ionicons name="search" size={14} color="#FFF" />
+            </View>
+            <Text style={styles.similarPillText}>Trouver des similaires</Text>
+            <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.95)" />
+          </TouchableOpacity>
+        ) : null}
 
-          {/* Double-tap heart animation */}
-          {showHeart && (
-            <Animated.View style={[styles.heartAnimation, {
+        {/* Double-tap heart animation */}
+        {showHeart && (
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.heartAnimation, {
               transform: [{ scale: heartAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1.3] }) }],
               opacity: heartAnim,
-            }]}>
-              <Ionicons name="heart" size={100} color={Colors.like} />
-            </Animated.View>
-          )}
-        </View>
-      </TouchableWithoutFeedback>
+            }]}
+          >
+            <Ionicons name="heart" size={100} color={Colors.like} />
+          </Animated.View>
+        )}
+      </View>
 
       {/* Gradient overlays */}
       <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0.6)', 'transparent']} style={styles.topGradient} />
       <LinearGradient pointerEvents="none" colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.bottomGradient} />
 
-      {pollState === 'loading' || (pollState && typeof pollState === 'object') ? (
+      {readyPoll ? (
         <View style={[styles.pollOverlay, { bottom: Math.max(268, insets.bottom + 278) }]} pointerEvents="box-none">
-          <FeedPollCard
-            poll={pollState === 'loading' ? 'loading' : pollState}
-            voting={pollVoting}
-            onVote={onPollVote}
-          />
+          <FeedPollCard poll={readyPoll} voting={pollVoting} onVote={onPollVote} />
         </View>
       ) : null}
 
@@ -726,7 +796,12 @@ const VideoItem: React.FC<VideoItemProps> = ({
             onPress={video.user.id ? onOpenProfile : undefined}
           />
           {!video.user.isFollowing && (
-            <TouchableOpacity style={styles.followBadge} onPress={onFollow}>
+            <TouchableOpacity
+              style={styles.followBadge}
+              onPress={onFollow}
+              accessibilityLabel="Wonder ce créateur"
+              accessibilityRole="button"
+            >
               <Ionicons name="add" size={12} color="#FFF" />
             </TouchableOpacity>
           )}
@@ -794,6 +869,21 @@ const VideoItem: React.FC<VideoItemProps> = ({
       {/* Bottom info */}
       <View style={styles.bottomInfo}>
         <TouchableOpacity
+          style={styles.brandUserRow}
+          onPress={video.user.id ? onOpenProfile : undefined}
+          activeOpacity={0.85}
+          disabled={!video.user.id}
+        >
+          <Image
+            source={require('../../assets/images/pwa-icon-192.png')}
+            style={styles.brandUserLogo}
+            resizeMode="cover"
+          />
+          <Text style={styles.brandUserHandle} numberOfLines={1}>
+            {creatorHandle}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={styles.reactionsTriggerBtn}
           onPress={() => setReactionsOpen(true)}
           activeOpacity={0.88}
@@ -805,22 +895,19 @@ const VideoItem: React.FC<VideoItemProps> = ({
           {video.myReaction && video.myReaction !== 'like' ? <View style={styles.reactionsTriggerDot} /> : null}
         </TouchableOpacity>
         <View style={styles.userRow}>
-          <TouchableOpacity onPress={video.user.id ? onOpenProfile : undefined} activeOpacity={0.85} disabled={!video.user.id}>
-            <Text style={styles.username}>{creatorHandle}</Text>
-          </TouchableOpacity>
           {video.user.isFollowing ? (
             <TouchableOpacity
               style={styles.followingTag}
               onPress={onFollow}
               activeOpacity={0.75}
               accessibilityRole="button"
-              accessibilityLabel="Ne plus suivre"
+              accessibilityLabel="Ne plus être dans le Wonder de ce créateur"
             >
-              <Text style={styles.followingTagText}>Abonné</Text>
+              <Text style={styles.followingTagText}>Dans ton Wonder</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.followBtn} onPress={onFollow}>
-              <Text style={styles.followBtnText}>Suivre</Text>
+              <Text style={styles.followBtnText}>Wonder</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -1074,6 +1161,30 @@ const VideoItem: React.FC<VideoItemProps> = ({
   );
 };
 
+/**
+ * PERF : `VideoItem` est mémorisé. Avec un FlashList qui recycle, ça évite
+ * les re-renders inutiles quand le parent (`HomeScreen`) re-render à cause
+ * d'un autre état (réseau, polling, etc.). Le comparateur ne re-render que
+ * sur les props qui modifient réellement le visuel.
+ */
+const VideoItem = React.memo(VideoItemImpl, (prev, next) => {
+  if (prev.video.id !== next.video.id) return false;
+  if (prev.isActive !== next.isActive) return false;
+  if (prev.slideHeight !== next.slideHeight) return false;
+  if (prev.tapToPlayOnly !== next.tapToPlayOnly) return false;
+  if (prev.reduceAnimations !== next.reduceAnimations) return false;
+  if (prev.pollVoting !== next.pollVoting) return false;
+  // Compteurs / état d'engagement de la vidéo (objet entier comparé par ref).
+  if (prev.video.likes !== next.video.likes) return false;
+  if (prev.video.comments !== next.video.comments) return false;
+  if (prev.video.shares !== next.video.shares) return false;
+  if (prev.video.isLiked !== next.video.isLiked) return false;
+  if (prev.video.isSaved !== next.video.isSaved) return false;
+  if (prev.video.user?.isFollowing !== next.video.user?.isFollowing) return false;
+  if (prev.pollState !== next.pollState) return false;
+  return true;
+});
+
 // Comments Modal
 const CommentsModal: React.FC<{
   visible: boolean;
@@ -1191,7 +1302,10 @@ const CommentsModal: React.FC<{
               id: c.user_id || c.user?.id || '',
               firstName: nameParts[0] || '',
               lastName: nameParts.slice(1).join(' ') || '',
-              avatar: c.user_avatar || c.user?.profile_image || 'https://i.pravatar.cc/150?img=50',
+              avatar: profileAvatarUri(
+                c.user_avatar || c.user?.profile_image,
+                c.user_id || c.user?.id || nameParts.join(' ') || 'U',
+              ),
             },
             createdAt: formatCommentTimeAgo(c.created_at),
             audioUrl: c.audio_url || null,
@@ -1217,9 +1331,7 @@ const CommentsModal: React.FC<{
         setTotalComments(0);
       }
     } catch {
-      setComments([
-        { id: '1', text: 'Super video!', likes: 24, isLiked: false, user: { id: 'u1', firstName: 'Aminata', lastName: 'D', avatar: 'https://i.pravatar.cc/150?img=1' }, createdAt: '2h' },
-      ]);
+      setComments([]);
     } finally { setLoading(false); }
   }, [videoId]);
 
@@ -1551,7 +1663,7 @@ const CommentsModal: React.FC<{
           id: user?.id || 'me',
           firstName: user?.firstName || user?.full_name?.split(' ')[0] || 'Moi',
           lastName: user?.lastName || '',
-          avatar: user?.avatar || user?.profile_image || 'https://i.pravatar.cc/150?img=10',
+          avatar: profileAvatarUri(user?.avatar || user?.profile_image, user?.id || 'me'),
         },
         createdAt: 'A l\'instant',
         audioUrl,
@@ -1827,7 +1939,7 @@ const CommentsModal: React.FC<{
         id: user?.id || 'me',
         firstName: user?.firstName || user?.full_name?.split(' ')[0] || 'Moi',
         lastName: user?.lastName || '',
-        avatar: user?.avatar || user?.profile_image || 'https://i.pravatar.cc/150?img=10',
+        avatar: profileAvatarUri(user?.avatar || user?.profile_image, user?.id || 'me'),
       },
       createdAt: 'A l\'instant',
       reactionTotal: 0,
@@ -1869,7 +1981,7 @@ const CommentsModal: React.FC<{
     }
   };
 
-  const userAvatar = user?.avatar || user?.profile_image || 'https://i.pravatar.cc/150?img=10';
+  const userAvatar = profileAvatarUri(user?.avatar || user?.profile_image, user?.id || 'me');
 
   return (
     <>
@@ -2213,6 +2325,7 @@ export default function FeedScreen(props?: {
   amisStandalone?: boolean;
   diversifiedStandalone?: boolean;
 }) {
+  const navigation = useNavigation();
   const amisStandalone = Boolean(props?.amisStandalone);
   const diversifiedStandalone = Boolean(props?.diversifiedStandalone);
   const isScreenFocused = useIsFocused();
@@ -2245,7 +2358,10 @@ export default function FeedScreen(props?: {
   /** Android edge-to-edge : `insets.top` peut rester à 0 alors que la barre d’état recouvre le header ; les `position:absolute` avec `top:0` montent sous l’heure. */
   const feedHeaderTopPad = useMemo(() => {
     const statusH = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0;
-    const inset = Math.max(insets.top, statusH);
+    // Plancher de sécurité : certains Android edge-to-edge (Xiaomi/MIUI, etc.) peuvent
+    // rapporter 0/trop petit. 28 px garantit que les onglets ne chevauchent jamais l'heure.
+    const minPlatformInset = Platform.OS === 'android' ? 28 : Platform.OS === 'ios' ? 20 : 0;
+    const inset = Math.max(insets.top, statusH, minPlatformInset);
     return inset + (Platform.OS === 'android' ? 10 : 8);
   }, [insets.top]);
   const { t } = useLanguage();
@@ -2282,6 +2398,11 @@ export default function FeedScreen(props?: {
     }
   }, [amisStandalone, diversifiedStandalone, feedParams.feed, feedParams.topic]);
   const { effectiveDataSaver, tapToPlayOnly, reduceAnimations } = useDataSaver();
+  const feedAutoplayFromSettings = useFeedAutoplayFromSettings();
+  const tapToPlayOnlyEffective = useMemo(
+    () => tapToPlayOnly || !feedAutoplayFromSettings,
+    [tapToPlayOnly, feedAutoplayFromSettings]
+  );
 
   /** Pastille sur l’entrée Live si des directs sont disponibles. */
   const [liveHubHasStreams, setLiveHubHasStreams] = useState(false);
@@ -2528,9 +2649,14 @@ export default function FeedScreen(props?: {
   const transformVideo = useCallback((v: any): Video => {
     const nameParts = (v.creator_name || v.creator?.full_name || '').split(' ');
     const preferLow = effectiveDataSaver;
+    const adaptiveFirstMobile = Platform.OS !== 'web';
     const playUrl = preferLow
       ? (v.low_quality_playback_url || v.low_quality_url || v.video_url || v.hls_url || '')
-      : (v.video_url || v.hls_url || v.low_quality_playback_url || v.low_quality_url || '');
+      : (
+        adaptiveFirstMobile
+          ? (v.hls_url || v.video_url || v.low_quality_playback_url || v.low_quality_url || '')
+          : (v.video_url || v.hls_url || v.low_quality_playback_url || v.low_quality_url || '')
+      );
     const rawThumb =
       [v.thumbnail_url, v.poster_url, v.cover_url, v.preview_image_url]
         .map((x: unknown) => (typeof x === 'string' ? x.trim() : ''))
@@ -2596,7 +2722,7 @@ export default function FeedScreen(props?: {
 
       if (activeTab === 'foryou') {
         const params: Record<string, string | number> = { page: pageNum, limit: FEED_PAGE_LIMIT };
-        if (reset && pageNum === 1) {
+        if (pageNum === 1) {
           params._ = Date.now();
         }
         const response = await apiClient.get('/feed', { params });
@@ -2671,7 +2797,7 @@ export default function FeedScreen(props?: {
         setHasMore(false);
       }
     } catch (err) {
-      console.log('Feed vidéo indisponible', err);
+      if (__DEV__) console.log('Feed vidéo indisponible', err);
       if (reset) {
         setVideos(FALLBACK_VIDEOS);
         const msg = (err as any)?.response?.data?.error?.message || (err as any)?.message;
@@ -2711,6 +2837,23 @@ export default function FeedScreen(props?: {
     loadFeedRef.current(1, true).finally(() => setRefreshing(false));
   }, [refreshLiveHubHint]);
 
+  useEffect(() => {
+    const nav = navigation as { addListener: (ev: string, cb: () => void) => () => void };
+    const unsub = nav.addListener('tabPress', () => {
+      if (!isScreenFocused) return;
+      try {
+        listRef.current?.scrollToOffset({ offset: 0, animated: true });
+      } catch {
+        /* no-op */
+      }
+      setPlaybackIndex(0);
+      lastSettledPlaybackIndexRef.current = 0;
+      feedGestureStartIndexRef.current = 0;
+      if (!refreshing) onRefresh();
+    });
+    return unsub;
+  }, [navigation, isScreenFocused, refreshing, onRefresh]);
+
   const handleLike = (videoId: string) => {
     void handleVideoReaction(videoId, 'like');
   };
@@ -2741,10 +2884,14 @@ export default function FeedScreen(props?: {
     const nextFollowing = !(target?.user.isFollowing ?? false);
     setVideos(prev => prev.map(v => v.user.id === userId ? { ...v, user: { ...v.user, isFollowing: !v.user.isFollowing } } : v));
     try {
-      const response = await apiClient.post(`/users/${userId}/follow`);
+      const response = await apiClient.post(`/users/${userId}/wonder`);
       const data = response.data?.data || response.data;
-      const following = Boolean(data?.following);
-      setVideos(prev => prev.map(v => v.user.id === userId ? { ...v, user: { ...v.user, isFollowing: following } } : v));
+      const inWonder = Boolean(data?.inWonder ?? data?.following);
+      setVideos(prev =>
+        prev.map((v) =>
+          v.user.id === userId ? { ...v, user: { ...v.user, isFollowing: inWonder } } : v
+        )
+      );
     } catch {
       await offlineActionSyncService.enqueue('follow_user', userId, { following: nextFollowing });
     }
@@ -2901,7 +3048,7 @@ export default function FeedScreen(props?: {
                 onPress={() => setActiveTab('following')}
               >
                 <Text style={[styles.headerTabTextTiktok, activeTab === 'following' && styles.headerTabTextTiktokActive]}>
-                  Following
+                  Wonder
                 </Text>
                 {activeTab === 'following' ? <View style={styles.headerTabUnderline} /> : null}
               </TouchableOpacity>
@@ -2916,14 +3063,6 @@ export default function FeedScreen(props?: {
               </TouchableOpacity>
             </View>
             <View style={styles.headerRight}>
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel="Découvrir — tendances"
-                style={styles.headerIconBtn}
-                onPress={() => router.push('/discover')}
-              >
-                <Ionicons name="compass-outline" size={25} color="#FFF" />
-              </TouchableOpacity>
               <TouchableOpacity testID="search-button" style={styles.headerIconBtn} onPress={() => router.push('/search')}>
                 <Ionicons name="search-outline" size={26} color="#FFF" />
               </TouchableOpacity>
@@ -2962,7 +3101,7 @@ export default function FeedScreen(props?: {
                 }}
                 onOpenSound={() => openSoundPage(item)}
                 onOpenHashtag={openHashtagSearch}
-                tapToPlayOnly={tapToPlayOnly}
+                tapToPlayOnly={tapToPlayOnlyEffective}
                 reduceAnimations={reduceAnimations}
                 pollState={pollByVideoId[item.id]}
                 pollVoting={pollVoteVideoId === item.id}
@@ -3090,7 +3229,7 @@ export default function FeedScreen(props?: {
                 }}
                 onOpenSound={() => openSoundPage(item)}
                 onOpenHashtag={openHashtagSearch}
-                tapToPlayOnly={tapToPlayOnly}
+                tapToPlayOnly={tapToPlayOnlyEffective}
                 reduceAnimations={reduceAnimations}
                 pollState={pollByVideoId[item.id]}
                 pollVoting={pollVoteVideoId === item.id}
@@ -3244,8 +3383,8 @@ const styles = StyleSheet.create({
   /** Entrée Live type TikTok : cadre « écran » avec LIVE dedans. */
   headerLiveTiktokWrap: {
     position: 'relative',
-    width: 48,
-    height: 36,
+    width: Platform.OS === 'web' ? 48 : 40,
+    height: Platform.OS === 'web' ? 36 : 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3283,13 +3422,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 0,
-    paddingHorizontal: 2,
+    paddingHorizontal: Platform.OS === 'web' ? 2 : 0,
     gap: 2,
   },
-  headerTabTight: { paddingHorizontal: 6, paddingVertical: Spacing.sm, alignItems: 'center' },
+  headerTabTight: {
+    paddingHorizontal: Platform.OS === 'web' ? 6 : 3,
+    paddingVertical: Platform.OS === 'web' ? Spacing.sm : 6,
+    alignItems: 'center',
+  },
   headerTabTextTiktok: {
     color: 'rgba(255,255,255,0.60)',
-    fontSize: 16,
+    fontSize: Platform.OS === 'web' ? 16 : 13,
     fontWeight: '500',
   },
   headerTabTextTiktokActive: { color: '#FFFFFF', fontWeight: '700' },
@@ -3301,14 +3444,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 0, flexShrink: 0 },
-  headerIconBtn: { flexDirection: 'row', alignItems: 'center', minWidth: 44, minHeight: 44, paddingHorizontal: 4, justifyContent: 'center' },
+  headerIconBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: Platform.OS === 'web' ? 44 : 36,
+    minHeight: Platform.OS === 'web' ? 44 : 36,
+    paddingHorizontal: Platform.OS === 'web' ? 4 : 2,
+    justifyContent: 'center',
+  },
   headerNotifDot: { position: 'absolute', top: 2, right: 2, width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#FF3D00', borderWidth: 1, borderColor: '#000' },
   feedListClip: { flex: 1, overflow: 'hidden', backgroundColor: '#000' },
   feedListInner: { flex: 1, minHeight: 0 },
   feedList: { flex: 1, overflow: 'hidden', backgroundColor: '#000' },
   /** `width: 100 %` évite un écart vs la cellule FlashList (sous-pixels) qui montrait les bords des slides voisines. */
   videoContainer: { width: '100%', alignSelf: 'stretch', position: 'relative', backgroundColor: '#000', overflow: 'hidden' },
-  videoWrapper: { flex: 1, overflow: 'hidden' },
+  videoWrapper: { flex: 1, overflow: 'hidden', position: 'relative' },
+  /** Couche tactile au-dessus du lecteur natif (Android/iOS ne remontent pas les taps depuis VideoView). */
+  videoTapTarget: { ...StyleSheet.absoluteFillObject, zIndex: 2 },
   video: { width: '100%', height: '100%' },
   pauseOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   pauseCircle: { width: 70, height: 70, borderRadius: 35, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
@@ -3491,12 +3643,36 @@ const styles = StyleSheet.create({
   musicDisc: { width: 40, height: 40, borderRadius: 20, borderWidth: 6, borderColor: '#333', marginTop: 8, overflow: 'hidden' },
   musicDiscImage: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 14, overflow: 'hidden' },
   bottomInfo: { position: 'absolute', left: Spacing.lg, right: 70, bottom: 24, zIndex: 20, elevation: 20 },
+  brandUserRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: -8,
+    marginBottom: 16,
+  },
+  brandUserLogo: {
+    width: 30,
+    height: 30,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+  },
+  brandUserHandle: {
+    color: '#FFF',
+    fontSize: FontSizes.lg,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+    maxWidth: '80%',
+  },
   userRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: Spacing.sm },
   username: { color: '#FFF', fontSize: FontSizes.md, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   followBtn: { backgroundColor: Colors.primary, paddingHorizontal: Spacing.md, paddingVertical: 3, borderRadius: BorderRadius.sm },
   followBtnText: { color: '#FFF', fontSize: FontSizes.xs, fontWeight: 'bold' },
   followingTag: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: Spacing.sm, paddingVertical: 2, borderRadius: BorderRadius.sm },
-  followingTagText: { color: '#FFF', fontSize: FontSizes.xs },
+  /** Libellé « Dans ton Wonder » : taille réduite pour tenir sur une ligne. */
+  followingTagText: { color: '#FFF', fontSize: 9, fontWeight: '700' as const },
   description: { color: '#FFF', fontSize: FontSizes.md, marginBottom: 6, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   hashtagsRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 6 },
   hashtag: { color: '#FFF', fontSize: FontSizes.sm, fontWeight: '600' },

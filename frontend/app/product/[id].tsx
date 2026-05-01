@@ -6,7 +6,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import apiClient from '../../src/api/client';
 import cartApi from '../../src/api/cartApi';
-import { featureFlags } from '../../src/config/featureFlags';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
 
@@ -42,13 +41,6 @@ export default function ProductDetailScreen() {
 
   const handleAddToCart = async (goToCart: boolean) => {
     if (!product?.id) return;
-    if (!featureFlags.marketplace) {
-      Alert.alert(
-        'Bientôt disponible',
-        "Le panier marketplace sera activé prochainement. Merci de votre patience !"
-      );
-      return;
-    }
     setAddingToCart(true);
     try {
       await cartApi.add(product.id, quantity);

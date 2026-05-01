@@ -91,8 +91,8 @@ router.post('/award', authenticate, validateBody(jsonObjectBodySchema), async (r
       });
       userPoints = created;
     } else {
-      let newTotal = existing.total_points + pointsToAward;
-      let newLifetime = existing.lifetime_points + pointsToAward;
+      const newTotal = existing.total_points + pointsToAward;
+      const newLifetime = existing.lifetime_points + pointsToAward;
       let newLevel = existing.level;
       let newCurrent = existing.current_level_points + pointsToAward;
       let nextLevel = existing.points_for_next_level;

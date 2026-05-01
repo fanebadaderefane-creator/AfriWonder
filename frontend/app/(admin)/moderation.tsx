@@ -29,6 +29,7 @@ export default function AdminModerationScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [reports, setReports] = useState<ReportRow[]>([]);
+  const [processingId, setProcessingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -54,21 +55,71 @@ export default function AdminModerationScreen() {
     void load().finally(() => setRefreshing(false));
   }, [load]);
 
-  const review = (id: string, status: string) => {
+  const moderationApiMessage = (e: unknown) => {
+    const err = (e as { response?: { data?: { error?: unknown; message?: string } } })?.response?.data?.error;
+    if (typeof err === 'string') return err;
+    if (err && typeof err === 'object' && 'message' in err && typeof (err as { message?: string }).message === 'string') {
+      return (err as { message: string }).message;
+    }
+    const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+    return msg || 'Action refusée (droits modération requis).';
+  };
+
+  const submitReview = async (id: string, status: 'resolved' | 'dismissed') => {
+    const notesByStatus: Record<'resolved' | 'dismissed', string> = {
+      resolved: 'admin_action:resolve_report',
+      dismissed: 'admin_action:dismiss_report',
+    };
+
+    const tryPut = (nextStatus: string) =>
+      apiClient.put(API_ROUTES.MODERATION_REPORT_REVIEW(id), {
+        status: nextStatus,
+        notes: notesByStatus[status],
+      });
+    const tryPatch = (nextStatus: string) =>
+      apiClient.patch(API_ROUTES.MODERATION_REPORT_REVIEW(id), {
+        status: nextStatus,
+        notes: notesByStatus[status],
+      });
+
+    try {
+      await tryPut(status);
+      return;
+    } catch (firstError: unknown) {
+      const code = (firstError as { response?: { status?: number } })?.response?.status;
+      if (status === 'dismissed') {
+        try {
+          await tryPut('ignored');
+          return;
+        } catch {
+          // continue fallback
+        }
+      }
+      if (code !== 404 && code !== 405) throw firstError;
+      try {
+        await tryPatch(status);
+      } catch (secondError: unknown) {
+        if (status !== 'dismissed') throw secondError;
+        await tryPatch('ignored');
+      }
+    }
+  };
+
+  const review = (id: string, status: 'resolved' | 'dismissed') => {
     Alert.alert('Confirmer', `Statut : ${status}`, [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'OK',
         onPress: async () => {
           try {
-            await apiClient.put(`/moderation/reports/${id}/review`, {
-              status,
-              notes: 'mobile_admin',
-            });
-            void load();
-          } catch (e: any) {
-            const msg = e?.response?.data?.error || 'Action refusée (rôle modérateur requis côté API).';
-            Alert.alert('Erreur', String(msg));
+            setProcessingId(id);
+            await submitReview(id, status);
+            setReports((prev) => prev.filter((r) => r.id !== id));
+            Alert.alert('OK', status === 'dismissed' ? 'Signalement ignoré.' : 'Signalement résolu.');
+          } catch (e: unknown) {
+            Alert.alert('Erreur', moderationApiMessage(e));
+          } finally {
+            setProcessingId(null);
           }
         },
       },
@@ -106,10 +157,18 @@ export default function AdminModerationScreen() {
                 Par @{r.reporter?.username || '?'} · {r.status}
               </Text>
               <View style={styles.row}>
-                <Pressable style={styles.btnOk} onPress={() => review(r.id, 'resolved')}>
+                <Pressable
+                  style={[styles.btnOk, processingId === r.id ? styles.btnDisabled : null]}
+                  onPress={() => review(r.id, 'resolved')}
+                  disabled={processingId === r.id}
+                >
                   <Text style={styles.btnOkText}>Résolu</Text>
                 </Pressable>
-                <Pressable style={styles.btnDismiss} onPress={() => review(r.id, 'dismissed')}>
+                <Pressable
+                  style={[styles.btnDismiss, processingId === r.id ? styles.btnDisabled : null]}
+                  onPress={() => review(r.id, 'dismissed')}
+                  disabled={processingId === r.id}
+                >
                   <Text style={styles.btnDismissText}>Ignorer</Text>
                 </Pressable>
               </View>
@@ -153,4 +212,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   btnDismissText: { color: Colors.textSecondary, fontWeight: '600' },
+  btnDisabled: { opacity: 0.6 },
 });

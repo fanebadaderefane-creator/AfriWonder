@@ -1,7 +1,21 @@
 import { Platform } from 'react-native';
-import * as IAP from 'react-native-iap';
 import type { Purchase, PurchaseError } from 'react-native-iap';
 import apiClient from '../api/client';
+
+/**
+ * IMPORTANT:
+ * - `react-native-iap` n'existe pas dans Expo Go (native module absent) → import statique = crash au boot.
+ * - On le charge dynamiquement uniquement au moment d'un achat, et on renvoie une erreur claire sinon.
+ */
+async function loadIapModule(): Promise<any> {
+  try {
+    return await import('react-native-iap');
+  } catch {
+    throw new Error(
+      "Achat in-app indisponible sur Expo Go. Utilisez un development build (EAS) / APK rebuildée pour activer l'IAP."
+    );
+  }
+}
 
 /** JSON : { "sku_store": "uuid_du_CoinPackage" } — même clés iOS/Android si SKU alignés. */
 export function parseCoinIapSkuToPackageIdMap(): Record<string, string> {
@@ -45,6 +59,7 @@ export async function purchaseCoinPackageViaIap(packageId: string): Promise<{ co
     );
   }
 
+  const IAP = await loadIapModule();
   await IAP.initConnection();
 
   const products = await IAP.fetchProducts({ skus: [sku], type: 'in-app' });
@@ -120,6 +135,6 @@ export async function purchaseCoinPackageViaIap(packageId: string): Promise<{ co
         Platform.OS === 'ios'
           ? { apple: { sku, andDangerouslyFinishTransactionAutomatically: false } }
           : { google: { skus: [sku] } },
-    }).catch((e) => finishErr(e));
+    }).catch((e: unknown) => finishErr(e instanceof Error ? e : new Error(String(e))));
   });
 }

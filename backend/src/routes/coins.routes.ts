@@ -59,7 +59,8 @@ router.post('/purchase', authenticate, validateBody(jsonObjectBodySchema), async
 
 router.get('/purchase/status/:referenceId', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const data = await coinsService.getPurchaseStatus(req.params.referenceId, req.user!.id);
+    const referenceId = typeof req.params.referenceId === 'string' ? req.params.referenceId : '';
+    const data = await coinsService.getPurchaseStatus(referenceId, req.user!.id);
     if (!data) return res.status(404).json({ success: false, error: 'Transaction coins introuvable' });
     res.json({ success: true, data });
   } catch (error) {

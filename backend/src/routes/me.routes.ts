@@ -17,8 +17,13 @@ import { getRecentContactMatchIds } from './friends.routes.js';
 
 import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+import { z } from 'zod';
 
 const router = Router();
+
+const meSecuritySettingsPatchSchema = z.object({
+  login_alerts_enabled: z.boolean(),
+});
 const PRIVACY_SETTINGS_KEY = (userId: string) => `privacy_settings:${userId}`;
 const PRIVACY_DEFAULTS = {
   private_account: false,
@@ -375,7 +380,7 @@ const DISMISS_TTL_MS = 24 * 3600 * 1000;
 router.post('/friends-suggestions/:id/dismiss', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
-    const targetId = (req.params.id || '').trim();
+    const targetId = (typeof req.params.id === 'string' ? req.params.id : '').trim();
     if (!targetId) return res.status(400).json({ success: false, error: 'id requis' });
     let userCache = DISMISSED_CACHE.get(userId);
     if (!userCache) {
@@ -439,6 +444,38 @@ router.get('/feed-video-states', authenticate, async (req: AuthRequest, res, nex
         reactionsByVideoId,
       },
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** FYP 4.2 — « Pas intéressé » : pénalise la vidéo dans l’algo (Analytics + invalidation cache prefs feed). */
+router.post('/feed/not-interested', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+  try {
+    const videoId = String(req.body?.video_id || req.body?.videoId || '').trim();
+    if (!videoId) {
+      return res.status(400).json({ success: false, error: { message: 'video_id requis' } });
+    }
+    const exists = await prisma.video.findFirst({
+      where: { id: videoId },
+      select: { id: true },
+    });
+    if (!exists) {
+      return res.status(404).json({ success: false, error: { message: 'Vidéo introuvable' } });
+    }
+    await prisma.analytics.create({
+      data: {
+        user_id: req.user!.id,
+        entity_type: 'video',
+        entity_id: videoId,
+        metric_type: 'feed_not_interested',
+        metric_value: 1,
+        metadata: { source: 'fyp' },
+      },
+    });
+    const { invalidateUserFeedCaches } = await import('../services/feedCache.service.js');
+    invalidateUserFeedCaches(req.user!.id).catch(() => {});
+    res.status(201).json({ success: true, data: { video_id: videoId } });
   } catch (e) {
     next(e);
   }
@@ -555,6 +592,26 @@ router.delete('/sessions/:id', authenticate, async (req: AuthRequest, res, next)
     next(e);
   }
 });
+
+// PATCH /api/me/settings/security — alertes de connexion (e-mail si nouvelle empreinte)
+router.patch(
+  '/settings/security',
+  authenticate,
+  validateBody(meSecuritySettingsPatchSchema),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const { login_alerts_enabled } = req.body as z.infer<typeof meSecuritySettingsPatchSchema>;
+      await prisma.user.update({
+        where: { id: userId },
+        data: { login_alerts_enabled },
+      });
+      res.json({ success: true, data: { login_alerts_enabled } });
+    } catch (e) {
+      next(e);
+    }
+  }
+);
 
 // GET /api/me/call-history — journal 1-1 + appels groupe (CDC Appels)
 router.get('/call-history', authenticate, async (req: AuthRequest, res, next) => {

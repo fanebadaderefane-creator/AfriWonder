@@ -12,6 +12,21 @@ import escrowService from '../services/escrow.service.js';
 
 const PLATFORM_USER_ID = process.env.PLATFORM_USER_ID || '00000000-0000-0000-0000-000000000000';
 
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 120): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts - 1) {
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 async function ensurePlatformUser() {
   // Certains tests (et/ou suites) peuvent supprimer des users: on re-garantit la fixture.
   const existing = await prisma.user.findUnique({ where: { id: PLATFORM_USER_ID } });
@@ -50,25 +65,25 @@ describe('OrderService', () => {
     await ensurePlatformUser();
 
     // Créer un utilisateur de test
-    const testUser = await prisma.user.create({
+    const testUser = await withRetry(() => prisma.user.create({
       data: {
         username: `testuser-${unique}`,
         email: `test-${unique}@example.com`,
         password_hash: 'hashed_password',
         full_name: 'Test User',
       },
-    });
+    }));
     testUserId = testUser.id;
 
     // Créer un vendeur de test
-    const sellerUser = await prisma.user.create({
+    const sellerUser = await withRetry(() => prisma.user.create({
       data: {
         username: `testseller-${unique}`,
         email: `seller-${unique}@example.com`,
         password_hash: 'hashed_password',
         full_name: 'Test Seller',
       },
-    });
+    }));
     testSellerId = sellerUser.id;
 
     await prisma.sellerProfile.create({
@@ -86,7 +101,7 @@ describe('OrderService', () => {
     });
 
     // Créer un produit de test
-    const testProduct = await prisma.product.create({
+    const testProduct = await withRetry(() => prisma.product.create({
       data: {
         seller_id: testSellerId,
         name: 'Produit Test',
@@ -96,11 +111,11 @@ describe('OrderService', () => {
         status: 'active',
         category: 'test',
       },
-    });
+    }));
     testProductId = testProduct.id;
 
     // Créer un panier de test
-    const testCart = await prisma.cart.create({
+    const testCart = await withRetry(() => prisma.cart.create({
       data: {
         user_id: testUserId,
         items: [
@@ -109,7 +124,7 @@ describe('OrderService', () => {
         subtotal: 20000,
         coupon_discount: 0,
       },
-    });
+    }));
     testCartId = testCart.id;
 
     // Créer un wallet pour la plateforme

@@ -280,7 +280,7 @@ export default function AfricoinCoinsScreen() {
         <Pressable style={styles.fabMini} onPress={() => setSecureModal(true)}>
           <Ionicons name="lock-closed-outline" size={20} color="#111" />
         </Pressable>
-        <Pressable style={styles.fabMini} onPress={() => Alert.alert('Notifications', 'Bientôt synchronisé avec ton compte.')}>
+        <Pressable style={styles.fabMini} onPress={() => router.push('/notifications' as never)}>
           <Ionicons name="notifications-outline" size={20} color="#111" />
         </Pressable>
         <Pressable style={styles.fabMini} onPress={() => router.push('/saved-collections' as never)}>

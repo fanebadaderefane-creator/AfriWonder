@@ -6,9 +6,9 @@ import dotenv from 'dotenv';
 import path from 'path';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.test'), override: false });
-// Forcer les secrets JWT pour cohérence login ↔ authenticate (aligné script test:ads)
-process.env.JWT_SECRET = 'test_secret_key_for_jest_tests_only';
-process.env.JWT_REFRESH_SECRET = 'test_refresh_secret_key_for_jest_tests';
+// Auth côté serveur exige ≥ 64 caractères (auth.service) — mêmes longueurs qu’en CI
+process.env.JWT_SECRET = 't'.repeat(64);
+process.env.JWT_REFRESH_SECRET = 'r'.repeat(64);
 
 import request from 'supertest';
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';

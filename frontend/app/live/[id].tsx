@@ -33,6 +33,10 @@ import socketService from '../../src/services/socketService';
 import { LiveGiftsPanel, useGiftAnimations } from './gifts';
 import { tryEnterPictureInPicture } from '../../src/live/liveNativeExtras';
 import { resolveLiveJoinGeo } from '../../src/live/liveViewerGeo';
+import { profileAvatarUri } from '../../src/utils/avatarFallback';
+import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { useVideoPlayer, VideoView } from 'expo-video';
 
 const { width, height } = Dimensions.get('window');
 const LIVE_REMINDER_KEY = (creatorId: string) => `afw_live_reminder_${creatorId}`;
@@ -73,7 +77,7 @@ function mapChatRow(m: Record<string, unknown>): LiveMessage {
     is_top_supporter: Boolean(badges?.is_top_supporter),
     user: {
       name: String(m.sender_name ?? m.userName ?? 'Anonyme'),
-      avatar: String(m.sender_avatar ?? m.avatar ?? 'https://i.pravatar.cc/150?img=12'),
+      avatar: String(m.sender_avatar ?? m.avatar ?? '').trim(),
     },
   };
 }
@@ -97,6 +101,26 @@ function formatScheduledFr(ms: number): string {
   return new Date(ms).toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short' });
 }
 
+function pickLivePlaybackUrl(live: Record<string, unknown>): string {
+  const candidates = [live.playback_url, live.stream_url, live.replay_url]
+    .map((s) => String(s || '').trim())
+    .filter(Boolean);
+  for (const c of candidates) {
+    if (c.startsWith('rtmp://') || c.startsWith('rtmps://')) continue;
+    const abs = toAbsoluteMediaUrl(c);
+    if (abs) return abs;
+  }
+  return '';
+}
+
+function LivePlaybackSurface({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = true;
+    p.muted = false;
+  });
+  return <VideoView style={StyleSheet.absoluteFillObject} player={player} contentFit="cover" nativeControls={false} />;
+}
+
 export default function LiveStreamViewerScreen() {
   const insets = useSafeAreaInsets();
   const { colors, mode } = useAppTheme();
@@ -118,8 +142,9 @@ export default function LiveStreamViewerScreen() {
   const [loading, setLoading] = useState(true);
   const [streamTitle, setStreamTitle] = useState('Live');
   const [streamerName, setStreamerName] = useState('Créateur');
-  const [streamerAvatar, setStreamerAvatar] = useState('https://i.pravatar.cc/150?img=1');
+  const [streamerAvatar, setStreamerAvatar] = useState('');
   const [posterUrl, setPosterUrl] = useState<string | null>(null);
+  const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
   const [sessionId] = useState(() => `${Date.now()}`);
   const [creatorId, setCreatorId] = useState<string | null>(null);
   const [ageRestriction, setAgeRestriction] = useState<string>('all');
@@ -207,6 +232,8 @@ export default function LiveStreamViewerScreen() {
         if (typeof s.viewers_count === 'number') setViewers(s.viewers_count);
         const thumb = String(s.thumbnail_url ?? '').trim();
         if (thumb) setPosterUrl(thumb);
+        const playback = pickLivePlaybackUrl(s);
+        setPlaybackUrl(playback || null);
         const ar = String(s.age_restriction ?? 'all');
         setAgeRestriction(ar);
         const needsAck = Boolean(s.needs_age_ack_for_viewer);
@@ -276,11 +303,13 @@ export default function LiveStreamViewerScreen() {
         setStreamStatus('ended');
         setStreamTitle('Live introuvable');
         setIsFollowing(false);
+        setPlaybackUrl(null);
       }
     } catch (e: unknown) {
       const st = (e as { response?: { status?: number } }).response?.status;
       setStreamStatus('ended');
       setStreamTitle(st === 404 ? 'Live introuvable' : 'Impossible de charger le live');
+      setPlaybackUrl(null);
     } finally {
       setLoading(false);
     }
@@ -289,6 +318,14 @@ export default function LiveStreamViewerScreen() {
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  useEffect(() => {
+    if (!liveId || streamStatus !== 'live') return;
+    const t = setInterval(() => {
+      void hydrate();
+    }, 10000);
+    return () => clearInterval(t);
+  }, [liveId, streamStatus, hydrate]);
 
   useEffect(() => {
     if (!liveId || streamStatus !== 'live') return;
@@ -644,10 +681,15 @@ export default function LiveStreamViewerScreen() {
       <Modal visible={showProfile} transparent animationType="slide">
         <Pressable style={styles.modalBackdrop} onPress={() => setShowProfile(false)}>
           <Pressable style={styles.profileCard} onPress={(e) => e.stopPropagation()}>
-            <Image source={{ uri: streamerAvatar }} style={styles.profileAvatar} />
+            <ImageOrPlaceholder
+              uri={profileAvatarUri(streamerAvatar, streamerName)}
+              style={styles.profileAvatar}
+              icon="person"
+              iconSize={36}
+            />
             <Text style={styles.profileName}>{streamerName}</Text>
             <TouchableOpacity style={styles.profileFollow} onPress={() => void toggleFollow()}>
-              <Text style={styles.profileFollowText}>{isFollowing ? 'Abonné' : 'Suivre'}</Text>
+              <Text style={styles.profileFollowText}>{isFollowing ? 'Dans son Wonder' : 'Wonder'}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.modalClose} onPress={() => setShowProfile(false)}>
               <Text style={styles.modalCloseText}>Fermer</Text>
@@ -671,6 +713,8 @@ export default function LiveStreamViewerScreen() {
               </View>
             ) : null}
           </>
+        ) : playbackUrl ? (
+          <LivePlaybackSurface uri={playbackUrl} />
         ) : posterUrl ? (
           <Image source={{ uri: posterUrl }} style={styles.backgroundImage} />
         ) : (
@@ -717,7 +761,12 @@ export default function LiveStreamViewerScreen() {
 
         <View style={styles.streamerInfo}>
           <TouchableOpacity onPress={() => setShowProfile(true)} accessibilityLabel="Profil du créateur">
-            <Image source={{ uri: streamerAvatar }} style={styles.streamerAvatar} />
+            <ImageOrPlaceholder
+              uri={profileAvatarUri(streamerAvatar, streamerName)}
+              style={styles.streamerAvatar}
+              icon="person"
+              iconSize={22}
+            />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.streamerName} numberOfLines={1}>
@@ -731,7 +780,7 @@ export default function LiveStreamViewerScreen() {
             style={[styles.followBtn, isFollowing && styles.followBtnActive]}
             onPress={() => void toggleFollow()}
           >
-            <Text style={styles.followBtnText}>{isFollowing ? 'Abonné' : 'Suivre'}</Text>
+          <Text style={styles.followBtnText}>{isFollowing ? 'Dans son Wonder' : 'Wonder'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -851,7 +900,12 @@ export default function LiveStreamViewerScreen() {
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <View style={styles.messageItem}>
-              <Image source={{ uri: item.user.avatar }} style={styles.msgAvatar} />
+              <ImageOrPlaceholder
+                uri={profileAvatarUri(item.user.avatar, item.user.name)}
+                style={styles.msgAvatar}
+                icon="person"
+                iconSize={16}
+              />
               <View style={styles.messageBubble}>
                 <Text style={[styles.msgUser, { color: liveChatViewerColor(item, creatorId) }]}>
                   {item.sender_role === 'moderator' ? '🛡️ ' : ''}

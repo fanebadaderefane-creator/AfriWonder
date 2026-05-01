@@ -21,6 +21,10 @@ export default function ChildcareScreen() {
   if (!featureFlags.servicesHub) {
     return <ComingSoonScreen title="Garde d'enfants" description="Les services de garde d'enfants seront bientôt disponibles." icon="happy-outline" />;
   }
+  return <ChildcareContent />;
+}
+
+function ChildcareContent() {
   const insets = useSafeAreaInsets();
   const [providers, setProviders] = useState<ServiceProvider[]>([]);
   const [loading, setLoading] = useState(true);

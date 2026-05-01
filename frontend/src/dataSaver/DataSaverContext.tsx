@@ -1,25 +1,13 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
+import { AppState } from 'react-native';
 import { useAuthStore } from '../store/authStore';
+import { dataUsage, formatDataEstimateBytes, useDataUsage } from './dataUsageStore';
 
 const STORAGE_REDUCE_ANIM = 'afw_reduce_animations_v1';
-const STORAGE_USAGE_PREFIX = 'afw_data_estimate_bytes_';
 
-function todayKey(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-/** Ordre de grandeur : flux ~240p vs ~720p (hors audio exact). */
-const BYTES_PER_SEC_LOW = 18_000;
-const BYTES_PER_SEC_HIGH = 220_000;
-
-export function formatDataEstimateBytes(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '0 Mo';
-  if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} Ko`;
-  return `${(n / (1024 * 1024)).toFixed(1)} Mo`;
-}
+export { formatDataEstimateBytes };
 
 interface DataSaverContextValue {
   /** Préférence utilisateur OU réseau 2G/3G détecté. */
@@ -29,17 +17,16 @@ interface DataSaverContextValue {
   /** Connexion cellulaire lente détectée (2G/3G). */
   autoSlowNetwork: boolean;
   /**
-   * Conservé pour l’API du contexte ; le fil vertical autoplay comme TikTok.
-   * L’économie de données (`effectiveDataSaver`) agit surtout sur la qualité et le préchargement.
+   * Conservé pour l'API du contexte ; le fil vertical autoplay comme TikTok.
+   * L'économie de données (`effectiveDataSaver`) agit surtout sur la qualité et le préchargement.
    */
   tapToPlayOnly: boolean;
   /** Réduire animations (disque, cœurs) — batterie + confort. */
   reduceAnimations: boolean;
   setReduceAnimations: (v: boolean) => Promise<void>;
-  /** Estimation octets consommés aujourd’hui (lecture vidéo feed). */
-  todayUsageBytes: number;
+  /** Force un refresh disque de la valeur du jour (rare). */
   refreshTodayUsage: () => Promise<void>;
-  /** À appeler pendant la lecture (secondes réelles, qualité). */
+  /** À appeler pendant la lecture (secondes réelles, qualité). Batché. */
   addPlaybackEstimate: (seconds: number, lowQuality: boolean) => void;
 }
 
@@ -50,29 +37,37 @@ export function DataSaverProvider({ children }: { children: React.ReactNode }) {
   const manualDataSaver = Boolean(user?.data_saver_mode);
   const [autoSlowNetwork, setAutoSlowNetwork] = useState(false);
   const [reduceAnimations, setReduceState] = useState(false);
-  const [todayUsageBytes, setTodayUsageBytes] = useState(0);
 
   const refreshTodayUsage = useCallback(async () => {
-    try {
-      const key = STORAGE_USAGE_PREFIX + todayKey();
-      const raw = await AsyncStorage.getItem(key);
-      const n = raw ? parseInt(raw, 10) : 0;
-      setTodayUsageBytes(Number.isFinite(n) && n > 0 ? n : 0);
-    } catch {
-      setTodayUsageBytes(0);
-    }
+    await dataUsage.refresh();
   }, []);
 
   useEffect(() => {
     void AsyncStorage.getItem(STORAGE_REDUCE_ANIM).then((v) => setReduceState(v === '1'));
-    void refreshTodayUsage();
-  }, [refreshTodayUsage]);
+    void dataUsage.refresh();
+  }, []);
+
+  // Flush l'estimateur disque quand l'app passe en background → rien n'est perdu.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'background' || next === 'inactive') {
+        void dataUsage.flush();
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     const apply = (state: import('@react-native-community/netinfo').NetInfoState) => {
-      const details = state.details as { cellularGeneration?: string } | null;
+      const details = state.details as { cellularGeneration?: string; isConnectionExpensive?: boolean } | null;
       const cg = details && typeof details.cellularGeneration === 'string' ? details.cellularGeneration : null;
-      const slow = state.type === 'cellular' && (cg === '2g' || cg === '3g');
+      const expensive = Boolean(details?.isConnectionExpensive);
+      /**
+       * Sur mobile réel, des réseaux "4g" peuvent rester très instables/contraints.
+       * On active aussi le mode économe quand la connexion cellulaire est marquée
+       * "expensive" pour favoriser les flux plus légers et un démarrage vidéo plus rapide.
+       */
+      const slow = state.type === 'cellular' && (cg === '2g' || cg === '3g' || expensive);
       setAutoSlowNetwork(slow);
     };
     void NetInfo.fetch().then(apply);
@@ -92,26 +87,14 @@ export function DataSaverProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const addPlaybackEstimate = useCallback(
-    (seconds: number, lowQuality: boolean) => {
-      if (!Number.isFinite(seconds) || seconds <= 0) return;
-      const rate = lowQuality ? BYTES_PER_SEC_LOW : BYTES_PER_SEC_HIGH;
-      const add = Math.round(seconds * rate);
-      const key = STORAGE_USAGE_PREFIX + todayKey();
-      void (async () => {
-        try {
-          const raw = await AsyncStorage.getItem(key);
-          const prev = raw ? parseInt(raw, 10) : 0;
-          const next = (Number.isFinite(prev) ? prev : 0) + add;
-          await AsyncStorage.setItem(key, String(next));
-          setTodayUsageBytes(next);
-        } catch {
-          /* ignore */
-        }
-      })();
-    },
-    []
-  );
+  /**
+   * Référence stable : ne fait QUE pousser dans le store Zustand séparé.
+   * Aucun `setState` dans ce contexte → le feed ne re-render plus à chaque
+   * seconde de lecture vidéo (gain majeur Android bas de gamme).
+   */
+  const addPlaybackEstimate = useCallback((seconds: number, lowQuality: boolean) => {
+    dataUsage.add(seconds, lowQuality);
+  }, []);
 
   const value = useMemo(
     (): DataSaverContextValue => ({
@@ -121,7 +104,6 @@ export function DataSaverProvider({ children }: { children: React.ReactNode }) {
       tapToPlayOnly,
       reduceAnimations,
       setReduceAnimations,
-      todayUsageBytes,
       refreshTodayUsage,
       addPlaybackEstimate,
     }),
@@ -132,7 +114,6 @@ export function DataSaverProvider({ children }: { children: React.ReactNode }) {
       tapToPlayOnly,
       reduceAnimations,
       setReduceAnimations,
-      todayUsageBytes,
       refreshTodayUsage,
       addPlaybackEstimate,
     ]
@@ -152,4 +133,12 @@ export function useDataSaver() {
 /** Pour écrans hors provider (tests) : valeurs sûres. */
 export function useDataSaverOptional(): DataSaverContextValue | null {
   return useContext(DataSaverContext);
+}
+
+/**
+ * Compteur d'octets du jour — extrait dans un store séparé : seuls les
+ * composants qui l'affichent (settings, badges) re-render quand il change.
+ */
+export function useTodayDataUsage(): number {
+  return useDataUsage();
 }

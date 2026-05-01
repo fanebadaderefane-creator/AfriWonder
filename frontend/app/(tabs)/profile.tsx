@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { Fragment, useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,17 +9,17 @@ import {
   Image,
   Alert,
   useWindowDimensions,
-  FlatList,
   Share,
   Linking,
   Platform,
   ActivityIndicator,
 } from 'react-native';
 import { Colors } from '../../src/theme/colors';
+import { useAppTheme } from '../../src/theme/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/store/authStore';
-import { router, Link } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ProfileSkeleton } from '../../src/components/SkeletonScreens';
@@ -31,14 +31,14 @@ import { orderRawVideosPinnedFirstForProfile } from '../../src/utils/profileVide
 
 /**
  * Écran Profil style TikTok.
- * - Fond blanc #FFFFFF, texte noir.
+ * - Fond marque (orange) connecté, texte clair ; carte raccourcis sous la grille, fond blanc.
  * - Header : Add friend / mini-avatar+badge / Share / Menu.
  * - Avatar centré 96 px avec badge + bleu, nom + bouton Edit, @handle, 3 stats
- *   (Following / Followers / Likes), bio + lien.
- * - 4 onglets : Grid | Lock (privé) | Repost | Bookmark, sticky au scroll.
+ *   (Wonder / Dans ton Wonder / Likes), bio + lien.
+ * - 4 onglets : Grid | Lock (privé) | Repost | Bookmark (tout le bloc défile ensemble, un seul ScrollView).
  * - Grille 3 colonnes ratio 9:16 avec compteur de vues en bas à gauche.
- * - Les fonctionnalités internes AfriWonder (wallet, badges, revenus…) sont
- *   accessibles via le bouton "menu" (hamburger) qui ouvre `/menu-plus`.
+ * - Raccourcis (Portefeuille, revenus, publicité…) : carte sous les onglets + menu « trois traits »
+ *   complet vers `/menu-plus` (comportement inchangé).
  */
 
 type ContentTab = 'posts' | 'private' | 'reposts' | 'saved';
@@ -49,7 +49,7 @@ type PostItem = ProfileGridPostItem;
 const PRIVATE_FILTER_TABS: { key: PrivateFilter; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
   { key: 'all', label: 'Tout', icon: 'apps-outline' },
   { key: 'private', label: 'Privé', icon: 'lock-closed-outline' },
-  { key: 'followers', label: 'Abonnés', icon: 'people-outline' },
+  { key: 'followers', label: 'Dans ton Wonder', icon: 'people-outline' },
   { key: 'scheduled', label: 'Programmées', icon: 'time-outline' },
 ];
 
@@ -67,18 +67,43 @@ const formatNumber = (num: number) => {
   return num.toLocaleString('en-US');
 };
 
+/** Mêmes cibles que le menu + / ancienne fiche profil (pas de logique conditionnelle : toujours visible si connecté). */
+const PROFILE_CREATOR_SHORTCUTS: {
+  label: string;
+  href: Href;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  iconColor: string;
+}[] = [
+  { label: 'Portefeuille', href: '/wallet', icon: 'wallet-outline', iconColor: '#FF6B00' },
+  { label: 'Mes revenus', href: '/creator/earnings', icon: 'cash-outline', iconColor: '#4ECDC4' },
+  { label: 'Publicité', href: '/creator/ads', icon: 'megaphone-outline', iconColor: '#5B9FED' },
+  { label: 'Live & Replays', href: '/live', icon: 'radio-outline', iconColor: '#FF4D4D' },
+  { label: 'Commandes', href: '/orders', icon: 'receipt-outline', iconColor: '#9B6BFF' },
+  { label: 'Ma boutique', href: '/seller', icon: 'storefront-outline', iconColor: '#E91E8C' },
+  { label: 'Parrainage', href: '/referrals', icon: 'gift-outline', iconColor: '#4A9EFF' },
+];
+
 const TEXT_MAIN = '#000000';
 const TEXT_MUTED = 'rgba(0,0,0,0.60)';
 const DIVIDER = 'rgba(0,0,0,0.10)';
-const CHIP_BG = '#F1F1F2';
-const LINK_BLUE = '#2B8CFF';
-const LIVE_PINK = '#FF2D55';
+const BRAND_ORANGE = Colors.primary;
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const gridSize = (width - 4) / 3;
   const gridItemHeight = gridSize * (16 / 9);
+  const { colors, mode } = useAppTheme();
+  /** Mode clair : identité orange AfriWonder ; mode sombre : palette globale (paramètres). */
+  const heroOrange = mode === 'light';
+  const screenBg = heroOrange ? BRAND_ORANGE : colors.background;
+  const tx = heroOrange ? '#FFFFFF' : colors.text;
+  const txMuted = heroOrange ? 'rgba(255,255,255,0.78)' : colors.textSecondary;
+  const txSoft = heroOrange ? 'rgba(255,255,255,0.7)' : colors.textMuted;
+  const tabIconActive = heroOrange ? '#FFFFFF' : colors.text;
+  const tabIconInactive = heroOrange ? 'rgba(255,255,255,0.42)' : colors.textMuted;
+  const tabUnderline = heroOrange ? '#FFFFFF' : colors.primary;
+  const topBarIcon = heroOrange ? '#FFFFFF' : colors.text;
 
   const { user, isAuthenticated, logout } = useAuthStore();
   const [activeTab, setActiveTab] = useState<ContentTab>('posts');
@@ -102,6 +127,7 @@ export default function ProfileScreen() {
   const [savedPosts, setSavedPosts] = useState<PostItem[]>([]);
   const [privatePosts, setPrivatePosts] = useState<PostItem[]>([]);
   const [repostPosts, setRepostPosts] = useState<PostItem[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadInboxBadge = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -230,6 +256,15 @@ export default function ProfileScreen() {
     }
   }, [activeTab, isAuthenticated, user?.id, tabPosts, filteredPrivatePosts, repostPosts, savedPosts]);
 
+  /** Une seule surface de scroll : pas de FlatList dans ScrollView (évite le décalage contenu/onglets). */
+  const gridRowsChunked = useMemo(() => {
+    const out: PostItem[][] = [];
+    for (let i = 0; i < gridItems.length; i += 3) {
+      out.push(gridItems.slice(i, i + 3));
+    }
+    return out;
+  }, [gridItems]);
+
   const emptyState = useMemo(() => {
     switch (activeTab) {
       case 'posts':
@@ -245,7 +280,7 @@ export default function ProfileScreen() {
           all: {
             icon: 'lock-closed-outline',
             title: 'Aucune vidéo non publique',
-            subtitle: 'Vos vidéos privées, réservées aux abonnés ou programmées apparaîtront ici.',
+            subtitle: 'Vos vidéos privées, réservées à ton Wonder ou programmées apparaîtront ici.',
           },
           private: {
             icon: 'lock-closed-outline',
@@ -254,8 +289,8 @@ export default function ProfileScreen() {
           },
           followers: {
             icon: 'people-outline',
-            title: 'Aucune vidéo abonnés',
-            subtitle: 'Choisissez "Abonnés" lors de la publication pour la rendre visible aux abonnés uniquement.',
+            title: 'Aucune vidéo Wonder',
+            subtitle: 'Choisissez "Dans ton Wonder" lors de la publication pour la rendre visible uniquement aux personnes dans ton Wonder.',
           },
           scheduled: {
             icon: 'time-outline',
@@ -357,6 +392,51 @@ export default function ProfileScreen() {
     void Linking.openURL(url).catch(() => Alert.alert('Lien', 'Impossible d’ouvrir ce lien.'));
   };
 
+  const canDeleteFromProfileGrid = activeTab !== 'saved';
+
+  const runDeleteVideo = useCallback(async (id: string) => {
+    setDeletingId(id);
+    try {
+      await apiClient.delete(`/videos/${encodeURIComponent(id)}`);
+      setTabPosts((p) => p.filter((x) => x.id !== id));
+      setPrivatePosts((p) => p.filter((x) => x.id !== id));
+      setRepostPosts((p) => p.filter((x) => x.id !== id));
+      setRealStats((s) => (s ? { ...s, posts: Math.max(0, s.posts - 1) } : s));
+    } catch (e) {
+      console.log('Delete video', e);
+      const msg =
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        (e as Error)?.message ||
+        "Impossible de supprimer la vidéo.";
+      Alert.alert('Suppression', String(msg));
+    } finally {
+      setDeletingId(null);
+    }
+  }, []);
+
+  const handleRequestDelete = useCallback(
+    (item: PostItem) => {
+      if (!canDeleteFromProfileGrid) return;
+      const run = () => {
+        void runDeleteVideo(item.id);
+      };
+      if (Platform.OS === 'web') {
+        if (
+          typeof window !== 'undefined' &&
+          window.confirm('Supprimer cette vidéo ? Cette action est définitive.')
+        ) {
+          run();
+        }
+        return;
+      }
+      Alert.alert('Supprimer la vidéo ?', 'Cette action est irréversible.', [
+        { text: 'Annuler', style: 'cancel' },
+        { text: 'Supprimer', style: 'destructive', onPress: run },
+      ]);
+    },
+    [canDeleteFromProfileGrid, runDeleteVideo],
+  );
+
   const handleLogout = () => {
     const run = async () => {
       await logout();
@@ -376,7 +456,7 @@ export default function ProfileScreen() {
 
   if (isLoading) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.profileContainer, { paddingTop: insets.top, backgroundColor: colors.background }]}>
         <ProfileSkeleton />
       </View>
     );
@@ -420,16 +500,37 @@ export default function ProfileScreen() {
       style={[styles.gridItem, { width: gridSize, height: gridItemHeight }]}
       activeOpacity={0.85}
       onPress={() => router.push({ pathname: '/watch/[id]', params: { id: item.id } })}
+      onLongPress={canDeleteFromProfileGrid ? () => handleRequestDelete(item) : undefined}
+      delayLongPress={450}
+      accessibilityLabel={`Vidéo, ${item.views} vues. ${canDeleteFromProfileGrid ? 'Appui long pour supprimer' : ''}`}
     >
       <SmartThumbnail
         posterUrl={item.posterUrl}
         uri={item.image}
         videoUrl={item.videoUrl}
         fallbackImage={item.fallbackImage}
+        videoIdForServerThumbnail={item.id}
         style={styles.gridImage}
         tileSize={gridSize}
         tileHeight={gridItemHeight}
       />
+      {deletingId === item.id ? (
+        <View style={styles.gridDeleting}>
+          <ActivityIndicator color="#FFF" size="small" />
+        </View>
+      ) : null}
+      {canDeleteFromProfileGrid ? (
+        <TouchableOpacity
+          style={styles.gridDeleteBtn}
+          accessibilityLabel="Supprimer la vidéo"
+          onPress={(e) => {
+            e.stopPropagation();
+            handleRequestDelete(item);
+          }}
+        >
+          <Ionicons name="trash-outline" size={14} color="#FFF" />
+        </TouchableOpacity>
+      ) : null}
       {item.isPinned ? (
         <View style={styles.pinnedBadge}>
           <Ionicons name="pin" size={10} color="#FFF" />
@@ -450,7 +551,7 @@ export default function ProfileScreen() {
   );
 
   /**
-   * Petit badge en haut-droite de la vignette pour distinguer Privé / Abonnés / Programmée.
+   * Petit badge en haut-droite de la vignette pour distinguer Privé / Wonder / Programmée.
    * Pas de badge pour `public` ou `archived` (épinglé reste géré séparément en haut-gauche).
    */
   function renderVisibilityBadge(item: PostItem) {
@@ -484,7 +585,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.profileContainer, { paddingTop: insets.top, backgroundColor: screenBg }]}>
       {/* Header sticky */}
       <View style={styles.topBar}>
         <TouchableOpacity
@@ -492,7 +593,7 @@ export default function ProfileScreen() {
           style={styles.topBarBtn}
           accessibilityLabel="Ajouter des amis"
         >
-          <Ionicons name="person-add-outline" size={24} color={TEXT_MAIN} />
+          <Ionicons name="person-add-outline" size={24} color={topBarIcon} />
         </TouchableOpacity>
         <View style={styles.topBarRight}>
           <TouchableOpacity
@@ -518,23 +619,24 @@ export default function ProfileScreen() {
             onPress={() => void shareProfileLink()}
             accessibilityLabel="Partager le profil"
           >
-            <Ionicons name="share-social-outline" size={24} color={TEXT_MAIN} />
+            <Ionicons name="share-social-outline" size={24} color={topBarIcon} />
           </TouchableOpacity>
           <TouchableOpacity
             testID="profile-settings-button"
             style={styles.topBarBtn}
             onPress={() => router.push('/menu-plus')}
-            accessibilityLabel="Menu"
+            accessibilityLabel="Menu Plus — paramètres et services"
           >
-            <Ionicons name="menu-outline" size={28} color={TEXT_MAIN} />
+            <Ionicons name="reorder-three-outline" size={28} color={topBarIcon} />
           </TouchableOpacity>
         </View>
       </View>
 
       <ScrollView
+        style={styles.profileScroll}
         showsVerticalScrollIndicator={false}
-        stickyHeaderIndices={[1]}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={{ paddingBottom: 40 + insets.bottom }}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Section Infos Profil */}
         <View style={styles.profileSection}>
@@ -559,23 +661,37 @@ export default function ProfileScreen() {
             </View>
           </Pressable>
 
-          {/* Nom + bouton Edit */}
+          {/* Nom + bouton Edit — pas de <Link asChild> ici : sur Android/iOS le clone RN peut rendre la zone vide */}
           <View style={styles.nameRow}>
-            <Text style={styles.displayName} numberOfLines={1}>
+            <Text style={[styles.displayName, { color: tx }]} numberOfLines={1}>
               {profile.displayName}
             </Text>
             {profile.isVerified ? (
-              <Ionicons name="checkmark-circle" size={18} color={LIVE_PINK} style={{ marginLeft: 4 }} />
+              <Ionicons name="checkmark-circle" size={18} color={topBarIcon} style={{ marginLeft: 4, flexShrink: 0 }} />
             ) : null}
-            <Link href="/profile-edit" asChild>
-              <Pressable style={({ pressed }) => [styles.editBtn, pressed && { opacity: 0.7 }]}>
-                <Text style={styles.editBtnText}>Edit</Text>
-              </Pressable>
-            </Link>
+            <Pressable
+              style={({ pressed }) => [
+                styles.editBtn,
+                !heroOrange && { backgroundColor: colors.surface },
+                pressed && { opacity: 0.7 },
+              ]}
+              onPress={() => router.push('/profile-edit')}
+              accessibilityRole="button"
+              accessibilityLabel="Modifier le profil"
+            >
+              <Ionicons
+                name="create-outline"
+                size={16}
+                color={heroOrange ? BRAND_ORANGE : colors.primary}
+              />
+              <Text style={[styles.editBtnText, !heroOrange && { color: colors.primary }]}>Edit</Text>
+            </Pressable>
           </View>
 
           {/* @username */}
-          {profile.handle ? <Text style={styles.handle}>@{profile.handle}</Text> : null}
+          {profile.handle ? (
+            <Text style={[styles.handle, { color: txMuted }]}>@{profile.handle}</Text>
+          ) : null}
 
           {/* Stats */}
           <View style={styles.statsRow}>
@@ -584,22 +700,22 @@ export default function ProfileScreen() {
               onPress={() => router.push({ pathname: '/profile-connections', params: { mode: 'following' } })}
               accessibilityLabel={`${profile.stats.following} abonnements`}
             >
-              <Text style={styles.statNumber}>{formatNumber(profile.stats.following)}</Text>
-              <Text style={styles.statLabel}>Following</Text>
+              <Text style={[styles.statNumber, { color: tx }]}>{formatNumber(profile.stats.following)}</Text>
+              <Text style={[styles.statLabel, { color: txMuted }]}>Wonder</Text>
             </TouchableOpacity>
-            <View style={styles.statDivider} />
+            <View style={[styles.statDivider, !heroOrange && { backgroundColor: colors.border }]} />
             <TouchableOpacity
               style={styles.statItem}
               onPress={() => router.push({ pathname: '/profile-connections', params: { mode: 'followers' } })}
               accessibilityLabel={`${profile.stats.followers} abonnés`}
             >
-              <Text style={styles.statNumber}>{formatNumber(profile.stats.followers)}</Text>
-              <Text style={styles.statLabel}>Followers</Text>
+              <Text style={[styles.statNumber, { color: tx }]}>{formatNumber(profile.stats.followers)}</Text>
+              <Text style={[styles.statLabel, { color: txMuted }]}>Dans ton Wonder</Text>
             </TouchableOpacity>
-            <View style={styles.statDivider} />
+            <View style={[styles.statDivider, !heroOrange && { backgroundColor: colors.border }]} />
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{formatNumber(profile.stats.likes)}</Text>
-              <Text style={styles.statLabel}>Likes</Text>
+              <Text style={[styles.statNumber, { color: tx }]}>{formatNumber(profile.stats.likes)}</Text>
+              <Text style={[styles.statLabel, { color: txMuted }]}>Likes</Text>
             </View>
           </View>
 
@@ -610,19 +726,22 @@ export default function ProfileScreen() {
               onPress={() => setBioExpanded((v) => !v)}
               style={styles.bioWrap}
             >
-              <Text style={styles.bio} numberOfLines={bioExpanded ? undefined : 2}>
+              <Text style={[styles.bio, { color: tx }]} numberOfLines={bioExpanded ? undefined : 2}>
                 {profile.bio}
               </Text>
               {!bioExpanded && profile.bio.length > 90 ? (
-                <Text style={styles.bioMore}>plus</Text>
+                <Text style={[styles.bioMore, { color: txSoft }]}>plus</Text>
               ) : null}
             </TouchableOpacity>
           ) : (
-            <Link href="/profile-edit" asChild>
-              <Pressable style={styles.bioEmptyWrap}>
-                <Text style={styles.bioEmpty}>+ Ajouter une bio</Text>
-              </Pressable>
-            </Link>
+            <Pressable
+              style={styles.bioEmptyWrap}
+              onPress={() => router.push('/profile-edit')}
+              accessibilityRole="button"
+              accessibilityLabel="Ajouter une bio"
+            >
+              <Text style={[styles.bioEmpty, { color: txSoft }]}>+ Ajouter une bio</Text>
+            </Pressable>
           )}
 
           {/* Lien externe */}
@@ -632,8 +751,8 @@ export default function ProfileScreen() {
               onPress={() => openWebsiteUrl(profile.website)}
               accessibilityLabel={`Ouvrir ${profile.website}`}
             >
-              <Ionicons name="link-outline" size={14} color={TEXT_MAIN} />
-              <Text style={styles.linkText} numberOfLines={1}>
+              <Ionicons name="link-outline" size={14} color={tx} />
+              <Text style={[styles.linkText, { color: tx }]} numberOfLines={1}>
                 {profile.website.replace(/^https?:\/\//i, '')}
               </Text>
             </TouchableOpacity>
@@ -641,7 +760,12 @@ export default function ProfileScreen() {
         </View>
 
         {/* Tabs sticky */}
-        <View style={styles.contentTabs}>
+        <View
+          style={[
+            styles.contentTabs,
+            !heroOrange && { borderTopColor: colors.border, backgroundColor: 'transparent' },
+          ]}
+        >
           {tabs.map((tab) => {
             const isActive = activeTab === tab.key;
             return (
@@ -656,33 +780,53 @@ export default function ProfileScreen() {
                 <Ionicons
                   name={isActive ? tab.iconActive : tab.icon}
                   size={22}
-                  color={isActive ? TEXT_MAIN : 'rgba(0,0,0,0.40)'}
+                  color={isActive ? tabIconActive : tabIconInactive}
                 />
-                {isActive ? <View style={styles.contentTabUnderline} /> : null}
+                {isActive ? <View style={[styles.contentTabUnderline, { backgroundColor: tabUnderline }]} /> : null}
               </TouchableOpacity>
             );
           })}
         </View>
 
-        {/* Sous-filtre Privé / Abonnés / Programmées (uniquement onglet "Private"). */}
+        {/* Sous-filtre Privé / Wonder / Programmées (uniquement onglet "Private"). */}
         {activeTab === 'private' && privatePosts.length > 0 ? (
-          <View style={styles.privateFilterRow}>
+          <View style={[styles.privateFilterRow, !heroOrange && { borderBottomColor: colors.border }]}>
             {PRIVATE_FILTER_TABS.map((opt) => {
               const isActive = privateFilter === opt.key;
               const count = privateCounts[opt.key];
               return (
                 <TouchableOpacity
                   key={opt.key}
-                  style={[styles.privateFilterChip, isActive && styles.privateFilterChipActive]}
+                  style={[
+                    styles.privateFilterChip,
+                    isActive && styles.privateFilterChipActive,
+                    !heroOrange && !isActive && { backgroundColor: colors.surface },
+                    !heroOrange && isActive && { backgroundColor: colors.card },
+                  ]}
                   onPress={() => setPrivateFilter(opt.key)}
                   activeOpacity={0.85}
                 >
                   <Ionicons
                     name={opt.icon}
                     size={14}
-                    color={isActive ? '#FFF' : 'rgba(0,0,0,0.65)'}
+                    color={
+                      isActive
+                        ? heroOrange
+                          ? BRAND_ORANGE
+                          : colors.primary
+                        : heroOrange
+                          ? 'rgba(255,255,255,0.9)'
+                          : colors.textSecondary
+                    }
                   />
-                  <Text style={[styles.privateFilterText, isActive && styles.privateFilterTextActive]}>
+                  <Text
+                    style={[
+                      styles.privateFilterText,
+                      isActive && styles.privateFilterTextActive,
+                      !heroOrange && !isActive && { color: colors.text },
+                      !heroOrange && isActive && { color: colors.primary },
+                    ]}
+                  >
                     {opt.label}
                   </Text>
                   {count > 0 ? (
@@ -690,12 +834,16 @@ export default function ProfileScreen() {
                       style={[
                         styles.privateFilterCount,
                         isActive && styles.privateFilterCountActive,
+                        !heroOrange && !isActive && { backgroundColor: colors.borderLight },
+                        !heroOrange && isActive && { backgroundColor: 'rgba(255,107,0,0.15)' },
                       ]}
                     >
                       <Text
                         style={[
                           styles.privateFilterCountText,
                           isActive && styles.privateFilterCountTextActive,
+                          !heroOrange && !isActive && { color: colors.textSecondary },
+                          !heroOrange && isActive && { color: colors.primary },
                         ]}
                       >
                         {count}
@@ -708,38 +856,82 @@ export default function ProfileScreen() {
           </View>
         ) : null}
 
-        {/* Content Grid */}
-        <FlatList
-          data={gridItems}
-          extraData={`${activeTab}-${privateFilter}`}
-          renderItem={renderGridItem}
-          keyExtractor={(item) => `${activeTab}-${privateFilter}-${item.id}`}
-          numColumns={3}
-          scrollEnabled={false}
-          columnWrapperStyle={{ gap: 1 }}
-          ItemSeparatorComponent={() => <View style={{ height: 1 }} />}
-          ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              <View style={styles.emptyIconCircle}>
-                <Ionicons name={emptyState.icon} size={32} color={TEXT_MAIN} />
-              </View>
-              <Text style={styles.emptyTitle}>{emptyState.title}</Text>
-              {emptyState.subtitle ? (
-                <Text style={styles.emptySubtitle}>{emptyState.subtitle}</Text>
-              ) : null}
-              {emptyState.cta && emptyState.onPress ? (
-                <TouchableOpacity
-                  style={styles.emptyCtaBtn}
-                  onPress={emptyState.onPress}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="add" size={16} color="#FFF" />
-                  <Text style={styles.emptyCtaText}>{emptyState.cta}</Text>
-                </TouchableOpacity>
-              ) : null}
+        {/* Grille 3 col. : mappée en lignes (même contrôleur de scroll que le reste du profil). */}
+        {canDeleteFromProfileGrid && gridItems.length > 0 ? (
+          <View style={styles.gridHelpWrap}>
+            <Text style={[styles.gridHelpText, { color: txMuted }]}>
+              Vos vidéos ({'\u00e0'} appuyer sur la poubelle pour supprimer)
+            </Text>
+          </View>
+        ) : null}
+        {gridItems.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <View style={[styles.emptyIconCircle, !heroOrange && { backgroundColor: colors.surface }]}>
+              <Ionicons name={emptyState.icon} size={32} color={tx} />
             </View>
-          }
-        />
+            <Text style={[styles.emptyTitle, { color: tx }]}>{emptyState.title}</Text>
+            {emptyState.subtitle ? (
+              <Text style={[styles.emptySubtitle, { color: txMuted }]}>{emptyState.subtitle}</Text>
+            ) : null}
+            {emptyState.cta && emptyState.onPress ? (
+              <TouchableOpacity
+                style={styles.emptyCtaBtn}
+                onPress={emptyState.onPress}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="add" size={16} color="#FFF" />
+                <Text style={styles.emptyCtaText}>{emptyState.cta}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : (
+          <View>
+            {gridRowsChunked.map((row, ri) => (
+              <View key={`r-${activeTab}-${privateFilter}-${ri}`} style={styles.gridRow3}>
+                {row.map((item, ci) => (
+                  <Fragment key={`prof-grid-${String(item.id)}-${ri}-${ci}`}>
+                    {renderGridItem({ item, index: ri * 3 + ci })}
+                  </Fragment>
+                ))}
+              </View>
+            ))}
+          </View>
+        )}
+
+        <View
+          style={[
+            styles.profileShortcutsCard,
+            !heroOrange && { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+          accessibilityLabel="Raccourcis : portefeuille, revenus, outils créateur"
+        >
+          {PROFILE_CREATOR_SHORTCUTS.map((row, i) => (
+            <TouchableOpacity
+              key={row.label}
+              style={[
+                styles.profileShortcutRow,
+                i === PROFILE_CREATOR_SHORTCUTS.length - 1 && { borderBottomWidth: 0 },
+                !heroOrange && { borderBottomColor: colors.border },
+              ]}
+              onPress={() => router.push(row.href)}
+              activeOpacity={0.75}
+              accessibilityLabel={row.label}
+              accessibilityRole="button"
+            >
+              <View style={[styles.profileShortcutIconRing, { backgroundColor: row.iconColor + '22' }]}>
+                <Ionicons name={row.icon} size={20} color={row.iconColor} />
+              </View>
+              <Text style={[styles.profileShortcutLabel, !heroOrange && { color: colors.text }]}>
+                {row.label}
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={heroOrange ? 'rgba(0,0,0,0.28)' : colors.textMuted}
+              />
+            </TouchableOpacity>
+          ))}
+        </View>
 
         {/* Lien discret vers menu AfriWonder (wallet, revenus, badges, déconnexion) */}
         <TouchableOpacity
@@ -747,8 +939,10 @@ export default function ProfileScreen() {
           onPress={() => router.push('/menu-plus')}
           activeOpacity={0.85}
         >
-          <Ionicons name="apps-outline" size={16} color={TEXT_MUTED} />
-          <Text style={styles.afwFooterText}>Plus de fonctionnalités AfriWonder</Text>
+          <Ionicons name="apps-outline" size={16} color={heroOrange ? 'rgba(255,255,255,0.75)' : colors.textSecondary} />
+          <Text style={[styles.afwFooterText, !heroOrange && { color: colors.textSecondary }]}>
+            Plus de fonctionnalités AfriWonder
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -756,8 +950,8 @@ export default function ProfileScreen() {
           style={styles.logoutInline}
           onPress={handleLogout}
         >
-          <Ionicons name="log-out-outline" size={16} color={LIVE_PINK} />
-          <Text style={styles.logoutInlineText}>Déconnexion</Text>
+          <Ionicons name="log-out-outline" size={16} color={heroOrange ? '#FFFFFF' : colors.primary} />
+          <Text style={[styles.logoutInlineText, !heroOrange && { color: colors.primary }]}>Déconnexion</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -766,6 +960,9 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
+  /** Fond injecté en ligne (`screenBg`) : orange marque en mode clair, `colors.background` en sombre. */
+  profileContainer: { flex: 1, backgroundColor: 'transparent' },
+  profileScroll: { backgroundColor: 'transparent' },
 
   // Login
   loginContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
@@ -790,7 +987,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 8,
     alignItems: 'center',
-    backgroundColor: LIVE_PINK,
+    backgroundColor: BRAND_ORANGE,
     marginBottom: 14,
   },
   loginBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
@@ -803,7 +1000,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 6,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'transparent',
   },
   topBarBtn: {
     width: 40,
@@ -833,7 +1030,7 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 8,
     paddingHorizontal: 4,
-    backgroundColor: LIVE_PINK,
+    backgroundColor: BRAND_ORANGE,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
@@ -870,7 +1067,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: LINK_BLUE,
+    backgroundColor: BRAND_ORANGE,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
@@ -879,26 +1076,34 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
     marginTop: 4,
     maxWidth: '100%',
+    gap: 4,
   },
   displayName: {
     fontSize: 18,
     fontWeight: '800',
-    color: TEXT_MAIN,
+    color: '#FFFFFF',
     maxWidth: 200,
+    flexShrink: 1,
   },
   editBtn: {
-    marginLeft: 10,
-    backgroundColor: CHIP_BG,
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-    borderRadius: 4,
+    marginLeft: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
-  editBtnText: { color: TEXT_MAIN, fontSize: 14, fontWeight: '600' },
+  editBtnText: { color: BRAND_ORANGE, fontSize: 14, fontWeight: '600', letterSpacing: 0.2 },
   handle: {
     marginTop: 4,
-    color: TEXT_MUTED,
+    color: 'rgba(255,255,255,0.78)',
     fontSize: 14,
   },
   statsRow: {
@@ -909,14 +1114,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   statItem: { alignItems: 'center', paddingHorizontal: 14, minWidth: 80 },
-  statDivider: { width: StyleSheet.hairlineWidth, height: 22, backgroundColor: DIVIDER },
-  statNumber: { color: TEXT_MAIN, fontSize: 16, fontWeight: '800' },
-  statLabel: { color: TEXT_MUTED, fontSize: 13, marginTop: 2 },
+  statDivider: { width: StyleSheet.hairlineWidth, height: 22, backgroundColor: 'rgba(255,255,255,0.28)' },
+  statNumber: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  statLabel: { color: 'rgba(255,255,255,0.78)', fontSize: 13, marginTop: 2 },
   bioWrap: { marginTop: 6, alignItems: 'center', paddingHorizontal: 16 },
-  bio: { color: TEXT_MAIN, fontSize: 14, textAlign: 'center', lineHeight: 20 },
-  bioMore: { color: TEXT_MUTED, fontSize: 13, marginTop: 2, fontWeight: '600' },
+  bio: { color: '#FFFFFF', fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  bioMore: { color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 2, fontWeight: '600' },
   bioEmptyWrap: { marginTop: 4 },
-  bioEmpty: { color: TEXT_MUTED, fontSize: 13, fontWeight: '600' },
+  bioEmpty: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600' },
   linkRow: {
     marginTop: 8,
     flexDirection: 'row',
@@ -926,7 +1131,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   linkText: {
-    color: TEXT_MAIN,
+    color: 'rgba(255,255,255,0.95)',
     fontSize: 14,
     textDecorationLine: 'underline',
     flexShrink: 1,
@@ -936,8 +1141,8 @@ const styles = StyleSheet.create({
   contentTabs: {
     flexDirection: 'row',
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: DIVIDER,
-    backgroundColor: '#FFFFFF',
+    borderTopColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: 'transparent',
   },
   contentTab: {
     flex: 1,
@@ -952,15 +1157,70 @@ const styles = StyleSheet.create({
     height: 2,
     width: 32,
     borderRadius: 1,
-    backgroundColor: TEXT_MAIN,
+    backgroundColor: '#FFFFFF',
+  },
+
+  /** Sous la grille : carte claire pour lisibilité, boutons = menu +. */
+  profileShortcutsCard: {
+    marginHorizontal: 12,
+    marginTop: 14,
+    marginBottom: 4,
+    borderRadius: 14,
+    backgroundColor: '#FFF',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.08)',
+    overflow: 'hidden',
+  },
+  profileShortcutRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DIVIDER,
+    gap: 10,
+  },
+  profileShortcutIconRing: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileShortcutLabel: {
+    flex: 1,
+    color: TEXT_MAIN,
+    fontSize: 15,
+    fontWeight: '600',
   },
 
   // Grid
+  gridRow3: {
+    flexDirection: 'row',
+    gap: 1,
+    marginBottom: 1,
+  },
   gridItem: {
     position: 'relative',
     backgroundColor: '#F1F1F2',
   },
+  gridHelpWrap: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
+  },
+  gridHelpText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
   gridImage: { width: '100%', height: '100%' },
+  gridDeleting: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 5,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   gridViewsOverlay: {
     position: 'absolute',
     left: 0,
@@ -979,9 +1239,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  pinnedBadge: {
+  gridDeleteBtn: {
     position: 'absolute',
     top: 6,
+    left: 6,
+    zIndex: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinnedBadge: {
+    position: 'absolute',
+    top: 34,
     left: 6,
     paddingHorizontal: 4,
     paddingVertical: 3,
@@ -1006,7 +1278,7 @@ const styles = StyleSheet.create({
     maxWidth: 80,
   },
   visibilityBadgePrivate: { backgroundColor: 'rgba(0,0,0,0.65)' },
-  visibilityBadgeFollowers: { backgroundColor: 'rgba(43,140,255,0.85)' },
+  visibilityBadgeFollowers: { backgroundColor: 'rgba(255,107,0,0.85)' },
   visibilityBadgeScheduled: { backgroundColor: 'rgba(255,107,0,0.92)' },
 
   // Sous-filtre Private (Tout / Privé / Abonnés / Programmées)
@@ -1016,9 +1288,9 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'transparent',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: DIVIDER,
+    borderBottomColor: 'rgba(255,255,255,0.18)',
   },
   privateFilterChip: {
     flexDirection: 'row',
@@ -1026,12 +1298,12 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: '#F1F1F2',
+    backgroundColor: 'rgba(255,255,255,0.22)',
     borderRadius: 20,
   },
-  privateFilterChipActive: { backgroundColor: '#000' },
-  privateFilterText: { color: 'rgba(0,0,0,0.75)', fontSize: 13, fontWeight: '600' },
-  privateFilterTextActive: { color: '#FFF' },
+  privateFilterChipActive: { backgroundColor: '#FFFFFF' },
+  privateFilterText: { color: 'rgba(255,255,255,0.95)', fontSize: 13, fontWeight: '600' },
+  privateFilterTextActive: { color: BRAND_ORANGE },
   privateFilterCount: {
     minWidth: 20,
     paddingHorizontal: 5,
@@ -1039,11 +1311,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: 'rgba(0,0,0,0.1)',
   },
-  privateFilterCountActive: { backgroundColor: 'rgba(255,255,255,0.22)' },
-  privateFilterCountText: { color: 'rgba(0,0,0,0.6)', fontSize: 11, fontWeight: '700' },
-  privateFilterCountTextActive: { color: '#FFF' },
+  privateFilterCountActive: { backgroundColor: 'rgba(255,107,0,0.15)' },
+  privateFilterCountText: { color: 'rgba(255,255,255,0.9)', fontSize: 11, fontWeight: '700' },
+  privateFilterCountTextActive: { color: BRAND_ORANGE },
 
   // Empty state
   emptyWrap: {
@@ -1055,20 +1327,20 @@ const styles = StyleSheet.create({
     width: 68,
     height: 68,
     borderRadius: 34,
-    backgroundColor: CHIP_BG,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
   emptyTitle: {
-    color: TEXT_MAIN,
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
     marginBottom: 6,
   },
   emptySubtitle: {
-    color: TEXT_MUTED,
+    color: 'rgba(255,255,255,0.8)',
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 18,
@@ -1078,7 +1350,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: LIVE_PINK,
+    backgroundColor: BRAND_ORANGE,
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 6,
@@ -1093,7 +1365,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 14,
   },
-  afwFooterText: { color: TEXT_MUTED, fontSize: 13, fontWeight: '600' },
+  afwFooterText: { color: 'rgba(255,255,255,0.86)', fontSize: 13, fontWeight: '600' },
   logoutInline: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1101,5 +1373,5 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 6,
   },
-  logoutInlineText: { color: LIVE_PINK, fontSize: 13, fontWeight: '700' },
+  logoutInlineText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
 });

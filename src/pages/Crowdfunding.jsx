@@ -48,7 +48,7 @@ export default function Crowdfunding() {
     queryKey: ['campaigns', selectedCategory, sortBy],
     queryFn: async () => {
       try {
-        const res = await api.crowdfunding.list({ status: 'active', limit: 100 });
+        const res = await api.crowdfunding.list({ limit: 100 });
         let allCampaigns = res?.campaigns ?? res?.data?.campaigns ?? (Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : []);
         if (!Array.isArray(allCampaigns)) allCampaigns = [];
         if (allCampaigns.length === 0) allCampaigns = [...MOCK_CAMPAIGNS];

@@ -3,7 +3,7 @@ import { api } from '@/api/expressClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   ArrowLeft, Share2, Users, Clock, Target,
-  MapPin, CheckCircle, TrendingUp, Clock3
+  MapPin, CheckCircle, TrendingUp, Clock3, MessageCircle,
 } from 'lucide-react';
 import { MOCK_CAMPAIGNS } from '@/data/crowdfundingMock';
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ export default function CampaignDetails() {
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [selectedReward, setSelectedReward] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('orange_money');
+  const [discussionText, setDiscussionText] = useState('');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -60,7 +61,34 @@ export default function CampaignDetails() {
     enabled: !!campaignId
   });
 
+  const { data: updatesPayload } = useQuery({
+    queryKey: ['campaign-updates', campaignId],
+    queryFn: () => api.crowdfunding.listUpdates(campaignId),
+    enabled: !!campaignId && !!campaign,
+  });
+
+  const { data: messagesPayload, refetch: refetchMessages } = useQuery({
+    queryKey: ['campaign-messages', campaignId],
+    queryFn: () => api.crowdfunding.listMessages(campaignId, { page: 1, limit: 50 }),
+    enabled: !!campaignId && !!campaign,
+  });
+
+  const postDiscussionMutation = useMutation({
+    mutationFn: (content) => api.crowdfunding.postMessage(campaignId, { content: content.trim() }),
+    onSuccess: () => {
+      setDiscussionText('');
+      queryClient.invalidateQueries({ queryKey: ['campaign-messages', campaignId] });
+      void refetchMessages();
+      toast.success('Message publié');
+    },
+    onError: (e) => {
+      toast.error(e.response?.data?.error?.message || e.apiMessage || e.message || 'Erreur');
+    },
+  });
+
   const contributions = campaign?.contributions ?? [];
+  const apiUpdates = Array.isArray(updatesPayload?.updates) ? updatesPayload.updates : [];
+  const threadComments = Array.isArray(messagesPayload?.comments) ? messagesPayload.comments : [];
 
   const contributeMutation = useMutation({
     mutationFn: async (data) => {
@@ -240,10 +268,11 @@ export default function CampaignDetails() {
 
         {/* Tabs */}
         <Tabs defaultValue="story" className="w-full">
-          <TabsList className="w-full grid grid-cols-3 mb-4">
-            <TabsTrigger value="story">Histoire</TabsTrigger>
-            <TabsTrigger value="rewards">Récompenses</TabsTrigger>
-            <TabsTrigger value="updates">Mises à jour</TabsTrigger>
+          <TabsList className="w-full grid grid-cols-2 sm:grid-cols-4 mb-4 h-auto gap-1">
+            <TabsTrigger value="story" className="text-xs sm:text-sm">Histoire</TabsTrigger>
+            <TabsTrigger value="rewards" className="text-xs sm:text-sm">Paliers</TabsTrigger>
+            <TabsTrigger value="updates" className="text-xs sm:text-sm">Actus</TabsTrigger>
+            <TabsTrigger value="discussion" className="text-xs sm:text-sm">Discussion</TabsTrigger>
           </TabsList>
 
           <TabsContent value="story" className="space-y-4">
@@ -303,7 +332,21 @@ export default function CampaignDetails() {
           </TabsContent>
 
           <TabsContent value="updates" className="space-y-3">
-            {campaign.updates?.length > 0 ? (
+            {apiUpdates.length > 0 ? (
+              apiUpdates.map((update) => (
+                <div key={update.id} className="bg-white rounded-xl p-4 border border-gray-200">
+                  <div className="text-xs text-gray-500 mb-1">
+                    {new Date(update.created_at).toLocaleDateString('fr-FR', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    })}
+                  </div>
+                  <h4 className="font-semibold mb-2">{update.title}</h4>
+                  <p className="text-sm text-gray-700 whitespace-pre-line">{update.content}</p>
+                </div>
+              ))
+            ) : campaign.updates?.length > 0 ? (
               campaign.updates.map((update, index) => (
                 <div key={index} className="bg-white rounded-xl p-4 border border-gray-200">
                   <div className="text-xs text-gray-500 mb-1">
@@ -322,6 +365,65 @@ export default function CampaignDetails() {
                 <TrendingUp className="w-12 h-12 mx-auto mb-2 opacity-30" />
                 <p>Aucune mise à jour pour le moment</p>
               </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="discussion" className="space-y-3">
+            {user && campaign.status === 'active' ? (
+              <div className="space-y-2">
+                <Textarea
+                  placeholder="Votre message (campagnes actives seulement)"
+                  value={discussionText}
+                  onChange={(e) => setDiscussionText(e.target.value)}
+                  rows={3}
+                  className="resize-none"
+                />
+                <Button
+                  type="button"
+                  onClick={() => {
+                    if (!discussionText.trim()) {
+                      toast.error('Écrivez un message.');
+                      return;
+                    }
+                    postDiscussionMutation.mutate(discussionText);
+                  }}
+                  disabled={postDiscussionMutation.isPending}
+                  className="w-full"
+                >
+                  {postDiscussionMutation.isPending ? 'Envoi…' : 'Publier'}
+                </Button>
+              </div>
+            ) : !user ? (
+              <p className="text-sm text-gray-600">Connectez-vous pour participer à la discussion.</p>
+            ) : (
+              <p className="text-sm text-gray-600">La discussion est ouverte lorsque la campagne est active et validée.</p>
+            )}
+
+            {threadComments.length > 0 ? (
+              threadComments.map((c) => (
+                <div key={c.id} className="bg-white rounded-xl p-4 border border-gray-200 flex gap-3">
+                  <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+                    <MessageCircle className="w-4 h-4 text-gray-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm">{c.user?.display_name || 'Utilisateur'}</div>
+                    <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap break-words">{c.content}</p>
+                    <div className="text-xs text-gray-400 mt-2">
+                      {c.created_at
+                        ? new Date(c.created_at).toLocaleString('fr-FR', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : ''}
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-6 text-gray-500 text-sm">Aucun message pour l’instant.</div>
             )}
           </TabsContent>
         </Tabs>

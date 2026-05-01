@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
- * Preuve de livraison : audit dépôt + tests front.
- * Définit CI=true par défaut (exclut les smoke tests lourds du vitest.config) si CI n'est pas déjà défini.
+ * Preuve de livraison : audit dépôt + tests PWA avec couverture (seuils ch.2.2, `vitest.config.js`).
  */
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -23,15 +22,20 @@ function npmRun(script) {
   });
 }
 
-const audit = npmRun('verify:audit');
-if (audit.status !== 0) {
-  process.exit(audit.status ?? 1);
+const sequence = [
+  'verify:audit',
+  'verify:engineering-standards',
+  'verify:release-readiness',
+  'verify:quality-gates',
+  'verify:test-coverage',
+  'verify:delivery:expo',
+];
+
+for (const script of sequence) {
+  const result = npmRun(script);
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
 }
 
-const tests = npmRun('test:ci:frontend');
-if (tests.status !== 0) {
-  process.exit(tests.status ?? 1);
-}
-
-const expo = npmRun('verify:delivery:expo');
-process.exit(expo.status ?? 0);
+process.exit(0);

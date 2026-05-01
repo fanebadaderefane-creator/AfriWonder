@@ -3,8 +3,11 @@ import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import app from '../src/app.js';
 import { prisma } from './setup.js';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 describe('Videos API', () => {
+  const makeTestToken = (user: { id: string; email: string }) =>
+    jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
   let testUser: any;
   let authToken: string;
   let testVideo: any;
@@ -32,20 +35,7 @@ describe('Videos API', () => {
       retries--;
     }
 
-    // Se connecter pour obtenir le token
-    const loginResponse = await request(app)
-      .post('/api/auth/login')
-      .send({
-        email: testUser.email,
-        password: 'Test123!@#'
-      });
-
-    // Vérifier que le login a réussi
-    if (loginResponse.status !== 200 || !loginResponse.body.data?.accessToken) {
-      throw new Error(`Login failed: ${JSON.stringify(loginResponse.body)}`);
-    }
-
-    authToken = loginResponse.body.data.accessToken;
+    authToken = makeTestToken(testUser);
 
     // Créer une vidéo de test seulement si le login a réussi
     if (authToken && testUser.id) {
@@ -64,8 +54,9 @@ describe('Videos API', () => {
   });
 
   afterEach(async () => {
+    const PLATFORM_USER_ID = process.env.PLATFORM_USER_ID || '00000000-0000-0000-0000-000000000000';
     await prisma.video.deleteMany({});
-    await prisma.user.deleteMany({});
+    await prisma.user.deleteMany({ where: { id: { not: PLATFORM_USER_ID } } });
   });
 
   describe('GET /api/videos', () => {

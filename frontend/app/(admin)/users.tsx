@@ -74,10 +74,16 @@ export default function AdminUsersScreen() {
     );
   }, [items, query]);
 
-  const banUser = (u: AdminUserRow) => {
+  const adminApiMessage = (e: unknown) => {
+    const data = (e as { response?: { data?: { message?: string; error?: string } } })?.response?.data;
+    return data?.message || data?.error || 'Échec';
+  };
+
+  /** Le listing utilise `account_suspended` ; il faut PATCH suspend (pas POST ban qui ne met pas ce champ). */
+  const suspendUser = (u: AdminUserRow) => {
     Alert.alert(
       'Suspendre le compte',
-      `${u.email || u.username} — durée 7 jours (modifiable côté API).`,
+      `${u.email || u.username} — le compte ne pourra plus se connecter jusqu’à restauration.`,
       [
         { text: 'Annuler', style: 'cancel' },
         {
@@ -85,16 +91,14 @@ export default function AdminUsersScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await apiClient.post(`/admin/users/${u.id}/ban`, {
-                banType: 'suspend',
-                reason: 'moderation_mobile',
-                description: 'Action depuis console mobile admin',
-                durationDays: 7,
+              await apiClient.patch(`/admin/users/${u.id}/suspend`, {
+                suspended: true,
+                reason: 'Suspension depuis la console admin mobile',
               });
               Alert.alert('OK', 'Compte suspendu.');
               void load(1, false);
-            } catch (e: any) {
-              Alert.alert('Erreur', e?.response?.data?.error || 'Échec');
+            } catch (e: unknown) {
+              Alert.alert('Erreur', adminApiMessage(e));
             }
           },
         },
@@ -109,16 +113,20 @@ export default function AdminUsersScreen() {
         text: 'Restaurer',
         onPress: async () => {
           try {
-            await apiClient.put(`/admin/users/${u.id}/restore`, {});
+            await apiClient.patch(`/admin/users/${u.id}/suspend`, {
+              suspended: false,
+              reason: null,
+            });
             Alert.alert('OK', 'Compte restauré.');
             void load(1, false);
-          } catch (e: any) {
-            Alert.alert('Erreur', e?.response?.data?.error || 'Échec');
+          } catch (e: unknown) {
+            Alert.alert('Erreur', adminApiMessage(e));
           }
         },
       },
     ]);
   };
+
 
   return (
     <View style={styles.container}>
@@ -164,7 +172,7 @@ export default function AdminUsersScreen() {
                     <Text style={styles.btnSecondaryText}>Restaurer</Text>
                   </Pressable>
                 ) : (
-                  <Pressable style={styles.btnDanger} onPress={() => banUser(u)}>
+                  <Pressable style={styles.btnDanger} onPress={() => suspendUser(u)}>
                     <Text style={styles.btnDangerText}>Suspendre</Text>
                   </Pressable>
                 )}

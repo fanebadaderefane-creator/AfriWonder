@@ -9,7 +9,7 @@
     "build": "prisma generate && tsc",
     "start": "node dist/index.js",
     "test:db:prepare": "node scripts/migrate-test-db.js",
-    "test": "npm run test:db:prepare && cross-env NODE_ENV=test NODE_OPTIONS=--max-old-space-size=4096 node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js",
+    "test": "npm run test:db:prepare && cross-env NODE_ENV=test NODE_OPTIONS=--max-old-space-size=8192 node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js --runInBand",
     "test:watch": "cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js --watch",
     "test:coverage": "npm run test:db:prepare && cross-env NODE_ENV=test NODE_OPTIONS=--max-old-space-size=8192 node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js --coverage --runInBand",
     "setup:env": "node create-env.js",
@@ -22,12 +22,14 @@
     "db:migrate:cpo-wave2": "node scripts/run-cpo-wave2-migration.js",
     "db:migrate:cpo-wave3": "node scripts/run-cpo-wave3-migration.js",
     "db:seed:banned-words": "node scripts/seed-banned-words.js",
+    "db:seed:stars": "tsx prisma/seed-stars.ts",
     "test:setup": "node scripts/setup-test-db.js",
     "test:create-db": "node scripts/create-test-db.js",
     "test:db": "cross-env NODE_ENV=test node scripts/migrate-test-db.js",
     "test:db:resolve": "cross-env NODE_ENV=test node scripts/resolve-test-migration.js",
     "test:smoke": "npm run test:db:prepare && cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js --testPathPattern=smoke.critical-path --runInBand",
     "test:ads": "npm run test:db:prepare && cross-env NODE_ENV=test JWT_SECRET=test_secret_key_for_jest_tests_only JWT_REFRESH_SECRET=test_refresh_secret_key_for_jest_tests node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js --testPathPattern=__tests__/ads --runInBand",
+    "test:stars-calls": "npm run test:db:prepare && cross-env NODE_ENV=test NODE_OPTIONS=--max-old-space-size=8192 node --experimental-vm-modules node_modules/jest/bin/jest.js __tests__/stars.calls.test.ts --config jest.config.js --runInBand",
     "test:webhooks": "cross-env NODE_ENV=test ORANGE_MONEY_ENV=production ORANGE_MONEY_WEBHOOK_SECRET=ci-webhook-secret node --experimental-vm-modules node_modules/jest/bin/jest.js src/payments/__tests__/orange-money.webhook.test.ts --config jest.config.js --runInBand && cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js src/payments/__tests__/stripe.webhook.test.ts --config jest.config.js --runInBand",
     "check:prod-env": "node scripts/check-prod-env.js",
     "load-test": "node scripts/load-test-node.js",
@@ -36,13 +38,20 @@
     "wallet:zero-local": "tsx scripts/reset-user-wallet-zero.ts",
     "backfill:video-web-compat": "tsx scripts/backfill-video-web-compat.ts",
     "cleanup:lives": "tsx scripts/cleanup-test-lives.ts",
-    "cleanup:lives:list": "tsx scripts/cleanup-test-lives.ts --list-ended"
+    "cleanup:lives:list": "tsx scripts/cleanup-test-lives.ts --list-ended",
+    "lint": "eslint \"src/**/*.ts\" --max-warnings=0",
+    "lint:fix": "eslint \"src/**/*.ts\" --fix",
+    "lint:errors-only": "eslint \"src/**/*.ts\" --quiet",
+    "typecheck": "tsc --noEmit",
+    "quality": "npm run quality:static",
+    "quality:static": "npm run lint && npm run typecheck",
+    "quality:full": "npm run quality:static && npm run test"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.700.0",
     "@aws-sdk/s3-request-presigner": "^3.1016.0",
-    "@prisma/adapter-pg": "7.3.0",
-    "@prisma/client": "7.3.0",
+    "@prisma/adapter-pg": "7.8.0",
+    "@prisma/client": "7.8.0",
     "@sentry/node": "^10.38.0",
     "@sentry/profiling-node": "^10.38.0",
     "@sentry/react": "^10.38.0",
@@ -86,6 +95,7 @@
     "redis": "^4.7.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.19.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/compression": "^1.7.5",
     "@types/cookie-parser": "^1.4.10",
@@ -101,13 +111,20 @@
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "cross-env": "^10.1.0",
+    "eslint": "^9.19.0",
     "jest": "^29.7.0",
-    "prisma": "7.3.0",
+    "prisma": "7.8.0",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.6",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.20.0"
   },
   "overrides": {
-    "@tootallnate/once": "^3.0.2"
+    "@tootallnate/once": "^3.0.2",
+    "hono": "^4.12.15",
+    "effect": "^3.21.0",
+    "lodash": "^4.18.0",
+    "uuid": "^14.0.0",
+    "@hono/node-server": "^1.19.13"
   }
 }

@@ -38,9 +38,9 @@ export default function ShareProfileScreen() {
   const copy = async () => {
     try {
       await Clipboard.setStringAsync(link);
-      Alert.alert('Copied', 'Profile link copied to clipboard.');
+      Alert.alert('Lien copié', 'Le lien de votre profil a été copié dans le presse-papiers.');
     } catch {
-      Alert.alert('Error', 'Could not copy link.');
+      Alert.alert('Copie impossible', 'Nous n’avons pas pu copier le lien. Réessayez ou partagez directement.');
     }
   };
 

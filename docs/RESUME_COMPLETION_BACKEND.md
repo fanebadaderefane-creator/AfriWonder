@@ -1,5 +1,12 @@
 # RÉSUMÉ COMPLÉTION BACKEND 100%
 
+> ⚠️ **Document obsolète (avancement historique).**
+> Pour éviter les faux audits "route absente", ne pas s'appuyer sur ce fichier.
+> Références à jour:
+> - `docs/API.md`
+> - `docs/MOBILE_RELEASE_README.md`
+> - `GET /api/openapi.json`
+
 ## ✅ ACCOMPLI
 
 ### 1. Schéma Prisma - 100% ✅

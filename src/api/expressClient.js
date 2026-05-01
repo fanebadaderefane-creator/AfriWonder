@@ -1541,6 +1541,18 @@ export const api = {
       const { data } = await axiosInstance.post(`/crowdfunding/${campaignId}/contribute`, { amount, phone, rewardTier });
       return data.data;
     },
+    async listUpdates(campaignId, params = {}) {
+      const { data } = await axiosInstance.get(`/crowdfunding/${campaignId}/updates`, { params });
+      return data.data;
+    },
+    async listMessages(campaignId, params = {}) {
+      const { data } = await axiosInstance.get(`/crowdfunding/${campaignId}/messages`, { params });
+      return data.data;
+    },
+    async postMessage(campaignId, { content, parentId }) {
+      const { data } = await axiosInstance.post(`/crowdfunding/${campaignId}/messages`, { content, parentId: parentId ?? null });
+      return data.data;
+    },
   },
   refunds: {
     async request(orderId, payload) {

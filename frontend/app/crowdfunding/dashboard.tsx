@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,44 +13,116 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../../src/theme/colors';
 import {
-  SEED_PROJECTS,
   CROWDFUNDING_CATEGORIES,
   formatCFA,
   formatFullCFA,
   getProgressPercent,
 } from '../../src/data/crowdfunding';
+import type { CrowdfundingProject } from '../../src/data/crowdfunding';
+import { mapApiCampaignToCrowdfundingProject } from '../../src/data/crowdfundingMappers';
+import { useAuthStore } from '../../src/store/authStore';
+import { profileAvatarUri } from '../../src/utils/avatarFallback';
+import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
+import crowdfundingApi from '../../src/api/crowdfundingApi';
 
-// Mock creator's own projects (first 3)
-const MY_PROJECTS = SEED_PROJECTS.slice(0, 3);
-const TOTAL_RAISED = MY_PROJECTS.reduce((sum, p) => sum + p.raised, 0);
-const TOTAL_BACKERS = MY_PROJECTS.reduce((sum, p) => sum + p.backers, 0);
+function formatContributionDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const diffMs = Date.now() - d.getTime();
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return "À l'instant";
+    if (mins < 60) return `Il y a ${mins} min`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 48) return `Il y a ${hours} h`;
+    const days = Math.floor(hours / 24);
+    if (days < 14) return `Il y a ${days} jour${days > 1 ? 's' : ''}`;
+    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch {
+    return '';
+  }
+}
 
-// Mock contributors
-const RECENT_CONTRIBUTORS = [
-  { id: 'c1', name: 'Seydou Keita', avatar: 'https://i.pravatar.cc/100?img=30', amount: 100000, date: 'Il y a 2h', reward: 'Bienfaiteur', project: 'Ecole Numerique de Bamako' },
-  { id: 'c2', name: 'Mariam Diarra', avatar: 'https://i.pravatar.cc/100?img=31', amount: 25000, date: 'Il y a 5h', reward: 'Parrain Digital', project: 'Ecole Numerique de Bamako' },
-  { id: 'c3', name: 'Boubacar Traore', avatar: 'https://i.pravatar.cc/100?img=32', amount: 50000, date: 'Hier', reward: 'Pilier Sante', project: 'Centre de Sante Communautaire Sikasso' },
-  { id: 'c4', name: 'Aissata Coulibaly', avatar: 'https://i.pravatar.cc/100?img=33', amount: 5000, date: 'Hier', reward: 'Supporter', project: 'Ecole Numerique de Bamako' },
-  { id: 'c5', name: 'Amadou Sangare', avatar: 'https://i.pravatar.cc/100?img=34', amount: 25000, date: 'Il y a 2j', reward: 'Solaire', project: 'Ferme Solaire Communautaire Mopti' },
-  { id: 'c6', name: 'Fatoumata Toure', avatar: 'https://i.pravatar.cc/100?img=35', amount: 10000, date: 'Il y a 3j', reward: null, project: 'Centre de Sante Communautaire Sikasso' },
-  { id: 'c7', name: 'Ibrahim Diallo', avatar: 'https://i.pravatar.cc/100?img=36', amount: 200000, date: 'Il y a 4j', reward: 'Fondateur', project: 'Centre de Sante Communautaire Sikasso' },
-];
+type ContributorRow = {
+  id: string;
+  name: string;
+  avatar: string;
+  amount: number;
+  date: string;
+  reward: string | null;
+  project: string;
+};
 
 type DashTab = 'overview' | 'contributors' | 'projects';
 
 export default function CreatorDashboardScreen() {
   const insets = useSafeAreaInsets();
+  const user = useAuthStore((s) => s.user);
   const [activeTab, setActiveTab] = useState<DashTab>('overview');
   const [refreshing, setRefreshing] = useState(false);
+  const [recentContributors, setRecentContributors] = useState<ContributorRow[]>([]);
+  const [contribLoadError, setContribLoadError] = useState(false);
+  const [myProjects, setMyProjects] = useState<CrowdfundingProject[]>([]);
+  const [campaignsLoadError, setCampaignsLoadError] = useState(false);
 
-  const onRefresh = () => {
+  const loadRecentContributors = useCallback(async () => {
+    if (!user?.id) {
+      setRecentContributors([]);
+      return;
+    }
+    try {
+      setContribLoadError(false);
+      const { contributors } = await crowdfundingApi.myRecentContributors(50);
+      setRecentContributors(
+        contributors.map((c) => ({
+          id: c.id,
+          name: c.contributor.display_name,
+          avatar: profileAvatarUri(c.contributor.avatar, c.contributor.id),
+          amount: c.amount,
+          date: formatContributionDate(c.created_at),
+          reward: c.reward_tier ?? null,
+          project: c.project_title,
+        })),
+      );
+    } catch {
+      setContribLoadError(true);
+      setRecentContributors([]);
+    }
+  }, [user?.id]);
+
+  const loadMyCampaigns = useCallback(async () => {
+    if (!user?.id) {
+      setMyProjects([]);
+      return;
+    }
+    try {
+      setCampaignsLoadError(false);
+      const raw = await crowdfundingApi.getMyCampaigns();
+      setMyProjects(raw.map((p) => mapApiCampaignToCrowdfundingProject(p)));
+    } catch {
+      setCampaignsLoadError(true);
+      setMyProjects([]);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    void loadRecentContributors();
+    void loadMyCampaigns();
+  }, [loadRecentContributors, loadMyCampaigns]);
+
+  const onRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1500);
+    await Promise.all([loadRecentContributors(), loadMyCampaigns()]);
+    setRefreshing(false);
   };
 
-  const avgProgress = Math.round(
-    MY_PROJECTS.reduce((sum, p) => sum + getProgressPercent(p.raised, p.goal), 0) / MY_PROJECTS.length
-  );
+  const TOTAL_RAISED = myProjects.reduce((sum, p) => sum + p.raised, 0);
+  const TOTAL_BACKERS = myProjects.reduce((sum, p) => sum + p.backers, 0);
+  const avgProgress =
+    myProjects.length > 0
+      ? Math.round(
+          myProjects.reduce((sum, p) => sum + getProgressPercent(p.raised, p.goal), 0) / myProjects.length,
+        )
+      : 0;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -68,10 +139,15 @@ export default function CreatorDashboardScreen() {
 
       {/* Creator Profile */}
       <View style={styles.creatorCard}>
-        <Image source={{ uri: 'https://i.pravatar.cc/100?img=1' }} style={styles.creatorAvatar} />
+        <ImageOrPlaceholder
+          uri={profileAvatarUri(user?.profile_image, user?.id || 'me')}
+          style={styles.creatorAvatar}
+          icon="person"
+          iconSize={28}
+        />
         <View style={styles.creatorInfo}>
           <View style={styles.creatorNameRow}>
-            <Text style={styles.creatorName}>Aminata Diallo</Text>
+            <Text style={styles.creatorName}>{user?.full_name || user?.username || 'Créateur'}</Text>
             <Ionicons name="checkmark-circle" size={16} color={Colors.primary} />
           </View>
           <Text style={styles.creatorLocation}>Bamako, Mali</Text>
@@ -129,7 +205,7 @@ export default function CreatorDashboardScreen() {
                 <LinearGradient colors={['#2196F3', '#1565C0']} style={styles.statIconBg}>
                   <Ionicons name="folder" size={20} color="#FFF" />
                 </LinearGradient>
-                <Text style={styles.statValue}>{MY_PROJECTS.length}</Text>
+                <Text style={styles.statValue}>{myProjects.length}</Text>
                 <Text style={styles.statLabel}>Projets actifs</Text>
               </View>
               <View style={styles.statCard}>
@@ -162,19 +238,27 @@ export default function CreatorDashboardScreen() {
             {/* Recent contributors */}
             <View style={styles.recentSection}>
               <Text style={styles.recentTitle}>Derniers contributeurs</Text>
-              {RECENT_CONTRIBUTORS.slice(0, 4).map(contrib => (
-                <View key={contrib.id} style={styles.contributorRow}>
-                  <Image source={{ uri: contrib.avatar }} style={styles.contributorAvatar} />
-                  <View style={styles.contributorInfo}>
-                    <Text style={styles.contributorName}>{contrib.name}</Text>
-                    <Text style={styles.contributorProject} numberOfLines={1}>{contrib.project}</Text>
+              {recentContributors.length === 0 ? (
+                <Text style={styles.emptyContributors}>
+                  {contribLoadError
+                    ? 'Impossible de charger les soutiens. Vérifiez la connexion ou reconnectez-vous.'
+                    : 'Aucun soutien confirmé pour le moment sur vos campagnes (Orange Money complété).'}
+                </Text>
+              ) : (
+                recentContributors.slice(0, 4).map((contrib) => (
+                  <View key={contrib.id} style={styles.contributorRow}>
+                    <ImageOrPlaceholder uri={contrib.avatar} style={styles.contributorAvatar} icon="person" iconSize={20} />
+                    <View style={styles.contributorInfo}>
+                      <Text style={styles.contributorName}>{contrib.name}</Text>
+                      <Text style={styles.contributorProject} numberOfLines={1}>{contrib.project}</Text>
+                    </View>
+                    <View style={styles.contributorAmount}>
+                      <Text style={styles.contributorAmountText}>+{formatCFA(contrib.amount)}</Text>
+                      <Text style={styles.contributorDate}>{contrib.date}</Text>
+                    </View>
                   </View>
-                  <View style={styles.contributorAmount}>
-                    <Text style={styles.contributorAmountText}>+{formatCFA(contrib.amount)}</Text>
-                    <Text style={styles.contributorDate}>{contrib.date}</Text>
-                  </View>
-                </View>
-              ))}
+                ))
+              )}
             </View>
           </View>
         )}
@@ -184,36 +268,63 @@ export default function CreatorDashboardScreen() {
           <View style={styles.section}>
             <View style={styles.contributorSummary}>
               <Ionicons name="people" size={24} color={Colors.primary} />
-              <Text style={styles.contributorSummaryText}>{TOTAL_BACKERS} contributeurs au total</Text>
+              <Text style={styles.contributorSummaryText}>
+                {TOTAL_BACKERS} contributeur{TOTAL_BACKERS > 1 ? 's' : ''} (toutes campagnes)
+              </Text>
             </View>
-            {RECENT_CONTRIBUTORS.map(contrib => (
-              <View key={contrib.id} style={styles.contributorCard}>
-                <Image source={{ uri: contrib.avatar }} style={styles.contributorCardAvatar} />
-                <View style={styles.contributorCardInfo}>
-                  <Text style={styles.contributorCardName}>{contrib.name}</Text>
-                  <Text style={styles.contributorCardProject} numberOfLines={1}>{contrib.project}</Text>
-                  {contrib.reward && (
-                    <View style={styles.contributorReward}>
-                      <Ionicons name="gift" size={10} color={Colors.primary} />
-                      <Text style={styles.contributorRewardText}>{contrib.reward}</Text>
-                    </View>
-                  )}
+            {recentContributors.length === 0 ? (
+              <Text style={styles.emptyContributors}>
+                {contribLoadError
+                  ? 'Chargement des soutiens impossible pour le moment.'
+                  : 'Aucun historique de soutiens confirmés sur vos campagnes.'}
+              </Text>
+            ) : (
+              recentContributors.map((contrib) => (
+                <View key={contrib.id} style={styles.contributorCard}>
+                  <ImageOrPlaceholder uri={contrib.avatar} style={styles.contributorCardAvatar} icon="person" iconSize={22} />
+                  <View style={styles.contributorCardInfo}>
+                    <Text style={styles.contributorCardName}>{contrib.name}</Text>
+                    <Text style={styles.contributorCardProject} numberOfLines={1}>{contrib.project}</Text>
+                    {contrib.reward && (
+                      <View style={styles.contributorReward}>
+                        <Ionicons name="gift" size={10} color={Colors.primary} />
+                        <Text style={styles.contributorRewardText}>{contrib.reward}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.contributorCardRight}>
+                    <Text style={styles.contributorCardAmount}>{formatFullCFA(contrib.amount)}</Text>
+                    <Text style={styles.contributorCardDate}>{contrib.date}</Text>
+                  </View>
                 </View>
-                <View style={styles.contributorCardRight}>
-                  <Text style={styles.contributorCardAmount}>{formatFullCFA(contrib.amount)}</Text>
-                  <Text style={styles.contributorCardDate}>{contrib.date}</Text>
-                </View>
-              </View>
-            ))}
+              ))
+            )}
           </View>
         )}
 
         {/* PROJECTS TAB */}
         {activeTab === 'projects' && (
           <View style={styles.section}>
-            {MY_PROJECTS.map(project => {
+            {campaignsLoadError ? (
+              <Text style={styles.emptyContributors}>Impossible de charger vos campagnes. Réessayez.</Text>
+            ) : null}
+            {!campaignsLoadError && myProjects.length === 0 ? (
+              <Text style={styles.emptyContributors}>
+                Vous n’avez pas encore de campagne. Créez-en une pour la voir ici.
+              </Text>
+            ) : null}
+            {myProjects.map((project) => {
               const progress = getProgressPercent(project.raised, project.goal);
-              const catData = CROWDFUNDING_CATEGORIES.find(c => c.id === project.category);
+              const catData = CROWDFUNDING_CATEGORIES.find((c) => c.id === project.category);
+              const st = project.status ?? '';
+              const statusLabel =
+                st === 'pending'
+                  ? 'En attente'
+                  : st === 'rejected'
+                    ? 'Refusée'
+                    : st === 'suspended'
+                      ? 'Suspendue'
+                      : null;
               return (
                 <TouchableOpacity
                   key={project.id}
@@ -221,13 +332,38 @@ export default function CreatorDashboardScreen() {
                   onPress={() => router.push(`/crowdfunding/${project.id}` as any)}
                   activeOpacity={0.85}
                 >
-                  <Image source={{ uri: project.images[0] }} style={styles.projectImage} />
+                  <ImageOrPlaceholder uri={project.images?.[0] || ''} style={styles.projectImage} icon="rocket-outline" iconSize={32} />
                   <View style={styles.projectCardContent}>
                     <View style={styles.projectCardHeader}>
-                      <View style={[styles.projectCatBadge, { backgroundColor: (catData?.color || '#FF6B00') + '20' }]}>
-                        <Text style={[styles.projectCatText, { color: catData?.color || '#FF6B00' }]}>
-                          {catData?.name}
-                        </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, flex: 1 }}>
+                        <View style={[styles.projectCatBadge, { backgroundColor: (catData?.color || '#FF6B00') + '20' }]}>
+                          <Text style={[styles.projectCatText, { color: catData?.color || '#FF6B00' }]}>
+                            {catData?.name}
+                          </Text>
+                        </View>
+                        {statusLabel ? (
+                          <View
+                            style={[
+                              styles.projectCatBadge,
+                              {
+                                backgroundColor:
+                                  st === 'pending' ? 'rgba(255,193,7,0.2)' : st === 'rejected' ? 'rgba(244,67,54,0.2)' : 'rgba(158,158,158,0.25)',
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.projectCatText,
+                                {
+                                  color:
+                                    st === 'pending' ? '#FFC107' : st === 'rejected' ? '#F44336' : '#9E9E9E',
+                                },
+                              ]}
+                            >
+                              {statusLabel}
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
                       {project.isVerified && (
                         <View style={styles.verifiedMini}>
@@ -356,6 +492,7 @@ const styles = StyleSheet.create({
   contributorAmount: { alignItems: 'flex-end' },
   contributorAmountText: { color: '#4CAF50', fontSize: 14, fontWeight: '700' },
   contributorDate: { color: '#666', fontSize: 10, marginTop: 1 },
+  emptyContributors: { color: '#888', fontSize: 13, lineHeight: 19, paddingVertical: 8 },
 
   // Contributors tab
   contributorSummary: {

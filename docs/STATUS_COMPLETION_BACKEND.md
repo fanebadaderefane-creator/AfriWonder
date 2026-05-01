@@ -1,5 +1,12 @@
 # STATUS COMPLÉTION BACKEND 100%
 
+> ⚠️ **Document obsolète (avancement historique).**
+> Les statuts "en cours / non commencé" ne reflètent plus l’état actuel du backend.
+> Utiliser:
+> - `backend/src/app.ts` (montage réel des routes)
+> - `docs/API.md`
+> - `GET /api/openapi.json`
+
 ## ✅ COMPLÉTÉ
 
 ### Routes & Services Marketplace (Priorité 1)

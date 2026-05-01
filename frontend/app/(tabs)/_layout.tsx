@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Tabs } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, StyleSheet, Text } from 'react-native';
+import { View, StyleSheet, Text, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { MIN_TOUCH_TARGET } from '../../src/theme/designSystem';
 import { Colors } from '../../src/theme/colors';
+import { useAppTheme } from '../../src/theme/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore } from '../../src/store/authStore';
@@ -34,9 +35,11 @@ function useInboxUnreadTotal() {
     }
   }, [token]);
 
+  /** Pas de `refresh` ici : évite double appel au montage (useFocusEffect suffit) + moins de charge sur le thread JS. */
   useEffect(() => {
-    void refresh();
-    const id = setInterval(() => void refresh(), 45000);
+    const id = setInterval(() => {
+      void refresh();
+    }, 120_000);
     return () => clearInterval(id);
   }, [refresh]);
 
@@ -51,37 +54,44 @@ function useInboxUnreadTotal() {
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
+  const { colors, mode } = useAppTheme();
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminUser(user);
   const inboxUnread = useInboxUnreadTotal();
 
-  const activeTint = '#FFFFFF';
-  const inactiveTint = 'rgba(255,255,255,0.55)';
+  const activeTint = mode === 'light' ? colors.primary : '#FFFFFF';
+  const inactiveTint = mode === 'light' ? colors.textSecondary : 'rgba(255,255,255,0.55)';
+
+  const tabScreenOptions = useMemo(
+    () => ({
+      lazy: true,
+      freezeOnBlur: false,
+      detachInactiveScreens: true,
+      headerShown: false,
+      tabBarStyle: {
+        backgroundColor: colors.tabBar,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: colors.border,
+        height: 65 + insets.bottom,
+        paddingBottom: insets.bottom,
+        paddingTop: 6,
+        elevation: 0,
+        shadowOpacity: 0,
+      },
+      tabBarActiveTintColor: activeTint,
+      tabBarInactiveTintColor: inactiveTint,
+      tabBarShowLabel: true,
+      tabBarLabelStyle: {
+        fontSize: 10,
+        fontWeight: '600' as const,
+        marginTop: 2,
+      },
+    }),
+    [colors.tabBar, colors.border, insets.bottom, activeTint, inactiveTint]
+  );
 
   return (
-    <Tabs
-      screenOptions={{
-        freezeOnBlur: true,
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: '#000000',
-          borderTopWidth: 0,
-          height: 65 + insets.bottom,
-          paddingBottom: insets.bottom,
-          paddingTop: 6,
-          elevation: 0,
-          shadowOpacity: 0,
-        },
-        tabBarActiveTintColor: activeTint,
-        tabBarInactiveTintColor: inactiveTint,
-        tabBarShowLabel: true,
-        tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: '600',
-          marginTop: 2,
-        },
-      }}
-    >
+    <Tabs screenOptions={tabScreenOptions}>
       <Tabs.Screen
         name="index"
         options={{
@@ -123,7 +133,7 @@ export default function TabsLayout() {
           tabBarIcon: () => (
             <View style={styles.createWrapper}>
               <LinearGradient
-                colors={['#00F2EA', '#FF2D55']}
+                colors={[Colors.primary, Colors.primaryDark]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.createOuterRing}
@@ -144,10 +154,10 @@ export default function TabsLayout() {
               <Ionicons
                 name={focused ? 'file-tray' : 'file-tray-outline'}
                 size={26}
-                color={focused ? activeTint : inactiveTint}
+                color={focused ? Colors.primary : inactiveTint}
               />
               {inboxUnread > 0 ? (
-                <View style={styles.inboxBadge}>
+                <View style={[styles.inboxBadge, { borderColor: colors.border }]}>
                   <Text style={styles.inboxBadgeText}>{inboxUnread > 99 ? '99+' : String(inboxUnread)}</Text>
                 </View>
               ) : null}
@@ -186,7 +196,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => (
             <View style={styles.tabIconContainer}>
               <Ionicons name={focused ? 'bag' : 'bag-outline'} size={24} color={focused ? activeTint : inactiveTint} />
-              <View style={[styles.badgeDot, { borderColor: '#000000' }]} />
+              <View style={[styles.badgeDot, { borderColor: colors.tabBar }]} />
             </View>
           ),
         }}
@@ -231,7 +241,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: '#000',
   },
   inboxBadgeText: {
     color: '#FFF',
@@ -243,6 +252,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minWidth: MIN_TOUCH_TARGET,
     minHeight: MIN_TOUCH_TARGET,
+    marginTop: Platform.OS === 'web' ? 0 : 6,
   },
   createOuterRing: {
     width: 50,
@@ -250,7 +260,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#FF2D55',
+    shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.45,
     shadowRadius: 6,

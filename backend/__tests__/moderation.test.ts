@@ -79,7 +79,7 @@ describe('Moderation API', () => {
     expect(res.body.error).toHaveProperty('message', 'Avis non trouvé');
   });
 
-  it('GET /api/moderation/reports retourne la liste paginée', async () => {
+  it('GET /api/moderation/reports refuse un utilisateur sans droit de revue', async () => {
     await prisma.moderation.create({
       data: {
         reporter_id: user.id,
@@ -96,9 +96,28 @@ describe('Moderation API', () => {
       .set('Authorization', `Bearer ${userToken}`)
       .query({ page: 1, limit: 10, status: 'pending' });
 
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /api/moderation/reports retourne la liste paginée pour un modérateur', async () => {
+    await prisma.moderation.create({
+      data: {
+        reporter_id: user.id,
+        content_type: 'video',
+        content_id: 'video-1',
+        reason: 'spam',
+        severity: 'low',
+        status: 'pending',
+      },
+    });
+
+    const res = await request(app)
+      .get('/api/moderation/reports')
+      .set('Authorization', `Bearer ${moderatorToken}`)
+      .query({ page: 1, limit: 10, status: 'pending' });
+
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    // Le service retourne { reports, pagination }
     expect(res.body.data).toHaveProperty('reports');
     expect(Array.isArray(res.body.data.reports)).toBe(true);
   });

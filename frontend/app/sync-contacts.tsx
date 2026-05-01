@@ -249,7 +249,7 @@ export default function SyncContactsScreen() {
                           alreadyFollowing && styles.followBtnTextSecondary,
                         ]}
                       >
-                        {alreadyFollowing ? 'Following' : 'Follow'}
+                        {alreadyFollowing ? 'Dans son Wonder' : 'Wonder'}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -334,8 +334,8 @@ const styles = StyleSheet.create({
     borderColor: DIVIDER,
     color: TEXT_MAIN,
     fontSize: 14,
-    textAlignVertical: 'top',
-    ...(Platform.OS === 'web' ? { outlineWidth: 0, outlineStyle: 'none' } : {}),
+    textAlignVertical: 'top' as const,
+    ...(Platform.OS === 'web' ? ({ outlineWidth: 0, outlineStyle: 'none' } as any) : {}),
   },
   counter: { color: TEXT_MUTED, fontSize: 12, marginHorizontal: 16, marginTop: 6 },
   primaryBtn: {

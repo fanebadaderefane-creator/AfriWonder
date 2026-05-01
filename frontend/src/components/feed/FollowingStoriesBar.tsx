@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -9,7 +10,7 @@ import { useAuthStore } from '../../store/authStore';
 import { toAbsoluteMediaUrl } from '../../utils/absoluteMediaUrl';
 
 /**
- * Barre « Following Stories » style TikTok.
+ * Barre « Wonder Stories » style TikTok.
  *  - Élément 1 : Create (avatar de l'utilisateur connecté + badge + bleu).
  *  - Éléments suivants : créateurs suivis triés live > non vu > vu > rien.
  *  - LIVE → bord dégradé rouge/rose + badge LIVE.
@@ -171,41 +172,65 @@ export function FollowingStoriesBar() {
   const selfEntry = sortedItems.find((i) => i.is_self);
   const hasSelf = Boolean(selfEntry) || Boolean(authUser);
 
+  /**
+   * PERF : `FlatList` horizontal au lieu de `ScrollView` + `.map`.
+   * Avant : tous les items rendus d'un coup, même hors écran (mémoire + décodage images).
+   * Après : virtualisation native (only ~7 items rendus à la fois) + recyclage.
+   */
+  type Row = { kind: 'self'; avatar: string } | { kind: 'story'; data: FeedBarItem };
+  const rows: Row[] = [];
+  if (hasSelf) {
+    rows.push({
+      kind: 'self',
+      avatar: selfEntry
+        ? avatarUrl(selfEntry)
+        : avatarUrl({
+            id: authUser?.id || 'me',
+            username: authUser?.username || null,
+            full_name: authUser?.full_name || null,
+            profile_image: authUser?.profile_image || authUser?.avatar || null,
+            is_self: true,
+            has_story: false,
+            has_unseen_story: false,
+            is_live: false,
+            live_id: null,
+            story_ids: [],
+            sort_rank: 3,
+          }),
+    });
+  }
+  for (const it of sortedItems) {
+    if (it.is_self) continue;
+    rows.push({ kind: 'story', data: it });
+  }
+
   return (
     <View style={styles.container}>
-      <ScrollView
+      <FlatList
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.content}
-      >
-        {hasSelf ? (
-          <CreateItem
-            avatar={
-              selfEntry
-                ? avatarUrl(selfEntry)
-                : avatarUrl({
-                    id: authUser?.id || 'me',
-                    username: authUser?.username || null,
-                    full_name: authUser?.full_name || null,
-                    profile_image: authUser?.profile_image || authUser?.avatar || null,
-                    is_self: true,
-                    has_story: false,
-                    has_unseen_story: false,
-                    is_live: false,
-                    live_id: null,
-                    story_ids: [],
-                    sort_rank: 3,
-                  })
-            }
-            onPress={() => router.push('/create')}
-          />
-        ) : null}
-        {sortedItems
-          .filter((it) => !it.is_self)
-          .map((it) => (
-            <StoryItem key={it.id} item={it} avatar={avatarUrl(it)} label={displayLabel(it)} onPress={() => void openItem(it)} />
-          ))}
-      </ScrollView>
+        data={rows}
+        keyExtractor={(row, idx) => (row.kind === 'self' ? 'self' : `s_${row.data.id}`) + `_${idx}`}
+        renderItem={({ item: row }) => {
+          if (row.kind === 'self') {
+            return <CreateItem avatar={row.avatar} onPress={() => router.push('/create')} />;
+          }
+          return (
+            <StoryItem
+              item={row.data}
+              avatar={avatarUrl(row.data)}
+              label={displayLabel(row.data)}
+              onPress={() => void openItem(row.data)}
+            />
+          );
+        }}
+        getItemLayout={(_, index) => ({ length: 84, offset: 84 * index, index })}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={5}
+        removeClippedSubviews
+      />
     </View>
   );
 }
@@ -216,7 +241,13 @@ function CreateItem({ avatar, onPress }: { avatar: string; onPress: () => void }
       <View style={styles.ringWrap}>
         <View style={[styles.ring, styles.ringIdle]}>
           <View style={styles.avatarInner}>
-            <Image source={{ uri: avatar }} style={styles.avatar} />
+            <ExpoImage
+              source={{ uri: avatar }}
+              style={styles.avatar}
+              cachePolicy="memory-disk"
+              transition={120}
+              contentFit="cover"
+            />
           </View>
         </View>
         <View style={styles.createBadge}>
@@ -260,7 +291,13 @@ function StoryItem({
       <View style={styles.ringWrap}>
         <LinearGradient colors={ringColors} style={styles.ring}>
           <View style={styles.avatarInner}>
-            <Image source={{ uri: avatar }} style={styles.avatar} />
+            <ExpoImage
+              source={{ uri: avatar }}
+              style={styles.avatar}
+              cachePolicy="memory-disk"
+              transition={120}
+              contentFit="cover"
+            />
           </View>
         </LinearGradient>
         {item.is_live ? (

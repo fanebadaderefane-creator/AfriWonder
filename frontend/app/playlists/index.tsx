@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   TouchableOpacity,
   ScrollView,
   TextInput,
@@ -17,7 +16,8 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import apiClient from '../../src/api/client';
-import { Colors, Spacing, FontSizes, BorderRadius } from '../../src/theme/colors';
+import { Colors } from '../../src/theme/colors';
+import { playlistsScreenStyles as styles } from '../../src/screens/playlists/playlistsScreen.styles';
 import { SmartThumbnail } from '../../src/components/SmartThumbnail';
 import { goBackOrFallback } from '../../src/utils/goBack';
 
@@ -252,87 +252,3 @@ export default function MyPlaylistsScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
-  },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  addBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { color: Colors.text, fontSize: FontSizes.lg, fontWeight: '800' },
-  empty: { padding: 24, alignItems: 'center' },
-  emptyTitle: { color: Colors.text, fontSize: 16, fontWeight: '800' },
-  emptySub: { marginTop: 6, color: Colors.textMuted, textAlign: 'center' },
-  primaryBtn: {
-    marginTop: 14,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.pill,
-  },
-  primaryBtnText: { color: '#FFF', fontWeight: '800' },
-  list: { padding: Spacing.md, gap: 10 },
-  rowWrap: { position: 'relative' },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    padding: 12,
-    paddingRight: 44,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.10)',
-  },
-  rowTrash: {
-    position: 'absolute',
-    right: 2,
-    top: 0,
-    bottom: 0,
-    width: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 20,
-    elevation: 20,
-  },
-  thumb: { width: 84, height: 54, borderRadius: 10, overflow: 'hidden', backgroundColor: '#222' },
-  textCol: { flex: 1, minWidth: 0 },
-  title: { color: Colors.text, fontWeight: '800' },
-  sub: { marginTop: 3, color: Colors.textMuted, fontSize: 12 },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center', padding: 18 },
-  modalCard: {
-    width: '100%',
-    maxWidth: 520,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: '#0f0f0f',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.12)',
-    padding: 16,
-  },
-  modalTitle: { color: Colors.text, fontSize: 16, fontWeight: '900', marginBottom: 10 },
-  label: { color: Colors.textMuted, fontSize: 12, fontWeight: '700', marginTop: 10, marginBottom: 6 },
-  input: {
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.12)',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: Colors.text,
-  },
-  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 },
-  switchLabel: { color: Colors.text, fontWeight: '800' },
-  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 16 },
-  btnGhost: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.06)' },
-  btnGhostText: { color: Colors.text, fontWeight: '800' },
-  btnPrimary: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, backgroundColor: Colors.primary },
-  btnPrimaryText: { color: '#FFF', fontWeight: '900' },
-});
-

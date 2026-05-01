@@ -21,57 +21,46 @@ import {
   getProgressPercent,
 } from '../../src/data/crowdfunding';
 import type { CrowdfundingProject } from '../../src/data/crowdfunding';
+import { mapApiCampaignToCrowdfundingProject } from '../../src/data/crowdfundingMappers';
 import apiClient from '../../src/api/client';
-import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
+
+const STATUS_FILTERS = [
+  { id: '', label: 'Tous' },
+  { id: 'active', label: 'Actives' },
+  { id: 'funded', label: 'Financées' },
+  { id: 'failed', label: 'Échouées' },
+] as const;
 
 export default function CrowdfundingHomeScreen() {
   const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [projects, setProjects] = useState<CrowdfundingProject[]>([]);
   const [listError, setListError] = useState<string | null>(null);
 
-  useEffect(() => { loadProjects(); }, []);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 450);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
 
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
     setListError(null);
     try {
-      const response = await apiClient.get('/crowdfunding', { params: { page: 1, limit: 40 } });
+      const params: Record<string, string | number> = { page: 1, limit: 40 };
+      if (activeCategory !== 'all') params.category = activeCategory;
+      if (statusFilter) params.status = statusFilter;
+      if (debouncedSearch.length >= 2) params.search = debouncedSearch;
+      const response = await apiClient.get('/crowdfunding', { params });
       const data = response.data?.data || response.data;
       const backendProjects = data?.campaigns || data?.projects || [];
       if (backendProjects.length > 0) {
-        const transformed: CrowdfundingProject[] = backendProjects.map((p: any) => {
-          const cover = toAbsoluteMediaUrl(String(p.image_url || '').trim());
-          const creatorAv = toAbsoluteMediaUrl(String(p.creator_avatar || '').trim());
-          return {
-          id: p.id,
-          title: p.title || '',
-          shortDescription: p.description || '',
-          fullDescription: p.description || '',
-          category: p.category || 'general',
-          goal: p.goal_amount || 0,
-          raised: p.current_amount || 0,
-          currency: p.currency || 'XOF',
-          backers: p.backers_count ?? p.contributors_count ?? 0,
-          daysLeft: Math.max(0, Math.ceil((new Date(p.end_date).getTime() - Date.now()) / 86400000)),
-          creator: {
-            id: p.creator_id || '',
-            name: p.creator_name || 'Créateur AfriWonder',
-            avatar: creatorAv,
-            location: 'Bamako, Mali',
-            isVerified: true,
-          },
-          image: cover || '',
-          images: cover ? [cover] : [],
-          isVerified: true,
-          isSponsored: false,
-          isFeatured: p.status === 'funded',
-          createdAt: p.created_at || new Date().toISOString(),
-          updates: 0,
-        };
-        });
+        const transformed: CrowdfundingProject[] = backendProjects.map((p: Record<string, unknown>) =>
+          mapApiCampaignToCrowdfundingProject(p),
+        );
         setProjects(transformed);
       } else {
         setProjects([]);
@@ -80,16 +69,23 @@ export default function CrowdfundingHomeScreen() {
       setListError('Impossible de charger les campagnes. Vérifiez la connexion ou réessayez plus tard.');
       setProjects([]);
     }
-  };
+  }, [activeCategory, statusFilter, debouncedSearch]);
+
+  useEffect(() => {
+    void loadProjects();
+  }, [loadProjects]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadProjects().finally(() => setRefreshing(false));
-  }, []);
+  }, [loadProjects]);
 
-  // Filter projects
+  // Filtre catégorie ; recherche serveur si ≥ 2 caractères (debounced), sinon recherche locale sur 1 caractère
   const filteredProjects = projects.filter((p) => {
     const matchesCategory = activeCategory === 'all' || p.category === activeCategory;
+    if (debouncedSearch.length >= 2) {
+      return matchesCategory;
+    }
     const matchesSearch =
       !searchQuery ||
       p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -120,6 +116,13 @@ export default function CrowdfundingHomeScreen() {
         <View style={styles.headerRight}>
           <TouchableOpacity style={styles.headerBtn} onPress={() => router.push('/crowdfunding/history' as any)}>
             <Ionicons name="time" size={22} color="#AAA" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => router.push('/crowdfunding/portfolio' as any)}
+            accessibilityLabel="Mon portefeuille investisseur"
+          >
+            <Ionicons name="pie-chart" size={22} color="#AAA" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.headerBtn} onPress={() => router.push('/crowdfunding/dashboard' as any)}>
             <Ionicons name="stats-chart" size={22} color="#AAA" />
@@ -214,7 +217,7 @@ export default function CrowdfundingHomeScreen() {
               onPress={() => router.push(`/crowdfunding/${featuredProject.id}` as any)}
             >
               <ImageOrPlaceholder
-                uri={featuredProject.image || featuredProject.images?.[0] || ''}
+                uri={featuredProject.images?.[0] || ''}
                 style={styles.featuredImage}
                 icon="rocket-outline"
                 iconSize={48}
@@ -294,6 +297,32 @@ export default function CrowdfundingHomeScreen() {
           ))}
         </ScrollView>
 
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.statusRow}
+        >
+          {STATUS_FILTERS.map((s) => (
+            <TouchableOpacity
+              key={s.id || 'all'}
+              style={[
+                styles.statusPill,
+                statusFilter === s.id && styles.statusPillActive,
+              ]}
+              onPress={() => setStatusFilter(s.id)}
+            >
+              <Text
+                style={[
+                  styles.statusPillText,
+                  statusFilter === s.id && styles.statusPillTextActive,
+                ]}
+              >
+                {s.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
         {/* Projects List */}
         <View style={styles.projectsSection}>
           <View style={styles.sectionHeader}>
@@ -339,7 +368,7 @@ function ProjectCard({ project }: { project: CrowdfundingProject }) {
       {/* Image */}
       <View style={styles.cardImageContainer}>
         <ImageOrPlaceholder
-          uri={project.image || project.images?.[0] || ''}
+          uri={project.images?.[0] || ''}
           style={styles.cardImage}
           icon="rocket-outline"
           iconSize={40}
@@ -529,6 +558,19 @@ const styles = StyleSheet.create({
   },
   categoryPillText: { color: '#888', fontSize: 12, fontWeight: '600' },
   categoryPillTextActive: { color: '#FFF' },
+
+  statusRow: { paddingHorizontal: 16, gap: 8, paddingBottom: 12 },
+  statusPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#1A1A1A',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+  },
+  statusPillActive: { backgroundColor: Colors.primary + '25', borderColor: Colors.primary },
+  statusPillText: { color: '#888', fontSize: 12, fontWeight: '600' },
+  statusPillTextActive: { color: Colors.primary },
 
   // Section Header
   sectionHeader: {

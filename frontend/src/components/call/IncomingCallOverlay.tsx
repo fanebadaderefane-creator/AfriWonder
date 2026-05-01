@@ -1,17 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Modal, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Modal, Animated, Platform, Vibration } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import socketService from '../../services/socketService';
 import { useAuthStore } from '../../store/authStore';
 import { featureFlags } from '../../config/featureFlags';
+import { startLoopingCallRing } from '../../call/callRingtone';
 
 /**
- * Overlay d'appel entrant — global (monté dans `_layout.tsx`).
- *
- * Écoute `call:invite` (Socket.IO). Affiche un modal plein écran avec avatar + boutons
- * Refuser / Accepter. Sur Accepter → navigue vers `/messages/call` en mode `receiver`,
- * qui prend le relais pour la signalisation WebRTC complète.
+ * Overlay d'appel entrant — global (`_layout.tsx`).
+ * Son + vibration sur mobile jusqu'à réponse / refus / fin.
  */
 
 type IncomingCall = {
@@ -27,31 +25,31 @@ export function IncomingCallOverlay() {
   const myUserId = useAuthStore((s) => s.user?.id);
   const [incoming, setIncoming] = useState<IncomingCall | null>(null);
   const pulse = useRef(new Animated.Value(1)).current;
+  const incomingRef = useRef<IncomingCall | null>(null);
+  incomingRef.current = incoming;
 
   useEffect(() => {
     if (!myUserId) return;
-    // Pas d'overlay d'appel sur les plateformes où WebRTC n'est pas dispo
-    // (managé / Expo Go natif). Évite de proposer une action que l'app ne sait
-    // pas honorer (audit B9).
     if (!featureFlags.callsOnNative) return;
     const onInvite = (payload: IncomingCall) => {
       if (!payload || payload.toUserId !== myUserId) return;
       setIncoming(payload);
     };
-    const onEnd = (payload: { callId?: string }) => {
-      if (incoming && payload?.callId === incoming.callId) {
+    const clearIfSameCall = (payload: { callId?: string }) => {
+      const cur = incomingRef.current;
+      if (cur && payload?.callId === cur.callId) {
         setIncoming(null);
       }
     };
     const offInvite = socketService.on('call:invite', onInvite);
-    const offEnd = socketService.on('call:end', onEnd);
-    const offDecline = socketService.on('call:decline', onEnd);
+    const offEnd = socketService.on('call:end', clearIfSameCall);
+    const offDecline = socketService.on('call:decline', clearIfSameCall);
     return () => {
       offInvite();
       offEnd();
       offDecline();
     };
-  }, [myUserId, incoming]);
+  }, [myUserId]);
 
   useEffect(() => {
     if (!incoming) return;
@@ -64,6 +62,42 @@ export function IncomingCallOverlay() {
     loop.start();
     return () => loop.stop();
   }, [incoming, pulse]);
+
+  /** Sonnerie + vibration (Android / iOS), silencieux sur web. */
+  useEffect(() => {
+    if (!incoming || Platform.OS === 'web') return;
+    let stopRing: (() => Promise<void>) | null = null;
+    let vibeTimer: ReturnType<typeof setInterval> | null = null;
+    void (async () => {
+      stopRing = await startLoopingCallRing(0.92, { preset: 'incoming' });
+    })();
+    try {
+      if (Platform.OS === 'android') {
+        Vibration.vibrate([0, 520, 260, 520], true);
+      } else {
+        const pulseVibe = () => {
+          try {
+            Vibration.vibrate(380);
+          } catch {
+            /* ignore */
+          }
+        };
+        pulseVibe();
+        vibeTimer = setInterval(pulseVibe, 1250);
+      }
+    } catch {
+      /* ignore */
+    }
+    return () => {
+      void stopRing?.();
+      if (vibeTimer) clearInterval(vibeTimer);
+      try {
+        Vibration.cancel();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [incoming]);
 
   if (!incoming) return null;
 
@@ -87,7 +121,7 @@ export function IncomingCallOverlay() {
     const c = incoming;
     setIncoming(null);
     if (myUserId) {
-      socketService.emit('call:decline', {
+      void socketService.ensureConnectedEmit('call:decline', {
         callId: c.callId,
         fromUserId: myUserId,
         toUserId: c.fromUserId,

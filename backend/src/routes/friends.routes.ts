@@ -4,6 +4,7 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import prisma from '../config/database.js';
 import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
+import moderationService from '../services/moderation.service.js';
 
 const router = Router();
 
@@ -328,7 +329,7 @@ router.get('/mutual', authenticate, async (req: AuthRequest, res, next) => {
 router.post('/:id/block', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.id;
-    const targetId = (req.params.id || '').trim();
+    const targetId = (typeof req.params.id === 'string' ? req.params.id : '').trim();
     if (!targetId || targetId === userId) {
       return res.status(400).json({ success: false, error: 'id invalide' });
     }
@@ -363,11 +364,19 @@ router.post(
   async (req: AuthRequest, res, next) => {
     try {
       const userId = req.user!.id;
-      const targetId = (req.params.id || '').trim();
+      const targetId = (typeof req.params.id === 'string' ? req.params.id : '').trim();
       if (!targetId || targetId === userId) {
         return res.status(400).json({ success: false, error: 'id invalide' });
       }
       const { reason, details } = (req.body || {}) as { reason?: string; details?: string };
+      // Source de vérité modération: crée un report exploitable dans la console admin.
+      await moderationService.createReport(userId, {
+        contentType: 'user',
+        contentId: targetId,
+        reason: String(reason || 'inappropriate_profile').slice(0, 80),
+        description: details ? String(details).slice(0, 500) : undefined,
+        severity: 'medium',
+      });
       try {
         const dyn = prisma as unknown as {
           userReport?: { create: (args: { data: unknown }) => Promise<unknown> };

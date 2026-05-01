@@ -29,6 +29,14 @@ export default function LoginScreen() {
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showForceResetModal, setShowForceResetModal] = useState(false);
+  const [resetToken, setResetToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotIdentifier, setForgotIdentifier] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   const filteredCountries = useMemo(() => {
     if (!countrySearch.trim()) return COUNTRIES;
@@ -75,6 +83,22 @@ export default function LoginScreen() {
       await setAuth(response.user, response.accessToken, response.refreshToken);
       router.replace((await getPostAuthRoute()) as Parameters<typeof router.replace>[0]);
     } catch (error: any) {
+      const apiError = error?.response?.data?.error;
+      const apiMessage = String(apiError?.message || error?.response?.data?.message || '');
+      const forcedChange =
+        apiError?.code === 'PASSWORD_CHANGE_REQUIRED' ||
+        /changement de mot de passe requis/i.test(apiMessage);
+      const tokenFromError =
+        apiError?.data?.resetToken ||
+        error?.response?.data?.data?.resetToken ||
+        '';
+      if (forcedChange && tokenFromError) {
+        setResetToken(String(tokenFromError));
+        setNewPassword('');
+        setConfirmNewPassword('');
+        setShowForceResetModal(true);
+        return;
+      }
       const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'Erreur de connexion';
       Alert.alert('Erreur', message);
     } finally {
@@ -82,14 +106,65 @@ export default function LoginScreen() {
     }
   };
 
+  const handleForceResetSubmit = async () => {
+    if (!newPassword || !confirmNewPassword) {
+      Alert.alert('Erreur', 'Renseigne les deux champs de mot de passe.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      Alert.alert('Erreur', 'Les mots de passe ne correspondent pas.');
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await authApi.resetPassword(resetToken, newPassword);
+      setShowForceResetModal(false);
+      Alert.alert('Succès', 'Mot de passe changé. Connecte-toi avec ton nouveau mot de passe.');
+    } catch (error: any) {
+      const message = error?.response?.data?.error?.message || error?.response?.data?.message || error?.message || 'Impossible de changer le mot de passe';
+      Alert.alert('Erreur', message);
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleForgotPasswordSubmit = async () => {
+    const identifier = forgotIdentifier.trim();
+    if (!identifier) {
+      Alert.alert('Erreur', 'Entre ton email ou ton identifiant.');
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      await authApi.forgotPassword({ identifier });
+      setShowForgotModal(false);
+      setForgotIdentifier('');
+      Alert.alert(
+        'Vérifie ta boîte mail',
+        "Si un compte existe, un lien de réinitialisation vient d'être envoyé."
+      );
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Impossible d'envoyer la demande.";
+      Alert.alert('Erreur', message);
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 40 }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {/* Header */}
         <View style={styles.header}>
@@ -107,7 +182,7 @@ export default function LoginScreen() {
             style={[styles.methodTab, loginMethod === 'phone' && styles.methodTabActive]}
             onPress={() => { setLoginMethod('phone'); setErrors({}); }}
           >
-            <Ionicons name="call" size={18} color={loginMethod === 'phone' ? '#FFF' : Colors.textSecondary} />
+            <Ionicons name="call" size={18} color={loginMethod === 'phone' ? '#FFF' : '#C8C8D4'} />
             <Text style={[styles.methodTabText, loginMethod === 'phone' && styles.methodTabTextActive]}>Telephone</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -115,7 +190,7 @@ export default function LoginScreen() {
             style={[styles.methodTab, loginMethod === 'email' && styles.methodTabActive]}
             onPress={() => { setLoginMethod('email'); setErrors({}); }}
           >
-            <Ionicons name="mail" size={18} color={loginMethod === 'email' ? '#FFF' : Colors.textSecondary} />
+            <Ionicons name="mail" size={18} color={loginMethod === 'email' ? '#FFF' : '#C8C8D4'} />
             <Text style={[styles.methodTabText, loginMethod === 'email' && styles.methodTabTextActive]}>Email</Text>
           </TouchableOpacity>
         </View>
@@ -231,9 +306,14 @@ export default function LoginScreen() {
             error={errors.password}
           />
 
-          <TouchableOpacity style={styles.forgotPassword} onPress={() => router.push('/support-page')}>
-            <Text style={styles.forgotPasswordText}>Besoin d'aide pour vous connecter ?</Text>
-          </TouchableOpacity>
+          <View style={styles.loginHelpRow}>
+            <TouchableOpacity style={styles.forgotPassword} onPress={() => setShowForgotModal(true)}>
+              <Text style={styles.forgotPasswordText}>Mot de passe oublié ?</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.forgotPassword} onPress={() => router.push('/support-page')}>
+              <Text style={styles.forgotPasswordText}>Besoin d'aide pour vous connecter ?</Text>
+            </TouchableOpacity>
+          </View>
 
           <Button
             testID="login-submit-button"
@@ -259,6 +339,91 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <Modal visible={showForceResetModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Changement obligatoire</Text>
+              <TouchableOpacity
+                onPress={() => setShowForceResetModal(false)}
+                style={styles.modalClose}
+                disabled={resetLoading}
+              >
+                <Ionicons name="close" size={26} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ paddingHorizontal: Spacing.xl, paddingBottom: Spacing.lg }}>
+              <Text style={styles.subtitle}>
+                Votre compte utilise un mot de passe temporaire. Définissez un nouveau mot de passe maintenant.
+              </Text>
+            </View>
+            <View style={{ paddingHorizontal: Spacing.xl, gap: Spacing.md, paddingBottom: Spacing.xl }}>
+              <Input
+                label="Nouveau mot de passe"
+                placeholder="Nouveau mot de passe"
+                value={newPassword}
+                onChangeText={setNewPassword}
+                secureTextEntry
+                icon="lock-closed"
+              />
+              <Input
+                label="Confirmer le mot de passe"
+                placeholder="Confirmer le mot de passe"
+                value={confirmNewPassword}
+                onChangeText={setConfirmNewPassword}
+                secureTextEntry
+                icon="lock-closed"
+              />
+              <Button
+                title={resetLoading ? 'Changement...' : 'Changer le mot de passe'}
+                onPress={handleForceResetSubmit}
+                loading={resetLoading}
+                size="large"
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showForgotModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Mot de passe oublié</Text>
+              <TouchableOpacity
+                onPress={() => setShowForgotModal(false)}
+                style={styles.modalClose}
+                disabled={forgotLoading}
+              >
+                <Ionicons name="close" size={26} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ paddingHorizontal: Spacing.xl, paddingBottom: Spacing.lg }}>
+              <Text style={styles.subtitle}>
+                Entre ton email (ou identifiant) pour recevoir un lien de réinitialisation.
+              </Text>
+            </View>
+            <View style={{ paddingHorizontal: Spacing.xl, gap: Spacing.md, paddingBottom: Spacing.xl }}>
+              <Input
+                label="Email ou identifiant"
+                placeholder="votre@email.com"
+                value={forgotIdentifier}
+                onChangeText={setForgotIdentifier}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                icon="mail"
+              />
+              <Button
+                title={forgotLoading ? 'Envoi...' : 'Envoyer le lien'}
+                onPress={handleForgotPasswordSubmit}
+                loading={forgotLoading}
+                size="large"
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -277,13 +442,14 @@ const styles = StyleSheet.create({
   },
   logoImage: { width: '100%', height: '100%' },
   title: { fontSize: FontSizes.xxxl, fontWeight: 'bold', color: Colors.text, marginBottom: Spacing.xs },
-  subtitle: { fontSize: FontSizes.md, color: Colors.textSecondary },
+  subtitle: { fontSize: FontSizes.md, color: '#B8B8C4' },
 
   // Method toggle
   methodToggle: { flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: 4, marginBottom: Spacing.xxl },
   methodTab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.md, borderRadius: BorderRadius.md, gap: Spacing.sm },
   methodTabActive: { backgroundColor: Colors.primary },
-  methodTabText: { color: Colors.textSecondary, fontSize: FontSizes.md, fontWeight: '600' },
+  /** Inactif : meilleur contraste sur fond `#1E1E1E` que `Colors.textSecondary`. */
+  methodTabText: { color: '#C8C8D4', fontSize: FontSizes.md, fontWeight: '600' },
   methodTabTextActive: { color: '#FFF' },
 
   // Form
@@ -320,8 +486,16 @@ const styles = StyleSheet.create({
   phoneDivider: { width: 1, height: 28, backgroundColor: Colors.border },
   phoneInput: { flex: 1, marginBottom: 0 },
   errorText: { color: Colors.error, fontSize: FontSizes.xs, marginBottom: Spacing.md },
+  loginHelpRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.xl,
+    marginTop: Spacing.xs,
+    gap: Spacing.sm,
+  },
 
-  forgotPassword: { alignSelf: 'flex-end', marginBottom: Spacing.xl, marginTop: Spacing.xs },
+  forgotPassword: { alignSelf: 'auto' },
   forgotPasswordText: { color: Colors.primary, fontSize: FontSizes.sm },
   loginButton: { width: '100%' },
 

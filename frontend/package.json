@@ -11,11 +11,14 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --pool=forks --maxWorkers=1 --minWorkers=1 --fileParallelism=false",
+    "test:coverage": "vitest run --pool=forks --maxWorkers=1 --minWorkers=1 --fileParallelism=false --coverage",
     "test:e2e": "vitest run e2e",
     "maestro:smoke": "maestro test maestro/smoke.yaml",
     "maestro:smoke:logged-in": "maestro test maestro/smoke-logged-in.yaml",
     "maestro:wallet": "maestro test maestro/payments-wallet-smoke.yaml",
-    "verify": "expo lint && npm run typecheck && vitest run",
+    "verify": "expo lint && npm run typecheck && npm run test:coverage",
+    "quality": "npm run verify",
+    "standards:mobile": "npm run verify",
     "eas:android:preview": "node ./scripts/eas-build-from-app-root.cjs --platform android --profile preview",
     "eas:android:production": "node ./scripts/eas-build-from-app-root.cjs --platform android --profile production"
   },
@@ -35,28 +38,31 @@
     "@shopify/flash-list": "2.0.2",
     "@tanstack/react-query": "^5.97.0",
     "axios": "^1.15.0",
-    "expo": "54.0.33",
+    "expo": "~54.0.34",
     "expo-apple-authentication": "~8.0.8",
-    "expo-auth-session": "~7.0.10",
+    "expo-auth-session": "~7.0.11",
     "expo-av": "^16.0.8",
     "expo-blur": "~15.0.8",
     "expo-build-properties": "~1.0.10",
     "expo-camera": "~17.0.10",
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
-    "expo-crypto": "~15.0.8",
-    "expo-dev-client": "~6.0.13",
+    "expo-contacts": "~15.0.11",
+    "expo-crypto": "~15.0.9",
+    "expo-dev-client": "~6.0.21",
     "expo-device": "~8.0.10",
-    "expo-file-system": "~19.0.21",
+    "expo-document-picker": "~14.0.8",
+    "expo-file-system": "~19.0.22",
     "expo-font": "~14.0.11",
     "expo-haptics": "~15.0.8",
     "expo-image": "~3.0.11",
-    "expo-image-picker": "~17.0.10",
+    "expo-image-manipulator": "~14.0.8",
+    "expo-image-picker": "~17.0.11",
     "expo-linear-gradient": "~15.0.8",
-    "expo-linking": "~8.0.11",
+    "expo-linking": "~8.0.12",
     "expo-local-authentication": "~17.0.8",
     "expo-location": "~19.0.8",
-    "expo-notifications": "~0.32.16",
+    "expo-notifications": "~0.32.17",
     "expo-pip": "~2.1.0",
     "expo-router": "~6.0.22",
     "expo-secure-store": "~15.0.8",
@@ -68,7 +74,7 @@
     "expo-system-ui": "~6.0.9",
     "expo-video": "~3.0.16",
     "expo-video-thumbnails": "~10.0.8",
-    "expo-web-browser": "~15.0.10",
+    "expo-web-browser": "~15.0.11",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
@@ -77,14 +83,15 @@
     "react-native-gesture-handler": "~2.28.0",
     "react-native-get-random-values": "^1.11.0",
     "react-native-iap": "^15.2.0",
-    "react-native-nitro-modules": "^0.35.4",
     "react-native-maps": "1.20.1",
+    "react-native-nitro-modules": "^0.35.4",
     "react-native-pager-view": "6.9.1",
     "react-native-quick-crypto": "^0.7.17",
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
     "react-native-web": "^0.21.0",
+    "react-native-webrtc": "^124.0.7",
     "react-native-webview": "13.15.0",
     "react-native-worklets": "0.5.1",
     "socket.io-client": "^4.8.3",
@@ -93,11 +100,26 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~19.1.0",
+    "@vitest/coverage-v8": "^3.1.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.3",
-    "vitest": "^2.1.9"
+    "vitest": "^3.1.0"
   },
-  "private": true,
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+  "overrides": {
+    "postcss": "^8.5.10",
+    "uuid": "^14.0.0",
+    "esbuild": "^0.25.0",
+    "yaml": "2.8.3"
+  },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "expo-pip"
+        ]
+      }
+    }
+  },
+  "private": true
 }
