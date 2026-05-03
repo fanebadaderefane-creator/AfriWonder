@@ -11,13 +11,18 @@ import {
 
 const extraHolder = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
-vi.mock('expo-constants', () => ({
-  default: {
-    get expoConfig() {
-      return { extra: extraHolder.current };
+vi.mock('expo-constants', () => {
+  const ExecutionEnvironment = { StoreClient: 'storeClient', Standalone: 'standalone', Bare: 'bare' };
+  return {
+    default: {
+      get expoConfig() {
+        return { extra: extraHolder.current };
+      },
+      executionEnvironment: ExecutionEnvironment.Bare,
     },
-  },
-}));
+    ExecutionEnvironment,
+  };
+});
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -77,6 +82,13 @@ describe('oauthEnv', () => {
     const onlyAndroid = { web: '', ios: '', android: 'a.apps.googleusercontent.com' };
     expect(isGoogleOAuthConfiguredForPlatform('web', onlyAndroid)).toBe(false);
     expect(isGoogleOAuthConfiguredForPlatform('android', onlyAndroid)).toBe(true);
+
+    const dupWebAsAndroid = {
+      web: 'same.apps.googleusercontent.com',
+      ios: '',
+      android: 'same.apps.googleusercontent.com',
+    };
+    expect(isGoogleOAuthConfiguredForPlatform('android', dupWebAsAndroid)).toBe(false);
   });
 
   it('lit les IDs OAuth depuis extra.afwOAuth si process.env est vide', () => {

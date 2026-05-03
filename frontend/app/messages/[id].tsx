@@ -15,7 +15,9 @@ import * as Contacts from 'expo-contacts';
 import socketService from '../../src/services/socketService';
 import ReportModal from '../../src/components/ReportModal';
 import { featureFlags } from '../../src/config/featureFlags';
+import { devLog } from '../../src/utils/devLog';
 import { profileAvatarUri } from '../../src/utils/avatarFallback';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 import { appendBlobOrFileField, formatContactShareLine, openMaps } from '../../src/screens/messages/messageAttachmentUtils';
 
 const { width } = Dimensions.get('window');
@@ -249,7 +251,7 @@ export default function ChatScreen() {
         setMessages([{ id: 'd1', text: '', isMine: false, time: '', status: 'read', type: 'text', date: "Aujourd'hui" }]);
       }
     } catch (err) {
-      console.log('Error loading messages:', err);
+      devLog('Error loading messages:', err);
       setMessages([{ id: 'd1', text: '', isMine: false, time: '', status: 'read', type: 'text', date: "Aujourd'hui" }]);
     } finally { setLoading(false); }
   }, [conversationId, currentUserId]);
@@ -438,8 +440,8 @@ export default function ChatScreen() {
       } else {
         setDmRequest(null);
       }
-    } catch (e: any) {
-      Alert.alert('Erreur', String(e?.response?.data?.error || e?.response?.data?.message || "Impossible d'accepter."));
+    } catch (e: unknown) {
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
     } finally {
       setDmActionLoading(false);
     }
@@ -451,8 +453,8 @@ export default function ChatScreen() {
     try {
       await apiClient.post(`/messages/conversations/${encodeURIComponent(conversationId)}/dm-request/decline`, {});
       router.back();
-    } catch (e: any) {
-      Alert.alert('Erreur', String(e?.response?.data?.error || e?.response?.data?.message || 'Impossible de supprimer.'));
+    } catch (e: unknown) {
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
     } finally {
       setDmActionLoading(false);
     }
@@ -510,13 +512,8 @@ export default function ChatScreen() {
       } catch {
         /* ignore */
       }
-    } catch (err: any) {
-      const msg =
-        err?.response?.data?.error?.message ||
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        (typeof err?.message === 'string' ? err.message : '');
-      if (msg) Alert.alert('Message', String(msg));
+    } catch (err: unknown) {
+      Alert.alert('Message', getAlertMessageForCaughtError(err));
       setMessages(prev => prev.filter(m => m.id !== tempId));
     } finally { setSending(false); }
   }, [newMessage, conversationId, sending, replyingTo, contact.name, recipientUserId]);
@@ -555,7 +552,7 @@ export default function ChatScreen() {
         setRecordingDuration(prev => prev + 1);
       }, 1000);
     } catch (err) {
-      console.log('Recording error:', err);
+      devLog('Recording error:', err);
       Alert.alert('Erreur', 'Impossible de demarrer l\'enregistrement');
     }
   };
@@ -620,7 +617,7 @@ export default function ChatScreen() {
         }
       }
     } catch (err) {
-      console.log('Stop recording error:', err);
+      devLog('Stop recording error:', err);
     }
   };
 
@@ -668,7 +665,7 @@ export default function ChatScreen() {
       soundRef.current = sound;
       setPlayingAudioId(msg.id);
     } catch (err) {
-      console.log('Playback error:', err);
+      devLog('Playback error:', err);
     }
   };
 
@@ -743,23 +740,16 @@ export default function ChatScreen() {
             thumbnailUri: ud?.thumbnail_url || m.thumbnailUri,
             type: isVideo ? 'video' : 'image',
           } : m));
-        } catch (err: any) {
-          const backendError =
-            err?.response?.data?.error?.message ||
-            err?.response?.data?.error ||
-            err?.response?.data?.message ||
-            (typeof err?.message === 'string' ? err.message : '');
+        } catch (err: unknown) {
           setMessages(prev => prev.filter(m => m.id !== tempId));
           Alert.alert(
             'Erreur',
-            backendError
-              ? String(backendError)
-              : `Impossible d'envoyer ${isVideo ? 'la vidéo' : "l'image"}.`,
+            getAlertMessageForCaughtError(err) || `Impossible d'envoyer ${isVideo ? 'la vidéo' : "l'image"}.`,
           );
         }
       }
     } catch (err: any) {
-      console.log('Picker error:', err);
+      devLog('Picker error:', err);
       const msg =
         err?.message ||
         "Impossible d'ouvrir la caméra/galerie sur cet appareil.";

@@ -27,6 +27,7 @@ import { SmartThumbnail } from '../../src/components/SmartThumbnail';
 import { getPublicWebOrigin } from '../../src/config/shareUrls';
 import ReportModal from '../../src/components/ReportModal';
 import { getRecentlyViewedVideoIds, getRecentlyViewedVideoTsMap } from '../../src/utils/recentlyViewedVideos';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 
 type PublicUser = {
   id: string;
@@ -155,9 +156,7 @@ export default function PublicUserProfileScreen() {
       const first = Array.isArray(streams) && streams[0]?.id ? String(streams[0].id) : null;
       setActiveLiveId(first);
     } catch (e: unknown) {
-      const ax = e as { response?: { data?: { error?: { message?: string } } } };
-      const msg = ax.response?.data?.error?.message || 'Impossible de charger ce profil';
-      setErr(String(msg));
+      setErr(getAlertMessageForCaughtError(e));
       setProfile(null);
       setVideos([]);
       setLikedVideos([]);
@@ -214,8 +213,7 @@ export default function PublicUserProfileScreen() {
       const next = Boolean(d?.following);
       setProfile((p) => (p ? { ...p, isFollowing: next } : p));
     } catch (e: unknown) {
-      const ax = e as { response?: { data?: { error?: { message?: string } } } };
-      Alert.alert('Erreur', String(ax.response?.data?.error?.message || 'Action impossible').slice(0, 200));
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
     } finally {
       setFollowBusy(false);
     }
@@ -294,8 +292,7 @@ export default function PublicUserProfileScreen() {
       Alert.alert('Profil bloqué', 'Cet utilisateur a été bloqué.');
       router.back();
     } catch (e: unknown) {
-      const ax = e as { response?: { data?: { error?: { message?: string } } } };
-      Alert.alert('Erreur', String(ax.response?.data?.error?.message || 'Action impossible').slice(0, 200));
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
     }
   };
 
@@ -316,8 +313,7 @@ export default function PublicUserProfileScreen() {
         await apiClient.put(`/videos/${videoId}`, { is_featured: nextFeatured });
         await refetchVideosOnly();
       } catch (e: unknown) {
-        const ax = e as { response?: { data?: { error?: { message?: string } } } };
-        Alert.alert('Erreur', String(ax.response?.data?.error?.message || 'Action impossible').slice(0, 220));
+        Alert.alert('Erreur', getAlertMessageForCaughtError(e));
       }
     },
     [refetchVideosOnly]

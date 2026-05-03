@@ -16,6 +16,8 @@ import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
 import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import coursesApi, { Course } from '../../src/api/coursesApi';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
+import { filterDemoCourses, isAfriWonderDemoId } from '../../src/demo/superAppDemoSeed';
 
 const CATEGORIES = ['Tous', 'Tech', 'Business', 'Langue', 'Art', 'Santé'];
 
@@ -47,13 +49,23 @@ function CoursesContent() {
       const params: Parameters<typeof coursesApi.list>[0] = { page: 1, limit: 30 };
       if (activeCategory > 0) params.category = CATEGORIES[activeCategory].toLowerCase();
       const list = await coursesApi.list(params);
-      setCourses(list);
+      if (list.length === 0 && featureFlags.superAppDemoContent) {
+        setCourses(filterDemoCourses(CATEGORIES[activeCategory].toLowerCase()));
+        setError(null);
+      } else {
+        setCourses(list);
+      }
     } catch (err) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message
         || (err as { message?: string })?.message
         || 'Impossible de charger les formations.';
-      setError(msg);
+      if (featureFlags.superAppDemoContent) {
+        setCourses(filterDemoCourses(CATEGORIES[activeCategory].toLowerCase()));
+        setError(null);
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -89,6 +101,10 @@ function CoursesContent() {
           </TouchableOpacity>
         ))}
       </ScrollView>
+
+      {!loading && featureFlags.superAppDemoContent && courses.some((c) => isAfriWonderDemoId(c.id)) ? (
+        <DemoContentBanner />
+      ) : null}
 
       {loading ? (
         <View style={styles.centerBox}>

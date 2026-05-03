@@ -12,15 +12,19 @@ export interface Restaurant {
   address: string;
   city?: string;
   phone?: string;
-  cuisine_type?: string;
+  /** Prisma JSON : souvent `string[]` côté API. */
+  cuisine_type?: string | string[];
   cover_image?: string;
   logo_url?: string;
+  banner_url?: string;
   rating?: number;
   is_open?: boolean;
   delivery_fee?: number;
   delivery_time_min?: number;
   delivery_time_max?: number;
+  /** Alias PWA historique ; Prisma expose surtout `minimum_order`. */
   min_order_amount?: number;
+  minimum_order?: number;
   opening_hours?: Record<string, string>;
   menu_items?: MenuItem[];
 }
@@ -57,6 +61,8 @@ export interface FoodOrder {
   id: string;
   restaurant_id: string;
   user_id?: string;
+  restaurant_name?: string;
+  restaurant?: { id: string; name?: string };
   status: string;
   total_amount: number;
   created_at?: string;

@@ -29,6 +29,7 @@ import { useFeedAutoplayFromSettings } from '../../src/hooks/useFeedAutoplayFrom
 import FeedPollCard, { type FeedPollPayload } from '../../src/components/feed/FeedPollCard';
 import VideoReactionBar, { reactionEmojiForType } from '../../src/components/feed/VideoReactionBar';
 import { addRecentlyViewedVideo } from '../../src/utils/recentlyViewedVideos';
+import { devLog } from '../../src/utils/devLog';
 import { FollowingStoriesBar } from '../../src/components/feed/FollowingStoriesBar';
 const { height } = Dimensions.get('window');
 
@@ -583,7 +584,7 @@ const VideoItemImpl: React.FC<VideoItemProps> = ({
         player.pause();
       }
     } catch (e) {
-      if (__DEV__) console.log('Player play/pause error:', e);
+      devLog('Player play/pause error:', e);
     }
   }, [isActive, isPaused, isMuted, player, safePlay, video.id]);
 
@@ -2797,7 +2798,7 @@ export default function FeedScreen(props?: {
         setHasMore(false);
       }
     } catch (err) {
-      if (__DEV__) console.log('Feed vidéo indisponible', err);
+      devLog('Feed vidéo indisponible', err);
       if (reset) {
         setVideos(FALLBACK_VIDEOS);
         const msg = (err as any)?.response?.data?.error?.message || (err as any)?.message;

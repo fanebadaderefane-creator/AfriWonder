@@ -21,6 +21,7 @@ import { Colors } from '../../src/theme/colors';
 import { featureFlags } from '../../src/config/featureFlags';
 import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import crowdfundingApi, { CrowdfundingProject } from '../../src/api/crowdfundingApi';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 
 type Step = 'amount' | 'phone' | 'processing' | 'success';
 
@@ -138,13 +139,9 @@ function ContributeContent() {
         }
       }
       setStep('success');
-    } catch (err) {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-        || (err as { message?: string })?.message
-        || 'Contribution impossible.';
+    } catch (err: unknown) {
       setStep('phone');
-      Alert.alert('Erreur', msg);
+      Alert.alert('Erreur', getAlertMessageForCaughtError(err));
     } finally {
       setSubmitting(false);
     }

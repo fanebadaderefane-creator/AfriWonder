@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import apiClient from '../../src/api/client';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 import { useAuthStore } from '../../src/store/authStore';
 
 /**
@@ -99,12 +100,8 @@ export default function DeleteAccountScreen() {
                   },
                 ],
               );
-            } catch (err) {
-              const msg =
-                (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.error
-                || (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-                || 'La suppression n’a pas pu être enregistrée. Réessayez dans quelques instants.';
-              Alert.alert('Suppression impossible', String(msg).slice(0, 200));
+            } catch (err: unknown) {
+              Alert.alert('Suppression impossible', getAlertMessageForCaughtError(err));
             } finally {
               setSubmitting(false);
             }
@@ -132,11 +129,8 @@ export default function DeleteAccountScreen() {
               await apiClient.post(`/privacy/cancel-deletion/${encodeURIComponent(status.cancel_token!)}`);
               Alert.alert('Annulée', 'Votre compte est conservé.');
               await loadStatus();
-            } catch (err) {
-              const msg =
-                (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-                || 'Annulation impossible. Réessayez dans quelques instants.';
-              Alert.alert('Erreur', String(msg));
+            } catch (err: unknown) {
+              Alert.alert('Erreur', getAlertMessageForCaughtError(err));
             } finally {
               setSubmitting(false);
             }

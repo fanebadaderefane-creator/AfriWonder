@@ -16,6 +16,16 @@ import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
 import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import propertiesApi, { Property } from '../../src/api/propertiesApi';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { propertyThumbPlaceholderUrl } from '../../src/utils/serviceVisualPlaceholders';
+import { DEMO_PROPERTIES } from '../../src/demo/superAppDemoSeed';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
+
+function propertyThumbUri(p: Property): string {
+  const raw = p.cover_image ?? p.images?.[0];
+  const abs = raw ? toAbsoluteMediaUrl(raw) : '';
+  return abs || propertyThumbPlaceholderUrl(p.id);
+}
 
 const TYPES: { id: Property['listing_type'] | 'all'; label: string }[] = [
   { id: 'all', label: 'Tout' },
@@ -23,6 +33,11 @@ const TYPES: { id: Property['listing_type'] | 'all'; label: string }[] = [
   { id: 'sale', label: 'Achat' },
   { id: 'land', label: 'Terrain' },
 ];
+
+function demoPropertiesForFilter(active: (typeof TYPES)[number]['id']): Property[] {
+  if (active === 'all') return DEMO_PROPERTIES;
+  return DEMO_PROPERTIES.filter((p) => p.listing_type === active);
+}
 
 export default function RealEstateScreen() {
   if (!featureFlags.servicesHub) {
@@ -38,10 +53,18 @@ function RealEstateContent() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDemo, setShowDemo] = useState(false);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setError(null);
+    setShowDemo(false);
+    const tryApplyDemoProperties = (): boolean => {
+      if (!featureFlags.superAppDemoContent) return false;
+      setProperties(demoPropertiesForFilter(activeType));
+      setShowDemo(true);
+      return true;
+    };
     try {
       const list = await propertiesApi.list({
         page: 1,
@@ -49,13 +72,20 @@ function RealEstateContent() {
         listing_type: activeType === 'all' ? undefined : (activeType as 'rent' | 'sale' | 'land'),
         status: 'available',
       });
-      setProperties(list);
+      if (featureFlags.superAppDemoContent && list.length === 0) {
+        tryApplyDemoProperties();
+      } else {
+        setProperties(list);
+      }
     } catch (err) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message
         || (err as { message?: string })?.message
         || 'Impossible de charger les biens immobiliers.';
-      setError(msg);
+      if (!tryApplyDemoProperties()) {
+        setError(msg);
+        setProperties([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -79,6 +109,8 @@ function RealEstateContent() {
         <Text style={styles.headerTitle}>Immobilier</Text>
         <View style={{ width: 40 }} />
       </View>
+
+      {showDemo ? <DemoContentBanner /> : null}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsContainer}>
         {TYPES.map((t) => (
@@ -123,13 +155,7 @@ function RealEstateContent() {
               style={styles.card}
               onPress={() => router.push(`/services/property/${p.id}` as any)}
             >
-              {p.cover_image || p.images?.[0] ? (
-                <Image source={{ uri: p.cover_image ?? p.images?.[0] }} style={styles.cardImage} />
-              ) : (
-                <View style={[styles.cardImage, styles.cardImageFallback]}>
-                  <Ionicons name="business-outline" size={36} color={Colors.textSecondary} />
-                </View>
-              )}
+              <Image source={{ uri: propertyThumbUri(p) }} style={styles.cardImage} />
               <View style={styles.cardInfo}>
                 <View style={styles.cardHeader}>
                   <Text style={styles.cardTitle} numberOfLines={1}>{p.title}</Text>
@@ -204,7 +230,6 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   cardImage: { width: 100, height: 100, borderRadius: BorderRadius.md, backgroundColor: Colors.card },
-  cardImageFallback: { alignItems: 'center', justifyContent: 'center' },
   cardInfo: { flex: 1 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600', flex: 1 },

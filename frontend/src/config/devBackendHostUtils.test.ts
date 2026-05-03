@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
+  isLikelyEphemeralDevBackendOrigin,
   isPrivateUseIpv4,
   parseHostFromDevConnectionString,
   orderedPrivateLanHostsFromStrings,
+  preferLocalhostBackendWhenWebDevOnLocalhost,
 } from './devBackendHostUtils';
 
 describe('devBackendHostUtils (régression Android / MEmu → API :3000)', () => {
@@ -36,5 +38,41 @@ describe('devBackendHostUtils (régression Android / MEmu → API :3000)', () =>
       'exp://10.0.2.2:8081',
     ]);
     expect(hosts).toEqual(['192.168.44.2', '10.0.2.2']);
+  });
+
+  it('preferLocalhostBackendWhenWebDevOnLocalhost : page localhost + API LAN → localhost:3000', () => {
+    expect(
+      preferLocalhostBackendWhenWebDevOnLocalhost(
+        'http://192.168.1.11:3000',
+        'localhost',
+        'http://localhost:3000',
+      ),
+    ).toBe('http://localhost:3000');
+    expect(
+      preferLocalhostBackendWhenWebDevOnLocalhost(
+        'http://192.168.1.11:3000',
+        '127.0.0.1',
+        'http://localhost:3000',
+      ),
+    ).toBe('http://localhost:3000');
+  });
+
+  it('preferLocalhostBackendWhenWebDevOnLocalhost : page sur IP LAN → garde l’API configurée', () => {
+    expect(
+      preferLocalhostBackendWhenWebDevOnLocalhost(
+        'http://192.168.1.11:3000',
+        '192.168.1.11',
+        'http://localhost:3000',
+      ),
+    ).toBe('http://192.168.1.11:3000');
+  });
+
+  it('isLikelyEphemeralDevBackendOrigin : LAN / localhost = éphémère ; HTTPS public = stable', () => {
+    expect(isLikelyEphemeralDevBackendOrigin('http://192.168.1.5:3000')).toBe(true);
+    expect(isLikelyEphemeralDevBackendOrigin('http://10.0.2.2:3000')).toBe(true);
+    expect(isLikelyEphemeralDevBackendOrigin('http://localhost:3000')).toBe(true);
+    expect(isLikelyEphemeralDevBackendOrigin('https://192.168.1.5:3000')).toBe(true);
+    expect(isLikelyEphemeralDevBackendOrigin('https://api.example.com')).toBe(false);
+    expect(isLikelyEphemeralDevBackendOrigin('http://api.example.com')).toBe(false);
   });
 });

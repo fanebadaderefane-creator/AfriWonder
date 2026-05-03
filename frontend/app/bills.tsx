@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import apiClient from '../src/api/client';
+import { getAlertMessageForCaughtError } from '../src/utils/userFacingError';
 
 const BILL_TYPES: { id: string; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { id: 'electricity', label: 'Électricité (EDM)', icon: 'flash-outline' },
@@ -61,8 +62,8 @@ export default function BillsScreen() {
       Alert.alert('Paiement enregistré ✅', 'Votre facture est en cours de traitement.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
-    } catch (err: any) {
-      Alert.alert('Erreur', err?.response?.data?.message || 'Paiement échoué');
+    } catch (err: unknown) {
+      Alert.alert('Erreur', getAlertMessageForCaughtError(err));
     } finally {
       setLoading(false);
     }

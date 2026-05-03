@@ -17,6 +17,8 @@ import * as Location from 'expo-location';
 import { featureFlags } from '../../src/config/featureFlags';
 import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import { driversApi, ridesApi, Driver } from '../../src/api/ridesApi';
+import { filterDemoDrivers } from '../../src/demo/superAppDemoSeed';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
 
 const VEHICLE_TYPES: { id: string; name: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { id: 'moto', name: 'Moto', icon: 'bicycle-outline' },
@@ -41,10 +43,12 @@ function TransportContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
 
   const loadDrivers = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setShowDemo(false);
     try {
       // Tente de récupérer la position pour des chauffeurs vraiment proches.
       let lat = 12.6392; // Bamako par défaut
@@ -66,13 +70,24 @@ function TransportContent() {
         limit: 20,
         max_km: 10,
       });
-      setDrivers(list);
+      if (featureFlags.superAppDemoContent && list.length === 0) {
+        setDrivers(filterDemoDrivers(selectedVehicle));
+        setShowDemo(true);
+      } else {
+        setDrivers(list);
+      }
     } catch (err) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message
         || (err as { message?: string })?.message
         || 'Aucun chauffeur disponible pour le moment.';
-      setError(msg);
+      if (featureFlags.superAppDemoContent) {
+        setDrivers(filterDemoDrivers(selectedVehicle));
+        setShowDemo(true);
+      } else {
+        setError(msg);
+        setDrivers([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -87,6 +102,13 @@ function TransportContent() {
       Alert.alert('Adresses requises', 'Renseignez le départ et la destination.');
       return;
     }
+    if (showDemo) {
+      Alert.alert(
+        'Démonstration',
+        'Course fictive : aucun chauffeur réel n’est contacté. Branchement partenaires à venir.',
+      );
+      return;
+    }
     setRequesting(true);
     try {
       const ride = await ridesApi.request({
@@ -98,7 +120,7 @@ function TransportContent() {
       Alert.alert(
         'Course demandée',
         'Votre demande a été envoyée aux chauffeurs proches. Vous serez notifié dès qu\'un chauffeur accepte.',
-        [{ text: 'OK', onPress: () => router.push(`/services/ride/${ride.id}` as any) }]
+        [{ text: 'OK', onPress: () => router.push(`/rides/${ride.id}` as any) }]
       );
       setPickup('');
       setDestination('');
@@ -124,6 +146,7 @@ function TransportContent() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        {showDemo ? <DemoContentBanner /> : null}
         <View style={styles.formCard}>
           <View style={styles.inputRow}>
             <View style={styles.inputDot} />

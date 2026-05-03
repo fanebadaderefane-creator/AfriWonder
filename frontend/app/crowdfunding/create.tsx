@@ -21,6 +21,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '../../src/theme/colors';
 import { CROWDFUNDING_CATEGORIES } from '../../src/data/crowdfunding';
 import crowdfundingApi from '../../src/api/crowdfundingApi';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 import { useAuthStore } from '../../src/store/authStore';
 import { uploadImageForLive } from '../../src/live/uploadImageForLive';
 
@@ -281,13 +282,7 @@ export default function CreateProjectScreen() {
           );
           return;
         }
-        const msg =
-          (e as { response?: { data?: { error?: { message?: string }; message?: string } } })?.response?.data?.error
-            ?.message ||
-          (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-          (e as { message?: string })?.message ||
-          'Création impossible. Vérifiez la connexion ou réessayez.';
-        Alert.alert('Erreur', msg);
+        Alert.alert('Erreur', getAlertMessageForCaughtError(e));
       } finally {
         setSubmitting(false);
       }

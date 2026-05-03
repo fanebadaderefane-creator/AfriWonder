@@ -170,8 +170,18 @@ export const authApi = {
     );
   },
 
-  oauthGoogle: async (accessToken: string): Promise<AuthResponse> => {
-    const payload = { accessToken: accessToken.trim() };
+  oauthGoogle: async (tokens: {
+    accessToken?: string | null;
+    idToken?: string | null;
+  }): Promise<AuthResponse> => {
+    const accessToken = tokens.accessToken?.trim() || '';
+    const idToken = tokens.idToken?.trim() || '';
+    if (!accessToken && !idToken) {
+      throw new Error('Jeton Google manquant');
+    }
+    const payload: Record<string, string> = {};
+    if (accessToken) payload.accessToken = accessToken;
+    if (idToken) payload.idToken = idToken;
     const response = await withAuthProxyFallback(
       () => mobileApiClient.post('/proxy/auth/oauth/google', payload),
       () => mobileApiClient.post('/auth/oauth/google', payload),

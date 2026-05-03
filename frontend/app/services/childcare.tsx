@@ -16,6 +16,8 @@ import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
 import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import providersApi, { ServiceProvider } from '../../src/api/providersApi';
+import { getDemoProvidersForCategory } from '../../src/demo/superAppDemoSeed';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
 
 export default function ChildcareScreen() {
   if (!featureFlags.servicesHub) {
@@ -30,10 +32,12 @@ function ChildcareContent() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDemo, setShowDemo] = useState(false);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setError(null);
+    setShowDemo(false);
     try {
       const list = await providersApi.list({
         category: 'childcare',
@@ -41,13 +45,37 @@ function ChildcareContent() {
         limit: 30,
         status: 'approved',
       });
-      setProviders(list);
+      if (list.length > 0) {
+        setProviders(list);
+      } else if (featureFlags.superAppDemoContent) {
+        const d = getDemoProvidersForCategory('childcare');
+        if (d.length > 0) {
+          setProviders(d);
+          setShowDemo(true);
+        } else {
+          setProviders([]);
+        }
+      } else {
+        setProviders([]);
+      }
     } catch (err) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message
         || (err as { message?: string })?.message
         || 'Impossible de charger les prestataires.';
-      setError(msg);
+      if (featureFlags.superAppDemoContent) {
+        const d = getDemoProvidersForCategory('childcare');
+        if (d.length > 0) {
+          setProviders(d);
+          setShowDemo(true);
+        } else {
+          setError(msg);
+          setProviders([]);
+        }
+      } else {
+        setError(msg);
+        setProviders([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -71,6 +99,8 @@ function ChildcareContent() {
         <Text style={styles.headerTitle}>Garde d'enfants</Text>
         <View style={{ width: 40 }} />
       </View>
+
+      {showDemo ? <DemoContentBanner /> : null}
 
       {loading ? (
         <View style={styles.centerBox}>

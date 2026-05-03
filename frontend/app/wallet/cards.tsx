@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { virtualCardsApi, VirtualCard } from '../../src/api/superAppApi';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 
 export default function VirtualCardsScreen() {
   const insets = useSafeAreaInsets();
@@ -42,10 +43,8 @@ export default function VirtualCardsScreen() {
     try {
       await virtualCardsApi.create();
       await load();
-    } catch (err) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-        || 'Impossible de créer la carte.';
-      Alert.alert('Erreur', String(msg));
+    } catch (err: unknown) {
+      Alert.alert('Erreur', getAlertMessageForCaughtError(err));
     } finally {
       setCreating(false);
     }
@@ -61,8 +60,8 @@ export default function VirtualCardsScreen() {
           try {
             await virtualCardsApi.toggleBlock(c.id);
             await load();
-          } catch {
-            Alert.alert('Action impossible', 'Réessayez.');
+          } catch (err: unknown) {
+            Alert.alert('Action impossible', getAlertMessageForCaughtError(err));
           }
         },
       },
@@ -79,8 +78,8 @@ export default function VirtualCardsScreen() {
           try {
             await virtualCardsApi.delete(c.id);
             await load();
-          } catch {
-            Alert.alert('Action impossible', 'Réessayez.');
+          } catch (err: unknown) {
+            Alert.alert('Action impossible', getAlertMessageForCaughtError(err));
           }
         },
       },

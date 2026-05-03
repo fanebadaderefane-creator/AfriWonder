@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 import { isExpoGoApp } from '../config/expoRuntime';
 import { registerMobilePushToken } from './mobileApiService';
 import { secureStorage } from '../utils/secureStorage';
+import { devLog } from '../utils/devLog';
 
 type ExpoNotifications = typeof import('expo-notifications');
 
@@ -51,7 +52,7 @@ class NotificationService {
       }
       return mod;
     } catch (err) {
-      console.log('[Notifications] loadNotifications:', err);
+      devLog('[Notifications] loadNotifications:', err);
       return null;
     }
   }
@@ -59,14 +60,14 @@ class NotificationService {
   async initialize() {
     try {
       if (Platform.OS === 'web') {
-        console.log(
+        devLog(
           '[Notifications] Web: push distant ignoré (ajoutez notification.vapidPublicKey dans app.json pour activer).',
         );
         return null;
       }
 
       if (isExpoGo) {
-        console.log(
+        devLog(
           '[Notifications] Expo Go: push distant désactivé (SDK 53+). Utilisez un development build pour FCM / projectId.',
         );
         return null;
@@ -84,17 +85,17 @@ class NotificationService {
       }
 
       if (finalStatus !== 'granted') {
-        console.log('[Notifications] Permission not granted');
+        devLog('[Notifications] Permission not granted');
         return null;
       }
 
       const projectId = resolveExpoProjectId();
       if (!projectId) {
-        console.log('[Notifications] Pas de projectId EAS valide (extra.eas.projectId) — skip token Expo Push.');
+        devLog('[Notifications] Pas de projectId EAS valide (extra.eas.projectId) — skip token Expo Push.');
       } else {
         const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
         this.expoPushToken = tokenData.data;
-        console.log('[Notifications] Push token:', this.expoPushToken);
+        devLog('[Notifications] Push token:', this.expoPushToken);
         await this.registerToken(this.expoPushToken);
       }
 
@@ -125,7 +126,7 @@ class NotificationService {
 
       return this.expoPushToken;
     } catch (err) {
-      console.log('[Notifications] Init error:', err);
+      devLog('[Notifications] Init error:', err);
       return null;
     }
   }
@@ -134,7 +135,7 @@ class NotificationService {
     try {
       await registerMobilePushToken(token, Platform.OS);
     } catch (err) {
-      console.log('[Notifications] Token registration error:', err);
+      devLog('[Notifications] Token registration error:', err);
     }
   }
 
@@ -155,7 +156,7 @@ class NotificationService {
 
       await this.registerToken(this.expoPushToken);
     } catch (err) {
-      console.log('[Notifications] syncPushTokenWithBackend:', err);
+      devLog('[Notifications] syncPushTokenWithBackend:', err);
     }
   }
 
@@ -176,7 +177,7 @@ class NotificationService {
       const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
       this.expoPushToken = tokenData.data;
     } catch (err) {
-      console.log('[Notifications] ensureDevicePushToken:', err);
+      devLog('[Notifications] ensureDevicePushToken:', err);
     }
   }
 
@@ -195,7 +196,7 @@ class NotificationService {
           seconds > 0 ? { seconds, type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL } : null,
       });
     } catch (err) {
-      console.log('[Notifications] Schedule error:', err);
+      devLog('[Notifications] Schedule error:', err);
     }
   }
 

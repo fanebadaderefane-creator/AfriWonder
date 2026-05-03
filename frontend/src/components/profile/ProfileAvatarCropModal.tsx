@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
   Platform,
@@ -10,6 +11,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -136,13 +138,7 @@ export function ProfileAvatarCropModal({
     };
     setCropRect(clampRectToFrame(next, imageFrame));
     /** Réinitialise quand la photo / la rotation changent (nouvelles dimensions). */
-  }, [
-    imageFrame?.left,
-    imageFrame?.top,
-    imageFrame?.width,
-    imageFrame?.height,
-    workingUri,
-  ]);
+  }, [imageFrame, workingUri]);
 
   const stageHeight = Math.max(240, windowH - insets.top - 52 - insets.bottom - 72);
 
@@ -247,6 +243,8 @@ export function ProfileAvatarCropModal({
         { compress: 1, format: ImageManipulator.SaveFormat.JPEG },
       );
       setWorkingUri(out.uri);
+    } catch {
+      Alert.alert('Photo', 'Impossible de faire pivoter cette image. Essayez une autre photo.');
     } finally {
       setBusy(null);
     }
@@ -302,6 +300,11 @@ export function ProfileAvatarCropModal({
         format: ImageManipulator.SaveFormat.JPEG,
       });
       await onConfirm(cropped.uri);
+    } catch {
+      Alert.alert(
+        'Photo',
+        'Impossible de préparer cette image (mémoire ou format). Choisissez une photo plus petite dans la galerie.',
+      );
     } finally {
       setBusy(null);
     }
@@ -369,7 +372,7 @@ export function ProfileAvatarCropModal({
             }}
           >
             {imageFrame ? (
-              <Image
+              <ExpoImage
                 source={{ uri: workingUri }}
                 style={{
                   position: 'absolute',
@@ -378,7 +381,10 @@ export function ProfileAvatarCropModal({
                   width: imageFrame.width,
                   height: imageFrame.height,
                 }}
-                resizeMode="stretch"
+                contentFit="fill"
+                cachePolicy="memory-disk"
+                recyclingKey={workingUri}
+                transition={0}
               />
             ) : (
               <View style={styles.loaderWrap}>

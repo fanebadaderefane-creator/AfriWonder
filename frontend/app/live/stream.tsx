@@ -25,10 +25,12 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Audio } from 'expo-av';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import apiClient from '../../src/api/client';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 import { useAuthStore } from '../../src/store/authStore';
 import socketService from '../../src/services/socketService';
 import { useAgoraLiveRtc } from '../../src/hooks/useAgoraLiveRtc';
 import { LiveGiftsPanel, useGiftAnimations } from './gifts';
+import { LiveTopFansSheet } from './_liveTopFansSheet';
 import { uploadImageForLive } from '../../src/live/uploadImageForLive';
 import { LivePollStrip } from '../../src/live/LivePollStrip';
 
@@ -113,6 +115,7 @@ export default function LiveStreamScreen() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [showGifts, setShowGifts] = useState(false);
+  const [showTopFans, setShowTopFans] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isFrontCamera, setIsFrontCamera] = useState(true);
   const [cameraFlipNonce, setCameraFlipNonce] = useState(0);
@@ -278,8 +281,7 @@ export default function LiveStreamScreen() {
       setPollOpt(['', '', '', '']);
       setPollReloadKey((k) => k + 1);
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string; message?: string } } };
-      Alert.alert('Sondage', String(err.response?.data?.error || err.response?.data?.message || 'Erreur'));
+      Alert.alert('Sondage', getAlertMessageForCaughtError(e));
     }
   };
 
@@ -293,8 +295,7 @@ export default function LiveStreamScreen() {
       await apiClient.patch(`/live/${encodeURIComponent(liveId)}/moderation`, { banned_words: words });
       Alert.alert('Modération', 'Mots bannis enregistrés.');
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string } } };
-      Alert.alert('Erreur', String(err.response?.data?.error || 'Impossible d’enregistrer'));
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
     }
   };
 
@@ -308,8 +309,7 @@ export default function LiveStreamScreen() {
       Alert.alert('Co-host', 'Invitation envoyée (max 5 — contrôle côté serveur).');
       if (!targetUserId) setCohostInviteUserId('');
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string } } };
-      Alert.alert('Erreur', String(err.response?.data?.error || 'Invitation impossible'));
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
     }
   };
 
@@ -330,15 +330,7 @@ export default function LiveStreamScreen() {
         accept ? 'Invitation co-host envoyée (grille).' : 'Le spectateur a été notifié.',
       );
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: { message?: string } | string } } } & {
-        response?: { data?: { message?: string } };
-      };
-      const raw = err.response?.data?.error;
-      const msg =
-        typeof raw === 'object' && raw && 'message' in raw
-          ? String((raw as { message?: string }).message)
-          : String(raw || err.response?.data?.message || 'Action impossible');
-      Alert.alert('Main levée', msg);
+      Alert.alert('Main levée', getAlertMessageForCaughtError(e));
     }
   };
 
@@ -350,8 +342,7 @@ export default function LiveStreamScreen() {
       setHostCaptionDraft('');
       Alert.alert('Sous-titres', 'Texte diffusé aux spectateurs.');
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string } } };
-      Alert.alert('Sous-titres', String(err.response?.data?.error || 'Envoi impossible'));
+      Alert.alert('Sous-titres', getAlertMessageForCaughtError(e));
     }
   };
 
@@ -372,7 +363,7 @@ export default function LiveStreamScreen() {
       hostSttRecRef.current = null;
       setHostSttRecording(false);
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true }).catch(() => {});
-      Alert.alert('Dictée', String((e as Error)?.message || 'Impossible de démarrer l’enregistrement.'));
+      Alert.alert('Dictée', getAlertMessageForCaughtError(e));
     } finally {
       setHostSttBusy(false);
     }
@@ -400,13 +391,7 @@ export default function LiveStreamScreen() {
       setHostCaptionDraft(text.slice(0, 280));
       Alert.alert('Dictée', 'Texte inséré dans le champ sous-titres. Vérifiez puis diffusez.');
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string; message?: string } }; message?: string };
-      const msg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        err.message ||
-        'Transcription impossible (vérifiez OPENAI_API_KEY sur le backend).';
-      Alert.alert('Dictée', String(msg));
+      Alert.alert('Dictée', getAlertMessageForCaughtError(e));
     } finally {
       setHostSttBusy(false);
     }
@@ -421,8 +406,7 @@ export default function LiveStreamScreen() {
       await apiClient.post(`/live/${encodeURIComponent(liveId)}/broadcast-timer`, { end_at_ms, label });
       setShowTimerModal(false);
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string; message?: string } } };
-      Alert.alert('Timer', String(err.response?.data?.error || err.response?.data?.message || 'Erreur'));
+      Alert.alert('Timer', getAlertMessageForCaughtError(e));
     }
   };
 
@@ -433,8 +417,7 @@ export default function LiveStreamScreen() {
       setBroadcastTimer(null);
       setShowTimerModal(false);
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string } } };
-      Alert.alert('Timer', String(err.response?.data?.error || 'Impossible de retirer le timer'));
+      Alert.alert('Timer', getAlertMessageForCaughtError(e));
     }
   };
 
@@ -670,7 +653,8 @@ export default function LiveStreamScreen() {
     }
     const result = await ImagePicker.launchCameraAsync({
       quality: 0.85,
-      allowsEditing: true,
+      /** Android : l’éditeur de recadrage post-capture peut faire fermer l’app (audit mobile-first). */
+      allowsEditing: Platform.OS !== 'android',
       aspect: [9, 16],
     });
     if (!result.canceled && result.assets[0]) {
@@ -760,13 +744,7 @@ export default function LiveStreamScreen() {
       }, 1000);
       void fetchTopDonors(id);
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string; detail?: string; message?: string } } };
-      const msg =
-        err.response?.data?.error ||
-        err.response?.data?.detail ||
-        err.response?.data?.message ||
-        'Impossible de démarrer le live';
-      Alert.alert('Erreur', String(msg));
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
     } finally {
       setLoading(false);
     }
@@ -806,9 +784,7 @@ export default function LiveStreamScreen() {
       });
       setChatInput('');
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string; message?: string } } };
-      const msg = err.response?.data?.error || err.response?.data?.message || "Impossible d'envoyer le message.";
-      Alert.alert('Chat', String(msg));
+      Alert.alert('Chat', getAlertMessageForCaughtError(e));
     } finally {
       setSendingChat(false);
     }
@@ -1338,6 +1314,12 @@ export default function LiveStreamScreen() {
       ))}
       <GiftFullscreenHost />
 
+      <LiveTopFansSheet
+        liveId={liveId || ''}
+        visible={showTopFans}
+        onClose={() => setShowTopFans(false)}
+      />
+
       {liveId ? (
         <View style={[styles.pollHostWrap, { top: insets.top + 52 }]} pointerEvents="box-none">
           <LivePollStrip key={pollReloadKey} liveId={liveId} onSocketPoll={pollSocketBump as never} />
@@ -1405,6 +1387,16 @@ export default function LiveStreamScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <TouchableOpacity
             onPress={() => {
+              setShowTopFans(true);
+              setShowGifts(false);
+            }}
+            style={[styles.dashBtn, { backgroundColor: 'rgba(212,175,55,0.22)' }]}
+            accessibilityLabel="Top Fans"
+          >
+            <Ionicons name="trophy" size={20} color="#D4AF37" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
               setShowHostDashboard(true);
               void fetchTopDonors(liveId || '');
             }}
@@ -1467,9 +1459,23 @@ export default function LiveStreamScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.rightBtn, { backgroundColor: 'rgba(255,215,0,0.2)' }]}
-          onPress={() => setShowGifts(true)}
+          onPress={() => {
+            setShowGifts(true);
+            setShowTopFans(false);
+          }}
         >
           <Ionicons name="gift" size={24} color="#FFD700" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.rightBtn, showTopFans && { backgroundColor: 'rgba(212,175,55,0.35)' }]}
+          onPress={() => {
+            setShowTopFans(true);
+            setShowGifts(false);
+          }}
+          accessibilityLabel="Top Fans"
+        >
+          <Ionicons name="trophy" size={22} color="#D4AF37" />
+          <Text style={styles.rightBtnCount}>Top</Text>
         </TouchableOpacity>
       </View>
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert } from 'react-native';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,6 +7,9 @@ import { router } from 'expo-router';
 import { WalletSkeleton } from '../../src/components/SkeletonScreens';
 import apiClient from '../../src/api/client';
 import { getCoinsBalance } from '../../src/services/mobileApiService';
+import { featureFlags } from '../../src/config/featureFlags';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
+import { DEMO_WALLET_TRANSACTIONS } from '../../src/demo/superAppDemoSeed';
 
 const QUICK_ACTIONS = [
   { id: 'send', name: 'Envoyer', icon: 'send', color: Colors.primary },
@@ -25,9 +28,11 @@ export default function WalletScreen() {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [walletDemoMode, setWalletDemoMode] = useState(false);
 
   const loadWallet = useCallback(async () => {
     setLoadError(null);
+    setWalletDemoMode(false);
     try {
       const [walletRes, txRes, coinsRes] = await Promise.all([
         apiClient.get('/payments/wallet'),
@@ -54,17 +59,33 @@ export default function WalletScreen() {
         setTransactions([]);
       }
     } catch (err) {
-      // NE JAMAIS afficher de solde fictif sur un écran financier : l'utilisateur pourrait
-      // croire avoir de l'argent qu'il n'a pas. On affiche un état d'erreur explicite.
-      console.error('[wallet] failed to load wallet', err);
-      setBalance(null);
-      setCoinsBalance(0);
-      setTransactions([]);
-      setLoadError(
-        err instanceof Error && err.message
-          ? err.message
-          : 'Impossible de charger votre portefeuille. Vérifiez votre connexion et réessayez.'
-      );
+      if (featureFlags.superAppDemoContent) {
+        setWalletDemoMode(true);
+        setBalance(125_000);
+        setCoinsBalance(480);
+        setTransactions(
+          DEMO_WALLET_TRANSACTIONS.map((t) => ({
+            id: t.id,
+            type: t.type,
+            name: t.name,
+            amount: t.amount,
+            date: t.date,
+            icon: t.icon,
+          })),
+        );
+        setLoadError(null);
+      } else {
+        setWalletDemoMode(false);
+        console.error('[wallet] failed to load wallet', err);
+        setBalance(null);
+        setCoinsBalance(0);
+        setTransactions([]);
+        setLoadError(
+          err instanceof Error && err.message
+            ? err.message
+            : 'Impossible de charger votre portefeuille. Vérifiez votre connexion et réessayez.'
+        );
+      }
     } finally { setIsLoading(false); }
   }, []);
 
@@ -85,6 +106,17 @@ export default function WalletScreen() {
     setRefreshing(true);
     loadWallet().finally(() => setRefreshing(false));
   }, [loadWallet]);
+
+  const guardWalletDemoNav = (go: () => void) => {
+    if (walletDemoMode) {
+      Alert.alert(
+        'Démonstration',
+        'Le portefeuille affiché est fictif : aucune opération réelle n’est disponible en mode démo.',
+      );
+      return;
+    }
+    go();
+  };
 
   if (isLoading) {
     return (
@@ -140,6 +172,7 @@ export default function WalletScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
       >
+        {walletDemoMode ? <DemoContentBanner /> : null}
         {/* Balance Card */}
         <View style={styles.balanceCard}>
           <View style={styles.balanceHeader}>
@@ -164,7 +197,7 @@ export default function WalletScreen() {
                 {showBalance ? `${coinsBalance.toLocaleString()} coins` : '•••• coins'}
               </Text>
             </View>
-            <TouchableOpacity onPress={() => router.push('/wallet/coins' as any)}>
+            <TouchableOpacity onPress={() => guardWalletDemoNav(() => router.push('/wallet/coins' as any))}>
               <Text style={styles.coinsMetaLink}>Acheter des coins</Text>
             </TouchableOpacity>
           </View>
@@ -178,11 +211,13 @@ export default function WalletScreen() {
               testID={action.id === 'topup' ? 'wallet-open-recharge' : undefined}
               style={styles.quickAction}
               onPress={() => {
-              if (action.id === 'topup') router.push('/wallet/recharge');
-              if (action.id === 'send') router.push('/wallet/transfer');
-              if (action.id === 'receive') router.push('/wallet/qr-pay' as never);
-              if (action.id === 'withdraw') router.push('/creator/withdraw');
-              if (action.id === 'coins') router.push('/wallet/coins' as any);
+              guardWalletDemoNav(() => {
+                if (action.id === 'topup') router.push('/wallet/recharge');
+                if (action.id === 'send') router.push('/wallet/transfer');
+                if (action.id === 'receive') router.push('/wallet/qr-pay' as never);
+                if (action.id === 'withdraw') router.push('/creator/withdraw');
+                if (action.id === 'coins') router.push('/wallet/coins' as any);
+              });
             }}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: action.color }]}>
@@ -193,7 +228,7 @@ export default function WalletScreen() {
           ))}
         </View>
 
-        <TouchableOpacity style={styles.coinsBanner} onPress={() => router.push('/wallet/coins' as any)}>
+        <TouchableOpacity style={styles.coinsBanner} onPress={() => guardWalletDemoNav(() => router.push('/wallet/coins' as any))}>
           <View style={styles.coinsBannerLeft}>
             <View style={styles.coinsIconWrap}>
               <Ionicons name="diamond" size={22} color="#FFD700" />
@@ -207,7 +242,7 @@ export default function WalletScreen() {
         </TouchableOpacity>
 
         {/* Microcredit Section */}
-        <TouchableOpacity style={styles.microcreditBanner} onPress={() => router.push('/wallet/microcredit')}>
+        <TouchableOpacity style={styles.microcreditBanner} onPress={() => guardWalletDemoNav(() => router.push('/wallet/microcredit'))}>
           <View style={styles.microcreditContent}>
             <Text style={styles.microcreditTitle}>Microcredit</Text>
             <Text style={styles.microcreditSubtitle}>Empruntez jusqu'a 100 000 FCFA</Text>

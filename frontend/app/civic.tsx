@@ -18,6 +18,9 @@ import { router } from 'expo-router';
 import apiClient from '../src/api/client';
 import { toAbsoluteMediaUrl } from '../src/utils/absoluteMediaUrl';
 import { useAuthStore } from '../src/store/authStore';
+import { featureFlags } from '../src/config/featureFlags';
+import { DemoContentBanner } from '../src/components/common/DemoContentBanner';
+import { DEMO_CIVIC_PETITIONS, isAfriWonderDemoId } from '../src/demo/superAppDemoSeed';
 
 interface Petition {
   id: string;
@@ -38,21 +41,34 @@ export default function CivicScreen() {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Petition | null>(null);
   const [signing, setSigning] = useState(false);
+  const [civicDemo, setCivicDemo] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
+    setCivicDemo(false);
     try {
       const res = await apiClient.get('/civic', { params: { page: 1, limit: 30, status: 'active' } });
       const payload = res.data?.data ?? res.data;
       const list = (payload?.petitions ?? []) as Petition[];
-      setPetitions(list);
+      if (list.length === 0 && featureFlags.superAppDemoContent) {
+        setPetitions(DEMO_CIVIC_PETITIONS as Petition[]);
+        setCivicDemo(true);
+      } else {
+        setPetitions(list);
+      }
     } catch (err) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message
         || (err as { message?: string })?.message
         || 'Impossible de charger les pétitions.';
-      setError(msg);
-      setPetitions([]);
+      if (featureFlags.superAppDemoContent) {
+        setPetitions(DEMO_CIVIC_PETITIONS as Petition[]);
+        setCivicDemo(true);
+        setError(null);
+      } else {
+        setError(msg);
+        setPetitions([]);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -66,6 +82,10 @@ export default function CivicScreen() {
   const onSign = async () => {
     if (!selected || !user) {
       Alert.alert('Connexion requise', 'Connectez-vous pour signer une pétition.');
+      return;
+    }
+    if (isAfriWonderDemoId(selected.id)) {
+      Alert.alert('Démonstration', 'Pétition fictive : aucune signature réelle n’est enregistrée.');
       return;
     }
     setSigning(true);
@@ -115,6 +135,7 @@ export default function CivicScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={Colors.primary} />
           }
         >
+          {civicDemo ? <DemoContentBanner /> : null}
           <View style={styles.impactCard}>
             <Ionicons name="heart" size={32} color={Colors.primary} />
             <Text style={styles.impactTitle}>Votre impact</Text>

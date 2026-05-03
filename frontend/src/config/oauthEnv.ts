@@ -102,7 +102,13 @@ export function isGoogleOAuthConfiguredForPlatform(os: typeof Platform.OS, env: 
   if (os === 'android') {
     const expoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
     if (expoGo) return Boolean(r.webClientId || r.androidClientId);
-    return Boolean(r.androidClientId);
+    if (!r.androidClientId) return false;
+    /**
+     * Même chaîne que le client Web → erreur Google « Custom scheme URIs are not allowed for WEB client type ».
+     * Il faut un **client OAuth de type Android** distinct dans Google Cloud (package + SHA-1).
+     */
+    if (r.webClientId && r.androidClientId.trim() === r.webClientId.trim()) return false;
+    return true;
   }
   return Boolean(r.webClientId);
 }

@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
 import apiClient from '../src/api/client';
 import { useAuthStore } from '../src/store/authStore';
+import { getUserFacingApiErrorMessage } from '../src/utils/userFacingError';
 
 const fmtMoney = (n: number) => n.toLocaleString('fr-FR') + ' FCFA';
 
@@ -48,13 +49,11 @@ interface CreatorTier {
 }
 
 function errMessage(e: unknown): string {
-  const ex = e as { response?: { data?: { error?: { message?: string }; message?: string; detail?: string } } };
-  return (
-    ex.response?.data?.error?.message ||
-    ex.response?.data?.message ||
-    ex.response?.data?.detail ||
-    'Erreur'
-  );
+  const ex = e as { userFacingMessage?: string };
+  if (typeof ex.userFacingMessage === 'string' && ex.userFacingMessage.trim()) {
+    return ex.userFacingMessage.trim();
+  }
+  return getUserFacingApiErrorMessage(e);
 }
 
 export default function SubscriptionsScreen() {

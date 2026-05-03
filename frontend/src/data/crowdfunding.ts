@@ -347,3 +347,14 @@ export const getProgressPercent = (raised: number, goal: number): number => {
   if (!goal || !raised) return 0;
   return Math.min(Math.round((raised / goal) * 100), 100);
 };
+
+/** Campagnes locales (`SEED_PROJECTS`) — pas d’API / pas de paiement réel. */
+export function getCrowdfundingSeedProjectById(id: string): CrowdfundingProject | null {
+  const p = SEED_PROJECTS.find((x) => x.id === id);
+  if (!p) return null;
+  return { ...p, status: p.status ?? 'active' };
+}
+
+export function isCrowdfundingSeedProjectId(id: string): boolean {
+  return SEED_PROJECTS.some((p) => p.id === id);
+}

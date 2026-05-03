@@ -27,10 +27,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import apiClient from '../../src/api/client';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 import { useAuthStore } from '../../src/store/authStore';
 import { useAgoraLiveRtc } from '../../src/hooks/useAgoraLiveRtc';
 import socketService from '../../src/services/socketService';
 import { LiveGiftsPanel, useGiftAnimations } from './gifts';
+import { LiveTopFansSheet } from './_liveTopFansSheet';
 import { tryEnterPictureInPicture } from '../../src/live/liveNativeExtras';
 import { resolveLiveJoinGeo } from '../../src/live/liveViewerGeo';
 import { profileAvatarUri } from '../../src/utils/avatarFallback';
@@ -139,6 +141,7 @@ export default function LiveStreamViewerScreen() {
   const [viewers, setViewers] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
   const [showGifts, setShowGifts] = useState(false);
+  const [showTopFans, setShowTopFans] = useState(false);
   const [loading, setLoading] = useState(true);
   const [streamTitle, setStreamTitle] = useState('Live');
   const [streamerName, setStreamerName] = useState('Créateur');
@@ -428,8 +431,7 @@ export default function LiveStreamViewerScreen() {
       const d = res.data?.data ?? res.data;
       setIsFollowing(Boolean(d?.following));
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string } } };
-      Alert.alert('Suivi', String(err.response?.data?.error || 'Impossible de suivre'));
+      Alert.alert('Suivi', getAlertMessageForCaughtError(e));
     }
   };
 
@@ -455,8 +457,7 @@ export default function LiveStreamViewerScreen() {
       chatTimesRef.current.push(now);
       setNewMessage('');
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string; message?: string } } };
-      Alert.alert('Chat', String(err.response?.data?.error || err.response?.data?.message || "Impossible d'envoyer"));
+      Alert.alert('Chat', getAlertMessageForCaughtError(e));
     }
   };
 
@@ -486,8 +487,7 @@ export default function LiveStreamViewerScreen() {
       await apiClient.post(`/live/${encodeURIComponent(liveId)}/raise-hand`, { raised: true });
       Alert.alert('Demande envoyée', 'Le créateur peut accepter ou refuser ; s’il accepte, vous serez invité en co-host (grille).');
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string } } };
-      Alert.alert('Main levée', String(err.response?.data?.error || 'Réessayez plus tard'));
+      Alert.alert('Main levée', getAlertMessageForCaughtError(e));
     }
   };
 
@@ -537,8 +537,7 @@ export default function LiveStreamViewerScreen() {
       });
       Alert.alert('Merci', 'Signalement envoyé.');
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string } } };
-      Alert.alert('Erreur', String(err.response?.data?.error || 'Envoi impossible'));
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
     }
   };
 
@@ -574,13 +573,7 @@ export default function LiveStreamViewerScreen() {
       await apiClient.post(`/live/${encodeURIComponent(liveId)}/age-ack`, { restriction });
       setAgeGateOk(true);
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: { message?: string } | string } } };
-      const raw = err.response?.data?.error;
-      const msg =
-        typeof raw === 'object' && raw && 'message' in raw
-          ? String((raw as { message?: string }).message)
-          : String(raw || 'Impossible d’enregistrer la confirmation');
-      Alert.alert('Âge', msg);
+      Alert.alert('Âge', getAlertMessageForCaughtError(e));
     }
   };
 
@@ -703,6 +696,8 @@ export default function LiveStreamViewerScreen() {
       ))}
       <GiftFullscreenHost />
 
+      <LiveTopFansSheet liveId={liveId} visible={showTopFans} onClose={() => setShowTopFans(false)} />
+
       <View style={styles.videoBackground}>
         {Platform.OS !== 'web' && agoraJoined ? (
           <>
@@ -823,6 +818,21 @@ export default function LiveStreamViewerScreen() {
           </TouchableOpacity>
         </View>
 
+        {liveInteractionsEnabled ? (
+          <TouchableOpacity
+            style={styles.topFansPill}
+            onPress={() => {
+              setShowTopFans(true);
+              setShowGifts(false);
+            }}
+            accessibilityLabel="Top Fans"
+            accessibilityRole="button"
+          >
+            <Ionicons name="trophy" size={16} color="#D4AF37" />
+            <Text style={styles.topFansPillText}>Top Fans</Text>
+          </TouchableOpacity>
+        ) : null}
+
         <View style={styles.viewersBadge}>
           <Ionicons name="eye" size={14} color={Colors.text} />
           <Text style={styles.viewersText}>{formatCompactCount(viewers)}</Text>
@@ -890,6 +900,23 @@ export default function LiveStreamViewerScreen() {
           <Text style={styles.raiseBtnText}>Main levée</Text>
         </TouchableOpacity>
       </View>
+
+      {liveInteractionsEnabled ? (
+        <View style={[styles.viewerTopFansRail, { bottom: 195 + insets.bottom }]} pointerEvents="box-none">
+          <TouchableOpacity
+            style={[styles.viewerTopFansRailBtn, showTopFans && { borderColor: 'rgba(212,175,55,0.9)' }]}
+            onPress={() => {
+              setShowTopFans(true);
+              setShowGifts(false);
+            }}
+            accessibilityLabel="Top Fans"
+            accessibilityRole="button"
+          >
+            <Ionicons name="trophy" size={22} color="#D4AF37" />
+            <Text style={styles.viewerTopFansRailLabel}>Top</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -1165,6 +1192,22 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xs,
     fontWeight: '600',
   },
+  topFansPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(42,31,24,0.92)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.pill,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.45)',
+  },
+  topFansPillText: {
+    color: '#F5E6C8',
+    fontSize: 11,
+    fontWeight: '800',
+  },
   viewersBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1212,6 +1255,29 @@ const styles = StyleSheet.create({
   donorChipMedal: { fontSize: 14, marginBottom: 2 },
   donorChipName: { color: '#FFF', fontSize: 10, fontWeight: '700', textAlign: 'center' },
   donorChipAmt: { color: '#FDE68A', fontSize: 10, fontWeight: '800', marginTop: 2 },
+  viewerTopFansRail: {
+    position: 'absolute',
+    right: 10,
+    zIndex: 9,
+    alignItems: 'center',
+  },
+  viewerTopFansRailBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    minWidth: 52,
+    gap: 4,
+  },
+  viewerTopFansRailLabel: {
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 10,
+    fontWeight: '800',
+  },
   reactionRow: {
     flexDirection: 'row',
     alignItems: 'center',

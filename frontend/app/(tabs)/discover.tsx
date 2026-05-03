@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -19,11 +19,14 @@ import { ExploreGridSkeleton } from '../../src/components/SkeletonScreens';
 import apiClient from '../../src/api/client';
 import { useAuthStore } from '../../src/store/authStore';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { devLog } from '../../src/utils/devLog';
 import { SmartThumbnail, isLikelyRecordingUrl, isVideoUrl } from '../../src/components/SmartThumbnail';
 import {
   ensureVideoFrameLocalUri,
   queuePrefetchDiscoverFrames,
 } from '../../src/utils/videoFrameExtractCache';
+import { featureFlags } from '../../src/config/featureFlags';
+import { filterCommerceShortcuts } from '../../src/discover/commerceShortcuts';
 
 const GRID_GAP = 2;
 
@@ -151,19 +154,6 @@ const CATEGORIES = [
   { id: 'fashion', name: 'Mode', icon: 'shirt' as const, topic: 'mode' },
 ];
 
-const SERVICES_ROW1 = [
-  { id: 'food', name: 'Livraison', icon: 'fast-food', color: '#FF6B6B', route: '/services/food' },
-  { id: 'transport', name: 'Transport', icon: 'car', color: '#4ECDC4', route: '/services/transport' },
-  { id: 'health', name: 'Santé', icon: 'medkit', color: '#45B7D1', route: '/services/health' },
-  { id: 'wallet', name: 'Wallet', icon: 'wallet', color: '#FF6B00', route: '/wallet' },
-];
-const SERVICES_ROW2 = [
-  { id: 'education', name: 'Cours', icon: 'school', color: '#82E0AA', route: '/courses' },
-  { id: 'crowdfunding', name: 'Projets', icon: 'rocket', color: '#E91E63', route: '/crowdfunding' },
-  { id: 'news', name: 'Actus', icon: 'newspaper', color: '#E67E22', route: '/news' },
-  { id: 'more', name: 'Tout', icon: 'apps', color: '#9B59B6', route: '/services' },
-];
-
 const formatNum = (n: number) =>
   n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(n);
 
@@ -234,6 +224,10 @@ type LiveStripItem = {
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
+  const commerceShortcuts = useMemo(
+    () => filterCommerceShortcuts({ marketplace: featureFlags.marketplace, news: featureFlags.news }),
+    []
+  );
   const [activeCategory, setActiveCategory] = useState('all');
   const { width: screenWidth } = useWindowDimensions();
   const [exploreItems, setExploreItems] = useState<ExploreTile[]>([]);
@@ -258,7 +252,7 @@ export default function DiscoverScreen() {
           if (u?.id) userById.set(u.id, u);
         }
       } catch (e) {
-        console.log('Discover stories: liste utilisateurs indisponible', e);
+        devLog('Discover stories: liste utilisateurs indisponible', e);
       }
 
       for (const [id, agg] of aggByCreator) {
@@ -323,7 +317,7 @@ export default function DiscoverScreen() {
       ];
       setStories(storyList);
     } catch (err) {
-      console.log('Failed to load real creators:', err);
+      devLog('Failed to load real creators:', err);
     }
   }, [user]);
 
@@ -548,6 +542,37 @@ export default function DiscoverScreen() {
           ))}
         </ScrollView>
 
+        {/* Commerce & services — aligné sur Menu + / PWA (entrée visible sans passer par le profil). */}
+        <View style={styles.commerceSectionRow}>
+          <Text style={styles.commerceSectionTitle}>Commerce & services</Text>
+          <TouchableOpacity onPress={() => router.push('/menu-plus')} accessibilityRole="button">
+            <Text style={styles.seeAll}>Tout le menu</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.servicesContent}
+        >
+          {commerceShortcuts.map((s) => (
+            <TouchableOpacity
+              key={s.id}
+              style={styles.serviceItem}
+              onPress={() => router.push(s.route as never)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={s.name}
+            >
+              <View style={[styles.serviceIcon, { backgroundColor: s.color + '18' }]}>
+                <Ionicons name={s.icon} size={24} color={s.color} />
+              </View>
+              <Text style={styles.serviceName} numberOfLines={2}>
+                {s.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
         {/* Hashtags tendances */}
         {trendingTags.length > 0 ? (
           <>
@@ -690,27 +715,6 @@ export default function DiscoverScreen() {
               <Text style={styles.storyName} numberOfLines={1}>
                 {story.name}
               </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* Services Mini Programs */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.servicesContent}
-        >
-          {[...SERVICES_ROW1, ...SERVICES_ROW2].map((s) => (
-            <TouchableOpacity
-              key={s.id}
-              style={styles.serviceItem}
-              onPress={() => router.push(s.route as any)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.serviceIcon, { backgroundColor: s.color + '18' }]}>
-                <Ionicons name={s.icon as any} size={24} color={s.color} />
-              </View>
-              <Text style={styles.serviceName}>{s.name}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -969,8 +973,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   storyName: { color: '#CCC', fontSize: 11, marginTop: 4, textAlign: 'center' },
-  servicesContent: { paddingHorizontal: 16, gap: 20, paddingBottom: 16 },
-  serviceItem: { alignItems: 'center' as const, width: 64 },
+  commerceSectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  commerceSectionTitle: {
+    color: 'rgba(255,107,0,0.85)',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  servicesContent: { paddingHorizontal: 16, gap: 16, paddingBottom: 16 },
+  serviceItem: { alignItems: 'center' as const, width: 72 },
   serviceIcon: {
     width: 52,
     height: 52,

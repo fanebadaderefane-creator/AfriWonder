@@ -17,6 +17,10 @@ import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
 import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import { restaurantsApi, Restaurant } from '../../src/api/restaurantsApi';
+import { normalizeCuisineLabel, restaurantHeroImageUrl } from '../../src/food/restaurantVisuals';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { DEMO_RESTAURANTS } from '../../src/demo/superAppDemoSeed';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
 
 export default function FoodDeliveryScreen() {
   if (!featureFlags.servicesHub) {
@@ -32,24 +36,38 @@ function FoodDeliveryContent() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDemo, setShowDemo] = useState(false);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setError(null);
+    setShowDemo(false);
+    const q = search.trim();
     try {
+      // Ne pas forcer `is_open` : en dev, sinon liste vide si horaires non renseignés côté DB.
       const list = await restaurantsApi.list({
         page: 1,
         limit: 30,
-        search: search.trim() || undefined,
-        is_open: true,
+        search: q || undefined,
       });
-      setRestaurants(list);
+      if (featureFlags.superAppDemoContent && !q && list.length === 0) {
+        setRestaurants(DEMO_RESTAURANTS);
+        setShowDemo(true);
+      } else {
+        setRestaurants(list);
+      }
     } catch (err) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message
         || (err as { message?: string })?.message
         || 'Impossible de charger les restaurants.';
-      setError(msg);
+      if (featureFlags.superAppDemoContent && !q) {
+        setRestaurants(DEMO_RESTAURANTS);
+        setShowDemo(true);
+      } else {
+        setError(msg);
+        setRestaurants([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -72,8 +90,16 @@ function FoodDeliveryContent() {
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Restaurants</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity
+          onPress={() => router.push('/services/my-food-orders' as any)}
+          style={styles.headerIconBtn}
+          accessibilityLabel="Mes commandes repas"
+        >
+          <Ionicons name="receipt-outline" size={22} color={Colors.text} />
+        </TouchableOpacity>
       </View>
+
+      {showDemo ? <DemoContentBanner /> : null}
 
       <View style={styles.searchBar}>
         <Ionicons name="search" size={18} color={Colors.textSecondary} />
@@ -119,16 +145,15 @@ function FoodDeliveryContent() {
               style={styles.card}
               onPress={() => router.push(`/services/restaurant/${r.id}` as any)}
             >
-              {r.cover_image || r.logo_url ? (
-                <Image source={{ uri: r.cover_image ?? r.logo_url }} style={styles.cardImage} />
-              ) : (
-                <View style={[styles.cardImage, styles.cardImageFallback]}>
-                  <Ionicons name="restaurant-outline" size={36} color={Colors.textSecondary} />
-                </View>
-              )}
+              <Image
+                source={{ uri: toAbsoluteMediaUrl(restaurantHeroImageUrl(r)) }}
+                style={styles.cardImage}
+              />
               <View style={styles.cardInfo}>
                 <Text style={styles.cardTitle} numberOfLines={1}>{r.name}</Text>
-                {r.cuisine_type ? <Text style={styles.cardCuisine}>{r.cuisine_type}</Text> : null}
+                {normalizeCuisineLabel(r.cuisine_type) ? (
+                  <Text style={styles.cardCuisine}>{normalizeCuisineLabel(r.cuisine_type)}</Text>
+                ) : null}
                 <View style={styles.cardMeta}>
                   {r.rating ? (
                     <View style={styles.metaItem}>
@@ -136,10 +161,14 @@ function FoodDeliveryContent() {
                       <Text style={styles.metaText}>{r.rating.toFixed(1)}</Text>
                     </View>
                   ) : null}
-                  {r.delivery_time_min && r.delivery_time_max ? (
+                  {r.delivery_time_min != null ? (
                     <View style={styles.metaItem}>
                       <Ionicons name="time-outline" size={12} color={Colors.textSecondary} />
-                      <Text style={styles.metaText}>{r.delivery_time_min}-{r.delivery_time_max}min</Text>
+                      <Text style={styles.metaText}>
+                        {r.delivery_time_max != null
+                          ? `${r.delivery_time_min}-${r.delivery_time_max} min`
+                          : `~${r.delivery_time_min} min`}
+                      </Text>
                     </View>
                   ) : null}
                   {typeof r.delivery_fee === 'number' ? (
@@ -172,7 +201,8 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.lg,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: FontSizes.xl, fontWeight: 'bold', color: Colors.text },
+  headerIconBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: FontSizes.xl, fontWeight: 'bold', color: Colors.text, flex: 1, textAlign: 'center' },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -214,7 +244,6 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   cardImage: { width: 80, height: 80, borderRadius: BorderRadius.md, backgroundColor: Colors.card },
-  cardImageFallback: { alignItems: 'center', justifyContent: 'center' },
   cardInfo: { flex: 1 },
   cardTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600' },
   cardCuisine: { color: Colors.textSecondary, fontSize: FontSizes.sm, marginTop: 2 },

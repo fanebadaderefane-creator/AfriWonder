@@ -196,7 +196,8 @@ export default function StoriesScreen() {
 
     const picked = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
-      allowsEditing: Platform.OS !== 'web',
+      /** iOS seulement : recadrage natif ; web/Android sans éditeur système (stabilité Android). */
+      allowsEditing: Platform.OS === 'ios',
       quality: 0.85,
       videoMaxDuration: 60,
     });
@@ -262,7 +263,7 @@ export default function StoriesScreen() {
     }
     const picked = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
-      allowsEditing: Platform.OS !== 'web',
+      allowsEditing: Platform.OS === 'ios',
       quality: 0.85,
       videoMaxDuration: 60,
     });

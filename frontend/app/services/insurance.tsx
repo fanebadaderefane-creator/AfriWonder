@@ -10,7 +10,6 @@ import {
   TextInput,
   ActivityIndicator,
   RefreshControl,
-  Alert,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +26,9 @@ import {
   type InsurancePolicyRow,
   type InsuranceProviderPublic,
 } from '../../src/api/insuranceApi';
+import { appAlert } from '../../src/utils/appAlert';
+
+const DEFAULT_INSURER_LABEL = 'Réseau partenaires AfriWonder';
 
 const TYPE_LABELS: Record<string, string> = {
   health: 'Santé',
@@ -110,13 +112,13 @@ export default function InsuranceScreen() {
     onSuccess: () => {
       setDevisOpen(false);
       setDevisForm({ fullName: '', phone: '', info: '' });
-      Alert.alert('Demande envoyée', 'Un conseiller vous contactera.');
+      appAlert('Demande envoyée', 'Un conseiller vous contactera.');
     },
     onError: (e: unknown) => {
       const msg = e && typeof e === 'object' && 'response' in e
         ? String((e as { response?: { data?: { message?: string } } }).response?.data?.message || '')
         : '';
-      Alert.alert('Erreur', msg || 'Impossible d’envoyer la demande.');
+      appAlert('Erreur', msg || 'Impossible d’envoyer la demande.');
     },
   });
 
@@ -125,13 +127,13 @@ export default function InsuranceScreen() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['insurance', 'policies'] });
       setSubscribeOpen(false);
-      Alert.alert('Souscription', 'Votre demande a été enregistrée (statut en attente).');
+      appAlert('Souscription', 'Votre demande a été enregistrée (statut en attente).');
     },
     onError: (e: unknown) => {
       const msg = e && typeof e === 'object' && 'response' in e
         ? String((e as { response?: { data?: { message?: string } } }).response?.data?.message || '')
         : '';
-      Alert.alert('Erreur', msg || 'Souscription impossible.');
+      appAlert('Erreur', msg || 'Souscription impossible.');
     },
   });
 
@@ -140,19 +142,22 @@ export default function InsuranceScreen() {
     onSuccess: () => {
       setClaimOpen(false);
       setClaimForm({ policyId: '', incidentDate: '', description: '', amount: '' });
-      Alert.alert('Réclamation', 'Votre dossier a été transmis.');
+      appAlert('Réclamation', 'Votre dossier a été transmis.');
     },
     onError: (e: unknown) => {
       const msg = e && typeof e === 'object' && 'response' in e
         ? String((e as { response?: { data?: { message?: string } } }).response?.data?.message || '')
         : '';
-      Alert.alert('Erreur', msg || 'Réclamation refusée (KYC ou assurance désactivée).');
+      appAlert('Erreur', msg || 'Réclamation refusée (KYC ou assurance désactivée).');
     },
   });
 
   const openSubscribe = useCallback(() => {
-    const first = providerNames[0] || (providersQuery.data?.[0] as InsuranceProviderPublic | undefined)?.company_name || '';
-    setSubscribeProvider(first || '');
+    const first =
+      providerNames[0]
+      || (providersQuery.data?.[0] as InsuranceProviderPublic | undefined)?.company_name
+      || DEFAULT_INSURER_LABEL;
+    setSubscribeProvider(first);
     setSubscribeOpen(true);
   }, [providerNames, providersQuery.data]);
 
@@ -160,7 +165,7 @@ export default function InsuranceScreen() {
     const fullName = devisForm.fullName.trim();
     const phone = devisForm.phone.trim();
     if (!fullName || !phone) {
-      Alert.alert('Champs requis', 'Nom complet et téléphone obligatoires.');
+      appAlert('Champs requis', 'Nom complet et téléphone obligatoires.');
       return;
     }
     quoteMutation.mutate({
@@ -175,14 +180,10 @@ export default function InsuranceScreen() {
 
   const onSubmitSubscribe = () => {
     if (!isAuthenticated) {
-      Alert.alert('Connexion', 'Connectez-vous pour souscrire une assurance.');
+      appAlert('Connexion', 'Connectez-vous pour souscrire une assurance.');
       return;
     }
-    const provider = subscribeProvider.trim();
-    if (!provider) {
-      Alert.alert('Prestataire', 'Choisissez ou saisissez un assureur.');
-      return;
-    }
+    const provider = subscribeProvider.trim() || DEFAULT_INSURER_LABEL;
     subscribeMutation.mutate({
       policy_type: selectedType,
       provider,
@@ -198,7 +199,7 @@ export default function InsuranceScreen() {
     const description = claimForm.description.trim();
     const claim_amount = Number(claimForm.amount.replace(',', '.'));
     if (!policy_id || !incident_date || !description || !Number.isFinite(claim_amount)) {
-      Alert.alert('Formulaire', 'Renseignez police, date (AAAA-MM-JJ), description et montant.');
+      appAlert('Formulaire', 'Renseignez police, date (AAAA-MM-JJ), description et montant.');
       return;
     }
     claimMutation.mutate({

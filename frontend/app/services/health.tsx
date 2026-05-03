@@ -16,8 +16,18 @@ import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
 import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import doctorsApi, { Doctor } from '../../src/api/doctorsApi';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { doctorAvatarPlaceholderUrl } from '../../src/utils/serviceVisualPlaceholders';
+import { DEMO_DOCTORS } from '../../src/demo/superAppDemoSeed';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
 
 const SPECIALTIES = ['Tous', 'Généraliste', 'Pédiatre', 'Cardiologue', 'Dermatologue', 'Gynécologue'];
+
+function demoDoctorsForTab(activeSpecialtyIdx: number): Doctor[] {
+  if (activeSpecialtyIdx <= 0) return DEMO_DOCTORS;
+  const spec = SPECIALTIES[activeSpecialtyIdx];
+  return DEMO_DOCTORS.filter((d) => d.specialty === spec);
+}
 
 export default function HealthScreen() {
   if (!featureFlags.servicesHub) {
@@ -34,19 +44,34 @@ function HealthContent() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDemo, setShowDemo] = useState(false);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setError(null);
     setUnavailable(false);
+    setShowDemo(false);
+    const fallbackDemo = () => {
+      if (!featureFlags.superAppDemoContent) return false;
+      const dlist = demoDoctorsForTab(activeSpecialty);
+      if (dlist.length === 0) return false;
+      setDoctors(dlist);
+      setShowDemo(true);
+      return true;
+    };
     try {
       const params: Parameters<typeof doctorsApi.list>[0] = { page: 1, limit: 30 };
       if (activeSpecialty > 0) params.specialty = SPECIALTIES[activeSpecialty];
       const list = await doctorsApi.list(params);
       if (list === null) {
-        // Module télémédecine désactivé côté serveur — affichage "indisponible"
-        setUnavailable(true);
-        setDoctors([]);
+        if (!fallbackDemo()) {
+          setUnavailable(true);
+          setDoctors([]);
+        }
+      } else if (list.length === 0) {
+        if (!fallbackDemo()) {
+          setDoctors([]);
+        }
       } else {
         setDoctors(list);
       }
@@ -55,7 +80,9 @@ function HealthContent() {
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message
         || (err as { message?: string })?.message
         || 'Impossible de charger les médecins.';
-      setError(msg);
+      if (!fallbackDemo()) {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -79,6 +106,8 @@ function HealthContent() {
         <Text style={styles.headerTitle}>Santé</Text>
         <View style={{ width: 40 }} />
       </View>
+
+      {showDemo ? <DemoContentBanner /> : null}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsContainer}>
         {SPECIALTIES.map((s, idx) => (
@@ -131,16 +160,15 @@ function HealthContent() {
               style={styles.card}
               onPress={() => router.push(`/services/doctor/${d.id}` as any)}
             >
-              {d.avatar_url ? (
-                <Image source={{ uri: d.avatar_url }} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatar, styles.avatarFallback]}>
-                  <Ionicons name="person" size={28} color={Colors.textSecondary} />
-                </View>
-              )}
+              <Image
+                source={{ uri: d.avatar_url ? toAbsoluteMediaUrl(d.avatar_url) : doctorAvatarPlaceholderUrl(d.id) }}
+                style={styles.avatar}
+              />
               <View style={{ flex: 1 }}>
                 <View style={styles.nameRow}>
-                  <Text style={styles.cardName}>{d.full_name}</Text>
+                  <Text style={styles.cardName}>
+                    {/^dr\./i.test(d.full_name.trim()) ? d.full_name : `Dr. ${d.full_name}`}
+                  </Text>
                   {d.is_verified ? <Ionicons name="checkmark-circle" size={16} color={Colors.primary} /> : null}
                 </View>
                 <Text style={styles.cardSpecialty}>{d.specialty}</Text>
@@ -224,7 +252,6 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.card },
-  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
   cardName: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600' },
   cardSpecialty: { color: Colors.primary, fontSize: FontSizes.sm, fontWeight: '500', marginTop: 2 },

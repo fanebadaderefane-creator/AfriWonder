@@ -36,8 +36,23 @@ module.exports = ({ config }) => {
   if (ga) afwOAuth.googleAndroidClientId = ga;
   if (fb) afwOAuth.facebookAppId = fb;
 
+  /**
+   * Facebook Login (expo-auth-session) : redirection native `fb{APP_ID}://authorize`.
+   * Sans ce schéma dans l’app, le retour OAuth ne rouvre pas AfriWonder (navigateur bloqué).
+   */
+  const facebookAuthorizeScheme = fb ? `fb${fb}` : '';
+  const baseScheme = config.scheme;
+  const scheme = facebookAuthorizeScheme
+    ? Array.isArray(baseScheme)
+      ? [...new Set([...baseScheme, facebookAuthorizeScheme])]
+      : baseScheme
+        ? [baseScheme, facebookAuthorizeScheme]
+        : facebookAuthorizeScheme
+    : baseScheme;
+
   return {
     ...config,
+    scheme,
     android,
     ios,
     extra: {

@@ -22,6 +22,8 @@ import {
   formatCFA,
   formatFullCFA,
   getProgressPercent,
+  getCrowdfundingSeedProjectById,
+  isCrowdfundingSeedProjectId,
 } from '../../src/data/crowdfunding';
 import type { CrowdfundingProject, Reward } from '../../src/data/crowdfunding';
 import { mapApiCampaignToCrowdfundingProject } from '../../src/data/crowdfundingMappers';
@@ -29,6 +31,8 @@ import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlacehold
 import { profileAvatarUri } from '../../src/utils/avatarFallback';
 import crowdfundingApi, { type CrowdfundingContributionRow } from '../../src/api/crowdfundingApi';
 import { useAuthStore } from '../../src/store/authStore';
+import { featureFlags } from '../../src/config/featureFlags';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
 
 type Tab = 'about' | 'rewards' | 'updates' | 'discussion' | 'backers';
 
@@ -90,12 +94,19 @@ export default function ProjectDetailScreen() {
       const raw = await crowdfundingApi.get(String(id));
       setProject(mapApiCampaignToCrowdfundingProject(raw));
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ||
-        (e as { message?: string })?.message ||
-        'Campagne introuvable.';
-      setProjectError(msg);
-      setProject(null);
+      const seed =
+        featureFlags.superAppDemoContent ? getCrowdfundingSeedProjectById(String(id)) : null;
+      if (seed) {
+        setProject(seed);
+        setProjectError(null);
+      } else {
+        const msg =
+          (e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ||
+          (e as { message?: string })?.message ||
+          'Campagne introuvable.';
+        setProjectError(msg);
+        setProject(null);
+      }
     } finally {
       setProjectLoading(false);
     }
@@ -264,6 +275,13 @@ export default function ProjectDetailScreen() {
   };
 
   const handleContribute = (reward?: Reward) => {
+    if (isCrowdfundingSeedProjectId(project.id)) {
+      Alert.alert(
+        'Démonstration',
+        'Cette campagne est fictive : aucun paiement réel n’est effectué.',
+      );
+      return;
+    }
     const params: Record<string, string> = { projectId: project.id };
     if (reward) {
       params.rewardId = reward.id;
@@ -405,6 +423,7 @@ export default function ProjectDetailScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
+        {isCrowdfundingSeedProjectId(project.id) ? <DemoContentBanner /> : null}
         {/* Image Carousel */}
         <View style={{ height: 240 }}>
           {project.images.length === 0 ? (

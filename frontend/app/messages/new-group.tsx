@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Colors } from '../../src/theme/colors';
 import apiClient from '../../src/api/client';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 import { useAuthStore } from '../../src/store/authStore';
 import { profileAvatarUri, avatarSeedFromUserFields } from '../../src/utils/avatarFallback';
 import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
@@ -95,12 +96,8 @@ export default function NewGroupScreen() {
       Alert.alert('Groupe créé', 'Votre groupe a été créé.', [
         { text: 'OK', onPress: () => router.replace('/messages' as any) },
       ]);
-    } catch (err) {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-        || (err as { message?: string })?.message
-        || 'Création impossible.';
-      Alert.alert('Erreur', msg);
+    } catch (err: unknown) {
+      Alert.alert('Erreur', getAlertMessageForCaughtError(err));
     } finally {
       setCreating(false);
     }

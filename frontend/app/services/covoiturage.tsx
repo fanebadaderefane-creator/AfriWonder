@@ -15,6 +15,8 @@ import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
 import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import { ridesApi, Ride } from '../../src/api/ridesApi';
+import { DEMO_RIDES } from '../../src/demo/superAppDemoSeed';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'En attente',
@@ -57,19 +59,34 @@ function CovoiturageContent() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDemo, setShowDemo] = useState(false);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setError(null);
+    setShowDemo(false);
     try {
       const list = await ridesApi.list({ as: 'passenger', page: 1, limit: 30 });
-      setRides(list);
+      if (list.length > 0) {
+        setRides(list);
+      } else if (featureFlags.superAppDemoContent) {
+        setRides(DEMO_RIDES);
+        setShowDemo(true);
+      } else {
+        setRides([]);
+      }
     } catch (err) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message
         || (err as { message?: string })?.message
         || 'Impossible de charger vos courses.';
-      setError(msg);
+      if (featureFlags.superAppDemoContent) {
+        setRides(DEMO_RIDES);
+        setShowDemo(true);
+      } else {
+        setError(msg);
+        setRides([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -95,6 +112,8 @@ function CovoiturageContent() {
           <Ionicons name="add" size={26} color={Colors.primary} />
         </TouchableOpacity>
       </View>
+
+      {showDemo ? <DemoContentBanner /> : null}
 
       {loading ? (
         <View style={styles.centerBox}>
@@ -133,7 +152,7 @@ function CovoiturageContent() {
               <TouchableOpacity
                 key={r.id}
                 style={styles.card}
-                onPress={() => router.push(`/services/ride/${r.id}` as any)}
+                onPress={() => router.push(`/rides/${r.id}` as any)}
               >
                 <View style={styles.cardHeader}>
                   <Text style={styles.cardDate}>{formatDate(r.created_at)}</Text>

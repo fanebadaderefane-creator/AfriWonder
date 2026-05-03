@@ -1,5 +1,7 @@
 import '../src/polyfills';
 import { initMobileSentry } from '../src/lib/sentryMobile';
+import { installMobileRuntimeGuards } from '../src/lib/mobileRuntimeGuards';
+import { AppRootErrorBoundary } from '../src/components/common/AppRootErrorBoundary';
 import { Stack, router } from 'expo-router';
 import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
@@ -33,6 +35,7 @@ import { navigateToIncomingCallFromPush } from '../src/call/incomingCallPushNavi
 import { isExpoGoApp } from '../src/config/expoRuntime';
 
 initMobileSentry();
+installMobileRuntimeGuards();
 
 void SplashScreen.preventAutoHideAsync().catch(() => {
   /* Expo Go / OEM : keep-awake parfois indisponible — éviter promesse rejetée non gérée */
@@ -285,6 +288,7 @@ function RootLayoutContent() {
   }
 
   return (
+    <AppRootErrorBoundary>
     <LanguageProvider>
       <QueryClientProvider client={queryClient}>
         <ToastProvider>
@@ -351,6 +355,7 @@ function RootLayoutContent() {
             <Stack.Screen name="miniapps" />
             <Stack.Screen name="assistant" />
             <Stack.Screen name="menu-plus" />
+            <Stack.Screen name="alert-mali" />
             <Stack.Screen name="data-protection" />
             <Stack.Screen name="admin-dashboard" />
             <Stack.Screen name="admin-settings" />
@@ -362,6 +367,7 @@ function RootLayoutContent() {
         </ToastProvider>
       </QueryClientProvider>
     </LanguageProvider>
+    </AppRootErrorBoundary>
   );
 }
 

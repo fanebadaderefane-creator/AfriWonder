@@ -2,17 +2,20 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const initMock = vi.fn();
 const captureMessageMock = vi.fn();
+const captureExceptionMock = vi.fn();
 
 vi.mock('@sentry/react-native', () => ({
   default: {},
   init: initMock,
   captureMessage: captureMessageMock,
+  captureException: captureExceptionMock,
 }));
 
 describe('sentryMobile', () => {
   beforeEach(() => {
     initMock.mockReset();
     captureMessageMock.mockReset();
+    captureExceptionMock.mockReset();
     delete process.env.EXPO_PUBLIC_SENTRY_DSN;
     delete process.env.EXPO_PUBLIC_SENTRY_DEBUG;
     delete process.env.EXPO_PUBLIC_APP_ENV;
@@ -128,5 +131,24 @@ describe('sentryMobile', () => {
     const { initMobileSentry, captureSentryMessage } = await import('./sentryMobile');
     initMobileSentry();
     expect(() => captureSentryMessage('x')).not.toThrow();
+  });
+
+  it('captureSentryException ne fait rien si non initialisé', async () => {
+    vi.resetModules();
+    const { captureSentryException } = await import('./sentryMobile');
+    captureSentryException(new Error('e'));
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+  });
+
+  it('captureSentryException envoie après init', async () => {
+    vi.resetModules();
+    process.env.EXPO_PUBLIC_SENTRY_DSN = 'https://public@o1.ingest.sentry.io/1';
+    const g = globalThis as { __DEV__?: boolean };
+    g.__DEV__ = false;
+    const err = new Error('boom');
+    const { initMobileSentry, captureSentryException } = await import('./sentryMobile');
+    initMobileSentry();
+    captureSentryException(err, { k: 1 });
+    expect(captureExceptionMock).toHaveBeenCalledWith(err, { extra: { k: 1 } });
   });
 });

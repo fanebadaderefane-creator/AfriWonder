@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Colors } from '../../src/theme/colors';
 import { useAppTheme } from '../../src/theme/ThemeContext';
+import { devLog } from '../../src/utils/devLog';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/store/authStore';
@@ -171,7 +172,7 @@ export default function ProfileScreen() {
         setRealBio(data?.bio != null ? String(data.bio) : null);
         setRealWebsite(data?.website != null ? String(data.website) : '');
       } catch (err) {
-        console.log('Could not load full profile', err);
+        devLog('Could not load full profile', err);
       }
 
       const creatorAvatar = toAbsoluteMediaUrl(user.profile_image || user.avatar || '').trim();
@@ -211,7 +212,7 @@ export default function ProfileScreen() {
           setSavedPosts([]);
         }
       } catch (err) {
-        console.log('Could not load user videos / saves', err);
+        devLog('Could not load user videos / saves', err);
         setTabPosts([]);
         setSavedPosts([]);
         setPrivatePosts([]);
@@ -403,7 +404,7 @@ export default function ProfileScreen() {
       setRepostPosts((p) => p.filter((x) => x.id !== id));
       setRealStats((s) => (s ? { ...s, posts: Math.max(0, s.posts - 1) } : s));
     } catch (e) {
-      console.log('Delete video', e);
+      devLog('Delete video', e);
       const msg =
         (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
         (e as Error)?.message ||

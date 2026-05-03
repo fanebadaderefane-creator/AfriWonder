@@ -16,6 +16,16 @@ import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
 import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import eventsApi, { EventItem } from '../../src/api/eventsApi';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { eventHeroPlaceholderUrl } from '../../src/utils/serviceVisualPlaceholders';
+import { DEMO_EVENTS } from '../../src/demo/superAppDemoSeed';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
+
+function eventCardImageUri(ev: EventItem): string {
+  const raw = ev.cover_image ?? ev.images?.[0];
+  const abs = raw ? toAbsoluteMediaUrl(raw) : '';
+  return abs || eventHeroPlaceholderUrl(ev.id, ev.event_type ?? ev.category);
+}
 
 function formatDateRange(start?: string, end?: string): string {
   if (!start) return '';
@@ -44,19 +54,32 @@ function EventsContent() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDemo, setShowDemo] = useState(false);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setError(null);
+    setShowDemo(false);
     try {
       const list = await eventsApi.list({ page: 1, limit: 30 });
-      setEvents(list);
+      if (featureFlags.superAppDemoContent && list.length === 0) {
+        setEvents(DEMO_EVENTS);
+        setShowDemo(true);
+      } else {
+        setEvents(list);
+      }
     } catch (err) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message
         || (err as { message?: string })?.message
         || 'Impossible de charger les événements.';
-      setError(msg);
+      if (featureFlags.superAppDemoContent) {
+        setEvents(DEMO_EVENTS);
+        setShowDemo(true);
+      } else {
+        setError(msg);
+        setEvents([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -80,6 +103,8 @@ function EventsContent() {
         <Text style={styles.headerTitle}>Événements</Text>
         <View style={{ width: 40 }} />
       </View>
+
+      {showDemo ? <DemoContentBanner /> : null}
 
       {loading ? (
         <View style={styles.centerBox}>
@@ -115,13 +140,7 @@ function EventsContent() {
                 style={styles.card}
                 onPress={() => router.push(`/services/event/${ev.id}` as any)}
               >
-                {ev.cover_image || ev.images?.[0] ? (
-                  <Image source={{ uri: ev.cover_image ?? ev.images?.[0] }} style={styles.cardImage} />
-                ) : (
-                  <View style={[styles.cardImage, styles.cardImageFallback]}>
-                    <Ionicons name="calendar-outline" size={36} color={Colors.textSecondary} />
-                  </View>
-                )}
+                <Image source={{ uri: eventCardImageUri(ev) }} style={styles.cardImage} />
                 <View style={styles.cardOverlay}>
                   {ev.event_type ? <Text style={styles.eventType}>{ev.event_type}</Text> : null}
                 </View>
@@ -188,7 +207,6 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   cardImage: { width: '100%', height: 180, backgroundColor: Colors.card },
-  cardImageFallback: { alignItems: 'center', justifyContent: 'center' },
   cardOverlay: { position: 'absolute', top: Spacing.md, left: Spacing.md },
   eventType: {
     backgroundColor: Colors.primary,

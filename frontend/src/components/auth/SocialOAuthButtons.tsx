@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert, ActivityIndicator } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
-import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -9,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/authStore';
 import { authApi } from '../../api/auth';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../theme/colors';
-import { extractOAuthAccessToken } from '../../utils/extractOAuthAccessToken';
+import { extractOAuthAccessToken, extractGoogleOAuthTokens } from '../../utils/extractOAuthAccessToken';
 import {
   getGoogleOAuthEnv,
   getFacebookAppId,
@@ -20,6 +19,8 @@ import {
   resolveGoogleClientIdsForNativeGoogleAuth,
 } from '../../config/oauthEnv';
 import {
+  getComputedOAuthRedirectUri,
+  getGoogleInstalledAppRedirectUri,
   getOAuthRedirectUriVariantsForConsole,
   logOAuthRedirectDebugInfo,
 } from '../../config/oauthRedirectUris';
@@ -39,7 +40,11 @@ const OAUTH_UNAVAILABLE_MESSAGE =
   'Ce mode de connexion n’est pas disponible pour le moment. Utilisez votre e-mail ou votre numéro de téléphone.';
 
 const GOOGLE_ANDROID_SETUP_HINT =
-  'Sur Android, Google exige un identifiant client dédié (EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID) et l’empreinte SHA-1 du certificat de l’app (debug, build EAS, signature Play) enregistrée dans Google Cloud pour le package com.afriwonder.app. En attendant, utilisez l’e-mail ou le téléphone.';
+  'Google affiche souvent « Custom scheme URIs are not allowed for WEB client type » si EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID est une copie du client **Web**. Créez dans Google Cloud un **client OAuth de type Android** (package com.afriwonder.app + SHA-1 debug/EAS), mettez **son** ID dans EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID, et sur ce client Android activez le schéma com.googleusercontent.apps.…:/oauthredirect. Le client Web reste pour le web / Expo Go. Sinon e-mail ou téléphone.';
+
+/** Message Google (navigateur) « doesn’t comply with OAuth 2.0 policy » — cause fréquente : consentement en mode Test sans utilisateur test. */
+const GOOGLE_OAUTH_TEST_USERS_FOOTER =
+  '\n\n— Si la page Google dit que l’app « ne respecte pas la politique OAuth » (400 invalid_request) —\nConsole Google → **Google Auth Platform** (ou APIs & Services) → **Écran de consentement OAuth**. Si le statut est **Test**, ouvrez **Audience** / **Utilisateurs test** et ajoutez l’adresse Google exacte utilisée pour la connexion (ex. fanesamajeste@gmail.com). En production, seule une diffusion **En production** évite cette limite pour tout le monde.';
 
 /**
  * Web : CSS globale peut forcer couleur du texte.
@@ -94,11 +99,26 @@ function GoogleOAuthBlock({
     () => resolveGoogleClientIdsForNativeGoogleAuth(Platform.OS, getGoogleOAuthEnv()),
     [],
   );
-  /** Pas de `redirectUri` custom : provider Expo. Expo Go Android utilise le client Web (voir `oauthEnv`). */
+  /**
+   * Schéma `com.googleusercontent.apps.*` **uniquement** avec un vrai client Android/iOS —
+   * jamais avec l’ID « Application Web » (erreur 400 côté Google).
+   * Expo Go Android : undefined → redirect exp/proxy compatible client Web.
+   */
+  const googleRedirectUri = useMemo(
+    () =>
+      getGoogleInstalledAppRedirectUri({
+        webClientId: googleIds.webClientId,
+        androidClientId: googleIds.androidClientId,
+        iosClientId: googleIds.iosClientId,
+      }),
+    [googleIds],
+  );
+
   const [, googleResponse, googlePrompt] = Google.useAuthRequest({
     webClientId: googleIds.webClientId,
     iosClientId: googleIds.iosClientId,
     androidClientId: googleIds.androidClientId,
+    ...(googleRedirectUri ? { redirectUri: googleRedirectUri } : {}),
   });
   const handledUrl = useRef<string | null>(null);
   const lastGoogleOAuthErrorKey = useRef<string | null>(null);
@@ -107,13 +127,13 @@ function GoogleOAuthBlock({
     if (googleResponse?.type !== 'success' || !('url' in googleResponse)) return;
     const url = googleResponse.url;
     if (handledUrl.current === url) return;
-    const token = extractOAuthAccessToken(googleResponse);
-    if (!token) return;
+    const { accessToken, idToken } = extractGoogleOAuthTokens(googleResponse);
+    if (!accessToken && !idToken) return;
     handledUrl.current = url;
     onBusy(true);
     void (async () => {
       try {
-        const r = await authApi.oauthGoogle(token);
+        const r = await authApi.oauthGoogle({ accessToken, idToken });
         await setAuth(r.user, r.accessToken, r.refreshToken);
         onDone();
       } catch (e: unknown) {
@@ -145,14 +165,22 @@ function GoogleOAuthBlock({
     lastGoogleOAuthErrorKey.current = key;
     const redirects = getOAuthRedirectUriVariantsForConsole();
     const redirectHint = redirects.length
-      ? `\n\nURI de redirection à autoriser dans Google Cloud:\n- ${redirects.join('\n- ')}`
+      ? `\n\nAutres URI (console / Expo Go) :\n- ${redirects.join('\n- ')}`
+      : '';
+    const primaryRedirect =
+      googleRedirectUri?.trim() ||
+      (Platform.OS === 'web' ? getComputedOAuthRedirectUri().trim() : '');
+    const primaryBlock = primaryRedirect
+      ? `\n\n— Google Cloud —\nClient OAuth **Android** (pas Web) → **Paramètres avancés** : activer le schéma d’URI personnalisé, puis enregistrer cette redirection si demandé :\n${primaryRedirect}\n\n(Le client Web n’accepte que http/https — l’erreur rouge est normale si vous la collez là.)\n\nÉcran de consentement : en « Test », ajoutez votre e-mail comme utilisateur test.`
       : '';
     const hint =
       Platform.OS === 'android'
         ? '\n\nVérifiez aussi la SHA-1 dans Google Cloud (debug / EAS / Play) pour com.afriwonder.app.'
         : '';
-    alertInfo('Google', `${rawMsg}${hint}${redirectHint}`);
-  }, [googleResponse]);
+    /** La page Google (navigateur) peut afficher la politique OAuth ; le rappel « utilisateurs test » reste pertinent sur mobile. */
+    const consentHint = Platform.OS === 'web' ? '' : GOOGLE_OAUTH_TEST_USERS_FOOTER;
+    alertInfo('Google', `${rawMsg}${primaryBlock}${hint}${consentHint}${redirectHint}`);
+  }, [googleResponse, googleRedirectUri]);
 
   return (
     <TouchableOpacity
@@ -182,6 +210,7 @@ function FacebookOAuthBlock({
     clientId: appId,
   });
   const handledUrl = useRef<string | null>(null);
+  const lastFacebookOAuthErrorKey = useRef<string | null>(null);
 
   useEffect(() => {
     if (fbResponse?.type !== 'success' || !('url' in fbResponse)) return;
@@ -205,18 +234,48 @@ function FacebookOAuthBlock({
         const redirectHint = redirects.length
           ? `\n\nURI OAuth valides à ajouter dans Meta Developers:\n- ${redirects.join('\n- ')}`
           : '';
-        alertInfo('Facebook', `${msg}${redirectHint}`);
+        const schemeHint = appId
+          ? `\n\nSchéma natif attendu : fb${appId}://authorize (déclaré dans l’app via EXPO_PUBLIC_FACEBOOK_APP_ID au build).`
+          : '';
+        alertInfo('Facebook', `${msg}${redirectHint}${schemeHint}`);
         handledUrl.current = null;
       } finally {
         onBusy(false);
       }
     })();
-  }, [fbResponse, onBusy, onDone, setAuth]);
+  }, [fbResponse, onBusy, onDone, setAuth, appId]);
+
+  useEffect(() => {
+    if (!fbResponse || fbResponse.type !== 'error') return;
+    const errObj = fbResponse as {
+      error?: string | { message?: string; code?: string };
+      params?: { error_description?: string };
+    };
+    const rawMsg =
+      (typeof errObj.error === 'object' && errObj.error?.message && String(errObj.error.message)) ||
+      (typeof errObj.error === 'string' && errObj.error) ||
+      (errObj.params?.error_description && String(errObj.params.error_description)) ||
+      'Connexion Facebook impossible.';
+    const key = `${rawMsg}:${String((errObj.error as { code?: string } | undefined)?.code ?? '')}`;
+    if (lastFacebookOAuthErrorKey.current === key) return;
+    lastFacebookOAuthErrorKey.current = key;
+    const redirects = getOAuthRedirectUriVariantsForConsole();
+    const redirectHint = redirects.length
+      ? `\n\nURI OAuth valides (Meta) :\n- ${redirects.join('\n- ')}`
+      : '';
+    const schemeHint = appId
+      ? `\n\nVérifiez le schéma fb${appId}://authorize et les plates-formes Android/iOS sur developers.facebook.com.`
+      : '';
+    alertInfo('Facebook', `${rawMsg}${redirectHint}${schemeHint}`);
+  }, [fbResponse, appId]);
 
   return (
     <TouchableOpacity
       style={[styles.providerBtn, styles.facebookBtn]}
-      onPress={() => void fbPrompt()}
+      onPress={() => {
+        lastFacebookOAuthErrorKey.current = null;
+        void fbPrompt();
+      }}
       activeOpacity={0.85}
     >
       <Ionicons name="logo-facebook" size={22} color="#fff" />

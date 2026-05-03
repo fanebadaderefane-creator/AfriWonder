@@ -261,6 +261,7 @@ export default function SettingsScreen() {
       {
         title: 'Support',
         items: [
+          { icon: 'alert-circle-outline', label: 'Signaler un probleme', route: '/settings/feedback' },
           { icon: 'help-circle', label: 'FAQ', route: '/faq' },
           { icon: 'chatbubble', label: 'Support', route: '/support-page' },
           { icon: 'star', label: "Noter l'app", action: 'rate' as const },
