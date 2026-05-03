@@ -10,7 +10,6 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Alert,
   Image,
   Platform,
 } from 'react-native';
@@ -19,6 +18,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import teleconsultationApi, { Doctor } from '../../src/api/teleconsultationApi';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { doctorAvatarPlaceholderUrl } from '../../src/utils/serviceVisualPlaceholders';
+import { appAlert } from '../../src/utils/appAlert';
+import { featureFlags } from '../../src/config/featureFlags';
+import { getDemoTeleDoctorById, isAfriWonderDemoId } from '../../src/demo/superAppDemoSeed';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
 
 type Mode = 'video' | 'audio' | 'chat';
 
@@ -55,12 +60,26 @@ export default function BookAppointmentScreen() {
   const [selectedSlot, setSelectedSlot] = useState<Date | null>(null);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [fromDemo, setFromDemo] = useState(false);
 
   const loadDoctor = useCallback(async () => {
     if (!doctorId) return;
-    const d = await teleconsultationApi.getDoctor(doctorId);
-    setDoctor(d);
-    setLoading(false);
+    setLoading(true);
+    setFromDemo(false);
+    try {
+      const d = await teleconsultationApi.getDoctor(doctorId);
+      setDoctor(d);
+    } catch {
+      if (featureFlags.superAppDemoContent) {
+        const demo = getDemoTeleDoctorById(String(doctorId));
+        setDoctor(demo);
+        setFromDemo(Boolean(demo));
+      } else {
+        setDoctor(null);
+      }
+    } finally {
+      setLoading(false);
+    }
   }, [doctorId]);
 
   useEffect(() => { void loadDoctor(); }, [loadDoctor]);
@@ -69,7 +88,14 @@ export default function BookAppointmentScreen() {
 
   const handleBook = async () => {
     if (!doctor || !selectedSlot) {
-      Alert.alert('Créneau requis', 'Sélectionnez un créneau horaire pour la consultation.');
+      appAlert('Créneau requis', 'Sélectionnez un créneau horaire pour la consultation.');
+      return;
+    }
+    if (isAfriWonderDemoId(doctor.id)) {
+      appAlert(
+        'Démonstration',
+        'Médecin fictif : aucun rendez-vous réel n’est créé.',
+      );
       return;
     }
     setSubmitting(true);
@@ -81,16 +107,16 @@ export default function BookAppointmentScreen() {
         mode,
         notes: notes.trim() || undefined,
       });
-      Alert.alert(
+      appAlert(
         'Rendez-vous confirmé ✓',
         `Votre consultation ${MODE_LABEL[mode].toLowerCase()} avec Dr. ${doctor.full_name} est programmée le ${selectedSlot.toLocaleDateString('fr-FR')} à ${selectedSlot.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}.`,
-        [{ text: 'Voir mes RDV', onPress: () => router.replace(`/health/appointment/${appt.id}` as never) }],
       );
+      router.replace(`/health/appointment/${appt.id}` as never);
     } catch (err) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error
         || 'La réservation n\'a pas pu aboutir. Réessayez.';
-      Alert.alert('Erreur', String(msg));
+      appAlert('Erreur', String(msg));
     } finally {
       setSubmitting(false);
     }
@@ -126,14 +152,16 @@ export default function BookAppointmentScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {fromDemo ? <DemoContentBanner /> : null}
         <View style={styles.doctorCard}>
-          {doctor.profile_image ? (
-            <Image source={{ uri: doctor.profile_image }} style={styles.doctorAvatar} />
-          ) : (
-            <View style={[styles.doctorAvatar, styles.doctorAvatarPlaceholder]}>
-              <Ionicons name="medical" size={36} color={Colors.primary} />
-            </View>
-          )}
+          <Image
+            source={{
+              uri: doctor.profile_image
+                ? toAbsoluteMediaUrl(doctor.profile_image)
+                : doctorAvatarPlaceholderUrl(doctor.id),
+            }}
+            style={styles.doctorAvatar}
+          />
           <Text style={styles.doctorName}>Dr. {doctor.full_name}</Text>
           <Text style={styles.doctorSpecialty}>{doctor.specialty}</Text>
           {doctor.consultation_fee_fcfa ? (
@@ -229,7 +257,6 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border,
   },
   doctorAvatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: Colors.background },
-  doctorAvatarPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   doctorName: { color: Colors.text, fontSize: FontSizes.xl, fontWeight: '800' },
   doctorSpecialty: { color: Colors.textSecondary, fontSize: FontSizes.md },
   doctorFee: { color: Colors.primary, fontSize: FontSizes.md, fontWeight: '700' },

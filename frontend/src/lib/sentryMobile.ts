@@ -2,6 +2,10 @@ import * as Sentry from '@sentry/react-native';
 
 let initialized = false;
 
+export function isMobileSentryInitialized(): boolean {
+  return initialized;
+}
+
 /**
  * Sentry natif : uniquement si `EXPO_PUBLIC_SENTRY_DSN` est défini.
  * En développement, rien n’est envoyé sauf si `EXPO_PUBLIC_SENTRY_DEBUG=1`
@@ -27,6 +31,16 @@ export function initMobileSentry(): void {
     });
   } catch {
     initialized = false;
+  }
+}
+
+/** Erreur non interceptée (boundary, ErrorUtils) — best-effort vers Sentry si le DSN est configuré. */
+export function captureSentryException(error: unknown, extra?: Record<string, unknown>): void {
+  if (!initialized) return;
+  try {
+    Sentry.captureException(error, extra && Object.keys(extra).length ? { extra } : undefined);
+  } catch {
+    /* ignore */
   }
 }
 

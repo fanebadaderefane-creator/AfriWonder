@@ -60,12 +60,16 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "./plugins/withAndroidAdiRegistration.js",
       [
         "expo-build-properties",
         {
           "android": {
             "usesCleartextTraffic": false,
             "minSdkVersion": 29
+          },
+          "ios": {
+            "deploymentTarget": "15.1"
           }
         }
       ],

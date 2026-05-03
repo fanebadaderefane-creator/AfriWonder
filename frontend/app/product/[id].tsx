@@ -8,6 +8,9 @@ import apiClient from '../../src/api/client';
 import cartApi from '../../src/api/cartApi';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
+import { featureFlags } from '../../src/config/featureFlags';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
+import { getDemoMarketProductDetail, isAfriWonderDemoId } from '../../src/demo/superAppDemoSeed';
 
 const { width } = Dimensions.get('window');
 
@@ -41,6 +44,10 @@ export default function ProductDetailScreen() {
 
   const handleAddToCart = async (goToCart: boolean) => {
     if (!product?.id) return;
+    if (isAfriWonderDemoId(product.id)) {
+      Alert.alert('Démonstration', 'Produit fictif : ajout au panier indisponible.');
+      return;
+    }
     setAddingToCart(true);
     try {
       await cartApi.add(product.id, quantity);
@@ -99,25 +106,31 @@ export default function ProductDetailScreen() {
             inStock: data.in_stock !== false,
           });
         }
-      } catch (err) {
-        console.log('Error loading product:', err);
-        // Use basic product from params
+      } catch (_err) {
+        const demo =
+          featureFlags.superAppDemoContent && typeof id === 'string'
+            ? getDemoMarketProductDetail(id)
+            : null;
         setSelectedImage(0);
-        setProduct({
-          id: id as string,
-          name: 'Produit',
-          description: '',
-          price: 0,
-          originalPrice: 0,
-          images: [],
-          rating: 0,
-          reviews: 0,
-          sold: 0,
-          seller: { name: 'Vendeur', avatar: '', rating: 0, products: 0 },
-          sizes: ['S', 'M', 'L', 'XL'],
-          colors: ['#8B4513'],
-          inStock: true,
-        });
+        if (demo) {
+          setProduct(demo);
+        } else {
+          setProduct({
+            id: id as string,
+            name: 'Produit',
+            description: '',
+            price: 0,
+            originalPrice: 0,
+            images: [],
+            rating: 0,
+            reviews: 0,
+            sold: 0,
+            seller: { name: 'Vendeur', avatar: '', rating: 0, products: 0 },
+            sizes: ['S', 'M', 'L', 'XL'],
+            colors: ['#8B4513'],
+            inStock: true,
+          });
+        }
       } finally {
         setLoading(false);
       }
@@ -161,6 +174,7 @@ export default function ProductDetailScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
+        {product?.id && isAfriWonderDemoId(product.id) ? <DemoContentBanner /> : null}
         {/* Product Images */}
         <View style={styles.imageContainer}>
           <ImageOrPlaceholder

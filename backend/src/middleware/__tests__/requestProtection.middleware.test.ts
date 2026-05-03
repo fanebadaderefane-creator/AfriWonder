@@ -47,6 +47,25 @@ describe('requestProtection.middleware', () => {
     expect(next).toHaveBeenCalled();
   });
 
+  it('sanitizeInputMiddleware does not alter password strings (avoid false bcrypt mismatch)', () => {
+    const tricky =
+      'LegitPass1 onclick=x-javascript:void(0) on2fa=stillpart';
+    const req: any = {
+      path: '/api/auth/login',
+      body: {
+        identifier: 'user@example.com',
+        password: tricky,
+      },
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    sanitizeInputMiddleware(req, res, next);
+
+    expect(req.body.password).toBe(tricky);
+    expect(next).toHaveBeenCalled();
+  });
+
   it('csrfProtectionMiddleware blocks cookie unsafe requests with invalid origin', () => {
     process.env.CORS_ORIGIN = 'http://localhost:5173';
     process.env.APP_URL = 'http://localhost:3000';
@@ -210,6 +229,75 @@ describe('requestProtection.middleware', () => {
       headers: {
         cookie: 'sid=1',
         origin: 'https://evil.example',
+      },
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    csrfProtectionMiddleware(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('csrfProtectionMiddleware skips CSRF for /proxy/auth/login without /api prefix', () => {
+    process.env.CORS_ORIGIN = 'https://app.afriwonder.com';
+    process.env.APP_URL = 'https://api.afriwonder.com';
+    process.env.NODE_ENV = 'production';
+
+    const req: any = {
+      method: 'POST',
+      path: '/proxy/auth/login',
+      originalUrl: '/proxy/auth/login',
+      headers: {
+        cookie: 'sid=1',
+        origin: 'https://evil.example',
+      },
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    csrfProtectionMiddleware(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('csrfProtectionMiddleware allows cookie when Origin host matches API Host (Android / OkHttp)', () => {
+    process.env.CORS_ORIGIN = 'https://app.afriwonder.com';
+    process.env.APP_URL = 'https://app.afriwonder.com';
+    process.env.NODE_ENV = 'production';
+
+    const req: any = {
+      method: 'POST',
+      path: '/api/cart',
+      headers: {
+        cookie: 'some_session=1',
+        origin: 'https://afriwonder.onrender.com',
+      },
+      get: (name: string) => (String(name).toLowerCase() === 'host' ? 'afriwonder.onrender.com' : ''),
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    csrfProtectionMiddleware(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('csrfProtectionMiddleware allows cookie + invalid origin when X-AFW-Device-Id is set (APK)', () => {
+    process.env.CORS_ORIGIN = 'https://app.afriwonder.com';
+    process.env.APP_URL = 'https://api.afriwonder.com';
+    process.env.NODE_ENV = 'production';
+
+    const req: any = {
+      method: 'POST',
+      path: '/api/orders',
+      headers: {
+        cookie: 'access_token=abc',
+        origin: 'http://localhost:8081',
+        'x-afw-device-id': 'expo-install-id-12345678',
       },
     };
     const res = createRes();

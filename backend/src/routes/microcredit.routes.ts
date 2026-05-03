@@ -8,6 +8,16 @@ import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 
 const router = Router();
 
+// GET /api/microcredit/me/loans — Mes demandes (auth) — avant /:id
+router.get('/me/loans', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const loans = await microcreditService.listLoansForBorrower(req.user!.id);
+    res.json({ success: true, data: { loans } });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // GET /api/microcredit - Liste des prêts
 router.get('/', async (req, res, next) => {
   try {

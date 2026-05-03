@@ -110,6 +110,17 @@ const MENU_SECTIONS: MenuSection[] = [
     items: [{ label: 'Parcours Intelligent', icon: 'sparkles-outline', href: '/assistant', badge: 'IA' }],
   },
   {
+    title: 'URGENCE — MALI',
+    items: [
+      {
+        label: 'Numéros verts & urgence (AlertMali)',
+        icon: 'call-outline',
+        href: '/alert-mali',
+        badge: 'Gratuit',
+      },
+    ],
+  },
+  {
     title: 'PARAMÈTRES',
     items: [
       { label: 'Confidentialité', icon: 'lock-closed-outline', href: '/settings/privacy' },

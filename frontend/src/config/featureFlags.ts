@@ -68,6 +68,11 @@ export const featureFlags = {
    * Activer après validation de l'onboarding et du flux paiement.
    */
   starCalls: readEnvFlag('EXPO_PUBLIC_ENABLE_STAR_CALLS', false),
+  /**
+   * Données fictives (hub Services) quand l’API est vide ou indisponible — présentation sans partenaires.
+   * Désactiver : `EXPO_PUBLIC_SUPERAPP_DEMO_CONTENT=0`.
+   */
+  superAppDemoContent: readEnvFlag('EXPO_PUBLIC_SUPERAPP_DEMO_CONTENT', true),
 };
 
 export type FeatureFlagKey = keyof typeof featureFlags;

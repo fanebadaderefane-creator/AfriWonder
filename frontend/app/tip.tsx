@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import apiClient from '../src/api/client';
+import { getAlertMessageForCaughtError } from '../src/utils/userFacingError';
 
 const TIP_AMOUNTS = [100, 500, 1000, 2000, 5000, 10000];
 const METHODS = [
@@ -48,9 +49,8 @@ export default function TipScreen() {
         });
       }
       setSent(true);
-    } catch (e: any) {
-      const msg = e.response?.data?.error?.message || e.response?.data?.detail || 'Erreur lors de l\'envoi';
-      Alert.alert('Erreur', msg);
+    } catch (e: unknown) {
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
     } finally { setLoading(false); }
   };
 

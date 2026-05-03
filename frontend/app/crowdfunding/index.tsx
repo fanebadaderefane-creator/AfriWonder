@@ -19,11 +19,14 @@ import {
   formatCFA,
   formatFullCFA,
   getProgressPercent,
+  SEED_PROJECTS,
 } from '../../src/data/crowdfunding';
 import type { CrowdfundingProject } from '../../src/data/crowdfunding';
 import { mapApiCampaignToCrowdfundingProject } from '../../src/data/crowdfundingMappers';
 import apiClient from '../../src/api/client';
 import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
+import { featureFlags } from '../../src/config/featureFlags';
 
 const STATUS_FILTERS = [
   { id: '', label: 'Tous' },
@@ -81,7 +84,11 @@ export default function CrowdfundingHomeScreen() {
   }, [loadProjects]);
 
   // Filtre catégorie ; recherche serveur si ≥ 2 caractères (debounced), sinon recherche locale sur 1 caractère
-  const filteredProjects = projects.filter((p) => {
+  const useDemoProjectList =
+    featureFlags.superAppDemoContent && (listError !== null || projects.length === 0);
+  const projectsForUi = useDemoProjectList ? SEED_PROJECTS : projects;
+
+  const filteredProjects = projectsForUi.filter((p) => {
     const matchesCategory = activeCategory === 'all' || p.category === activeCategory;
     if (debouncedSearch.length >= 2) {
       return matchesCategory;
@@ -100,7 +107,9 @@ export default function CrowdfundingHomeScreen() {
     return 0;
   });
 
-  const featuredProject = projects.find((p) => p.isSponsored && p.isVerified) || (projects.length > 0 ? projects[0] : null);
+  const featuredProject =
+    projectsForUi.find((p) => p.isSponsored && p.isVerified)
+    || (projectsForUi.length > 0 ? projectsForUi[0] : null);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -152,7 +161,7 @@ export default function CrowdfundingHomeScreen() {
         </View>
       </View>
 
-      {listError ? (
+      {listError && !useDemoProjectList ? (
         <View style={styles.listErrorBanner}>
           <Text style={styles.listErrorText}>{listError}</Text>
           <TouchableOpacity onPress={() => void loadProjects()} activeOpacity={0.8}>
@@ -160,6 +169,7 @@ export default function CrowdfundingHomeScreen() {
           </TouchableOpacity>
         </View>
       ) : null}
+      {useDemoProjectList ? <DemoContentBanner /> : null}
 
       <ScrollView
         showsVerticalScrollIndicator={false}

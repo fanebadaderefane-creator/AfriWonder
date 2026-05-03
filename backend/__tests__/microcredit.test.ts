@@ -38,4 +38,13 @@ describe('Microcredit API', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data).toBeDefined();
   });
+
+  it('GET /api/microcredit/me/loans returns array for authenticated user', async () => {
+    const res = await request(app)
+      .get('/api/microcredit/me/loans')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data?.loans)).toBe(true);
+  });
 });

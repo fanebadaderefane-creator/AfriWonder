@@ -25,6 +25,7 @@ import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+import { FOOD_MEDIA_BY_CUISINE, ensureRestaurantMenusAndBanners } from './seed-mali-food.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -58,7 +59,7 @@ async function getOrCreateSystemUser(): Promise<{ id: string }> {
         password_hash,
         full_name: 'AfriWonder Mali — Comptes système',
         role: 'admin',
-        email_verified_at: new Date(),
+        is_verified: true,
       },
     });
     console.log('Compte système Mali créé :', user.id);
@@ -82,33 +83,136 @@ async function seedRestaurants(ownerId: string) {
 
   let created = 0;
   for (const s of samples) {
-    const slug = `${s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${s.city.toLowerCase()}`;
     try {
-      const existing = await prisma.restaurant.findFirst({ where: { slug } }).catch(() => null);
+      const existing = await prisma.restaurant.findFirst({
+        where: { name: s.name, city: s.city },
+      });
       if (existing) continue;
+      const media = FOOD_MEDIA_BY_CUISINE[s.cuisine] ?? FOOD_MEDIA_BY_CUISINE.malienne;
       await prisma.restaurant.create({
         data: {
-          slug,
-          name: s.name,
-          cuisine_type: s.cuisine,
-          city: s.city,
-          country: 'ML',
           owner_id: ownerId,
+          name: s.name,
+          cuisine_type: [s.cuisine],
+          city: s.city,
+          address: `Avenue principale, ${s.city}`,
+          phone: '+22370001000',
           delivery_time_min: 25,
-          delivery_time_max: 55,
           delivery_fee: 1500,
+          minimum_order: 2000,
           rating: 4.2,
           is_open: true,
+          is_verified: true,
+          banner_url: media.banner,
+          logo_url: media.logo,
           description: `Restaurant ${s.cuisine} à ${s.city}. Livraison rapide avec AfriWonder.`,
         },
       });
       created++;
     } catch (e) {
-      // Restaurant model peut avoir un schéma légèrement différent ; on continue
       console.warn(`Restaurant ${s.name} non créé :`, (e as Error).message);
     }
   }
   console.log(`Restaurants seedés : ${created}/${samples.length}`);
+}
+
+/** Médecins `Doctor` (API `/api/doctors`) — alignés sur les filtres Expo `services/health.tsx`. */
+async function seedDoctors() {
+  const samples = [
+    { full_name: 'Dr. Aminata Traoré', specialty: 'Généraliste', city: 'Bamako' },
+    { full_name: 'Dr. Moussa Keïta', specialty: 'Pédiatre', city: 'Bamako' },
+    { full_name: 'Dr. Ibrahim Coulibaly', specialty: 'Cardiologue', city: 'Sikasso' },
+    { full_name: 'Dr. Fatoumata Diallo', specialty: 'Dermatologue', city: 'Bamako' },
+    { full_name: 'Dr. Oumou Sangaré', specialty: 'Gynécologue', city: 'Ségou' },
+  ];
+
+  let created = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    const email = `seed-doctor-${i}-${s.city.toLowerCase()}@afriwonder.app`;
+    try {
+      let user = await prisma.user.findUnique({ where: { email } });
+      if (!user) {
+        const password_hash = await bcrypt.hash(`seed_doc_${Date.now()}_${i}`, 10);
+        user = await prisma.user.create({
+          data: {
+            email,
+            username: `doc_seed_${s.city.toLowerCase()}_${i}`,
+            password_hash,
+            full_name: s.full_name,
+            is_verified: true,
+          },
+        });
+      }
+      const existing = await prisma.doctor.findUnique({ where: { user_id: user.id } });
+      if (existing) continue;
+      await prisma.doctor.create({
+        data: {
+          user_id: user.id,
+          full_name: s.full_name,
+          specialty: s.specialty,
+          phone: `+223700020${String(i).padStart(2, '0')}`,
+          city: s.city,
+          clinic_name: `Cabinet ${s.city}`,
+          clinic_address: `Quartier centre, ${s.city}`,
+          consultation_fee: 15_000,
+          is_verified: true,
+          is_available: true,
+          bio: `${s.specialty} — téléconsultation et rendez-vous. Données de démonstration AfriWonder.`,
+        },
+      });
+      created++;
+    } catch (e) {
+      console.warn(`Médecin ${s.full_name} non créé :`, (e as Error).message);
+    }
+  }
+  console.log(`Médecins (Doctor) seedés : ${created}/${samples.length}`);
+}
+
+/** Événements publiés visibles sur `GET /api/events` (status published). */
+async function seedEvents(organizerId: string) {
+  const now = new Date();
+  const samples = [
+    { title: 'Festival des arts — Bamako', location: 'Palais des Congrès, Bamako', days: 21 },
+    { title: 'Concert solidarité éducation', location: 'Stade 26 Mars, Bamako', days: 35 },
+    { title: 'Forum jeunesse & emploi — Sikasso', location: 'Maison des jeunes, Sikasso', days: 49 },
+  ];
+
+  let created = 0;
+  for (const s of samples) {
+    try {
+      const existing = await prisma.event.findFirst({ where: { title: s.title } });
+      if (existing) continue;
+      const start = new Date(now);
+      start.setDate(start.getDate() + s.days);
+      start.setHours(18, 0, 0, 0);
+      const end = new Date(start);
+      end.setHours(21, 0, 0, 0);
+      await prisma.event.create({
+        data: {
+          organizer_id: organizerId,
+          title: s.title,
+          description:
+            'Événement de démonstration AfriWonder — billetterie et détail disponibles dans l’app.',
+          location: s.location,
+          start_date: start,
+          end_date: end,
+          status: 'published',
+          category: 'culture',
+          event_type: 'concert',
+          is_free: false,
+          price: 5_000,
+          currency: 'XOF',
+          capacity: 800,
+          organizer_name: 'AfriWonder Mali',
+        },
+      });
+      created++;
+    } catch (e) {
+      console.warn(`Événement ${s.title} non créé :`, (e as Error).message);
+    }
+  }
+  console.log(`Événements seedés : ${created}/${samples.length}`);
 }
 
 async function seedServiceProviders(ownerId: string) {
@@ -194,6 +298,9 @@ async function main() {
 
   const sysUser = await getOrCreateSystemUser();
   await seedRestaurants(sysUser.id);
+  await ensureRestaurantMenusAndBanners(prisma);
+  await seedDoctors();
+  await seedEvents(sysUser.id);
   await seedServiceProviders(sysUser.id);
 
   console.log('🇲🇱 Seed Mali — terminé');

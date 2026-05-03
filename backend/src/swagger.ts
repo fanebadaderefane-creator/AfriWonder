@@ -23,13 +23,95 @@ const options: swaggerJsdoc.Options = {
     servers: [
       {
         url: process.env.APP_URL || 'http://localhost:3000',
-        description: 'Serveur de développement',
+        description: 'Racine — chemins historiques /api/* et /api/proxy/*',
+      },
+      {
+        url: `${(process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '')}/api/v1`,
+        description:
+          'Surface API versionnée (durabilité) : health, feedback, extensions documentées ici ; le reste reste sur la racine jusqu’à migration progressive.',
       },
       {
         url: 'https://api.afriwonder.app',
-        description: 'Serveur de production',
+        description: 'Production (racine)',
       },
     ],
+    paths: {
+      '/api/v1': {
+        get: {
+          tags: ['API v1'],
+          summary: 'Découverte de la surface versionnée',
+          description:
+            'Retourne les URL stables (health, OpenAPI, feedback). Les intégrations existantes ne sont pas cassées : /api et /api/proxy restent valides.',
+          security: [],
+          responses: {
+            '200': {
+              description: 'Métadonnées',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      service: { type: 'string', example: 'afriwonder-api' },
+                      api_version: { type: 'integer', example: 1 },
+                      health: { type: 'string', example: '/api/v1/health' },
+                      openapi: { type: 'string', example: '/api-docs' },
+                      feedback_post: { type: 'string', example: '/api/v1/platform-feedback' },
+                      note: { type: 'string' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      '/api/v1/health': {
+        get: {
+          tags: ['API v1'],
+          summary: 'Santé étendue (DB, Redis)',
+          description: 'Identique à GET /api/health — exposé sous le préfixe versionné.',
+          security: [],
+          responses: {
+            '200': { description: 'OK' },
+            '503': { description: 'Dégradé' },
+          },
+        },
+      },
+      '/api/v1/platform-feedback': {
+        post: {
+          tags: ['API v1', 'Feedback'],
+          summary: 'Retour utilisateur (bug, suggestion, commentaire)',
+          description: 'Public — même contrat que POST /api/platform-feedback.',
+          security: [],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['content'],
+                  properties: {
+                    type: {
+                      type: 'string',
+                      enum: ['bug', 'suggestion', 'comment'],
+                      default: 'comment',
+                    },
+                    content: { type: 'string', minLength: 3, maxLength: 5000 },
+                    email: { type: 'string', format: 'email', nullable: true },
+                    join_whatsapp: { type: 'boolean' },
+                    join_mailing: { type: 'boolean' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Enregistré' },
+            '400': { description: 'Corps invalide', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+          },
+        },
+      },
+    },
     components: {
       securitySchemes: {
         bearerAuth: {
@@ -131,6 +213,11 @@ const options: swaggerJsdoc.Options = {
       { name: 'Reviews', description: 'Avis produits et vendeurs' },
       { name: 'Disputes', description: 'Litiges et réclamations' },
       { name: 'Admin', description: 'Administration et modération' },
+      {
+        name: 'API v1',
+        description: 'Contrats versionnés (/api/v1/*) — préférence pour nouvelles intégrations',
+      },
+      { name: 'Feedback', description: 'Retours utilisateurs plateforme' },
     ],
   },
   apis: ['./src/routes/*.ts', './src/app.ts'],

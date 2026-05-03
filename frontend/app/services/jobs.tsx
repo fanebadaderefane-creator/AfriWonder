@@ -16,6 +16,8 @@ import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
 import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import jobsApi, { Job } from '../../src/api/jobsApi';
+import { DEMO_JOBS, filterDemoJobs } from '../../src/demo/superAppDemoSeed';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
 
 const TYPE_LABELS: Record<string, string> = {
   full_time: 'CDI',
@@ -39,23 +41,50 @@ function JobsContent() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDemo, setShowDemo] = useState(false);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setError(null);
+    setShowDemo(false);
+    const q = search.trim();
     try {
       const list = await jobsApi.list({
         page: 1,
         limit: 30,
-        search: search.trim() || undefined,
+        search: q || undefined,
       });
-      setJobs(list);
+      if (list.length > 0) {
+        setJobs(list);
+      } else if (featureFlags.superAppDemoContent) {
+        const dlist = q ? filterDemoJobs(q) : DEMO_JOBS;
+        if (dlist.length > 0) {
+          setJobs(dlist);
+          setShowDemo(true);
+        } else {
+          setJobs([]);
+        }
+      } else {
+        setJobs([]);
+      }
     } catch (err) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message
         || (err as { message?: string })?.message
         || 'Impossible de charger les offres.';
-      setError(msg);
+      if (featureFlags.superAppDemoContent) {
+        const dlist = q ? filterDemoJobs(q) : DEMO_JOBS;
+        if (dlist.length > 0) {
+          setJobs(dlist);
+          setShowDemo(true);
+        } else {
+          setError(msg);
+          setJobs([]);
+        }
+      } else {
+        setError(msg);
+        setJobs([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -88,6 +117,8 @@ function JobsContent() {
         <Text style={styles.headerTitle}>Emplois</Text>
         <View style={{ width: 40 }} />
       </View>
+
+      {showDemo ? <DemoContentBanner /> : null}
 
       <View style={styles.searchBar}>
         <Ionicons name="search" size={18} color={Colors.textSecondary} />

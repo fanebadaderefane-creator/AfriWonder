@@ -50,6 +50,9 @@ import prisma from '../config/database.js';
 import { Prisma } from '@prisma/client';
 import { logger } from '../utils/logger.js';
 import notificationService from './notification.service.js';
+import type { CreateStarBookingResult } from './starCall.bookingResult.js';
+
+export type { CreateStarBookingPaymentPayload, CreateStarBookingResult } from './starCall.bookingResult.js';
 
 // ============================================================
 // CONSTANTES BUSINESS
@@ -72,6 +75,8 @@ const EXTENSION_MINUTES = 5;
 const ALLOWED_DURATIONS = [5, 10, 15] as const;
 
 export type StarPriceKey = 5 | 10 | 15;
+
+type StarBookingRow = Awaited<ReturnType<typeof prisma.starBooking.create>>;
 
 // ============================================================
 // HELPERS
@@ -801,7 +806,7 @@ class StarCallService {
     fan_notes?: string;
     payment_method?: 'wallet' | 'orange_money';
     payment_phone?: string;
-  }) {
+  }): Promise<CreateStarBookingResult> {
     if (!ALLOWED_DURATIONS.includes(input.duration_minutes)) throw starError('Durée invalide', 400);
 
     const profile = await prisma.starProfile.findUnique({

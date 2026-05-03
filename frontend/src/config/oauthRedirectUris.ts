@@ -1,6 +1,28 @@
 import * as AuthSession from 'expo-auth-session';
-import Constants from 'expo-constants';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Platform } from 'react-native';
+import { getGoogleOAuthEnv, resolveGoogleClientIdsForNativeGoogleAuth } from './oauthEnv';
+import { googleNativeReverseClientRedirectUri } from './googleNativeOAuthRedirect';
+import {
+  getGoogleInstalledAppRedirectUriForPlatform,
+  type GoogleInstalledClientIds,
+} from './googleInstalledAppRedirect';
+import { devLog } from '../utils/devLog';
+
+export type { GoogleInstalledClientIds } from './googleInstalledAppRedirect';
+export { getGoogleInstalledAppRedirectUriForPlatform } from './googleInstalledAppRedirect';
+
+/** Variante runtime : `Platform.OS` + IDs résolus (même logique que l’écran Connexion Google). */
+export function getGoogleInstalledAppRedirectUri(
+  ids: GoogleInstalledClientIds & { webClientId?: string },
+): string | undefined {
+  const expoGoAndroid =
+    Platform.OS === 'android' && Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+  return getGoogleInstalledAppRedirectUriForPlatform(Platform.OS, ids, {
+    webClientId: ids.webClientId,
+    skipCustomScheme: expoGoAndroid,
+  });
+}
 
 /**
  * Même logique que `expo-auth-session/providers/google` (`native: ${applicationId}:/oauthredirect`).
@@ -16,7 +38,7 @@ function googleProviderStyleRedirectNative(): string {
 
 /**
  * URI alignée sur le flux Google réel (`SocialOAuthButtons` ne force plus de `scheme` custom).
- * À déclarer chez **Google** (client Web → redirections) ; Facebook peut utiliser les mêmes `exp://…` en Expo Go.
+ * URLs http/https → client Web Google ; `com.googleusercontent.apps.…` → client Android (custom URI). Facebook : `exp://…` en Expo Go.
  */
 export function getComputedOAuthRedirectUri(): string {
   try {
@@ -34,12 +56,28 @@ export function getComputedOAuthRedirectUri(): string {
 /** Variantes utiles (Google exige parfois avec ou sans « / » final). */
 export function getOAuthRedirectUriVariantsForConsole(): string[] {
   const u = getComputedOAuthRedirectUri().trim();
-  if (!u) return [];
-  const out = new Set<string>([u]);
-  if (u.endsWith('/')) {
-    out.add(u.replace(/\/+$/, ''));
-  } else {
-    out.add(`${u}/`);
+  const out = new Set<string>();
+  if (u) {
+    out.add(u);
+    if (u.endsWith('/')) {
+      out.add(u.replace(/\/+$/, ''));
+    } else {
+      out.add(`${u}/`);
+    }
+  }
+  if (Platform.OS !== 'web') {
+    const ids = resolveGoogleClientIdsForNativeGoogleAuth(Platform.OS, getGoogleOAuthEnv());
+    const webId = String(ids.webClientId || '').trim();
+    for (const raw of [ids.androidClientId, ids.iosClientId].filter(Boolean) as string[]) {
+      const id = raw.trim();
+      /** Même ID que le client Web → pas de schéma `com.googleusercontent…` (interdit côté Google pour le type WEB). */
+      if (webId && id === webId) continue;
+      const rev = googleNativeReverseClientRedirectUri(id);
+      if (rev) {
+        out.add(rev);
+        out.add(`${rev}/`);
+      }
+    }
   }
   return [...out];
 }
@@ -64,7 +102,7 @@ export function getExpoOAuthRedirectHelpLines(): string[] {
   const lines = [
     `URI calculée (dev / build) : ${computed || '(indisponible sur ce runtime)'}`,
     `Expo Go / proxy classique (à ajouter aussi si vous utilisez Expo Go) : ${proxy}`,
-    'Google : Console → Identifiants → client Web → URI de redirection autorisées.',
+    'Google : client Web → URI http/https ; client Android → paramètres avancés / schéma personnalisé pour com.googleusercontent.apps.…',
     'Facebook : Paramètres de l’app → Facebook Login → Paramètres → URI de redirection OAuth valides.',
   ];
   return lines;
@@ -108,9 +146,9 @@ export function logOAuthRedirectDebugInfo(): void {
     'EXPO_PUBLIC_OAUTH_CONSOLE_HELP=0 dans frontend/.env (puis redémarrer Metro).',
     '',
     'Sur le WEB en dev, ① est souvent http://localhost:8081 — c’est NORMAL.',
-    'À déclarer chez Google (client Web) et Facebook comme « URI de redirection » si ce n’est pas fait :',
+    'À déclarer chez Google (client Web = http/https seulement) et Facebook ; pour com.googleusercontent.apps.… voir client Android (paramètres avancés) :',
     '',
-    '① URI(s) à copier dans « URI de redirection autorisées » (Google) et « URI OAuth valides » (Facebook) :',
+    '① URI(s) utiles — Google client Web / Facebook ; variantes com.google… = client Android (custom URI), pas le formulaire Web :',
   ];
   for (const v of variants.length ? variants : ['(vide — ouvrez /login depuis l’app)']) {
     lines.push(`   • ${v}`);
@@ -120,7 +158,7 @@ export function logOAuthRedirectDebugInfo(): void {
     'Google (même client Web) → section « Origines JavaScript autorisées » : ajoutez aussi :',
     `   • ${primaryNoSlash}`,
     '',
-    'Si Google affiche encore une erreur : ouvre « détails de l’erreur » sur leur page et copie la valeur exacte de redirect_uri= dans les URI autorisées.',
+    'Si erreur : détails Google → redirect_uri= ; sur console nouvelle, les URI com.google… vont sur le client Android (schéma personnalisé), pas sur le client Web.',
     '',
     '② Uniquement si tu testes avec Expo Go sur TÉLÉPHONE (pas le navigateur) : ajoute aussi :',
     `   ${proxy}`
@@ -135,5 +173,5 @@ export function logOAuthRedirectDebugInfo(): void {
     '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
     ''
   );
-  console.log(lines.join('\n'));
+  devLog(lines.join('\n'));
 }

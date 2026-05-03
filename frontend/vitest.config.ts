@@ -34,6 +34,12 @@ export default defineConfig({
         'src/utils/mobileDeepLink.ts',
         'src/lib/sentryMobile.ts',
         'src/live/netInfoLiveQuality.ts',
+        'src/live/liveCoinMmFees.ts',
+        'src/utils/serviceVisualPlaceholders.ts',
+        'src/demo/superAppDemoSeed.ts',
+        'src/config/googleNativeOAuthRedirect.ts',
+        'src/config/googleInstalledAppRedirect.ts',
+        'src/emergency/maliEmergencyNumbers.ts',
       ],
       exclude: ['**/*.d.ts', '**/*.test.ts'],
       thresholds: {

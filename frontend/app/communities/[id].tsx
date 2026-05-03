@@ -7,6 +7,9 @@ import { router, useLocalSearchParams } from 'expo-router';
 import apiClient from '../../src/api/client';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
+import { featureFlags } from '../../src/config/featureFlags';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
+import { getDemoCommunityDetail, isAfriWonderDemoId } from '../../src/demo/superAppDemoSeed';
 
 type CommunityDetail = {
   id: string;
@@ -33,16 +36,25 @@ export default function CommunityDetailScreen() {
   const { id } = useLocalSearchParams();
   const [loading, setLoading] = useState(true);
   const [community, setCommunity] = useState<CommunityDetail | null>(null);
+  const [fromDemo, setFromDemo] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     void (async () => {
       try {
+        setFromDemo(false);
         const res = await apiClient.get(`/communities/${id}`);
         const data = res.data?.data ?? res.data;
         setCommunity(data ?? null);
       } catch {
-        Alert.alert('Communauté', 'Impossible de charger cette communauté.');
+        const demo = featureFlags.superAppDemoContent ? getDemoCommunityDetail(String(id)) : null;
+        if (demo) {
+          setCommunity(demo as CommunityDetail);
+          setFromDemo(true);
+        } else {
+          Alert.alert('Communauté', 'Impossible de charger cette communauté.');
+          setCommunity(null);
+        }
       } finally {
         setLoading(false);
       }
@@ -51,6 +63,10 @@ export default function CommunityDetailScreen() {
 
   const toggleMembership = async () => {
     if (!community?.id) return;
+    if (isAfriWonderDemoId(community.id)) {
+      Alert.alert('Démonstration', 'Communauté fictive : rejoindre / quitter n’est pas disponible.');
+      return;
+    }
     try {
       if (community.is_member) {
         await apiClient.post(`/communities/${community.id}/leave`, {});
@@ -90,6 +106,7 @@ export default function CommunityDetailScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        {fromDemo ? <DemoContentBanner /> : null}
         <View style={styles.infoCard}>
           <ImageOrPlaceholder
             uri={toAbsoluteMediaUrl(String(community?.banner || community?.avatar || '').trim())}

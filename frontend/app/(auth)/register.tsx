@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COUNTRIES } from '../../src/data/countries';
 import { SocialOAuthButtons } from '../../src/components/auth/SocialOAuthButtons';
 import { setPersonalizationPending, getPostAuthRoute } from '../../src/utils/onboardingFlow';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 
 const AFW_APP_LOGO = require('../../assets/images/pwa-icon-192.png');
 
@@ -106,9 +107,8 @@ export default function RegisterScreen() {
       await setAuth(response.user, response.accessToken, response.refreshToken);
       await setPersonalizationPending(true);
       router.replace((await getPostAuthRoute()) as Parameters<typeof router.replace>[0]);
-    } catch (error: any) {
-      const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || "Erreur lors de l'inscription";
-      Alert.alert('Erreur', message);
+    } catch (error: unknown) {
+      Alert.alert('Erreur', getAlertMessageForCaughtError(error));
     } finally {
       setLoading(false);
     }

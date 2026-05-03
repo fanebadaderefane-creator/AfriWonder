@@ -13,6 +13,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import apiClient from '../src/api/client';
+import { getAlertMessageForCaughtError } from '../src/utils/userFacingError';
 import { profileAvatarUri } from '../src/utils/avatarFallback';
 import { Colors, Spacing, FontSizes, BorderRadius } from '../src/theme/colors';
 import { useAuthStore } from '../src/store/authStore';
@@ -49,8 +50,7 @@ export default function ProfileConnectionsScreen() {
       const list = m === 'following' ? data?.following : data?.followers;
       setItems(Array.isArray(list) ? list : []);
     } catch (e: unknown) {
-      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: string }).message) : 'Erreur';
-      setErr(msg);
+      setErr(getAlertMessageForCaughtError(e));
       setItems([]);
     } finally {
       setLoading(false);
@@ -74,15 +74,7 @@ export default function ProfileConnectionsScreen() {
       const next = Boolean(d?.following);
       setItems((prev) => prev.map((r) => (r.id === item.id ? { ...r, is_following: next } : r)));
     } catch (e: unknown) {
-      const ax = e as { response?: { data?: { error?: { message?: string } | string } } };
-      const raw = ax.response?.data?.error;
-      const msg =
-        typeof raw === 'string'
-          ? raw
-          : raw && typeof raw === 'object' && 'message' in raw
-            ? String((raw as { message: string }).message)
-            : 'Action impossible';
-      Alert.alert('Erreur', String(msg).slice(0, 200));
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
     } finally {
       setFollowBusyId(null);
     }

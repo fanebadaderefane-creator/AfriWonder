@@ -58,6 +58,22 @@ class MicrocreditService {
     };
   }
 
+  /** Demandes de prêt de l'utilisateur connecté (historique + suivi). */
+  async listLoansForBorrower(borrowerId: string, limit = 50) {
+    const loans = await prisma.loanRequest.findMany({
+      where: { borrower_id: borrowerId },
+      orderBy: { created_at: 'desc' },
+      take: limit,
+      include: {
+        contributions: { select: { id: true } },
+      },
+    });
+    return loans.map((loan) => {
+      const { contributions, ...rest } = loan;
+      return { ...rest, lenders_count: contributions.length };
+    });
+  }
+
   async getById(loanId: string) {
     const loan = await prisma.loanRequest.findUnique({
       where: { id: loanId },

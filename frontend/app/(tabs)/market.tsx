@@ -11,6 +11,8 @@ import { Colors } from '../../src/theme/colors';
 import apiClient from '../../src/api/client';
 import cartApi from '../../src/api/cartApi';
 import { featureFlags } from '../../src/config/featureFlags';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
+import { getDemoMarketplaceProductRows, isAfriWonderDemoId } from '../../src/demo/superAppDemoSeed';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
 
@@ -58,6 +60,7 @@ export default function MarketScreen() {
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [productsError, setProductsError] = useState<string | null>(null);
   const [cartCount, setCartCount] = useState(0);
+  const [catalogIsDemo, setCatalogIsDemo] = useState(false);
 
   const categoryChips = useMemo(() => deriveCategoriesFromProducts(realProducts), [realProducts]);
   const flashProducts = useMemo(() => {
@@ -137,16 +140,28 @@ export default function MarketScreen() {
         stock: p.stock || 0,
         city: p.seller?.seller_profile?.city || '',
       }));
-      setRealProducts(transformed);
+      if (transformed.length === 0 && featureFlags.superAppDemoContent) {
+        setRealProducts(getDemoMarketplaceProductRows() as any[]);
+        setCatalogIsDemo(true);
+        setProductsError(null);
+      } else {
+        setCatalogIsDemo(false);
+        setRealProducts(transformed);
+      }
     } catch (err) {
-      // Pas de fallback mock : on affiche un état d'erreur explicite plutôt
-      // que de faire croire à du contenu réel inexistant (audit du 20/04/2026).
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-        || (err as { message?: string })?.message
-        || 'Impossible de charger les produits.';
-      setProductsError(msg);
-      setRealProducts([]);
+      if (featureFlags.superAppDemoContent) {
+        setRealProducts(getDemoMarketplaceProductRows() as any[]);
+        setCatalogIsDemo(true);
+        setProductsError(null);
+      } else {
+        const msg =
+          (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+          || (err as { message?: string })?.message
+          || 'Impossible de charger les produits.';
+        setProductsError(msg);
+        setRealProducts([]);
+        setCatalogIsDemo(false);
+      }
     } finally {
       setLoadingProducts(false);
     }
@@ -200,6 +215,14 @@ export default function MarketScreen() {
               isNew: false, isBestseller: false, wishlisted: false,
             }));
             setRealProducts(transformed);
+            setCatalogIsDemo(false);
+          } else if (featureFlags.superAppDemoContent) {
+            const q = searchQuery.trim().toLowerCase();
+            const demo = (getDemoMarketplaceProductRows() as any[]).filter((p) =>
+              !q || String(p.name || '').toLowerCase().includes(q),
+            );
+            setRealProducts(demo);
+            setCatalogIsDemo(true);
           }
         } catch {}
       }, 500);
@@ -259,6 +282,7 @@ export default function MarketScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
       >
+        {catalogIsDemo || realProducts.some((p: any) => isAfriWonderDemoId(p?.id)) ? <DemoContentBanner /> : null}
         {productsError ? (
           <View style={styles.errorBanner}>
             <Ionicons name="warning-outline" size={22} color="#FF6B00" />

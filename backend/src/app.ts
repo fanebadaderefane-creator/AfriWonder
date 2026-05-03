@@ -183,6 +183,7 @@ import prisma from './config/database.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './swagger.js';
 import * as Sentry from '@sentry/node';
+import { sendExtendedApiHealth } from './utils/apiHealthHandler.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -263,45 +264,25 @@ app.get('/health', (req, res) => {
 });
 
 /** Uptime / load-balancers Vercel — même contrat que le brief (`GET /api/health`). */
-app.get('/api/health', async (_req, res) => {
-  const uptimeSeconds = Math.floor(process.uptime());
-  let db: 'ok' | 'error' = 'ok';
-  let redis: 'ok' | 'skipped' | 'error' = 'skipped';
+app.get('/api/health', sendExtendedApiHealth);
 
-  try {
-    const prisma = (await import('./config/database.js')).default;
-    await prisma.$queryRaw`SELECT 1`;
-  } catch {
-    db = 'error';
-  }
-
-  try {
-    const redisClient = (await import('./config/redis.js')).default;
-    if (redisClient) {
-      if (!redisClient.isOpen) {
-        await redisClient.connect().catch(() => {});
-      }
-      if (redisClient.isOpen) {
-        await redisClient.ping();
-        redis = 'ok';
-      } else {
-        redis = 'error';
-      }
-    }
-  } catch {
-    redis = process.env.REDIS_URL?.trim() ? 'error' : 'skipped';
-  }
-
-  const degraded = db !== 'ok' || redis === 'error';
-  res.status(degraded ? 503 : 200).json({
-    status: degraded ? 'degraded' : 'ok',
-    db,
-    redis,
-    uptime_seconds: uptimeSeconds,
-    version: process.env.npm_package_version || '1.0.0',
-    timestamp: new Date().toISOString(),
+/**
+ * Durabilité ch.1 — surface API versionnée (extension progressive).
+ * Découverte des entrées stables pour intégrations et monitoring.
+ */
+app.get('/api/v1', (_req, res) => {
+  res.json({
+    service: 'afriwonder-api',
+    api_version: 1,
+    health: '/api/v1/health',
+    openapi: '/api-docs',
+    feedback_post: '/api/v1/platform-feedback',
+    note:
+      'Clients historiques : /api, /api/proxy. Nouveaux contrats : chemins sous /api/v1/* lorsque documentés dans Swagger.',
   });
 });
+
+app.get('/api/v1/health', sendExtendedApiHealth);
 
 // Prometheus metrics (CDC Observabilité) — format text/plain pour scraper
 app.get('/metrics', async (req, res) => {
@@ -552,6 +533,8 @@ if (telemedicineProxyEnabled) {
   app.use('/api/proxy/appointments', appointmentsRoutes);
   app.use('/api/proxy/pharmacies', pharmaciesRoutes);
 }
+/** Retours utilisateurs (mobile `apiClient` → POST …/api/proxy/platform-feedback). Durabilité ch.10. */
+app.use('/api/proxy/platform-feedback', platformFeedbackRoutes);
 app.use('/api/proxy', proxyRoutes);
 app.use('/api/comments', commentsRoutes);
 app.use('/api/users', userRoutes);
@@ -569,6 +552,8 @@ app.use('/api/platform', platformRoutes);
 app.use('/api/early-access', earlyAccessRoutes);
 app.use('/api/platform-donations', platformDonationsRoutes);
 app.use('/api/platform-feedback', platformFeedbackRoutes);
+/** Même contrat sous préfixe versionné (ch.1). */
+app.use('/api/v1/platform-feedback', platformFeedbackRoutes);
 app.use('/api/creator-dashboard', creatorDashboardRoutes);
 app.use('/api/referrals', referralsRoutes);
 app.use('/api/viral-bonuses', viralBonusRoutes);

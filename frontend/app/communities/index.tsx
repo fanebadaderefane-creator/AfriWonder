@@ -7,6 +7,9 @@ import { router } from 'expo-router';
 import apiClient from '../../src/api/client';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
+import { featureFlags } from '../../src/config/featureFlags';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
+import { DEMO_COMMUNITIES } from '../../src/demo/superAppDemoSeed';
 
 type CommunityItem = {
   id: string;
@@ -24,6 +27,7 @@ export default function CommunitiesScreen() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [communities, setCommunities] = useState<CommunityItem[]>([]);
+  const [communitiesDemo, setCommunitiesDemo] = useState(false);
 
   useEffect(() => {
     void loadCommunities();
@@ -32,11 +36,24 @@ export default function CommunitiesScreen() {
   const loadCommunities = async () => {
     try {
       setLoading(true);
+      setCommunitiesDemo(false);
       const res = await apiClient.get('/communities', { params: { limit: 50 } });
       const data = res.data?.data ?? res.data;
-      setCommunities(Array.isArray(data?.communities) ? data.communities : []);
+      const list = Array.isArray(data?.communities) ? data.communities : [];
+      if (list.length === 0 && featureFlags.superAppDemoContent) {
+        setCommunities(DEMO_COMMUNITIES);
+        setCommunitiesDemo(true);
+      } else {
+        setCommunities(list);
+      }
     } catch {
-      Alert.alert('Communautés', 'Impossible de charger les communautés.');
+      if (featureFlags.superAppDemoContent) {
+        setCommunities(DEMO_COMMUNITIES);
+        setCommunitiesDemo(true);
+      } else {
+        Alert.alert('Communautés', 'Impossible de charger les communautés.');
+        setCommunities([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -74,6 +91,8 @@ export default function CommunitiesScreen() {
         <Ionicons name="search" size={18} color={Colors.textSecondary} />
         <TextInput style={styles.searchInput} placeholder="Rechercher une communaute..." placeholderTextColor={Colors.textMuted} value={search} onChangeText={setSearch} />
       </View>
+
+      {communitiesDemo ? <DemoContentBanner /> : null}
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         {filteredCommunities.map((community) => (

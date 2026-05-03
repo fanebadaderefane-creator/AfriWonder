@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import tontinesApi, { Tontine, TontineCycle, TontineMember } from '../../src/api/tontinesApi';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 import { useAuthStore } from '../../src/store/authStore';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -82,9 +83,8 @@ export default function TontineDetailScreen() {
               await tontinesApi.start(tontine.id);
               await load();
               Alert.alert('Tontine démarrée ✓', 'Le premier cycle est ouvert. Les membres peuvent contribuer.');
-            } catch (err) {
-              const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Démarrage impossible.';
-              Alert.alert('Erreur', String(msg));
+            } catch (err: unknown) {
+              Alert.alert('Erreur', getAlertMessageForCaughtError(err));
             } finally {
               setAction(false);
             }
@@ -109,9 +109,8 @@ export default function TontineDetailScreen() {
               await tontinesApi.contribute(tontine.id, cycle.cycle_number);
               await load();
               Alert.alert('Paiement effectué ✓', 'Votre contribution a été enregistrée.');
-            } catch (err) {
-              const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Contribution impossible.';
-              Alert.alert('Erreur', String(msg));
+            } catch (err: unknown) {
+              Alert.alert('Erreur', getAlertMessageForCaughtError(err));
             } finally {
               setAction(false);
             }
@@ -136,9 +135,8 @@ export default function TontineDetailScreen() {
             try {
               await tontinesApi.leave(tontine.id);
               router.back();
-            } catch (err) {
-              const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Impossible de quitter.';
-              Alert.alert('Erreur', String(msg));
+            } catch (err: unknown) {
+              Alert.alert('Erreur', getAlertMessageForCaughtError(err));
               setAction(false);
             }
           },

@@ -14,6 +14,7 @@ import {
   fetchGoogleUserFromAccessToken,
   syntheticAppleEmail,
   verifyAppleIdentityToken,
+  verifyGoogleIdToken,
 } from '../services/oauthMobileVerify.service.js';
 import { postAuthLoginAlertFromRequest } from '../services/loginAlert.service.js';
 
@@ -100,6 +101,28 @@ const oauthAccessTokenSchema = z
     path: ['accessToken'],
   });
 
+/** Mobile Google : `access_token` (userinfo) et/ou `id_token` (JWT OpenID vérifié serveur). */
+const oauthGoogleMobileSchema = z
+  .object({
+    access_token: z.string().min(10).optional(),
+    accessToken: z.string().min(10).optional(),
+    id_token: z.string().min(20).optional(),
+    idToken: z.string().min(20).optional(),
+  })
+  .refine(
+    (d) =>
+      Boolean(
+        d.access_token?.trim() ||
+          d.accessToken?.trim() ||
+          d.id_token?.trim() ||
+          d.idToken?.trim(),
+      ),
+    {
+      message: 'access_token, accessToken, id_token ou idToken requis',
+      path: ['accessToken'],
+    },
+  );
+
 const oauthAppleMobileSchema = z
   .object({
     identity_token: z.string().min(20).optional(),
@@ -143,11 +166,14 @@ router.post('/supabase', validateBody(supabaseSessionSchema), async (req, res, n
   }
 });
 
-// POST /api/auth/oauth/google — mobile / Expo : access_token Google → JWT AfriWonder
-router.post('/oauth/google', validateBody(oauthAccessTokenSchema), async (req, res, next) => {
+// POST /api/auth/oauth/google — mobile / Expo : access_token et/ou id_token Google → JWT AfriWonder
+router.post('/oauth/google', validateBody(oauthGoogleMobileSchema), async (req, res, next) => {
   try {
-    const raw = (req.body.access_token || req.body.accessToken || '').trim();
-    const g = await fetchGoogleUserFromAccessToken(raw);
+    const rawAccess = (req.body.access_token || req.body.accessToken || '').trim();
+    const rawId = (req.body.id_token || req.body.idToken || '').trim();
+    const g = rawAccess
+      ? await fetchGoogleUserFromAccessToken(rawAccess)
+      : await verifyGoogleIdToken(rawId);
     const result = await authService.socialLogin({
       email: g.email,
       full_name: g.name,

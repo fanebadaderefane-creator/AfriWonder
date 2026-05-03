@@ -2,13 +2,17 @@ import axios, { type AxiosRequestConfig, type InternalAxiosRequestConfig } from 
 import { secureStorage } from '../utils/secureStorage';
 import { getBackendOrigin } from '../config/backendBase';
 import { useAuthStore } from '../store/authStore';
+import { attachUserFacingApiError } from '../utils/userFacingError';
+import { devLog } from '../utils/devLog';
+import { getAfriDeviceIdForRequestHeader, withAfriDeviceTrustHeaders } from '../utils/afwDeviceRequestId';
 
 // Routes `/api/*` directes sur l’origine backend (Express, ex. port 3000 en dev).
 const getMobileApiBaseUrl = () => getBackendOrigin();
 
 const mobileApiClient = axios.create({
   baseURL: `${getMobileApiBaseUrl()}/api`,
-  timeout: 15000,
+  /** Aligné sur `apiClient` — 3G Mali / requêtes lourdes. */
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
@@ -36,7 +40,10 @@ async function refreshAccessToken(): Promise<string | null> {
         `${origin}/api/proxy/auth/refresh`,
         { refreshToken: refreshToken.trim() },
         {
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          headers: withAfriDeviceTrustHeaders({
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          }),
           timeout: 15000,
         }
       );
@@ -78,8 +85,20 @@ function isAuthProxyPath(config: AxiosRequestConfig): boolean {
     u.includes('/proxy/auth/login')
     || u.includes('/proxy/auth/register')
     || u.includes('/proxy/auth/refresh')
+    || u.includes('/proxy/auth/logout')
     || u.includes('/proxy/auth/forgot-password')
     || u.includes('/proxy/auth/oauth/')
+    || u.includes('/proxy/auth/password')
+    || u.includes('/proxy/auth/supabase')
+    /** Fallback sans segment `proxy` (`authApi.withAuthProxyFallback`) : baseURL `/api`. */
+    || u.includes('/auth/login')
+    || u.includes('/auth/register')
+    || u.includes('/auth/logout')
+    || u.includes('/auth/refresh')
+    || u.includes('/auth/forgot-password')
+    || u.includes('/auth/oauth/')
+    || u.includes('/auth/password')
+    || u.includes('/auth/supabase')
   );
 }
 
@@ -94,7 +113,15 @@ mobileApiClient.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`;
       }
     } catch (error) {
-      console.error('Error getting token for mobile API:', error);
+      devLog('Error getting token for mobile API:', error);
+    }
+    /** Toujours présent — le backend exempte les faux positifs CSRF (cookies + Origin) pour les apps natives. */
+    try {
+      if (config.headers) {
+        (config.headers as Record<string, string>)['X-AFW-Device-Id'] = getAfriDeviceIdForRequestHeader();
+      }
+    } catch {
+      /* ignore */
     }
     return config;
   },
@@ -104,21 +131,26 @@ mobileApiClient.interceptors.request.use(
 mobileApiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
+    const rejectWithUserMessage = (err: unknown) => {
+      attachUserFacingApiError(err);
+      return Promise.reject(err);
+    };
+
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
     if (!originalRequest || originalRequest._retry) {
-      return Promise.reject(error);
+      return rejectWithUserMessage(error);
     }
     if (error.response?.status !== 401) {
-      return Promise.reject(error);
+      return rejectWithUserMessage(error);
     }
     if (isAuthProxyPath(originalRequest)) {
-      return Promise.reject(error);
+      return rejectWithUserMessage(error);
     }
 
     originalRequest._retry = true;
     const newAccess = await refreshAccessToken();
     if (!newAccess) {
-      return Promise.reject(error);
+      return rejectWithUserMessage(error);
     }
     originalRequest.headers.Authorization = `Bearer ${newAccess}`;
     return mobileApiClient(originalRequest);

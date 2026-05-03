@@ -4,6 +4,7 @@ import {
   getBackendOrigin,
   MISSING_BACKEND_URL_SENTINEL,
 } from './backendBase';
+import { applyAfriDeviceTrustToFetchInit } from '../utils/afwDeviceRequestId';
 
 export type PreflightCheck = {
   id: string;
@@ -55,10 +56,10 @@ export async function runReleasePreflight(): Promise<PreflightCheck[]> {
     try {
       const ac = new AbortController();
       const t = setTimeout(() => ac.abort(), 8000);
-      const res = await fetch(`${backend.replace(/\/+$/, '')}/health`, {
-        method: 'GET',
-        signal: ac.signal,
-      });
+      const res = await fetch(
+        `${backend.replace(/\/+$/, '')}/health`,
+        applyAfriDeviceTrustToFetchInit({ method: 'GET', signal: ac.signal }),
+      );
       clearTimeout(t);
       healthOk = res.ok;
       healthDetail = `${res.status} ${res.statusText}`.trim();
@@ -80,10 +81,10 @@ export async function runReleasePreflight(): Promise<PreflightCheck[]> {
     try {
       const ac = new AbortController();
       const t = setTimeout(() => ac.abort(), 8000);
-      const res = await fetch(`${backend.replace(/\/+$/, '')}/api/mobile/health`, {
-        method: 'GET',
-        signal: ac.signal,
-      });
+      const res = await fetch(
+        `${backend.replace(/\/+$/, '')}/api/mobile/health`,
+        applyAfriDeviceTrustToFetchInit({ method: 'GET', signal: ac.signal }),
+      );
       clearTimeout(t);
       mobileOk = res.ok;
       if (res.ok) {
@@ -137,6 +138,14 @@ export async function runReleasePreflight(): Promise<PreflightCheck[]> {
         : pushReady
           ? `projectId=${pid.slice(0, 8)}…`
           : 'Définir EXPO_PUBLIC_EAS_PROJECT_ID ou extra.eas.projectId pour FCM via Expo',
+  });
+  checks.push({
+    id: 'sentry_dsn',
+    label: 'Sentry mobile (EXPO_PUBLIC_SENTRY_DSN) — directive post-lancement',
+    ok: Boolean(readExtra('EXPO_PUBLIC_SENTRY_DSN')),
+    detail: readExtra('EXPO_PUBLIC_SENTRY_DSN')
+      ? 'DSN configuré (crash JS natifs remontés en prod si build release)'
+      : 'Recommandé avant store : définir EXPO_PUBLIC_SENTRY_DSN + alerts équipe',
   });
 
   return checks;

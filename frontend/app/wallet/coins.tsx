@@ -15,6 +15,7 @@ import {
   initiateCoinsPurchase,
 } from '../../src/services/mobileApiService';
 import apiClient from '../../src/api/client';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 
 const DEFAULT_COIN_PACKS = [
   { id: 'coins-100', coins: 100, priceFcfa: 500, bonusCoins: 0, popular: false },
@@ -137,8 +138,8 @@ export default function CoinsScreen() {
         },
       } as never;
       router.push(deepRoute);
-    } catch (error: any) {
-      Alert.alert('Coins', error?.response?.data?.detail || error?.message || "Impossible d'initier l'achat de coins.");
+    } catch (error: unknown) {
+      Alert.alert('Coins', getAlertMessageForCaughtError(error));
     } finally {
       setLoading(false);
     }
@@ -159,11 +160,7 @@ export default function CoinsScreen() {
           : 'Réclamé.',
       );
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { error?: string; message?: string } }; message?: string };
-      Alert.alert(
-        'Mission',
-        String(err.response?.data?.error || err.response?.data?.message || err.message || 'Indisponible'),
-      );
+      Alert.alert('Mission', getAlertMessageForCaughtError(error));
     } finally {
       setMissionBusy(false);
     }
@@ -186,8 +183,7 @@ export default function CoinsScreen() {
           : `+${Number(d.coins_credited ?? 0).toLocaleString('fr-FR')} coins. Solde : ${bal.toLocaleString('fr-FR')}.`,
       );
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { error?: string; message?: string } }; message?: string };
-      Alert.alert('IAP', String(err.response?.data?.error || err.response?.data?.message || err.message || 'Erreur'));
+      Alert.alert('IAP', getAlertMessageForCaughtError(error));
     } finally {
       setIapBusy(false);
     }

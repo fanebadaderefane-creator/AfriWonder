@@ -7,31 +7,31 @@ describe('androidDevProbeUiPolicy', () => {
       shouldHoldUiForAndroidDevBackendProbe({
         platformOs: 'ios',
         isDev: true,
-        hasExplicitBackendOrigin: false,
+        needsLanBackendProbe: true,
       })
     ).toBe(false);
     expect(
       shouldHoldUiForAndroidDevBackendProbe({
         platformOs: 'android',
         isDev: false,
-        hasExplicitBackendOrigin: false,
+        needsLanBackendProbe: true,
       })
     ).toBe(false);
   });
 
-  it('bloque uniquement Android dev sans URL explicite', () => {
+  it('bloque Android dev quand le probe LAN est nécessaire (pas d’URL ou URL locale / LAN)', () => {
     expect(
       shouldHoldUiForAndroidDevBackendProbe({
         platformOs: 'android',
         isDev: true,
-        hasExplicitBackendOrigin: false,
+        needsLanBackendProbe: true,
       })
     ).toBe(true);
     expect(
       shouldHoldUiForAndroidDevBackendProbe({
         platformOs: 'android',
         isDev: true,
-        hasExplicitBackendOrigin: true,
+        needsLanBackendProbe: false,
       })
     ).toBe(false);
   });

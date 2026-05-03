@@ -16,6 +16,16 @@ import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
 import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import newsApi, { NewsArticle } from '../../src/api/newsApi';
+import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { newsArticlePlaceholderUrl } from '../../src/utils/serviceVisualPlaceholders';
+import { filterDemoNews } from '../../src/demo/superAppDemoSeed';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
+
+function articleThumbUri(a: NewsArticle): string {
+  const raw = a.cover_image ?? a.image_url;
+  const abs = raw ? toAbsoluteMediaUrl(raw) : '';
+  return abs || newsArticlePlaceholderUrl(a.id, a.category);
+}
 
 const CATEGORIES = ['Tous', 'Sports', 'Tech', 'Culture', 'Economie', 'Politique'];
 
@@ -54,23 +64,43 @@ function NewsContent() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDemo, setShowDemo] = useState(false);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setError(null);
+    setShowDemo(false);
+    const catKey = activeCategory > 0 ? CATEGORIES[activeCategory].toLowerCase() : 'tous';
+    const tryApplyDemoNews = (): boolean => {
+      if (!featureFlags.superAppDemoContent) return false;
+      const demoList = filterDemoNews(catKey);
+      if (demoList.length === 0) return false;
+      setArticles(demoList);
+      setShowDemo(true);
+      return true;
+    };
     try {
       const params: Parameters<typeof newsApi.list>[0] = { page: 1, limit: 30 };
       if (activeCategory > 0) {
         params.category = CATEGORIES[activeCategory].toLowerCase();
       }
       const list = await newsApi.list(params);
-      setArticles(list);
+      if (featureFlags.superAppDemoContent && list.length === 0) {
+        if (!tryApplyDemoNews()) {
+          setArticles([]);
+        }
+      } else {
+        setArticles(list);
+      }
     } catch (err) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message
         || (err as { message?: string })?.message
         || 'Impossible de charger les actualités.';
-      setError(msg);
+      if (!tryApplyDemoNews()) {
+        setError(msg);
+        setArticles([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -103,6 +133,8 @@ function NewsContent() {
         <Text style={styles.headerTitle}>Actualités</Text>
         <View style={{ width: 40 }} />
       </View>
+
+      {showDemo ? <DemoContentBanner /> : null}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsContainer}>
         {CATEGORIES.map((cat, idx) => (
@@ -148,13 +180,7 @@ function NewsContent() {
               style={styles.featuredCard}
               onPress={() => router.push(`/news/${featured.id}` as any)}
             >
-              {featured.cover_image || featured.image_url ? (
-                <Image source={{ uri: featured.cover_image ?? featured.image_url }} style={styles.featuredImage} />
-              ) : (
-                <View style={[styles.featuredImage, styles.featuredImageFallback]}>
-                  <Ionicons name="image-outline" size={40} color={Colors.textSecondary} />
-                </View>
-              )}
+              <Image source={{ uri: articleThumbUri(featured) }} style={styles.featuredImage} />
               {featured.is_breaking ? (
                 <View style={styles.breakingBadge}>
                   <Text style={styles.breakingText}>EN DIRECT</Text>
@@ -176,13 +202,7 @@ function NewsContent() {
               style={styles.articleCard}
               onPress={() => router.push(`/news/${article.id}` as any)}
             >
-              {article.cover_image || article.image_url ? (
-                <Image source={{ uri: article.cover_image ?? article.image_url }} style={styles.articleImage} />
-              ) : (
-                <View style={[styles.articleImage, styles.articleImageFallback]}>
-                  <Ionicons name="image-outline" size={24} color={Colors.textSecondary} />
-                </View>
-              )}
+              <Image source={{ uri: articleThumbUri(article) }} style={styles.articleImage} />
               <View style={styles.articleInfo}>
                 <Text style={styles.articleCategory}>{article.category ?? 'Actualité'}</Text>
                 <Text style={styles.articleTitle} numberOfLines={3}>{article.title}</Text>
@@ -247,7 +267,6 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   featuredImage: { width: '100%', height: 200, backgroundColor: Colors.card },
-  featuredImageFallback: { alignItems: 'center', justifyContent: 'center' },
   breakingBadge: {
     position: 'absolute',
     top: Spacing.md,
@@ -271,7 +290,6 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   articleImage: { width: 92, height: 92, borderRadius: BorderRadius.sm, backgroundColor: Colors.card },
-  articleImageFallback: { alignItems: 'center', justifyContent: 'center' },
   articleInfo: { flex: 1 },
   articleCategory: { color: Colors.primary, fontSize: FontSizes.xs, fontWeight: '600', textTransform: 'uppercase' },
   articleTitle: { color: Colors.text, fontSize: FontSizes.md, fontWeight: '600', marginTop: 4 },

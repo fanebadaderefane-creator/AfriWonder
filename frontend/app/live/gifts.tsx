@@ -21,12 +21,19 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import apiClient from '../../src/api/client';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 import { useAuthStore } from '../../src/store/authStore';
 import socketService from '../../src/services/socketService';
 import { playGiftSoundForCatalog } from '../../src/live/liveGiftSounds';
 import { coinIapConfiguredForPackage, purchaseCoinPackageViaIap } from '../../src/wallet/coinIapPurchase';
+import { LiveTopFansEmbedded } from './_liveTopFansSheet';
 
 const { width, height } = Dimensions.get('window');
+
+/** Spectateurs virtuels (démo) : `EXPO_PUBLIC_SIMULATE_LIVE_GIFTS=1` dans `.env` */
+const SIMULATE_LIVE_GIFTS = process.env.EXPO_PUBLIC_SIMULATE_LIVE_GIFTS === '1';
+
+const DEMO_SENDERS = ['Kofi 🔥', 'Fatou 🌸', 'Chioma ✨', 'Bakary', 'Naledi 💎'];
 
 export type GiftCatalogRow = {
   id: string;
@@ -39,15 +46,16 @@ export type GiftCatalogRow = {
   animation_url?: string | null;
 };
 
+/** Aligné maquettes AfriWonder Live (prix en coins). */
 const FALLBACK_GIFT_CATALOG: GiftCatalogRow[] = [
-  { id: 'afw-rose', name: 'Rose', icon: '🌹', price: 1, coin_value: 1, rarity: 'common' },
-  { id: 'afw-like', name: 'Like', icon: '❤️', price: 2, coin_value: 2, rarity: 'common' },
-  { id: 'afw-fire', name: 'Flamme', icon: '🔥', price: 5, coin_value: 5, rarity: 'rare' },
-  { id: 'afw-star', name: 'Star', icon: '⭐', price: 10, coin_value: 10, rarity: 'epic' },
-  { id: 'afw-crown', name: 'Couronne', icon: '👑', price: 50, coin_value: 50, rarity: 'legendary' },
-  { id: 'afw-car', name: 'Voiture', icon: '🚗', price: 120, coin_value: 120, rarity: 'legendary' },
-  { id: 'afw-plane', name: 'Avion', icon: '✈️', price: 200, coin_value: 200, rarity: 'legendary' },
-  { id: 'afw-castle', name: 'Château', icon: '🏰', price: 500, coin_value: 500, rarity: 'legendary' },
+  { id: 'afw-rose', name: 'Rose', icon: '🌹', price: 10, coin_value: 10, rarity: 'common' },
+  { id: 'afw-star', name: 'Étoile', icon: '⭐', price: 50, coin_value: 50, rarity: 'common' },
+  { id: 'afw-flame', name: 'Flamme', icon: '🔥', price: 100, coin_value: 100, rarity: 'rare' },
+  { id: 'afw-lion', name: 'Lion', icon: '🦁', price: 200, coin_value: 200, rarity: 'rare' },
+  { id: 'afw-crown', name: 'Couronne', icon: '👑', price: 500, coin_value: 500, rarity: 'epic' },
+  { id: 'afw-diamond', name: 'Diamant', icon: '💎', price: 1000, coin_value: 1000, rarity: 'legendary' },
+  { id: 'afw-baobab', name: 'Baobab', icon: '🌳', price: 2000, coin_value: 2000, rarity: 'legendary' },
+  { id: 'afw-globe', name: 'AfriWonder', icon: '🌍', price: 5000, coin_value: 5000, rarity: 'legendary' },
 ];
 
 function rarityColor(rarity?: string | null): string {
@@ -60,6 +68,19 @@ function rarityColor(rarity?: string | null): string {
       return '#60a5fa';
     default:
       return '#94a3b8';
+  }
+}
+
+function rarityLabelFr(rarity?: string | null): string | null {
+  switch (String(rarity || '').toLowerCase()) {
+    case 'legendary':
+      return 'Légendaire';
+    case 'epic':
+      return 'Épique';
+    case 'rare':
+      return 'Rare';
+    default:
+      return null;
   }
 }
 
@@ -94,6 +115,10 @@ interface GiftAnimationData {
   rarity?: string | null;
   giftId?: string;
   animationUrl?: string;
+  /** Part créateur (FCFA), renvoyée par le serveur. */
+  creatorEarningsFcfa?: number;
+  /** float | burst | fullscreen */
+  displayTier?: 'float' | 'burst' | 'fullscreen';
 }
 
 function mapServerGiftToAnimation(data: Record<string, unknown>): GiftAnimationData {
@@ -106,6 +131,13 @@ function mapServerGiftToAnimation(data: Record<string, unknown>): GiftAnimationD
   const giftId = String(data.gift_id ?? data.giftId ?? '').trim();
   const animationUrl =
     data.animation_url != null ? String(data.animation_url).trim() : data.animationUrl != null ? String(data.animationUrl).trim() : '';
+  const rawCe =
+    data.creator_earnings_fcfa ?? data.creatorEarningsFcfa ?? data.creator_earnings ?? data.creatorEarnings;
+  const creatorEarningsFcfa = Number(rawCe);
+  const r = String(rarity || '').toLowerCase();
+  let displayTier: GiftAnimationData['displayTier'] = 'float';
+  if (r === 'legendary') displayTier = 'fullscreen';
+  else if (r === 'epic' || r === 'rare') displayTier = 'burst';
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     senderName,
@@ -117,6 +149,8 @@ function mapServerGiftToAnimation(data: Record<string, unknown>): GiftAnimationD
     rarity: rarity || undefined,
     giftId: giftId || undefined,
     animationUrl: animationUrl || undefined,
+    creatorEarningsFcfa: Number.isFinite(creatorEarningsFcfa) ? creatorEarningsFcfa : undefined,
+    displayTier,
   };
 }
 
@@ -147,6 +181,11 @@ function GiftFullscreenOverlay({ gift, onDismiss }: { gift: GiftAnimationData | 
             {gift.giftName} ×{gift.quantity}
             {gift.combo > 1 ? ` · COMBO ×${gift.combo}` : ''}
           </Text>
+          {gift.creatorEarningsFcfa != null && gift.creatorEarningsFcfa > 0 ? (
+            <Text style={styles.fsCreator}>
+              {gift.creatorEarningsFcfa.toLocaleString('fr-FR')} FCFA au créateur
+            </Text>
+          ) : null}
         </View>
       </Pressable>
     </Modal>
@@ -160,16 +199,27 @@ const GiftAnimationBubble: React.FC<{
   const translateY = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(1)).current;
   const scale = useRef(new Animated.Value(0.3)).current;
+  const spin = useRef(new Animated.Value(0)).current;
+  const burst = gift.displayTier === 'burst';
 
   useEffect(() => {
     if (Platform.OS !== 'web') {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       void playGiftSoundForCatalog(gift.giftId, gift.rarity, gift.giftName);
     }
+    if (burst) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(spin, { toValue: 1, duration: 400, useNativeDriver: true }),
+          Animated.timing(spin, { toValue: 0, duration: 400, useNativeDriver: true }),
+        ]),
+      ).start();
+    }
+    const holdMs = burst ? 2600 : 2000;
     const anim = Animated.parallel([
-      Animated.spring(scale, { toValue: 1, friction: 4, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: burst ? 1.08 : 1, friction: 4, useNativeDriver: true }),
       Animated.sequence([
-        Animated.delay(2000),
+        Animated.delay(holdMs),
         Animated.parallel([
           Animated.timing(translateY, { toValue: -100, duration: 600, useNativeDriver: true }),
           Animated.timing(opacity, { toValue: 0, duration: 600, useNativeDriver: true }),
@@ -178,22 +228,42 @@ const GiftAnimationBubble: React.FC<{
     ]);
     anim.start(() => onRemove(gift.id));
     return () => anim.stop();
-  }, [gift.id, gift.giftId, gift.giftName, gift.rarity, onRemove, opacity, scale, translateY]);
+  }, [burst, gift.displayTier, gift.giftId, gift.giftName, gift.id, gift.rarity, onRemove, opacity, scale, spin, translateY]);
 
-  const comboLabel = gift.combo > 1 ? ` · COMBO ×${gift.combo}` : '';
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['-6deg', '6deg'] });
+  const comboLabel =
+    gift.combo > 1 ? (
+      <View style={styles.comboPillWrap}>
+        <Text style={styles.comboPillText}>×{gift.combo} COMBO</Text>
+      </View>
+    ) : null;
 
   return (
     <Animated.View
-      style={[styles.giftAnimContainer, { transform: [{ translateY }, { scale }], opacity }]}
+      style={[styles.giftAnimContainer, { transform: [{ translateY }, { scale }, { rotate }], opacity }]}
     >
-      <View style={[styles.giftAnimBubble, { borderColor: gift.giftColor }]}>
-        <GiftGlyph icon={gift.giftIcon} color={gift.giftColor} size={28} />
-        <View>
+      {burst ? (
+        <View style={styles.burstRing} pointerEvents="none">
+          {['✨', '⭐', '✨', '💫', '✨'].map((e, i) => (
+            <Text key={`p-${i}`} style={[styles.burstParticle, { top: Math.sin((i / 5) * Math.PI * 2) * 36, left: 40 + Math.cos((i / 5) * Math.PI * 2) * 36 }]}>
+              {e}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+      <View style={[styles.giftAnimBubble, { borderColor: gift.giftColor, zIndex: 2 }]}>
+        <GiftGlyph icon={gift.giftIcon} color={gift.giftColor} size={burst ? 34 : 28} />
+        <View style={{ flex: 1 }}>
           <Text style={styles.giftAnimSender}>{gift.senderName}</Text>
           <Text style={styles.giftAnimName}>
-            {gift.giftName} ×{gift.quantity}
-            {comboLabel}
+            a offert {gift.giftName} ×{gift.quantity}
           </Text>
+          {comboLabel}
+          {gift.creatorEarningsFcfa != null && gift.creatorEarningsFcfa > 0 ? (
+            <Text style={styles.giftAnimCreator}>
+              +{gift.creatorEarningsFcfa.toLocaleString('fr-FR')} FCFA créateur
+            </Text>
+          ) : null}
         </View>
       </View>
     </Animated.View>
@@ -226,13 +296,15 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
   const [balanceCoins, setBalanceCoins] = useState(0);
   const [catalog, setCatalog] = useState<GiftCatalogRow[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
-  const [showRecharge, setShowRecharge] = useState(false);
+  const [activeTab, setActiveTab] = useState<'send' | 'recharge' | 'topFans'>('send');
   const [packages, setPackages] = useState<CoinPackageRow[]>([]);
   const [packagesLoading, setPackagesLoading] = useState(false);
   const [selectedGift, setSelectedGift] = useState<GiftCatalogRow | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [sending, setSending] = useState(false);
   const [economyHint, setEconomyHint] = useState<string | null>(null);
+  const [fcfaPerCoin, setFcfaPerCoin] = useState(5);
+  const [creatorShare, setCreatorShare] = useState(0.7);
 
   const loadCatalog = useCallback(async () => {
     setCatalogLoading(true);
@@ -243,10 +315,18 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
           example_coins?: number;
           example_usd?: number;
           coins_per_usd?: number;
+          fcfa_approx_per_coin_purchase?: number;
+          live_gift_creator_share?: number;
         } | null;
+        if (em && typeof em.fcfa_approx_per_coin_purchase === 'number' && em.fcfa_approx_per_coin_purchase > 0) {
+          setFcfaPerCoin(em.fcfa_approx_per_coin_purchase);
+        }
+        if (em && typeof em.live_gift_creator_share === 'number' && em.live_gift_creator_share > 0) {
+          setCreatorShare(em.live_gift_creator_share);
+        }
         if (em && typeof em.example_coins === 'number' && typeof em.example_usd === 'number') {
           setEconomyHint(
-            `Indicatif CDC : ${em.example_coins} coins ≈ ${em.example_usd} USD (LIVE_COINS_PER_USD=${em.coins_per_usd ?? '—'}).`,
+            `Indicatif : ${em.example_coins} coins ≈ ${em.example_usd} USD (taux CDC).`,
           );
         } else setEconomyHint(null);
       } catch {
@@ -328,7 +408,7 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
         `Il faut ${totalCoins.toLocaleString('fr-FR')} coins, votre solde est ${balanceCoins.toLocaleString('fr-FR')} coins.`,
         [
           { text: 'Annuler', style: 'cancel' },
-          { text: 'Recharger', onPress: () => setShowRecharge(true) },
+          { text: 'Recharger', onPress: () => setActiveTab('recharge') },
         ],
       );
       return;
@@ -351,12 +431,7 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
       // UX type TikTok: envoi instantané, pas de popup bloquante.
       onClose();
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string; message?: string } } };
-      const msg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        "Impossible d'envoyer le cadeau.";
-      Alert.alert('Erreur', String(msg));
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
     } finally {
       setSending(false);
     }
@@ -381,11 +456,10 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
             : 'Paiement initié. Suivez les instructions (Mobile Money).',
         );
       }
-      setShowRecharge(false);
+      setActiveTab('send');
       void loadBalance();
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string } } };
-      Alert.alert('Erreur', String(err.response?.data?.error || "Erreur lors de l'achat de coins."));
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
     }
   };
 
@@ -393,7 +467,7 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
     try {
       const r = await purchaseCoinPackageViaIap(pkg.id);
       setBalanceCoins(r.coins_balance);
-      setShowRecharge(false);
+      setActiveTab('send');
       Alert.alert('Merci !', `Votre solde : ${r.coins_balance.toLocaleString('fr-FR')} coins.`);
       void loadBalance();
     } catch (e: unknown) {
@@ -412,11 +486,25 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
     }
     const iapOk = coinIapConfiguredForPackage(pkg.id) === true;
     if (!iapOk) {
-      void startPurchase(pkg);
+      onClose();
+      router.push({
+        pathname: '/live/coin-recharge-mm',
+        params: { packageId: pkg.id, liveId },
+      } as never);
       return;
     }
     Alert.alert('Acheter des coins', 'Choisissez le mode de paiement.', [
-      { text: 'Mobile Money / Wave', onPress: () => void startPurchase(pkg) },
+      {
+        text: 'Tunnel Mobile Money (4 étapes)',
+        onPress: () => {
+          onClose();
+          router.push({
+            pathname: '/live/coin-recharge-mm',
+            params: { packageId: pkg.id, liveId },
+          } as never);
+        },
+      },
+      { text: 'Rapide (navigateur / OM)', onPress: () => void startPurchase(pkg) },
       { text: 'App Store / Play (IAP)', onPress: () => void startIapPurchase(pkg) },
       { text: 'Annuler', style: 'cancel' },
     ]);
@@ -429,21 +517,32 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
       <View style={styles.panelHeader}>
         <View style={styles.panelHandle} />
         <View style={styles.panelTitleRow}>
-          <Text style={styles.panelTitle}>
-            {showRecharge ? 'Acheter des coins' : 'Envoyer un cadeau'}
-          </Text>
-          <TouchableOpacity
-            onPress={showRecharge ? () => setShowRecharge(false) : onClose}
-            accessibilityRole="button"
-            accessibilityLabel={showRecharge ? 'Retour' : 'Fermer'}
-          >
-            <Ionicons name={showRecharge ? 'arrow-back' : 'close'} size={24} color={Colors.text} />
+          <Text style={styles.panelTitle}>AfriCoins & cadeaux</Text>
+          <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Fermer">
+            <Ionicons name="close" size={24} color={Colors.text} />
           </TouchableOpacity>
         </View>
-        {economyHint && !showRecharge ? (
+        <View style={styles.tabRow}>
+          {(
+            [
+              { key: 'send' as const, label: 'Envoyer' },
+              { key: 'recharge' as const, label: 'Recharger' },
+              { key: 'topFans' as const, label: 'Top Fans' },
+            ] as const
+          ).map((t) => (
+            <TouchableOpacity
+              key={t.key}
+              style={[styles.tabBtn, activeTab === t.key && styles.tabBtnActive]}
+              onPress={() => setActiveTab(t.key)}
+            >
+              <Text style={[styles.tabBtnText, activeTab === t.key && styles.tabBtnTextActive]}>{t.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {economyHint && activeTab === 'send' ? (
           <Text style={{ color: Colors.textMuted, fontSize: 11, paddingHorizontal: Spacing.md, marginBottom: 6 }}>{economyHint}</Text>
         ) : null}
-        {!showRecharge ? (
+        {activeTab === 'send' ? (
           <TouchableOpacity
             style={styles.missionsRow}
             onPress={() => {
@@ -460,16 +559,16 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
         ) : null}
         <TouchableOpacity
           style={styles.coinBalance}
-          onPress={() => setShowRecharge(true)}
+          onPress={() => setActiveTab('recharge')}
           accessibilityRole="button"
         >
           <Ionicons name="diamond-outline" size={14} color="#FFD700" />
-          <Text style={styles.coinBalanceText}>{balanceCoins.toLocaleString('fr-FR')} coins</Text>
+          <Text style={styles.coinBalanceText}>{balanceCoins.toLocaleString('fr-FR')} AfriCoins</Text>
           <Ionicons name="add-circle" size={16} color={Colors.primary} />
         </TouchableOpacity>
       </View>
 
-      {showRecharge ? (
+      {activeTab === 'recharge' ? (
         <View style={styles.coinPacks}>
           {packagesLoading ? (
             <ActivityIndicator color={Colors.primary} style={{ marginVertical: 16 }} />
@@ -486,14 +585,36 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
                 <View style={{ flex: 1 }}>
                   <Text style={styles.coinPackLabel}>{pkg.name}</Text>
                   <Text style={styles.coinPackSub}>
-                    {pkg.coins_amount.toLocaleString('fr-FR')} coins
-                    {pkg.bonus_coins ? ` + ${pkg.bonus_coins} bonus` : ''}
+                    Total : {pkg.coins_amount.toLocaleString('fr-FR')} AfriCoins
+                    {pkg.bonus_coins ? (
+                      <Text style={styles.bonusBadgeText}>{`  +${pkg.bonus_coins} BONUS`}</Text>
+                    ) : (
+                      ''
+                    )}
                   </Text>
                 </View>
                 <Text style={styles.coinPackPrice}>{pkg.price_fcfa.toLocaleString('fr-FR')} FCFA</Text>
               </TouchableOpacity>
             ))
           )}
+          <TouchableOpacity
+            style={styles.mmLink}
+            onPress={() => {
+              onClose();
+              router.push('/africoin/coins' as never);
+            }}
+          >
+            <Ionicons name="phone-portrait-outline" size={18} color="#D4AF37" />
+            <Text style={styles.mmLinkText}>Obtenir des Pièces (parcours complet / MAD)</Text>
+            <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+          </TouchableOpacity>
+          {packages.length > 0 ? (
+            <Text style={styles.rechargeHint}>Un appui sur un pack ouvre le tunnel Mobile Money (XOF) en 4 étapes.</Text>
+          ) : null}
+        </View>
+      ) : activeTab === 'topFans' ? (
+        <View style={{ paddingHorizontal: Spacing.md, minHeight: 200 }}>
+          <LiveTopFansEmbedded liveId={liveId} />
         </View>
       ) : catalogLoading ? (
         <ActivityIndicator color={Colors.primary} style={{ marginVertical: 24 }} />
@@ -501,12 +622,16 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
         <>
           <FlatList
             data={catalog}
-            numColumns={4}
+            numColumns={2}
+            columnWrapperStyle={styles.giftRowWrap}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.giftGrid}
-            style={{ maxHeight: height * 0.38 }}
+            style={{ maxHeight: height * 0.42 }}
             renderItem={({ item }) => {
               const c = rarityColor(item.rarity);
+              const coins = Math.round(item.coin_value || item.price);
+              const creatorFcfa = Math.round(coins * fcfaPerCoin * creatorShare);
+              const rl = rarityLabelFr(item.rarity);
               return (
                 <TouchableOpacity
                   style={[
@@ -521,15 +646,17 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
                     setQuantity(1);
                   }}
                 >
-                  <GiftGlyph icon={item.icon} color={c} size={28} />
+                  {rl ? (
+                    <Text style={[styles.giftRarityTag, { color: c }]}>{rl === 'Rare' ? '✨ Rare' : rl}</Text>
+                  ) : null}
+                  <GiftGlyph icon={item.icon} color={c} size={32} />
                   <Text style={styles.giftName} numberOfLines={2}>
                     {item.name}
                   </Text>
                   <View style={styles.giftCost}>
-                    <Text style={styles.giftCostText}>
-                      {Math.round(item.coin_value || item.price)} coins
-                    </Text>
+                    <Text style={styles.giftCostText}>{coins.toLocaleString('fr-FR')} coins</Text>
                   </View>
+                  <Text style={styles.giftCreatorHint}>~{creatorFcfa.toLocaleString('fr-FR')} FCFA créateur</Text>
                 </TouchableOpacity>
               );
             }}
@@ -571,6 +698,7 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
 export function useGiftAnimations(liveId: string) {
   const [animations, setAnimations] = useState<GiftAnimationData[]>([]);
   const [fullscreenGift, setFullscreenGift] = useState<GiftAnimationData | null>(null);
+  const simRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!liveId) return;
@@ -578,13 +706,38 @@ export function useGiftAnimations(liveId: string) {
     const handler = (data: unknown) => {
       if (!data || typeof data !== 'object') return;
       const anim = mapServerGiftToAnimation(data as Record<string, unknown>);
-      setFullscreenGift(anim);
-      setAnimations((prev) => [...prev.slice(-4), anim]);
+      if (anim.displayTier === 'fullscreen') {
+        setFullscreenGift(anim);
+      }
+      if (anim.displayTier !== 'fullscreen') {
+        setAnimations((prev) => [...prev.slice(-4), anim]);
+      }
     };
     socketService.on('live:gift', handler);
+
+    if (SIMULATE_LIVE_GIFTS && liveId) {
+      const tick = () => {
+        const cat = FALLBACK_GIFT_CATALOG[Math.floor(Math.random() * FALLBACK_GIFT_CATALOG.length)];
+        const sender = DEMO_SENDERS[Math.floor(Math.random() * DEMO_SENDERS.length)]!;
+        handler({
+          sender_name: sender,
+          gift_name: cat.name,
+          gift_icon: cat.icon,
+          gift_id: cat.id,
+          quantity: 1,
+          combo: Math.random() > 0.7 ? 1 + Math.floor(Math.random() * 5) : 1,
+          rarity: cat.rarity,
+          creator_earnings_fcfa: Math.round((cat.coin_value * 5 * 7) / 10),
+          total_amount_fcfa: cat.coin_value * 5,
+        });
+      };
+      simRef.current = setInterval(tick, 22000 + Math.floor(Math.random() * 14000));
+    }
+
     return () => {
       socketService.off('live:gift', handler);
       socketService.leaveLiveStream(liveId);
+      if (simRef.current) clearInterval(simRef.current);
     };
   }, [liveId]);
 
@@ -641,11 +794,52 @@ const styles = StyleSheet.create({
   routeHint: { color: Colors.textMuted, padding: Spacing.xl, fontSize: FontSizes.md },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   panel: {
-    backgroundColor: '#141520',
+    backgroundColor: '#2A1F18',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: height * 0.62,
+    maxHeight: height * 0.72,
+    borderTopWidth: 1,
+    borderColor: 'rgba(212,175,55,0.25)',
   },
+  tabRow: {
+    flexDirection: 'row',
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+    gap: 6,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.md,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+  },
+  tabBtnActive: {
+    borderBottomWidth: 3,
+    borderBottomColor: '#D4AF37',
+    backgroundColor: 'rgba(212,175,55,0.12)',
+  },
+  tabBtnText: { color: Colors.textMuted, fontSize: 12, fontWeight: '700' },
+  tabBtnTextActive: { color: '#D4AF37' },
+  mmLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: Spacing.md,
+    padding: 12,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.35)',
+  },
+  mmLinkText: { flex: 1, color: Colors.text, fontSize: FontSizes.sm, fontWeight: '600' },
+  rechargeHint: {
+    color: Colors.textMuted,
+    fontSize: 11,
+    marginTop: Spacing.sm,
+    textAlign: 'center',
+    paddingHorizontal: Spacing.sm,
+  },
+  bonusBadgeText: { color: '#F87171', fontWeight: '800' },
   panelHeader: {
     padding: Spacing.lg,
     borderBottomWidth: 1,
@@ -690,19 +884,23 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,215,0,0.2)',
   },
   coinBalanceText: { color: '#FFD700', fontSize: FontSizes.sm, fontWeight: '600' },
-  giftGrid: { padding: Spacing.md, paddingBottom: Spacing.lg },
+  giftGrid: { padding: Spacing.sm, paddingBottom: Spacing.lg },
+  giftRowWrap: { justifyContent: 'space-between', paddingHorizontal: Spacing.xs },
   giftItem: {
-    width: (width - 64) / 4,
+    flex: 1,
+    maxWidth: (width - 48) / 2,
     alignItems: 'center',
-    padding: 10,
+    padding: 12,
     borderRadius: BorderRadius.md,
     borderWidth: 1.5,
     borderColor: 'transparent',
-    margin: 4,
+    margin: 6,
   },
-  giftName: { color: Colors.text, fontSize: 10, fontWeight: '600', marginTop: 4, textAlign: 'center' },
-  giftCost: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
-  giftCostText: { color: '#FFD700', fontSize: 9, fontWeight: '700' },
+  giftRarityTag: { fontSize: 9, fontWeight: '800', marginBottom: 4 },
+  giftName: { color: Colors.text, fontSize: 12, fontWeight: '700', marginTop: 4, textAlign: 'center' },
+  giftCost: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4 },
+  giftCostText: { color: '#FFD700', fontSize: 13, fontWeight: '800' },
+  giftCreatorHint: { color: 'rgba(255,255,255,0.55)', fontSize: 10, marginTop: 4, textAlign: 'center' },
   sendRow: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.md },
   quantityRow: {
     flexDirection: 'row',
@@ -754,6 +952,28 @@ const styles = StyleSheet.create({
   },
   giftAnimSender: { color: '#FFF', fontSize: FontSizes.sm, fontWeight: '600' },
   giftAnimName: { color: '#FFD700', fontSize: FontSizes.xs, fontWeight: '700' },
+  giftAnimCreator: { color: 'rgba(253,224,71,0.95)', fontSize: 10, fontWeight: '700', marginTop: 2 },
+  comboPillWrap: {
+    marginTop: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(212,175,55,0.25)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.pill,
+  },
+  comboPillText: { color: '#FDE68A', fontSize: 11, fontWeight: '900' },
+  burstRing: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    left: -10,
+    top: -20,
+    zIndex: 0,
+  },
+  burstParticle: {
+    position: 'absolute',
+    fontSize: 14,
+  },
   fsRoot: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.82)',
@@ -766,4 +986,11 @@ const styles = StyleSheet.create({
   fsImage: { width: width * 0.72, height: height * 0.34, marginBottom: 12 },
   fsFrom: { color: 'rgba(255,255,255,0.9)', fontSize: FontSizes.md, fontWeight: '700' },
   fsGift: { color: '#FFD700', fontSize: FontSizes.lg, fontWeight: '900', marginTop: 6, textAlign: 'center' },
+  fsCreator: {
+    color: 'rgba(253,224,71,0.95)',
+    fontSize: FontSizes.sm,
+    fontWeight: '800',
+    marginTop: 10,
+    textAlign: 'center',
+  },
 });

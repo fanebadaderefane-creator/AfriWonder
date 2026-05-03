@@ -2,6 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { getBackendOrigin, DEFAULT_BACKEND_ORIGIN } from '../config/backendBase';
+import { devLog } from '../utils/devLog';
 
 /**
  * Même hôte que l’API (en dev web : localhost:3000, pas le port Metro).
@@ -175,7 +176,7 @@ class SocketService {
     });
 
     this.socket.on('connect', () => {
-      console.log('[Socket] Connected:', this.socket?.id);
+      devLog('[Socket] Connected:', this.socket?.id);
       // Pas de handshake applicatif côté backend — la connexion vaut auth.
       // On synthétise `authenticated` pour préserver le contrat avec `_layout.tsx`.
       this.notifyListeners('authenticated', { id: this.socket?.id });
@@ -199,7 +200,7 @@ class SocketService {
     });
 
     this.socket.on('disconnect', (reason: string) => {
-      console.log('[Socket] Disconnected:', reason);
+      devLog('[Socket] Disconnected:', reason);
       this.notifyListeners('disconnected', { reason });
     });
 
@@ -208,7 +209,7 @@ class SocketService {
       if (/unauthorized/i.test(msg)) {
         if (typeof __DEV__ !== 'undefined' && __DEV__ && !this.loggedUnauthorizedOnce) {
           this.loggedUnauthorizedOnce = true;
-          console.log('[Socket] Handshake refusé une fois (token / timing) — reconnexion automatique.');
+          devLog('[Socket] Handshake refusé une fois (token / timing) — reconnexion automatique.');
         }
         return;
       }

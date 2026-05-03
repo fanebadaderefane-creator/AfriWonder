@@ -1,8 +1,11 @@
 import axios from 'axios';
-import Constants from 'expo-constants';
 import { secureStorage } from '../utils/secureStorage';
 import { getBackendOrigin } from '../config/backendBase';
-import { useAuthStore } from '../store/authStore';
+import { accessTokenExpiresWithin } from '../utils/jwtPayload';
+import { logoutAfterFailedRefresh, tryRefreshAccessToken } from './tokenRefresh';
+import { attachUserFacingApiError } from '../utils/userFacingError';
+import { devLog } from '../utils/devLog';
+import { getAfriDeviceIdForRequestHeader } from '../utils/afwDeviceRequestId';
 
 // Même route que la PWA : `/api/proxy` sur l’origine backend (Express, port 3000 en dev).
 const getProxyBaseUrl = () => getBackendOrigin();
@@ -39,18 +42,32 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.request.use(
   async (config) => {
     try {
-      const token = await secureStorage.getItem('accessToken');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+      /**
+       * Évite un 401 en plein multipart : sur RN, le réessai axios avec le même `FormData` peut
+       * produire « Network Error ». On rafraîchit avant envoi si l’access token expire bientôt.
+       */
+      if (config.data instanceof FormData) {
+        let token = await secureStorage.getItem('accessToken');
+        if (accessTokenExpiresWithin(token, 90)) {
+          await tryRefreshAccessToken();
+          token = await secureStorage.getItem('accessToken');
+        }
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+      } else {
+        const token = await secureStorage.getItem('accessToken');
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
       }
     } catch (error) {
-      console.error('Error getting token:', error);
+      devLog('Error getting token:', error);
     }
-    /** Empreinte stable par installation Expo — alertes de connexion (éviter `import()` ici : chunk async → Network Error sur le web). */
+    /** Comme `mobileClient` : toujours présent pour l’exemption CSRF côté API (cookies tiers + Origin mobile). */
     try {
-      const raw = Constants.installationId || Constants.sessionId;
-      if (raw && typeof raw === 'string' && config.headers) {
-        (config.headers as Record<string, string>)['X-AFW-Device-Id'] = raw.slice(0, 128);
+      if (config.headers) {
+        (config.headers as Record<string, string>)['X-AFW-Device-Id'] = getAfriDeviceIdForRequestHeader();
       }
     } catch {
       /* ignore */
@@ -71,54 +88,30 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      try {
-        const refreshToken = await secureStorage.getItem('refreshToken');
-        if (refreshToken) {
-          // Use proxy for token refresh too
-          const proxyBase = `${getProxyBaseUrl()}/api/proxy`;
-          const response = await axios.post(`${proxyBase}/auth/refresh`, {
-            refreshToken,
-          }, {
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-          });
-
-          const data = response.data?.data || response.data;
-          const { accessToken, refreshToken: newRefreshToken } = data;
-          await secureStorage.setItem('accessToken', accessToken);
-          let nextRefresh = refreshToken;
-          if (newRefreshToken) {
-            await secureStorage.setItem('refreshToken', newRefreshToken);
-            nextRefresh = newRefreshToken;
-          }
-
-          /** Garde Zustand aligné avec le stockage persistant (Web + natif). */
-          useAuthStore.setState({
-            accessToken,
-            refreshToken: typeof nextRefresh === 'string' ? nextRefresh : null,
-          });
-
-          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+      const refreshToken = await secureStorage.getItem('refreshToken');
+      if (refreshToken?.trim()) {
+        const ok = await tryRefreshAccessToken();
+        if (ok) {
+          const accessToken = await secureStorage.getItem('accessToken');
+          originalRequest.headers.Authorization = `Bearer ${accessToken || ''}`;
           // Sans ceci, le retry garde `Content-Type: application/json` → multer ne reçoit pas le fichier (400).
           clearContentTypeForFormData(originalRequest);
+          /**
+           * Multipart + même instance `FormData` : souvent cassé sur RN après le premier envoi.
+           * Le refresh proactif (intercepteur requête) évite en général ce 401 ; si on arrive quand même ici,
+           * ne pas réessayer : l’appelant doit refaire un `FormData` neuf (ex. `profile-edit` via `fetch`).
+           */
+          if (originalRequest.data instanceof FormData) {
+            attachUserFacingApiError(error);
+            return Promise.reject(error);
+          }
           return apiClient(originalRequest);
         }
-      } catch {
-        // Refresh failed, user needs to re-login
-        await secureStorage.deleteItem('accessToken');
-        await secureStorage.deleteItem('refreshToken');
-        await secureStorage.deleteItem('user');
-        useAuthStore.setState({
-          user: null,
-          accessToken: null,
-          refreshToken: null,
-          isAuthenticated: false,
-        });
+        await logoutAfterFailedRefresh();
       }
     }
 
+    attachUserFacingApiError(error);
     return Promise.reject(error);
   }
 );

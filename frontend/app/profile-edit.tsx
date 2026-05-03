@@ -17,11 +17,19 @@ import {
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { applyAfriDeviceTrustToFetchInit } from '../src/utils/afwDeviceRequestId';
+import { cacheDirectory, copyAsync } from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { Colors, Spacing } from '../src/theme/colors';
 import { useAuthStore } from '../src/store/authStore';
 import apiClient from '../src/api/client';
+import { tryRefreshAccessToken } from '../src/api/tokenRefresh';
+import { getBackendOrigin } from '../src/config/backendBase';
+import { accessTokenExpiresWithin } from '../src/utils/jwtPayload';
 import { secureStorage } from '../src/utils/secureStorage';
+import { getAlertMessageForCaughtError } from '../src/utils/userFacingError';
 import { toAbsoluteMediaUrl } from '../src/utils/absoluteMediaUrl';
 import { ProfileAvatarCropModal } from '../src/components/profile/ProfileAvatarCropModal';
 
@@ -40,6 +48,27 @@ function isImagePickerErrorResult(value: unknown): value is ImagePicker.ImagePic
   );
 }
 
+/** Android : SAF via `expo-document-picker` contourne de nombreux crashs au retour du sélecteur photo système. */
+function imagePickerAssetFromDocument(
+  asset: DocumentPicker.DocumentPickerAsset,
+): ImagePicker.ImagePickerAsset | null {
+  const uri = asset.uri?.trim();
+  if (!uri) return null;
+  const mime = String(asset.mimeType || '')
+    .toLowerCase()
+    .trim();
+  if (mime && !mime.startsWith('image/')) return null;
+  return {
+    uri,
+    width: 0,
+    height: 0,
+    fileName: asset.name ?? null,
+    mimeType: asset.mimeType,
+    type: 'image',
+    fileSize: asset.size,
+  };
+}
+
 function mimeForImageExt(ext: string): string {
   const e = String(ext || '')
     .toLowerCase()
@@ -53,6 +82,85 @@ function mimeForImageExt(ext: string): string {
 }
 
 type ProfileImagePickMeta = { mimeType?: string | null; fileName?: string | null };
+
+/**
+ * Limite le plus grand côté avant la modale de crop — évite OOM / crash natif sur grosses photos.
+ * Android : marge plus basse (RAM / `content://` / retour picker / document picker SAF).
+ */
+const PROFILE_PICK_MAX_PIXEL_EDGE = Platform.OS === 'android' ? 1024 : 1920;
+
+/** Copie `content://` → cache `file://` : décodage et manipulateAsync sont beaucoup plus stables. */
+async function copyAndroidPickerUriToCacheIfNeeded(uri: string): Promise<string> {
+  if (Platform.OS !== 'android') return uri;
+  const u = uri.trim();
+  if (!u.startsWith('content://')) return u;
+  const dir = cacheDirectory;
+  if (!dir) return u;
+  const dest = `${dir}afw-profile-pick-${Date.now()}.jpg`;
+  try {
+    await copyAsync({ from: u, to: dest });
+    return dest;
+  } catch {
+    return u;
+  }
+}
+
+function getImageSizeAsync(uri: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    Image.getSize(uri, (w, h) => resolve({ width: w, height: h }), reject);
+  });
+}
+
+async function downscaleUriForProfileCrop(
+  uri: string,
+  pickerW?: number | null,
+  pickerH?: number | null,
+): Promise<string> {
+  const raw = uri.trim();
+  if (!raw) return uri;
+  const work = await copyAndroidPickerUriToCacheIfNeeded(raw);
+  const maxEdge = PROFILE_PICK_MAX_PIXEL_EDGE;
+  const compressPick = Platform.OS === 'android' ? 0.82 : 0.9;
+
+  const blindResizeAndroid = async (): Promise<string> => {
+    if (Platform.OS !== 'android') return work;
+    try {
+      const out = await ImageManipulator.manipulateAsync(
+        work,
+        [{ resize: { width: maxEdge } }],
+        { compress: compressPick, format: ImageManipulator.SaveFormat.JPEG },
+      );
+      return out.uri;
+    } catch {
+      return work;
+    }
+  };
+
+  try {
+    let w = Number(pickerW) || 0;
+    let h = Number(pickerH) || 0;
+    if (!w || !h) {
+      try {
+        const sz = await getImageSizeAsync(work);
+        w = sz.width;
+        h = sz.height;
+      } catch {
+        return blindResizeAndroid();
+      }
+    }
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return blindResizeAndroid();
+    const longest = Math.max(w, h);
+    if (longest <= maxEdge) return work;
+    const action = w >= h ? { resize: { width: maxEdge } } : { resize: { height: maxEdge } };
+    const out = await ImageManipulator.manipulateAsync(work, [action], {
+      compress: Platform.OS === 'android' ? 0.82 : 0.9,
+      format: ImageManipulator.SaveFormat.JPEG,
+    });
+    return out.uri;
+  } catch {
+    return blindResizeAndroid();
+  }
+}
 
 /** Web : FormData attend un File ; natif : objet `{ uri, name, type }` (MIME depuis le picker si URI sans extension). */
 async function appendProfileImageToFormData(
@@ -105,39 +213,79 @@ async function appendProfileImageToFormData(
   formData.append('file', { uri, name: `profile.${ext}`, type: mimeType } as any);
 }
 
-function formatAvatarUploadError(e: unknown): string {
-  const ax = e as {
-    message?: string;
-    code?: string;
-    response?: { status?: number; data?: { error?: string | { message?: string } } };
+/**
+ * Upload avatar via `fetch` (RN) : nouveau `FormData` à chaque tentative — évite le « Network Error »
+ * d’Axios quand un 401 précède un réessai avec le même multipart.
+ */
+async function uploadProfileImageFileWithFetch(
+  uri: string,
+  meta?: ProfileImagePickMeta
+): Promise<{ file_url: string }> {
+  const origin = getBackendOrigin().replace(/\/$/, '');
+  const url = `${origin}/api/proxy/upload/image`;
+
+  const postOnce = async (): Promise<Response> => {
+    const formData = new FormData();
+    await appendProfileImageToFormData(formData, uri, meta);
+    let token = ((await secureStorage.getItem('accessToken')) || '').trim();
+    if (accessTokenExpiresWithin(token, 120)) {
+      await tryRefreshAccessToken();
+      token = ((await secureStorage.getItem('accessToken')) || '').trim();
+    }
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return fetch(url, applyAfriDeviceTrustToFetchInit({ method: 'POST', headers, body: formData }));
   };
-  if (ax?.response?.status === 401) {
-    return 'Session expirée. Reconnectez-vous puis réessayez.';
+
+  const runWithNetworkRetry = async (): Promise<Response> => {
+    try {
+      return await postOnce();
+    } catch {
+      await new Promise((r) => setTimeout(r, 800));
+      try {
+        return await postOnce();
+      } catch {
+        const err = new Error('fetch failed') as Error & { code?: string };
+        err.code = 'FETCH_NETWORK';
+        throw err;
+      }
+    }
+  };
+
+  let res = await runWithNetworkRetry();
+  if (res.status === 401) {
+    const refreshed = await tryRefreshAccessToken();
+    if (!refreshed) {
+      throw Object.assign(new Error('401'), { response: { status: 401 } });
+    }
+    res = await runWithNetworkRetry();
   }
-  if (ax?.response?.status === 403) {
-    return 'Action refusée. Vérifiez vos droits puis réessayez.';
+
+  const text = await res.text();
+  let body: unknown = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = null;
   }
-  if (
-    ax?.code === 'ECONNABORTED' ||
-    String(ax?.message || '')
-      .toLowerCase()
-      .includes('timeout')
-  ) {
-    return 'Délai dépassé. Réessayez avec une photo plus légère ou un meilleur réseau.';
+
+  if (!res.ok) {
+    throw {
+      response: { status: res.status, data: body },
+      message: `HTTP ${res.status}`,
+    };
   }
-  if (String(ax?.message || '') === 'Network Error') {
-    return 'Réseau instable pendant l’envoi. Vérifiez le Wi‑Fi / données puis réessayez.';
+
+  const d = body as { data?: { file_url?: string }; file_url?: string };
+  const fileUrl = d?.data?.file_url || d?.file_url;
+  if (!fileUrl || typeof fileUrl !== 'string') {
+    throw new Error('Réponse upload invalide');
   }
-  const msg = ax?.response?.data?.error;
-  const str =
-    typeof msg === 'string'
-      ? msg
-      : msg && typeof msg === 'object' && 'message' in msg
-        ? String((msg as { message?: string }).message)
-        : e instanceof Error
-          ? e.message
-          : 'Upload impossible';
-  return String(str).slice(0, 280);
+  return { file_url: fileUrl };
+}
+
+function formatAvatarUploadError(e: unknown): string {
+  return getAlertMessageForCaughtError(e);
 }
 
 export default function ProfileEditScreen() {
@@ -192,32 +340,7 @@ export default function ProfileEditScreen() {
     }
     setUploadingAvatar(true);
     try {
-      /** Network Error transitoire (Wi‑Fi qui décroche, HTTP/1.1 keep‑alive cassé) → 1 retry court. */
-      const doUpload = async () => {
-        const formData = new FormData();
-        await appendProfileImageToFormData(formData, uri, meta);
-        return apiClient.post('/upload/image', formData, {
-          timeout: 120000,
-          maxBodyLength: Infinity,
-          maxContentLength: Infinity,
-        });
-      };
-      let uploadRes;
-      try {
-        uploadRes = await doUpload();
-      } catch (firstErr: unknown) {
-        const msg = String((firstErr as { message?: string })?.message || '');
-        if (msg === 'Network Error') {
-          await new Promise(r => setTimeout(r, 800));
-          uploadRes = await doUpload();
-        } else {
-          throw firstErr;
-        }
-      }
-      const fileUrl = uploadRes.data?.data?.file_url || uploadRes.data?.file_url;
-      if (!fileUrl || typeof fileUrl !== 'string') {
-        throw new Error('Réponse upload invalide');
-      }
+      const { file_url: fileUrl } = await uploadProfileImageFileWithFetch(uri, meta);
       const putRes = await apiClient.put('/users/me', { profile_image: fileUrl });
       const updated = putRes.data?.data ?? putRes.data;
       if (!updated?.id) throw new Error('Mise à jour profil refusée');
@@ -241,23 +364,35 @@ export default function ProfileEditScreen() {
     }
   };
 
-  const openAvatarPreviewFromAsset = (asset: ImagePicker.ImagePickerAsset) => {
+  const openAvatarPreviewFromAsset = async (asset: ImagePicker.ImagePickerAsset) => {
     const uri = asset.uri?.trim();
     if (!uri) return;
     if (asset.type === 'video') {
       Alert.alert('Format', 'Choisissez une photo, pas une vidéo.');
       return;
     }
-    setAvatarDraft({
-      uri,
-      mimeType: asset.mimeType ?? null,
-      fileName: asset.fileName ?? null,
-    });
+    try {
+      const safeUri = await downscaleUriForProfileCrop(uri, asset.width ?? null, asset.height ?? null);
+      setAvatarDraft({
+        uri: safeUri,
+        mimeType: 'image/jpeg',
+        fileName: safeUri === uri ? (asset.fileName ?? null) : 'profile.jpg',
+      });
+    } catch {
+      setAvatarDraft({
+        uri,
+        mimeType: asset.mimeType ?? null,
+        fileName: asset.fileName ?? null,
+      });
+    }
   };
 
   const scheduleAvatarPreview = (asset: ImagePicker.ImagePickerAsset) => {
     InteractionManager.runAfterInteractions(() => {
-      requestAnimationFrame(() => openAvatarPreviewFromAsset(asset));
+      const run = () => void openAvatarPreviewFromAsset(asset);
+      /** Délai Android : laisser la MainActivity se stabiliser après la galerie / caméra (évite crash au retour). */
+      if (Platform.OS === 'android') setTimeout(run, 480);
+      else requestAnimationFrame(run);
     });
   };
 
@@ -308,6 +443,25 @@ export default function ProfileEditScreen() {
 
   const pickAvatarFromLibrary = async () => {
     try {
+      /**
+       * Android : `launchImageLibraryAsync` peut faire fermer l’app (MainActivity / intent / RN New Arch).
+       * Le file picker SAF (`copyToCacheDirectory`) est le parcours le plus stable pour une image de profil.
+       */
+      if (Platform.OS === 'android') {
+        const result = await DocumentPicker.getDocumentAsync({
+          type: 'image/*',
+          copyToCacheDirectory: true,
+        });
+        if (result.canceled || !result.assets?.[0]) return;
+        const mapped = imagePickerAssetFromDocument(result.assets[0]);
+        if (!mapped) {
+          Alert.alert('Format', 'Choisissez une image (JPG, PNG, …).');
+          return;
+        }
+        scheduleAvatarPreviewDeduped(mapped);
+        return;
+      }
+
       if (Platform.OS !== 'web') {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted' && String(status) !== 'limited') {
@@ -316,13 +470,12 @@ export default function ProfileEditScreen() {
         }
       }
       /**
-       * Ne pas utiliser `allowsEditing` / crop natif sur Android : retour fréquent = fermeture de l’app
-       * (activité crop + RN New Architecture). L’aperçu dans la modale suffit.
+       * iOS / web : galerie système `expo-image-picker`. (Android utilise le file picker ci-dessus.)
        */
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: resolveProfilePickerMediaTypes(),
         allowsEditing: false,
-        quality: Platform.OS === 'android' ? 0.85 : 0.88,
+        quality: 0.88,
       });
       if (result.canceled || !result.assets[0]?.uri) return;
       scheduleAvatarPreviewDeduped(result.assets[0]);
@@ -343,7 +496,7 @@ export default function ProfileEditScreen() {
       }
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: false,
-        quality: Platform.OS === 'android' ? 0.85 : 0.88,
+        quality: Platform.OS === 'android' ? 0.72 : 0.88,
       });
       if (result.canceled || !result.assets[0]?.uri) return;
       scheduleAvatarPreviewDeduped(result.assets[0]);
@@ -388,9 +541,8 @@ export default function ProfileEditScreen() {
           { text: 'OK', onPress: () => router.back() },
         ]);
       }
-    } catch (e: any) {
-      const msg = e?.response?.data?.error?.message || e?.message;
-      Alert.alert('Erreur', msg ? String(msg).slice(0, 200) : 'Enregistrement impossible');
+    } catch (e: unknown) {
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
     } finally {
       setSaving(false);
     }

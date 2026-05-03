@@ -22,6 +22,9 @@ import coursesApi from '../../src/api/coursesApi';
 import apiClient from '../../src/api/client';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { useAuthStore } from '../../src/store/authStore';
+import { featureFlags } from '../../src/config/featureFlags';
+import { getDemoCourseDetailView, isAfriWonderDemoId } from '../../src/demo/superAppDemoSeed';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
 
 type Lesson = {
   id: string;
@@ -90,12 +93,18 @@ export default function CourseDetailScreen() {
         setEnrollmentProgress(null);
       }
     } catch (err) {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-        || (err as { message?: string })?.message
-        || 'Impossible de charger ce cours.';
-      setError(msg);
-      setCourse(null);
+      const demo = featureFlags.superAppDemoContent ? getDemoCourseDetailView(courseId) : null;
+      if (demo) {
+        setCourse(demo);
+        setError(null);
+      } else {
+        const msg =
+          (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+          || (err as { message?: string })?.message
+          || 'Impossible de charger ce cours.';
+        setError(msg);
+        setCourse(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -114,6 +123,10 @@ export default function CourseDetailScreen() {
   const runEnroll = async (phoneArg?: string) => {
     if (!courseId || !user) {
       Alert.alert('Connexion requise', 'Connectez-vous pour vous inscrire à ce cours.');
+      return;
+    }
+    if (isAfriWonderDemoId(courseId)) {
+      Alert.alert('Démonstration', 'Cours fictif : aucune inscription ni paiement réel.');
       return;
     }
     setEnrolling(true);
@@ -208,6 +221,7 @@ export default function CourseDetailScreen() {
       </View>
 
       <ScrollView key={courseId} showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        {isAfriWonderDemoId(courseId) ? <DemoContentBanner /> : null}
         {thumb ? (
           <Image source={{ uri: thumb }} style={styles.courseImage} />
         ) : (

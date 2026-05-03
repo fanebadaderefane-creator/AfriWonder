@@ -45,9 +45,7 @@ export const errorHandler = (
     err.isOperational !== true &&
     !isDbConnectionError;
   const clientSafeMessage = hideInternalDetails
-    ? prismaSchemaMismatch
-      ? 'Erreur serveur : schéma base de données incompatible (migrations Prisma à appliquer).'
-      : 'Une erreur interne est survenue. Réessayez plus tard.'
+    ? 'Une erreur est survenue. Réessayez dans quelques instants.'
     : message;
 
   logger.error(rawMessage, err, {
@@ -74,7 +72,7 @@ export const errorHandler = (
     error: {
       message: clientSafeMessage,
       ...(isDbConnectionError && { code: 'DATABASE_UNAVAILABLE' }),
-      ...(opCode && !isDbConnectionError ? { code: opCode } : {}),
+      ...(opCode && !isDbConnectionError && !hideInternalDetails ? { code: opCode } : {}),
       ...(process.env.NODE_ENV === 'development' && {
         stack: err.stack,
       }),

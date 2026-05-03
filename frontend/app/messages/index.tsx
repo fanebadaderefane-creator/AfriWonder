@@ -23,6 +23,7 @@ import apiClient from '../../src/api/client';
 import socketService from '../../src/services/socketService';
 import { useAuthStore } from '../../src/store/authStore';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
+import { devLog } from '../../src/utils/devLog';
 import { profileAvatarUri } from '../../src/utils/avatarFallback';
 
 const TABS = ['Discussions', 'Statuts', 'Appels'];
@@ -136,7 +137,7 @@ export default function MessagesListScreen() {
       const filtered = users.filter((u: any) => u && (u.username || u.full_name));
       setRealUsers(filtered);
     } catch (err: any) {
-      console.log('Could not load real users, trying direct:', err?.message);
+      devLog('Could not load real users, trying direct:', err?.message);
     }
   }, []);
 
@@ -193,7 +194,7 @@ export default function MessagesListScreen() {
         );
       }
     } catch (err) {
-      console.log('Error loading conversations:', err);
+      devLog('Error loading conversations:', err);
       setConversations([]);
     } finally { setLoading(false); }
   }, []);
@@ -269,7 +270,7 @@ export default function MessagesListScreen() {
         });
       }
     } catch (err) {
-      console.log('Error starting conversation:', err);
+      devLog('Error starting conversation:', err);
       Alert.alert('Erreur', 'Impossible de démarrer la conversation');
     }
   };

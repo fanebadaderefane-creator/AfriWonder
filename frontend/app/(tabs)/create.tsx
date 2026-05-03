@@ -372,7 +372,8 @@ export default function CreateScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['videos'],
-      allowsEditing: true,
+      /** Android : l’éditeur système après sélection peut faire fermer l’app / instabilité (audit mobile-first). */
+      allowsEditing: Platform.OS !== 'android',
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
@@ -420,7 +421,7 @@ export default function CreateScreen() {
     setCountdownTick(null);
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['videos'],
-      allowsEditing: true,
+      allowsEditing: Platform.OS !== 'android',
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
@@ -645,7 +646,7 @@ export default function CreateScreen() {
       }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
+        allowsEditing: Platform.OS !== 'android',
         aspect: [9, 16],
         quality: 0.85,
       });

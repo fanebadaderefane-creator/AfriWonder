@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import tontinesApi, { Tontine } from '../../src/api/tontinesApi';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 
 const STATUS_LABEL: Record<string, string> = {
   draft: 'En préparation',
@@ -54,11 +55,8 @@ export default function TontinesListScreen() {
     try {
       const data = await tontinesApi.listMine();
       setItems(data);
-    } catch (err) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-        || 'Impossible de charger vos tontines.';
-      Alert.alert('Erreur', String(msg));
+    } catch (err: unknown) {
+      Alert.alert('Erreur', getAlertMessageForCaughtError(err));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -82,11 +80,8 @@ export default function TontinesListScreen() {
       setJoinModalOpen(false);
       await load();
       Alert.alert('Rejointe !', 'Vous êtes maintenant membre de cette tontine.');
-    } catch (err) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-        || 'Code invalide ou tontine indisponible.';
-      Alert.alert('Impossible de rejoindre', String(msg));
+    } catch (err: unknown) {
+      Alert.alert('Impossible de rejoindre', getAlertMessageForCaughtError(err));
     } finally {
       setJoining(false);
     }

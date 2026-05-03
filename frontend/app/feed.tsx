@@ -14,6 +14,7 @@ import { useOfflineData } from '../src/hooks/useOfflineData';
 import { FeedSkeleton } from '../src/components/SkeletonScreens';
 import ReportModal from '../src/components/ReportModal';
 import apiClient from '../src/api/client';
+import { getAlertMessageForCaughtError } from '../src/utils/userFacingError';
 import { useAuthStore } from '../src/store/authStore';
 import { Image as ExpoImage } from 'expo-image';
 import { profileAvatarUri, uiAvatarFromSeed } from '../src/utils/avatarFallback';
@@ -464,10 +465,9 @@ export default function FeedScreen() {
           return apply(prev);
         });
       } catch (e: unknown) {
-        const err = e as { response?: { data?: { error?: { message?: string } } }; message?: string };
-        showMomentCommentError(err.response?.data?.error?.message || err.message || 'Impossible de liker ce commentaire.');
+        showMomentCommentError(getAlertMessageForCaughtError(e));
       }
-    },
+   },
     [commentsModalPost?.momentSource, showMomentCommentError],
   );
 
@@ -501,12 +501,7 @@ export default function FeedScreen() {
       await loadCommentsForPost(post);
       await refresh();
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: { message?: string } } }; message?: string };
-      showMomentCommentError(
-        err.response?.data?.error?.message ||
-          err.message ||
-          (editingCommentId ? 'Impossible de modifier le commentaire.' : 'Impossible d’envoyer le commentaire.')
-      );
+      showMomentCommentError(getAlertMessageForCaughtError(e));
     } finally {
       setCommentSending(false);
     }
@@ -545,8 +540,7 @@ export default function FeedScreen() {
           await loadCommentsForPost(commentsModalPost);
           await refresh();
         } catch (e: unknown) {
-          const err = e as { response?: { data?: { error?: { message?: string } } }; message?: string };
-          showMomentCommentError(err.response?.data?.error?.message || err.message || 'Impossible de supprimer ce commentaire.');
+          showMomentCommentError(getAlertMessageForCaughtError(e));
         }
       };
 
@@ -641,8 +635,7 @@ export default function FeedScreen() {
         Alert.alert('Supprimé', 'Votre publication a été supprimée.');
       }
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: { message?: string } } }; message?: string };
-      const msg = err.response?.data?.error?.message || err.message || 'Impossible de supprimer cette publication.';
+      const msg = getAlertMessageForCaughtError(e);
       if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.alert === 'function') {
         window.alert(msg);
       } else {

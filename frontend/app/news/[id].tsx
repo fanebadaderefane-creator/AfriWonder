@@ -16,6 +16,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import newsApi, { NewsArticle } from '../../src/api/newsApi';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { ImageOrPlaceholder } from '../../src/components/common/ImageOrPlaceholder';
+import { getDemoNewsArticleById, isAfriWonderDemoId } from '../../src/demo/superAppDemoSeed';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
 
 function stripHtml(html: string): string {
   if (!html) return '';
@@ -60,6 +62,7 @@ export default function ArticleDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [liking, setLiking] = useState(false);
+  const [fromDemo, setFromDemo] = useState(false);
 
   const load = useCallback(async () => {
     if (!articleId) {
@@ -68,16 +71,23 @@ export default function ArticleDetailScreen() {
       return;
     }
     setError(null);
+    setFromDemo(false);
     try {
       const a = await newsApi.get(articleId);
       setArticle(a);
     } catch (err) {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-        || (err as { message?: string })?.message
-        || 'Impossible de charger cet article.';
-      setError(msg);
-      setArticle(null);
+      const demo = getDemoNewsArticleById(articleId);
+      if (demo) {
+        setArticle(demo);
+        setFromDemo(true);
+      } else {
+        const msg =
+          (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+          || (err as { message?: string })?.message
+          || 'Impossible de charger cet article.';
+        setError(msg);
+        setArticle(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -108,6 +118,10 @@ export default function ArticleDetailScreen() {
 
   const onLike = async () => {
     if (!articleId) return;
+    if (isAfriWonderDemoId(articleId)) {
+      Alert.alert('Démonstration', 'Article fictif : pas d’enregistrement de réaction.');
+      return;
+    }
     setLiking(true);
     try {
       await newsApi.like(articleId);
@@ -170,6 +184,7 @@ export default function ArticleDetailScreen() {
       </View>
 
       <ScrollView key={articleId} showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        {fromDemo ? <DemoContentBanner /> : null}
         <ImageOrPlaceholder uri={heroUri} style={styles.heroImage} icon="newspaper-outline" iconSize={48} />
         <View style={styles.meta}>
           <View style={styles.sourceBadge}>

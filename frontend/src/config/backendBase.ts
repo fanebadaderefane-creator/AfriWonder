@@ -1,10 +1,16 @@
+/* eslint-disable max-lines -- origine backend multi-plateforme (web / Android probe) ; refactor PR dédiée si besoin. */
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import { NativeModules, Platform } from 'react-native';
 import { stripApiSuffix, stripTrailingSlash } from '../utils/urlNormalize';
-import { orderedPrivateLanHostsFromStrings } from './devBackendHostUtils';
+import {
+  isLikelyEphemeralDevBackendOrigin,
+  orderedPrivateLanHostsFromStrings,
+  preferLocalhostBackendWhenWebDevOnLocalhost,
+} from './devBackendHostUtils';
 import { unsafeBackendOriginReasonForNativeRelease } from './nativeReleaseBackendUrlSafety';
 import { shouldHoldUiForAndroidDevBackendProbe } from './androidDevProbeUiPolicy';
+import { applyAfriDeviceTrustToFetchInit } from '../utils/afwDeviceRequestId';
 
 /**
  * Même défaut dev que la PWA (racine `.env.example`) : `VITE_API_URL=http://localhost:3000/api`.
@@ -281,7 +287,9 @@ export async function probeAndroidDevBackendOrigin(): Promise<void> {
     androidDevOverrideReady = true;
     return;
   }
-  if (readConfiguredOrigin()) {
+  const configured = readConfiguredOrigin();
+  const mustProbe = !configured || isLikelyEphemeralDevBackendOrigin(configured);
+  if (!mustProbe) {
     androidDevOverrideReady = true;
     return;
   }
@@ -289,10 +297,14 @@ export async function probeAndroidDevBackendOrigin(): Promise<void> {
 
   const syncOrigin = stripTrailingSlash(computeNativeDevBackendOriginSync());
   const lanOrigins = packagerPrivateLanHostsOrdered().map((h) => `http://${h}:3000`);
-  /** LAN d’abord si Metro l’expose (MEmu + `hostUri` en 127.0.0.1), puis sync, puis alias émulateur. */
+  const rewrittenConfigured = configured
+    ? stripTrailingSlash(rewriteLocalhostOriginForAndroidDev(configured))
+    : '';
+  /** LAN d’abord si Metro l’expose (MEmu + `hostUri` en 127.0.0.1), puis sync, `.env` réécrit, alias émulateur. */
   const candidates = [
     ...lanOrigins,
     syncOrigin,
+    ...(rewrittenConfigured ? [rewrittenConfigured] : []),
     'http://10.0.2.2:3000',
     'http://10.0.3.2:3000',
   ];
@@ -309,7 +321,10 @@ export async function probeAndroidDevBackendOrigin(): Promise<void> {
     try {
       const ac = new AbortController();
       const t = setTimeout(() => ac.abort(), 4000);
-      const res = await fetch(`${origin}/health`, { method: 'GET', signal: ac.signal });
+      const res = await fetch(
+        `${origin}/health`,
+        applyAfriDeviceTrustToFetchInit({ method: 'GET', signal: ac.signal }),
+      );
       clearTimeout(t);
       if (res.ok) {
         androidDevOverrideOrigin = stripApiSuffix(origin);
@@ -348,12 +363,15 @@ export function hasExplicitBackendOriginConfigured(): boolean {
   return readConfiguredOrigin().length > 0;
 }
 
-/** Voir `androidDevProbeUiPolicy` — évite l’écran noir prolongé quand l’URL backend est déjà connue. */
+/** Voir `androidDevProbeUiPolicy` — évite l’écran noir prolongé quand l’URL backend est déjà stable (HTTPS prod, etc.). */
 export function shouldBlockUiUntilAndroidDevBackendProbe(): boolean {
+  const configured = readConfiguredOrigin();
+  const needsLanBackendProbe =
+    !configured || isLikelyEphemeralDevBackendOrigin(configured);
   return shouldHoldUiForAndroidDevBackendProbe({
     platformOs: Platform.OS,
     isDev: typeof __DEV__ !== 'undefined' && !!__DEV__,
-    hasExplicitBackendOrigin: hasExplicitBackendOriginConfigured(),
+    needsLanBackendProbe,
   });
 }
 
@@ -404,7 +422,20 @@ function rewriteLocalhostOriginForAndroidDev(origin: string): string {
  *   sauf `EXPO_PUBLIC_ALLOW_UNSAFE_BACKEND_URL_ON_NATIVE_RELEASE=1` (APK internes uniquement).
  */
 export function getBackendOrigin(): string {
-  const configured = readConfiguredOrigin();
+  let configured = readConfiguredOrigin();
+  if (
+    configured
+    && Platform.OS === 'web'
+    && typeof __DEV__ !== 'undefined'
+    && __DEV__
+    && typeof window !== 'undefined'
+  ) {
+    configured = preferLocalhostBackendWhenWebDevOnLocalhost(
+      configured,
+      window.location?.hostname,
+      DEFAULT_BACKEND_ORIGIN,
+    );
+  }
   if (configured) {
     const isNativeRelease =
       Platform.OS !== 'web'
@@ -416,6 +447,17 @@ export function getBackendOrigin(): string {
         logUnsafeReleaseBackendUrlOnce(unsafeReason);
         return MISSING_BACKEND_URL_SENTINEL;
       }
+    }
+
+    if (
+      Platform.OS === 'android'
+      && typeof __DEV__ !== 'undefined'
+      && __DEV__
+      && isLikelyEphemeralDevBackendOrigin(configured)
+      && androidDevOverrideReady
+      && androidDevOverrideOrigin !== null
+    ) {
+      return androidDevOverrideOrigin;
     }
 
     return rewriteLocalhostOriginForAndroidDev(configured);

@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import apiClient from '../../src/api/client';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 import { useAuthStore } from '../../src/store/authStore';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 
@@ -102,8 +103,8 @@ export default function ReplayScreen() {
       await apiClient.post(`/live/${encodeURIComponent(String(id))}/replay/chat`, { message: msg });
       setReplayInput('');
       await loadLive();
-    } catch (e: any) {
-      Alert.alert('Erreur', e.response?.data?.error || e.response?.data?.message || 'Envoi impossible');
+    } catch (e: unknown) {
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
     } finally {
       setSendingReplay(false);
     }
@@ -122,7 +123,9 @@ export default function ReplayScreen() {
       Alert.alert('Moment fort créé!', 'Le clip est prêt à être reposté dans votre feed.', [{ text: 'OK' }]);
       setShowClip(false); setClipStart(''); setClipEnd(''); setClipTitle('');
       loadLive();
-    } catch (e: any) { Alert.alert('Erreur', e.response?.data?.detail || 'Erreur'); }
+    } catch (e: unknown) {
+      Alert.alert('Erreur', getAlertMessageForCaughtError(e));
+    }
     finally { setClipping(false); }
   };
 
@@ -227,7 +230,7 @@ export default function ReplayScreen() {
           <TouchableOpacity style={styles.republishBtn} onPress={async () => {
             try {
               Alert.alert('Non disponible', 'Aucun endpoint « republier le live » côté API Node pour le moment.');
-            } catch (e: any) { Alert.alert('Erreur', e.response?.data?.detail || 'Erreur'); }
+            } catch (e: unknown) { Alert.alert('Erreur', getAlertMessageForCaughtError(e)); }
           }}>
             <Ionicons name="share-social" size={20} color="#FFF" />
             <Text style={styles.republishBtnText}>Republier le live complet</Text>

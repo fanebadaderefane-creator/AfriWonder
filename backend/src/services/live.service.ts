@@ -12,7 +12,8 @@ import { normalizeOrangeMoneySubscriberMl } from '../utils/orangeMoneyPhone.js';
 import crypto from 'crypto';
 import commissionService from './commission.service.js';
 import coinsService from './coins.service.js';
-import { COIN_FCFA_APPROX_PURCHASE_PER_COIN } from '../config/coinEconomy.js';
+import { COIN_FCFA_APPROX_PURCHASE_PER_COIN, COIN_FCFA_PER_COIN_PAYOUT } from '../config/coinEconomy.js';
+import { COMMISSION_VERTICALS } from '../config/commissions.js';
 import { generateThumbnailForLiveStreamId, pickLiveReplaySrc } from './videoThumbnail.service.js';
 import { maskProfanityFr } from '../utils/liveProfanityMask.js';
 import { transcribeLiveAudioWhisper } from './liveStt.service.js';
@@ -501,6 +502,7 @@ class LiveService {
     const raw = parseInt(process.env.LIVE_COINS_PER_USD || '200', 10);
     const coinsPerUsd = Number.isFinite(raw) && raw > 0 ? raw : 200;
     const usdPerCoin = 1 / coinsPerUsd;
+    const livePct = COMMISSION_VERTICALS.video_social.live_gift_creator_pct;
     return {
       currency: 'USD',
       coins_per_usd: coinsPerUsd,
@@ -508,6 +510,12 @@ class LiveService {
       /** Ex. 100 coins → 0,5 USD quand LIVE_COINS_PER_USD=200 */
       example_coins: 100,
       example_usd: Math.round((100 / coinsPerUsd) * 10000) / 10000,
+      /** Indicatif achat packs (FCFA / coin). */
+      fcfa_approx_per_coin_purchase: COIN_FCFA_APPROX_PURCHASE_PER_COIN,
+      /** Reversement portefeuille créateur par coin (Phase 9). */
+      fcfa_per_coin_creator_payout: COIN_FCFA_PER_COIN_PAYOUT,
+      /** Part créateur sur la valeur FCFA d’un cadeau live (affichage UI). */
+      live_gift_creator_share: livePct,
     };
   }
 
@@ -1278,13 +1286,28 @@ class LiveService {
 
     const combo = computeGiftCombo(streamId, senderId, data.giftId);
     const io = getIO();
-    if (io)
+    if (io) {
+      const ce = Number(result.creator_earnings ?? creatorEarnings);
+      const ta = Number(result.total_amount ?? totalAmountFcfa);
       io.to(`stream:${streamId}`).emit('live:gift', {
-        ...result,
+        id: result.id,
+        live_id: result.live_id,
+        sender_id: result.sender_id,
+        sender_name: result.sender_name,
+        sender_avatar: result.sender_avatar,
+        gift_id: result.gift_id,
+        gift_name: result.gift_name,
+        gift_icon: result.gift_icon,
+        quantity: result.quantity,
+        total_amount: ta,
+        creator_earnings: ce,
+        creator_earnings_fcfa: ce,
+        total_amount_fcfa: ta,
         combo,
         rarity: giftConfig.rarity ?? 'common',
         animation_url: giftConfig.animation_url ?? null,
       });
+    }
 
     const streamAfter = await prisma.liveStream.findUnique({ where: { id: streamId }, select: { goal_amount: true, goal_target: true, creator_id: true } });
     if (streamAfter?.goal_target && streamAfter.goal_target > 0 && (streamAfter.goal_amount ?? 0) >= streamAfter.goal_target) {

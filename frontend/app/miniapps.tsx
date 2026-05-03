@@ -5,6 +5,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import apiClient from '../src/api/client';
+import { featureFlags } from '../src/config/featureFlags';
+import { DemoContentBanner } from '../src/components/common/DemoContentBanner';
+import { filterDemoMiniApps, isAfriWonderDemoId } from '../src/demo/superAppDemoSeed';
 
 const { width } = Dimensions.get('window');
 const CARD_SIZE = (width - Spacing.xl * 2 - Spacing.md) / 2;
@@ -27,15 +30,29 @@ export default function MiniAppsScreen() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [apps, setApps] = useState<MiniAppItem[]>([]);
+  const [miniAppsDemo, setMiniAppsDemo] = useState(false);
 
   useEffect(() => {
     void (async () => {
       try {
+        setMiniAppsDemo(false);
         const res = await apiClient.get('/mini-apps', { params: { limit: 50, status: 'published' } });
         const data = res.data?.data ?? res.data;
-        setApps(Array.isArray(data?.miniApps) ? data.miniApps : Array.isArray(data?.apps) ? data.apps : []);
+        const list = Array.isArray(data?.miniApps) ? data.miniApps : Array.isArray(data?.apps) ? data.apps : [];
+        if (list.length === 0 && featureFlags.superAppDemoContent) {
+          setApps(filterDemoMiniApps('Tous', '') as MiniAppItem[]);
+          setMiniAppsDemo(true);
+        } else {
+          setApps(list);
+        }
       } catch {
-        Alert.alert('Mini-Apps', 'Impossible de charger les mini-apps.');
+        if (featureFlags.superAppDemoContent) {
+          setApps(filterDemoMiniApps('Tous', '') as MiniAppItem[]);
+          setMiniAppsDemo(true);
+        } else {
+          Alert.alert('Mini-Apps', 'Impossible de charger les mini-apps.');
+          setApps([]);
+        }
       } finally {
         setLoading(false);
       }
@@ -45,6 +62,9 @@ export default function MiniAppsScreen() {
   const filteredApps = useMemo(() => {
     const query = search.trim().toLowerCase();
     const category = CATEGORIES[activeCategory];
+    if (miniAppsDemo && featureFlags.superAppDemoContent) {
+      return filterDemoMiniApps(category, search) as MiniAppItem[];
+    }
     return apps.filter((app) => {
       const matchesCategory = category === 'Tous' || String(app.category || '').toLowerCase() === category;
       const matchesSearch = !query || [app.name, app.description, app.category].some((value) =>
@@ -52,9 +72,13 @@ export default function MiniAppsScreen() {
       );
       return matchesCategory && matchesSearch;
     });
-  }, [activeCategory, apps, search]);
+  }, [activeCategory, apps, search, miniAppsDemo]);
 
   const installMiniApp = async (appId: string) => {
+    if (isAfriWonderDemoId(appId)) {
+      Alert.alert('Démonstration', 'Mini-app fictive : aucune installation réelle.');
+      return;
+    }
     try {
       await apiClient.post(`/mini-apps/${appId}/install`, {});
       Alert.alert('Mini-Apps', 'Mini-app installée avec succès.');
@@ -91,6 +115,8 @@ export default function MiniAppsScreen() {
           </TouchableOpacity>
         ))}
       </ScrollView>
+
+      {miniAppsDemo ? <DemoContentBanner /> : null}
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.grid}>

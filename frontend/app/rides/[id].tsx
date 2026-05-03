@@ -25,6 +25,8 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { RideMap } from '../../src/components/rides/RideMap';
 import apiClient from '../../src/api/client';
 import rideTrackingService, { RideLocationEvent, RideStatusEvent } from '../../src/services/rideTrackingService';
+import { getDemoTrackedRidePayload, isAfriWonderDemoId } from '../../src/demo/superAppDemoSeed';
+import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
 
 interface Ride {
   id: string;
@@ -50,6 +52,7 @@ interface Ride {
 
 const STATUS_LABEL: Record<string, string> = {
   requested: 'Recherche d\'un chauffeur...',
+  pending: 'En attente',
   accepted: 'Chauffeur en route',
   arriving: 'Votre chauffeur arrive',
   in_progress: 'En route vers la destination',
@@ -80,6 +83,12 @@ export default function RideTrackingScreen() {
 
   const loadRide = useCallback(async () => {
     if (!id) return;
+    const demoFirst = getDemoTrackedRidePayload(String(id));
+    if (demoFirst) {
+      setRide(demoFirst as Ride);
+      setLoading(false);
+      return;
+    }
     try {
       const res = await apiClient.get(`/rides/${encodeURIComponent(id)}`);
       const data = res.data?.data as Ride;
@@ -95,7 +104,7 @@ export default function RideTrackingScreen() {
 
   // Rejoindre la room socket + écouter les events
   useEffect(() => {
-    if (!id) return;
+    if (!id || isAfriWonderDemoId(String(id))) return;
     rideTrackingService.joinRide(id);
     const offLoc = rideTrackingService.onLocation((e: RideLocationEvent) => {
       if (e.rideId !== id) return;
@@ -113,6 +122,8 @@ export default function RideTrackingScreen() {
     };
   }, [id]);
 
+  const isDemoRide = Boolean(id && isAfriWonderDemoId(String(id)));
+
   const callDriver = () => {
     if (!ride?.driver_phone) {
       Alert.alert('Numéro indisponible', 'Le numéro du chauffeur n\'est pas encore disponible.');
@@ -122,6 +133,10 @@ export default function RideTrackingScreen() {
   };
 
   const chatWithDriver = () => {
+    if (isDemoRide) {
+      Alert.alert('Démonstration', 'Messagerie indisponible pour ce trajet fictif.');
+      return;
+    }
     if (!ride?.driver_id) return;
     router.push({ pathname: '/messages/[id]', params: { id: ride.driver_id } } as never);
   };
@@ -173,6 +188,11 @@ export default function RideTrackingScreen() {
       </View>
 
       <View style={[styles.bottomSheet, { paddingBottom: insets.bottom + Spacing.lg }]}>
+        {isDemoRide ? (
+          <View style={{ marginBottom: Spacing.sm }}>
+            <DemoContentBanner />
+          </View>
+        ) : null}
         {etaMin ? (
           <View style={styles.etaBox}>
             <Ionicons name="time-outline" size={20} color={Colors.primary} />
