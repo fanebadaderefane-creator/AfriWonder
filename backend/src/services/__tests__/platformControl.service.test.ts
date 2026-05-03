@@ -21,7 +21,9 @@ describe('platformControl.service', () => {
     expect(state.marketplace_enabled).toBe(true);
     expect(state.payments_enabled).toBe(true);
     expect(state.videos_enabled).toBe(true);
-    expect(state.maintenance_mode).toBe(true); // valeur par défaut: true si aucune entrée
+    expect(state.maintenance_mode).toBe(false);
+    expect(state.emergency_mode).toBe(false);
+    expect(state.food_enabled).toBe(true);
   });
 
   it('setMaintenanceMode met à jour une entrée existante', async () => {

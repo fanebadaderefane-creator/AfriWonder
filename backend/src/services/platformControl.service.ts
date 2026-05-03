@@ -19,7 +19,12 @@ async function getValue(key: Key): Promise<boolean> {
   const row = await prisma.platformSettings.findUnique({
     where: { key },
   });
-  if (!row || row.value == null) return true; // default enabled
+  if (!row || row.value == null) {
+    // Flags « métier » : activés par défaut. Maintenance / urgence : inactifs par défaut
+    // (sinon une base vide se comporte comme une plateforme figée — ex. food 503 en local).
+    if (key === KEYS.MAINTENANCE_MODE || key === KEYS.EMERGENCY_MODE) return false;
+    return true;
+  }
   const v = row.value as unknown;
   if (typeof v === 'boolean') return v;
   if (typeof v === 'object' && v !== null && 'enabled' in v) return (v as { enabled: boolean }).enabled;

@@ -65,12 +65,16 @@ SENDGRID_FROM_EMAIL=noreply@afriwonder.app
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
+# Optionnel — mobile (id_token) : lister les Client ID Google autorisés comme `aud`, séparés par des virgules
+# (Web + Android + iOS). Sinon seul GOOGLE_CLIENT_ID (Web) est accepté — insuffisant si `aud` = client Android.
+# GOOGLE_OAUTH_AUDIENCES=xxx.apps.googleusercontent.com,yyy.apps.googleusercontent.com
 
 # Facebook OAuth
 # Obtenir depuis : https://developers.facebook.com/apps
 FACEBOOK_APP_ID=
 FACEBOOK_APP_SECRET=
 FACEBOOK_REDIRECT_URI=http://localhost:3000/api/auth/facebook/callback
+# En production, FACEBOOK_APP_SECRET est requis pour debug_token (vérif. mobile OAuth) — même valeur que le tableau Meta.
 
 # ============================================
 # PAYMENTS

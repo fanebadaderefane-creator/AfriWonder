@@ -121,11 +121,19 @@ router.post('/bookings', authenticate, validateBody(createBookingSchema), async 
       payment_method: body.payment_method,
       payment_phone: body.payment_phone,
     });
-    res.status(201).json({
-      success: true,
-      booking: result.booking,
-      ...(result.payment ? { payment: result.payment } : {}),
-    });
+    /** Union wallet (sans `payment`) vs Orange Money (avec `payment`) — éviter l'accès direct à `result.payment`. */
+    if ('payment' in result && result.payment) {
+      res.status(201).json({
+        success: true,
+        booking: result.booking,
+        payment: result.payment,
+      });
+    } else {
+      res.status(201).json({
+        success: true,
+        booking: result.booking,
+      });
+    }
   } catch (err) { next(err); }
 });
 

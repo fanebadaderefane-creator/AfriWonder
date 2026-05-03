@@ -4916,6 +4916,13 @@ model Restaurant {
   is_verified       Boolean     @default(false)
   accepts_orders    Boolean     @default(true)
   tags              Json?       @default("[]")
+  /// Verticale restauration — compte établissement (plug-and-play, sans nouveau type User).
+  account_status         String   @default("active")
+  /// Commission plateforme sur le sous-total nourriture (%), surchargeable par restaurant.
+  platform_commission_pct Float   @default(10)
+  /// KYC restauration : pending | verified | rejected (documents côté back-office).
+  kyc_status             String?
+  supports_pickup        Boolean  @default(false)
   created_at        DateTime    @default(now())
   updated_at        DateTime    @updatedAt
   food_orders       FoodOrder[]
@@ -4925,6 +4932,7 @@ model Restaurant {
   @@index([owner_id])
   @@index([city])
   @@index([is_open])
+  @@index([account_status])
 }
 
 model MenuItem {
@@ -4983,6 +4991,14 @@ model FoodOrder {
   rating                  Float?
   review                  String?
   special_requests        String?
+  /// Part plateforme (commission sur nourriture), enregistrée à la commande.
+  platform_fee_amount       Float      @default(0)
+  /// Versement théorique restaurant (sous-total − commission plateforme).
+  restaurant_payout_amount  Float?
+  /// Versement livreur (v1 : frais de livraison intégraux si course assignée).
+  courier_payout_amount     Float      @default(0)
+  fulfillment_type          String     @default("delivery")
+  split_applied_at          DateTime?
   created_at              DateTime   @default(now())
   updated_at              DateTime   @updatedAt
   customer                User       @relation("FoodOrderCustomer", fields: [customer_id], references: [id], onDelete: Cascade)
