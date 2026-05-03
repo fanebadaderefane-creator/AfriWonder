@@ -73,6 +73,20 @@ const ALLOWED_DURATIONS = [5, 10, 15] as const;
 
 export type StarPriceKey = 5 | 10 | 15;
 
+type StarBookingRow = Awaited<ReturnType<typeof prisma.starBooking.create>>;
+
+/** Payload de paiement Orange Money retourné par `createBooking` (wallet n’inclut pas ce champ). */
+export type CreateStarBookingPaymentPayload = {
+  paymentUrl: string;
+  orderId: string;
+  reference: string;
+  provider: string;
+};
+
+export type CreateStarBookingResult =
+  | { booking: StarBookingRow; payment: CreateStarBookingPaymentPayload }
+  | { booking: StarBookingRow };
+
 // ============================================================
 // HELPERS
 // ============================================================
@@ -801,7 +815,7 @@ class StarCallService {
     fan_notes?: string;
     payment_method?: 'wallet' | 'orange_money';
     payment_phone?: string;
-  }) {
+  }): Promise<CreateStarBookingResult> {
     if (!ALLOWED_DURATIONS.includes(input.duration_minutes)) throw starError('Durée invalide', 400);
 
     const profile = await prisma.starProfile.findUnique({

@@ -121,8 +121,8 @@ router.post('/bookings', authenticate, validateBody(createBookingSchema), async 
       payment_method: body.payment_method,
       payment_phone: body.payment_phone,
     });
-    /** Union wallet (sans `payment`) vs Orange Money (avec `payment`) — éviter l'accès direct à `result.payment`. */
-    if ('payment' in result && result.payment) {
+    /** Union typée `CreateStarBookingResult` : `in` discrimine wallet vs Orange Money. */
+    if ('payment' in result) {
       res.status(201).json({
         success: true,
         booking: result.booking,
