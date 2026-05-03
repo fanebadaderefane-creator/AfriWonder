@@ -50,6 +50,9 @@ import prisma from '../config/database.js';
 import { Prisma } from '@prisma/client';
 import { logger } from '../utils/logger.js';
 import notificationService from './notification.service.js';
+import type { CreateStarBookingResult } from './starCall.bookingResult.js';
+
+export type { CreateStarBookingPaymentPayload, CreateStarBookingResult } from './starCall.bookingResult.js';
 
 // ============================================================
 // CONSTANTES BUSINESS
@@ -74,18 +77,6 @@ const ALLOWED_DURATIONS = [5, 10, 15] as const;
 export type StarPriceKey = 5 | 10 | 15;
 
 type StarBookingRow = Awaited<ReturnType<typeof prisma.starBooking.create>>;
-
-/** Payload de paiement Orange Money retourné par `createBooking` (wallet n’inclut pas ce champ). */
-export type CreateStarBookingPaymentPayload = {
-  paymentUrl: string;
-  orderId: string;
-  reference: string;
-  provider: string;
-};
-
-export type CreateStarBookingResult =
-  | { booking: StarBookingRow; payment: CreateStarBookingPaymentPayload }
-  | { booking: StarBookingRow };
 
 // ============================================================
 // HELPERS

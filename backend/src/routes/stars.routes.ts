@@ -11,6 +11,7 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { validateBody, validateQuery } from '../utils/zodValidation.js';
 import { param } from '../utils/params.js';
 import starCallService from '../services/starCall.service.js';
+import { isCreateStarBookingWithOrangePayment } from '../services/starCall.bookingResult.js';
 
 const router = Router();
 
@@ -121,8 +122,7 @@ router.post('/bookings', authenticate, validateBody(createBookingSchema), async 
       payment_method: body.payment_method,
       payment_phone: body.payment_phone,
     });
-    /** Union typée `CreateStarBookingResult` : `in` discrimine wallet vs Orange Money. */
-    if ('payment' in result) {
+    if (isCreateStarBookingWithOrangePayment(result)) {
       res.status(201).json({
         success: true,
         booking: result.booking,
