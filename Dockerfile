@@ -17,11 +17,12 @@ FROM nginx:alpine
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.main.docker.conf /etc/nginx/nginx.conf
+COPY docker-entrypoint.nginx-temp.sh /docker-entrypoint.d/39-nginx-temp-dirs.sh
 COPY docker-entrypoint.sh /docker-entrypoint.d/40-runtime-config.sh
-# Ne pas utiliser USER nginx : le master doit démarrer en root (comportement image officielle).
-# Sinon sur Render : EACCES sur /var/cache/nginx/* et /run/nginx.pid ; la directive `user` du nginx.conf
-# ne s’applique qu’aux workers.
-RUN chmod +x /docker-entrypoint.d/40-runtime-config.sh \
+# Pid + caches sous /tmp (Render Cron / conteneurs non-root) ; script 39 prépare les répertoires.
+RUN chmod +x /docker-entrypoint.d/39-nginx-temp-dirs.sh \
+  && chmod +x /docker-entrypoint.d/40-runtime-config.sh \
   && chown -R nginx:nginx /usr/share/nginx/html
 
 EXPOSE 8080
