@@ -272,6 +272,7 @@ export default function SettingsScreen() {
         title: 'Informations',
         items: [
           { icon: 'information-circle', label: 'A propos', route: '/about' },
+          { icon: 'grid-outline', label: 'Matrice', route: '/benchmark' },
           { icon: 'pulse-outline', label: 'Diagnostics release', route: '/settings/release-preflight' },
           { icon: 'document-text', label: "Conditions d'utilisation", route: '/terms' },
           { icon: 'shield', label: 'Politique de confidentialite', route: '/privacy-policy' },

@@ -16,6 +16,7 @@ function readEnvFlag(name: string, defaultValue: boolean): boolean {
 
 /**
  * Super-app : modules **ouverts par défaut** (données = API réelle, états erreur explicites).
+ * Vérité produit (piliers / nuances) : `productCapabilities.ts` — ne pas contredire dans les écrans.
  * Désactiver un module : `EXPO_PUBLIC_ENABLE_<MODULE>=0` dans `.env` / EAS Secrets.
  *
  * Exceptions :

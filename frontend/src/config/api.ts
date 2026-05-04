@@ -31,6 +31,9 @@ export const API_ROUTES = {
 
   PRODUCTS: '/products',
   ORDERS: '/orders',
+  CART: '/cart',
+  MESSAGES_CONVERSATIONS: '/messages/conversations',
+  MESSAGES_SEND: '/messages/send',
   PAYMENTS_STRIPE: '/payments/stripe',
   PAYMENTS_ORANGE: '/payments/orange-money',
   PAYMENTS_WAVE: '/payments/wave',

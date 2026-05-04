@@ -23,9 +23,21 @@ function clearContentTypeForFormData(config: { data?: unknown; headers?: any }) 
   }
 }
 
+/**
+ * Timeout long par défaut pour absorber :
+ *  1. **Cold start Render free tier** (le service dort après 15 min d'inactivité ;
+ *     le 1er request prend 30-60s pour réveiller le serveur).
+ *  2. **Réseaux 2G/3G en Afrique de l'Ouest** où la latence + jitter dépassent
+ *     fréquemment 30s sur des requêtes JSON normales.
+ *
+ * Les uploads multipart (vidéo / image) gardent leur propre timeout (cf. `create.tsx`,
+ * `profile-edit.tsx`) — ils sont déjà à 3-15 min.
+ */
+const DEFAULT_API_TIMEOUT_MS = 90_000;
+
 const apiClient = axios.create({
   baseURL: `${getProxyBaseUrl()}/api/proxy`,
-  timeout: 30000,
+  timeout: DEFAULT_API_TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
@@ -48,7 +60,17 @@ apiClient.interceptors.request.use(
        */
       if (config.data instanceof FormData) {
         let token = await secureStorage.getItem('accessToken');
-        if (accessTokenExpiresWithin(token, 90)) {
+        /**
+         * Uploads longs (vidéo 5 min, etc.) : la marge doit couvrir `config.timeout` + marge,
+         * sinon le JWT peut expirer en plein multipart → « Network Error » côté RN.
+         */
+        const reqTimeoutMs =
+          typeof config.timeout === 'number' && Number.isFinite(config.timeout) ? config.timeout : 30000;
+        const minRemainingSec =
+          reqTimeoutMs >= 120_000
+            ? Math.min(Math.ceil(reqTimeoutMs / 1000) + 300, 86_400)
+            : 600;
+        if (accessTokenExpiresWithin(token, minRemainingSec)) {
           await tryRefreshAccessToken();
           token = await secureStorage.getItem('accessToken');
         }
@@ -78,11 +100,53 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor for token refresh
+/**
+ * Détecte les erreurs réseau "no response" (timeout, DNS down, abort) typiques d'un
+ * cold start Render ou d'un signal 2G/3G qui tombe. Les erreurs HTTP (4xx/5xx) ont
+ * une `response` et ne sont PAS considérées comme network errors.
+ */
+function isLikelyNetworkOrColdStartError(error: any): boolean {
+  if (!error) return false;
+  if (error.response) return false;
+  const code = String(error.code || '').toUpperCase();
+  if (code === 'ECONNABORTED' || code === 'ERR_NETWORK' || code === 'ETIMEDOUT') return true;
+  const msg = String(error.message || '').toLowerCase();
+  return /network|failed to connect|socket|aborted|timeout|connection/i.test(msg);
+}
+
+// Response interceptor for token refresh + cold-start retry (Render free tier)
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+
+    /**
+     * Cold start Render / réseau 2G : 1 retry après warmup. Limité aux requêtes JSON
+     * idempotentes (GET / HEAD) — on ne réessaie PAS un POST upload (l'utilisateur
+     * verrait son contenu publié 2x).
+     */
+    if (
+      isLikelyNetworkOrColdStartError(error)
+      && originalRequest
+      && !originalRequest._coldStartRetry
+      && !(originalRequest.data instanceof FormData)
+      && ['get', 'head'].includes(String(originalRequest.method || 'get').toLowerCase())
+    ) {
+      originalRequest._coldStartRetry = true;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const warmup = require('./backendWarmup') as { warmupBackend: () => Promise<boolean> };
+        await warmup.warmupBackend();
+      } catch {
+        /* ignore */
+      }
+      try {
+        return await apiClient(originalRequest);
+      } catch (retryErr) {
+        attachUserFacingApiError(retryErr);
+        return Promise.reject(retryErr);
+      }
+    }
 
     // If 401 and we haven't retried yet
     if (error.response?.status === 401 && !originalRequest._retry) {

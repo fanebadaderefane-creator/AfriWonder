@@ -122,6 +122,15 @@ export default function AdminSuperAppScreen() {
       stat: 'Module isolé',
       hint: 'Stars · bookings · litiges',
     },
+    {
+      id: 'system-audit',
+      label: 'Audit système',
+      icon: 'pulse',
+      color: '#00BCD4',
+      route: '/(admin)/system-audit' as Href,
+      stat: 'E2E · R2 · Redis · Paiements',
+      hint: 'Données serveur',
+    },
   ];
 
   if (loading) {

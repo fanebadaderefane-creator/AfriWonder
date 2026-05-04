@@ -76,6 +76,15 @@
       "expo-router",
       "expo-web-browser",
       [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "Prendre des photos et vidéos (publication, live, AR effets temps réel)",
+          "enableMicrophonePermission": true,
+          "microphonePermissionText": "Enregistrer le son avec vos vidéos AfriWonder",
+          "enableCodeScanner": true
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
@@ -84,7 +93,6 @@
           "backgroundColor": "#000000"
         }
       ],
-      "expo-camera",
       "expo-image-picker",
       "expo-secure-store",
       "expo-sqlite",

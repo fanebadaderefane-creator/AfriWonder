@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Image, StyleProp, ImageStyle, ViewStyle } from 'react-native';
+import { View, StyleProp, ImageStyle, ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 
@@ -14,6 +15,7 @@ type Props = {
 
 /**
  * Affiche une image distante ou un bloc neutre (plus de picsum / pravatar en prod).
+ * expo-image : cache mémoire + disque + recyclingKey (listes / scroll) — moins de re-téléchargements sur 3G.
  */
 export function ImageOrPlaceholder({ uri, style, icon = 'image-outline', iconSize = 36 }: Props) {
   const u = typeof uri === 'string' ? uri.trim() : '';
@@ -29,5 +31,14 @@ export function ImageOrPlaceholder({ uri, style, icon = 'image-outline', iconSiz
       </View>
     );
   }
-  return <Image source={{ uri: u }} style={style} />;
+  return (
+    <Image
+      source={{ uri: u }}
+      style={style}
+      contentFit="cover"
+      cachePolicy="memory-disk"
+      recyclingKey={u}
+      transition={0}
+    />
+  );
 }

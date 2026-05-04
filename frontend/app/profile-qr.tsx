@@ -13,10 +13,11 @@ import {
 import { router, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Clipboard from 'expo-clipboard';
 import apiClient from '../src/api/client';
 import { useAuthStore } from '../src/store/authStore';
+import { isActionableQrCode, parseAfriWonderQrCode } from '../src/components/qr/afriwonderQrParser';
+import QrScanner from '../src/components/camera/QrScanner';
 
 const TEXT_MAIN = '#000000';
 const TEXT_MUTED = 'rgba(0,0,0,0.60)';
@@ -42,7 +43,6 @@ export default function ProfileQrScreen() {
   const [tab, setTab] = useState<'my' | 'scan'>('my');
   const [payload, setPayload] = useState<QrPayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [permission, requestPermission] = useCameraPermissions();
   const [scanLocked, setScanLocked] = useState(false);
 
   const loadQr = useCallback(async () => {
@@ -126,30 +126,25 @@ export default function ProfileQrScreen() {
         setScanLocked(false);
         return;
       }
-      /** afriwonder://user/:id — ou URL web afri-wonder.vercel.app/user/:handle. */
-      const matchApp = raw.match(/afriwonder:\/\/user\/([A-Za-z0-9-_]+)/i);
-      const matchWeb = raw.match(/\/user\/([A-Za-z0-9_.-]+)(?:[/?#]|$)/i);
-      const matchProfile = raw.match(/_userId=([A-Za-z0-9-_]+)/i);
-      if (matchApp) {
-        router.replace({ pathname: '/user/[id]', params: { id: matchApp[1] } } as never);
+      const action = parseAfriWonderQrCode(raw);
+      if (action.kind === 'open_user_by_id') {
+        router.replace({ pathname: '/user/[id]', params: { id: action.id } } as never);
         return;
       }
-      if (matchWeb) {
-        router.replace({ pathname: '/search', params: { q: matchWeb[1] } } as never);
+      if (action.kind === 'open_user_by_handle') {
+        router.replace({ pathname: '/search', params: { q: action.handle } } as never);
         return;
       }
-      if (matchProfile) {
-        router.replace({ pathname: '/user/[id]', params: { id: matchProfile[1] } } as never);
-        return;
+      if (!isActionableQrCode(action)) {
+        Alert.alert(
+          'QR non reconnu',
+          'Ce QR ne correspond pas à un profil AfriWonder. Contenu : ' + raw.slice(0, 120),
+          [
+            { text: 'Réessayer', onPress: () => setScanLocked(false) },
+            { text: 'Fermer', style: 'cancel', onPress: () => router.back() },
+          ],
+        );
       }
-      Alert.alert(
-        'QR non reconnu',
-        'Ce QR ne correspond pas à un profil AfriWonder. Contenu : ' + raw.slice(0, 120),
-        [
-          { text: 'Réessayer', onPress: () => setScanLocked(false) },
-          { text: 'Fermer', style: 'cancel', onPress: () => router.back() },
-        ],
-      );
     },
     [scanLocked],
   );
@@ -218,28 +213,12 @@ export default function ProfileQrScreen() {
                 Ouvrez AfriWonder sur mobile pour scanner un QR code.
               </Text>
             </View>
-          ) : !permission ? (
-            <View style={styles.scanFallback}>
-              <ActivityIndicator color={LIVE_PINK} />
-            </View>
-          ) : !permission.granted ? (
-            <View style={styles.scanFallback}>
-              <Ionicons name="camera-outline" size={64} color={TEXT_MUTED} />
-              <Text style={styles.scanFallbackTitle}>Autoriser la caméra</Text>
-              <Text style={styles.scanFallbackText}>
-                AfriWonder a besoin de la caméra pour scanner un QR code.
-              </Text>
-              <TouchableOpacity style={styles.scanPermBtn} onPress={() => void requestPermission()}>
-                <Text style={styles.scanPermBtnText}>Autoriser</Text>
-              </TouchableOpacity>
-            </View>
           ) : (
             <View style={styles.cameraContainer}>
-              <CameraView
+              <QrScanner
                 style={StyleSheet.absoluteFill}
-                facing="back"
-                barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-                onBarcodeScanned={scanLocked ? undefined : handleScanned}
+                active={tab === 'scan' && !scanLocked}
+                onScan={(value) => handleScanned({ data: value })}
               />
               <View style={styles.scanOverlay} pointerEvents="none">
                 <View style={styles.scanFrame} />

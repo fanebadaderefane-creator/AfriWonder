@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, type StyleProp, type ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, type StyleProp, type ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
 import { toAbsoluteMediaUrl } from '../utils/absoluteMediaUrl';
 import { Colors } from '../theme/colors';
 
@@ -52,7 +53,14 @@ export function CreatorAvatar({
   const borderStyle = bordered ? styles.ring : null;
 
   const inner = showImage ? (
-    <Image source={{ uri: abs }} style={[styles.img, { width: size, height: size, borderRadius: r }, borderStyle]} />
+    <Image
+      source={{ uri: abs }}
+      style={[styles.img, { width: size, height: size, borderRadius: r }, borderStyle]}
+      contentFit="cover"
+      cachePolicy="memory-disk"
+      recyclingKey={abs}
+      transition={0}
+    />
   ) : (
     <View style={[styles.fallback, { width: size, height: size, borderRadius: r }, borderStyle]}>
       <Text style={[styles.fallbackText, { fontSize: Math.max(11, size * 0.34) }]} numberOfLines={1}>

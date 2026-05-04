@@ -27,9 +27,9 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
-import { useCameraPermissions, CameraView } from 'expo-camera';
 import { useAuthStore } from '../../src/store/authStore';
 import paymentRequestApi, { PaymentRequest } from '../../src/api/paymentRequestApi';
+import QrScanner from '../../src/components/camera/QrScanner';
 
 type Tab = 'receive' | 'pay';
 
@@ -184,7 +184,6 @@ function ReceivePanel({ username }: { username?: string }) {
 // Onglet "Payer"
 // =======================
 function PayPanel() {
-  const [permission, requestPermission] = useCameraPermissions();
   const [scanLocked, setScanLocked] = useState(false);
   const [loadingRequest, setLoadingRequest] = useState(false);
   const [pendingRequest, setPendingRequest] = useState<PaymentRequest | null>(null);
@@ -251,29 +250,6 @@ function PayPanel() {
     }
   };
 
-  if (!permission) {
-    return (
-      <View style={styles.centerPanel}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </View>
-    );
-  }
-
-  if (!permission.granted) {
-    return (
-      <View style={styles.centerPanel}>
-        <Ionicons name="camera-outline" size={48} color={Colors.textSecondary} />
-        <Text style={styles.permTitle}>Caméra requise</Text>
-        <Text style={styles.permText}>
-          Pour scanner un QR de paiement, autorisez l'accès à la caméra.
-        </Text>
-        <TouchableOpacity style={styles.primaryBtn} onPress={() => void requestPermission()}>
-          <Text style={styles.primaryBtnText}>Autoriser la caméra</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
   if (loadingRequest) {
     return (
       <View style={styles.centerPanel}>
@@ -321,15 +297,10 @@ function PayPanel() {
 
   return (
     <View style={styles.scannerWrap}>
-      <CameraView
+      <QrScanner
         style={styles.scanner}
-        facing="back"
-        barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-        onBarcodeScanned={({ data }) => {
-          if (!scanLocked && data) {
-            void handleScanned(data);
-          }
-        }}
+        active={!scanLocked && !pendingRequest && !loadingRequest}
+        onScan={(value) => void handleScanned(value)}
       />
       <View style={styles.scannerOverlay}>
         <View style={styles.scannerFrame} />

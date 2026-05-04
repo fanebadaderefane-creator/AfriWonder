@@ -16,8 +16,9 @@
  */
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DATA_USAGE_STORAGE_KEY_PREFIX } from './dataSaverConstants';
 
-const STORAGE_USAGE_PREFIX = 'afw_data_estimate_bytes_';
+const STORAGE_USAGE_PREFIX = DATA_USAGE_STORAGE_KEY_PREFIX;
 
 /** Ordre de grandeur : flux ~240p vs ~720p (hors audio exact). */
 const BYTES_PER_SEC_LOW = 18_000;

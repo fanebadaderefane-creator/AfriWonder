@@ -1,3 +1,4 @@
+import path from 'path';
 import { defineConfig } from 'vitest/config';
 
 /**
@@ -7,6 +8,17 @@ import { defineConfig } from 'vitest/config';
  */
 export default defineConfig({
   root: __dirname,
+  resolve: {
+    alias: {
+      'react-native': path.resolve(__dirname, 'test/stubs/react-native.ts'),
+      'expo-constants': path.resolve(__dirname, 'test/stubs/expo-constants.ts'),
+      '@react-native-async-storage/async-storage': path.resolve(__dirname, 'test/stubs/async-storage.ts'),
+      '@react-native-community/netinfo': path.resolve(__dirname, 'test/stubs/netinfo.ts'),
+      'expo-secure-store': path.resolve(__dirname, 'test/stubs/expo-secure-store.ts'),
+      'expo-image': path.resolve(__dirname, 'test/stubs/expo-image.tsx'),
+      '@expo/vector-icons': path.resolve(__dirname, 'test/stubs/expo-vector-icons.tsx'),
+    },
+  },
   css: {
     postcss: {
       plugins: [],
