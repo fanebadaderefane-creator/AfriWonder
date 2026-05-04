@@ -12,16 +12,26 @@ Le backend (`backend/src/config/sentry.ts`) et la PWA (`src/main.jsx`, `VITE_SEN
 
 ## Fichiers
 
-- Plugin Expo : `app.json` → `"@sentry/react-native"` dans `plugins`.
 - Code : `frontend/src/lib/sentryMobile.ts` (export `initMobileSentry`).
-- Point d’entrée : `frontend/app/_layout.tsx` (appel après les imports).
+- Point d’entrée : `frontend/app/_layout.tsx` (appel `initMobileSentry()`).
+- Dépendance : `frontend/package.json` → `@sentry/react-native`.
 - Variables : `frontend/.env.example` (`EXPO_PUBLIC_SENTRY_DSN`, `EXPO_PUBLIC_SENTRY_DEBUG`, `EXPO_PUBLIC_APP_ENV`).
 - Tests : `frontend/src/lib/sentryMobile.test.ts`.
+
+**Ne jamais committer le DSN** (pas dans Git, pas dans Slack public). En cas d’exposition : Sentry → *Settings → Client Keys (DSN)* → **Regenerate**.
 
 ## EAS / production
 
 1. Créer un projet Sentry (plateforme *React Native*).
-2. Ajouter `EXPO_PUBLIC_SENTRY_DSN` dans les **secrets EAS** du profil `production` / `preview`.
-3. Lancer un build natif (`eas build`) : le plugin configure le SDK natif pour les crashs hors JS.
+2. Copier le DSN (une seule ligne `https://…@…ingest…sentry.io/…`).
+3. Secret EAS (depuis `frontend/`, compte Expo du projet) :
+   `eas secret:create --scope project --name EXPO_PUBLIC_SENTRY_DSN --value "COLLEZ_VOTRE_DSN_ICI"`
+   (ou **expo.dev** → projet → **Environment variables** / secrets pour preview + production).
+4. `eas build` (Android / iOS) : le DSN est injecté via `eas.json` (`"EXPO_PUBLIC_SENTRY_DSN": "$EXPO_PUBLIC_SENTRY_DSN"`) pour les profils **preview** et **production** (substitution au moment du build → valeur embarquée dans le bundle).
+
+**Dev local (Metro)** : copier le DSN dans `frontend/.env` (fichier non versionné) ; pour envoyer depuis `__DEV__`, ajouter `EXPO_PUBLIC_SENTRY_DEBUG=1`.
+
+Optionnel (meilleures stack traces natives + source maps) : assistant Sentry  
+`npx @sentry/wizard@latest -i reactNative` depuis `frontend/`, ou ajouter le plugin Expo documenté par [Using Sentry — Expo](https://docs.expo.dev/guides/using-sentry/) — aujourd’hui l’init JS suffit pour la plupart des erreurs `AppRootErrorBoundary` / JS.
 
 Référence officielle : [Using Sentry — Expo](https://docs.expo.dev/guides/using-sentry/).
