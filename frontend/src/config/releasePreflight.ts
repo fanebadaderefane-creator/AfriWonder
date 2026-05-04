@@ -5,6 +5,7 @@ import {
   MISSING_BACKEND_URL_SENTINEL,
 } from './backendBase';
 import { applyAfriDeviceTrustToFetchInit } from '../utils/afwDeviceRequestId';
+import { getFeatureMatrix, validateSuperApp } from '../product/featureMatrix';
 
 export type PreflightCheck = {
   id: string;
@@ -26,6 +27,20 @@ function resolveSocketUrlForDisplay(): string {
 
 export async function runReleasePreflight(): Promise<PreflightCheck[]> {
   const checks: PreflightCheck[] = [];
+
+  const matrix = getFeatureMatrix();
+  const superOk = validateSuperApp();
+  checks.push({
+    id: 'superapp_feature_matrix',
+    label: 'Matrice super-app (7 axes code)',
+    ok: superOk,
+    detail: superOk
+      ? 'Tous les axes requis sont true'
+      : `Axes false : ${Object.entries(matrix)
+          .filter(([, v]) => !v)
+          .map(([k]) => k)
+          .join(', ') || '(aucun)'}`,
+  });
 
   const backend = getBackendOrigin();
   const backendConfigured = Boolean(backend && backend !== MISSING_BACKEND_URL_SENTINEL);
@@ -144,8 +159,8 @@ export async function runReleasePreflight(): Promise<PreflightCheck[]> {
     label: 'Sentry mobile (EXPO_PUBLIC_SENTRY_DSN) — directive post-lancement',
     ok: Boolean(readExtra('EXPO_PUBLIC_SENTRY_DSN')),
     detail: readExtra('EXPO_PUBLIC_SENTRY_DSN')
-      ? 'DSN configuré (crash JS natifs remontés en prod si build release)'
-      : 'Recommandé avant store : définir EXPO_PUBLIC_SENTRY_DSN + alerts équipe',
+      ? 'DSN configuré (erreurs JS remontées en build release si DSN présent au build)'
+      : 'Recommandé avant store : définir EXPO_PUBLIC_SENTRY_DSN (EAS / .env) + alertes équipe Sentry',
   });
 
   return checks;

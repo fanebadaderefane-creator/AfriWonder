@@ -161,6 +161,12 @@ export interface StickerOverlay {
 }
 
 export type EditorTransitionId = 'none' | 'fade' | 'slide' | 'zoom';
+export { VOICE_EFFECT_OPTIONS } from './create/voiceEffects';
+export type { VoiceEffectId } from './create/voiceEffects';
+import type { VoiceEffectId } from './create/voiceEffects';
+import { VOICE_EFFECT_OPTIONS } from './create/voiceEffects';
+import SubtitlesEditor from './create/SubtitlesEditor';
+import type { SubtitleChunk } from './create/subtitles';
 
 export interface VideoEditorResult {
   filter: string;
@@ -176,13 +182,19 @@ export interface VideoEditorResult {
   gridEnabled: boolean;
   /** URI locale d’un enregistrement voix (upload séparé à la publication). */
   voiceOverUri: string | null;
+  /** Effet à appliquer côté serveur (ffmpeg) sur la voix off. */
+  voiceEffect: VoiceEffectId;
   transitionId: EditorTransitionId;
+  /** Sous-titres manuels (chunks SRT-compatibles) — appliqués côté serveur. */
+  subtitles: SubtitleChunk[];
 }
 
 interface VideoEditorProps {
   videoUri: string;
   onDone: (result: VideoEditorResult) => void;
   onCancel: () => void;
+  /** Vitesse pré-sélectionnée (depuis la caméra intégrée) — défaut 1×. */
+  initialSpeed?: number;
 }
 
 function EditorVideoWeb({ uri, speed }: { uri: string; speed: number }) {
@@ -318,7 +330,7 @@ const TRANSITION_OPTIONS: { id: EditorTransitionId; label: string }[] = [
   { id: 'zoom', label: 'Zoom' },
 ];
 
-const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel }) => {
+const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel, initialSpeed = 1 }) => {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'trim' | 'filters' | 'text' | 'stickers' | 'music' | 'speed' | 'voice'>('filters');
 
@@ -326,7 +338,11 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
   const [stickerOverlays, setStickerOverlays] = useState<StickerOverlay[]>([]);
   const [selectedMusic, setSelectedMusic] = useState('m0');
-  const [speed, setSpeed] = useState(1);
+  const [speed, setSpeed] = useState<number>(() => {
+    const v = Number.isFinite(initialSpeed) ? initialSpeed : 1;
+    if (v <= 0) return 1;
+    return Math.min(3, Math.max(0.5, v));
+  });
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(100);
   const [gridEnabled, setGridEnabled] = useState(false);
@@ -334,6 +350,9 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
   const recordingRef = useRef<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [voiceOverUri, setVoiceOverUri] = useState<string | null>(null);
+  const [voiceEffect, setVoiceEffect] = useState<VoiceEffectId>('none');
+  const [subtitles, setSubtitles] = useState<SubtitleChunk[]>([]);
+  const [subtitlesOpen, setSubtitlesOpen] = useState(false);
 
   const [showTextInput, setShowTextInput] = useState(false);
   const [newText, setNewText] = useState('');
@@ -435,7 +454,9 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
       trimEnd,
       gridEnabled,
       voiceOverUri,
+      voiceEffect,
       transitionId,
+      subtitles,
     });
   }, [
     onDone,
@@ -448,7 +469,9 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
     trimEnd,
     gridEnabled,
     voiceOverUri,
+    voiceEffect,
     transitionId,
+    subtitles,
   ]);
 
   const startVoiceRecording = useCallback(async () => {
@@ -805,6 +828,29 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
       {voiceOverUri ? (
         <Text style={styles.voiceOkHint}>Piste vocale prête — elle sera envoyée avec la vidéo.</Text>
       ) : null}
+      <Text style={styles.panelSubtitle}>Effet de voix</Text>
+      <Text style={styles.panelHint}>
+        L’effet est appliqué côté serveur (ffmpeg) au moment de la publication. La piste brute reste intacte.
+      </Text>
+      <View style={styles.voiceEffectRow}>
+        {VOICE_EFFECT_OPTIONS.map((opt) => {
+          const active = voiceEffect === opt.id;
+          return (
+            <TouchableOpacity
+              key={opt.id}
+              onPress={() => {
+                hapticLight();
+                setVoiceEffect(opt.id);
+              }}
+              style={[styles.voiceEffectChip, active && styles.voiceEffectChipActive]}
+              accessibilityLabel={`Effet voix ${opt.label}`}
+            >
+              <Text style={[styles.voiceEffectChipText, active && styles.voiceEffectChipTextActive]}>{opt.label}</Text>
+              <Text style={[styles.voiceEffectChipHint, active && styles.voiceEffectChipHintActive]}>{opt.hint}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
       <Text style={styles.panelSubtitle}>Transition entre clips</Text>
       <View style={styles.transitionRow}>
         {TRANSITION_OPTIONS.map((t) => (
@@ -819,6 +865,28 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
             <Text style={[styles.transitionChipText, transitionId === t.id && styles.transitionChipTextActive]}>{t.label}</Text>
           </TouchableOpacity>
         ))}
+      </View>
+      <Text style={styles.panelSubtitle}>Sous-titres</Text>
+      <Text style={styles.panelHint}>
+        Ajoutez des sous-titres manuels par chunks (start / end / texte) ou importez un fichier SRT existant.
+        L’export SRT est copié dans le presse-papier.
+      </Text>
+      <View style={styles.subtitlesRow}>
+        <TouchableOpacity
+          style={styles.subtitlesBtn}
+          onPress={() => setSubtitlesOpen(true)}
+          accessibilityLabel="Ouvrir l'éditeur de sous-titres"
+        >
+          <Ionicons name="text" size={18} color="#FFF" />
+          <Text style={styles.subtitlesBtnText}>
+            {subtitles.length > 0 ? `Modifier (${subtitles.length} chunks)` : 'Ajouter des sous-titres'}
+          </Text>
+        </TouchableOpacity>
+        {subtitles.length > 0 ? (
+          <TouchableOpacity onPress={() => setSubtitles([])} style={styles.subtitlesClearBtn} hitSlop={10}>
+            <Text style={styles.subtitlesClearBtnText}>Effacer</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
       <Text style={styles.panelSubtitle}>Découpe en segments</Text>
       <Text style={styles.segmentHint}>
@@ -1021,6 +1089,15 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel })
           </View>
         </View>
       </Modal>
+      <SubtitlesEditor
+        visible={subtitlesOpen}
+        onClose={() => setSubtitlesOpen(false)}
+        initialChunks={subtitles}
+        onSave={(next) => {
+          setSubtitles(next);
+          setSubtitlesOpen(false);
+        }}
+      />
     </View>
   );
 };
@@ -1360,6 +1437,37 @@ const styles = StyleSheet.create({
   voiceSecondaryBtn: { alignSelf: 'flex-start', paddingVertical: 8 },
   voiceSecondaryBtnText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
   voiceOkHint: { color: Colors.accent, fontSize: 12, marginBottom: Spacing.md },
+  voiceEffectRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  voiceEffectChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    minWidth: 84,
+    alignItems: 'center',
+  },
+  voiceEffectChipActive: { backgroundColor: 'rgba(255,107,0,0.18)', borderColor: Colors.primary },
+  voiceEffectChipText: { color: Colors.text, fontWeight: '700', fontSize: 13 },
+  voiceEffectChipTextActive: { color: Colors.primary },
+  voiceEffectChipHint: { color: Colors.textMuted, fontSize: 10, marginTop: 2 },
+  voiceEffectChipHintActive: { color: Colors.primary },
+  subtitlesRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.sm, marginBottom: Spacing.md, flexWrap: 'wrap' },
+  subtitlesBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: Colors.primary, paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: BorderRadius.full,
+  },
+  subtitlesBtnText: { color: '#FFF', fontWeight: '700', fontSize: FontSizes.sm },
+  subtitlesClearBtn: { paddingVertical: 8, paddingHorizontal: 10 },
+  subtitlesClearBtnText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
   transitionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.md },
   transitionChip: {
     paddingHorizontal: 14,

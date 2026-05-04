@@ -21,7 +21,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import PreviewCamera from '../../src/components/camera/PreviewCamera';
+import { useNativeCameraPermission } from '../../src/components/camera/useNativeCameraPermission';
 import { Audio } from 'expo-av';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import apiClient from '../../src/api/client';
@@ -165,7 +166,7 @@ export default function LiveStreamScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const liveIdRef = useRef<string | null>(null);
   const liveStartedAtMsRef = useRef<number | null>(null);
-  const [camPerm, requestCamPerm] = useCameraPermissions();
+  const { hasPermission: hasCamPerm, requestPermission: requestCamPerm } = useNativeCameraPermission();
   const [previewFacing, setPreviewFacing] = useState<'front' | 'back'>('front');
 
   const { agoraJoined, agoraError, AgoraLocalView, AgoraRemoteGrid, remoteUids, toggleScreenShare } = useAgoraLiveRtc({
@@ -916,9 +917,13 @@ export default function LiveStreamScreen() {
         >
           <View style={styles.previewBox}>
             <LinearGradient colors={['#1a0a2e', '#0a0a12']} style={StyleSheet.absoluteFillObject} />
-            {Platform.OS !== 'web' && camPerm?.granted ? (
+            {Platform.OS !== 'web' && hasCamPerm ? (
               <>
-                <CameraView style={StyleSheet.absoluteFillObject} facing={previewFacing} mode="picture" mute={false} />
+                <PreviewCamera
+                  style={StyleSheet.absoluteFillObject}
+                  facing={previewFacing}
+                  active={phase === 'setup'}
+                />
                 {thumbnailLocalUri ? (
                   <Image source={{ uri: thumbnailLocalUri }} style={styles.previewThumbCorner} />
                 ) : null}
@@ -930,7 +935,7 @@ export default function LiveStreamScreen() {
                   <Ionicons name="camera-reverse-outline" size={22} color="#FFF" />
                 </TouchableOpacity>
               </>
-            ) : Platform.OS !== 'web' ? (
+            ) : Platform.OS !== 'web' && !hasCamPerm ? (
               <TouchableOpacity style={styles.previewPermBtn} onPress={() => void requestCamPerm()}>
                 <Ionicons name="videocam-outline" size={28} color="#FFF" />
                 <Text style={styles.previewPermText}>Autoriser caméra + micro pour prévisualiser</Text>

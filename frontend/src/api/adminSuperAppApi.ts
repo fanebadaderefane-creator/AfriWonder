@@ -4,6 +4,25 @@
  */
 import apiClient from './client';
 
+export type SystemAuditPayload = {
+  e2eTests: boolean;
+  microservicesReady: boolean;
+  cdnEnabled: boolean;
+  scalableWebSocket: boolean;
+  realMobileMoney: boolean;
+  details: Record<string, string>;
+  environment: string;
+  productionReady: boolean;
+  deliveryPlan?: { id: string; priority: number; title: string; status: 'ok' | 'partial' | 'todo'; proof: string }[];
+};
+
+export type SystemAutoFixPayload = {
+  audit: SystemAuditPayload;
+  actions: { id: string; status: 'partial' | 'done' | 'applied'; message: string }[];
+  appliedArtifacts?: string[];
+  summary?: string;
+};
+
 export interface AdminSuperAppKpis {
   tontines: { active: number; completed: number; total_members: number };
   travel: { bus_bookings_total: number; bus_bookings_paid: number; hotel_bookings_total: number };
@@ -158,6 +177,24 @@ export const adminSuperAppApi = {
   async updateHotelRoom(roomId: string, payload: Record<string, unknown>): Promise<any> {
     const { data } = await apiClient.patch(`/admin/super-app/hotels/rooms/${roomId}`, payload);
     return data?.data;
+  },
+
+  async systemAudit(): Promise<SystemAuditPayload | null> {
+    try {
+      const { data } = await apiClient.get('/admin/super-app/system-audit');
+      return (data?.data ?? null) as SystemAuditPayload | null;
+    } catch {
+      return null;
+    }
+  },
+
+  async systemAuditAutoFix(): Promise<SystemAutoFixPayload | null> {
+    try {
+      const { data } = await apiClient.post('/admin/super-app/system-audit/auto-fix', {});
+      return (data?.data ?? null) as SystemAutoFixPayload | null;
+    } catch {
+      return null;
+    }
   },
 };
 

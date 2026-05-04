@@ -228,7 +228,8 @@ async function uploadProfileImageFileWithFetch(
     const formData = new FormData();
     await appendProfileImageToFormData(formData, uri, meta);
     let token = ((await secureStorage.getItem('accessToken')) || '').trim();
-    if (accessTokenExpiresWithin(token, 120)) {
+    /** Marge alignée sur les gros uploads : évite 401 / échec silencieux si le JWT expire juste après la manip image. */
+    if (accessTokenExpiresWithin(token, 600)) {
       await tryRefreshAccessToken();
       token = ((await secureStorage.getItem('accessToken')) || '').trim();
     }
@@ -371,6 +372,22 @@ export default function ProfileEditScreen() {
       Alert.alert('Format', 'Choisissez une photo, pas une vidéo.');
       return;
     }
+    /**
+     * Garde-fou anti-crash : sur Android, les images ≥ ~30 Mo (HEIC 4K, photos rafale)
+     * font crasher la MainActivity au moment du décodage natif, AVANT que
+     * `ImageManipulator` ait pu réduire la taille. On rejette poliment plutôt que de
+     * laisser l'OS killer l'app et la relancer.
+     */
+    const MAX_PROFILE_IMAGE_BYTES = Platform.OS === 'android' ? 30 * 1024 * 1024 : 60 * 1024 * 1024;
+    const fileSize = Number(asset.fileSize ?? 0);
+    if (Number.isFinite(fileSize) && fileSize > MAX_PROFILE_IMAGE_BYTES) {
+      const mb = (fileSize / (1024 * 1024)).toFixed(1);
+      Alert.alert(
+        'Photo trop volumineuse',
+        `Cette image fait ${mb} Mo. Choisissez une photo plus petite (max ${Math.floor(MAX_PROFILE_IMAGE_BYTES / (1024 * 1024))} Mo) ou prenez-la directement avec la caméra AfriWonder.`,
+      );
+      return;
+    }
     try {
       const safeUri = await downscaleUriForProfileCrop(uri, asset.width ?? null, asset.height ?? null);
       setAvatarDraft({
@@ -378,12 +395,14 @@ export default function ProfileEditScreen() {
         mimeType: 'image/jpeg',
         fileName: safeUri === uri ? (asset.fileName ?? null) : 'profile.jpg',
       });
-    } catch {
-      setAvatarDraft({
-        uri,
-        mimeType: asset.mimeType ?? null,
-        fileName: asset.fileName ?? null,
-      });
+    } catch (err) {
+      // ImageManipulator a planté — on ne peut pas afficher l'image brute
+      // car elle est probablement la cause du crash. On ne la garde pas.
+      console.warn('[profile-edit] downscale failed', err);
+      Alert.alert(
+        'Image illisible',
+        'Cette photo n\'a pas pu être traitée (format ou taille). Essayez une autre image (JPEG / PNG, max 30 Mo).',
+      );
     }
   };
 

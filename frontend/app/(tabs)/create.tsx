@@ -8,14 +8,42 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useAuthStore } from '../../src/store/authStore';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import { isAxiosError } from 'axios';
 import apiClient from '../../src/api/client';
+import { tryRefreshAccessToken } from '../../src/api/tokenRefresh';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
+import { getBackendOrigin } from '../../src/config/backendBase';
+import { cacheDirectory, copyAsync, uploadAsync, FileSystemUploadType } from 'expo-file-system/legacy';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import VideoEditor, { type VideoEditorResult } from '../../src/components/VideoEditor';
+import IntegratedCameraRecorder, {
+  type CameraDurationPreset,
+  type CameraSpeedPreset,
+  type IntegratedCameraResult,
+  type CameraEffectId,
+} from '../../src/components/create/IntegratedCameraRecorder';
+import WebVideoRecorder from '../../src/components/create/WebVideoRecorder';
+import { buildCameraEffectPayload } from '../../src/components/create/cameraEffects';
+import {
+  buildRemixApiPayload,
+  readRemixSeedFromParams,
+  remixActionHint,
+  remixActionLabel,
+  type RemixSeed,
+} from '../../src/components/create/remixSession';
 import { LinearGradient } from 'expo-linear-gradient';
 import { DateTimePickerSheet } from '../../src/components/common/DateTimePickerSheet';
+
+type SelectedMedia = {
+  uri: string;
+  type: 'video' | 'image';
+  mimeType?: string | null;
+  fileName?: string | null;
+};
 
 function mimeForImageExt(ext: string): string {
   const e = String(ext || '').toLowerCase().replace(/^\./, '');
@@ -99,7 +127,42 @@ function SelectedVideoPreview({ uri }: { uri: string }) {
   return <SelectedVideoPreviewNative uri={uri} />;
 }
 
-async function appendUploadFile(formData: FormData, media: { uri: string; type: string }, index: number) {
+/**
+ * Android : `content://` peut être révoqué ou instable pendant un gros POST multipart
+ * (vidéo) → copie en cache `file://` avant envoi (même idée que `profile-edit`).
+ */
+async function copyNativeUriToCacheForUpload(uri: string, extHint: string): Promise<string> {
+  if (Platform.OS === 'web') return uri;
+  const u = uri.trim();
+  const shouldCopy = u.startsWith('content://') || u.startsWith('ph://') || u.startsWith('assets-library://');
+  if (!shouldCopy) return u;
+  const dir = cacheDirectory;
+  if (!dir) return u;
+  const safeExt = extHint.replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'bin';
+  const dest = `${dir}afw-create-upload-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${safeExt}`;
+  try {
+    await copyAsync({ from: u, to: dest });
+    return dest;
+  } catch {
+    return u;
+  }
+}
+
+async function normalizeNativeImageForUpload(uri: string): Promise<string> {
+  if (Platform.OS === 'web') return uri;
+  try {
+    const out = await ImageManipulator.manipulateAsync(
+      uri,
+      [],
+      { compress: Platform.OS === 'android' ? 0.85 : 0.9, format: ImageManipulator.SaveFormat.JPEG },
+    );
+    return out.uri || uri;
+  } catch {
+    return uri;
+  }
+}
+
+async function appendUploadFile(formData: FormData, media: SelectedMedia, index: number) {
   if (Platform.OS === 'web') {
     const res = await fetch(media.uri);
     const blob = await res.blob();
@@ -118,10 +181,32 @@ async function appendUploadFile(formData: FormData, media: { uri: string; type: 
     formData.append('file', new File([blob], name, { type: mime }));
     return;
   }
-  const raw = (media.uri.split('.').pop() || '').split('?')[0] || '';
-  const ext = raw.replace(/[^a-z0-9]/gi, '').slice(0, 8) || (media.type === 'video' ? 'mp4' : 'jpg');
-  const mimeType = media.type === 'video' ? mimeForVideoExt(ext) : mimeForImageExt(ext);
-  formData.append('file', { uri: media.uri, name: `upload_${index}.${ext}`, type: mimeType } as any);
+  const rawUriExt = (media.uri.split('.').pop() || '').split('?')[0] || '';
+  const rawNameExt = (String(media.fileName || '').split('.').pop() || '').split('?')[0] || '';
+  const extRaw = (rawNameExt || rawUriExt).replace(/[^a-z0-9]/gi, '').slice(0, 8);
+  const mimeFromAsset = String(media.mimeType || '').toLowerCase().trim();
+  const ext = extRaw || (media.type === 'video' ? 'mp4' : 'jpg');
+
+  let uploadUri = await copyNativeUriToCacheForUpload(media.uri, ext);
+  let mimeType = media.type === 'video' ? mimeForVideoExt(ext) : mimeForImageExt(ext);
+
+  if (media.type === 'image') {
+    uploadUri = await normalizeNativeImageForUpload(uploadUri);
+    mimeType = 'image/jpeg';
+  } else if (mimeFromAsset) {
+    mimeType = mimeFromAsset;
+  }
+
+  const finalExt =
+    media.type === 'image'
+      ? 'jpg'
+      : mimeType.includes('webm')
+        ? 'webm'
+        : mimeType.includes('quicktime')
+          ? 'mov'
+          : ext;
+
+  formData.append('file', { uri: uploadUri, name: `upload_${index}.${finalExt}`, type: mimeType } as any);
 }
 
 async function appendUploadVoice(formData: FormData, uri: string, index: number) {
@@ -139,7 +224,8 @@ async function appendUploadVoice(formData: FormData, uri: string, index: number)
   const raw = (uri.split('.').pop() || '').split('?')[0] || '';
   const ext = raw.replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'm4a';
   const mimeType = mimeForAudioExt(ext);
-  formData.append('file', { uri, name: `voice_${index}.${ext}`, type: mimeType } as any);
+  const uploadUri = await copyNativeUriToCacheForUpload(uri, ext);
+  formData.append('file', { uri: uploadUri, name: `voice_${index}.${ext}`, type: mimeType } as any);
 }
 
 type SoundSeed = { title: string; fromVideoId?: string };
@@ -235,6 +321,15 @@ function ScheduleChip({ label, onPress, destructive }: { label: string; onPress:
   );
 }
 
+const MOBILE_MEDIA_UPLOAD_TIMEOUT_MS = 900000;
+const STANDARD_UPLOAD_TIMEOUT_MS = 180000;
+const NETWORK_RETRY_DELAY_MS = 900;
+
+type PresignUploadResponse = {
+  uploadUrl: string;
+  file_url: string;
+};
+
 function hasMeaningfulEditorEffects(r: VideoEditorResult | null): boolean {
   if (!r) return false;
   const hasMusic = Boolean(r.musicTrackId && r.musicTrackId !== 'm0');
@@ -248,12 +343,19 @@ function hasMeaningfulEditorEffects(r: VideoEditorResult | null): boolean {
     || trimTouched
     || r.gridEnabled
     || Boolean(r.voiceOverUri)
+    || (r.voiceEffect && r.voiceEffect !== 'none')
     || r.transitionId !== 'none'
+    || (Array.isArray(r.subtitles) && r.subtitles.length > 0)
   );
 }
 
 /** JSON pour `POST /videos` — plafonné côté API à 16 ko. */
-function serializeEditorMetadata(r: VideoEditorResult, voiceOverRemoteUrl?: string | null): string {
+function serializeEditorMetadata(
+  r: VideoEditorResult,
+  voiceOverRemoteUrl?: string | null,
+  cameraEffect?: CameraEffectId,
+): string {
+  const cameraEffectPayload = cameraEffect && cameraEffect !== 'none' ? buildCameraEffectPayload(cameraEffect) : null;
   const payload = {
     v: 1,
     filter: r.filter,
@@ -263,6 +365,16 @@ function serializeEditorMetadata(r: VideoEditorResult, voiceOverRemoteUrl?: stri
     gridEnabled: r.gridEnabled,
     transitionId: r.transitionId,
     musicTrackId: r.musicTrackId,
+    voiceEffect: r.voiceEffect ?? 'none',
+    ...(cameraEffectPayload ? { cameraEffect: cameraEffectPayload } : {}),
+    subtitles: Array.isArray(r.subtitles)
+      ? r.subtitles.slice(0, 200).map((c) => ({
+          index: c.index,
+          startMs: c.startMs,
+          endMs: c.endMs,
+          text: typeof c.text === 'string' ? c.text.slice(0, 240) : '',
+        }))
+      : [],
     ...(voiceOverRemoteUrl ? { voiceOverUrl: voiceOverRemoteUrl } : {}),
     texts: r.texts.map((t) => ({
       id: t.id,
@@ -291,10 +403,15 @@ export default function CreateScreen() {
   const params = useLocalSearchParams<{
     useSoundTitle?: string | string[];
     useSoundFromVideoId?: string | string[];
+    remix_of?: string | string[];
+    remix_kind?: string | string[];
+    remix_username?: string | string[];
+    remix_title?: string | string[];
   }>();
   const soundSeedKeyConsumed = useRef<string | null>(null);
+  const remixSeedKeyConsumed = useRef<string | null>(null);
 
-  const [selectedMedia, setSelectedMedia] = useState<{ uri: string; type: string }[]>([]);
+  const [selectedMedia, setSelectedMedia] = useState<SelectedMedia[]>([]);
   const [contentType, setContentType] = useState<'video' | 'photo' | 'text' | 'article'>('video');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -310,6 +427,15 @@ export default function CreateScreen() {
   /** Compte à rebours avant ouverture caméra (0 = désactivé). */
   const [cameraCountdownSec, setCameraCountdownSec] = useState<0 | 3 | 5 | 10>(0);
   const [countdownTick, setCountdownTick] = useState<number | null>(null);
+  /** Caméra intégrée AfriWonder (natif) — préférences durée + vitesse présélectionnées. */
+  const [integratedCameraOpen, setIntegratedCameraOpen] = useState(false);
+  const [integratedCameraDurationCap, setIntegratedCameraDurationCap] = useState<CameraDurationPreset>(60);
+  const [integratedCameraSpeed, setIntegratedCameraSpeed] = useState<CameraSpeedPreset>(1);
+  const [integratedCameraEffect, setIntegratedCameraEffect] = useState<CameraEffectId>('none');
+  /** Recorder web HTML5 (`getUserMedia` + `MediaRecorder`) — ouvert sur navigateur. */
+  const [webRecorderOpen, setWebRecorderOpen] = useState(false);
+  /** Mode Duo / Stitch / Remix — vidéo source à crediter dans la publication. */
+  const [remixSeed, setRemixSeed] = useState<RemixSeed | null>(null);
 
   /**
    * Options de publication TikTok-like (capture 1/2) :
@@ -352,6 +478,22 @@ export default function CreateScreen() {
     setEditorResult(null);
   }, [params.useSoundTitle, params.useSoundFromVideoId]);
 
+  useEffect(() => {
+    const seed = readRemixSeedFromParams({
+      remix_of: normRouteParam(params.remix_of),
+      remix_kind: normRouteParam(params.remix_kind),
+      remix_username: normRouteParam(params.remix_username),
+      remix_title: normRouteParam(params.remix_title),
+    });
+    if (!seed) return;
+    const key = `${seed.remixOfId}|${seed.kind}`;
+    if (remixSeedKeyConsumed.current === key) return;
+    remixSeedKeyConsumed.current = key;
+    setRemixSeed(seed);
+    setContentType('video');
+    setStep('select');
+  }, [params.remix_of, params.remix_kind, params.remix_username, params.remix_title]);
+
   const requireAuth = (action: string) => {
     if (!isAuthenticated) {
       Alert.alert('Connexion requise', `Veuillez vous connecter pour ${action}`, [
@@ -375,10 +517,12 @@ export default function CreateScreen() {
       /** Android : l’éditeur système après sélection peut faire fermer l’app / instabilité (audit mobile-first). */
       allowsEditing: Platform.OS !== 'android',
       quality: 0.8,
+      /** iOS : export compressé — moins de RAM / risque OOM qu’avec du 4K « passthrough ». */
+      ...(Platform.OS === 'ios' ? { videoExportPreset: ImagePicker.VideoExportPreset.MediumQuality } : {}),
     });
     if (!result.canceled && result.assets[0]) {
       const a = result.assets[0];
-      setSelectedMedia([{ uri: a.uri, type: 'video' }]);
+      setSelectedMedia([{ uri: a.uri, type: 'video', mimeType: a.mimeType ?? null, fileName: a.fileName ?? null }]);
       setContentType('video');
       setEditorResult(null);
       setStep('edit');
@@ -399,7 +543,12 @@ export default function CreateScreen() {
       selectionLimit: 10,
     });
     if (!result.canceled && result.assets.length > 0) {
-      setSelectedMedia(result.assets.map(a => ({ uri: a.uri, type: 'image' as const })));
+      setSelectedMedia(result.assets.map(a => ({
+        uri: a.uri,
+        type: 'image' as const,
+        mimeType: a.mimeType ?? null,
+        fileName: a.fileName ?? null,
+      })));
       setContentType('photo');
       setStep('details');
     }
@@ -407,11 +556,6 @@ export default function CreateScreen() {
 
   const handleRecordVideo = async () => {
     if (!requireAuth('enregistrer une vidéo')) return;
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission refusée', "Accès à la caméra nécessaire");
-      return;
-    }
     let n = cameraCountdownSec;
     while (n > 0) {
       setCountdownTick(n);
@@ -419,19 +563,49 @@ export default function CreateScreen() {
       n -= 1;
     }
     setCountdownTick(null);
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['videos'],
-      allowsEditing: Platform.OS !== 'android',
-      quality: 0.8,
-    });
-    if (!result.canceled && result.assets[0]) {
-      const a = result.assets[0];
-      setSelectedMedia([{ uri: a.uri, type: 'video' }]);
+
+    if (Platform.OS === 'web') {
+      // Sur web : ouvrir notre recorder HTML5 custom (getUserMedia + MediaRecorder).
+      // `ImagePicker.launchCameraAsync` ne demande PAS l'accès caméra sur Firefox/Edge
+      // desktop — il fallback sur input file → l'utilisateur voit l'Explorateur Windows.
+      setWebRecorderOpen(true);
+      return;
+    }
+
+    setIntegratedCameraOpen(true);
+  };
+
+  const handleWebRecorderCaptured = useCallback(
+    (result: { uri: string; mimeType: string; durationSec: number }) => {
+      setWebRecorderOpen(false);
+      setSelectedMedia([{
+        uri: result.uri,
+        type: 'video',
+        mimeType: result.mimeType,
+        fileName: `afw-web-cam-${Date.now()}.${result.mimeType.includes('mp4') ? 'mp4' : 'webm'}`,
+      }]);
       setContentType('video');
       setEditorResult(null);
       setStep('edit');
-    }
-  };
+    },
+    [],
+  );
+
+  const handleIntegratedCameraCaptured = useCallback((result: IntegratedCameraResult) => {
+    setIntegratedCameraOpen(false);
+    setIntegratedCameraDurationCap(result.durationCapSec);
+    setIntegratedCameraSpeed(result.speed);
+    setIntegratedCameraEffect(result.effect);
+    setSelectedMedia([{
+      uri: result.uri,
+      type: 'video',
+      mimeType: 'video/mp4',
+      fileName: `afw-cam-${Date.now()}.mp4`,
+    }]);
+    setContentType('video');
+    setEditorResult(null);
+    setStep('edit');
+  }, []);
 
   const handleTextPost = () => {
     if (!requireAuth('publier un texte')) return;
@@ -445,6 +619,103 @@ export default function CreateScreen() {
     setContentType('article');
     setSelectedMedia([]);
     setStep('details');
+  };
+
+  const isRetriableNetworkError = (error: unknown) => {
+    if (!isAxiosError(error)) return false;
+    const m = String(error.message || '').toLowerCase();
+    if (!error.response) return true;
+    return error.code === 'ECONNABORTED' || m.includes('network') || m.includes('timeout') || m.includes('socket');
+  };
+
+  const uploadMultipartWithRetry = async (
+    path: '/upload/video' | '/upload/image' | '/upload/audio',
+    buildForm: () => Promise<FormData>,
+    timeoutMs: number,
+  ) => {
+    const attempts = 2;
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        const form = await buildForm();
+        return await apiClient.post(path, form, {
+          timeout: timeoutMs,
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
+        });
+      } catch (error: unknown) {
+        lastError = error;
+        if (!isRetriableNetworkError(error) || attempt >= attempts) break;
+        await tryRefreshAccessToken();
+        await new Promise((r) => setTimeout(r, NETWORK_RETRY_DELAY_MS * attempt));
+      }
+    }
+    throw lastError;
+  };
+
+  const requestVideoPresign = async (filename: string, contentType: string): Promise<PresignUploadResponse> => {
+    const res = await apiClient.post('/upload/presign', {
+      kind: 'video',
+      filename,
+      contentType,
+    }, { timeout: STANDARD_UPLOAD_TIMEOUT_MS });
+    const d = res.data?.data;
+    const uploadUrl = String(d?.uploadUrl || '').trim();
+    const fileUrl = String(d?.file_url || '').trim();
+    if (!uploadUrl || !fileUrl) {
+      throw new Error('Réponse presign invalide');
+    }
+    return { uploadUrl, file_url: fileUrl };
+  };
+
+  const tryDirectR2VideoUpload = async (media: SelectedMedia, index: number): Promise<string | null> => {
+    if (Platform.OS === 'web') return null;
+    try {
+      const rawUriExt = (media.uri.split('.').pop() || '').split('?')[0] || '';
+      const rawNameExt = (String(media.fileName || '').split('.').pop() || '').split('?')[0] || '';
+      const extRaw = (rawNameExt || rawUriExt).replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'mp4';
+      const mimeFromAsset = String(media.mimeType || '').toLowerCase().trim();
+      const contentType = mimeFromAsset || mimeForVideoExt(extRaw);
+      const normalizedExt = contentType.includes('webm')
+        ? 'webm'
+        : contentType.includes('quicktime')
+          ? 'mov'
+          : 'mp4';
+      const fileUri = await copyNativeUriToCacheForUpload(media.uri, normalizedExt);
+      const filename = `mobile-video-${Date.now()}-${index}.${normalizedExt}`;
+      const presign = await requestVideoPresign(filename, contentType);
+      const putRes = await uploadAsync(presign.uploadUrl, fileUri, {
+        httpMethod: 'PUT',
+        uploadType: FileSystemUploadType.BINARY_CONTENT,
+        headers: {
+          'Content-Type': contentType,
+        },
+      });
+      if (putRes.status < 200 || putRes.status >= 300) {
+        throw new Error(`PUT direct R2 refusé (${putRes.status})`);
+      }
+      return presign.file_url;
+    } catch (e) {
+      console.warn('Direct R2 video upload failed, fallback to backend /upload/video', e);
+      return null;
+    }
+  };
+
+  const postWithRetry = async <T = any>(path: string, body: unknown) => {
+    const attempts = 2;
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        const res = await apiClient.post(path, body, { timeout: 120000 });
+        return res as T;
+      } catch (error: unknown) {
+        lastError = error;
+        if (!isRetriableNetworkError(error) || attempt >= attempts) break;
+        await tryRefreshAccessToken();
+        await new Promise((r) => setTimeout(r, NETWORK_RETRY_DELAY_MS * attempt));
+      }
+    }
+    throw lastError;
   };
 
   const handlePublish = async () => {
@@ -462,6 +733,9 @@ export default function CreateScreen() {
     setUploadProgress(0);
 
     try {
+      /** Jeton frais avant chaîne upload + POST (complète le refresh proportionnel au timeout dans `apiClient`). */
+      await tryRefreshAccessToken();
+
       const hashtagArray = hashtags.split(/[,#\s]+/).filter(h => h.trim()).map(h => h.trim());
       let mediaUrls: string[] = [];
       let videoUrl: string | undefined;
@@ -472,22 +746,28 @@ export default function CreateScreen() {
         setUploadProgress(10);
         for (let i = 0; i < selectedMedia.length; i++) {
           const media = selectedMedia[i];
-          const formData = new FormData();
-          await appendUploadFile(formData, media, i);
-
-          const path = media.type === 'video' ? '/upload/video' : '/upload/image';
-          // Même client que le feed : Bearer + refresh sur 401. Ne pas fixer Content-Type (boundary requis).
-          const uploadRes = await apiClient.post(path, formData, {
-            timeout: 300000,
-            maxContentLength: Infinity,
-            maxBodyLength: Infinity,
-          });
-          const d = uploadRes.data?.data;
-          const fileUrl = d?.file_url || d?.url || '';
           if (media.type === 'video') {
-            videoUrl = fileUrl;
-            videoThumb = d?.thumbnail_url || undefined;
+            const directR2Url = await tryDirectR2VideoUpload(media, i);
+            if (directR2Url) {
+              videoUrl = directR2Url;
+            } else {
+              const uploadRes = await uploadMultipartWithRetry('/upload/video', async () => {
+                const formData = new FormData();
+                await appendUploadFile(formData, media, i);
+                return formData;
+              }, MOBILE_MEDIA_UPLOAD_TIMEOUT_MS);
+              const d = uploadRes.data?.data;
+              videoUrl = d?.file_url || d?.url || '';
+              videoThumb = d?.thumbnail_url || undefined;
+            }
           } else {
+            const uploadRes = await uploadMultipartWithRetry('/upload/image', async () => {
+              const formData = new FormData();
+              await appendUploadFile(formData, media, i);
+              return formData;
+            }, STANDARD_UPLOAD_TIMEOUT_MS);
+            const d = uploadRes.data?.data;
+            const fileUrl = d?.file_url || d?.url || '';
             mediaUrls.push(fileUrl);
           }
 
@@ -499,14 +779,14 @@ export default function CreateScreen() {
 
       let voiceOverRemoteUrl: string | null = null;
       if (contentType === 'video' && editorResult?.voiceOverUri) {
+        const voiceUri = String(editorResult.voiceOverUri || '').trim();
+        if (!voiceUri) throw new Error('Piste voix off invalide');
         setUploadProgress(55);
-        const audioForm = new FormData();
-        await appendUploadVoice(audioForm, editorResult.voiceOverUri, 0);
-        const audioRes = await apiClient.post('/upload/audio', audioForm, {
-          timeout: 120000,
-          maxContentLength: Infinity,
-          maxBodyLength: Infinity,
-        });
+        const audioRes = await uploadMultipartWithRetry('/upload/audio', async () => {
+          const audioForm = new FormData();
+          await appendUploadVoice(audioForm, voiceUri, 0);
+          return audioForm;
+        }, STANDARD_UPLOAD_TIMEOUT_MS);
         voiceOverRemoteUrl = audioRes.data?.data?.file_url || null;
         if (!voiceOverRemoteUrl) {
           throw new Error('URL voix off manquante après upload');
@@ -523,18 +803,18 @@ export default function CreateScreen() {
           (soundSeed?.title && soundSeed.title.trim()) ||
           (editorResult?.musicTitle && editorResult.musicTitle.trim()) ||
           '';
-        const editorMeta = editorResult ? serializeEditorMetadata(editorResult, voiceOverRemoteUrl) : '';
+        const editorMeta = editorResult
+          ? serializeEditorMetadata(editorResult, voiceOverRemoteUrl, integratedCameraEffect)
+          : '';
 
         let finalThumbnail = videoThumb || videoUrl;
         if (customThumbnail?.uri) {
           try {
-            const tForm = new FormData();
-            await appendUploadFile(tForm, { uri: customThumbnail.uri, type: 'image' }, 0);
-            const tRes = await apiClient.post('/upload/image', tForm, {
-              timeout: 120000,
-              maxContentLength: Infinity,
-              maxBodyLength: Infinity,
-            });
+            const tRes = await uploadMultipartWithRetry('/upload/image', async () => {
+              const tForm = new FormData();
+              await appendUploadFile(tForm, { uri: customThumbnail.uri, type: 'image' }, 0);
+              return tForm;
+            }, STANDARD_UPLOAD_TIMEOUT_MS);
             const tUrl = tRes.data?.data?.file_url || tRes.data?.data?.url;
             if (typeof tUrl === 'string' && tUrl.trim()) finalThumbnail = tUrl.trim();
           } catch (e) {
@@ -542,7 +822,8 @@ export default function CreateScreen() {
           }
         }
 
-        await apiClient.post('/videos', {
+        const remixPayload = buildRemixApiPayload(remixSeed);
+        await postWithRetry('/videos', {
           title: title.trim(),
           description: description.trim() || title.trim(),
           video_url: videoUrl,
@@ -550,7 +831,11 @@ export default function CreateScreen() {
           hashtags: hashtagArray,
           media_type: 'video',
           ...(resolvedMusicTitle ? { music_title: resolvedMusicTitle.slice(0, 200) } : {}),
-          ...(soundSeed?.fromVideoId ? { remix_of_id: soundSeed.fromVideoId } : {}),
+          ...(remixPayload
+            ? remixPayload
+            : soundSeed?.fromVideoId
+              ? { remix_of_id: soundSeed.fromVideoId }
+              : {}),
           ...(editorMeta ? { editor_metadata: editorMeta } : {}),
           ...(category ? { category } : {}),
           ...(language ? { language } : {}),
@@ -561,20 +846,20 @@ export default function CreateScreen() {
           ...(scheduledAt ? { scheduled_at: new Date(scheduledAt).toISOString() } : {}),
         });
       } else if (contentType === 'text') {
-        await apiClient.post('/posts', {
+        await postWithRetry('/posts', {
           text: description.trim(),
           ...(mediaUrls.length > 0 ? { images: mediaUrls } : {}),
           visibility: 'public',
         });
       } else if (contentType === 'article') {
         const text = `# ${title.trim()}\n\n${articleBody.trim()}`;
-        await apiClient.post('/posts', {
+        await postWithRetry('/posts', {
           text,
           ...(mediaUrls.length > 0 ? { images: mediaUrls } : {}),
           visibility: 'public',
         });
       } else if (contentType === 'photo') {
-        await apiClient.post('/posts', {
+        await postWithRetry('/posts', {
           text: description.trim() || undefined,
           images: mediaUrls,
           visibility: 'public',
@@ -602,12 +887,27 @@ export default function CreateScreen() {
       } else {
         Alert.alert('Publié !', successBody, [{ text: 'OK', onPress: goHomeAfterPublish }]);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Publish error:', error);
-      const isNetworkError = !error?.response && String(error?.message || '').toLowerCase().includes('network');
-      const msg = isNetworkError
-        ? "Impossible d'envoyer la vidéo: connexion backend interrompue. Vérifiez que l'API tourne et réessayez."
-        : error.response?.data?.error?.message || error.response?.data?.detail || error.message || 'Erreur lors de la publication';
+      const base = getAlertMessageForCaughtError(error);
+      const ax = isAxiosError(error) ? error : null;
+      const noResponse = Boolean(ax && !ax.response);
+      const netLike = noResponse || /network|failed to connect|socket|aborted/i.test(String(ax?.message || ''));
+      let msg = base;
+      if (netLike) {
+        const origin = getBackendOrigin();
+        const checklist = Platform.OS === 'web'
+          ? `\n\nÀ vérifier :\n• L'API tourne sur ${origin}\n• Pas de blocage CORS / firewall\n• Onglet réseau (F12) pour voir l'URL exacte qui échoue`
+          : `\n\nÀ vérifier (dev mobile) :\n• Le téléphone est sur le MÊME WiFi que ton PC\n• L'API tourne (PC : npm run dev → \"Server running on 0.0.0.0:3000\")\n• Le firewall Windows autorise le port 3000\n• URL tentée : ${origin}\n• Astuce : ajoute EXPO_PUBLIC_DEV_PC_LAN_HOST=<IP-de-ton-PC> dans frontend/.env si la détection auto échoue`;
+
+        if (contentType === 'video') {
+          msg = `Impossible d'envoyer la vidéo : connexion au serveur interrompue.\n\n${base}${checklist}`;
+        } else if (selectedMedia.length > 0) {
+          msg = `Impossible d'envoyer le média.\n\n${base}${checklist}`;
+        } else {
+          msg = `Impossible d'envoyer la publication.\n\n${base}${checklist}`;
+        }
+      }
       Alert.alert('Erreur', msg);
     } finally {
       setUploading(false);
@@ -626,6 +926,8 @@ export default function CreateScreen() {
     setEditorResult(null);
     setSoundSeed(null);
     soundSeedKeyConsumed.current = null;
+    setRemixSeed(null);
+    remixSeedKeyConsumed.current = null;
     setCategory('');
     setLanguage('fr');
     setMusicTitle('');
@@ -670,6 +972,7 @@ export default function CreateScreen() {
     return (
       <VideoEditor
         videoUri={selectedMedia[0].uri}
+        initialSpeed={integratedCameraSpeed}
         onDone={(result) => {
           setEditorResult(result);
           setStep('details');
@@ -798,7 +1101,12 @@ export default function CreateScreen() {
                 if (status !== 'granted') return;
                 const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, quality: 0.8, selectionLimit: 5 });
                 if (!result.canceled && result.assets.length > 0) {
-                  setSelectedMedia(result.assets.map(a => ({ uri: a.uri, type: 'image' })));
+                  setSelectedMedia(result.assets.map(a => ({
+                    uri: a.uri,
+                    type: 'image' as const,
+                    mimeType: a.mimeType ?? null,
+                    fileName: a.fileName ?? null,
+                  })));
                 }
               }}>
                 <Ionicons name="image-outline" size={20} color={Colors.primary} />
@@ -1031,6 +1339,20 @@ export default function CreateScreen() {
           <Text style={styles.countdownHint}>Préparez-vous…</Text>
         </View>
       </Modal>
+      <IntegratedCameraRecorder
+        visible={integratedCameraOpen}
+        onClose={() => setIntegratedCameraOpen(false)}
+        onCaptured={handleIntegratedCameraCaptured}
+        initialDurationCap={integratedCameraDurationCap}
+        initialSpeed={integratedCameraSpeed}
+        initialEffect={integratedCameraEffect}
+      />
+      <WebVideoRecorder
+        visible={webRecorderOpen}
+        onClose={() => setWebRecorderOpen(false)}
+        onCaptured={handleWebRecorderCaptured}
+        maxDurationSec={integratedCameraDurationCap}
+      />
       <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Créer</Text>
@@ -1053,6 +1375,32 @@ export default function CreateScreen() {
               <Text style={styles.soundSeedHint}>Enregistrez ou choisissez une vidéo — le titre audio sera associé à votre publication.</Text>
             </View>
             <TouchableOpacity onPress={() => setSoundSeed(null)} hitSlop={12} accessibilityLabel="Retirer ce son">
+              <Ionicons name="close-circle" size={22} color={Colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {remixSeed ? (
+          <View style={styles.soundSeedBanner}>
+            <Ionicons name="git-branch-outline" size={20} color={Colors.primary} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.soundSeedLabel}>{`Mode ${remixActionLabel(remixSeed.kind)}`}</Text>
+              <Text style={styles.soundSeedTitle} numberOfLines={2}>
+                {remixSeed.sourceCreatorUsername
+                  ? `Vous réagissez à @${remixSeed.sourceCreatorUsername}`
+                  : 'Vous réagissez à une vidéo AfriWonder'}
+                {remixSeed.sourceTitle ? ` — ${remixSeed.sourceTitle}` : ''}
+              </Text>
+              <Text style={styles.soundSeedHint}>{remixActionHint(remixSeed.kind)}</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                setRemixSeed(null);
+                remixSeedKeyConsumed.current = null;
+              }}
+              hitSlop={12}
+              accessibilityLabel="Annuler le mode remix"
+            >
               <Ionicons name="close-circle" size={22} color={Colors.textMuted} />
             </TouchableOpacity>
           </View>

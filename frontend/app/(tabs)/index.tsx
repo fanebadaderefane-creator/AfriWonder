@@ -3120,8 +3120,8 @@ export default function FeedScreen(props?: {
             removeClippedSubviews={false}
             windowSize={effectiveDataSaver ? 2 : 5}
             initialNumToRender={2}
-            maxToRenderPerBatch={2}
-            updateCellsBatchingPeriod={80}
+            maxToRenderPerBatch={effectiveDataSaver ? 1 : 2}
+            updateCellsBatchingPeriod={effectiveDataSaver ? 120 : 80}
             getItemLayout={(_, index) => {
               const h = Math.max(1, feedItemHeight);
               return { length: h, offset: h * index, index };
@@ -3247,7 +3247,7 @@ export default function FeedScreen(props?: {
             disableIntervalMomentum={Platform.OS === 'android'}
             bounces={false}
             overScrollMode="never"
-            scrollEventThrottle={16}
+            scrollEventThrottle={effectiveDataSaver ? 32 : 16}
             onScroll={handlePlaybackScroll}
             onScrollBeginDrag={onFeedScrollBeginDrag}
             onScrollEndDrag={onFeedScrollEndDrag}

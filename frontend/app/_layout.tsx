@@ -23,6 +23,7 @@ import {
   probeAndroidDevBackendOrigin,
   shouldBlockUiUntilAndroidDevBackendProbe,
 } from '../src/config/backendBase';
+import { startBackendWarmupAtBoot } from '../src/api/backendWarmup';
 import { LanguageProvider } from '../src/i18n/LanguageContext';
 import notificationService from '../src/services/notificationService';
 import { resolveMobileDeepLink } from '../src/services/mobileApiService';
@@ -98,6 +99,15 @@ function RootLayoutContent() {
     return () => {
       if (safetyTimeout) clearTimeout(safetyTimeout);
     };
+  }, []);
+
+  /**
+   * Pre-warm backend prod au boot de l'app : Render free tier dort après 15 min d'inactivité ;
+   * un GET /health en background réveille le serveur AVANT que l'utilisateur ne tente une action.
+   * Best-effort, ne bloque pas l'UI. Cf. `src/api/backendWarmup.ts` pour la logique de retry.
+   */
+  useEffect(() => {
+    startBackendWarmupAtBoot();
   }, []);
 
   /**
