@@ -685,20 +685,12 @@ async function startServer() {
     if (redis) logger.info('✅ Cache Redis initialisé');
     else logger.info('ℹ️ Cache: mémoire locale (REDIS_URL absent ou connexion indisponible)');
 
-    // Adapter Redis pour Socket.io : scale WebSocket sur plusieurs nœuds (charges massives)
-    const redisUrl = process.env.REDIS_URL?.trim();
-    if (redisUrl) {
-      try {
-        const { createClient } = await import('redis');
-        const { createAdapter } = await import('@socket.io/redis-adapter');
-        const pubClient = createClient({ url: redisUrl });
-        const subClient = pubClient.duplicate();
-        await Promise.all([pubClient.connect(), subClient.connect()]);
-        io.adapter(createAdapter(pubClient, subClient));
-        logger.info('✅ Socket.io Redis adapter activé (multi-nœuds)');
-      } catch (adapterErr) {
-        logger.warn('Socket.io Redis adapter non activé (connexion Redis Socket échouée)', { error: adapterErr });
-      }
+    const { attachSocketIoRedisAdapterWithRetry } = await import('./realtime/socketCluster.js');
+    const cluster = await attachSocketIoRedisAdapterWithRetry(io);
+    if (cluster.mode === 'redis') {
+      logger.info('✅ Socket.io Redis adapter activé (multi-nœuds)', { attempts: cluster.attempts });
+    } else if (process.env.REDIS_URL?.trim()) {
+      logger.warn('ℹ️ Socket.io sans adapter Redis — single-node', { lastError: cluster.lastError });
     }
 
     const r2Config = await import('./config/cloudflare-r2.js');

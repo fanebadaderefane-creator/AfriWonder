@@ -412,7 +412,9 @@ class PaymentService {
       status: data.status,
     };
   }
-// MTN MOBILE MONEY — Collection API si MTN_MOMO_RTP_URL + MTN_MOMO_ACCESS_TOKEN (sinon stub)
+
+  // ============================================
+  // MTN MOBILE MONEY — Collection API si MTN_MOMO_RTP_URL + MTN_MOMO_ACCESS_TOKEN (sinon stub hors prod)
   // ============================================
   async initiateMtnMoneyPayment(userId: string, orderId: string, data: { amount: number; phone: string; returnUrl: string }) {
     const subKey = process.env.MTN_MOBILE_MONEY_SUBSCRIPTION_KEY || process.env.MTN_MOMO_SUBSCRIPTION_KEY;
@@ -423,6 +425,18 @@ class PaymentService {
     const rtpUrl = process.env.MTN_MOMO_RTP_URL?.trim();
     const bearer = process.env.MTN_MOMO_ACCESS_TOKEN?.trim();
     const targetEnv = process.env.MTN_MOMO_TARGET_ENVIRONMENT || 'sandbox';
+
+    if (process.env.NODE_ENV === 'production') {
+      if (!rtpUrl || !bearer) {
+        throw new Error(
+          'MTN Mobile Money en production exige MTN_MOMO_RTP_URL et MTN_MOMO_ACCESS_TOKEN (flux stub interdit).',
+        );
+      }
+      if (String(targetEnv).toLowerCase() === 'sandbox') {
+        throw new Error('MTN_MOMO_TARGET_ENVIRONMENT=sandbox interdit en production.');
+      }
+    }
+
     if (rtpUrl && bearer) {
       try {
         const msisdn = String(data.phone).replace(/\s/g, '').replace(/^\+/, '');
@@ -461,6 +475,10 @@ class PaymentService {
       } catch (e: any) {
         logger.error('MTN MoMo RTP erreur', { message: e?.message });
       }
+    }
+
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('MTN MoMo: RTP requis en production — échec réseau ou réponse inattendue.');
     }
 
     logger.info('Paiement MTN MoMo initié (stub / hors RTP)', { userId, orderId, amount: data.amount });

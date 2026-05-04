@@ -11,6 +11,13 @@ import path from 'path';
 import { createWriteStream } from 'fs';
 import https from 'https';
 import http from 'http';
+import { parseEditorMetadata, type ParsedEditorMetadata } from './editorMetadata/editorMetadataParser.js';
+import {
+  buildFfmpegEffectPlan,
+  buildVideoFilterPrefix,
+  joinFilters,
+  type FfmpegEffectPlan,
+} from './editorMetadata/ffmpegEffectsBuilder.js';
 
 const QUALITIES = [
   { name: '360p', width: 640, height: 360, bitrate: '800k' },
@@ -88,21 +95,31 @@ function downloadFile(url: string, destPath: string): Promise<void> {
 }
 
 /**
- * Génère la commande FFmpeg pour HLS multi-qualité (3 rendus) avec watermark optionnel.
+ * Génère la commande FFmpeg pour HLS multi-qualité (3 rendus) avec watermark optionnel
+ * et effets éditeur (caméra, voix, sous-titres) construits depuis `editor_metadata`.
  *
  * Si WATERMARK_LOGO_PATH est configuré et watermarkText fourni, on "brûle" dans la vidéo :
  * - un texte @username
  * - le logo AfriWonder
+ *
+ * Les filtres éditeur (lissage, lumière chaude, écran vert, vitesse, sous-titres) sont
+ * appliqués AVANT le watermark + split HLS.
  */
 function buildFfmpegArgs(
   inputPath: string,
   outputDir: string,
   watermarkText?: string,
+  editorPlan?: FfmpegEffectPlan | null,
+  subtitlePath?: string | null,
 ): string[] {
   const segPattern = path.join(outputDir, 'seg_%v_%03d.ts');
   const outPattern = path.join(outputDir, 'out_%v.m3u8');
 
   const useWatermark = Boolean(WATERMARK_LOGO_PATH && watermarkText);
+  const editorVideoPrefix = editorPlan
+    ? buildVideoFilterPrefix(editorPlan, { subtitlePath: subtitlePath || null })
+    : '';
+  const editorAudioFilters = editorPlan ? joinFilters(editorPlan.audioFilters) : '';
 
   // Sanitiser un minimum le texte pour FFmpeg (pas d'apostrophes / retours à la ligne)
   const safeText = (watermarkText || '')
@@ -110,12 +127,19 @@ function buildFfmpegArgs(
     .trim()
     || '@AfriWonder';
 
-  let filter: string;
+  // Branche `[0:v]` → optionnellement passer par les filtres éditeur d'abord, puis watermark.
+  const videoSourceLabel = '[0:v]';
+  const editedLabel = editorVideoPrefix ? '[edited]' : videoSourceLabel;
+
+  let filter = '';
+  if (editorVideoPrefix) {
+    filter += `${videoSourceLabel}${editorVideoPrefix}${editedLabel};`;
+  }
 
   if (useWatermark) {
-    // 0:v = vidéo source, 1:v = logo
-    filter =
-      `[0:v]drawtext=fontfile='${WATERMARK_FONT_PATH}':` +
+    // edited (ou 0:v) → drawtext → overlay logo → split HLS
+    filter +=
+      `${editedLabel}drawtext=fontfile='${WATERMARK_FONT_PATH}':` +
       `text='${safeText}':fontsize=28:fontcolor=white:` +
       `borderw=2:bordercolor=black@0.6:x=20:y=H-80[txt];` +
       `[txt][1:v]overlay=20:20:format=auto:alpha=0.9[base];` +
@@ -124,9 +148,8 @@ function buildFfmpegArgs(
       `[v2]scale=842:480[v2o];` +
       `[v3]scale=1280:720[v3o]`;
   } else {
-    // Pas de watermark configuré → pipeline HLS standard
-    filter =
-      '[0:v]split=3[v1][v2][v3];' +
+    filter +=
+      `${editedLabel}split=3[v1][v2][v3];` +
       '[v1]scale=640:360[v1o];' +
       '[v2]scale=842:480[v2o];' +
       '[v3]scale=1280:720[v3o]';
@@ -157,6 +180,7 @@ function buildFfmpegArgs(
     // Audio
     '-map',
     'a:0?',
+    ...(editorAudioFilters ? ['-af', editorAudioFilters] : []),
     '-c:a',
     'aac',
     '-b:a',
@@ -181,15 +205,17 @@ function buildFfmpegArgs(
 }
 
 /**
- * Exécute FFmpeg et attend la fin.
+ * Exécute FFmpeg et attend la fin. Accepte un plan d'effets éditeur optionnel.
  */
 function runFfmpeg(
   inputPath: string,
   outputDir: string,
   watermarkText?: string,
+  editorPlan?: FfmpegEffectPlan | null,
+  subtitlePath?: string | null,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const args = buildFfmpegArgs(inputPath, outputDir, watermarkText);
+    const args = buildFfmpegArgs(inputPath, outputDir, watermarkText, editorPlan, subtitlePath);
     const proc = spawn('ffmpeg', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -243,7 +269,30 @@ export async function processJob(
     const creatorName = (job.video as any)?.creator_name || 'AfriWonder';
     const watermarkText = `@${String(creatorName || 'AfriWonder')}`;
 
-    await runFfmpeg(inputPath, outputDir, watermarkText);
+    // Lire `editor_metadata` (plafonné 16 ko) et construire le plan d'effets ffmpeg.
+    const editorMetadataRaw = (job.video as { editor_metadata?: string | null }).editor_metadata ?? null;
+    const editorParsed: ParsedEditorMetadata = parseEditorMetadata(editorMetadataRaw);
+    const editorPlan = buildFfmpegEffectPlan(editorParsed);
+
+    let subtitlePath: string | null = null;
+    if (editorPlan.subtitleSrt) {
+      subtitlePath = path.join(workDir, 'subtitles.srt');
+      await fs.writeFile(subtitlePath, editorPlan.subtitleSrt, 'utf8');
+    }
+
+    if (editorPlan.hasAnyEffect) {
+      logger.info('Editor effects applied to transcoding job', {
+        jobId,
+        videoId: job.video_id,
+        cameraEffect: editorParsed.cameraEffect,
+        voiceEffect: editorParsed.voiceEffect,
+        speed: editorParsed.speed,
+        subtitleChunks: editorParsed.subtitles.length,
+        hasVoiceOver: Boolean(editorPlan.voiceOverUrl),
+      });
+    }
+
+    await runFfmpeg(inputPath, outputDir, watermarkText, editorPlan, subtitlePath);
 
     const masterPath = path.join(outputDir, 'master.m3u8');
     await fs.access(masterPath);
