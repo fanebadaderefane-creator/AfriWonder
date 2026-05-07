@@ -37,7 +37,7 @@ function alertInfo(title: string, message: string) {
 }
 
 const OAUTH_UNAVAILABLE_MESSAGE =
-  'Ce mode de connexion n’est pas disponible pour le moment. Utilisez votre e-mail ou votre numéro de téléphone.';
+  'Ce mode de connexion n’est pas disponible. Utilisez votre e-mail ou votre numéro de téléphone.';
 
 const GOOGLE_ANDROID_SETUP_HINT =
   'Google affiche souvent « Custom scheme URIs are not allowed for WEB client type » si EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID est une copie du client **Web**. Créez dans Google Cloud un **client OAuth de type Android** (package com.afriwonder.app + SHA-1 debug/EAS), mettez **son** ID dans EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID, et sur ce client Android activez le schéma com.googleusercontent.apps.…:/oauthredirect. Le client Web reste pour le web / Expo Go. Sinon e-mail ou téléphone.';

@@ -27,7 +27,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../../src/theme/ThemeContext';
 import { FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { MIN_TOUCH_TARGET } from '../../src/theme/designSystem';
-import { featureFlags } from '../../src/config/featureFlags';
 import { useAuthStore } from '../../src/store/authStore';
 import starsApi, {
   type StarProfile,
@@ -88,7 +87,6 @@ function priceFromAny(p: StarProfile): number | null {
 }
 
 export default function StarsDiscoveryScreen() {
-  if (!featureFlags.starCalls) return <DisabledState />;
   return <StarsDiscoveryContent />;
 }
 
@@ -115,7 +113,7 @@ function StarsDiscoveryContent() {
       const out = await starsApi.discoverHome();
       setHome(out);
     } catch (e) {
-      setError((e as Error)?.message || 'Impossible de charger les stars pour le moment.');
+      setError((e as Error)?.message || 'Impossible de charger les créateurs.');
     }
   }, []);
 
@@ -133,7 +131,7 @@ function StarsDiscoveryContent() {
       });
       setFiltered(out.items);
     } catch (e) {
-      setError((e as Error)?.message || 'Impossible de charger les stars pour le moment.');
+      setError((e as Error)?.message || 'Impossible de charger les créateurs.');
     }
   }, []);
 
@@ -581,7 +579,7 @@ function StarsDiscoveryContent() {
           {!home || home.categories.length === 0 ? (
             <View style={styles.center}>
               <Ionicons name="videocam-outline" size={40} color={colors.textSecondary} />
-              <Text style={styles.emptyText}>Aucune star disponible pour le moment.</Text>
+              <Text style={styles.emptyText}>Aucune star disponible.</Text>
               <TouchableOpacity style={styles.retryBtn} onPress={() => router.push('/stars/become' as never)}>
                 <Text style={styles.retryText}>Devenir star</Text>
               </TouchableOpacity>
@@ -605,24 +603,6 @@ function StarsDiscoveryContent() {
           <Text style={styles.fabText}>Devenir star</Text>
         </TouchableOpacity>
       ) : null}
-    </View>
-  );
-}
-
-function DisabledState() {
-  const insets = useSafeAreaInsets();
-  const { colors } = useAppTheme();
-  return (
-    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <Ionicons name="videocam-off-outline" size={48} color={colors.textSecondary} />
-        <Text style={{ color: colors.text, fontSize: FontSizes.lg, fontWeight: '700', marginTop: 16, textAlign: 'center' }}>
-          Appels vidéo payants
-        </Text>
-        <Text style={{ color: colors.textSecondary, fontSize: FontSizes.md, marginTop: 8, textAlign: 'center' }}>
-          Cette fonctionnalité sera ouverte prochainement aux utilisateurs sélectionnés.
-        </Text>
-      </View>
     </View>
   );
 }

@@ -78,18 +78,57 @@ async function withAuthProxyFallback<T>(
   }
 }
 
+function stripInvisibleChars(value: string): string {
+  return value.replace(/[\u200B-\u200D\uFEFF]/g, '');
+}
+
+function normalizeLoginIdentifier(identifier: string): string {
+  const cleaned = stripInvisibleChars(String(identifier || '')).trim();
+  if (cleaned.includes('@')) {
+    return cleaned.toLowerCase();
+  }
+  return cleaned;
+}
+
+function normalizeLoginPassword(password: string): string {
+  return stripInvisibleChars(String(password || ''));
+}
+
 export const authApi = {
   login: async (data: LoginRequest): Promise<AuthResponse> => {
-    const response = await withAuthProxyFallback(
-      () => mobileApiClient.post('/proxy/auth/login', {
-        identifier: data.identifier,
-        password: data.password,
-      }),
-      () => mobileApiClient.post('/auth/login', {
-        identifier: data.identifier,
-        password: data.password,
-      }),
-    );
+    const identifier = normalizeLoginIdentifier(data.identifier);
+    const passwordRaw = normalizeLoginPassword(data.password);
+    const passwordTrimmed = passwordRaw.trim();
+    const submit = (password: string) =>
+      withAuthProxyFallback(
+        () => mobileApiClient.post('/proxy/auth/login', {
+          identifier,
+          password,
+        }),
+        () => mobileApiClient.post('/auth/login', {
+          identifier,
+          password,
+        }),
+      );
+
+    let response;
+    try {
+      response = await submit(passwordRaw);
+    } catch (error: any) {
+      /**
+       * Android/iOS autofill ajoute parfois un espace en début/fin.
+       * Si le backend renvoie 401 et que le trim change la valeur,
+       * on retente une fois avec le mot de passe normalisé.
+       */
+      const isUnauthorized = error?.response?.status === 401;
+      const hasBoundarySpaces = passwordTrimmed.length > 0 && passwordTrimmed !== passwordRaw;
+      if (isUnauthorized && hasBoundarySpaces) {
+        response = await submit(passwordTrimmed);
+      } else {
+        throw error;
+      }
+    }
+
     const result = unwrapResponse(response.data);
     return {
       user: normalizeUser(result.user),

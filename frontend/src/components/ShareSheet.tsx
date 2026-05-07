@@ -417,7 +417,7 @@ export default function ShareSheet({ visible, onClose, title, message, url, vide
           break;
         case 'bluetooth':
         case 'nearby':
-          Alert.alert('Bientôt disponible', 'Le partage Bluetooth et WiFi Direct arrivent bientôt.');
+          Alert.alert('Partage', 'Le partage Bluetooth et Wi‑Fi Direct ne sont pas disponibles sur cet appareil.');
           onClose();
           break;
         case 'more':

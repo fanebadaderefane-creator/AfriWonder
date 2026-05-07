@@ -18,8 +18,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as WebBrowser from 'expo-web-browser';
 import { Colors } from '../../src/theme/colors';
-import { featureFlags } from '../../src/config/featureFlags';
-import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import crowdfundingApi, { CrowdfundingProject } from '../../src/api/crowdfundingApi';
 import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 
@@ -37,15 +35,6 @@ function getProgressPercent(raised: number, goal: number): number {
 }
 
 export default function ContributeScreen() {
-  if (!featureFlags.crowdfundingContribute) {
-    return (
-      <ComingSoonScreen
-        title="Contribuer"
-        description="Les contributions directes aux projets crowdfunding seront bientôt disponibles. Vous pouvez déjà parcourir les projets en cours."
-        icon="heart-outline"
-      />
-    );
-  }
   return <ContributeContent />;
 }
 

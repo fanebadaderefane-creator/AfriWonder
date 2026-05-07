@@ -128,7 +128,7 @@ export default function SecurityPermissionsScreen() {
         {loading ? (
           <Text style={styles.empty}>Chargement…</Text>
         ) : sessions.length === 0 ? (
-          <Text style={styles.empty}>Aucune autre session enregistrée pour le moment.</Text>
+          <Text style={styles.empty}>Aucune autre session enregistrée.</Text>
         ) : (
           sessions.map((s) => (
             <SettingsRow

@@ -63,12 +63,10 @@ export const featureFlags = {
   callsOnNative: readEnvFlag('EXPO_PUBLIC_ENABLE_NATIVE_CALLS', true),
   /**
    * Paid Video Calls (User ↔ Star) — module isolé, backend `/api/stars/*`.
-   * Kill-switch global : désactiver via `EXPO_PUBLIC_ENABLE_STAR_CALLS=0`
-   * pour masquer le module complet (menu + écrans).
-   * Par défaut : **off** tant que les stars n'ont pas été onboardées (Phase 1).
-   * Activer après validation de l'onboarding et du flux paiement.
+   * Désactiver via `EXPO_PUBLIC_ENABLE_STAR_CALLS=0` si besoin (build interne).
+   * Par défaut : **on** (parité produit : l’écran charge les données réelles ou états vides).
    */
-  starCalls: readEnvFlag('EXPO_PUBLIC_ENABLE_STAR_CALLS', false),
+  starCalls: readEnvFlag('EXPO_PUBLIC_ENABLE_STAR_CALLS', true),
   /**
    * Données fictives (hub Services) quand l’API est vide ou indisponible — présentation sans partenaires.
    * Désactiver : `EXPO_PUBLIC_SUPERAPP_DEMO_CONTENT=0`.

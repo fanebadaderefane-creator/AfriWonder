@@ -182,11 +182,26 @@ function buildNavigation(api: ApiNotification): () => void {
       router.push({ pathname: '/messages/[id]', params: { id: refId } });
       return;
     }
-    /** Notifs d'appel (entrant / manqué / refusé) : on ouvre la conversation avec l'appelant. */
+    /** Notifs d'appel : l'id de conversation ≠ userId — résoudre le fil via l'API comme depuis un profil. */
     if (refType === 'direct_call') {
       if (fromUser) {
-        /** Récupère/ouvre la conversation 1-1 avec ce contact, puis bascule vers l'écran de chat. */
-        router.push({ pathname: '/messages/[id]', params: { id: String(fromUser) } });
+        void (async () => {
+          try {
+            const res = await apiClient.get(`/messages/conversation/${encodeURIComponent(String(fromUser))}`);
+            const pkg = res.data?.data ?? res.data;
+            const convId = pkg?.id;
+            if (convId) {
+              router.push({
+                pathname: '/messages/[id]',
+                params: { id: String(convId), otherUserId: String(fromUser) },
+              });
+              return;
+            }
+          } catch {
+            /* ignore */
+          }
+          router.push('/messages' as never);
+        })();
         return;
       }
       router.push('/messages' as never);

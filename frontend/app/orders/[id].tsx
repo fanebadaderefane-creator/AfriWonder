@@ -13,8 +13,6 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { featureFlags } from '../../src/config/featureFlags';
-import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import ordersApi, { Order } from '../../src/api/ordersApi';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -53,15 +51,6 @@ function statusColor(status: string): string {
 }
 
 export default function OrderDetailScreen() {
-  if (!featureFlags.marketplace) {
-    return (
-      <ComingSoonScreen
-        title="Détail commande"
-        description="Le suivi de commande marketplace sera bientôt disponible."
-        icon="receipt-outline"
-      />
-    );
-  }
   return <OrderDetailContent />;
 }
 

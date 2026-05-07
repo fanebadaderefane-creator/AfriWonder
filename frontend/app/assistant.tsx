@@ -27,7 +27,12 @@ export default function AssistantScreen() {
     if (!msgText.trim()) return;
 
     const userMsg = { id: `u${Date.now()}`, role: 'user', text: msgText, time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) };
-    const botMsg = { id: `b${Date.now()}`, role: 'assistant', text: 'Merci pour votre question! Je suis un assistant simule pour le moment. L\'integration IA sera activee prochainement pour vous fournir des reponses personnalisees.', time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) };
+    const botMsg = {
+      id: `b${Date.now()}`,
+      role: 'assistant',
+      text: 'Merci pour votre message. Pour une aide personnalisée, ouvrez Paramètres → Aide ou contactez le support AfriWonder.',
+      time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+    };
 
     setMessages(prev => [...prev, userMsg, botMsg]);
     setInput('');

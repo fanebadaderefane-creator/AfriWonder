@@ -8,7 +8,7 @@ export function userFacingLiveVideoError(raw: string | null | undefined): string
   if (!s) return 'Connexion vidéo en cours…';
   const low = s.toLowerCase();
   if (low.includes('agora') || /\bapp_id\b|\bcertificate\b/i.test(low)) {
-    return 'Connexion vidéo impossible pour le moment. Vérifiez votre connexion ou réessayez dans quelques secondes.';
+    return 'Connexion vidéo impossible. Vérifiez votre connexion ou réessayez dans quelques secondes.';
   }
   if (low.includes('rtc') || low.includes('webrtc')) {
     return 'Erreur de diffusion. Réessayez ou redémarrez l’application.';

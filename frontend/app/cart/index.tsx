@@ -14,8 +14,6 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { featureFlags } from '../../src/config/featureFlags';
-import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import cartApi, { Cart, CartLineItem } from '../../src/api/cartApi';
 
 type PaymentMethodId = 'orange_money' | 'wave' | 'wallet';
@@ -29,15 +27,6 @@ const PAYMENT_METHODS: { id: PaymentMethodId; name: string; icon: keyof typeof I
 const DELIVERY_FEE_FCFA = 1500;
 
 export default function CartScreen() {
-  if (!featureFlags.marketplace) {
-    return (
-      <ComingSoonScreen
-        title="Panier"
-        description="Le module marketplace (panier, commandes) est en cours de finalisation. Il sera bientôt disponible."
-        icon="cart-outline"
-      />
-    );
-  }
   return <CartContent />;
 }
 

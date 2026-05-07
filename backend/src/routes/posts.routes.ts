@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, AuthRequest, optionalAuth } from '../middleware/auth.js';
 import { param } from '../utils/params.js';
 import * as postService from '../services/post.service.js';
+import { optionalIdempotencyMiddleware, saveIdempotencyResponse } from '../middleware/idempotency.js';
 
 import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
@@ -9,11 +10,14 @@ import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 const router = Router();
 
 // POST /api/posts - Créer un post (texte / image ; programmation, épingler, sondage optionnels)
-router.post('/', authenticate, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, optionalIdempotencyMiddleware, validateBody(jsonObjectBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const { text, image_url, images, visibility, scheduled_at, is_pinned, poll } = req.body;
     const post = await postService.createPost(req.user!.id, { text, image_url, images, visibility, scheduled_at, is_pinned, poll });
-    res.status(201).json({ success: true, data: post });
+    const response = { success: true, data: post };
+    const key = String(req.headers['idempotency-key'] || '').trim();
+    if (key) await saveIdempotencyResponse(key, 201, response).catch(() => {});
+    res.status(201).json(response);
   } catch (error) {
     next(error);
   }

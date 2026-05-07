@@ -272,6 +272,7 @@ router.post('/send', authenticate, validateBody(messagesSendSchema), sendLimiter
   try {
     const {
       recipientId,
+      conversationId: sendConversationId,
       content,
       type,
       media_url,
@@ -296,6 +297,7 @@ router.post('/send', authenticate, validateBody(messagesSendSchema), sendLimiter
       content ?? '',
       type || 'text',
       {
+        conversation_id: typeof sendConversationId === 'string' ? sendConversationId.trim() : undefined,
         media_url,
         thumbnail_url,
         reply_to_message_id,

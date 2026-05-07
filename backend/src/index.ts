@@ -623,6 +623,73 @@ io.on('connection', (socket) => {
     io.to(`user:${payload.toUserId}`).emit('call:signal', payload);
   });
 
+  /** Réaction emoji pendant un appel 1-1 — relais temps réel (pas de persistance serveur). */
+  socket.on(
+    'call:reaction',
+    (payload: { toUserId: string; fromUserId: string; callId: string; emoji: string }) => {
+      if (!payload?.toUserId || !payload?.fromUserId || !payload?.callId || typeof payload.emoji !== 'string') return;
+      const emoji = payload.emoji.trim().slice(0, 16);
+      if (!emoji) return;
+      io.to(`user:${payload.toUserId}`).emit('call:reaction', { ...payload, emoji });
+    },
+  );
+
+  /** Lever / baisser la main — relais à l’autre participant. */
+  socket.on(
+    'call:raise_hand',
+    (payload: { toUserId: string; fromUserId: string; callId: string; raised: boolean }) => {
+      if (!payload?.toUserId || !payload?.fromUserId || !payload?.callId || typeof payload.raised !== 'boolean') return;
+      io.to(`user:${payload.toUserId}`).emit('call:raise_hand', payload);
+    },
+  );
+
+  /** État partage d’écran (signal UX ; média géré en WebRTC côté clients). */
+  socket.on(
+    'call:screen_share',
+    (payload: { toUserId: string; fromUserId: string; callId: string; active: boolean }) => {
+      if (!payload?.toUserId || !payload?.fromUserId || !payload?.callId || typeof payload.active !== 'boolean') return;
+      io.to(`user:${payload.toUserId}`).emit('call:screen_share', payload);
+    },
+  );
+
+  /**
+   * Invitation d’un tiers pendant un appel 1-1 — relais + notification push (pas de fusion média multi‑participant ici).
+   */
+  socket.on(
+    'call:participant-invite',
+    async (payload: {
+      callId?: string;
+      fromUserId?: string;
+      invitedUserId?: string;
+      peerUserId?: string;
+      type?: 'audio' | 'video';
+      inviterName?: string;
+    }) => {
+      if (!payload?.callId || !payload?.fromUserId || !payload?.invitedUserId) return;
+      if (payload.invitedUserId === payload.fromUserId) return;
+      io.to(`user:${payload.invitedUserId}`).emit('call:participant-invite', payload);
+      try {
+        const mediaKind = payload.type === 'video' ? 'vidéo' : 'audio';
+        await notificationService.create(payload.invitedUserId, {
+          type: 'call_participant_invite',
+          title: 'Invitation à un appel',
+          message: `${(payload.inviterName || 'Un contact').slice(0, 80)} vous invite à rejoindre un appel ${mediaKind}`,
+          reference_type: 'direct_call',
+          reference_id: payload.callId,
+          data: {
+            callId: payload.callId,
+            callerId: payload.fromUserId,
+            peerUserId: payload.peerUserId || '',
+            callMediaType: payload.type === 'video' ? 'video' : 'audio',
+            mode: 'join_existing_call',
+          },
+        });
+      } catch (err) {
+        logger.warn('call:participant-invite notification failed', { err });
+      }
+    },
+  );
+
   // Live: join stream room (pour recevoir chat, gifts, viewers, like)
   socket.on('live:join-room', (streamId: string) => {
     if (streamId) {

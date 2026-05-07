@@ -14,7 +14,7 @@ export function looksLikeTechnicalErrorMessage(message: string): boolean {
   if (m.length < 3) return false;
   return (
     /^(error|err_|undefined|null)$/i.test(m) ||
-    /exception|stack trace|ECONN|ETIMEDOUT|ENOTFOUND|socket hang|axioserror|referenceerror|typeerror|syntaxerror/i.test(
+    /exception|stack trace|ECONN|ETIMEDOUT|ENOTFOUND|socket hang|axioserror|referenceerror|typeerror|syntaxerror|minified react error/i.test(
       m
     ) ||
     /prisma|postgres|sqlstate|mongodb|internal server|at\s+\w+|\.tsx?:\d+|\bP20\d{2}\b/i.test(m) ||

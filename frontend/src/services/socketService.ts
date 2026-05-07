@@ -65,7 +65,7 @@ function resolveSocketUrl(): string {
  * Contrat côté backend (`backend/src/index.ts` + `message.service.ts`) :
  *   - Écoute : `message:join-conversation`, `message:leave-conversation`,
  *              `message:typing-start`, `message:typing-stop`, `user:join`, `user:leave`,
- *              `call:*`, `live:join-room`, `live:leave-room`.
+ *              `call:*` (signal, reaction, raise_hand, screen_share, participant-invite), `live:join-room`, `live:leave-room`.
  *   - Émet   : `message:new`, `message:read`, `message:delivered`, `message:typing`,
  *              `message:unread`, `message:deleted`, `message:updated`, `message:pinned`,
  *              `call:*`, `live:*`.

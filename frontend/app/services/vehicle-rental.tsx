@@ -14,15 +14,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
-import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import providersApi, { ServiceProvider } from '../../src/api/providersApi';
 import { getDemoProvidersForCategory } from '../../src/demo/superAppDemoSeed';
 import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
 
 export default function VehicleRentalScreen() {
-  if (!featureFlags.servicesHub) {
-    return <ComingSoonScreen title="Location véhicule" description="La location de véhicules sera bientôt disponible." icon="car-sport-outline" />;
-  }
   return <VehicleRentalContent />;
 }
 

@@ -104,7 +104,7 @@ export default function RevenueShareScreen() {
         Alert.alert('Demande envoyée', data.message || 'Vous serez notifié après validation par AfriWonder.');
         void loadData();
       } else {
-        Alert.alert('Impossible pour le moment', data?.message || 'Conditions non remplies ou demande déjà en cours.');
+        Alert.alert('Action impossible', data?.message || 'Conditions non remplies ou demande déjà en cours.');
       }
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string; error?: string } } };

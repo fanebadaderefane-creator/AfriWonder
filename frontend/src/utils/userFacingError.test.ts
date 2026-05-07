@@ -16,6 +16,9 @@ describe('looksLikeTechnicalErrorMessage', () => {
   it('accepte un message humain', () => {
     expect(looksLikeTechnicalErrorMessage('Solde insuffisant pour cette opération.')).toBe(false);
   });
+  it('traite les erreurs React minifiées comme techniques', () => {
+    expect(looksLikeTechnicalErrorMessage('Minified React error #418; visit https://react.dev')).toBe(true);
+  });
 });
 
 describe('getUserFacingApiErrorMessage', () => {

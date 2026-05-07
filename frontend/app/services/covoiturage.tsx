@@ -13,7 +13,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
-import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import { ridesApi, Ride } from '../../src/api/ridesApi';
 import { DEMO_RIDES } from '../../src/demo/superAppDemoSeed';
 import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
@@ -47,9 +46,6 @@ function formatDate(iso?: string): string {
 }
 
 export default function CovoiturageScreen() {
-  if (!featureFlags.servicesHub) {
-    return <ComingSoonScreen title="Covoiturage" description="Le module covoiturage sera bientôt disponible." icon="people-outline" />;
-  }
   return <CovoiturageContent />;
 }
 

@@ -51,6 +51,8 @@ export const privacy2faDisableSchema = z.object({
 
 export const messagesSendSchema = z.object({
   recipientId: z.string().min(1).max(64),
+  /** Si fourni, le message est attaché à ce fil (DM) au lieu de résoudre uniquement via couple expéditeur/destinataire. */
+  conversationId: z.string().min(1).max(64).optional(),
   content: z.string().max(50000).optional().default(''),
   type: z.string().max(32).optional(),
   media_url: z.string().max(2048).optional(),

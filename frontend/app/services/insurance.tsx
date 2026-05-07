@@ -274,7 +274,7 @@ export default function InsuranceScreen() {
           <>
             <Text style={styles.sectionTitle}>Mes assurances</Text>
             {policiesDisplay.length === 0 ? (
-              <Text style={styles.empty}>Aucune police enregistrée pour le moment.</Text>
+              <Text style={styles.empty}>Aucune police enregistrée.</Text>
             ) : (
               policiesDisplay.map((p) => (
                 <View key={p.id} style={styles.policyCard}>

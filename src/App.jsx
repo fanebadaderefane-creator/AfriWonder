@@ -74,6 +74,8 @@ const AuthenticatedApp = () => {
     '/',
     '/Landing',
     '/PrivacyPolicy',
+    '/ChildSafety',
+    '/child-safety',
     '/DataProtection',
     '/PrivacySettings',
     '/Help',
@@ -145,6 +147,7 @@ const AuthenticatedApp = () => {
     const HelpPage = Pages['Help'];
     const AboutPage = Pages['About'];
     const TermsOfServicePage = Pages['TermsOfService'];
+    const ChildSafetyPage = Pages['ChildSafety'];
     const VerifyCertificatePage = Pages['VerifyCertificate'];
     const NewsPage = Pages['News'];
     const ArticleDetailsPage = Pages['ArticleDetails'];
@@ -164,6 +167,8 @@ const AuthenticatedApp = () => {
         <Route path="/Help" element={renderPublicRoute(HelpPage)} errorElement={<PageErrorFallback />} />
         <Route path="/About" element={renderPublicRoute(AboutPage)} errorElement={<PageErrorFallback />} />
         <Route path="/TermsOfService" element={renderPublicRoute(TermsOfServicePage)} errorElement={<PageErrorFallback />} />
+        <Route path="/ChildSafety" element={renderPublicRoute(ChildSafetyPage)} errorElement={<PageErrorFallback />} />
+        <Route path="/child-safety" element={renderPublicRoute(ChildSafetyPage)} errorElement={<PageErrorFallback />} />
         <Route path="/VerifyCertificate" element={renderPublicRoute(VerifyCertificatePage)} errorElement={<PageErrorFallback />} />
         <Route path="/verify-certificate/:token" element={renderPublicRoute(VerifyCertificatePage)} errorElement={<PageErrorFallback />} />
         {NewsPage ? <Route path="/News" element={renderPublicRoute(NewsPage)} errorElement={<PageErrorFallback />} /> : null}
@@ -201,6 +206,19 @@ const AuthenticatedApp = () => {
       <Route path="/articles" element={<Navigate to="/News" replace />} />
       <Route path="/dashboard" element={<Navigate to="/Profile" replace />} />
       <Route path="/features" element={<Navigate to="/Discover" replace />} />
+      <Route
+        path="/child-safety"
+        element={(() => {
+          const ChildSafetyPage = Pages['ChildSafety'];
+          return ChildSafetyPage ? (
+            <Suspense fallback={<PageLoader />}>
+              <ChildSafetyPage />
+            </Suspense>
+          ) : (
+            <Navigate to="/Landing" replace />
+          );
+        })()}
+      />
       {Object.entries(Pages)
         .filter(([path]) => path !== mainPageKey)
         .map(([path, Page]) => {

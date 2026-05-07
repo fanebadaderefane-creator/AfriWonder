@@ -204,7 +204,7 @@ export default function MicrocreditScreen() {
 
           <Text style={styles.sectionTitle}>Projets à financer</Text>
           {marketLoans.length === 0 ? (
-            <Text style={styles.muted}>Aucun projet actif pour le moment.</Text>
+            <Text style={styles.muted}>Aucun projet actif.</Text>
           ) : (
             marketLoans.map((l) => (
               <View key={l.id} style={styles.marketCard}>

@@ -890,8 +890,7 @@ const VideoEditor: React.FC<VideoEditorProps> = ({ videoUri, onDone, onCancel, i
       </View>
       <Text style={styles.panelSubtitle}>Découpe en segments</Text>
       <Text style={styles.segmentHint}>
-        Pour l’instant, importez une seule vidéo. Le montage de plusieurs clips et l’assemblage automatique arriveront prochainement
-        dans le studio.
+        Importez une vidéo à la fois pour la découper en segments dans le studio.
       </Text>
     </View>
   );

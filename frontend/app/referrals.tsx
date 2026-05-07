@@ -125,7 +125,7 @@ export default function ReferralsScreen() {
         <Text style={styles.sectionTitle}>Niveaux de recompenses</Text>
         {rewards.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>Aucune récompense débloquée pour le moment.</Text>
+            <Text style={styles.emptyText}>Aucune récompense débloquée.</Text>
           </View>
         ) : rewards.map((reward, i) => (
           <View key={`${reward.reward_type ?? 'reward'}-${i}`} style={[styles.rewardCard, styles.rewardCardAchieved]}>

@@ -126,7 +126,7 @@ export default function RideTrackingScreen() {
 
   const callDriver = () => {
     if (!ride?.driver_phone) {
-      Alert.alert('Numéro indisponible', 'Le numéro du chauffeur n\'est pas encore disponible.');
+      Alert.alert('Numéro indisponible', 'Le numéro du chauffeur n’est pas disponible pour ce trajet.');
       return;
     }
     Linking.openURL(`tel:${ride.driver_phone}`);
@@ -134,11 +134,27 @@ export default function RideTrackingScreen() {
 
   const chatWithDriver = () => {
     if (isDemoRide) {
-      Alert.alert('Démonstration', 'Messagerie indisponible pour ce trajet fictif.');
+      Alert.alert('Messagerie', 'La messagerie n’est pas disponible pour ce trajet.');
       return;
     }
     if (!ride?.driver_id) return;
-    router.push({ pathname: '/messages/[id]', params: { id: ride.driver_id } } as never);
+    void (async () => {
+      try {
+        const res = await apiClient.get(`/messages/conversation/${encodeURIComponent(String(ride.driver_id))}`);
+        const pkg = res.data?.data ?? res.data;
+        const convId = pkg?.id;
+        if (convId) {
+          router.push({
+            pathname: '/messages/[id]',
+            params: { id: String(convId), otherUserId: String(ride.driver_id) },
+          } as never);
+          return;
+        }
+      } catch {
+        /* ignore */
+      }
+      router.push('/messages' as never);
+    })();
   };
 
   const distanceToDest = useMemo(() => {

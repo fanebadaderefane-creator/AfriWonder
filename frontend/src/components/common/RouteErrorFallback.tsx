@@ -4,16 +4,19 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../theme/colors';
 import { MIN_TOUCH_TARGET } from '../../theme/designSystem';
+import { getUserFacingApiErrorMessage } from '../../utils/userFacingError';
 
 export function RouteErrorFallback({ error, retry }: { error: Error; retry: () => Promise<void> }) {
   const router = useRouter();
+  /** Jamais `error.message` brut en prod (React minifié, stacks, codes internes). */
+  const userMessage = getUserFacingApiErrorMessage(error);
 
   return (
     <View style={styles.container}>
       <Ionicons name="warning-outline" size={64} color={Colors.warning} accessibilityHidden />
       <Text style={styles.title}>Une erreur est survenue</Text>
       <Text style={styles.sub} numberOfLines={5}>
-        {error?.message || 'Réessayez dans un instant.'}
+        {userMessage}
       </Text>
       <TouchableOpacity style={styles.btn} onPress={() => void retry()} accessibilityRole="button" accessibilityLabel="Réessayer">
         <Ionicons name="refresh" size={22} color="#000" />

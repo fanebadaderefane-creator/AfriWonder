@@ -180,7 +180,7 @@ export default function StarDashboardScreen() {
                   </Text>
                   {stats.balance.pending_fcfa > 0 ? (
                     <Text style={styles.walletHint}>
-                      + {stats.balance.pending_fcfa.toLocaleString('fr-FR')} XOF en séquestre (appels à venir)
+                      + {stats.balance.pending_fcfa.toLocaleString('fr-FR')} XOF en séquestre (en cours de traitement)
                     </Text>
                   ) : null}
                 </View>

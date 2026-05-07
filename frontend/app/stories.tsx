@@ -343,7 +343,7 @@ export default function StoriesScreen() {
   /** Viewer plein écran d'une story d'un autre utilisateur (vraie API). */
   if (viewingPeerId) {
     const peerStories = peerStoriesQuery.data || [];
-    const story = peerStories[0]; // MVP : on affiche la 1ʳᵉ story (la plus récente). Carrousel à venir.
+    const story = peerStories[0]; // MVP : 1ʳᵉ story (la plus récente).
     const peer = feedBarQuery.data?.find((p) => p.id === viewingPeerId);
     const peerName = peer?.full_name || peer?.username || 'Contact';
     const peerAvatar = toAbsoluteMediaUrl(peer?.profile_image || '') || '';

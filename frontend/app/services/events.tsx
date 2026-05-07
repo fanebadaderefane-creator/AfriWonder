@@ -14,7 +14,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
-import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import eventsApi, { EventItem } from '../../src/api/eventsApi';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { eventHeroPlaceholderUrl } from '../../src/utils/serviceVisualPlaceholders';
@@ -42,9 +41,6 @@ function formatDateRange(start?: string, end?: string): string {
 }
 
 export default function EventsScreen() {
-  if (!featureFlags.servicesHub) {
-    return <ComingSoonScreen title="Événements" description="La billetterie événements sera bientôt disponible." icon="ticket-outline" />;
-  }
   return <EventsContent />;
 }
 
@@ -123,7 +119,7 @@ function EventsContent() {
         <View style={styles.centerBox}>
           <Ionicons name="ticket-outline" size={64} color={Colors.textMuted} />
           <Text style={styles.emptyTitle}>Aucun événement</Text>
-          <Text style={styles.emptyText}>Aucun événement programmé pour le moment.</Text>
+          <Text style={styles.emptyText}>Aucun événement programmé.</Text>
         </View>
       ) : (
         <ScrollView

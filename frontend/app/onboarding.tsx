@@ -64,13 +64,13 @@ export default function OnboardingScreen() {
       setCurrentIndex(currentIndex + 1);
     } else {
       await secureStorage.setItem('hasSeenOnboarding', 'true');
-      router.replace('/(auth)/login');
+      router.replace('/(tabs)');
     }
   };
 
   const handleSkip = async () => {
     await secureStorage.setItem('hasSeenOnboarding', 'true');
-    router.replace('/(auth)/login');
+    router.replace('/(tabs)');
   };
 
   const renderSlide = ({ item }: { item: (typeof slides)[number] }) => (

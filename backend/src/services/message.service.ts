@@ -524,6 +524,8 @@ class MessageService {
     content: string,
     type: string = 'text',
     options?: {
+      /** Fil DM explicite (aligné sur l’URL du chat côté client). */
+      conversation_id?: string;
       media_url?: string;
       thumbnail_url?: string;
       reply_to_message_id?: string;
@@ -604,8 +606,43 @@ class MessageService {
       }
     }
 
-    const conversation = await this.getOrCreateConversation(senderId, recipientId);
-    if (!conversation) throw makeHttpError('Conversation introuvable', 404);
+    const explicitConvId =
+      typeof options?.conversation_id === 'string' ? options.conversation_id.trim().slice(0, 64) : '';
+
+    let conversation: Awaited<ReturnType<MessageService['getOrCreateConversation']>>;
+    if (explicitConvId) {
+      const convExplicit = await prisma.conversation.findFirst({
+        where: {
+          id: explicitConvId,
+          OR: [{ user1_id: senderId }, { user2_id: senderId }],
+        },
+        include: {
+          user1: { select: { id: true, username: true, full_name: true, profile_image: true } },
+          user2: { select: { id: true, username: true, full_name: true, profile_image: true } },
+          pinned_message: {
+            select: {
+              id: true,
+              content: true,
+              type: true,
+              created_at: true,
+              sender_id: true,
+              deleted_for_all_at: true,
+            },
+          },
+        },
+      });
+      if (!convExplicit) throw makeHttpError('Conversation introuvable ou accès non autorisé', 404);
+      if (!convExplicit.is_group) {
+        const expectedOther = convExplicit.user1_id === senderId ? convExplicit.user2_id : convExplicit.user1_id;
+        if (expectedOther !== recipientId) {
+          throw makeHttpError('Destinataire ne correspond pas à cette conversation', 400);
+        }
+      }
+      conversation = convExplicit;
+    } else {
+      conversation = await this.getOrCreateConversation(senderId, recipientId);
+      if (!conversation) throw makeHttpError('Conversation introuvable', 404);
+    }
     const otherId = conversation.user1_id === senderId ? conversation.user2_id : conversation.user1_id;
 
     let shareEventId: string | null = null;

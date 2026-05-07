@@ -126,7 +126,7 @@ export default function CourseDetailScreen() {
       return;
     }
     if (isAfriWonderDemoId(courseId)) {
-      Alert.alert('Démonstration', 'Cours fictif : aucune inscription ni paiement réel.');
+      Alert.alert('Inscription', 'L’inscription n’est pas disponible pour ce cours.');
       return;
     }
     setEnrolling(true);

@@ -14,7 +14,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
-import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import newsApi, { NewsArticle } from '../../src/api/newsApi';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { newsArticlePlaceholderUrl } from '../../src/utils/serviceVisualPlaceholders';
@@ -45,15 +44,6 @@ function formatRelative(iso?: string): string {
 }
 
 export default function NewsScreen() {
-  if (!featureFlags.news) {
-    return (
-      <ComingSoonScreen
-        title="Actualités"
-        description="Le fil d'actualités sera bientôt disponible."
-        icon="newspaper-outline"
-      />
-    );
-  }
   return <NewsContent />;
 }
 
@@ -166,7 +156,7 @@ function NewsContent() {
           <Ionicons name="newspaper-outline" size={64} color={Colors.textMuted} />
           <Text style={styles.emptyTitle}>Aucune actualité</Text>
           <Text style={styles.emptyText}>
-            Aucun article publié dans cette catégorie pour le moment.
+            Aucun article dans cette catégorie.
           </Text>
         </View>
       ) : (

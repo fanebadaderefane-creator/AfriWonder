@@ -304,7 +304,7 @@ export default function MarketScreen() {
           <View style={styles.emptyBlock}>
             <Ionicons name="storefront-outline" size={40} color="#666" />
             <Text style={styles.emptyTitle}>Aucun produit</Text>
-            <Text style={styles.emptySub}>Le catalogue est vide pour le moment. Tirez pour actualiser.</Text>
+            <Text style={styles.emptySub}>Le catalogue est vide. Tirez pour actualiser.</Text>
           </View>
         ) : null}
 

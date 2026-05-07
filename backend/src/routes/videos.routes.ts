@@ -11,6 +11,7 @@ import { forceWebCompatTranscodePublishedVideo } from '../services/videoCompatTr
 import { invalidateUserFeedCaches } from '../services/feedCache.service.js';
 import * as videoPollService from '../services/videoPoll.service.js';
 import { generateThumbnailForVideoId } from '../services/videoThumbnail.service.js';
+import { optionalIdempotencyMiddleware, saveIdempotencyResponse } from '../middleware/idempotency.js';
 import { validateBody } from '../utils/zodValidation.js';
 import { jsonObjectBodySchema } from '../schemas/jsonObjectBody.js';
 import {
@@ -496,7 +497,7 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res, next) => {
 });
 
 // POST /api/videos - Créer une vidéo
-router.post('/', authenticate, validateBody(videoCreateBodySchema), async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, optionalIdempotencyMiddleware, validateBody(videoCreateBodySchema), async (req: AuthRequest, res, next) => {
   try {
     const videoData = {
       ...req.body,
@@ -508,10 +509,13 @@ router.post('/', authenticate, validateBody(videoCreateBodySchema), async (req: 
     const { invalidateAllFeedResponseCaches } = await import('../services/feedCache.service.js');
     invalidateAllFeedResponseCaches().catch(() => {});
 
-    res.status(201).json({
+    const response = {
       success: true,
       data: video,
-    });
+    };
+    const key = String(req.headers['idempotency-key'] || '').trim();
+    if (key) await saveIdempotencyResponse(key, 201, response).catch(() => {});
+    res.status(201).json(response);
   } catch (error) {
     next(error);
   }

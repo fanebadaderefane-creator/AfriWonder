@@ -320,7 +320,7 @@ function CycleRow({
 }) {
   const myContrib = (cycle.contributions || {})[myUserId ?? ''];
   const paidCount = cycle.contributions ? Object.values(cycle.contributions).filter((c) => c.paid).length : 0;
-  const statusLabel = cycle.status === 'collecting' ? 'En cours' : cycle.status === 'completed' ? 'Versé' : cycle.status === 'pending' ? 'À venir' : 'Retard';
+  const statusLabel = cycle.status === 'collecting' ? 'En cours' : cycle.status === 'completed' ? 'Versé' : cycle.status === 'pending' ? 'En attente' : 'Retard';
   const statusColor = cycle.status === 'collecting' ? '#FFB020' : cycle.status === 'completed' ? '#4CAF50' : cycle.status === 'pending' ? Colors.textMuted : '#FF3B30';
 
   const isMyCycle = cycle.beneficiary_user_id === myUserId;

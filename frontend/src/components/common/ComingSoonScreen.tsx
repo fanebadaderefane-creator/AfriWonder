@@ -13,14 +13,12 @@ interface ComingSoonScreenProps {
 }
 
 /**
- * Écran bloquant unifié pour les modules dont l'intégration backend n'est
- * pas complète (`frontend/src/config/featureFlags.ts`). Affiche un message
- * clair + un bouton retour plutôt que de laisser l'utilisateur faire des
- * actions qui ne déclenchent aucun appel serveur (audit du 20/04/2026).
+ * Écran de repli (rare) quand un module est coupé par configuration.
+ * Les routes exposent l’UI complète ; cet écran reste un kill-switch ponctuel.
  */
 export default function ComingSoonScreen({
   title,
-  description = "Cette fonctionnalité arrive bientôt. Merci de votre patience !",
+  description = 'Contenu indisponible sur cet appareil ou avec votre configuration.',
   icon = 'time-outline',
 }: ComingSoonScreenProps) {
   const insets = useSafeAreaInsets();

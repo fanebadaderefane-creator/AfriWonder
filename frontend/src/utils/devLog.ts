@@ -6,3 +6,10 @@ export function devLog(...args: unknown[]): void {
     console.log(...args);
   }
 }
+
+/** Comme `devLog`, pour les avertissements — aucune sortie console en build release. */
+export function devWarn(...args: unknown[]): void {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    console.warn(...args);
+  }
+}
