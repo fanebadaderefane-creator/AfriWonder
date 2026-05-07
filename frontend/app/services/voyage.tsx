@@ -15,7 +15,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
-import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import providersApi, { ServiceProvider } from '../../src/api/providersApi';
 import { getDemoProvidersForCategory } from '../../src/demo/superAppDemoSeed';
 import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
@@ -23,9 +22,6 @@ import { DemoContentBanner } from '../../src/components/common/DemoContentBanner
 const { width } = Dimensions.get('window');
 
 export default function VoyageScreen() {
-  if (!featureFlags.servicesHub) {
-    return <ComingSoonScreen title="Voyage" description="Le module voyage sera bientôt disponible." icon="airplane-outline" />;
-  }
   return <VoyageContent />;
 }
 
@@ -123,7 +119,7 @@ function VoyageContent() {
           <Ionicons name="airplane-outline" size={64} color={Colors.textMuted} />
           <Text style={styles.emptyTitle}>Aucune agence</Text>
           <Text style={styles.emptyText}>
-            Aucune agence de voyage référencée pour l'instant. Revenez bientôt !
+            Aucune agence de voyage référencée. Actualisez la liste ou élargissez votre recherche.
           </Text>
         </View>
       ) : (

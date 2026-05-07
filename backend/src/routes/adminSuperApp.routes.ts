@@ -25,6 +25,7 @@ import { param } from '../utils/params.js';
 import prisma from '../config/database.js';
 import adminAuditService from '../services/adminAudit.service.js';
 import crowdfundingService from '../services/crowdfunding.service.js';
+import { autoFixSystem, runAuditChecks } from '../audit/systemAudit.js';
 
 const router = Router();
 
@@ -719,6 +720,26 @@ router.get('/live-commerce/top', authenticate, requireAnyAdmin, async (_req, res
     });
     res.json({ success: true, data: top });
   } catch (err) { next(err); }
+});
+
+// =========================
+// 10. AUDIT SYSTÈME (lecture seule + rapport auto-fix honnête)
+// =========================
+router.get('/system-audit', authenticate, requireAnyAdmin, async (_req, res, next) => {
+  try {
+    res.json({ success: true, data: runAuditChecks() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/system-audit/auto-fix', authenticate, requireAnyAdmin, async (req, res, next) => {
+  try {
+    await auditLog(req, 'system_audit_auto_fix', 'system', undefined, {});
+    res.json({ success: true, data: await autoFixSystem() });
+  } catch (err) {
+    next(err);
+  }
 });
 
 export default router;

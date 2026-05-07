@@ -64,7 +64,7 @@ export default function CommunityDetailScreen() {
   const toggleMembership = async () => {
     if (!community?.id) return;
     if (isAfriWonderDemoId(community.id)) {
-      Alert.alert('Démonstration', 'Communauté fictive : rejoindre / quitter n’est pas disponible.');
+      Alert.alert('Communauté', 'Cette action n’est pas disponible pour cette communauté.');
       return;
     }
     try {
@@ -83,7 +83,7 @@ export default function CommunityDetailScreen() {
           : prev
       );
     } catch {
-      Alert.alert('Communauté', 'Action impossible pour le moment.');
+      Alert.alert('Communauté', 'Action impossible. Réessayez.');
     }
   };
 
@@ -132,7 +132,7 @@ export default function CommunityDetailScreen() {
         <Text style={styles.sectionTitle}>Membres</Text>
         {(community?.members || []).length === 0 ? (
           <View style={styles.postCard}>
-            <Text style={styles.postText}>Aucun membre à afficher pour le moment.</Text>
+            <Text style={styles.postText}>Aucun membre à afficher.</Text>
           </View>
         ) : (community?.members || []).map((member, index) => (
           <View key={`${member.id ?? 'member'}-${index}`} style={styles.postCard}>

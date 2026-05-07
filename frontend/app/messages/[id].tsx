@@ -111,8 +111,16 @@ export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const { id, name: paramName, avatar: paramAvatar, otherUserId: paramOtherUserId } = useLocalSearchParams();
   const conversationId = id as string;
-  const { user, accessToken } = useAuthStore();
+  const { user, accessToken, isAuthenticated } = useAuthStore();
   const currentUserId = user?.id || '';
+  const ensureAuthenticated = useCallback((action: string): boolean => {
+    if (isAuthenticated) return true;
+    Alert.alert('Connexion', `Connectez-vous pour ${action}.`, [
+      { text: 'Annuler', style: 'cancel' },
+      { text: 'Se connecter', onPress: () => router.push('/(auth)/login') },
+    ]);
+    return false;
+  }, [isAuthenticated]);
 
   const [contact, setContact] = useState({
     name: (paramName as string) || 'Contact',
@@ -143,6 +151,8 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [showAttach, setShowAttach] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  /** Même appelant que l’onglet courant : pastille type WhatsApp « Ça sonne » dans le fil. */
+  const [peerIncomingCall, setPeerIncomingCall] = useState<{ callId: string; media: 'audio' | 'video' } | null>(null);
 
   // Context menu state
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
@@ -374,6 +384,29 @@ export default function ChatScreen() {
   }, [loadMessages]);
 
   useEffect(() => {
+    if (!currentUserId || !recipientUserId) return;
+    const onInvite = (p: { callId?: string; fromUserId?: string; toUserId?: string; type?: string }) => {
+      if (p?.toUserId !== currentUserId || p?.fromUserId !== recipientUserId) return;
+      if (!p?.callId) return;
+      setPeerIncomingCall({ callId: String(p.callId), media: p.type === 'video' ? 'video' : 'audio' });
+    };
+    const clearSame = (p: { callId?: string }) => {
+      if (!p?.callId) return;
+      setPeerIncomingCall((cur) => (cur?.callId === p.callId ? null : cur));
+    };
+    const offInvite = socketService.on('call:invite', onInvite);
+    const offEnd = socketService.on('call:end', clearSame);
+    const offDecline = socketService.on('call:decline', clearSame);
+    const offMissed = socketService.on('call:missed', clearSame);
+    return () => {
+      offInvite();
+      offEnd();
+      offDecline();
+      offMissed();
+    };
+  }, [currentUserId, recipientUserId]);
+
+  useEffect(() => {
     const p = typeof paramOtherUserId === 'string' ? paramOtherUserId : '';
     if (p) setRecipientUserId(p);
   }, [paramOtherUserId]);
@@ -462,6 +495,7 @@ export default function ChatScreen() {
 
   const sendMessage = useCallback(async () => {
     if (!newMessage.trim() || sending) return;
+    if (!ensureAuthenticated('envoyer un message')) return;
     if (!recipientUserId) {
       Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
       return;
@@ -487,6 +521,7 @@ export default function ChatScreen() {
         recipientId: recipientUserId,
         content: msgText,
         type: 'text',
+        ...(conversationId ? { conversationId } : {}),
       };
       if (replyingTo && replyingTo.id && !String(replyingTo.id).startsWith('date-')) {
         body.reply_to_message_id = replyingTo.id;
@@ -516,7 +551,7 @@ export default function ChatScreen() {
       Alert.alert('Message', getAlertMessageForCaughtError(err));
       setMessages(prev => prev.filter(m => m.id !== tempId));
     } finally { setSending(false); }
-  }, [newMessage, conversationId, sending, replyingTo, contact.name, recipientUserId]);
+  }, [newMessage, conversationId, sending, replyingTo, contact.name, recipientUserId, ensureAuthenticated]);
 
   // ===== VOICE RECORDING =====
 
@@ -527,6 +562,7 @@ export default function ChatScreen() {
   };
 
   const startRecording = async () => {
+    if (!ensureAuthenticated('envoyer un vocal')) return;
     try {
       const permission = await Audio.requestPermissionsAsync();
       if (!permission.granted) {
@@ -604,13 +640,26 @@ export default function ChatScreen() {
             setMessages(prev => prev.filter(m => m.id !== tempId));
             return;
           }
-          await apiClient.post('/messages/send', {
+          const sendVoiceRes = await apiClient.post('/messages/send', {
             recipientId: rid,
             content: `Vocal ${formatDuration(duration)}`,
             type: 'voice',
             media_url: mediaUrl,
+            ...(conversationId ? { conversationId } : {}),
           });
-          setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'delivered', imageUri: mediaUrl } : m));
+          const sentVoice = sendVoiceRes.data?.data;
+          setMessages(prev =>
+            prev.map((m) =>
+              m.id === tempId
+                ? {
+                    ...m,
+                    id: sentVoice?.id || tempId,
+                    status: 'delivered',
+                    imageUri: mediaUrl,
+                  }
+                : m,
+            ),
+          );
         } catch {
           setMessages(prev => prev.filter(m => m.id !== tempId));
           Alert.alert('Erreur', "Impossible d'envoyer le vocal.");
@@ -726,20 +775,29 @@ export default function ChatScreen() {
             setMessages(prev => prev.filter(m => m.id !== tempId));
             return;
           }
-          await apiClient.post('/messages/send', {
+          const sendMediaRes = await apiClient.post('/messages/send', {
             recipientId: rid,
             content: isVideo ? 'Video' : 'Photo',
             type: isVideo ? 'video' : 'image',
             media_url: mediaUrl,
             thumbnail_url: ud?.thumbnail_url,
+            ...(conversationId ? { conversationId } : {}),
           });
-          setMessages(prev => prev.map(m => m.id === tempId ? {
-            ...m,
-            status: 'delivered',
-            imageUri: mediaUrl,
-            thumbnailUri: ud?.thumbnail_url || m.thumbnailUri,
-            type: isVideo ? 'video' : 'image',
-          } : m));
+          const sentMedia = sendMediaRes.data?.data;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === tempId
+                ? {
+                    ...m,
+                    id: sentMedia?.id || tempId,
+                    status: 'delivered',
+                    imageUri: mediaUrl,
+                    thumbnailUri: ud?.thumbnail_url || m.thumbnailUri,
+                    type: isVideo ? 'video' : 'image',
+                  }
+                : m,
+            ),
+          );
         } catch (err: unknown) {
           setMessages(prev => prev.filter(m => m.id !== tempId));
           Alert.alert(
@@ -755,7 +813,7 @@ export default function ChatScreen() {
         "Impossible d'ouvrir la caméra/galerie sur cet appareil.";
       Alert.alert('Erreur', String(msg));
     }
-  }, [ensureRecipientUserId]);
+  }, [ensureRecipientUserId, conversationId]);
 
   const pickDocumentAttachment = useCallback(async () => {
     setShowAttach(false);
@@ -798,14 +856,20 @@ export default function ChatScreen() {
           Alert.alert('Erreur', 'Upload du document impossible.');
           return;
         }
-        await apiClient.post('/messages/send', {
+        const sendFileRes = await apiClient.post('/messages/send', {
           recipientId: rid,
           content: label.slice(0, 500),
           type: 'file',
           media_url: mediaUrl,
+          ...(conversationId ? { conversationId } : {}),
         });
+        const sentFile = sendFileRes.data?.data;
         setMessages((prev) =>
-          prev.map((m) => (m.id === tempId ? { ...m, status: 'delivered', imageUri: mediaUrl } : m)),
+          prev.map((m) =>
+            m.id === tempId
+              ? { ...m, id: sentFile?.id || tempId, status: 'delivered', imageUri: mediaUrl }
+              : m,
+          ),
         );
       } catch {
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -814,7 +878,7 @@ export default function ChatScreen() {
     } catch {
       Alert.alert('Erreur', 'Sélection du document annulée ou impossible.');
     }
-  }, [ensureRecipientUserId]);
+  }, [ensureRecipientUserId, conversationId]);
 
   const shareLocationAttachment = useCallback(async () => {
     setShowAttach(false);
@@ -866,6 +930,7 @@ export default function ChatScreen() {
           location_lat: lat,
           location_lng: lng,
           location_label: label,
+          ...(conversationId ? { conversationId } : {}),
         });
         const sentMsg = response.data?.data;
         setMessages((prev) =>
@@ -880,7 +945,7 @@ export default function ChatScreen() {
     } catch {
       Alert.alert('Erreur', 'Position indisponible. Vérifiez le GPS.');
     }
-  }, [ensureRecipientUserId]);
+  }, [ensureRecipientUserId, conversationId]);
 
   const openNativeContactPicker = useCallback(async () => {
     setShowAttach(false);
@@ -934,6 +999,7 @@ export default function ChatScreen() {
           content: line.slice(0, 500),
           type: 'contact',
           contact_name: line.slice(0, 200),
+          ...(conversationId ? { conversationId } : {}),
         });
         const sentMsg = response.data?.data;
         setMessages((prev) =>
@@ -946,7 +1012,7 @@ export default function ChatScreen() {
         Alert.alert('Erreur', "Impossible d'envoyer le contact.");
       }
     },
-    [ensureRecipientUserId],
+    [ensureRecipientUserId, conversationId],
   );
 
   const pickAudioFileAttachment = useCallback(async () => {
@@ -996,14 +1062,20 @@ export default function ChatScreen() {
           Alert.alert('Erreur', 'Upload audio impossible.');
           return;
         }
-        await apiClient.post('/messages/send', {
+        const sendAudioRes = await apiClient.post('/messages/send', {
           recipientId: rid,
           content: label.slice(0, 500),
           type: 'audio',
           media_url: mediaUrl,
+          ...(conversationId ? { conversationId } : {}),
         });
+        const sentAudio = sendAudioRes.data?.data;
         setMessages((prev) =>
-          prev.map((m) => (m.id === tempId ? { ...m, status: 'delivered', imageUri: mediaUrl } : m)),
+          prev.map((m) =>
+            m.id === tempId
+              ? { ...m, id: sentAudio?.id || tempId, status: 'delivered', imageUri: mediaUrl }
+              : m,
+          ),
         );
       } catch {
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -1012,7 +1084,7 @@ export default function ChatScreen() {
     } catch {
       Alert.alert('Erreur', 'Sélection audio annulée ou impossible.');
     }
-  }, [ensureRecipientUserId]);
+  }, [ensureRecipientUserId, conversationId]);
 
   const openCallScreen = useCallback(
     (type: 'audio' | 'video') => {
@@ -1167,6 +1239,7 @@ export default function ChatScreen() {
         recipientId: targetRecipientId,
         content: fwdText,
         type: 'text',
+        conversationId: targetConvId,
       });
       Alert.alert('Transfere', 'Message transfere avec succes');
     } catch {
@@ -1440,6 +1513,20 @@ export default function ChatScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.messagesList}
             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+            ListHeaderComponent={
+              peerIncomingCall ? (
+                <View style={styles.peerIncomingBanner} accessibilityLiveRegion="polite">
+                  <Ionicons
+                    name={peerIncomingCall.media === 'video' ? 'videocam' : 'call'}
+                    size={18}
+                    color={Colors.primary}
+                  />
+                  <Text style={styles.peerIncomingText}>
+                    {peerIncomingCall.media === 'video' ? 'Appel vidéo' : 'Appel audio'} · Ça sonne
+                  </Text>
+                </View>
+              ) : null
+            }
           />
         )}
       </View>
@@ -1518,11 +1605,22 @@ export default function ChatScreen() {
                 multiline
                 maxLength={2000}
               />
-              <TouchableOpacity onPress={() => setShowAttach(!showAttach)}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (!ensureAuthenticated('envoyer une pièce jointe')) return;
+                  setShowAttach(!showAttach);
+                }}
+              >
                 <Ionicons name="attach" size={24} color={Colors.textSecondary} style={{ transform: [{ rotate: '45deg' }] }} />
               </TouchableOpacity>
               {!newMessage.trim() && (
-                <TouchableOpacity style={styles.cameraInlineBtn} onPress={() => pickImage(true)}>
+                <TouchableOpacity
+                  style={styles.cameraInlineBtn}
+                  onPress={() => {
+                    if (!ensureAuthenticated('envoyer une image')) return;
+                    void pickImage(true);
+                  }}
+                >
                   <Ionicons name="camera" size={22} color={Colors.textSecondary} />
                 </TouchableOpacity>
               )}
@@ -1707,6 +1805,20 @@ const styles = StyleSheet.create({
   chatArea: { flex: 1, backgroundColor: '#0B141A' },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { color: 'rgba(255,255,255,0.5)', fontSize: 13 },
+  peerIncomingBanner: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  peerIncomingText: { color: 'rgba(255,255,255,0.92)', fontSize: FontSizes.sm, fontWeight: '600' },
   messagesList: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.md, paddingBottom: Spacing.lg },
   // Date separator
   dateSeparator: { alignItems: 'center', marginVertical: Spacing.md },

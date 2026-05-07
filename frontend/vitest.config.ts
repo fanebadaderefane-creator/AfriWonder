@@ -52,6 +52,7 @@ export default defineConfig({
         'src/config/googleNativeOAuthRedirect.ts',
         'src/config/googleInstalledAppRedirect.ts',
         'src/emergency/maliEmergencyNumbers.ts',
+        'src/call/callStatusLine.ts',
       ],
       exclude: ['**/*.d.ts', '**/*.test.ts'],
       thresholds: {

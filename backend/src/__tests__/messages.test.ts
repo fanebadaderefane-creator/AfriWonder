@@ -207,6 +207,42 @@ describe('Messages routes', () => {
     expect(res.status).toBe(401);
   });
 
+  it('send attaches to explicit conversationId and rejects recipient mismatch', async () => {
+    const open = await request(app)
+      .post('/api/messages/send')
+      .set('Authorization', `Bearer ${buyerToken}`)
+      .send({ recipientId: sellerId, type: 'text', content: 'ouvre fil' });
+    expect(open.status).toBe(200);
+    const convId = open.body.data.conversation_id as string;
+    expect(convId).toBeTruthy();
+
+    const mismatch = await request(app)
+      .post('/api/messages/send')
+      .set('Authorization', `Bearer ${buyerToken}`)
+      .send({
+        recipientId: buyerId,
+        conversationId: convId,
+        type: 'text',
+        content: 'mauvais destinataire',
+      });
+    expect(mismatch.status).toBe(400);
+
+    const imgUrl = 'https://example.com/photo.jpg';
+    const media = await request(app)
+      .post('/api/messages/send')
+      .set('Authorization', `Bearer ${buyerToken}`)
+      .send({
+        recipientId: sellerId,
+        conversationId: convId,
+        type: 'image',
+        content: 'Photo',
+        media_url: imgUrl,
+      });
+    expect(media.status).toBe(200);
+    expect(media.body.data.conversation_id).toBe(convId);
+    expect(media.body.data.media_url).toBe(imgUrl);
+  });
+
   it('returns scheduled DM list with peer display name', async () => {
     const empty = await request(app)
       .get('/api/messages/scheduled')

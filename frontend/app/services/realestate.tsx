@@ -14,7 +14,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
-import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import propertiesApi, { Property } from '../../src/api/propertiesApi';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { propertyThumbPlaceholderUrl } from '../../src/utils/serviceVisualPlaceholders';
@@ -40,9 +39,6 @@ function demoPropertiesForFilter(active: (typeof TYPES)[number]['id']): Property
 }
 
 export default function RealEstateScreen() {
-  if (!featureFlags.servicesHub) {
-    return <ComingSoonScreen title="Immobilier" description="Le module immobilier sera bientôt disponible." icon="business-outline" />;
-  }
   return <RealEstateContent />;
 }
 

@@ -14,7 +14,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
-import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import doctorsApi, { Doctor } from '../../src/api/doctorsApi';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { doctorAvatarPlaceholderUrl } from '../../src/utils/serviceVisualPlaceholders';
@@ -30,9 +29,6 @@ function demoDoctorsForTab(activeSpecialtyIdx: number): Doctor[] {
 }
 
 export default function HealthScreen() {
-  if (!featureFlags.servicesHub) {
-    return <ComingSoonScreen title="Santé" description="La téléconsultation et les services santé seront bientôt disponibles." icon="medkit-outline" />;
-  }
   return <HealthContent />;
 }
 
@@ -130,7 +126,7 @@ function HealthContent() {
           <Ionicons name="medkit-outline" size={64} color={Colors.textMuted} />
           <Text style={styles.emptyTitle}>Téléconsultation indisponible</Text>
           <Text style={styles.emptyText}>
-            Le service de téléconsultation n'est pas encore activé dans votre région. Revenez bientôt !
+            Le service de téléconsultation n’est pas disponible dans votre région.
           </Text>
         </View>
       ) : error ? (

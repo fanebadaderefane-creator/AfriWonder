@@ -12,6 +12,8 @@ Toute **nouvelle** librairie npm doit avoir une **justification** dans la PR (al
 | `zustand` | État global minimal (auth, préférences) |
 | `@sentry/react-native` | Observabilité erreurs (ch.5) — DSN via `EXPO_PUBLIC_SENTRY_DSN` |
 | `@shopify/flash-list` | Listes virtualisées — scroll 60 FPS / basse conso mémoire (ch.6) |
+| `@shopify/react-native-skia` | Effets visuels GPU (overlay AR caméra : blur, lumière chaude, écran vert). Choisi vs Tensorflow.js (~6-9 Mo APK) et MediaPipe (config native lourde). Skia ≈ 1.8 Mo APK, fonctionne sur appareils 2 Go RAM (cible Mali / Afrique). |
+| `react-native-vision-camera` | Caméra haute performance avec **frame processors** — accès aux pixels en temps réel pour appliquer les effets AR (blur, LUT, chroma key) via worklets. Choisi vs `expo-camera` qui ne supporte PAS les frame processors. Coût : +~6 Mo APK + Expo Go cassé (besoin EAS Build). Limité au composant `IntegratedCameraRecorder` (caméra publication TikTok-like) ; les autres écrans (live, QR scan, profil photo) restent sur `expo-camera` pour limiter la surface de migration. |
 | `expo-image` | Cache disque + mémoire, formats modernes (ch.9.3 compression) |
 | `expo-image-manipulator` | Rotation / recadrage profil en JS — évite l’éditeur natif Android instable avec `expo-image-picker` |
 | `@react-native-community/netinfo` | Qualité connexion / mode dégradé |

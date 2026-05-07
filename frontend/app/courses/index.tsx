@@ -14,7 +14,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
-import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import coursesApi, { Course } from '../../src/api/coursesApi';
 import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
 import { filterDemoCourses, isAfriWonderDemoId } from '../../src/demo/superAppDemoSeed';
@@ -22,15 +21,6 @@ import { filterDemoCourses, isAfriWonderDemoId } from '../../src/demo/superAppDe
 const CATEGORIES = ['Tous', 'Tech', 'Business', 'Langue', 'Art', 'Santé'];
 
 export default function CoursesScreen() {
-  if (!featureFlags.courses) {
-    return (
-      <ComingSoonScreen
-        title="Formations"
-        description="Le catalogue de formations en ligne sera bientôt disponible."
-        icon="school-outline"
-      />
-    );
-  }
   return <CoursesContent />;
 }
 

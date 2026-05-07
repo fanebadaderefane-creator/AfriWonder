@@ -51,7 +51,8 @@ export default function SplashScreen() {
         } else if (storedAuth) {
           router.replace('/(tabs)');
         } else {
-          router.replace('/(auth)/login');
+          // Mode invité: accès libre à la navigation, auth seulement sur actions sensibles.
+          router.replace('/(tabs)');
         }
       }, 2000);
     };

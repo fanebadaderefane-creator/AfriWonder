@@ -137,7 +137,7 @@ export default function LiveHubScreen() {
               await apiClient.delete('/live/me/ended');
               await loadData();
             } catch {
-              Alert.alert('Erreur', 'Impossible de nettoyer pour le moment.');
+              Alert.alert('Erreur', 'Nettoyage impossible. Réessayez dans quelques secondes.');
             } finally {
               setCleaning(false);
             }
@@ -222,7 +222,7 @@ export default function LiveHubScreen() {
                   <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={styles.scheduledOverlay}>
                     <View style={styles.scheduledBadge}>
                       <Ionicons name="time-outline" size={12} color="#FFF" />
-                      <Text style={styles.scheduledBadgeText}>BIENTÔT</Text>
+                      <Text style={styles.scheduledBadgeText}>PROGRAMMÉ</Text>
                     </View>
                     <Text style={styles.scheduledTitle} numberOfLines={2}>
                       {s.title}

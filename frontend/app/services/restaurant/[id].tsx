@@ -219,7 +219,7 @@ export default function RestaurantDetailScreen() {
         ) : null}
         {r.is_open === false ? (
           <View style={styles.closed}>
-            <Text style={styles.closedText}>Fermé pour le moment</Text>
+            <Text style={styles.closedText}>Actuellement fermé</Text>
           </View>
         ) : null}
 

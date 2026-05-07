@@ -10,6 +10,7 @@ import notificationService from './notification.service.js';
 import { scheduleCompatTranscodeAfterPublish } from './videoCompatTranscode.service.js';
 import { scheduleLowQualityRenditionAfterPublish } from './videoLowQualityRendition.service.js';
 import { generateThumbnailForVideoId } from './videoThumbnail.service.js';
+import { normalizeSimilarText } from '../utils/similarTextNormalize.js';
 
 /**
  * Mots vides (FR / EN / simplifiés pour AR) — filtrés lors de l'extraction de mots-clés
@@ -1746,14 +1747,23 @@ class VideoService {
       ? { media_type: 'photo' }
       : { OR: [{ media_type: 'video' }, { media_type: null }] };
 
-    /** Fallback "dernier recours" : même créateur, si aucun mot-clé / tag / catégorie / musique. */
+    /** Si aucun critère sémantique : même créateur, sinon filtre large (vues) pour ne pas renvoyer une liste vide. */
     if (or.length === 0) {
       if (source.creator_id) {
         or.push({ creator_id: source.creator_id });
       } else {
-        return { source_media_type: isPhoto ? 'photo' : 'video', videos: [] };
+        /** Toujours vrai : évite une liste vide quand il n’y a ni tags ni catégorie exploitable. */
+        or.push({ created_at: { lte: new Date() } });
       }
     }
+
+    const similarInclude = {
+      creator: {
+        select: { id: true, username: true, full_name: true, profile_image: true },
+      },
+      video_hashtags: { select: { tag_name: true } },
+      _count: { select: { video_likes: true, video_comments: true } },
+    } as const;
 
     const baseWhere: Prisma.VideoWhereInput = {
       id: { not: sourceId },
@@ -1764,13 +1774,7 @@ class VideoService {
 
     const rawRows = await prisma.video.findMany({
       where: baseWhere,
-      include: {
-        creator: {
-          select: { id: true, username: true, full_name: true, profile_image: true },
-        },
-        video_hashtags: { select: { tag_name: true } },
-        _count: { select: { video_likes: true, video_comments: true } },
-      },
+      include: similarInclude,
       orderBy: [{ views: 'desc' }, { created_at: 'desc' }],
       take: Math.max(limit * 4, 40),
     });
@@ -1784,38 +1788,67 @@ class VideoService {
      *   Musique     → +2
      *   Créateur    → +1 (bonus faible)
      */
-    const sourceTagSet = new Set(tagNames);
-    const rows = rawRows
-      .map((row: any) => {
-        let score = 0;
-        const rowTitle = String(row.title || '').toLowerCase();
-        const rowDesc = String(row.description || '').toLowerCase();
-        const rowTags: string[] = (row.video_hashtags || [])
-          .map((h: any) => String(h.tag_name || '').toLowerCase())
-          .filter(Boolean);
+    const sourceTagSet = new Set(
+      tagNames.map((t) => normalizeSimilarText(t)).filter(Boolean),
+    );
+    const musicNorm = musicTitle ? normalizeSimilarText(musicTitle) : '';
 
-        for (const kw of keywords) {
-          if (rowTitle.includes(kw)) score += 4;
-          if (rowDesc.includes(kw)) score += 1;
-          if (rowTags.some((t) => t.includes(kw))) score += 2;
-        }
-        for (const t of rowTags) if (sourceTagSet.has(t)) score += 3;
-        if (source.category && row.category === source.category) score += 2;
-        if (
-          musicTitle &&
-          String(row.music_title || '')
-            .trim()
-            .toLowerCase() === musicTitle.toLowerCase()
-        ) {
-          score += 2;
-        }
-        if (source.creator_id && row.creator_id === source.creator_id) score += 1;
-        return { row, score };
-      })
+    const scoreRow = (row: any): { row: any; score: number } => {
+      let score = 0;
+      const rowTitle = normalizeSimilarText(String(row.title || ''));
+      const rowDesc = normalizeSimilarText(String(row.description || ''));
+      const rowTags: string[] = (row.video_hashtags || [])
+        .map((h: any) => normalizeSimilarText(String(h.tag_name || '')))
+        .filter(Boolean);
+
+      for (const kw of keywords) {
+        if (!kw) continue;
+        if (rowTitle.includes(kw)) score += 4;
+        if (rowDesc.includes(kw)) score += 1;
+        if (rowTags.some((t) => t.includes(kw))) score += 2;
+      }
+      for (const t of rowTags) {
+        if (sourceTagSet.has(t)) score += 3;
+      }
+      if (source.category && row.category === source.category) score += 2;
+      if (musicNorm) {
+        const rowMusic = normalizeSimilarText(String(row.music_title || '').trim());
+        if (rowMusic && rowMusic === musicNorm) score += 2;
+      }
+      if (source.creator_id && row.creator_id === source.creator_id) score += 1;
+      return { row, score };
+    };
+
+    const scored = rawRows.map((row: any) => scoreRow(row));
+    const positive = scored
       .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score || (b.row.views || 0) - (a.row.views || 0))
       .slice(0, limit)
       .map((x) => x.row);
+
+    let rows = positive;
+    if (rows.length === 0 && rawRows.length > 0) {
+      /** Candidats SQL OK mais score 0 (ex. accentuation) — on garde le top par vues. */
+      rows = [...rawRows]
+        .sort((a: any, b: any) => (b.views ?? 0) - (a.views ?? 0))
+        .slice(0, limit);
+    }
+
+    if (rows.length === 0) {
+      /** Dernier recours : contenus publics populaires du même type (évite « aucun résultat »). */
+      const trending = await prisma.video.findMany({
+        where: {
+          id: { not: sourceId },
+          visibility: 'public',
+          video_url: { not: { contains: 'example.com' } },
+          AND: [typeWhere],
+        },
+        include: similarInclude,
+        orderBy: [{ views: 'desc' }, { created_at: 'desc' }],
+        take: limit,
+      });
+      rows = trending;
+    }
 
     const videos = rows.map((video: any) => {
       const { creator, _count, video_hashtags, ...videoData } = video;

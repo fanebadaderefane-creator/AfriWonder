@@ -60,7 +60,7 @@ export default function SuggestCreatorsScreen() {
       await apiClient.post(`/users/${encodeURIComponent(id)}/follow`, {});
     } catch {
       setFollowing((prev) => ({ ...prev, [id]: false }));
-      Alert.alert('Suivi', 'Impossible de suivre ce profil pour le moment.');
+      Alert.alert('Suivi', 'Impossible de suivre ce profil. Réessayez.');
     }
   }, [following]);
 
@@ -112,7 +112,7 @@ export default function SuggestCreatorsScreen() {
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
-            <Text style={styles.empty}>Aucune suggestion pour le moment. Passez cette étape pour continuer.</Text>
+            <Text style={styles.empty}>Aucune suggestion. Passez cette étape pour continuer.</Text>
           }
         />
       )}

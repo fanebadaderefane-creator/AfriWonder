@@ -13,8 +13,6 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { featureFlags } from '../../src/config/featureFlags';
-import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import addressesApi, { Address } from '../../src/api/addressesApi';
 import cartApi, { Cart } from '../../src/api/cartApi';
 import ordersApi from '../../src/api/ordersApi';
@@ -33,15 +31,6 @@ const PAYMENT_METHODS: { id: PaymentMethodId; name: string; icon: keyof typeof I
 const DELIVERY_FEE_FCFA = 1500;
 
 export default function CheckoutScreen() {
-  if (!featureFlags.marketplace) {
-    return (
-      <ComingSoonScreen
-        title="Paiement"
-        description="Le tunnel de commande marketplace sera disponible très prochainement. Pour les recharges, utilisez Wallet → Recharger."
-        icon="bag-check-outline"
-      />
-    );
-  }
   return <CheckoutContent />;
 }
 

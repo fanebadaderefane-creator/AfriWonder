@@ -242,7 +242,7 @@ export default function CreatorDashboardScreen() {
                 <Text style={styles.emptyContributors}>
                   {contribLoadError
                     ? 'Impossible de charger les soutiens. Vérifiez la connexion ou reconnectez-vous.'
-                    : 'Aucun soutien confirmé pour le moment sur vos campagnes (Orange Money complété).'}
+                    : 'Aucun soutien confirmé sur vos campagnes (Orange Money complété).'}
                 </Text>
               ) : (
                 recentContributors.slice(0, 4).map((contrib) => (
@@ -275,7 +275,7 @@ export default function CreatorDashboardScreen() {
             {recentContributors.length === 0 ? (
               <Text style={styles.emptyContributors}>
                 {contribLoadError
-                  ? 'Chargement des soutiens impossible pour le moment.'
+                  ? 'Chargement des soutiens impossible. Réessayez.'
                   : 'Aucun historique de soutiens confirmés sur vos campagnes.'}
               </Text>
             ) : (

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Alert, TextInput, FlatList, Modal } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Input } from '../../src/components/common/Input';
 import { Button } from '../../src/components/common/Button';
@@ -11,7 +11,8 @@ import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COUNTRIES } from '../../src/data/countries';
 import { SocialOAuthButtons } from '../../src/components/auth/SocialOAuthButtons';
-import { getPostAuthRoute } from '../../src/utils/onboardingFlow';
+import { resolvePostAuthRedirect } from '../../src/utils/authRedirect';
+import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 
 const AFW_APP_LOGO = require('../../assets/images/pwa-icon-192.png');
 
@@ -20,6 +21,7 @@ type LoginMethod = 'phone' | 'email';
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { setAuth } = useAuthStore();
+  const params = useLocalSearchParams<{ returnTo?: string }>();
   const [loginMethod, setLoginMethod] = useState<LoginMethod>('phone');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -81,7 +83,7 @@ export default function LoginScreen() {
       const identifier = loginMethod === 'email' ? email : `${selectedCountry.dial}${phone}`;
       const response = await authApi.login({ identifier, password });
       await setAuth(response.user, response.accessToken, response.refreshToken);
-      router.replace((await getPostAuthRoute()) as Parameters<typeof router.replace>[0]);
+      router.replace((await resolvePostAuthRedirect(params.returnTo)) as Parameters<typeof router.replace>[0]);
     } catch (error: any) {
       const apiError = error?.response?.data?.error;
       const apiMessage = String(apiError?.message || error?.response?.data?.message || '');
@@ -99,7 +101,11 @@ export default function LoginScreen() {
         setShowForceResetModal(true);
         return;
       }
-      const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'Erreur de connexion';
+      const message =
+        error?.response?.data?.error?.message
+        || error?.response?.data?.message
+        || getAlertMessageForCaughtError(error)
+        || 'Erreur de connexion';
       Alert.alert('Erreur', message);
     } finally {
       setLoading(false);
@@ -327,14 +333,17 @@ export default function LoginScreen() {
 
         <SocialOAuthButtons
           onAuthenticated={async () => {
-            router.replace((await getPostAuthRoute()) as Parameters<typeof router.replace>[0]);
+            router.replace((await resolvePostAuthRedirect(params.returnTo)) as Parameters<typeof router.replace>[0]);
           }}
         />
 
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>Pas encore de compte ?</Text>
-          <TouchableOpacity testID="login-link-register" onPress={() => router.push('/(auth)/register')}>
+          <TouchableOpacity
+            testID="login-link-register"
+            onPress={() => router.push({ pathname: '/(auth)/register', params: { returnTo: params.returnTo || '' } })}
+          >
             <Text style={styles.footerLink}> Creer un compte</Text>
           </TouchableOpacity>
         </View>

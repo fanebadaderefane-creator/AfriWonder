@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, createElement } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, createElement, memo } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,9 @@ import {
   Dimensions,
   Platform,
   ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { Colors } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,10 +22,83 @@ import socketService from '../../src/services/socketService';
 import { useAuthStore } from '../../src/store/authStore';
 import apiClient from '../../src/api/client';
 import { profileAvatarUri } from '../../src/utils/avatarFallback';
-import { startLoopingCallRing } from '../../src/call/callRingtone';
+import { startOutgoingRingbackPattern } from '../../src/call/callRingtone';
 import { tryLoadReactNativeWebRtc } from '../../src/call/tryLoadReactNativeWebRtc';
+import { connectionQualityFromRtcStatsReport } from '../../src/call/webrtcConnectionQuality';
+import { formatCallStatusLine } from '../../src/call/callStatusLine';
+import { devWarn } from '../../src/utils/devLog';
+import { CallDuringMessageModal, CallMoreOptionsSheet } from '../../src/components/call/CallMoreMenu';
 
-const { width } = Dimensions.get('window');
+const { width, height: screenH } = Dimensions.get('window');
+
+const ALLOWED_CALL_REACTIONS = new Set(['👍', '❤️', '😂', '😮', '😢', '🙏']);
+
+/** Icônes « doodle » façon fond WhatsApp — faible opacité, lecture seule. */
+const WALLPAPER_ICON_NAMES = [
+  'cafe-outline',
+  'camera-outline',
+  'musical-notes-outline',
+  'heart-outline',
+  'flash-outline',
+  'moon-outline',
+  'leaf-outline',
+  'planet-outline',
+  'fish-outline',
+  'pizza-outline',
+  'football-outline',
+  'game-controller-outline',
+  'headset-outline',
+  'mic-outline',
+  'videocam-outline',
+  'call-outline',
+  'chatbubble-outline',
+  'happy-outline',
+  'star-outline',
+  'cloud-outline',
+] as const;
+
+const CallWallpaperPattern = memo(function CallWallpaperPattern() {
+  const tiles = useMemo(() => {
+    const rows = 14;
+    const cols = 8;
+    const out: { key: string; name: (typeof WALLPAPER_ICON_NAMES)[number]; left: number; top: number; rotate: string }[] =
+      [];
+    let i = 0;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const name = WALLPAPER_ICON_NAMES[i % WALLPAPER_ICON_NAMES.length];
+        i++;
+        out.push({
+          key: `${r}-${c}`,
+          name,
+          left: (c / cols) * width + (r % 2 === 0 ? 0 : 12),
+          top: (r / rows) * screenH * 0.92,
+          rotate: `${((r + c) % 5) * 17 - 34}deg`,
+        });
+      }
+    }
+    return out;
+  }, []);
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {tiles.map((t) => (
+        <View
+          key={t.key}
+          style={{
+            position: 'absolute',
+            width: 28,
+            height: 28,
+            left: t.left,
+            top: t.top,
+            transform: [{ rotate: t.rotate }],
+          }}
+        >
+          <Ionicons name={t.name} size={22} color="rgba(255,255,255,0.07)" />
+        </View>
+      ))}
+    </View>
+  );
+});
 
 /**
  * Appel audio/vidéo 1-1 — web (navigateur) ou Android/iOS (`react-native-webrtc` dans l’app installée).
@@ -43,6 +119,13 @@ type SignalPayload =
 
 const CALL_RING_MS = 30_000;
 const isWebRuntime = Platform.OS === 'web';
+
+/** Calques semi-transparents sur le PiP local (aperçu selfie) — même logique Web / natif. */
+const PIP_EFFECT_LAYER: Record<'warm' | 'cool' | 'soft', string> = {
+  warm: 'rgba(255, 165, 95, 0.24)',
+  cool: 'rgba(100, 165, 255, 0.22)',
+  soft: 'rgba(255, 255, 255, 0.18)',
+};
 const nativeWebRTC: any = tryLoadReactNativeWebRtc();
 const RTCPeerConnectionImpl: any = isWebRuntime ? RTCPeerConnection : nativeWebRTC?.RTCPeerConnection;
 const RTCIceCandidateImpl: any = isWebRuntime ? RTCIceCandidate : nativeWebRTC?.RTCIceCandidate;
@@ -80,6 +163,24 @@ export default function CallScreen() {
   const [speakerOn, setSpeakerOn] = useState(true);
   const [cameraOff, setCameraOff] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [messageModalOpen, setMessageModalOpen] = useState(false);
+  const [floatingReactions, setFloatingReactions] = useState<{ id: string; emoji: string }[]>([]);
+  const [peerRaisedHand, setPeerRaisedHand] = useState(false);
+  const [myRaisedHand, setMyRaisedHand] = useState(false);
+  const [peerScreenSharing, setPeerScreenSharing] = useState(false);
+  const [localScreenSharing, setLocalScreenSharing] = useState(false);
+  const [screenShareLoading, setScreenShareLoading] = useState(false);
+  const [connectionDisplay, setConnectionDisplay] = useState<{
+    labelFr: string;
+    bars: 1 | 2 | 3;
+    quality: 'good' | 'fair' | 'poor';
+  }>({ labelFr: 'Connexion…', bars: 2, quality: 'fair' });
+  const [pipEffect, setPipEffect] = useState<'none' | 'warm' | 'cool' | 'soft'>('none');
+  const [effectsModalOpen, setEffectsModalOpen] = useState(false);
+
+  const screenShareDisplayStreamRef = useRef<MediaStream | null>(null);
+  const facingModeRef = useRef<'user' | 'environment'>('user');
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -98,6 +199,18 @@ export default function CallScreen() {
   const [localStreamUrl, setLocalStreamUrl] = useState<string>('');
 
   const stopAllMedia = useCallback(() => {
+    try {
+      screenShareDisplayStreamRef.current?.getTracks?.().forEach((t) => {
+        try {
+          t.stop?.();
+        } catch {
+          /* ignore */
+        }
+      });
+      screenShareDisplayStreamRef.current = null;
+    } catch {
+      /* ignore */
+    }
     try {
       const local = localStreamRef.current as MediaStream | { getTracks?: () => { stop?: () => void }[] } | null;
       local?.getTracks?.().forEach((t) => {
@@ -122,11 +235,15 @@ export default function CallScreen() {
       setLocalStreamUrl('');
       setRemoteStreamUrl('');
     }
-  }, [isWebRuntime]);
+  }, []);
 
   const finishCall = useCallback(
     (reason: 'ended' | 'failed' | 'declined' = 'ended') => {
       if (callState === 'ended') return;
+      setPeerRaisedHand(false);
+      setMyRaisedHand(false);
+      setPeerScreenSharing(false);
+      setLocalScreenSharing(false);
       setCallState('ended');
       if (timerRef.current) clearInterval(timerRef.current);
       if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
@@ -207,7 +324,8 @@ export default function CallScreen() {
         remoteVideoElRef.current.srcObject = stream;
         remoteVideoElRef.current.play().catch(() => {});
       }
-      if (isWebRuntime && remoteAudioElRef.current) {
+      /** Appel vidéo : l’audio sort du `<video>` distant — ne pas dupliquer sur `<audio>` (double lecture). */
+      if (isWebRuntime && !isVideo && remoteAudioElRef.current) {
         remoteAudioElRef.current.srcObject = stream;
         remoteAudioElRef.current.play().catch(() => {});
       }
@@ -278,7 +396,7 @@ export default function CallScreen() {
           }
         }
       } catch (e) {
-        console.warn('[Call] signal handling failed', e);
+        devWarn('[Call] signal handling failed', e);
       }
     };
 
@@ -300,7 +418,7 @@ export default function CallScreen() {
         await pc.setLocalDescription(offer);
         sendSignal({ kind: 'sdp', sdp: { type: offer.type, sdp: offer.sdp } });
       } catch (e) {
-        console.warn('[Call] offer failed', e);
+        devWarn('[Call] offer failed', e);
         finishCall('failed');
       }
     };
@@ -359,6 +477,13 @@ export default function CallScreen() {
           if (s === 'connected') {
             setCallState('connected');
             if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+            if (isWebRuntime && remoteAudioElRef.current) {
+              try {
+                remoteAudioElRef.current.muted = false;
+              } catch {
+                /* ignore */
+              }
+            }
           } else if (s === 'failed' || s === 'closed') {
             finishCall('failed');
           }
@@ -446,7 +571,7 @@ export default function CallScreen() {
           setCallState('connecting');
         }
       } catch (e: any) {
-        console.error('[Call] setup failed', e);
+        devWarn('[Call] setup failed', e);
         const msg = String(e?.message || '').toLowerCase();
         if (msg.includes('permission') || msg.includes('notallowed')) {
           setErrorMsg('Permission micro / caméra refusée.');
@@ -477,19 +602,13 @@ export default function CallScreen() {
     if (!nativeWebRTC) return;
     if (role !== 'caller' || callState !== 'ringing') return;
     let stopOutgoing: (() => Promise<void>) | null = null;
-    void startLoopingCallRing(0.58, { preset: 'outgoing' }).then((fn) => {
+    void startOutgoingRingbackPattern(0.58).then((fn) => {
       stopOutgoing = fn;
     });
     return () => {
       void stopOutgoing?.();
     };
   }, [role, callState]);
-
-  const formatTime = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
 
   /** Toggle micro : disable/enable directement les pistes audio. */
   const toggleMute = useCallback(() => {
@@ -527,7 +646,8 @@ export default function CallScreen() {
       const next = !v;
       if (isWebRuntime && remoteAudioElRef.current) {
         try {
-          remoteAudioElRef.current.muted = next ? false : true;
+          /** Ne jamais couper la piste distante : `muted` forçait le silence en mode « écouteur ». */
+          remoteAudioElRef.current.muted = false;
         } catch {
           /* ignore */
         }
@@ -545,27 +665,255 @@ export default function CallScreen() {
       }
       return next;
     });
-  }, [isWebRuntime]);
+  }, []);
 
   const endCall = useCallback(() => finishCall('ended'), [finishCall]);
 
-  const callStatusLabel = useMemo(() => {
-    if (!isWebRuntime && !nativeWebRTC) {
-      return 'Appel indisponible.';
+  const emitCallRelay = useCallback(
+    (event: string, extra: Record<string, unknown>) => {
+      if (!otherUserId || !myUserId) return;
+      void socketService.ensureConnectedEmit(event, {
+        callId: callIdRef.current,
+        fromUserId: myUserId,
+        toUserId: otherUserId,
+        ...extra,
+      });
+    },
+    [otherUserId, myUserId],
+  );
+
+  const pushFloatingReaction = useCallback((emoji: string) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setFloatingReactions((prev) => [...prev, { id, emoji }]);
+    setTimeout(() => {
+      setFloatingReactions((prev) => prev.filter((x) => x.id !== id));
+    }, 3200);
+  }, []);
+
+  useEffect(() => {
+    if (!otherUserId || !myUserId) return;
+    const offR = socketService.on(
+      'call:reaction',
+      (p: { callId?: string; fromUserId?: string; emoji?: string }) => {
+        if (!p?.emoji || p.callId !== callIdRef.current || p.fromUserId !== otherUserId) return;
+        pushFloatingReaction(p.emoji);
+      },
+    );
+    const offH = socketService.on(
+      'call:raise_hand',
+      (p: { callId?: string; fromUserId?: string; raised?: boolean }) => {
+        if (p?.callId !== callIdRef.current || p.fromUserId !== otherUserId) return;
+        setPeerRaisedHand(!!p.raised);
+      },
+    );
+    const offS = socketService.on(
+      'call:screen_share',
+      (p: { callId?: string; fromUserId?: string; active?: boolean }) => {
+        if (p?.callId !== callIdRef.current || p.fromUserId !== otherUserId) return;
+        setPeerScreenSharing(!!p.active);
+      },
+    );
+    return () => {
+      offR();
+      offH();
+      offS();
+    };
+  }, [otherUserId, myUserId, pushFloatingReaction]);
+
+  useEffect(() => {
+    if (callState !== 'connected') return;
+    const tick = () => {
+      const pc = pcRef.current as RTCPeerConnection | null;
+      if (!pc?.getStats) return;
+      void pc.getStats().then((report) => {
+        const q = connectionQualityFromRtcStatsReport(report);
+        setConnectionDisplay({
+          labelFr: q.labelFr,
+          bars: q.bars,
+          quality: q.quality,
+        });
+      });
+    };
+    tick();
+    const id = setInterval(tick, 2500);
+    return () => clearInterval(id);
+  }, [callState]);
+
+  const restoreCameraTrack = useCallback(async () => {
+    if (!mediaDevicesImpl?.getUserMedia || !pcRef.current || !localStreamRef.current) return;
+    const facing = facingModeRef.current;
+    const camOnly = await mediaDevicesImpl.getUserMedia({
+      video: isWebRuntime ? { facingMode: facing } : { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: facing },
+      audio: false,
+    });
+    const newVt = camOnly.getVideoTracks()[0];
+    const local = localStreamRef.current as MediaStream;
+    const oldVt = local.getVideoTracks()[0];
+    const sender = (pcRef.current as RTCPeerConnection).getSenders().find((s) => s.track?.kind === 'video');
+    if (!sender || !newVt) return;
+    await sender.replaceTrack(newVt);
+    if (oldVt) {
+      local.removeTrack(oldVt);
+      oldVt.stop();
     }
-    if (errorMsg) return errorMsg;
-    if (callState === 'ringing') return 'Appel en cours…';
-    if (callState === 'connecting') return isVideo ? 'Connexion vidéo…' : 'Connexion…';
-    if (callState === 'connected') return formatTime(duration);
-    return 'Appel terminé';
-  }, [callState, duration, errorMsg, isVideo]);
+    local.addTrack(newVt);
+    if (isWebRuntime && localVideoElRef.current) {
+      localVideoElRef.current.srcObject = local;
+      void localVideoElRef.current.play();
+    }
+    if (!isWebRuntime && (local as MediaStream & { toURL?: () => string }).toURL) {
+      setLocalStreamUrl((local as MediaStream & { toURL: () => string }).toURL());
+    }
+  }, []);
+
+  const flipCamera = useCallback(async () => {
+    if (!isVideo || !pcRef.current || !localStreamRef.current || !mediaDevicesImpl?.getUserMedia) {
+      Alert.alert('Caméra', 'Caméra indisponible.');
+      return;
+    }
+    const nextFacing = facingModeRef.current === 'user' ? 'environment' : 'user';
+    try {
+      const camOnly = await mediaDevicesImpl.getUserMedia({
+        video: isWebRuntime
+          ? { facingMode: nextFacing }
+          : { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: nextFacing },
+        audio: false,
+      });
+      const newVt = camOnly.getVideoTracks()[0];
+      const local = localStreamRef.current as MediaStream;
+      const oldVt = local.getVideoTracks()[0];
+      const sender = (pcRef.current as RTCPeerConnection).getSenders().find((s) => s.track?.kind === 'video');
+      if (sender && newVt) {
+        await sender.replaceTrack(newVt);
+        if (oldVt) {
+          local.removeTrack(oldVt);
+          oldVt.stop();
+        }
+        local.addTrack(newVt);
+        if (isWebRuntime && localVideoElRef.current) {
+          localVideoElRef.current.srcObject = local;
+          void localVideoElRef.current.play();
+        }
+        if (!isWebRuntime && (local as MediaStream & { toURL?: () => string }).toURL) {
+          setLocalStreamUrl((local as MediaStream & { toURL: () => string }).toURL());
+        }
+        facingModeRef.current = nextFacing;
+      }
+    } catch {
+      Alert.alert('Caméra', 'Impossible de changer de caméra sur cet appareil.');
+    }
+  }, [isVideo]);
+
+  const toggleScreenShare = useCallback(async () => {
+    if (!isVideo) {
+      Alert.alert('Partage d’écran', 'Réservé aux appels vidéo.');
+      return;
+    }
+    if (!isWebRuntime) {
+      Alert.alert(
+        'Partage d’écran',
+        'Le partage d’écran n’est pas disponible sur l’application mobile. Utilisez AfriWonder dans un navigateur sur ordinateur pour cette fonctionnalité.',
+      );
+      return;
+    }
+    if (!pcRef.current || !localStreamRef.current) return;
+
+    if (localScreenSharing) {
+      setScreenShareLoading(true);
+      try {
+        screenShareDisplayStreamRef.current?.getTracks().forEach((t) => t.stop());
+        screenShareDisplayStreamRef.current = null;
+        await restoreCameraTrack();
+        setLocalScreenSharing(false);
+        emitCallRelay('call:screen_share', { active: false });
+      } finally {
+        setScreenShareLoading(false);
+        setMoreMenuOpen(false);
+      }
+      return;
+    }
+
+    setScreenShareLoading(true);
+    try {
+      const display = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      });
+      const v = display.getVideoTracks()[0];
+      if (!v) throw new Error('NO_VIDEO_TRACK');
+      v.onended = () => {
+        void (async () => {
+          screenShareDisplayStreamRef.current?.getTracks().forEach((t) => t.stop());
+          screenShareDisplayStreamRef.current = null;
+          try {
+            await restoreCameraTrack();
+            setLocalScreenSharing(false);
+            emitCallRelay('call:screen_share', { active: false });
+          } catch {
+            /* ignore */
+          }
+        })();
+      };
+      screenShareDisplayStreamRef.current = display;
+      const local = localStreamRef.current as MediaStream;
+      const oldVt = local.getVideoTracks()[0];
+      const sender = (pcRef.current as RTCPeerConnection).getSenders().find((s) => s.track?.kind === 'video');
+      if (!sender) return;
+      await sender.replaceTrack(v);
+      if (oldVt) {
+        local.removeTrack(oldVt);
+        oldVt.stop();
+      }
+      local.addTrack(v);
+      if (localVideoElRef.current) {
+        localVideoElRef.current.srcObject = local;
+        void localVideoElRef.current.play();
+      }
+      setLocalScreenSharing(true);
+      emitCallRelay('call:screen_share', { active: true });
+      setMoreMenuOpen(false);
+    } catch {
+      Alert.alert('Partage d’écran', 'Autorisez le partage d’écran ou réessayez.');
+    } finally {
+      setScreenShareLoading(false);
+    }
+  }, [isVideo, localScreenSharing, restoreCameraTrack, emitCallRelay]);
+
+  const statusLine = useMemo(
+    () =>
+      formatCallStatusLine({
+        hasWebRtcSupport: isWebRuntime || Boolean(nativeWebRTC),
+        errorMsg,
+        callState,
+        durationSeconds: duration,
+        role,
+      }),
+    [callState, duration, errorMsg, role],
+  );
+
+  const onMinimizeHint = useCallback(() => {
+    Alert.alert('Appel', 'Pour terminer l’appel, utilisez le bouton rouge.');
+  }, []);
+
+  const openAddPeople = useCallback(() => {
+    if (!otherUserId) return;
+    router.push({
+      pathname: '/messages/call-add-people',
+      params: {
+        callId: callIdRef.current,
+        otherUserId,
+        type: isVideo ? 'video' : 'audio',
+      },
+    } as never);
+  }, [otherUserId, isVideo]);
 
   const isWeb = isWebRuntime;
 
+  const dockIconColor = (active: boolean) => (active ? '#1a1a1a' : '#FFFFFF');
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      {/* Audio remote sink — toujours présent sur web pour entendre l'autre. */}
-      {isWeb
+    <View style={[styles.root, { paddingBottom: insets.bottom }]}>
+      {isWeb && !isVideo
         ? createElement('audio', {
             ref: (el: HTMLAudioElement | null) => {
               remoteAudioElRef.current = el;
@@ -575,6 +923,43 @@ export default function CallScreen() {
             style: { display: 'none' },
           })
         : null}
+
+      {!isVideo ? <CallWallpaperPattern /> : null}
+
+      {/* Barre du haut — style WhatsApp */}
+      <View style={[styles.topBar, { paddingTop: insets.top + 6 }]}>
+        <TouchableOpacity onPress={onMinimizeHint} style={styles.topIconHit} accessibilityLabel="Réduire">
+          <Ionicons name="contract-outline" size={26} color="#FFF" />
+        </TouchableOpacity>
+        <View style={styles.topTitleWrap}>
+          <Text style={styles.topName} numberOfLines={1}>
+            {name || 'Contact'}
+          </Text>
+          <Text style={styles.topStatus} numberOfLines={1}>
+            {statusLine}
+          </Text>
+        </View>
+        {isVideo ? (
+          <View style={styles.topIconHit} />
+        ) : (
+          <TouchableOpacity onPress={openAddPeople} style={styles.topIconHit} accessibilityLabel="Ajouter">
+            <Ionicons name="person-add-outline" size={26} color="#FFF" />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {peerRaisedHand ? (
+        <View style={styles.peerBanner}>
+          <Ionicons name="hand-left" size={18} color="#FFF" />
+          <Text style={styles.peerBannerText}>{name} a levé la main</Text>
+        </View>
+      ) : null}
+      {peerScreenSharing ? (
+        <View style={[styles.peerBanner, styles.peerBannerAlt]}>
+          <Ionicons name="desktop-outline" size={18} color="#FFF" />
+          <Text style={styles.peerBannerText}>{name} partage son écran</Text>
+        </View>
+      ) : null}
 
       {isVideo ? (
         <View style={styles.videoBackground}>
@@ -601,35 +986,67 @@ export default function CallScreen() {
               <Text style={styles.videoPlaceholderText}>Connexion vidéo...</Text>
             </View>
           )}
+
+          <View style={[styles.videoSideTools, { top: insets.top + 56 }]}>
+            <TouchableOpacity style={styles.sideToolBtn} onPress={openAddPeople} accessibilityLabel="Ajouter">
+              <Ionicons name="person-add" size={22} color="#FFF" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.sideToolBtn} onPress={() => void flipCamera()} accessibilityLabel="Caméra">
+              <Ionicons name="camera-reverse-outline" size={22} color="#FFF" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sideToolBtn}
+              onPress={() => setEffectsModalOpen(true)}
+              accessibilityLabel="Effets"
+            >
+              <Ionicons name="color-wand-outline" size={22} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+
           {!cameraOff && (
             <View style={styles.selfView}>
-              {isWeb ? (
-                createElement('video', {
-                  ref: (el: HTMLVideoElement | null) => {
-                    localVideoElRef.current = el;
-                  },
-                  autoPlay: true,
-                  playsInline: true,
-                  muted: true,
-                  style: { width: '100%', height: '100%', objectFit: 'cover' },
-                })
-              ) : localStreamUrl && RTCViewNative ? (
-                <RTCViewNative streamURL={localStreamUrl} style={styles.nativeVideoFill} objectFit="cover" mirror />
-              ) : (
-                <Image source={{ uri: peerAvatarUri }} style={styles.selfViewImage} />
-              )}
+              <View style={StyleSheet.absoluteFill}>
+                {isWeb ? (
+                  createElement('video', {
+                    ref: (el: HTMLVideoElement | null) => {
+                      localVideoElRef.current = el;
+                    },
+                    autoPlay: true,
+                    playsInline: true,
+                    muted: true,
+                    style: { width: '100%', height: '100%', objectFit: 'cover' },
+                  })
+                ) : localStreamUrl && RTCViewNative ? (
+                  <RTCViewNative streamURL={localStreamUrl} style={styles.nativeVideoFill} objectFit="cover" mirror />
+                ) : (
+                  <Image source={{ uri: peerAvatarUri }} style={styles.selfViewImage} />
+                )}
+              </View>
+              {pipEffect !== 'none' ? (
+                <View
+                  style={[StyleSheet.absoluteFill, { backgroundColor: PIP_EFFECT_LAYER[pipEffect] }]}
+                  pointerEvents="none"
+                />
+              ) : null}
+              <TouchableOpacity
+                style={styles.pipFlipHit}
+                onPress={() => void flipCamera()}
+                accessibilityLabel="Changer de caméra"
+              >
+                <Ionicons name="camera-reverse-outline" size={18} color="#FFF" />
+              </TouchableOpacity>
             </View>
           )}
         </View>
       ) : (
-        <View style={styles.audioBackground}>
+        <View style={styles.audioStage}>
           <View style={styles.avatarRingWrap}>
             <Animated.View
               style={[
                 styles.pulseRing,
                 {
                   transform: [{ scale: pulseAnim }],
-                  opacity: callState === 'ringing' ? 0.3 : 0,
+                  opacity: callState === 'ringing' ? 0.35 : 0,
                 },
               ]}
             />
@@ -638,84 +1055,218 @@ export default function CallScreen() {
         </View>
       )}
 
-      <View style={styles.callInfo}>
-        <Text style={styles.callerName}>{name || 'Contact'}</Text>
-        <Text style={styles.callStatus}>{callStatusLabel}</Text>
-      </View>
-
-      <View style={styles.controls}>
-        <View style={styles.controlsRow}>
+      {/* Dock inférieur façon WhatsApp : … | vidéo | haut-parleur | micro | puis raccrocher */}
+      <View style={styles.bottomDock}>
+        <View style={styles.dockPill}>
           <TouchableOpacity
-            style={[styles.controlBtn, muted && styles.controlBtnActive]}
-            onPress={toggleMute}
-            accessibilityLabel={muted ? 'Activer le micro' : 'Couper le micro'}
+            style={styles.dockCircle}
+            onPress={() => setMoreMenuOpen(true)}
+            accessibilityLabel="Plus d’options"
           >
-            <Ionicons name={muted ? 'mic-off' : 'mic'} size={24} color="#FFF" />
+            <Ionicons name="ellipsis-horizontal" size={24} color="#FFF" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.controlBtn, !speakerOn && styles.controlBtnActive]}
+            style={[
+              styles.dockCircle,
+              !isVideo && styles.dockCircleMuted,
+              isVideo && cameraOff && styles.dockCircleMuted,
+            ]}
+            onPress={
+              isVideo
+                ? toggleCamera
+                : () => Alert.alert('AfriWonder', 'Passez un appel vidéo pour activer la caméra.')
+            }
+            accessibilityLabel={isVideo ? 'Caméra' : 'Vidéo indisponible'}
+          >
+            <Ionicons
+              name={isVideo ? (cameraOff ? 'videocam-off' : 'videocam') : 'videocam-off'}
+              size={24}
+              color="#FFF"
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.dockCircle, speakerOn && styles.dockCircleOn]}
             onPress={toggleSpeaker}
             accessibilityLabel="Haut-parleur"
           >
-            <Ionicons name={speakerOn ? 'volume-high' : 'volume-mute'} size={24} color="#FFF" />
+            <Ionicons
+              name={speakerOn ? 'volume-high' : 'volume-mute'}
+              size={24}
+              color={dockIconColor(speakerOn)}
+            />
           </TouchableOpacity>
-          {isVideo && (
-            <TouchableOpacity
-              style={[styles.controlBtn, cameraOff && styles.controlBtnActive]}
-              onPress={toggleCamera}
-              accessibilityLabel={cameraOff ? 'Allumer la caméra' : 'Couper la caméra'}
-            >
-              <Ionicons name={cameraOff ? 'videocam-off' : 'videocam'} size={24} color="#FFF" />
-            </TouchableOpacity>
-          )}
           <TouchableOpacity
-            style={styles.controlBtn}
-            onPress={() => router.back()}
-            accessibilityLabel="Ouvrir le chat"
+            style={[styles.dockCircle, muted && styles.dockCircleOn]}
+            onPress={toggleMute}
+            accessibilityLabel="Micro"
           >
-            <Ionicons name="chatbubble" size={24} color="#FFF" />
+            <Ionicons name={muted ? 'mic-off' : 'mic'} size={24} color={dockIconColor(muted)} />
           </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.endCallBtn} onPress={endCall} accessibilityLabel="Terminer l’appel">
-          <Ionicons name="call" size={32} color="#FFF" style={{ transform: [{ rotate: '135deg' }] }} />
+        <TouchableOpacity style={styles.endCallFab} onPress={endCall} accessibilityLabel="Raccrocher">
+          <Ionicons name="call" size={30} color="#FFF" style={{ transform: [{ rotate: '135deg' }] }} />
         </TouchableOpacity>
       </View>
+
+      {floatingReactions.length > 0 ? (
+        <View style={styles.reactionOverlay} pointerEvents="none">
+          {floatingReactions.map((fr) => (
+            <Text key={fr.id} style={styles.reactionFloat}>
+              {fr.emoji}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
+      <CallMoreOptionsSheet
+        visible={moreMenuOpen}
+        onClose={() => setMoreMenuOpen(false)}
+        connectionLabel={connectionDisplay.labelFr}
+        connectionBars={connectionDisplay.bars}
+        connectionQuality={connectionDisplay.quality}
+        myRaisedHand={myRaisedHand}
+        onToggleRaiseHand={() => {
+          setMyRaisedHand((r) => {
+            const next = !r;
+            emitCallRelay('call:raise_hand', { raised: next });
+            return next;
+          });
+        }}
+        onPickReaction={(emoji) => {
+          if (!ALLOWED_CALL_REACTIONS.has(emoji)) return;
+          emitCallRelay('call:reaction', { emoji });
+          pushFloatingReaction(emoji);
+          setMoreMenuOpen(false);
+        }}
+        onShareScreen={() => void toggleScreenShare()}
+        onOpenMessageComposer={() => {
+          setMoreMenuOpen(false);
+          setMessageModalOpen(true);
+        }}
+        screenShareLoading={screenShareLoading}
+      />
+
+      <CallDuringMessageModal
+        visible={messageModalOpen}
+        onClose={() => setMessageModalOpen(false)}
+        otherUserId={otherUserId}
+        peerName={name}
+      />
+
+      <Modal
+        visible={effectsModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEffectsModalOpen(false)}
+      >
+        <View style={styles.fxRoot}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setEffectsModalOpen(false)} />
+          <View style={styles.fxSheet}>
+            <Text style={styles.fxTitle}>Effets (votre aperçu)</Text>
+            <Text style={styles.fxHint}>S’appliquent à votre caméra locale uniquement.</Text>
+            <View style={styles.fxChips}>
+              {(
+                [
+                  { key: 'none' as const, label: 'Aucun' },
+                  { key: 'soft' as const, label: 'Clair' },
+                  { key: 'warm' as const, label: 'Chaud' },
+                  { key: 'cool' as const, label: 'Froid' },
+                ]
+              ).map(({ key, label }) => (
+                <TouchableOpacity
+                  key={key}
+                  style={[styles.fxChip, pipEffect === key && styles.fxChipOn]}
+                  onPress={() => {
+                    setPipEffect(key);
+                    setEffectsModalOpen(false);
+                  }}
+                >
+                  <Text style={[styles.fxChipText, pipEffect === key && styles.fxChipTextOn]}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity style={styles.fxClose} onPress={() => setEffectsModalOpen(false)}>
+              <Text style={styles.fxCloseText}>Fermer</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0B141A', justifyContent: 'space-between', alignItems: 'center' },
+  root: { flex: 1, backgroundColor: '#0B141A' },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingBottom: 8,
+    zIndex: 20,
+  },
+  topIconHit: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  topTitleWrap: { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
+  topName: { color: '#FFF', fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  topStatus: { color: 'rgba(255,255,255,0.72)', fontSize: 14, marginTop: 2, textAlign: 'center' },
+  audioStage: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
   videoBackground: {
     flex: 1,
     width,
-    backgroundColor: '#1a1a2e',
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    backgroundColor: '#101822',
+    position: 'relative',
   },
-  videoPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  videoPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 280 },
   videoPlaceholderText: { color: 'rgba(255,255,255,0.55)', fontSize: 14, marginTop: 12 },
   nativeVideoFill: { width: '100%', height: '100%' },
+  videoSideTools: {
+    position: 'absolute',
+    right: 12,
+    zIndex: 15,
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 12,
+  },
+  sideToolBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   selfView: {
     position: 'absolute',
-    top: 80,
-    right: 20,
-    width: 100,
-    height: 140,
-    borderRadius: 12,
+    bottom: 200,
+    right: 16,
+    width: 112,
+    height: 158,
+    borderRadius: 14,
     overflow: 'hidden',
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255,255,255,0.28)',
     backgroundColor: '#000',
+    zIndex: 12,
+  },
+  pipFlipHit: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   selfViewImage: { width: '100%', height: '100%' },
-  audioBackground: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
   avatarRingWrap: {
-    width: 180,
-    height: 180,
+    width: 200,
+    height: 200,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -723,33 +1274,122 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
     borderWidth: 3,
     borderColor: Colors.primary,
   },
-  callerAvatar: { width: 130, height: 130, borderRadius: 65, borderWidth: 3, borderColor: 'rgba(255,255,255,0.2)' },
-  callInfo: { alignItems: 'center', paddingVertical: 20, paddingHorizontal: 24 },
-  callerName: { color: '#FFF', fontSize: 26, fontWeight: 'bold', marginBottom: 6, textAlign: 'center' },
-  callStatus: { color: 'rgba(255,255,255,0.7)', fontSize: 16 },
-  controls: { width: '100%', alignItems: 'center', paddingBottom: 30 },
-  controlsRow: { flexDirection: 'row', justifyContent: 'center', gap: 24, marginBottom: 30 },
-  controlBtn: {
+  callerAvatar: { width: 148, height: 148, borderRadius: 74, borderWidth: 3, borderColor: 'rgba(255,255,255,0.22)' },
+  bottomDock: {
     alignItems: 'center',
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    justifyContent: 'center',
+    paddingTop: 8,
+    paddingHorizontal: 20,
+    zIndex: 20,
   },
-  controlBtnActive: { backgroundColor: 'rgba(255,255,255,0.3)' },
-  endCallBtn: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#FF3D00',
+  dockPill: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 18,
+    backgroundColor: 'rgba(22,35,46,0.92)',
+    borderRadius: 36,
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+    marginBottom: 18,
   },
+  dockCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dockCircleOn: {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+  },
+  dockCircleMuted: {
+    opacity: 0.45,
+  },
+  endCallFab: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#E53935',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+  },
+  peerBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    zIndex: 19,
+  },
+  peerBannerAlt: {
+    backgroundColor: 'rgba(27,94,32,0.55)',
+  },
+  peerBannerText: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+  reactionOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 260,
+    alignItems: 'center',
+    zIndex: 18,
+    gap: 10,
+  },
+  reactionFloat: {
+    fontSize: 52,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
+  },
+  fxRoot: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  fxSheet: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#1c252e',
+    borderRadius: 14,
+    padding: 18,
+    zIndex: 2,
+  },
+  fxTitle: { color: '#FFF', fontSize: 17, fontWeight: '700' },
+  fxHint: { color: 'rgba(255,255,255,0.65)', fontSize: 13, marginTop: 6, marginBottom: 14 },
+  fxChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  fxChip: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  fxChipOn: {
+    borderColor: Colors.primary,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  fxChipText: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+  fxChipTextOn: { color: Colors.primary },
+  fxClose: { marginTop: 16, alignSelf: 'center' },
+  fxCloseText: { color: 'rgba(255,255,255,0.75)', fontSize: 15, fontWeight: '600' },
 });

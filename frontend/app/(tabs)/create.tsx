@@ -7,6 +7,7 @@ import {
 import { Colors, FontSizes, Spacing, BorderRadius } from '../../src/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useAuthStore } from '../../src/store/authStore';
@@ -14,6 +15,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { isAxiosError } from 'axios';
 import apiClient from '../../src/api/client';
+import { warmupBackend } from '../../src/api/backendWarmup';
 import { tryRefreshAccessToken } from '../../src/api/tokenRefresh';
 import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 import { getBackendOrigin } from '../../src/config/backendBase';
@@ -325,6 +327,24 @@ const MOBILE_MEDIA_UPLOAD_TIMEOUT_MS = 900000;
 const STANDARD_UPLOAD_TIMEOUT_MS = 180000;
 const NETWORK_RETRY_DELAY_MS = 900;
 
+function computeRetryDelayMs(attempt: number): number {
+  const safeAttempt = Math.max(1, attempt);
+  return NETWORK_RETRY_DELAY_MS * safeAttempt * safeAttempt;
+}
+
+function makeIdempotencyKey(scope: string): string {
+  return `afw-${scope}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+const PENDING_PUBLISH_KEY = 'afw_pending_publish_v1';
+
+type PendingPublishJob = {
+  path: '/videos' | '/posts';
+  payload: Record<string, unknown>;
+  idempotencyKey: string;
+  createdAt: number;
+};
+
 type PresignUploadResponse = {
   uploadUrl: string;
   file_url: string;
@@ -456,6 +476,7 @@ export default function CreateScreen() {
   const [customThumbnail, setCustomThumbnail] = useState<{ uri: string; mime?: string } | null>(null);
   const [pickerOpen, setPickerOpen] = useState<null | 'category' | 'language' | 'commentVisibility'>(null);
   const [scheduledPickerOpen, setScheduledPickerOpen] = useState(false);
+  const pendingPublishFlushRef = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -464,6 +485,27 @@ export default function CreateScreen() {
       };
     }, []),
   );
+
+  const savePendingPublishJob = useCallback(async (job: PendingPublishJob) => {
+    await AsyncStorage.setItem(PENDING_PUBLISH_KEY, JSON.stringify(job));
+  }, []);
+
+  const clearPendingPublishJob = useCallback(async () => {
+    await AsyncStorage.removeItem(PENDING_PUBLISH_KEY);
+  }, []);
+
+  const readPendingPublishJob = useCallback(async (): Promise<PendingPublishJob | null> => {
+    try {
+      const raw = await AsyncStorage.getItem(PENDING_PUBLISH_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as PendingPublishJob;
+      if (!parsed?.path || !parsed?.idempotencyKey || !parsed?.payload) return null;
+      if (parsed.path !== '/videos' && parsed.path !== '/posts') return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     const t = normRouteParam(params.useSoundTitle).trim().slice(0, 200);
@@ -498,7 +540,7 @@ export default function CreateScreen() {
     if (!isAuthenticated) {
       Alert.alert('Connexion requise', `Veuillez vous connecter pour ${action}`, [
         { text: 'Annuler', style: 'cancel' },
-        { text: 'Se connecter', onPress: () => router.push('/(auth)/login') },
+        { text: 'Se connecter', onPress: () => router.push({ pathname: '/(auth)/login', params: { returnTo: '/(tabs)/create' } }) },
       ]);
       return false;
     }
@@ -633,7 +675,7 @@ export default function CreateScreen() {
     buildForm: () => Promise<FormData>,
     timeoutMs: number,
   ) => {
-    const attempts = 2;
+    const attempts = path === '/upload/video' ? 4 : 3;
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       try {
@@ -647,76 +689,122 @@ export default function CreateScreen() {
         lastError = error;
         if (!isRetriableNetworkError(error) || attempt >= attempts) break;
         await tryRefreshAccessToken();
-        await new Promise((r) => setTimeout(r, NETWORK_RETRY_DELAY_MS * attempt));
+        await new Promise((r) => setTimeout(r, computeRetryDelayMs(attempt)));
       }
     }
     throw lastError;
   };
 
   const requestVideoPresign = async (filename: string, contentType: string): Promise<PresignUploadResponse> => {
-    const res = await apiClient.post('/upload/presign', {
-      kind: 'video',
-      filename,
-      contentType,
-    }, { timeout: STANDARD_UPLOAD_TIMEOUT_MS });
-    const d = res.data?.data;
-    const uploadUrl = String(d?.uploadUrl || '').trim();
-    const fileUrl = String(d?.file_url || '').trim();
-    if (!uploadUrl || !fileUrl) {
-      throw new Error('Réponse presign invalide');
+    const attempts = 3;
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        const res = await apiClient.post('/upload/presign', {
+          kind: 'video',
+          filename,
+          contentType,
+        }, { timeout: STANDARD_UPLOAD_TIMEOUT_MS });
+        const d = res.data?.data;
+        const uploadUrl = String(d?.uploadUrl || '').trim();
+        const fileUrl = String(d?.file_url || '').trim();
+        if (!uploadUrl || !fileUrl) {
+          throw new Error('Réponse presign invalide');
+        }
+        return { uploadUrl, file_url: fileUrl };
+      } catch (error: unknown) {
+        lastError = error;
+        if (!isRetriableNetworkError(error) || attempt >= attempts) break;
+        await tryRefreshAccessToken();
+        await new Promise((r) => setTimeout(r, computeRetryDelayMs(attempt)));
+      }
     }
-    return { uploadUrl, file_url: fileUrl };
+    throw lastError;
   };
 
   const tryDirectR2VideoUpload = async (media: SelectedMedia, index: number): Promise<string | null> => {
     if (Platform.OS === 'web') return null;
-    try {
-      const rawUriExt = (media.uri.split('.').pop() || '').split('?')[0] || '';
-      const rawNameExt = (String(media.fileName || '').split('.').pop() || '').split('?')[0] || '';
-      const extRaw = (rawNameExt || rawUriExt).replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'mp4';
-      const mimeFromAsset = String(media.mimeType || '').toLowerCase().trim();
-      const contentType = mimeFromAsset || mimeForVideoExt(extRaw);
-      const normalizedExt = contentType.includes('webm')
-        ? 'webm'
-        : contentType.includes('quicktime')
-          ? 'mov'
-          : 'mp4';
-      const fileUri = await copyNativeUriToCacheForUpload(media.uri, normalizedExt);
-      const filename = `mobile-video-${Date.now()}-${index}.${normalizedExt}`;
-      const presign = await requestVideoPresign(filename, contentType);
-      const putRes = await uploadAsync(presign.uploadUrl, fileUri, {
-        httpMethod: 'PUT',
-        uploadType: FileSystemUploadType.BINARY_CONTENT,
-        headers: {
-          'Content-Type': contentType,
-        },
-      });
-      if (putRes.status < 200 || putRes.status >= 300) {
-        throw new Error(`PUT direct R2 refusé (${putRes.status})`);
+    const attempts = 3;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        const rawUriExt = (media.uri.split('.').pop() || '').split('?')[0] || '';
+        const rawNameExt = (String(media.fileName || '').split('.').pop() || '').split('?')[0] || '';
+        const extRaw = (rawNameExt || rawUriExt).replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'mp4';
+        const mimeFromAsset = String(media.mimeType || '').toLowerCase().trim();
+        const contentType = mimeFromAsset || mimeForVideoExt(extRaw);
+        const normalizedExt = contentType.includes('webm')
+          ? 'webm'
+          : contentType.includes('quicktime')
+            ? 'mov'
+            : 'mp4';
+        const fileUri = await copyNativeUriToCacheForUpload(media.uri, normalizedExt);
+        const filename = `mobile-video-${Date.now()}-${index}.${normalizedExt}`;
+        const presign = await requestVideoPresign(filename, contentType);
+        const putRes = await uploadAsync(presign.uploadUrl, fileUri, {
+          httpMethod: 'PUT',
+          uploadType: FileSystemUploadType.BINARY_CONTENT,
+          headers: {
+            'Content-Type': contentType,
+          },
+        });
+        if (putRes.status < 200 || putRes.status >= 300) {
+          throw new Error(`PUT direct R2 refusé (${putRes.status})`);
+        }
+        return presign.file_url;
+      } catch (e) {
+        if (attempt >= attempts) {
+          console.warn('Direct R2 video upload failed, fallback to backend /upload/video', e);
+          return null;
+        }
+        await new Promise((r) => setTimeout(r, computeRetryDelayMs(attempt)));
       }
-      return presign.file_url;
-    } catch (e) {
-      console.warn('Direct R2 video upload failed, fallback to backend /upload/video', e);
-      return null;
     }
+    return null;
   };
 
-  const postWithRetry = async <T = any>(path: string, body: unknown) => {
-    const attempts = 2;
+  const postWithRetry = async <T = any>(path: string, body: unknown, idempotencyKey?: string) => {
+    const attempts = 3;
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       try {
-        const res = await apiClient.post(path, body, { timeout: 120000 });
+        const res = await apiClient.post(path, body, {
+          timeout: 120000,
+          headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+        });
         return res as T;
       } catch (error: unknown) {
         lastError = error;
         if (!isRetriableNetworkError(error) || attempt >= attempts) break;
         await tryRefreshAccessToken();
-        await new Promise((r) => setTimeout(r, NETWORK_RETRY_DELAY_MS * attempt));
+        await new Promise((r) => setTimeout(r, computeRetryDelayMs(attempt)));
       }
     }
     throw lastError;
   };
+
+  const flushPendingPublishIfAny = useCallback(async () => {
+    if (!isAuthenticated || pendingPublishFlushRef.current) return;
+    pendingPublishFlushRef.current = true;
+    try {
+      const pending = await readPendingPublishJob();
+      if (!pending) return;
+      await warmupBackend();
+      await postWithRetry(pending.path, pending.payload, pending.idempotencyKey);
+      await clearPendingPublishJob();
+      Alert.alert('Publication envoyée', 'Votre publication en attente a été envoyée avec succès.');
+    } catch {
+      // On garde la tâche en file pour une prochaine tentative.
+    } finally {
+      pendingPublishFlushRef.current = false;
+    }
+  }, [clearPendingPublishJob, isAuthenticated, postWithRetry, readPendingPublishJob]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void flushPendingPublishIfAny();
+      return () => {};
+    }, [flushPendingPublishIfAny]),
+  );
 
   const handlePublish = async () => {
     if (!requireAuth('publier')) return;
@@ -733,6 +821,9 @@ export default function CreateScreen() {
     setUploadProgress(0);
 
     try {
+      const publishIdempotencyKey = makeIdempotencyKey(contentType);
+      // Réveille le backend avant les appels upload (Render cold start + réseaux instables).
+      await warmupBackend();
       /** Jeton frais avant chaîne upload + POST (complète le refresh proportionnel au timeout dans `apiClient`). */
       await tryRefreshAccessToken();
 
@@ -823,7 +914,7 @@ export default function CreateScreen() {
         }
 
         const remixPayload = buildRemixApiPayload(remixSeed);
-        await postWithRetry('/videos', {
+        const videoPayload = {
           title: title.trim(),
           description: description.trim() || title.trim(),
           video_url: videoUrl,
@@ -844,26 +935,58 @@ export default function CreateScreen() {
           comments_disabled: commentsDisabled,
           comment_visibility: commentVisibility,
           ...(scheduledAt ? { scheduled_at: new Date(scheduledAt).toISOString() } : {}),
+        };
+        await savePendingPublishJob({
+          path: '/videos',
+          payload: videoPayload,
+          idempotencyKey: publishIdempotencyKey,
+          createdAt: Date.now(),
         });
+        await postWithRetry('/videos', videoPayload, publishIdempotencyKey);
+        await clearPendingPublishJob();
       } else if (contentType === 'text') {
-        await postWithRetry('/posts', {
+        const textPayload = {
           text: description.trim(),
           ...(mediaUrls.length > 0 ? { images: mediaUrls } : {}),
           visibility: 'public',
+        };
+        await savePendingPublishJob({
+          path: '/posts',
+          payload: textPayload,
+          idempotencyKey: publishIdempotencyKey,
+          createdAt: Date.now(),
         });
+        await postWithRetry('/posts', textPayload, publishIdempotencyKey);
+        await clearPendingPublishJob();
       } else if (contentType === 'article') {
         const text = `# ${title.trim()}\n\n${articleBody.trim()}`;
-        await postWithRetry('/posts', {
+        const articlePayload = {
           text,
           ...(mediaUrls.length > 0 ? { images: mediaUrls } : {}),
           visibility: 'public',
+        };
+        await savePendingPublishJob({
+          path: '/posts',
+          payload: articlePayload,
+          idempotencyKey: publishIdempotencyKey,
+          createdAt: Date.now(),
         });
+        await postWithRetry('/posts', articlePayload, publishIdempotencyKey);
+        await clearPendingPublishJob();
       } else if (contentType === 'photo') {
-        await postWithRetry('/posts', {
+        const photoPayload = {
           text: description.trim() || undefined,
           images: mediaUrls,
           visibility: 'public',
+        };
+        await savePendingPublishJob({
+          path: '/posts',
+          payload: photoPayload,
+          idempotencyKey: publishIdempotencyKey,
+          createdAt: Date.now(),
         });
+        await postWithRetry('/posts', photoPayload, publishIdempotencyKey);
+        await clearPendingPublishJob();
       }
 
       setUploadProgress(100);
@@ -891,14 +1014,27 @@ export default function CreateScreen() {
       console.error('Publish error:', error);
       const base = getAlertMessageForCaughtError(error);
       const ax = isAxiosError(error) ? error : null;
+      const status = ax?.response?.status;
       const noResponse = Boolean(ax && !ax.response);
       const netLike = noResponse || /network|failed to connect|socket|aborted/i.test(String(ax?.message || ''));
       let msg = base;
+      if (status === 401) {
+        msg = "Connectez-vous d'abord pour publier une vidéo.";
+      } else if (status === 413) {
+        msg = 'Vidéo trop lourde. Réduisez la taille/durée puis réessayez.';
+      } else if (status === 415 || status === 400) {
+        msg = 'Format vidéo non pris en charge. Utilisez MP4 (H.264) puis réessayez.';
+      } else if (status && status >= 500) {
+        msg = "Serveur temporairement indisponible. Réessayez dans un instant.";
+      }
       if (netLike) {
         const origin = getBackendOrigin();
+        const isDevNative = Platform.OS !== 'web' && typeof __DEV__ !== 'undefined' && __DEV__;
         const checklist = Platform.OS === 'web'
           ? `\n\nÀ vérifier :\n• L'API tourne sur ${origin}\n• Pas de blocage CORS / firewall\n• Onglet réseau (F12) pour voir l'URL exacte qui échoue`
-          : `\n\nÀ vérifier (dev mobile) :\n• Le téléphone est sur le MÊME WiFi que ton PC\n• L'API tourne (PC : npm run dev → \"Server running on 0.0.0.0:3000\")\n• Le firewall Windows autorise le port 3000\n• URL tentée : ${origin}\n• Astuce : ajoute EXPO_PUBLIC_DEV_PC_LAN_HOST=<IP-de-ton-PC> dans frontend/.env si la détection auto échoue`;
+          : isDevNative
+            ? `\n\nÀ vérifier (dev mobile) :\n• Le téléphone est sur le MÊME WiFi que ton PC\n• L'API tourne (PC : npm run dev → \"Server running on 0.0.0.0:3000\")\n• Le firewall Windows autorise le port 3000\n• URL tentée : ${origin}\n• Astuce : ajoute EXPO_PUBLIC_DEV_PC_LAN_HOST=<IP-de-ton-PC> dans frontend/.env si la détection auto échoue`
+            : `\n\nVérifiez votre connexion internet, puis réessayez.\nSi le problème persiste, changez de réseau (Wi-Fi/4G) et relancez l’application.`;
 
         if (contentType === 'video') {
           msg = `Impossible d'envoyer la vidéo : connexion au serveur interrompue.\n\n${base}${checklist}`;

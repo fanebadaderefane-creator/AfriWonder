@@ -14,7 +14,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
-import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import jobsApi, { Job } from '../../src/api/jobsApi';
 import { DEMO_JOBS, filterDemoJobs } from '../../src/demo/superAppDemoSeed';
 import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
@@ -28,9 +27,6 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export default function JobsScreen() {
-  if (!featureFlags.servicesHub) {
-    return <ComingSoonScreen title="Emplois" description="La place de marché des emplois sera bientôt disponible." icon="briefcase-outline" />;
-  }
   return <JobsContent />;
 }
 

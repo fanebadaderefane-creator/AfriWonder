@@ -169,7 +169,7 @@ export default function AdminStarsScreen() {
             <KpiCell label="Appels terminés" value={fmt(kpis.bookings.completed)} color="#2E7D32" />
             <KpiCell label="No-show fan" value={String(kpis.bookings.no_show_fan ?? 0)} color="#C62828" />
             <KpiCell label="No-show star" value={String(kpis.bookings.no_show_star ?? 0)} color="#B71C1C" />
-            <KpiCell label="À venir" value={String(kpis.bookings.upcoming ?? 0)} color="#1565C0" />
+            <KpiCell label="Programmées" value={String(kpis.bookings.upcoming ?? 0)} color="#1565C0" />
             <KpiCell label="Litiges ouverts" value={String(kpis.open_disputes)} color="#C62828" />
             <KpiCell label="CA brut" value={fmtMoney(kpis.revenue_fcfa)} color="#FF6B00" big />
             <KpiCell label="Commission" value={fmtMoney(kpis.platform_fee_fcfa)} color="#795548" />

@@ -22,7 +22,7 @@ export default function AfricoinReferralFriendsScreen() {
 
       <View style={styles.empty}>
         <Ionicons name="happy-outline" size={72} color="#ccc" />
-        <Text style={styles.emptyTitle}>Aucun(e) pour le moment</Text>
+        <Text style={styles.emptyTitle}>Aucun filleul listé</Text>
         <Text style={styles.emptySub}>
           Dès qu’un(e) ami(e) éligible aura rechargé, tu obtiendras du cash back sur ses achats de Pièces pendant les 7 jours
           suivants (règles produit AfriWonder).

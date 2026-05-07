@@ -155,7 +155,7 @@ export default function StarProfileScreen() {
   const goToStep2 = useCallback(() => {
     if (!profile) return;
     if (availableDurations.length === 0) {
-      Alert.alert('Indisponible', 'Cette star n’a pas de tarif configuré pour le moment.');
+      Alert.alert('Indisponible', 'Aucun tarif n’est configuré pour cette star.');
       return;
     }
     const now = stripTime(new Date());

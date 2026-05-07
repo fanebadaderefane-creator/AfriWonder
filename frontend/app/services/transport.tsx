@@ -15,7 +15,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import { featureFlags } from '../../src/config/featureFlags';
-import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import { driversApi, ridesApi, Driver } from '../../src/api/ridesApi';
 import { filterDemoDrivers } from '../../src/demo/superAppDemoSeed';
 import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
@@ -28,9 +27,6 @@ const VEHICLE_TYPES: { id: string; name: string; icon: keyof typeof Ionicons.gly
 ];
 
 export default function TransportScreen() {
-  if (!featureFlags.servicesHub) {
-    return <ComingSoonScreen title="Transport" description="Le module transport / VTC sera bientôt disponible." icon="car-outline" />;
-  }
   return <TransportContent />;
 }
 
@@ -80,7 +76,7 @@ function TransportContent() {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message
         || (err as { message?: string })?.message
-        || 'Aucun chauffeur disponible pour le moment.';
+        || 'Aucun chauffeur disponible dans cette zone.';
       if (featureFlags.superAppDemoContent) {
         setDrivers(filterDemoDrivers(selectedVehicle));
         setShowDemo(true);
@@ -104,8 +100,8 @@ function TransportContent() {
     }
     if (showDemo) {
       Alert.alert(
-        'Démonstration',
-        'Course fictive : aucun chauffeur réel n’est contacté. Branchement partenaires à venir.',
+        'Simulation',
+        'Aucun chauffeur réel n’est contacté pour cette démonstration.',
       );
       return;
     }

@@ -94,6 +94,10 @@ export const PAGE_SEO_OVERRIDES = {
     title: 'Conditions d’utilisation | AfriWonder',
     description: "Conditions générales d'utilisation AfriWonder.",
   },
+  ChildSafety: {
+    title: 'Normes de sécurité des enfants | AfriWonder',
+    description: "Politique AfriWonder contre l'exploitation et les abus sexuels sur mineurs (CSAE).",
+  },
   Product: {
     title: 'Produit | AfriWonder',
     description: 'Fiche produit marketplace AfriWonder.',

@@ -97,7 +97,7 @@ export default function LiveCoinRechargeMmScreen() {
   const runPurchase = async () => {
     if (!pkg) return;
     if (provider === 'mtn_money') {
-      goFail('MTN MoMo pour les packs coins n’est pas encore activé.');
+      goFail('Utilisez Orange Money ou Wave pour recharger des coins.');
       return;
     }
     const demoFail =
@@ -160,7 +160,7 @@ export default function LiveCoinRechargeMmScreen() {
     if (step === 1) {
       const row = LIVE_COIN_MM_OPERATORS.find((o) => o.id === provider);
       if (row && !row.enabled) {
-        Alert.alert('Bientôt', 'MTN MoMo pour les packs coins arrive bientôt. Utilisez Orange Money ou Wave.');
+        Alert.alert('Paiement', 'Choisissez Orange Money ou Wave pour continuer.');
         return;
       }
       setStep(2);
@@ -258,10 +258,7 @@ export default function LiveCoinRechargeMmScreen() {
                   ]}
                   onPress={() => {
                     if (!op.enabled) {
-                      Alert.alert(
-                        'Bientôt',
-                        'MTN MoMo pour les packs coins arrive bientôt. Utilisez Orange Money ou Wave.',
-                      );
+                      Alert.alert('Paiement', 'Choisissez Orange Money ou Wave pour continuer.');
                       return;
                     }
                     setProvider(op.id);
@@ -270,7 +267,7 @@ export default function LiveCoinRechargeMmScreen() {
                 >
                   <Text style={styles.opTitle}>{op.label}</Text>
                   <Text style={styles.opSub}>{op.feeHint} · {op.regionsHint}</Text>
-                  {!op.enabled ? <Text style={styles.opSoon}>Bientôt</Text> : null}
+                  {!op.enabled ? <Text style={styles.opSoon}>Indisponible</Text> : null}
                 </TouchableOpacity>
               );
             })}

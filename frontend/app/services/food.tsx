@@ -15,7 +15,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { featureFlags } from '../../src/config/featureFlags';
-import ComingSoonScreen from '../../src/components/common/ComingSoonScreen';
 import { restaurantsApi, Restaurant } from '../../src/api/restaurantsApi';
 import { normalizeCuisineLabel, restaurantHeroImageUrl } from '../../src/food/restaurantVisuals';
 import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
@@ -23,9 +22,6 @@ import { DEMO_RESTAURANTS } from '../../src/demo/superAppDemoSeed';
 import { DemoContentBanner } from '../../src/components/common/DemoContentBanner';
 
 export default function FoodDeliveryScreen() {
-  if (!featureFlags.servicesHub) {
-    return <ComingSoonScreen title="Livraison repas" description="Le module livraison sera bientôt disponible." icon="restaurant-outline" />;
-  }
   return <FoodDeliveryContent />;
 }
 

@@ -10,7 +10,7 @@ export interface CameraEffectOption {
   hint: string;
   /** Filtre ffmpeg côté serveur (pas un contrat figé). */
   serverFilterHint: string | null;
-  /** True quand l'effet doit afficher un aperçu visuel "à venir". */
+  /** True quand l’effet doit afficher un aperçu visuel de secours (placeholder). */
   livePreviewAvailable: boolean;
 }
 

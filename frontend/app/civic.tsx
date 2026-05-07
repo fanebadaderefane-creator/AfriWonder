@@ -146,7 +146,7 @@ export default function CivicScreen() {
 
           <Text style={styles.sectionTitle}>Pétitions en cours</Text>
           {petitions.length === 0 ? (
-            <Text style={styles.empty}>Aucune pétition active pour le moment.</Text>
+            <Text style={styles.empty}>Aucune pétition active.</Text>
           ) : (
             petitions.map((petition) => {
               const goal = Math.max(1, petition.goal_signatures || 1);

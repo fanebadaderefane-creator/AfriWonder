@@ -351,7 +351,7 @@ export default function SubscriptionsScreen() {
             {fanClubs.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="people-outline" size={50} color={Colors.textMuted} />
-                <Text style={styles.emptyText}>Aucun palier Fan Club public pour le moment</Text>
+                <Text style={styles.emptyText}>Aucun palier Fan Club public</Text>
               </View>
             ) : (
               fanClubs.map((tier) => (

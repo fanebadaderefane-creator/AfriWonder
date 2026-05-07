@@ -165,8 +165,8 @@ export default function ReplayScreen() {
             <View style={styles.playOverlay}>
               <Ionicons name="videocam-off-outline" size={36} color="#FFF" />
               <Text style={styles.noVodText}>
-                Aucun fichier replay (URL) pour le moment. Le créateur peut l’associer après encodage ou enregistrement
-                cloud.
+                Aucun replay n’est disponible pour l’instant. Revenez plus tard ou suivez le créateur pour les prochaines
+                diffusions.
               </Text>
             </View>
           </View>
@@ -229,7 +229,7 @@ export default function ReplayScreen() {
         {live.status === 'ended' && (
           <TouchableOpacity style={styles.republishBtn} onPress={async () => {
             try {
-              Alert.alert('Non disponible', 'Aucun endpoint « republier le live » côté API Node pour le moment.');
+              Alert.alert('Non disponible', 'La republication du live complet n’est pas disponible.');
             } catch (e: unknown) { Alert.alert('Erreur', getAlertMessageForCaughtError(e)); }
           }}>
             <Ionicons name="share-social" size={20} color="#FFF" />

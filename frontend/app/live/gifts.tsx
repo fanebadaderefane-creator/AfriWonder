@@ -573,7 +573,7 @@ export const LiveGiftsPanel: React.FC<LiveGiftsPanelProps> = ({
           {packagesLoading ? (
             <ActivityIndicator color={Colors.primary} style={{ marginVertical: 16 }} />
           ) : packages.length === 0 ? (
-            <Text style={styles.routeHint}>Aucun pack disponible pour le moment.</Text>
+            <Text style={styles.routeHint}>Aucun pack disponible.</Text>
           ) : (
             packages.map((pkg) => (
               <TouchableOpacity

@@ -78,7 +78,7 @@ export function useAgoraLiveRtc(opts: {
         if (cancelled) return;
         if (!joinPayload) {
           setAgoraError(
-            'La diffusion vidéo n’est pas disponible pour le moment. Réessayez ou vérifiez votre connexion.',
+            'La diffusion vidéo n’est pas disponible. Réessayez ou vérifiez votre connexion.',
           );
           return;
         }

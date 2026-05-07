@@ -52,7 +52,7 @@ export default function ChallengesScreen() {
       if (paidArr.length) next.push({ title: 'Défis & programmes', data: paidArr });
       setSections(next);
     } catch {
-      setError('Impossible de charger les défis pour le moment.');
+      setError('Impossible de charger les défis. Réessayez.');
       setSections([]);
     } finally {
       setLoading(false);

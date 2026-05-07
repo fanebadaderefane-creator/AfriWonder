@@ -56,7 +56,14 @@ export default function FamilyPairingScreen() {
           The teen account inherits these restrictions and cannot disable them while the link is
           active.
         </Text>
-        <TouchableOpacity onPress={() => Alert.alert('Family Pairing', 'Pairing API coming soon.')}>
+        <TouchableOpacity
+          onPress={() =>
+            Alert.alert(
+              'Family Pairing',
+              'Associez les comptes via le QR code ci-dessus ou depuis votre profil.',
+            )
+          }
+        >
           <Text style={styles.calloutLink}>Learn more</Text>
         </TouchableOpacity>
       </View>
