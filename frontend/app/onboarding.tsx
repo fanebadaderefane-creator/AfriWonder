@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions, FlatList, TouchableOpacity } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
 import { Colors, FontSizes, Spacing } from '../src/theme/colors';
 import { Button } from '../src/components/common/Button';
@@ -9,8 +9,6 @@ import { Image } from 'expo-image';
 
 /** Même ressource que l’icône PWA / notifications. */
 const AFW_BRAND_LOGO = require('../assets/images/pwa-icon-192.png');
-
-const { width } = Dimensions.get('window');
 
 const slides = [
   {
@@ -23,7 +21,7 @@ const slides = [
   {
     id: '2',
     useBrandLogo: false as const,
-    icon: 'cart',
+    icon: 'cart-outline',
     title: 'Marketplace Africain',
     description: 'Achetez et vendez des produits locaux. Mode, électronique, alimentation et plus encore.',
     color: '#4CAF50',
@@ -31,7 +29,7 @@ const slides = [
   {
     id: '3',
     useBrandLogo: false as const,
-    icon: 'wallet',
+    icon: 'wallet-outline',
     title: 'Paiements Mobiles',
     description: 'Payez facilement avec Orange Money, Wave, MTN MoMo ou carte bancaire.',
     color: Colors.accent,
@@ -39,7 +37,7 @@ const slides = [
   {
     id: '4',
     useBrandLogo: false as const,
-    icon: 'people',
+    icon: 'people-outline',
     title: 'Communauté & Lives',
     description: 'Suivez vos créateurs préférés, envoyez des cadeaux en direct et rejoignez la scène africaine.',
     color: '#9C27B0',
@@ -47,7 +45,7 @@ const slides = [
   {
     id: '5',
     useBrandLogo: false as const,
-    icon: 'sparkles',
+    icon: 'sparkles-outline',
     title: 'Pour vous',
     description: 'Un fil personnalisé selon vos goûts. Activez les notifications pour ne rien manquer.',
     color: '#00BCD4',
@@ -55,6 +53,8 @@ const slides = [
 ];
 
 export default function OnboardingScreen() {
+  const { width } = useWindowDimensions();
+  const contentMaxWidth = useMemo(() => (Platform.OS === 'web' ? Math.min(430, width - 32) : width - (Spacing.xxl * 2)), [width]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
 
@@ -74,23 +74,25 @@ export default function OnboardingScreen() {
   };
 
   const renderSlide = ({ item }: { item: (typeof slides)[number] }) => (
-    <View style={styles.slide}>
-      {item.useBrandLogo ? (
-        <View style={styles.logoWrap}>
-          <Image
-            source={AFW_BRAND_LOGO}
-            style={styles.brandLogo}
-            contentFit="contain"
-            accessibilityLabel="AfriWonder"
-          />
-        </View>
-      ) : (
-        <View style={[styles.iconContainer, { backgroundColor: item.color }]}>
-          <Ionicons name={item.icon as any} size={80} color={Colors.text} />
-        </View>
-      )}
-      <Text style={styles.title}>{item.title}</Text>
-      <Text style={styles.description}>{item.description}</Text>
+    <View style={[styles.slide, { width }]}>
+      <View style={[styles.slideInner, { maxWidth: contentMaxWidth }]}>
+        {item.useBrandLogo ? (
+          <View style={styles.logoWrap}>
+            <Image
+              source={AFW_BRAND_LOGO}
+              style={styles.brandLogo}
+              contentFit="contain"
+              accessibilityLabel="AfriWonder"
+            />
+          </View>
+        ) : (
+          <View style={[styles.iconContainer, { backgroundColor: item.color }]}>
+            <Ionicons name={item.icon as any} size={80} color={Colors.text} />
+          </View>
+        )}
+        <Text style={styles.title}>{item.title}</Text>
+        <Text style={styles.description}>{item.description}</Text>
+      </View>
     </View>
   );
 
@@ -114,7 +116,7 @@ export default function OnboardingScreen() {
         }}
       />
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { maxWidth: contentMaxWidth }]}>
         <View style={styles.pagination}>
           {slides.map((_, index) => (
             <View
@@ -154,11 +156,15 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.md,
   },
   slide: {
-    width,
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.xxl,
+  },
+  slideInner: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   logoWrap: {
     marginBottom: Spacing.xxxl,
@@ -192,6 +198,8 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   footer: {
+    width: '100%',
+    alignSelf: 'center',
     paddingHorizontal: Spacing.xxl,
     paddingBottom: 50,
   },

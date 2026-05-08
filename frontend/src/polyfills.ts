@@ -5,8 +5,6 @@
 import 'react-native-get-random-values';
 import {
   isBenignMediaConsoleNoise,
-  isBenignMediaNotSuitable,
-  isBenignMediaResourceAbort,
 } from './utils/webBenignBrowserNoise';
 
 /**
@@ -24,10 +22,18 @@ function installWebVideoPlayPromiseGuards() {
     this: HTMLVideoElement,
     ...args: Parameters<typeof originalPlay>
   ): ReturnType<typeof originalPlay> {
-    const ret = originalPlay.apply(this, args);
+    let ret: ReturnType<typeof originalPlay>;
+    try {
+      ret = originalPlay.apply(this, args);
+    } catch (error) {
+      if (isBenignMediaConsoleNoise(error)) {
+        return Promise.resolve(undefined) as ReturnType<typeof originalPlay>;
+      }
+      throw error;
+    }
     if (ret != null && typeof (ret as Promise<unknown>).catch === 'function') {
       void (ret as Promise<unknown>).catch((reason: unknown) => {
-        if (isBenignMediaResourceAbort(reason) || isBenignMediaNotSuitable(reason)) {
+        if (isBenignMediaConsoleNoise(reason)) {
           return;
         }
         return Promise.reject(reason);

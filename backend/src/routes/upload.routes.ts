@@ -36,6 +36,11 @@ const multipartPartUrlSchema = z.object({
   partNumber: z.number().int().min(1).max(10000),
 });
 
+const multipartStatusSchema = z.object({
+  key: z.string().min(1).max(1024),
+  uploadId: z.string().min(1),
+});
+
 const multipartCompleteSchema = z.object({
   key: z.string().min(1).max(1024),
   uploadId: z.string().min(1),
@@ -644,6 +649,13 @@ router.post('/multipart/init', authenticate, validateBody(multipartInitSchema), 
     const key = r2Multipart.buildObjectKey(kind, userId, filename);
     const ct = normalizePresignContentType(kind, filename, contentType);
     const out = await r2Multipart.createMultipartUpload(key, ct);
+    logger.info('Multipart upload initialisé', {
+      userId,
+      kind,
+      key,
+      uploadId: out.uploadId,
+      contentType: ct,
+    });
     return res.json({ success: true, data: { ...out, contentType: ct } });
   } catch (err) {
     return handleUploadStorageError(res, err, next);
@@ -663,6 +675,19 @@ router.post('/multipart/part-url', authenticate, validateBody(multipartPartUrlSc
   }
 });
 
+router.post('/multipart/status', authenticate, validateBody(multipartStatusSchema), async (req: AuthRequest, res, next) => {
+  try {
+    if (!isR2Configured() || !r2Client) {
+      return res.status(503).json({ success: false, error: { message: 'R2 non configuré' } });
+    }
+    const { key, uploadId } = req.body as z.infer<typeof multipartStatusSchema>;
+    const data = await r2Multipart.listMultipartUploadedParts(key, uploadId);
+    return res.json({ success: true, data });
+  } catch (err) {
+    return handleUploadStorageError(res, err, next);
+  }
+});
+
 router.post('/multipart/complete', authenticate, validateBody(multipartCompleteSchema), async (req: AuthRequest, res, next) => {
   try {
     if (!isR2Configured() || !r2Client) {
@@ -670,6 +695,13 @@ router.post('/multipart/complete', authenticate, validateBody(multipartCompleteS
     }
     const { key, uploadId, parts } = req.body as z.infer<typeof multipartCompleteSchema>;
     const data = await r2Multipart.completeMultipartUpload(key, uploadId, parts);
+    logger.info('Multipart upload complété', {
+      userId: String(req.user?.id || ''),
+      key,
+      uploadId,
+      partsCount: parts.length,
+      fileUrl: data.file_url,
+    });
     return res.json({ success: true, data });
   } catch (err) {
     return handleUploadStorageError(res, err, next);
@@ -680,6 +712,11 @@ router.post('/multipart/abort', authenticate, validateBody(multipartAbortSchema)
   try {
     const { key, uploadId } = req.body as z.infer<typeof multipartAbortSchema>;
     await r2Multipart.abortMultipartUpload(key, uploadId);
+    logger.warn('Multipart upload aborté', {
+      userId: String(req.user?.id || ''),
+      key,
+      uploadId,
+    });
     return res.json({ success: true });
   } catch (err) {
     next(err);

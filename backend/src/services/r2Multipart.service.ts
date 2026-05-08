@@ -3,6 +3,7 @@ import {
   UploadPartCommand,
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
+  ListPartsCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { r2Client, R2_BUCKET_NAME, R2_PUBLIC_URL, isR2Configured } from '../config/cloudflare-r2.js';
@@ -99,4 +100,29 @@ export async function abortMultipartUpload(key: string, uploadId: string) {
   } catch {
     /* ignore */
   }
+}
+
+export async function listMultipartUploadedParts(key: string, uploadId: string) {
+  if (!r2Client) throw new Error('R2 non configuré');
+  const out = await r2Client.send(
+    new ListPartsCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: key,
+      UploadId: uploadId,
+    })
+  );
+  const parts = Array.isArray(out.Parts)
+    ? out.Parts
+        .map((p) => ({
+          PartNumber: Number(p.PartNumber || 0),
+          ETag: String(p.ETag || '').replace(/"/g, '').trim(),
+        }))
+        .filter((p) => p.PartNumber > 0 && p.ETag)
+        .sort((a, b) => a.PartNumber - b.PartNumber)
+    : [];
+  return {
+    key,
+    uploadId,
+    parts,
+  };
 }

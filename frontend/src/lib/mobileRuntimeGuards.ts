@@ -15,8 +15,7 @@ export function installMobileRuntimeGuards(): void {
   runtimeGuardsInstalled = true;
 
   if (Platform.OS === 'web') return;
-  /** Sentry RN instrumente déjà `ErrorUtils` — ne pas chaîner pour éviter double rapport. */
-  if (isMobileSentryInitialized()) return;
+  const sentryReady = isMobileSentryInitialized();
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- API non exportée en ESM typé
@@ -35,6 +34,7 @@ export function installMobileRuntimeGuards(): void {
         captureSentryException(error, {
           isFatal: Boolean(isFatal),
           source: 'ErrorUtils.globalHandler',
+          sentryReady,
         });
       } catch {
         /* */
@@ -48,5 +48,37 @@ export function installMobileRuntimeGuards(): void {
     });
   } catch {
     /* WebView / tests hors RN : ignorer */
+  }
+
+  /** Certains runtimes exposent `onunhandledrejection` : best-effort pour les promesses rejetées non gérées. */
+  try {
+    const g = globalThis as { onunhandledrejection?: ((event: unknown) => void) | null };
+    const prevUnhandled = typeof g.onunhandledrejection === 'function' ? g.onunhandledrejection : null;
+    g.onunhandledrejection = (event: unknown) => {
+      try {
+        const reason =
+          typeof event === 'object' && event !== null && 'reason' in event
+            ? (event as { reason?: unknown }).reason
+            : event;
+        captureSentryException(reason ?? new Error('Unhandled promise rejection'), {
+          source: 'globalThis.onunhandledrejection',
+          sentryReady,
+        });
+        if (typeof __DEV__ !== 'undefined' && __DEV__) {
+          const msg =
+            typeof reason === 'object' && reason !== null && 'message' in reason
+              ? String((reason as { message?: unknown }).message ?? '')
+              : String(reason ?? 'Unhandled promise rejection');
+          devLog('[UnhandledRejection]', msg);
+        }
+      } catch {
+        /* ignore */
+      }
+      if (typeof prevUnhandled === 'function') {
+        prevUnhandled(event);
+      }
+    };
+  } catch {
+    /* runtime sans hook global de rejection */
   }
 }

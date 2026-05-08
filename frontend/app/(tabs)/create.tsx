@@ -17,9 +17,11 @@ import { isAxiosError } from 'axios';
 import apiClient from '../../src/api/client';
 import { warmupBackend } from '../../src/api/backendWarmup';
 import { tryRefreshAccessToken } from '../../src/api/tokenRefresh';
+import { beginUploadNetworkPriority, endUploadNetworkPriority } from '../../src/api/uploadNetworkPriority';
 import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 import { getBackendOrigin } from '../../src/config/backendBase';
 import { cacheDirectory, copyAsync, uploadAsync, FileSystemUploadType } from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import VideoEditor, { type VideoEditorResult } from '../../src/components/VideoEditor';
 import IntegratedCameraRecorder, {
@@ -326,6 +328,10 @@ function ScheduleChip({ label, onPress, destructive }: { label: string; onPress:
 const MOBILE_MEDIA_UPLOAD_TIMEOUT_MS = 900000;
 const STANDARD_UPLOAD_TIMEOUT_MS = 180000;
 const NETWORK_RETRY_DELAY_MS = 900;
+const VIDEO_AUTO_RETRY_MAX_ATTEMPTS = 12;
+const VIDEO_AUTO_RETRY_MAX_DELAY_MS = 120000;
+const MULTIPART_PARALLEL_UPLOADS = 3;
+const UPLOAD_FILE_MISSING_MARKER = '__AFW_UPLOAD_FILE_MISSING__';
 
 function computeRetryDelayMs(attempt: number): number {
   const safeAttempt = Math.max(1, attempt);
@@ -337,6 +343,9 @@ function makeIdempotencyKey(scope: string): string {
 }
 
 const PENDING_PUBLISH_KEY = 'afw_pending_publish_v1';
+const PENDING_UPLOAD_DRAFT_KEY = 'afw_pending_upload_draft_v1';
+const PENDING_MULTIPART_SESSION_KEY = 'afw_pending_multipart_video_v1';
+const ACTIVE_VIDEO_UPLOAD_LOCK_KEY = 'afw_active_video_upload_lock_v1';
 
 type PendingPublishJob = {
   path: '/videos' | '/posts';
@@ -345,9 +354,52 @@ type PendingPublishJob = {
   createdAt: number;
 };
 
+type PendingUploadDraft = {
+  contentType: 'video' | 'photo' | 'text' | 'article';
+  selectedMedia: SelectedMedia[];
+  title: string;
+  description: string;
+  articleBody: string;
+  hashtags: string;
+  category: string;
+  language: string;
+  musicTitle: string;
+  visibility: 'public' | 'followers' | 'private';
+  hideLikes: boolean;
+  commentsDisabled: boolean;
+  commentVisibility: 'everyone' | 'friends' | 'no_one';
+  scheduledAt: string;
+  customThumbnail: { uri: string; mime?: string } | null;
+  publishIdempotencyKey?: string;
+  step: 'select' | 'edit' | 'details';
+  createdAt: number;
+};
+
 type PresignUploadResponse = {
   uploadUrl: string;
   file_url: string;
+};
+
+type MultipartInitResponse = {
+  key: string;
+  uploadId: string;
+  contentType: string;
+};
+
+type PendingMultipartSession = {
+  mediaFingerprint: string;
+  key: string;
+  uploadId: string;
+  contentType: string;
+  partSize: number;
+  totalParts: number;
+  updatedAt: number;
+};
+
+type ActiveVideoUploadLock = {
+  mediaFingerprint: string;
+  idempotencyKey: string;
+  createdAt: number;
 };
 
 function hasMeaningfulEditorEffects(r: VideoEditorResult | null): boolean {
@@ -439,6 +491,8 @@ export default function CreateScreen() {
   const [hashtags, setHashtags] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'retrying' | 'failed' | 'success' | 'cancelled'>('idle');
+  const [uploadRetryAttempt, setUploadRetryAttempt] = useState(0);
   const [step, setStep] = useState<'select' | 'edit' | 'details'>('select');
   /** Réglages écran Éditeur (filtres, texte, musique, etc.) — métadonnées pour API / futur traitement vidéo. */
   const [editorResult, setEditorResult] = useState<VideoEditorResult | null>(null);
@@ -476,7 +530,16 @@ export default function CreateScreen() {
   const [customThumbnail, setCustomThumbnail] = useState<{ uri: string; mime?: string } | null>(null);
   const [pickerOpen, setPickerOpen] = useState<null | 'category' | 'language' | 'commentVisibility'>(null);
   const [scheduledPickerOpen, setScheduledPickerOpen] = useState(false);
+  const [publishIdempotencyKey, setPublishIdempotencyKey] = useState<string>('');
+  const [pendingUploadRecovered, setPendingUploadRecovered] = useState(false);
+  const [pendingUploadAvailable, setPendingUploadAvailable] = useState(false);
+  const autoResumeAttemptedRef = useRef(false);
+  const isMountedRef = useRef(true);
   const pendingPublishFlushRef = useRef(false);
+  const autoRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoRetryAttemptRef = useRef(0);
+  const cancelUploadRef = useRef(false);
+  const activeUploadAbortRef = useRef<AbortController | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -485,6 +548,38 @@ export default function CreateScreen() {
       };
     }, []),
   );
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (autoRetryTimeoutRef.current) {
+        clearTimeout(autoRetryTimeoutRef.current);
+        autoRetryTimeoutRef.current = null;
+      }
+      // Empêche les promesses upload de continuer après démontage d'écran.
+      cancelUploadRef.current = true;
+      activeUploadAbortRef.current?.abort();
+      activeUploadAbortRef.current = null;
+    };
+  }, []);
+
+  const setUploadingSafe = useCallback((v: boolean) => {
+    if (!isMountedRef.current) return;
+    setUploading(v);
+  }, []);
+  const setUploadProgressSafe = useCallback((v: number | ((prev: number) => number)) => {
+    if (!isMountedRef.current) return;
+    setUploadProgress(v);
+  }, []);
+  const setUploadStatusSafe = useCallback((v: typeof uploadStatus | ((prev: typeof uploadStatus) => typeof uploadStatus)) => {
+    if (!isMountedRef.current) return;
+    setUploadStatus(v);
+  }, [uploadStatus]);
+  const setUploadRetryAttemptSafe = useCallback((v: number) => {
+    if (!isMountedRef.current) return;
+    setUploadRetryAttempt(v);
+  }, []);
 
   const savePendingPublishJob = useCallback(async (job: PendingPublishJob) => {
     await AsyncStorage.setItem(PENDING_PUBLISH_KEY, JSON.stringify(job));
@@ -505,6 +600,166 @@ export default function CreateScreen() {
     } catch {
       return null;
     }
+  }, []);
+
+  const sanitizeSelectedMediaForDraft = useCallback((items: SelectedMedia[]): SelectedMedia[] => {
+    return items
+      .filter((m) => m && typeof m.uri === 'string' && m.uri.trim().length > 0)
+      .slice(0, 10)
+      .map((m) => ({
+        uri: m.uri.trim(),
+        type: m.type === 'video' ? 'video' : 'image',
+        ...(m.mimeType ? { mimeType: String(m.mimeType).trim() } : {}),
+        ...(m.fileName ? { fileName: String(m.fileName).trim() } : {}),
+      }));
+  }, []);
+
+  const savePendingUploadDraft = useCallback(async (draft: PendingUploadDraft) => {
+    try {
+      await AsyncStorage.setItem(PENDING_UPLOAD_DRAFT_KEY, JSON.stringify(draft));
+    } catch {
+      // no-op
+    }
+  }, []);
+
+  const clearPendingUploadDraft = useCallback(async () => {
+    try {
+      await AsyncStorage.removeItem(PENDING_UPLOAD_DRAFT_KEY);
+    } catch {
+      // no-op
+    }
+    setPendingUploadAvailable(false);
+  }, []);
+
+  const savePendingMultipartSession = useCallback(async (session: PendingMultipartSession) => {
+    try {
+      await AsyncStorage.setItem(PENDING_MULTIPART_SESSION_KEY, JSON.stringify(session));
+    } catch {
+      // no-op
+    }
+  }, []);
+
+  const readPendingMultipartSession = useCallback(async (): Promise<PendingMultipartSession | null> => {
+    try {
+      const raw = await AsyncStorage.getItem(PENDING_MULTIPART_SESSION_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as PendingMultipartSession;
+      if (!parsed || typeof parsed !== 'object') return null;
+      const key = String(parsed.key || '').trim();
+      const uploadId = String(parsed.uploadId || '').trim();
+      const mediaFingerprint = String(parsed.mediaFingerprint || '').trim();
+      const contentType = String(parsed.contentType || '').trim() || 'video/mp4';
+      const partSize = Number(parsed.partSize || 0);
+      const totalParts = Number(parsed.totalParts || 0);
+      if (!key || !uploadId || !mediaFingerprint || partSize <= 0 || totalParts <= 0) return null;
+      return {
+        mediaFingerprint,
+        key,
+        uploadId,
+        contentType,
+        partSize,
+        totalParts,
+        updatedAt: Number(parsed.updatedAt || Date.now()),
+      };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const clearPendingMultipartSession = useCallback(async () => {
+    try {
+      await AsyncStorage.removeItem(PENDING_MULTIPART_SESSION_KEY);
+    } catch {
+      // no-op
+    }
+  }, []);
+
+  const saveActiveVideoUploadLock = useCallback(async (lock: ActiveVideoUploadLock) => {
+    try {
+      await AsyncStorage.setItem(ACTIVE_VIDEO_UPLOAD_LOCK_KEY, JSON.stringify(lock));
+    } catch {
+      // no-op
+    }
+  }, []);
+
+  const readActiveVideoUploadLock = useCallback(async (): Promise<ActiveVideoUploadLock | null> => {
+    try {
+      const raw = await AsyncStorage.getItem(ACTIVE_VIDEO_UPLOAD_LOCK_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as ActiveVideoUploadLock;
+      if (!parsed || typeof parsed !== 'object') return null;
+      const mediaFingerprint = String(parsed.mediaFingerprint || '').trim();
+      const idempotencyKey = String(parsed.idempotencyKey || '').trim();
+      const createdAt = Number(parsed.createdAt || 0);
+      if (!mediaFingerprint || !idempotencyKey || !Number.isFinite(createdAt) || createdAt <= 0) return null;
+      return { mediaFingerprint, idempotencyKey, createdAt };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const clearActiveVideoUploadLock = useCallback(async () => {
+    try {
+      await AsyncStorage.removeItem(ACTIVE_VIDEO_UPLOAD_LOCK_KEY);
+    } catch {
+      // no-op
+    }
+  }, []);
+
+  const readPendingUploadDraft = useCallback(async (): Promise<PendingUploadDraft | null> => {
+    try {
+      const raw = await AsyncStorage.getItem(PENDING_UPLOAD_DRAFT_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as PendingUploadDraft;
+      if (!parsed || typeof parsed !== 'object') return null;
+      if (!['video', 'photo', 'text', 'article'].includes(String(parsed.contentType || ''))) return null;
+      return {
+        contentType: parsed.contentType,
+        selectedMedia: sanitizeSelectedMediaForDraft(Array.isArray(parsed.selectedMedia) ? parsed.selectedMedia : []),
+        title: String(parsed.title || ''),
+        description: String(parsed.description || ''),
+        articleBody: String(parsed.articleBody || ''),
+        hashtags: String(parsed.hashtags || ''),
+        category: String(parsed.category || ''),
+        language: String(parsed.language || 'fr'),
+        musicTitle: String(parsed.musicTitle || ''),
+        visibility: parsed.visibility === 'followers' || parsed.visibility === 'private' ? parsed.visibility : 'public',
+        hideLikes: Boolean(parsed.hideLikes),
+        commentsDisabled: Boolean(parsed.commentsDisabled),
+        commentVisibility: parsed.commentVisibility === 'friends' || parsed.commentVisibility === 'no_one'
+          ? parsed.commentVisibility
+          : 'everyone',
+        scheduledAt: String(parsed.scheduledAt || ''),
+        customThumbnail: parsed.customThumbnail && typeof parsed.customThumbnail.uri === 'string'
+          ? { uri: parsed.customThumbnail.uri, ...(parsed.customThumbnail.mime ? { mime: parsed.customThumbnail.mime } : {}) }
+          : null,
+        publishIdempotencyKey: String(parsed.publishIdempotencyKey || '').trim() || undefined,
+        step: parsed.step === 'edit' || parsed.step === 'details' ? parsed.step : 'details',
+        createdAt: Number(parsed.createdAt || Date.now()),
+      };
+    } catch {
+      return null;
+    }
+  }, [sanitizeSelectedMediaForDraft]);
+
+  const restorePendingUploadDraft = useCallback((draft: PendingUploadDraft) => {
+    setContentType(draft.contentType);
+    setSelectedMedia(draft.selectedMedia);
+    setTitle(draft.title);
+    setDescription(draft.description);
+    setArticleBody(draft.articleBody);
+    setHashtags(draft.hashtags);
+    setCategory(draft.category);
+    setLanguage(draft.language || 'fr');
+    setMusicTitle(draft.musicTitle);
+    setVisibility(draft.visibility);
+    setHideLikes(draft.hideLikes);
+    setCommentsDisabled(draft.commentsDisabled);
+    setCommentVisibility(draft.commentVisibility);
+    setScheduledAt(draft.scheduledAt);
+    setCustomThumbnail(draft.customThumbnail);
+    setPublishIdempotencyKey(String(draft.publishIdempotencyKey || '').trim());
+    setStep(draft.step === 'edit' && draft.contentType === 'video' && draft.selectedMedia.length > 0 ? 'edit' : 'details');
   }, []);
 
   useEffect(() => {
@@ -535,6 +790,82 @@ export default function CreateScreen() {
     setContentType('video');
     setStep('select');
   }, [params.remix_of, params.remix_kind, params.remix_username, params.remix_title]);
+
+  useEffect(() => {
+    if (pendingUploadRecovered) return;
+    let cancelled = false;
+    void (async () => {
+      const draft = await readPendingUploadDraft();
+      if (cancelled) return;
+      if (draft) {
+        restorePendingUploadDraft(draft);
+        setPendingUploadAvailable(true);
+      } else {
+        setPendingUploadAvailable(false);
+      }
+      setPendingUploadRecovered(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingUploadRecovered, readPendingUploadDraft, restorePendingUploadDraft]);
+
+  useEffect(() => {
+    if (!pendingUploadRecovered) return;
+    if (uploading) return;
+    const hasMedia = selectedMedia.length > 0;
+    const hasTextContent = Boolean(title.trim() || description.trim() || articleBody.trim() || hashtags.trim());
+    const shouldPersist = hasMedia || hasTextContent || contentType === 'text' || contentType === 'article';
+    if (!shouldPersist || step === 'select') {
+      void clearPendingUploadDraft();
+      return;
+    }
+    const draft: PendingUploadDraft = {
+      contentType,
+      selectedMedia: sanitizeSelectedMediaForDraft(selectedMedia),
+      title,
+      description,
+      articleBody,
+      hashtags,
+      category,
+      language,
+      musicTitle,
+      visibility,
+      hideLikes,
+      commentsDisabled,
+      commentVisibility,
+      scheduledAt,
+      customThumbnail,
+      publishIdempotencyKey: publishIdempotencyKey || undefined,
+      step,
+      createdAt: Date.now(),
+    };
+    setPendingUploadAvailable(true);
+    void savePendingUploadDraft(draft);
+  }, [
+    pendingUploadRecovered,
+    uploading,
+    selectedMedia,
+    title,
+    description,
+    articleBody,
+    hashtags,
+    contentType,
+    step,
+    category,
+    language,
+    musicTitle,
+    visibility,
+    hideLikes,
+    commentsDisabled,
+    commentVisibility,
+    scheduledAt,
+    customThumbnail,
+    publishIdempotencyKey,
+    sanitizeSelectedMediaForDraft,
+    savePendingUploadDraft,
+    clearPendingUploadDraft,
+  ]);
 
   const requireAuth = (action: string) => {
     if (!isAuthenticated) {
@@ -670,6 +1001,42 @@ export default function CreateScreen() {
     return error.code === 'ECONNABORTED' || m.includes('network') || m.includes('timeout') || m.includes('socket');
   };
 
+  const UPLOAD_CANCELLED_MARKER = '__AFW_UPLOAD_CANCELLED__';
+  const throwIfUploadCancelled = () => {
+    if (cancelUploadRef.current) {
+      throw new Error(UPLOAD_CANCELLED_MARKER);
+    }
+  };
+  const isUploadCancelledError = (error: unknown) => {
+    if (error instanceof Error && error.message === UPLOAD_CANCELLED_MARKER) return true;
+    if (isAxiosError(error) && error.code === 'ERR_CANCELED') return true;
+    return false;
+  };
+  const isUploadFileMissingError = (error: unknown) => {
+    return error instanceof Error && error.message === UPLOAD_FILE_MISSING_MARKER;
+  };
+
+  const ensureSelectedMediaStillReadable = async (media: SelectedMedia): Promise<void> => {
+    if (Platform.OS === 'web') return;
+    const normalized = await copyNativeUriToCacheForUpload(media.uri, media.type === 'video' ? 'mp4' : 'jpg');
+    const info = await FileSystem.getInfoAsync(normalized);
+    if (!info.exists || (typeof info.size === 'number' && info.size <= 0)) {
+      throw new Error(UPLOAD_FILE_MISSING_MARKER);
+    }
+  };
+
+  const buildVideoMediaFingerprint = useCallback(async (media: SelectedMedia): Promise<string> => {
+    if (Platform.OS === 'web') {
+      return `${media.uri}|${media.fileName || ''}|${media.mimeType || ''}|web`;
+    }
+    const rawUriExt = (media.uri.split('.').pop() || '').split('?')[0] || '';
+    const normalizedExt = rawUriExt.replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'mp4';
+    const fileUri = await copyNativeUriToCacheForUpload(media.uri, normalizedExt);
+    const info = await FileSystem.getInfoAsync(fileUri);
+    const size = Number((info as { size?: number })?.size || 0);
+    return `${fileUri}|${size}|${normalizedExt}`;
+  }, []);
+
   const uploadMultipartWithRetry = async (
     path: '/upload/video' | '/upload/image' | '/upload/audio',
     buildForm: () => Promise<FormData>,
@@ -678,17 +1045,23 @@ export default function CreateScreen() {
     const attempts = path === '/upload/video' ? 4 : 3;
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      throwIfUploadCancelled();
       try {
+        setUploadStatusSafe(attempt > 1 ? 'retrying' : 'uploading');
+        setUploadRetryAttemptSafe(attempt > 1 ? attempt - 1 : 0);
         const form = await buildForm();
         return await apiClient.post(path, form, {
           timeout: timeoutMs,
           maxContentLength: Infinity,
           maxBodyLength: Infinity,
+          signal: activeUploadAbortRef.current?.signal,
         });
       } catch (error: unknown) {
+        if (isUploadCancelledError(error)) throw error;
         lastError = error;
         if (!isRetriableNetworkError(error) || attempt >= attempts) break;
         await tryRefreshAccessToken();
+        throwIfUploadCancelled();
         await new Promise((r) => setTimeout(r, computeRetryDelayMs(attempt)));
       }
     }
@@ -699,12 +1072,16 @@ export default function CreateScreen() {
     const attempts = 3;
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      throwIfUploadCancelled();
       try {
         const res = await apiClient.post('/upload/presign', {
           kind: 'video',
           filename,
           contentType,
-        }, { timeout: STANDARD_UPLOAD_TIMEOUT_MS });
+        }, {
+          timeout: STANDARD_UPLOAD_TIMEOUT_MS,
+          signal: activeUploadAbortRef.current?.signal,
+        });
         const d = res.data?.data;
         const uploadUrl = String(d?.uploadUrl || '').trim();
         const fileUrl = String(d?.file_url || '').trim();
@@ -713,6 +1090,45 @@ export default function CreateScreen() {
         }
         return { uploadUrl, file_url: fileUrl };
       } catch (error: unknown) {
+        if (isUploadCancelledError(error)) throw error;
+        lastError = error;
+        if (!isRetriableNetworkError(error) || attempt >= attempts) break;
+        await tryRefreshAccessToken();
+        throwIfUploadCancelled();
+        await new Promise((r) => setTimeout(r, computeRetryDelayMs(attempt)));
+      }
+    }
+    throw lastError;
+  };
+
+  const requestMultipartInit = async (filename: string, contentType: string): Promise<MultipartInitResponse> => {
+    const attempts = 3;
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      throwIfUploadCancelled();
+      try {
+        if (attempt > 1) {
+          setUploadStatusSafe('retrying');
+          setUploadRetryAttemptSafe(attempt - 1);
+        }
+        const res = await apiClient.post('/upload/multipart/init', {
+          kind: 'video',
+          filename,
+          contentType,
+        }, {
+          timeout: STANDARD_UPLOAD_TIMEOUT_MS,
+          signal: activeUploadAbortRef.current?.signal,
+        });
+        const d = res.data?.data;
+        const key = String(d?.key || '').trim();
+        const uploadId = String(d?.uploadId || '').trim();
+        const ct = String(d?.contentType || contentType || '').trim();
+        if (!key || !uploadId || !ct) {
+          throw new Error('Réponse multipart init invalide');
+        }
+        return { key, uploadId, contentType: ct };
+      } catch (error: unknown) {
+        if (isUploadCancelledError(error)) throw error;
         lastError = error;
         if (!isRetriableNetworkError(error) || attempt >= attempts) break;
         await tryRefreshAccessToken();
@@ -722,10 +1138,336 @@ export default function CreateScreen() {
     throw lastError;
   };
 
+  const requestMultipartPartUrl = async (key: string, uploadId: string, partNumber: number): Promise<string> => {
+    const attempts = 3;
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      throwIfUploadCancelled();
+      try {
+        if (attempt > 1) {
+          setUploadStatusSafe('retrying');
+          setUploadRetryAttemptSafe(attempt - 1);
+        }
+        const res = await apiClient.post('/upload/multipart/part-url', {
+          key,
+          uploadId,
+          partNumber,
+        }, {
+          timeout: STANDARD_UPLOAD_TIMEOUT_MS,
+          signal: activeUploadAbortRef.current?.signal,
+        });
+        const url = String(res.data?.data?.uploadUrl || '').trim();
+        if (!url) throw new Error('URL de part multipart manquante');
+        return url;
+      } catch (error: unknown) {
+        if (isUploadCancelledError(error)) throw error;
+        lastError = error;
+        if (!isRetriableNetworkError(error) || attempt >= attempts) break;
+        await tryRefreshAccessToken();
+        await new Promise((r) => setTimeout(r, computeRetryDelayMs(attempt)));
+      }
+    }
+    throw lastError;
+  };
+
+  const requestMultipartStatus = async (
+    key: string,
+    uploadId: string,
+  ): Promise<{ PartNumber: number; ETag: string }[]> => {
+    const attempts = 3;
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      throwIfUploadCancelled();
+      try {
+        if (attempt > 1) {
+          setUploadStatusSafe('retrying');
+          setUploadRetryAttemptSafe(attempt - 1);
+        }
+        const res = await apiClient.post('/upload/multipart/status', {
+          key,
+          uploadId,
+        }, {
+          timeout: STANDARD_UPLOAD_TIMEOUT_MS,
+          signal: activeUploadAbortRef.current?.signal,
+        });
+        const raw = res.data?.data?.parts;
+        if (!Array.isArray(raw)) return [];
+        return raw
+          .map((p: any) => ({
+            PartNumber: Number(p?.PartNumber || 0),
+            ETag: String(p?.ETag || '').trim(),
+          }))
+          .filter((p) => p.PartNumber > 0 && p.ETag.length > 0)
+          .sort((a, b) => a.PartNumber - b.PartNumber);
+      } catch (error: unknown) {
+        if (isUploadCancelledError(error)) throw error;
+        lastError = error;
+        if (!isRetriableNetworkError(error) || attempt >= attempts) break;
+        await tryRefreshAccessToken();
+        await new Promise((r) => setTimeout(r, computeRetryDelayMs(attempt)));
+      }
+    }
+    throw lastError;
+  };
+
+  const abortMultipart = async (key: string, uploadId: string) => {
+    try {
+      await apiClient.post('/upload/multipart/abort', { key, uploadId }, {
+        timeout: STANDARD_UPLOAD_TIMEOUT_MS,
+      });
+    } catch {
+      // no-op
+    }
+  };
+
+  const uploadPartBytesWithXhr = async (url: string, bytes: Uint8Array, contentType: string): Promise<string> => {
+    const attempts = 3;
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      throwIfUploadCancelled();
+      try {
+        if (attempt > 1) {
+          setUploadStatusSafe('retrying');
+          setUploadRetryAttemptSafe(attempt - 1);
+        }
+        const etag = await new Promise<string>((resolve, reject) => {
+          try {
+            const xhr = new XMLHttpRequest();
+            xhr.open('PUT', url, true);
+            xhr.setRequestHeader('Content-Type', contentType || 'application/octet-stream');
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                const etagRaw = xhr.getResponseHeader('etag') || xhr.getResponseHeader('ETag') || '';
+                const parsed = String(etagRaw).replace(/"/g, '').trim();
+                if (!parsed) {
+                  reject(new Error('ETag manquant après upload part'));
+                  return;
+                }
+                resolve(parsed);
+                return;
+              }
+              reject(new Error(`Upload part HTTP ${xhr.status}`));
+            };
+            xhr.onerror = () => reject(new Error('Upload part réseau interrompu'));
+            xhr.onabort = () => reject(new Error(UPLOAD_CANCELLED_MARKER));
+            xhr.send(bytes as unknown as BodyInit);
+          } catch (e) {
+            reject(e);
+          }
+        });
+        return etag;
+      } catch (error: unknown) {
+        if (isUploadCancelledError(error)) throw error;
+        lastError = error;
+        const msg = String((error as Error)?.message || '').toLowerCase();
+        const httpStatus = Number((msg.match(/http\s+(\d{3})/)?.[1] || '0'));
+        const retriableHttp = httpStatus >= 500 || httpStatus === 0;
+        const retriable = retriableHttp || /réseau|network|timeout|socket|etag/.test(msg);
+        if (!retriable || attempt >= attempts) break;
+        await new Promise((r) => setTimeout(r, computeRetryDelayMs(attempt)));
+      }
+    }
+    throw lastError;
+  };
+
+  const decodeBase64ToBytes = (b64: string): Uint8Array => {
+    const clean = b64.replace(/[^A-Za-z0-9+/=]/g, '');
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const out: number[] = [];
+    let i = 0;
+    while (i < clean.length) {
+      const c1 = chars.indexOf(clean.charAt(i++));
+      const c2 = chars.indexOf(clean.charAt(i++));
+      const c3 = chars.indexOf(clean.charAt(i++));
+      const c4 = chars.indexOf(clean.charAt(i++));
+      if (c1 < 0 || c2 < 0) break;
+      const b1 = (c1 << 2) | (c2 >> 4);
+      out.push(b1 & 0xff);
+      if (c3 >= 0) {
+        const b2 = ((c2 & 15) << 4) | (c3 >> 2);
+        out.push(b2 & 0xff);
+      }
+      if (c4 >= 0) {
+        const b3 = ((c3 & 3) << 6) | c4;
+        out.push(b3 & 0xff);
+      }
+    }
+    return Uint8Array.from(out);
+  };
+
+  const readFileChunkAsBytes = async (fileUri: string, offset: number, length: number): Promise<Uint8Array> => {
+    const base64 = await FileSystem.readAsStringAsync(fileUri, {
+      encoding: 'base64',
+      position: offset,
+      length,
+    });
+    return decodeBase64ToBytes(base64);
+  };
+
+  const tryMultipartR2VideoUpload = async (media: SelectedMedia, index: number): Promise<string | null> => {
+    if (Platform.OS === 'web') return null;
+    const rawUriExt = (media.uri.split('.').pop() || '').split('?')[0] || '';
+    const rawNameExt = (String(media.fileName || '').split('.').pop() || '').split('?')[0] || '';
+    const extRaw = (rawNameExt || rawUriExt).replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'mp4';
+    const mimeFromAsset = String(media.mimeType || '').toLowerCase().trim();
+    const contentType = mimeFromAsset || mimeForVideoExt(extRaw);
+    const normalizedExt = contentType.includes('webm')
+      ? 'webm'
+      : contentType.includes('quicktime')
+        ? 'mov'
+        : 'mp4';
+    const fileUri = await copyNativeUriToCacheForUpload(media.uri, normalizedExt);
+    const info = await FileSystem.getInfoAsync(fileUri);
+    if (!info.exists || typeof info.size !== 'number' || info.size <= 0) return null;
+
+    const partSize = Platform.OS === 'android' ? 4 * 1024 * 1024 : 6 * 1024 * 1024;
+    const totalParts = Math.max(1, Math.ceil(info.size / partSize));
+    const mediaFingerprint = `${fileUri}|${info.size}|${normalizedExt}`;
+    const filename = `mobile-video-${Date.now()}-${index}.${normalizedExt}`;
+    let key = '';
+    let uploadId = '';
+    const resumedPartEtags = new Map<number, string>();
+    const pendingSession = await readPendingMultipartSession();
+    if (
+      pendingSession
+      && pendingSession.mediaFingerprint === mediaFingerprint
+      && pendingSession.partSize === partSize
+      && pendingSession.totalParts === totalParts
+    ) {
+      try {
+        const existingParts = await requestMultipartStatus(pendingSession.key, pendingSession.uploadId);
+        for (const p of existingParts) resumedPartEtags.set(p.PartNumber, p.ETag);
+        key = pendingSession.key;
+        uploadId = pendingSession.uploadId;
+        if (existingParts.length > 0) {
+          const resumedPct = 10 + Math.round((existingParts.length / totalParts) * 40);
+          setUploadProgressSafe((prev) => Math.max(prev, resumedPct));
+        }
+      } catch {
+        await clearPendingMultipartSession();
+      }
+    }
+    if (!key || !uploadId) {
+      const created = await requestMultipartInit(filename, contentType);
+      key = created.key;
+      uploadId = created.uploadId;
+      await savePendingMultipartSession({
+        mediaFingerprint,
+        key,
+        uploadId,
+        contentType,
+        partSize,
+        totalParts,
+        updatedAt: Date.now(),
+      });
+    }
+    const parts: { PartNumber: number; ETag: string }[] = [];
+
+    try {
+      let uploadedPartsCount = 0;
+      for (let partNumber = 1; partNumber <= totalParts; partNumber += 1) {
+        const resumedEtag = resumedPartEtags.get(partNumber);
+        if (resumedEtag) {
+          parts.push({ PartNumber: partNumber, ETag: resumedEtag });
+          uploadedPartsCount += 1;
+        }
+      }
+      if (uploadedPartsCount > 0) {
+        const pct = 10 + Math.round((uploadedPartsCount / totalParts) * 40);
+        setUploadProgressSafe((prev) => Math.max(prev, pct));
+      }
+      for (let batchStart = 1; batchStart <= totalParts; batchStart += MULTIPART_PARALLEL_UPLOADS) {
+        throwIfUploadCancelled();
+        const batch: number[] = [];
+        for (
+          let partNumber = batchStart;
+          partNumber < batchStart + MULTIPART_PARALLEL_UPLOADS && partNumber <= totalParts;
+          partNumber += 1
+        ) {
+          if (!resumedPartEtags.get(partNumber)) {
+            batch.push(partNumber);
+          }
+        }
+        if (batch.length === 0) {
+          continue;
+        }
+        const batchResults = await Promise.all(
+          batch.map(async (partNumber) => {
+            throwIfUploadCancelled();
+            const offset = (partNumber - 1) * partSize;
+            const remaining = info.size - offset;
+            const chunkLen = Math.min(partSize, remaining);
+            const partUrl = await requestMultipartPartUrl(key, uploadId, partNumber);
+            const bytes = await readFileChunkAsBytes(fileUri, offset, chunkLen);
+            const etag = await uploadPartBytesWithXhr(partUrl, bytes, contentType);
+            return { PartNumber: partNumber, ETag: etag };
+          }),
+        );
+        for (const result of batchResults) {
+          parts.push(result);
+          uploadedPartsCount += 1;
+        }
+        await savePendingMultipartSession({
+          mediaFingerprint,
+          key,
+          uploadId,
+          contentType,
+          partSize,
+          totalParts,
+          updatedAt: Date.now(),
+        });
+        const pct = 10 + Math.round((uploadedPartsCount / totalParts) * 40);
+        setUploadProgressSafe((prev) => Math.max(prev, pct));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      parts.sort((a, b) => a.PartNumber - b.PartNumber);
+      let completed: { data?: { data?: { file_url?: string } } } | null = null;
+      const completeAttempts = 3;
+      let completeErr: unknown = null;
+      for (let attempt = 1; attempt <= completeAttempts; attempt += 1) {
+        throwIfUploadCancelled();
+        try {
+          if (attempt > 1) {
+            setUploadStatusSafe('retrying');
+            setUploadRetryAttemptSafe(attempt - 1);
+          }
+          completed = await apiClient.post('/upload/multipart/complete', {
+            key,
+            uploadId,
+            parts,
+          }, {
+            timeout: MOBILE_MEDIA_UPLOAD_TIMEOUT_MS,
+            signal: activeUploadAbortRef.current?.signal,
+          });
+          completeErr = null;
+          break;
+        } catch (error: unknown) {
+          if (isUploadCancelledError(error)) throw error;
+          completeErr = error;
+          if (!isRetriableNetworkError(error) || attempt >= completeAttempts) break;
+          await tryRefreshAccessToken();
+          await new Promise((r) => setTimeout(r, computeRetryDelayMs(attempt)));
+        }
+      }
+      if (completeErr) throw completeErr;
+      const fileUrl = String(completed?.data?.data?.file_url || '').trim();
+      await clearPendingMultipartSession();
+      return fileUrl || null;
+    } catch (e) {
+      if (isUploadCancelledError(e)) throw e;
+      if (!isRetriableNetworkError(e)) {
+        await abortMultipart(key, uploadId);
+        await clearPendingMultipartSession();
+      }
+      return null;
+    }
+  };
+
   const tryDirectR2VideoUpload = async (media: SelectedMedia, index: number): Promise<string | null> => {
     if (Platform.OS === 'web') return null;
     const attempts = 3;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      throwIfUploadCancelled();
       try {
         const rawUriExt = (media.uri.split('.').pop() || '').split('?')[0] || '';
         const rawNameExt = (String(media.fileName || '').split('.').pop() || '').split('?')[0] || '';
@@ -752,13 +1494,17 @@ export default function CreateScreen() {
         }
         return presign.file_url;
       } catch (e) {
+        if (isUploadCancelledError(e)) throw e;
         if (attempt >= attempts) {
-          console.warn('Direct R2 video upload failed, fallback to backend /upload/video', e);
-          return null;
+          break;
         }
+        throwIfUploadCancelled();
         await new Promise((r) => setTimeout(r, computeRetryDelayMs(attempt)));
       }
     }
+    const viaMultipart = await tryMultipartR2VideoUpload(media, index);
+    if (viaMultipart) return viaMultipart;
+    console.warn('Direct + multipart R2 video upload failed, fallback to backend /upload/video');
     return null;
   };
 
@@ -766,20 +1512,31 @@ export default function CreateScreen() {
     const attempts = 3;
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      throwIfUploadCancelled();
       try {
         const res = await apiClient.post(path, body, {
           timeout: 120000,
           headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+          signal: activeUploadAbortRef.current?.signal,
         });
         return res as T;
       } catch (error: unknown) {
+        if (isUploadCancelledError(error)) throw error;
         lastError = error;
         if (!isRetriableNetworkError(error) || attempt >= attempts) break;
         await tryRefreshAccessToken();
+        throwIfUploadCancelled();
         await new Promise((r) => setTimeout(r, computeRetryDelayMs(attempt)));
       }
     }
     throw lastError;
+  };
+
+  const handleCancelUpload = () => {
+    if (!uploading) return;
+    cancelUploadRef.current = true;
+    activeUploadAbortRef.current?.abort();
+    setUploadStatusSafe('cancelled');
   };
 
   const flushPendingPublishIfAny = useCallback(async () => {
@@ -817,11 +1574,54 @@ export default function CreateScreen() {
       if (!title.trim()) { Alert.alert('Titre requis', 'Ajoutez un titre'); return; }
     }
 
-    setUploading(true);
-    setUploadProgress(0);
+    if (contentType === 'video' && selectedMedia[0]?.type === 'video') {
+      try {
+        const mediaFingerprint = await buildVideoMediaFingerprint(selectedMedia[0]);
+        const existingLock = await readActiveVideoUploadLock();
+        if (existingLock && existingLock.mediaFingerprint === mediaFingerprint) {
+          setPublishIdempotencyKey(existingLock.idempotencyKey);
+          setPendingUploadAvailable(true);
+          Alert.alert(
+            'Upload déjà en cours',
+            "Cette vidéo est déjà en cours d'envoi ou en reprise automatique. Inutile de relancer l'upload.",
+          );
+          return;
+        }
+      } catch {
+        // Si le fingerprint échoue, on ne bloque pas la publication.
+      }
+    }
+
+    setUploadingSafe(true);
+    setUploadProgressSafe(0);
+    setUploadStatusSafe('uploading');
+    setUploadRetryAttemptSafe(0);
+    cancelUploadRef.current = false;
+    activeUploadAbortRef.current = new AbortController();
+    let uploadPriorityActive = false;
 
     try {
-      const publishIdempotencyKey = makeIdempotencyKey(contentType);
+      if (contentType === 'video') {
+        beginUploadNetworkPriority();
+        uploadPriorityActive = true;
+      }
+      const stablePublishIdempotencyKey =
+        publishIdempotencyKey.trim() || makeIdempotencyKey(contentType);
+      if (!publishIdempotencyKey.trim()) {
+        setPublishIdempotencyKey(stablePublishIdempotencyKey);
+      }
+      if (contentType === 'video' && selectedMedia[0]?.type === 'video') {
+        try {
+          const mediaFingerprint = await buildVideoMediaFingerprint(selectedMedia[0]);
+          await saveActiveVideoUploadLock({
+            mediaFingerprint,
+            idempotencyKey: stablePublishIdempotencyKey,
+            createdAt: Date.now(),
+          });
+        } catch {
+          // no-op
+        }
+      }
       // Réveille le backend avant les appels upload (Render cold start + réseaux instables).
       await warmupBackend();
       /** Jeton frais avant chaîne upload + POST (complète le refresh proportionnel au timeout dans `apiClient`). */
@@ -834,7 +1634,10 @@ export default function CreateScreen() {
 
       // Upload médias → `/api/upload/image` ou `/api/upload/video` (Express)
       if (selectedMedia.length > 0) {
-        setUploadProgress(10);
+        for (const media of selectedMedia) {
+          await ensureSelectedMediaStillReadable(media);
+        }
+        setUploadProgressSafe(10);
         for (let i = 0; i < selectedMedia.length; i++) {
           const media = selectedMedia[i];
           if (media.type === 'video') {
@@ -862,17 +1665,17 @@ export default function CreateScreen() {
             mediaUrls.push(fileUrl);
           }
 
-          setUploadProgress(10 + Math.round((i + 1) / selectedMedia.length * 40));
+          setUploadProgressSafe(10 + Math.round((i + 1) / selectedMedia.length * 40));
         }
       }
 
-      setUploadProgress(60);
+      setUploadProgressSafe(60);
 
       let voiceOverRemoteUrl: string | null = null;
       if (contentType === 'video' && editorResult?.voiceOverUri) {
         const voiceUri = String(editorResult.voiceOverUri || '').trim();
         if (!voiceUri) throw new Error('Piste voix off invalide');
-        setUploadProgress(55);
+        setUploadProgressSafe(55);
         const audioRes = await uploadMultipartWithRetry('/upload/audio', async () => {
           const audioForm = new FormData();
           await appendUploadVoice(audioForm, voiceUri, 0);
@@ -882,7 +1685,7 @@ export default function CreateScreen() {
         if (!voiceOverRemoteUrl) {
           throw new Error('URL voix off manquante après upload');
         }
-        setUploadProgress(59);
+        setUploadProgressSafe(59);
       }
 
       if (contentType === 'video') {
@@ -939,11 +1742,12 @@ export default function CreateScreen() {
         await savePendingPublishJob({
           path: '/videos',
           payload: videoPayload,
-          idempotencyKey: publishIdempotencyKey,
+          idempotencyKey: stablePublishIdempotencyKey,
           createdAt: Date.now(),
         });
-        await postWithRetry('/videos', videoPayload, publishIdempotencyKey);
+        await postWithRetry('/videos', videoPayload, stablePublishIdempotencyKey);
         await clearPendingPublishJob();
+        await clearActiveVideoUploadLock();
       } else if (contentType === 'text') {
         const textPayload = {
           text: description.trim(),
@@ -953,10 +1757,10 @@ export default function CreateScreen() {
         await savePendingPublishJob({
           path: '/posts',
           payload: textPayload,
-          idempotencyKey: publishIdempotencyKey,
+          idempotencyKey: stablePublishIdempotencyKey,
           createdAt: Date.now(),
         });
-        await postWithRetry('/posts', textPayload, publishIdempotencyKey);
+        await postWithRetry('/posts', textPayload, stablePublishIdempotencyKey);
         await clearPendingPublishJob();
       } else if (contentType === 'article') {
         const text = `# ${title.trim()}\n\n${articleBody.trim()}`;
@@ -968,10 +1772,10 @@ export default function CreateScreen() {
         await savePendingPublishJob({
           path: '/posts',
           payload: articlePayload,
-          idempotencyKey: publishIdempotencyKey,
+          idempotencyKey: stablePublishIdempotencyKey,
           createdAt: Date.now(),
         });
-        await postWithRetry('/posts', articlePayload, publishIdempotencyKey);
+        await postWithRetry('/posts', articlePayload, stablePublishIdempotencyKey);
         await clearPendingPublishJob();
       } else if (contentType === 'photo') {
         const photoPayload = {
@@ -982,14 +1786,15 @@ export default function CreateScreen() {
         await savePendingPublishJob({
           path: '/posts',
           payload: photoPayload,
-          idempotencyKey: publishIdempotencyKey,
+          idempotencyKey: stablePublishIdempotencyKey,
           createdAt: Date.now(),
         });
-        await postWithRetry('/posts', photoPayload, publishIdempotencyKey);
+        await postWithRetry('/posts', photoPayload, stablePublishIdempotencyKey);
         await clearPendingPublishJob();
       }
 
-      setUploadProgress(100);
+      setUploadProgressSafe(100);
+      setUploadStatusSafe('success');
 
       const publishedLabel =
         contentType === 'text' ? 'publication'
@@ -998,6 +1803,9 @@ export default function CreateScreen() {
               : 'vidéo';
       const successBody = `Votre ${publishedLabel} a été publié(e) avec succès`;
       const goHomeAfterPublish = () => {
+        void clearPendingUploadDraft();
+        void clearPendingMultipartSession();
+        void clearActiveVideoUploadLock();
         resetSelection();
         router.replace('/(tabs)');
       };
@@ -1012,11 +1820,25 @@ export default function CreateScreen() {
       }
     } catch (error: unknown) {
       console.error('Publish error:', error);
+      if (isUploadCancelledError(error)) {
+        await clearActiveVideoUploadLock();
+        Alert.alert('Upload annulé', "L'envoi a été annulé. Vous pouvez reprendre quand vous voulez.");
+        return;
+      }
+      if (isUploadFileMissingError(error)) {
+        setUploadStatusSafe('failed');
+        Alert.alert(
+          'Fichier introuvable',
+          'Le fichier vidéo/photo a été déplacé ou supprimé par le système. Sélectionnez-le à nouveau puis republiez.',
+        );
+        return;
+      }
       const base = getAlertMessageForCaughtError(error);
       const ax = isAxiosError(error) ? error : null;
       const status = ax?.response?.status;
       const noResponse = Boolean(ax && !ax.response);
       const netLike = noResponse || /network|failed to connect|socket|aborted/i.test(String(ax?.message || ''));
+      const shouldAutoRetryVideo = contentType === 'video' && netLike;
       let msg = base;
       if (status === 401) {
         msg = "Connectez-vous d'abord pour publier une vidéo.";
@@ -1034,22 +1856,115 @@ export default function CreateScreen() {
           ? `\n\nÀ vérifier :\n• L'API tourne sur ${origin}\n• Pas de blocage CORS / firewall\n• Onglet réseau (F12) pour voir l'URL exacte qui échoue`
           : isDevNative
             ? `\n\nÀ vérifier (dev mobile) :\n• Le téléphone est sur le MÊME WiFi que ton PC\n• L'API tourne (PC : npm run dev → \"Server running on 0.0.0.0:3000\")\n• Le firewall Windows autorise le port 3000\n• URL tentée : ${origin}\n• Astuce : ajoute EXPO_PUBLIC_DEV_PC_LAN_HOST=<IP-de-ton-PC> dans frontend/.env si la détection auto échoue`
-            : `\n\nVérifiez votre connexion internet, puis réessayez.\nSi le problème persiste, changez de réseau (Wi-Fi/4G) et relancez l’application.`;
+            : '';
 
         if (contentType === 'video') {
-          msg = `Impossible d'envoyer la vidéo : connexion au serveur interrompue.\n\n${base}${checklist}`;
+          msg = isDevNative
+            ? `Impossible d'envoyer la vidéo : connexion au serveur interrompue.\n\n${base}${checklist}`
+            : "Connexion instable. Votre vidéo n'est pas perdue, nous allons réessayer automatiquement.";
         } else if (selectedMedia.length > 0) {
-          msg = `Impossible d'envoyer le média.\n\n${base}${checklist}`;
+          msg = isDevNative
+            ? `Impossible d'envoyer le média.\n\n${base}${checklist}`
+            : "Connexion instable. Nous allons réessayer automatiquement.";
         } else {
-          msg = `Impossible d'envoyer la publication.\n\n${base}${checklist}`;
+          msg = isDevNative
+            ? `Impossible d'envoyer la publication.\n\n${base}${checklist}`
+            : "Connexion instable. Nous allons réessayer automatiquement.";
         }
       }
-      Alert.alert('Erreur', msg);
+      if (shouldAutoRetryVideo) {
+        setPendingUploadAvailable(true);
+        setUploadStatusSafe('retrying');
+        const nextAttempt = Math.min(VIDEO_AUTO_RETRY_MAX_ATTEMPTS, autoRetryAttemptRef.current + 1);
+        autoRetryAttemptRef.current = nextAttempt;
+        setUploadRetryAttemptSafe(nextAttempt);
+        const retryDelayMs = Math.min(
+          VIDEO_AUTO_RETRY_MAX_DELAY_MS,
+          Math.max(2500, computeRetryDelayMs(nextAttempt + 1)),
+        );
+        if (autoRetryTimeoutRef.current) {
+          clearTimeout(autoRetryTimeoutRef.current);
+          autoRetryTimeoutRef.current = null;
+        }
+        if (nextAttempt < VIDEO_AUTO_RETRY_MAX_ATTEMPTS) {
+          autoRetryTimeoutRef.current = setTimeout(() => {
+            if (uploading || cancelUploadRef.current || !isMountedRef.current) return;
+            void handlePublish();
+          }, retryDelayMs);
+          Alert.alert(
+            'Upload sécurisé',
+            "Connexion instable détectée. L'envoi continue automatiquement en arrière-plan. Inutile de relancer la vidéo.",
+          );
+        } else {
+          setUploadStatusSafe('failed');
+          Alert.alert(
+            'Upload en pause',
+            `${msg}\n\nNous avons déjà tenté plusieurs reprises automatiques. Vérifiez le réseau puis appuyez sur Publier pour relancer.`,
+          );
+        }
+      } else {
+        setUploadStatusSafe('failed');
+        Alert.alert(
+          "Échec de l'envoi",
+          msg,
+          [
+            { text: 'Annuler', style: 'cancel' },
+            {
+              text: 'Réessayer',
+              onPress: () => {
+                if (!uploading) {
+                  void handlePublish();
+                }
+              },
+            },
+          ],
+        );
+      }
     } finally {
-      setUploading(false);
-      setUploadProgress(0);
+      if (uploadPriorityActive) {
+        endUploadNetworkPriority();
+      }
+      setUploadingSafe(false);
+      setUploadProgressSafe(0);
+      activeUploadAbortRef.current = null;
+      setUploadStatusSafe((prev) => (prev === 'failed' || prev === 'cancelled' || prev === 'retrying' ? prev : 'idle'));
+      setUploadRetryAttemptSafe(0);
     }
   };
+
+  useEffect(() => {
+    if (!pendingUploadRecovered || !pendingUploadAvailable) return;
+    if (!isAuthenticated || uploading) return;
+    if (autoResumeAttemptedRef.current) return;
+    if (contentType !== 'video' || selectedMedia.length === 0 || step !== 'details') return;
+    if (!title.trim()) return;
+
+    autoResumeAttemptedRef.current = true;
+    const tid = setTimeout(() => {
+      if (!uploading) {
+        void handlePublish();
+      }
+    }, 450);
+    return () => clearTimeout(tid);
+  }, [
+    pendingUploadRecovered,
+    pendingUploadAvailable,
+    isAuthenticated,
+    uploading,
+    contentType,
+    selectedMedia,
+    step,
+    title,
+  ]);
+
+  useEffect(() => {
+    if (uploadStatus !== 'success') return;
+    autoRetryAttemptRef.current = 0;
+    if (autoRetryTimeoutRef.current) {
+      clearTimeout(autoRetryTimeoutRef.current);
+      autoRetryTimeoutRef.current = null;
+    }
+  }, [uploadStatus]);
 
   const resetSelection = () => {
     setStep('select');
@@ -1073,6 +1988,17 @@ export default function CreateScreen() {
     setCommentVisibility('everyone');
     setScheduledAt('');
     setCustomThumbnail(null);
+    setPublishIdempotencyKey('');
+    setPendingUploadAvailable(false);
+    autoRetryAttemptRef.current = 0;
+    if (autoRetryTimeoutRef.current) {
+      clearTimeout(autoRetryTimeoutRef.current);
+      autoRetryTimeoutRef.current = null;
+    }
+    autoResumeAttemptedRef.current = false;
+    void clearPendingUploadDraft();
+    void clearPendingMultipartSession();
+    void clearActiveVideoUploadLock();
   };
 
   const pickCustomThumbnail = async () => {
@@ -1103,6 +2029,41 @@ export default function CreateScreen() {
     }
     resetSelection();
   };
+
+  const handleResumePendingUploadDraft = useCallback(async () => {
+    const draft = await readPendingUploadDraft();
+    if (!draft) {
+      setPendingUploadAvailable(false);
+      Alert.alert('Reprise indisponible', 'Aucun brouillon d’upload en attente.');
+      return;
+    }
+    restorePendingUploadDraft(draft);
+    setPendingUploadAvailable(true);
+    Alert.alert('Brouillon restauré', 'Votre upload en attente a été restauré. Vous pouvez publier maintenant.');
+  }, [readPendingUploadDraft, restorePendingUploadDraft]);
+
+  const handleDiscardPendingUploadDraft = useCallback(() => {
+    Alert.alert(
+      'Supprimer le brouillon ?',
+      'Cette action efface la reprise d’upload en attente sur cet appareil.',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: () => {
+            void clearPendingUploadDraft();
+            void clearPendingMultipartSession();
+            void clearActiveVideoUploadLock();
+            autoResumeAttemptedRef.current = false;
+            if (!uploading) {
+              resetSelection();
+            }
+          },
+        },
+      ],
+    );
+  }, [clearPendingUploadDraft, clearPendingMultipartSession, clearActiveVideoUploadLock, resetSelection, uploading]);
 
   if (step === 'edit' && selectedMedia.length > 0 && contentType === 'video') {
     return (
@@ -1149,6 +2110,22 @@ export default function CreateScreen() {
         </View>
 
         <ScrollView style={styles.detailsContent} showsVerticalScrollIndicator={false}>
+          {pendingUploadAvailable ? (
+            <View style={styles.pendingDraftBanner}>
+              <Ionicons name="cloud-upload-outline" size={18} color={Colors.primary} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.pendingDraftTitle}>Upload en attente détecté</Text>
+                <Text style={styles.pendingDraftSub}>Reprendre la préparation ou supprimer ce brouillon local.</Text>
+              </View>
+              <TouchableOpacity style={styles.pendingDraftAction} onPress={() => void handleResumePendingUploadDraft()}>
+                <Text style={styles.pendingDraftActionText}>Reprendre</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleDiscardPendingUploadDraft} hitSlop={10}>
+                <Ionicons name="trash-outline" size={18} color={Colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
           {soundSeed?.title ? (
             <View style={styles.soundSeedBanner}>
               <Ionicons name="musical-notes" size={20} color={Colors.primary} />
@@ -1395,8 +2372,20 @@ export default function CreateScreen() {
                 <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
               </View>
               <Text style={styles.progressText}>
-                {uploadProgress < 30 ? 'Upload en cours...' : uploadProgress < 70 ? 'Traitement...' : 'Finalisation...'}
+                {uploadStatus === 'retrying'
+                  ? `Reconnexion… tentative ${Math.max(1, uploadRetryAttempt)}`
+                  : uploadStatus === 'cancelled'
+                    ? 'Upload annulé'
+                    : uploadProgress < 30
+                      ? 'Upload en cours...'
+                      : uploadProgress < 70
+                        ? 'Traitement...'
+                        : 'Finalisation...'}
               </Text>
+              <TouchableOpacity style={styles.uploadCancelBtn} onPress={handleCancelUpload} accessibilityRole="button" accessibilityLabel="Annuler l’upload">
+                <Ionicons name="close-circle-outline" size={18} color="#fff" />
+                <Text style={styles.uploadCancelBtnText}>Annuler</Text>
+              </TouchableOpacity>
             </View>
           )}
         </ScrollView>
@@ -1500,6 +2489,22 @@ export default function CreateScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {pendingUploadAvailable ? (
+          <View style={styles.pendingDraftBanner}>
+            <Ionicons name="cloud-upload-outline" size={18} color={Colors.primary} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.pendingDraftTitle}>Upload interrompu détecté</Text>
+              <Text style={styles.pendingDraftSub}>Touchez « Reprendre » pour restaurer votre publication.</Text>
+            </View>
+            <TouchableOpacity style={styles.pendingDraftAction} onPress={() => void handleResumePendingUploadDraft()}>
+              <Text style={styles.pendingDraftActionText}>Reprendre</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleDiscardPendingUploadDraft} hitSlop={10}>
+              <Ionicons name="trash-outline" size={18} color={Colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {soundSeed?.title ? (
           <View style={styles.soundSeedBanner}>
             <Ionicons name="musical-notes" size={20} color={Colors.primary} />
@@ -1677,6 +2682,26 @@ const styles = StyleSheet.create({
   publishBtnText: { color: '#FFF', fontWeight: '700', fontSize: FontSizes.md },
   selectionScroll: { flex: 1 },
   selectionScrollContent: { padding: Spacing.xl, paddingBottom: Spacing.xxl },
+  pendingDraftBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.surface,
+  },
+  pendingDraftTitle: { color: Colors.text, fontSize: FontSizes.sm, fontWeight: '700' },
+  pendingDraftSub: { color: Colors.textSecondary, fontSize: FontSizes.xs, marginTop: 2 },
+  pendingDraftAction: {
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  pendingDraftActionText: { color: '#fff', fontSize: FontSizes.xs, fontWeight: '700' },
   soundSeedBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1776,6 +2801,17 @@ const styles = StyleSheet.create({
   progressBar: { width: '100%', height: 6, backgroundColor: Colors.surface, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: 3 },
   progressText: { color: Colors.textSecondary, fontSize: FontSizes.sm, marginTop: Spacing.sm },
+  uploadCancelBtn: {
+    marginTop: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#2C2C34',
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  uploadCancelBtnText: { color: '#fff', fontSize: FontSizes.xs, fontWeight: '700' },
   liveHubRow: {
     flexDirection: 'row',
     alignItems: 'center',

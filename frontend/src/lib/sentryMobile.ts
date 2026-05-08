@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/react-native';
+import { captureCrashlyticsError, isCrashlyticsAvailable } from './crashlyticsMobile';
 
 let initialized = false;
 
@@ -36,6 +37,8 @@ export function initMobileSentry(): void {
 
 /** Erreur non interceptée (boundary, ErrorUtils) — best-effort vers Sentry si le DSN est configuré. */
 export function captureSentryException(error: unknown, extra?: Record<string, unknown>): void {
+  // Mirror to Crashlytics when available (optional native dependency).
+  captureCrashlyticsError(error, extra);
   if (!initialized) return;
   try {
     Sentry.captureException(error, extra && Object.keys(extra).length ? { extra } : undefined);
@@ -49,10 +52,15 @@ export function captureSentryMessage(
   level: 'fatal' | 'error' | 'warning' | 'info' = 'error',
   extra?: Record<string, unknown>
 ): void {
+  captureCrashlyticsError(new Error(message), { level, ...(extra || {}) });
   if (!initialized) return;
   try {
     Sentry.captureMessage(message, { level, extra });
   } catch {
     /* ignore */
   }
+}
+
+export function isCrashlyticsEnabled(): boolean {
+  return isCrashlyticsAvailable();
 }

@@ -20,7 +20,7 @@ import { devLog } from '../../src/utils/devLog';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/store/authStore';
-import { router, type Href } from 'expo-router';
+import { type Href } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ProfileSkeleton } from '../../src/components/SkeletonScreens';
@@ -29,6 +29,7 @@ import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import { SmartThumbnail } from '../../src/components/SmartThumbnail';
 import { buildPostItemFromVideo, type ProfileGridPostItem } from '../../src/utils/buildProfileVideoGridItem';
 import { orderRawVideosPinnedFirstForProfile } from '../../src/utils/profileVideoSort';
+import { safeRouterPush, safeRouterReplace } from '../../src/utils/safeRouter';
 
 /**
  * Écran Profil style TikTok.
@@ -129,6 +130,8 @@ export default function ProfileScreen() {
   const [privatePosts, setPrivatePosts] = useState<PostItem[]>([]);
   const [repostPosts, setRepostPosts] = useState<PostItem[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [savedLoaded, setSavedLoaded] = useState(false);
+  const [savedLoading, setSavedLoading] = useState(false);
 
   const loadInboxBadge = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -151,14 +154,16 @@ export default function ProfileScreen() {
   }, [loadInboxBadge]);
 
   useEffect(() => {
+    let cancelled = false;
     const loadProfile = async () => {
       if (!isAuthenticated || !user?.id) {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
         return;
       }
       try {
         const response = await apiClient.get(`/users/${user.id}`);
         const data = response.data?.data || response.data;
+        if (cancelled) return;
         if (data?._count) {
           setRealStats({
             posts: data._count.videos || 0,
@@ -178,10 +183,9 @@ export default function ProfileScreen() {
       const creatorAvatar = toAbsoluteMediaUrl(user.profile_image || user.avatar || '').trim();
 
       try {
-        const [videosRes, savesRes] = await Promise.all([
-          apiClient.get(`/videos?creator_id=${user.id}&page=1&limit=60&visibility=creator`),
-          apiClient.get(`/saves?page=1&limit=60`).catch(() => null),
-        ]);
+        // Charge d'abord le minimum vital du profil pour limiter la pression mémoire.
+        const videosRes = await apiClient.get(`/videos?creator_id=${user.id}&page=1&limit=30&visibility=creator`);
+        if (cancelled) return;
         const vData = videosRes.data?.data || videosRes.data;
         const videos = vData?.videos || [];
         const ordered = orderRawVideosPinnedFirstForProfile(videos);
@@ -203,25 +207,58 @@ export default function ProfileScreen() {
             .filter((v: any) => v.remix_of_id)
             .map((v: any) => buildPostItemFromVideo(v, creatorAvatar))
         );
-
-        if (savesRes) {
-          const sPayload = savesRes.data?.data || savesRes.data;
-          const savedVideos = sPayload?.videos || [];
-          setSavedPosts(savedVideos.map((v: any) => buildPostItemFromVideo(v, creatorAvatar)));
-        } else {
-          setSavedPosts([]);
-        }
       } catch (err) {
         devLog('Could not load user videos / saves', err);
+        if (cancelled) return;
         setTabPosts([]);
         setSavedPosts([]);
         setPrivatePosts([]);
         setRepostPosts([]);
       }
-      setIsLoading(false);
+      if (!cancelled) setIsLoading(false);
     };
     void loadProfile();
+    return () => {
+      // Evite des setState tardifs pendant navigation rapide hors écran profil.
+      cancelled = true;
+    };
   }, [isAuthenticated, user?.id, user?.profile_image, user?.avatar]);
+
+  useEffect(() => {
+    setSavedLoaded(false);
+    setSavedLoading(false);
+    setSavedPosts([]);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (activeTab !== 'saved' || savedLoaded || savedLoading || !isAuthenticated || !user?.id) return;
+    let cancelled = false;
+    const creatorAvatar = toAbsoluteMediaUrl(user.profile_image || user.avatar || '').trim();
+    const loadSaved = async () => {
+      setSavedLoading(true);
+      try {
+        const savesRes = await apiClient.get(`/saves?page=1&limit=30`);
+        if (cancelled) return;
+        const sPayload = savesRes.data?.data || savesRes.data;
+        const savedVideos = sPayload?.videos || [];
+        setSavedPosts(savedVideos.map((v: any) => buildPostItemFromVideo(v, creatorAvatar)));
+      } catch (err) {
+        if (!cancelled) {
+          devLog('Could not load saved videos', err);
+          setSavedPosts([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setSavedLoaded(true);
+          setSavedLoading(false);
+        }
+      }
+    };
+    void loadSaved();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, savedLoaded, savedLoading, isAuthenticated, user?.id, user?.profile_image, user?.avatar]);
 
   const filteredPrivatePosts = useMemo(() => {
     if (privateFilter === 'all') return privatePosts;
@@ -274,7 +311,7 @@ export default function ProfileScreen() {
           title: 'Partagez votre première vidéo',
           subtitle: 'Vos publications apparaîtront ici.',
           cta: 'Publier',
-          onPress: () => router.push('/(tabs)/create'),
+          onPress: () => safeRouterPush('/(tabs)/create'),
         };
       case 'private': {
         const map: Record<PrivateFilter, { icon: React.ComponentProps<typeof Ionicons>['name']; title: string; subtitle: string }> = {
@@ -441,7 +478,7 @@ export default function ProfileScreen() {
   const handleLogout = () => {
     const run = async () => {
       await logout();
-      router.replace('/(auth)/login');
+      safeRouterReplace('/(auth)/login');
     };
     if (Platform.OS === 'web') {
       if (typeof window !== 'undefined' && window.confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
@@ -472,10 +509,10 @@ export default function ProfileScreen() {
           </LinearGradient>
           <Text style={styles.loginTitle}>Rejoignez AfriWonder</Text>
           <Text style={styles.loginSubtitle}>Créez, partagez et connectez avec la communauté africaine</Text>
-          <TouchableOpacity style={styles.loginBtn} onPress={() => router.push('/(auth)/login')}>
+          <TouchableOpacity style={styles.loginBtn} onPress={() => safeRouterPush('/(auth)/login')}>
             <Text style={styles.loginBtnText}>Se connecter</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
+          <TouchableOpacity onPress={() => safeRouterPush('/(auth)/register')}>
             <Text style={styles.registerLink}>Créer un compte</Text>
           </TouchableOpacity>
         </View>
@@ -500,7 +537,7 @@ export default function ProfileScreen() {
       testID={index === 0 ? 'profile-first-grid-video' : undefined}
       style={[styles.gridItem, { width: gridSize, height: gridItemHeight }]}
       activeOpacity={0.85}
-      onPress={() => router.push({ pathname: '/watch/[id]', params: { id: item.id } })}
+      onPress={() => safeRouterPush({ pathname: '/watch/[id]', params: { id: item.id } })}
       onLongPress={canDeleteFromProfileGrid ? () => handleRequestDelete(item) : undefined}
       delayLongPress={450}
       accessibilityLabel={`Vidéo, ${item.views} vues. ${canDeleteFromProfileGrid ? 'Appui long pour supprimer' : ''}`}
@@ -590,7 +627,7 @@ export default function ProfileScreen() {
       {/* Header sticky */}
       <View style={styles.topBar}>
         <TouchableOpacity
-          onPress={() => router.push('/find-friends')}
+          onPress={() => safeRouterPush('/find-friends')}
           style={styles.topBarBtn}
           accessibilityLabel="Ajouter des amis"
         >
@@ -599,7 +636,7 @@ export default function ProfileScreen() {
         <View style={styles.topBarRight}>
           <TouchableOpacity
             style={styles.topBarMiniAvatarWrap}
-            onPress={() => router.push('/(tabs)/messages')}
+            onPress={() => safeRouterPush('/(tabs)/messages')}
             accessibilityLabel="Messages"
           >
             {profile.avatar ? (
@@ -625,7 +662,7 @@ export default function ProfileScreen() {
           <TouchableOpacity
             testID="profile-settings-button"
             style={styles.topBarBtn}
-            onPress={() => router.push('/menu-plus')}
+            onPress={() => safeRouterPush('/menu-plus')}
             accessibilityLabel="Menu Plus — paramètres et services"
           >
             <Ionicons name="reorder-three-outline" size={28} color={topBarIcon} />
@@ -646,7 +683,7 @@ export default function ProfileScreen() {
 
           {/* Avatar + badge create story */}
           <Pressable
-            onPress={() => router.push('/stories')}
+            onPress={() => safeRouterPush('/stories')}
             style={({ pressed }) => [styles.avatarWrap, pressed && { opacity: 0.9 }]}
             accessibilityLabel="Publier une story"
           >
@@ -676,7 +713,7 @@ export default function ProfileScreen() {
                 !heroOrange && { backgroundColor: colors.surface },
                 pressed && { opacity: 0.7 },
               ]}
-              onPress={() => router.push('/profile-edit')}
+              onPress={() => safeRouterPush('/profile-edit')}
               accessibilityRole="button"
               accessibilityLabel="Modifier le profil"
             >
@@ -698,7 +735,7 @@ export default function ProfileScreen() {
           <View style={styles.statsRow}>
             <TouchableOpacity
               style={styles.statItem}
-              onPress={() => router.push({ pathname: '/profile-connections', params: { mode: 'following' } })}
+              onPress={() => safeRouterPush({ pathname: '/profile-connections', params: { mode: 'following' } })}
               accessibilityLabel={`${profile.stats.following} abonnements`}
             >
               <Text style={[styles.statNumber, { color: tx }]}>{formatNumber(profile.stats.following)}</Text>
@@ -707,7 +744,7 @@ export default function ProfileScreen() {
             <View style={[styles.statDivider, !heroOrange && { backgroundColor: colors.border }]} />
             <TouchableOpacity
               style={styles.statItem}
-              onPress={() => router.push({ pathname: '/profile-connections', params: { mode: 'followers' } })}
+              onPress={() => safeRouterPush({ pathname: '/profile-connections', params: { mode: 'followers' } })}
               accessibilityLabel={`${profile.stats.followers} abonnés`}
             >
               <Text style={[styles.statNumber, { color: tx }]}>{formatNumber(profile.stats.followers)}</Text>
@@ -737,7 +774,7 @@ export default function ProfileScreen() {
           ) : (
             <Pressable
               style={styles.bioEmptyWrap}
-              onPress={() => router.push('/profile-edit')}
+              onPress={() => safeRouterPush('/profile-edit')}
               accessibilityRole="button"
               accessibilityLabel="Ajouter une bio"
             >
@@ -868,9 +905,15 @@ export default function ProfileScreen() {
         {gridItems.length === 0 ? (
           <View style={styles.emptyWrap}>
             <View style={[styles.emptyIconCircle, !heroOrange && { backgroundColor: colors.surface }]}>
-              <Ionicons name={emptyState.icon} size={32} color={tx} />
+              {activeTab === 'saved' && savedLoading ? (
+                <ActivityIndicator size="small" color={tx} />
+              ) : (
+                <Ionicons name={emptyState.icon} size={32} color={tx} />
+              )}
             </View>
-            <Text style={[styles.emptyTitle, { color: tx }]}>{emptyState.title}</Text>
+            <Text style={[styles.emptyTitle, { color: tx }]}>
+              {activeTab === 'saved' && savedLoading ? 'Chargement des vidéos enregistrées…' : emptyState.title}
+            </Text>
             {emptyState.subtitle ? (
               <Text style={[styles.emptySubtitle, { color: txMuted }]}>{emptyState.subtitle}</Text>
             ) : null}
@@ -914,7 +957,7 @@ export default function ProfileScreen() {
                 i === PROFILE_CREATOR_SHORTCUTS.length - 1 && { borderBottomWidth: 0 },
                 !heroOrange && { borderBottomColor: colors.border },
               ]}
-              onPress={() => router.push(row.href)}
+              onPress={() => safeRouterPush(row.href)}
               activeOpacity={0.75}
               accessibilityLabel={row.label}
               accessibilityRole="button"
@@ -937,7 +980,7 @@ export default function ProfileScreen() {
         {/* Lien discret vers menu AfriWonder (wallet, revenus, badges, déconnexion) */}
         <TouchableOpacity
           style={styles.afwFooter}
-          onPress={() => router.push('/menu-plus')}
+          onPress={() => safeRouterPush('/menu-plus')}
           activeOpacity={0.85}
         >
           <Ionicons name="apps-outline" size={16} color={heroOrange ? 'rgba(255,255,255,0.75)' : colors.textSecondary} />

@@ -119,7 +119,7 @@ async function collectCreatorsFromPublicVideos(): Promise<Map<string, PublicVide
       if (!cid) continue;
       const name = (v.creator_name || '').trim() || 'Créateur';
       const avatar = resolveProfileAvatar(v.creator_avatar, name, cid);
-      const views = Number(v.views) || 0;
+      const views = Number(v.views ?? v.qualified_views_count ?? v.view_count ?? v.views_count) || 0;
       const prev = map.get(cid);
       if (prev) {
         prev.publicVideoCount += 1;
@@ -370,7 +370,7 @@ export default function DiscoverScreen() {
                       ? ('reel' as const)
                       : ('photo' as const)
                     : ('photo' as const),
-                views: v.views || 0,
+                views: Number(v.views ?? v.qualified_views_count ?? v.view_count ?? v.views_count) || 0,
                 likes: v.likes || 0,
                 title: v.title || '',
                 creator_name: v.creator_name || '',

@@ -171,12 +171,22 @@
     <priority>0.65</priority>
   </url>
   <url>
+    <loc>https://afriwonder.com/ChallengesViral</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
     <loc>https://afriwonder.com/Chat</loc>
     <changefreq>weekly</changefreq>
     <priority>0.65</priority>
   </url>
   <url>
     <loc>https://afriwonder.com/Checkout</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/ChildSafety</loc>
     <changefreq>weekly</changefreq>
     <priority>0.65</priority>
   </url>
@@ -827,6 +837,11 @@
   </url>
   <url>
     <loc>https://afriwonder.com/RideHistory</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://afriwonder.com/SavedVideos</loc>
     <changefreq>weekly</changefreq>
     <priority>0.65</priority>
   </url>

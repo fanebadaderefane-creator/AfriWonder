@@ -38,6 +38,23 @@ interface KPI {
 type AdminTab = 'overview' | 'users' | 'content' | 'finance' | 'lives';
 
 type AdminLiveRow = { id: string; title: string; viewers_count?: number };
+type ViewsIntegritySnapshot = {
+  window_days: number;
+  generated_at: string;
+  totals: {
+    videos: number;
+    displayed_views: number;
+    qualified_views: number;
+    dedup_views_in_window: number;
+    undercount_videos: number;
+    risk_videos: number;
+  };
+  top_risk_videos: Array<{
+    video_id: string;
+    title: string;
+    anomaly_score: number;
+  }>;
+};
 
 function unwrapList<T>(raw: unknown, keys: string[]): T[] {
   if (!raw || typeof raw !== 'object') return [];
@@ -74,6 +91,7 @@ export default function AdminDashboardScreen() {
     revenue?: { marketplace_revenue_fcfa?: number; completed_orders?: number };
     content?: { videos_uploaded?: number; lives_started_in_period?: number };
   }>({});
+  const [viewsIntegrity, setViewsIntegrity] = useState<ViewsIntegritySnapshot | null>(null);
   const [tempResetEmail, setTempResetEmail] = useState('');
   const [issuingTempPassword, setIssuingTempPassword] = useState(false);
 
@@ -82,13 +100,14 @@ export default function AdminDashboardScreen() {
   const loadData = useCallback(async (opts?: { silent?: boolean }) => {
     try {
       if (!opts?.silent) setLoading(true);
-      const [statsRes, usersRes, reportsRes, au, ar, ac] = await Promise.allSettled([
+      const [statsRes, usersRes, reportsRes, au, ar, ac, avi] = await Promise.allSettled([
         apiClient.get(API_ROUTES.ADMIN_ANALYTICS_OVERVIEW),
         apiClient.get(API_ROUTES.ADMIN_USERS, { params: { page: 1, limit: 20 } }),
         apiClient.get('/moderation/reports', { params: { status: 'pending', limit: 20 } }),
         apiClient.get(API_ROUTES.ADMIN_ANALYTICS_USERS('7d')),
         apiClient.get(API_ROUTES.ADMIN_ANALYTICS_REVENUE('30d')),
         apiClient.get(API_ROUTES.ADMIN_ANALYTICS_CONTENT('7d')),
+        apiClient.get(API_ROUTES.ADMIN_ANALYTICS_VIEWS_INTEGRITY(7)),
       ]);
 
       if (statsRes.status === 'fulfilled') {
@@ -146,6 +165,12 @@ export default function AdminDashboardScreen() {
         nextPeriod.content = d;
       }
       if (Object.keys(nextPeriod).length) setPeriodAnalytics(nextPeriod);
+      if (avi.status === 'fulfilled') {
+        const d = avi.value.data?.data ?? avi.value.data;
+        if (d && typeof d === 'object') {
+          setViewsIntegrity(d as ViewsIntegritySnapshot);
+        }
+      }
     } catch {
       /* ignore */
     } finally {
@@ -437,6 +462,37 @@ export default function AdminDashboardScreen() {
                       </Text>
                     </View>
                     <Text style={styles.readinessHint}>Source : GET {API_ROUTES.ADMIN_ANALYTICS_OVERVIEW}</Text>
+                  </View>
+                ) : null}
+
+                {viewsIntegrity ? (
+                  <View style={styles.alertsSection}>
+                    <Text style={styles.readinessTitle}>Intégrité des vues (anti-fraude)</Text>
+                    <View style={styles.alertRow}>
+                      <Text style={styles.alertLabel}>Vues affichées</Text>
+                      <Text style={styles.alertValue}>{fmt(viewsIntegrity.totals.displayed_views || 0)}</Text>
+                    </View>
+                    <View style={styles.alertRow}>
+                      <Text style={styles.alertLabel}>Vues qualifiées</Text>
+                      <Text style={styles.alertValue}>{fmt(viewsIntegrity.totals.qualified_views || 0)}</Text>
+                    </View>
+                    <View style={styles.alertRow}>
+                      <Text style={styles.alertLabel}>Vidéos à risque</Text>
+                      <Text style={[styles.alertValue, { color: '#EF4444' }]}>
+                        {viewsIntegrity.totals.risk_videos || 0}
+                      </Text>
+                    </View>
+                    {(viewsIntegrity.top_risk_videos || []).slice(0, 3).map((row) => (
+                      <View key={row.video_id} style={styles.integrityRiskRow}>
+                        <Text style={styles.integrityRiskTitle} numberOfLines={1}>
+                          {row.title || 'Sans titre'}
+                        </Text>
+                        <Text style={styles.integrityRiskScore}>+{row.anomaly_score || 0}</Text>
+                      </View>
+                    ))}
+                    <Text style={styles.readinessHint}>
+                      Fenêtre {viewsIntegrity.window_days}j • Source : GET /admin/analytics/views-integrity
+                    </Text>
                   </View>
                 ) : null}
 
@@ -931,6 +987,15 @@ const styles = StyleSheet.create({
   },
   alertLabel: { fontSize: FontSizes.sm, color: Colors.textSecondary },
   alertValue: { fontSize: FontSizes.md, fontWeight: '700', color: Colors.text },
+  integrityRiskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingTop: 10,
+  },
+  integrityRiskTitle: { flex: 1, color: Colors.textSecondary, fontSize: FontSizes.xs },
+  integrityRiskScore: { color: '#EF4444', fontWeight: '800', fontSize: FontSizes.xs },
   periodLine: { fontSize: FontSizes.sm, color: Colors.textSecondary, marginTop: 10, lineHeight: 20 },
   section: { paddingHorizontal: Spacing.xl, marginTop: Spacing.lg },
   sectionTitle: { fontSize: FontSizes.lg, fontWeight: 'bold', color: Colors.text, marginBottom: Spacing.md },

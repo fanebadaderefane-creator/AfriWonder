@@ -4,8 +4,16 @@ import {
   getBackendOrigin,
   MISSING_BACKEND_URL_SENTINEL,
 } from './backendBase';
+import {
+  getFacebookAppId,
+  getGoogleOAuthEnv,
+  isGoogleOAuthConfiguredForPlatform,
+  resolveGoogleClientIdsForNativeGoogleAuth,
+} from './oauthEnv';
+import { getComputedOAuthRedirectUri, getGoogleInstalledAppRedirectUri } from './oauthRedirectUris';
 import { applyAfriDeviceTrustToFetchInit } from '../utils/afwDeviceRequestId';
 import { getFeatureMatrix, validateSuperApp } from '../product/featureMatrix';
+import { isCrashlyticsEnabled } from '../lib/sentryMobile';
 
 export type PreflightCheck = {
   id: string;
@@ -63,6 +71,53 @@ export async function runReleasePreflight(): Promise<PreflightCheck[]> {
     detail: readExtra('EXPO_PUBLIC_SOCKET_URL')
       ? `EXPO_PUBLIC_SOCKET_URL=${socketUrl}`
       : `Dérivé du backend : ${socketUrl}`,
+  });
+
+  const googleEnv = getGoogleOAuthEnv();
+  const googleNativeIds = resolveGoogleClientIdsForNativeGoogleAuth(Platform.OS, googleEnv);
+  const googleAndroidConfigured = isGoogleOAuthConfiguredForPlatform('android', googleEnv);
+  const googleIdsDistinct =
+    !googleNativeIds.webClientId ||
+    !googleNativeIds.androidClientId ||
+    googleNativeIds.webClientId.trim() !== googleNativeIds.androidClientId.trim();
+  checks.push({
+    id: 'google_oauth_android',
+    label: 'Google OAuth Android (client natif + IDs distincts)',
+    ok: googleAndroidConfigured && googleIdsDistinct,
+    detail:
+      googleAndroidConfigured && googleIdsDistinct
+        ? `android=${Boolean(googleNativeIds.androidClientId)} web=${Boolean(googleNativeIds.webClientId)}`
+        : 'Configurer EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID (client OAuth Android package+SHA) différent du client Web.',
+  });
+
+  const oauthRedirect = getComputedOAuthRedirectUri();
+  checks.push({
+    id: 'google_oauth_redirect_uri',
+    label: 'Google OAuth redirect URI (runtime)',
+    ok: Boolean(oauthRedirect && oauthRedirect.startsWith('/')) || /^https?:\/\//i.test(oauthRedirect) || /^[a-z][a-z0-9+.-]*:\/\//i.test(oauthRedirect),
+    detail: oauthRedirect || 'Redirect URI vide',
+  });
+
+  if (Platform.OS === 'android') {
+    const installedRedirect = getGoogleInstalledAppRedirectUri({
+      ...googleNativeIds,
+      webClientId: googleNativeIds.webClientId,
+    });
+    checks.push({
+      id: 'google_android_custom_scheme',
+      label: 'Google Android custom redirect (client natif)',
+      ok: Boolean(installedRedirect || googleNativeIds.androidClientId),
+      detail: installedRedirect
+        ? installedRedirect
+        : 'Custom redirect non résolu (Expo Go toléré) — vérifier client Android + SHA Firebase/Google Cloud.',
+    });
+  }
+
+  checks.push({
+    id: 'facebook_oauth_app_id',
+    label: 'Facebook OAuth (EXPO_PUBLIC_FACEBOOK_APP_ID)',
+    ok: Boolean(getFacebookAppId()),
+    detail: getFacebookAppId() ? 'App ID configuré' : 'App ID manquant',
   });
 
   let healthOk = false;
@@ -161,6 +216,14 @@ export async function runReleasePreflight(): Promise<PreflightCheck[]> {
     detail: readExtra('EXPO_PUBLIC_SENTRY_DSN')
       ? 'DSN configuré (erreurs JS remontées en build release si DSN présent au build)'
       : 'Recommandé avant store : définir EXPO_PUBLIC_SENTRY_DSN (EAS / .env) + alertes équipe Sentry',
+  });
+  checks.push({
+    id: 'crashlytics_native',
+    label: 'Firebase Crashlytics natif (optionnel complémentaire)',
+    ok: isCrashlyticsEnabled(),
+    detail: isCrashlyticsEnabled()
+      ? 'Bridge Crashlytics détecté'
+      : 'Package @react-native-firebase/crashlytics non détecté (Sentry actif en principal)',
   });
 
   return checks;

@@ -49,6 +49,8 @@ export const API_ROUTES = {
   ADMIN_ANALYTICS_USERS: (period = '7d') => `/admin/analytics/users?period=${encodeURIComponent(period)}`,
   ADMIN_ANALYTICS_REVENUE: (period = '30d') => `/admin/analytics/revenue?period=${encodeURIComponent(period)}`,
   ADMIN_ANALYTICS_CONTENT: (period = '7d') => `/admin/analytics/content?period=${encodeURIComponent(period)}`,
+  ADMIN_ANALYTICS_VIEWS_INTEGRITY: (windowDays = 7) =>
+    `/admin/analytics/views-integrity?windowDays=${encodeURIComponent(String(windowDays))}`,
   ADMIN_SETTINGS: '/admin/settings',
   ADMIN_USERS: '/admin/users',
   ADMIN_ORDERS: '/admin/orders',

@@ -1089,31 +1089,53 @@ export default function Home() {
     }
   });
 
+  const promptLoginForAction = useCallback((action = 'continuer') => {
+    const normalized = String(action || '').toLowerCase();
+    const message =
+      normalized === 'liker' || normalized === 'commenter' || normalized === 'réagir'
+        ? "Connectez-vous d'abord pour liker ou commenter."
+        : `Connectez-vous d'abord pour ${action}.`;
+    toast.error(message, {
+      action: {
+        label: 'Se connecter',
+        onClick: () => _navigate('/Landing'),
+      },
+    });
+  }, [_navigate]);
+
   // Empêche un changement d'index immédiat juste après un like (scroll snap parasite)
   const likeScrollLockUntilRef = useRef(0);
 
   const handleLike = useCallback(
     (video) => {
       if (!video) return;
+      if (!user) {
+        promptLoginForAction('liker');
+        return;
+      }
       likeScrollLockUntilRef.current = Date.now() + 400;
       if (!likeMutation.isPending) {
         likeMutation.mutate({ video, type: 'like' });
       }
       impactLight().catch(() => {});
     },
-    [likeMutation]
+    [likeMutation, promptLoginForAction, user]
   );
 
   const handleVideoReaction = useCallback(
     (video, type) => {
       if (!video || !type) return;
+      if (!user) {
+        promptLoginForAction('réagir');
+        return;
+      }
       likeScrollLockUntilRef.current = Date.now() + 400;
       if (!likeMutation.isPending) {
         likeMutation.mutate({ video, type: String(type) });
       }
       impactLight().catch(() => {});
     },
-    [likeMutation]
+    [likeMutation, promptLoginForAction, user]
   );
 
   const saveMutation = useMutation({
@@ -1175,7 +1197,7 @@ export default function Home() {
 
   const handleToggleWonder = useCallback(async (creatorId, creatorName = '') => {
     if (!user) {
-      _navigate('/');
+      promptLoginForAction('rejoindre un Wonder');
       return;
     }
     const wasInWonder = userFollows.some((f) => f.id === creatorId);
@@ -1189,7 +1211,7 @@ export default function Home() {
     } else {
       toast.success(`Vous avez quitte le Wonder de ${creatorName || 'ce createur'}`);
     }
-  }, [_navigate, queryClient, user, userFollows]);
+  }, [promptLoginForAction, queryClient, user, userFollows]);
 
   const handleTip = async (amount, method, extra = {}) => {
     if (!user || !selectedVideo) {
@@ -1616,6 +1638,10 @@ export default function Home() {
                   null
                 }
                 onComment={() => {
+                  if (!user) {
+                    promptLoginForAction('commenter');
+                    return;
+                  }
                   setSelectedVideo(slide.video);
                   setActiveModal('comments');
                 }}
@@ -1623,8 +1649,18 @@ export default function Home() {
                   setSelectedVideo(slide.video);
                   setActiveModal('share');
                 }}
-                onSave={() => saveMutation.mutate(slide.video)}
+                onSave={() => {
+                  if (!user) {
+                    promptLoginForAction('sauvegarder');
+                    return;
+                  }
+                  saveMutation.mutate(slide.video);
+                }}
                 onTip={() => {
+                  if (!user) {
+                    promptLoginForAction('envoyer un tip');
+                    return;
+                  }
                   setSelectedVideo(slide.video);
                   setActiveModal('tip');
                 }}
@@ -1632,7 +1668,7 @@ export default function Home() {
                 onProfileClick={(creatorId) => {
                   _navigate(`/Profile?_userId=${creatorId}`);
                 }}
-                onRequireAuth={() => toast.error('Connectez-vous pour aimer')}
+                onRequireAuth={() => promptLoginForAction('liker')}
                 onInitialVisualReady={handleInitialFeedVisualReady}
               />
             ))}
@@ -1802,6 +1838,7 @@ export default function Home() {
           setActiveModal('tip');
         }}
         user={user}
+        onRequireAuth={promptLoginForAction}
         onRefresh={() => queryClient.invalidateQueries({ queryKey: ['comments', selectedVideo?.id] })}
       />
 

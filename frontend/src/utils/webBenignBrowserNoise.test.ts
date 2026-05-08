@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  isBenignMediaIllegalInvocation,
   isBenignMediaResourceAbort,
   isBenignMediaNotSuitable,
   normalizeWebErrorText,
@@ -40,5 +41,15 @@ describe('isBenignMediaResourceAbort', () => {
     );
     expect(msg.includes("user's request")).toBe(true);
     expect(isBenignMediaResourceAbort(new Error(msg))).toBe(true);
+  });
+});
+
+describe('isBenignMediaIllegalInvocation', () => {
+  it("reconnaît l'erreur play() illegal invocation", () => {
+    expect(
+      isBenignMediaIllegalInvocation(
+        new TypeError("Failed to execute 'play' on 'HTMLMediaElement': Illegal invocation")
+      )
+    ).toBe(true);
   });
 });

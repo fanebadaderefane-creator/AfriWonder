@@ -222,7 +222,7 @@ router.get('/topic/:topic', optionalAuth, async (req: AuthRequest, res, next) =>
         creator_id: creator?.id || video.creator_id,
         creator_name: creator?.full_name || creator?.username || '',
         creator_avatar: creator?.profile_image || '',
-        views: video.views ?? 0,
+        views: Math.max(Number(video.views ?? 0), Number(video.qualified_views_count ?? 0)),
         likes: _count?.video_likes || video.likes || 0,
         comments_count: _count?.video_comments || video.comments_count || 0,
         hashtags: Array.isArray(hashtags) ? hashtags : [],
@@ -308,6 +308,37 @@ router.get('/diversified', optionalAuth, async (req: AuthRequest, res, next) => 
       if (diversified.length >= limit) break;
     }
 
+    /**
+     * Fallback anti-feed vide/répétitif : si la fenêtre diversifiée est trop courte,
+     * on complète avec les vidéos publiques les plus populaires (toujours max 2/creator).
+     */
+    if (diversified.length < limit) {
+      const seenIds = new Set(diversified.map((v) => v.id));
+      const need = limit - diversified.length;
+      const fallbackRows = await prisma.video.findMany({
+        where: {
+          ...where,
+          id: { notIn: [...seenIds] },
+        },
+        take: need * 4,
+        orderBy: [{ views: 'desc' }, { created_at: 'desc' }],
+        include: {
+          creator: { select: { id: true, username: true, full_name: true, profile_image: true } },
+          video_hashtags: { select: { tag_name: true } },
+          _count: { select: { video_likes: true, video_comments: true } },
+        },
+      });
+      for (const r of fallbackRows) {
+        if (diversified.length >= limit) break;
+        if (seenIds.has(r.id)) continue;
+        const count = byCreator.get(r.creator_id) || 0;
+        if (count >= 2) continue;
+        byCreator.set(r.creator_id, count + 1);
+        diversified.push(r);
+        seenIds.add(r.id);
+      }
+    }
+
     const videos = diversified.map((video: any) => {
       const { creator, _count, video_hashtags, ...videoData } = video;
       let hashtags = video.hashtags;
@@ -332,7 +363,7 @@ router.get('/diversified', optionalAuth, async (req: AuthRequest, res, next) => 
         creator_id: creator?.id || video.creator_id,
         creator_name: creator?.full_name || creator?.username || '',
         creator_avatar: creator?.profile_image || '',
-        views: video.views ?? 0,
+        views: Math.max(Number(video.views ?? 0), Number(video.qualified_views_count ?? 0)),
         likes: _count?.video_likes || video.likes || 0,
         comments_count: _count?.video_comments || video.comments_count || 0,
         hashtags: Array.isArray(hashtags) ? hashtags : [],
@@ -408,11 +439,12 @@ router.post('/:id/view', optionalAuth, validateBody(videoRecordViewSchema), asyn
     const id = param(req, 'id');
     const userId = req.user?.id;
     const { watchSeconds, watchPercent, deviceId, scrollSlow, interactionDetected } = req.body || {};
+    const deviceIdFromHeader = String(req.headers['x-afw-device-id'] || '').trim();
     const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || (req.socket as any)?.remoteAddress;
 
     const result = await videoService.recordView(id, {
       userId,
-      deviceId,
+      deviceId: deviceId || deviceIdFromHeader || undefined,
       watchSeconds,
       watchPercent,
       scrollSlow,

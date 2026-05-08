@@ -106,6 +106,13 @@ function isSchemaColumnError(err: unknown): boolean {
   return /column .* does not exist|Unknown column|no such column|42703/i.test(message);
 }
 
+function isUniqueLikeConstraintError(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (err.code !== 'P2002') return false;
+  const target = Array.isArray(err.meta?.target) ? err.meta?.target.map(String) : [];
+  return target.includes('user_id') && target.includes('video_id');
+}
+
 const VIDEO_LIST_FALLBACK_SELECT = `SELECT v.id, v.title, v.description, v.video_url, v.low_quality_url, v.hls_url, v.thumbnail_url, v.creator_id, v.visibility, v.category, v.views, v.likes, v.comments_count, v.shares, v.saves, v.duration, v.created_at, v.updated_at, v.hashtags, v.music_title, v.is_featured, v.algo_tier, v.avg_retention_pct, v.qualified_views_count, v.media_type, v.remix_of_id, v.subtitle_url, v.download_allowed, v.is_premium, v.trim_start_sec, v.trim_end_sec, v.filter_id, v.comments_disabled, v.comment_visibility, v.hide_likes, v.scheduled_at,
                 u.username, u.full_name as "creator_name", u.profile_image as "creator_avatar"
          FROM "Video" v
@@ -121,6 +128,18 @@ const VIDEO_LIST_FALLBACK_SELECT_NO_LOW_Q = `SELECT v.id, v.title, v.description
          WHERE v.visibility = 'public' AND (v.video_url IS NULL OR v.video_url NOT LIKE '%example.com%')
          ORDER BY v.created_at DESC
          LIMIT $1 OFFSET $2`;
+
+const VIEW_DEDUP_WINDOW_MINUTES = Math.max(
+  5,
+  Number.parseInt(
+    process.env.VIDEO_VIEW_DEDUP_WINDOW_MINUTES
+      || (process.env.NODE_ENV === 'production' ? '60' : '30'),
+    10,
+  ) || 30,
+);
+
+const STRICT_VIEW_REQUIRES_STABLE_VIEWER_ID =
+  String(process.env.VIDEO_VIEW_STRICT_REQUIRE_STABLE_ID ?? '1') !== '0';
 
 const inFlightAutoThumbnailVideoIds = new Set<string>();
 
@@ -458,7 +477,7 @@ class VideoService {
         creator_id: creator?.id || video.creator_id,
         creator_name: creator?.full_name || creator?.username || '',
         creator_avatar: creator?.profile_image || '',
-        views: video.views ?? 0, // S'assurer que views est toujours défini
+        views: Math.max(Number(video.views ?? 0), Number(video.qualified_views_count ?? 0)),
         likes: _count?.video_likes || video.likes || 0,
         comments_count: _count?.video_comments || video.comments_count || 0,
         hashtags: Array.isArray(hashtags) ? hashtags : [],
@@ -641,7 +660,15 @@ class VideoService {
     ip?: string;
   }): Promise<{ recorded: boolean; views: number }> {
     const { userId, deviceId, watchSeconds = 0, watchPercent = 0, scrollSlow, interactionDetected, ip } = options;
-    const viewerKey = userId ? `u:${userId}` : (deviceId ? `d:${deviceId}` : ip ? `i:${ip}` : null);
+    const normalizedUserId = String(userId || '').trim();
+    const normalizedDeviceId = String(deviceId || '').trim();
+    const normalizedIp = String(ip || '').trim();
+    const hasStableId = Boolean(normalizedUserId || normalizedDeviceId);
+    const viewerKey = normalizedUserId
+      ? `u:${normalizedUserId}`
+      : normalizedDeviceId
+        ? `d:${normalizedDeviceId}`
+        : (!STRICT_VIEW_REQUIRES_STABLE_VIEWER_ID && normalizedIp ? `i:${normalizedIp}` : null);
 
     if (!viewerKey) {
       return { recorded: false, views: 0 };
@@ -686,7 +713,8 @@ class VideoService {
       return { recorded: false, views: video.views };
     }
 
-    const timeBucket = Math.floor(Date.now() / 1000 / 1800);
+    const bucketWindowSeconds = VIEW_DEDUP_WINDOW_MINUTES * 60;
+    const timeBucket = Math.floor(Date.now() / bucketWindowSeconds);
 
     const result = await prisma.videoView.createMany({
       data: [{
@@ -1184,15 +1212,31 @@ class VideoService {
       return { reaction: reactionType, reaction_counts: await this.getReactionCounts(videoId) };
     }
 
-    await prisma.$transaction([
-      prisma.like.create({
-        data: { video_id: videoId, user_id: userId, type: reactionType },
-      }),
-      prisma.video.update({
-        where: { id: videoId },
-        data: { likes: { increment: 1 } },
-      }),
-    ]);
+    try {
+      await prisma.$transaction([
+        prisma.like.create({
+          data: { video_id: videoId, user_id: userId, type: reactionType },
+        }),
+        prisma.video.update({
+          where: { id: videoId },
+          data: { likes: { increment: 1 } },
+        }),
+      ]);
+    } catch (error) {
+      // Deux taps rapides / requêtes concurrentes peuvent tenter le même INSERT.
+      // Dans ce cas, la ligne existe déjà: on renvoie un état idempotent au lieu de 500.
+      if (isUniqueLikeConstraintError(error)) {
+        const existingAfterRace = await prisma.like.findFirst({
+          where: { video_id: videoId, user_id: userId },
+          select: { type: true },
+        });
+        return {
+          reaction: existingAfterRace?.type ?? reactionType,
+          reaction_counts: await this.getReactionCounts(videoId),
+        };
+      }
+      throw error;
+    }
 
     const vCreator = await prisma.video.findUnique({
       where: { id: videoId },

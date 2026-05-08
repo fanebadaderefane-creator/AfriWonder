@@ -42,13 +42,18 @@ module.exports = ({ config }) => {
    */
   const facebookAuthorizeScheme = fb ? `fb${fb}` : '';
   const baseScheme = config.scheme;
+  const androidPackageScheme = String(android.package || 'com.afriwonder.app').trim();
   const scheme = facebookAuthorizeScheme
     ? Array.isArray(baseScheme)
-      ? [...new Set([...baseScheme, facebookAuthorizeScheme])]
+      ? [...new Set([...baseScheme, facebookAuthorizeScheme, androidPackageScheme])]
       : baseScheme
-        ? [baseScheme, facebookAuthorizeScheme]
-        : facebookAuthorizeScheme
-    : baseScheme;
+        ? [baseScheme, facebookAuthorizeScheme, androidPackageScheme]
+        : [facebookAuthorizeScheme, androidPackageScheme]
+    : Array.isArray(baseScheme)
+      ? [...new Set([...baseScheme, androidPackageScheme])]
+      : baseScheme
+        ? [baseScheme, androidPackageScheme]
+        : androidPackageScheme;
 
   return {
     ...config,

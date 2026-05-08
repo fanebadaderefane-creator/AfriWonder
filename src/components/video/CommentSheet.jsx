@@ -38,6 +38,7 @@ export default function CommentSheet({
   onTip,
 
   user,
+  onRequireAuth,
 
   onRefresh,
 
@@ -91,6 +92,10 @@ export default function CommentSheet({
     e.preventDefault();
 
     if (newComment.trim()) {
+      if (!user) {
+        onRequireAuth?.('commenter');
+        return;
+      }
 
       if (editingComment) {
 
@@ -199,6 +204,10 @@ export default function CommentSheet({
 
 
   const handleReply = (comment) => {
+    if (!user) {
+      onRequireAuth?.('commenter');
+      return;
+    }
     setReplyingTo(comment);
     const name = comment?.user_name ?? comment?.user?.full_name ?? comment?.user?.username ?? 'Utilisateur';
     setNewComment(`@${name} `);
@@ -209,7 +218,7 @@ export default function CommentSheet({
 
   const handleLikeComment = async (comment) => {
     if (!user) {
-      toast.error('Connectez-vous pour réagir');
+      onRequireAuth?.('réagir');
       return;
     }
     try {
@@ -228,7 +237,7 @@ export default function CommentSheet({
 
   const handleCommentReaction = async (comment, type) => {
     if (!user) {
-      toast.error('Connectez-vous pour réagir');
+      onRequireAuth?.('réagir');
       return;
     }
     try {

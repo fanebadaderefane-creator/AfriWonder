@@ -203,6 +203,117 @@ router.get('/analytics/content', authenticate, requireAnyAdmin, async (req: Auth
   }
 });
 
+// GET /api/admin/analytics/views-integrity?windowDays=7
+// Rapport anti-fraude vues (source de vérité backend).
+router.get('/analytics/views-integrity', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const rawWindowDays = Number.parseInt(String(req.query.windowDays || '7'), 10);
+    const windowDays = Number.isFinite(rawWindowDays) ? Math.min(30, Math.max(1, rawWindowDays)) : 7;
+    const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+
+    const [summaryRows, topRiskRows] = await Promise.all([
+      prisma.$queryRaw<Array<{
+        total_videos: number;
+        sum_displayed_views: number;
+        sum_qualified_views: number;
+        sum_dedup_views_window: number;
+        undercount_videos: number;
+        risk_videos: number;
+      }>>`
+        SELECT
+          COUNT(v.id)::int AS total_videos,
+          COALESCE(SUM(v.views), 0)::int AS sum_displayed_views,
+          COALESCE(SUM(v.qualified_views_count), 0)::int AS sum_qualified_views,
+          COALESCE(SUM(COALESCE(vv_window.dedup_views, 0)), 0)::int AS sum_dedup_views_window,
+          COUNT(*) FILTER (WHERE v.views < v.qualified_views_count)::int AS undercount_videos,
+          COUNT(*) FILTER (
+            WHERE v.views > GREATEST(v.qualified_views_count, COALESCE(vv_window.dedup_views, 0))
+          )::int AS risk_videos
+        FROM "Video" v
+        LEFT JOIN (
+          SELECT video_id, COUNT(*)::int AS dedup_views
+          FROM "VideoView"
+          WHERE created_at >= ${since}
+          GROUP BY video_id
+        ) vv_window ON vv_window.video_id = v.id
+        WHERE v.visibility = 'public'
+      `,
+      prisma.$queryRaw<Array<{
+        video_id: string;
+        title: string | null;
+        creator_id: string;
+        displayed_views: number;
+        qualified_views: number;
+        dedup_views_window: number;
+        anomaly_score: number;
+      }>>`
+        SELECT
+          v.id AS video_id,
+          v.title,
+          v.creator_id,
+          v.views::int AS displayed_views,
+          v.qualified_views_count::int AS qualified_views,
+          COALESCE(vv_window.dedup_views, 0)::int AS dedup_views_window,
+          GREATEST(
+            v.views - GREATEST(v.qualified_views_count, COALESCE(vv_window.dedup_views, 0)),
+            0
+          )::int AS anomaly_score
+        FROM "Video" v
+        LEFT JOIN (
+          SELECT video_id, COUNT(*)::int AS dedup_views
+          FROM "VideoView"
+          WHERE created_at >= ${since}
+          GROUP BY video_id
+        ) vv_window ON vv_window.video_id = v.id
+        WHERE v.visibility = 'public'
+        ORDER BY anomaly_score DESC, v.views DESC
+        LIMIT 20
+      `,
+    ]);
+
+    const summary = summaryRows[0] || {
+      total_videos: 0,
+      sum_displayed_views: 0,
+      sum_qualified_views: 0,
+      sum_dedup_views_window: 0,
+      undercount_videos: 0,
+      risk_videos: 0,
+    };
+
+    await auditLog(req, 'analytics_views_integrity_read', 'analytics', undefined, {
+      windowDays,
+      generated_at: new Date().toISOString(),
+    });
+
+    res.json({
+      success: true,
+      data: {
+        window_days: windowDays,
+        generated_at: new Date().toISOString(),
+        totals: {
+          videos: Number(summary.total_videos || 0),
+          displayed_views: Number(summary.sum_displayed_views || 0),
+          qualified_views: Number(summary.sum_qualified_views || 0),
+          dedup_views_in_window: Number(summary.sum_dedup_views_window || 0),
+          undercount_videos: Number(summary.undercount_videos || 0),
+          risk_videos: Number(summary.risk_videos || 0),
+        },
+        top_risk_videos: topRiskRows.map((r) => ({
+          video_id: r.video_id,
+          title: r.title || 'Sans titre',
+          creator_id: r.creator_id,
+          displayed_views: Number(r.displayed_views || 0),
+          qualified_views: Number(r.qualified_views || 0),
+          dedup_views_in_window: Number(r.dedup_views_window || 0),
+          anomaly_score: Number(r.anomaly_score || 0),
+        })),
+      },
+    });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // GET /api/admin/users (pagination obligatoire, limit max 100)
 // ?includeTest=true pour inclure les utilisateurs de test (@example.com, E2E, etc.)
 router.get('/users', authenticate, requireAnyAdmin, async (req: AuthRequest, res, next) => {

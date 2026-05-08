@@ -108,6 +108,7 @@ interface VideoUser {
   avatar: string;
   username?: string;
   isFollowing: boolean;
+  isSelf?: boolean;
 }
 
 /** Élément renvoyé par `GET /videos/:id/similar` (snake_case API + champs Prisma camelCase). */
@@ -200,6 +201,7 @@ const FALLBACK_VIDEOS: Video[] = [];
  */
 const FEED_PAGE_LIMIT = 28;
 const TTFF_SENT_KEYS = new Set<string>();
+const MAX_TTFF_SENT_KEYS = 4000;
 
 export interface VideoItemProps {
   video: Video;
@@ -332,6 +334,7 @@ const VideoItemWithPlayer: React.FC<VideoItemProps> = ({
     if (!isActive) {
       setReactionsOpen(false);
       setSimilarOpen(false);
+      setSimilarItems([]);
     }
   }, [isActive]);
 
@@ -381,6 +384,10 @@ const VideoItemWithPlayer: React.FC<VideoItemProps> = ({
     (ttffMs: number) => {
       const key = `${video.id}:${video.videoUrl}`;
       if (TTFF_SENT_KEYS.has(key)) return;
+      if (TTFF_SENT_KEYS.size >= MAX_TTFF_SENT_KEYS) {
+        // Long scroll sessions: avoid unbounded key growth.
+        TTFF_SENT_KEYS.clear();
+      }
       // Envoyer systématiquement les cas lents, + un échantillon des cas rapides.
       if (ttffMs < 1200 && Math.random() > 0.15) return;
       TTFF_SENT_KEYS.add(key);
@@ -811,7 +818,7 @@ const VideoItemWithPlayer: React.FC<VideoItemProps> = ({
       )}
 
       {/* Right side actions */}
-      <View style={[styles.actions, { bottom: 100 }]} pointerEvents="box-none">
+      <View style={[styles.actions, { bottom: Math.max(40, insets.bottom + 10) }]} pointerEvents="box-none">
         {/* Avatar */}
         <View style={styles.avatarContainer}>
           <CreatorAvatar
@@ -823,7 +830,7 @@ const VideoItemWithPlayer: React.FC<VideoItemProps> = ({
             size={48}
             onPress={video.user.id ? onOpenProfile : undefined}
           />
-          {!video.user.isFollowing && (
+          {!video.user.isSelf && !video.user.isFollowing && (
             <TouchableOpacity
               style={styles.followBadge}
               onPress={onFollow}
@@ -923,7 +930,7 @@ const VideoItemWithPlayer: React.FC<VideoItemProps> = ({
           {video.myReaction && video.myReaction !== 'like' ? <View style={styles.reactionsTriggerDot} /> : null}
         </TouchableOpacity>
         <View style={styles.userRow}>
-          {video.user.isFollowing ? (
+          {video.user.isSelf ? null : video.user.isFollowing ? (
             <TouchableOpacity
               style={styles.followingTag}
               onPress={onFollow}
@@ -1250,7 +1257,19 @@ const CommentsModal: React.FC<{
   ).current;
   const { isAuthenticated, user } = useAuthStore();
   const promptLoginForAction = useCallback((action: string) => {
-    Alert.alert('Connexion', `Connectez-vous pour ${action}.`, [
+    const normalized = String(action || '').toLowerCase();
+    const message =
+      normalized === 'liker' || normalized === 'commenter' || normalized === 'réagir'
+        ? "Connectez-vous d'abord pour liker ou commenter."
+        : `Connectez-vous d'abord pour ${action}.`;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const goLogin = window.confirm(`${message}\n\nVoulez-vous vous connecter maintenant ?`);
+      if (goLogin) {
+        router.push({ pathname: '/(auth)/login', params: { returnTo: '/(tabs)' } });
+      }
+      return;
+    }
+    Alert.alert('Connexion requise', message, [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Se connecter',
@@ -2406,6 +2425,8 @@ export default function FeedScreen(props?: {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const likeScrollLockUntilRef = useRef(0);
+  const likeTapDebounceRef = useRef<Map<string, number>>(new Map());
   const playbackIndexRef = useRef(0);
   useEffect(() => {
     playbackIndexRef.current = playbackIndex;
@@ -2418,6 +2439,7 @@ export default function FeedScreen(props?: {
   const [feedEmptyMessage, setFeedEmptyMessage] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const currentUserId = useAuthStore((s) => s.user?.id ?? '');
   const feedParams = useLocalSearchParams<{ feed?: string; topic?: string }>();
 
   /** Android edge-to-edge : `insets.top` peut rester à 0 alors que la barre d’état recouvre le header ; les `position:absolute` avec `top:0` montent sous l’heure. */
@@ -2441,7 +2463,12 @@ export default function FeedScreen(props?: {
 
   const { t } = useLanguage();
   const promptLoginForAction = useCallback((action: string) => {
-    Alert.alert('Connexion requise', `Connectez-vous d'abord pour ${action}.`, [
+    const normalized = String(action || '').toLowerCase();
+    const message =
+      normalized === 'liker' || normalized === 'commenter' || normalized === 'réagir'
+        ? "Connectez-vous d'abord pour liker ou commenter."
+        : `Connectez-vous d'abord pour ${action}.`;
+    Alert.alert('Connexion requise', message, [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Se connecter',
@@ -2518,6 +2545,7 @@ export default function FeedScreen(props?: {
   }, []);
 
   const playbackAllowed = isScreenFocused && appState === 'active';
+  const androidLowRamMode = Platform.OS === 'android' && effectiveDataSaver;
 
   /** Hauteur réelle du viewport liste (sinon snap / offset ≠ hauteur des cellules → index bloqué sur 0). */
   const [listViewportHeight, setListViewportHeight] = useState(0);
@@ -2654,13 +2682,55 @@ export default function FeedScreen(props?: {
     }
   }, []);
 
+  const reactionRequestSeqRef = useRef<Map<string, number>>(new Map());
+
   const handleVideoReaction = useCallback(async (videoId: string, type: string) => {
     if (!isAuthenticated) {
       promptLoginForAction('réagir');
       return;
     }
+    const requestSeq = (reactionRequestSeqRef.current.get(videoId) ?? 0) + 1;
+    reactionRequestSeqRef.current.set(videoId, requestSeq);
+    const previousRef: { current: Video | null } = { current: null };
+
+    // Optimistic UI: cœur et compteur réagissent immédiatement, puis sync serveur.
+    setVideos((prev) =>
+      prev.map((v) => {
+        if (v.id !== videoId) return v;
+        previousRef.current = v;
+        const currentReaction = v.myReaction ?? (v.isLiked ? 'like' : null);
+        const nextReaction = currentReaction === type ? null : type;
+        const likesDelta =
+          type === 'like'
+            ? nextReaction === 'like'
+              ? 1
+              : currentReaction === 'like'
+                ? -1
+                : 0
+            : 0;
+        const nextLikes = Math.max(0, (Number(v.likes) || 0) + likesDelta);
+        const baseCounts = v.reactionCounts && typeof v.reactionCounts === 'object' ? { ...v.reactionCounts } : null;
+        const nextCounts = baseCounts
+          ? {
+              ...baseCounts,
+              ...(type === 'like' ? { like: nextLikes } : {}),
+            }
+          : v.reactionCounts;
+        return {
+          ...v,
+          myReaction: nextReaction,
+          isLiked: nextReaction === 'like',
+          likes: nextLikes,
+          reactionCounts: nextCounts,
+        };
+      })
+    );
+
     try {
       const response = await apiClient.post(`/videos/${videoId}/like`, { type });
+      if ((reactionRequestSeqRef.current.get(videoId) ?? 0) !== requestSeq) {
+        return;
+      }
       const data = response.data?.data || response.data;
       const counts = (data?.reaction_counts || {}) as Record<string, number>;
       const total = Object.values(counts).reduce((s, x) => s + (Number(x) || 0), 0);
@@ -2679,6 +2749,13 @@ export default function FeedScreen(props?: {
         )
       );
     } catch (err: unknown) {
+      if ((reactionRequestSeqRef.current.get(videoId) ?? 0) !== requestSeq) {
+        return;
+      }
+      const previous = previousRef.current;
+      if (previous) {
+        setVideos((prev) => prev.map((v) => (v.id === videoId ? previous : v)));
+      }
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 401) {
         promptLoginForAction('réagir');
@@ -2690,6 +2767,7 @@ export default function FeedScreen(props?: {
 
   const handlePlaybackScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (Date.now() < likeScrollLockUntilRef.current) return;
       const h = feedItemHeight;
       if (h <= 0) return;
       const len = videosRef.current.length;
@@ -2709,7 +2787,7 @@ export default function FeedScreen(props?: {
   /** View / analytics uniquement — pas pour `isActive` (trop lent pour couper l’audio). */
   const viewabilityConfigRef = useRef({
     itemVisiblePercentThreshold: 50,
-    minimumViewTime: 100,
+    minimumViewTime: 3000,
   });
 
   const onViewableItemsChanged = useRef(
@@ -2722,7 +2800,13 @@ export default function FeedScreen(props?: {
       if (!video) return;
       if (lastViewedVideoIdRef.current === video.id) return;
       lastViewedVideoIdRef.current = video.id;
-      apiClient.post(`/videos/${video.id}/view`).catch(() => {});
+      apiClient.post(`/videos/${video.id}/view`, {
+        // Backend compte la vue a partir de >=3s ou >=25%.
+        watchSeconds: 3,
+        watchPercent: 25,
+        scrollSlow: true,
+        interactionDetected: true,
+      }).catch(() => {});
     }
   );
 
@@ -2770,7 +2854,7 @@ export default function FeedScreen(props?: {
       trimStartSec: typeof v.trim_start_sec === 'number' ? v.trim_start_sec : null,
       trimEndSec: typeof v.trim_end_sec === 'number' ? v.trim_end_sec : null,
       duration: v.duration || 0,
-      views: Number(v.views ?? v.view_count ?? v.views_count) || 0,
+      views: Number(v.views ?? v.qualified_views_count ?? v.view_count ?? v.views_count) || 0,
       likes: v.likes || 0,
       comments: v.comments_count || 0,
       shares: v.shares || 0,
@@ -2784,6 +2868,7 @@ export default function FeedScreen(props?: {
         avatar: toAbsoluteMediaUrl((v.creator_avatar || v.creator?.profile_image || '').trim()).trim(),
         username: (v.creator?.username || v.creator_username || '').trim(),
         isFollowing: Boolean(v.creator?.is_following ?? v.is_following),
+        isSelf: Boolean(currentUserId && (v.creator_id || v.creator?.id || '') === currentUserId),
       },
       music: v.music_title || 'Son original',
       isSponsored: v.is_sponsored || v.isSponsored || false,
@@ -2795,7 +2880,7 @@ export default function FeedScreen(props?: {
       remixKind: typeof v.remix_kind === 'string' ? v.remix_kind : null,
       mediaType: String(v.media_type || 'video').toLowerCase() === 'photo' ? 'photo' : 'video',
     };
-  }, [effectiveDataSaver]);
+  }, [effectiveDataSaver, currentUserId]);
 
   const loadFeed = async (
     pageNum: number = 1,
@@ -2969,18 +3054,29 @@ export default function FeedScreen(props?: {
     return unsub;
   }, [navigation, isScreenFocused, refreshing, onRefresh]);
 
-  const handleLike = (videoId: string) => {
+  const handleLike = useCallback((videoId: string) => {
+    const now = Date.now();
+    const last = likeTapDebounceRef.current.get(videoId) ?? 0;
+    if (now - last < 120) return;
+    likeTapDebounceRef.current.set(videoId, now);
+    likeScrollLockUntilRef.current = Date.now() + 400;
     void handleVideoReaction(videoId, 'like');
-  };
+  }, [handleVideoReaction]);
 
-  const handleDoubleTapLike = (videoId: string) => {
-    const video = videos.find((v) => v.id === videoId);
-    if (video && video.myReaction !== 'like' && !video.isLiked) {
-      void handleVideoReaction(videoId, 'like');
-    }
-  };
+  const handleDoubleTapLike = useCallback((videoId: string) => {
+    const now = Date.now();
+    const last = likeTapDebounceRef.current.get(videoId) ?? 0;
+    if (now - last < 120) return;
+    likeTapDebounceRef.current.set(videoId, now);
+    likeScrollLockUntilRef.current = Date.now() + 400;
+    void handleVideoReaction(videoId, 'like');
+  }, [handleVideoReaction]);
 
   const handleSave = async (videoId: string) => {
+    if (!isAuthenticated) {
+      promptLoginForAction('sauvegarder');
+      return;
+    }
     const target = videos.find(v => v.id === videoId);
     const nextSaved = !(target?.isSaved ?? false);
     setVideos(prev => prev.map(v => v.id === videoId ? { ...v, isSaved: !v.isSaved } : v));
@@ -2994,6 +3090,12 @@ export default function FeedScreen(props?: {
   };
 
   const handleFollow = async (userId: string) => {
+    if (!isAuthenticated) {
+      promptLoginForAction('suivre ce créateur');
+      return;
+    }
+    if (!userId) return;
+    if (currentUserId && userId === currentUserId) return;
     // Optimistic update
     const target = videos.find(v => v.user.id === userId);
     const nextFollowing = !(target?.user.isFollowing ?? false);
@@ -3013,6 +3115,10 @@ export default function FeedScreen(props?: {
   };
 
   const handleShare = async (videoId: string) => {
+    if (!isAuthenticated) {
+      promptLoginForAction('partager');
+      return;
+    }
     const video = videos.find(v => v.id === videoId);
     setShareData({
       title: video?.title || 'Vidéo AfriWonder',
@@ -3051,6 +3157,10 @@ export default function FeedScreen(props?: {
   }, []);
 
   const openComments = (videoId: string, count: number, creatorId?: string | null) => {
+    if (!isAuthenticated) {
+      promptLoginForAction('commenter');
+      return;
+    }
     setSelectedVideoId(videoId);
     setSelectedVideoCreatorId(creatorId ?? null);
     setSelectedVideoComments(count);
@@ -3234,10 +3344,10 @@ export default function FeedScreen(props?: {
             scrollEventThrottle={32}
             onScroll={handlePlaybackScroll}
             removeClippedSubviews={false}
-            windowSize={effectiveDataSaver ? 2 : 5}
+            windowSize={androidLowRamMode ? 1 : effectiveDataSaver ? 2 : 5}
             initialNumToRender={2}
-            maxToRenderPerBatch={effectiveDataSaver ? 1 : 2}
-            updateCellsBatchingPeriod={effectiveDataSaver ? 120 : 80}
+            maxToRenderPerBatch={androidLowRamMode ? 1 : effectiveDataSaver ? 1 : 2}
+            updateCellsBatchingPeriod={androidLowRamMode ? 160 : effectiveDataSaver ? 120 : 80}
             getItemLayout={(_, index) => {
               const h = Math.max(1, feedItemHeight);
               return { length: h, offset: h * index, index };
@@ -3363,7 +3473,7 @@ export default function FeedScreen(props?: {
             disableIntervalMomentum={Platform.OS === 'android'}
             bounces={false}
             overScrollMode="never"
-            scrollEventThrottle={effectiveDataSaver ? 32 : 16}
+            scrollEventThrottle={androidLowRamMode ? 48 : effectiveDataSaver ? 32 : 16}
             onScroll={handlePlaybackScroll}
             onScrollBeginDrag={onFeedScrollBeginDrag}
             onScrollEndDrag={onFeedScrollEndDrag}
@@ -3371,7 +3481,7 @@ export default function FeedScreen(props?: {
             estimatedItemSize={feedItemHeight}
             drawDistance={
               feedItemHeight > 0
-                ? feedItemHeight * (effectiveDataSaver ? 1 : Platform.OS === 'android' ? 2 : 3)
+                ? feedItemHeight * (androidLowRamMode ? 0.75 : effectiveDataSaver ? 1 : Platform.OS === 'android' ? 2 : 3)
                 : 600
             }
             viewabilityConfig={viewabilityConfigRef.current}
@@ -4106,7 +4216,7 @@ function VideoItemWebRaster(props: VideoItemProps) {
         </View>
       ) : null}
 
-      <View style={[styles.actions, { bottom: 100 }]} pointerEvents="box-none">
+      <View style={[styles.actions, { bottom: Math.max(40, insets.bottom + 10) }]} pointerEvents="box-none">
         <View style={styles.avatarContainer}>
           <CreatorAvatar
             testID="creator-avatar"
@@ -4117,7 +4227,7 @@ function VideoItemWebRaster(props: VideoItemProps) {
             size={48}
             onPress={video.user.id ? onOpenProfile : undefined}
           />
-          {!video.user.isFollowing ? (
+          {!video.user.isSelf && !video.user.isFollowing ? (
             <TouchableOpacity style={styles.followBadge} onPress={onFollow} accessibilityLabel="Wonder ce créateur" accessibilityRole="button">
               <Ionicons name="add" size={12} color="#FFF" />
             </TouchableOpacity>
@@ -4191,7 +4301,7 @@ function VideoItemWebRaster(props: VideoItemProps) {
           {video.myReaction && video.myReaction !== 'like' ? <View style={styles.reactionsTriggerDot} /> : null}
         </TouchableOpacity>
         <View style={styles.userRow}>
-          {video.user.isFollowing ? (
+          {video.user.isSelf ? null : video.user.isFollowing ? (
             <TouchableOpacity style={styles.followingTag} onPress={onFollow} activeOpacity={0.75} accessibilityRole="button">
               <Text style={styles.followingTagText}>Dans ton Wonder</Text>
             </TouchableOpacity>

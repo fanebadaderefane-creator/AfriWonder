@@ -337,6 +337,15 @@ export default function LoginScreen() {
           }}
         />
 
+        <TouchableOpacity
+          testID="login-continue-guest"
+          style={styles.guestAccessBtn}
+          onPress={() => router.replace('/(tabs)')}
+        >
+          <Ionicons name="compass-outline" size={18} color={Colors.textSecondary} />
+          <Text style={styles.guestAccessText}>Continuer sans connexion</Text>
+        </TouchableOpacity>
+
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>Pas encore de compte ?</Text>
@@ -507,6 +516,24 @@ const styles = StyleSheet.create({
   forgotPassword: { alignSelf: 'auto' },
   forgotPasswordText: { color: Colors.primary, fontSize: FontSizes.sm },
   loginButton: { width: '100%' },
+  guestAccessBtn: {
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  guestAccessText: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.md,
+    fontWeight: '600',
+  },
 
   // Footer
   footer: { flexDirection: 'row', justifyContent: 'center' },

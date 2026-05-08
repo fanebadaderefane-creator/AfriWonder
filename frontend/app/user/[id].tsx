@@ -84,6 +84,7 @@ export default function PublicUserProfileScreen() {
   const [profile, setProfile] = useState<PublicUser | null>(null);
   const [videos, setVideos] = useState<any[]>([]);
   const [likedVideos, setLikedVideos] = useState<any[]>([]);
+  const [likedVideosPrivate, setLikedVideosPrivate] = useState(false);
   const [stats, setStats] = useState<ProfileStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -116,12 +117,15 @@ export default function PublicUserProfileScreen() {
     }
     setLoading(true);
     setErr(null);
+    setLikedVideosPrivate(false);
     try {
       const [uRes, vRes, statsRes, likedRes, hallRes, liveRes] = await Promise.all([
         apiClient.get(`/users/${userId}`),
         apiClient.get(`/videos`, { params: { creator_id: userId, page: 1, limit: 60 } }),
         apiClient.get(`/users/${userId}/stats`).catch(() => ({ data: null })),
-        apiClient.get(`/users/${userId}/liked-videos`, { params: { page: 1, limit: 60 } }).catch(() => ({ data: null })),
+        apiClient
+          .get(`/users/${userId}/liked-videos`, { params: { page: 1, limit: 60 } })
+          .catch((error: unknown) => ({ data: null, _error: error })),
         apiClient.get(`/users/${userId}/live-gift-hall-of-fame`, { params: { limit: 12 } }).catch(() => ({ data: null })),
         apiClient.get('/live', { params: { creator_id: userId, status: 'live', limit: 1 } }).catch(() => ({ data: null })),
       ]);
@@ -142,6 +146,8 @@ export default function PublicUserProfileScreen() {
           : null
       );
 
+      const likedStatus = (likedRes as { _error?: { response?: { status?: number } } })?._error?.response?.status;
+      if (likedStatus === 403) setLikedVideosPrivate(true);
       const lv = (likedRes as any)?.data?.data ?? (likedRes as any)?.data;
       setLikedVideos(Array.isArray(lv?.videos) ? lv.videos : []);
 
@@ -755,7 +761,9 @@ export default function PublicUserProfileScreen() {
               {mainTab === 'reposts'
                 ? 'Aucune republication (remix) pour l’instant.'
                 : mainTab === 'liked'
-                  ? 'Aucune vidéo likée visible.'
+                  ? likedVideosPrivate
+                    ? 'Vidéos likées privées.'
+                    : 'Aucune vidéo likée visible.'
                   : 'Aucune vidéo publique pour l’instant.'}
             </Text>
           ) : (

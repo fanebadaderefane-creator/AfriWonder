@@ -6,6 +6,7 @@ import { logoutAfterFailedRefresh, tryRefreshAccessToken } from './tokenRefresh'
 import { attachUserFacingApiError } from '../utils/userFacingError';
 import { devLog } from '../utils/devLog';
 import { getAfriDeviceIdForRequestHeader } from '../utils/afwDeviceRequestId';
+import { deferNonCriticalRequestDuringUpload } from './uploadNetworkPriority';
 
 // Même route que la PWA : `/api/proxy` sur l’origine backend (Express, port 3000 en dev).
 const getProxyBaseUrl = () => getBackendOrigin();
@@ -54,6 +55,7 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.request.use(
   async (config) => {
     try {
+      await deferNonCriticalRequestDuringUpload(config);
       /**
        * Évite un 401 en plein multipart : sur RN, le réessai axios avec le même `FormData` peut
        * produire « Network Error ». On rafraîchit avant envoi si l’access token expire bientôt.
@@ -154,7 +156,12 @@ apiClient.interceptors.response.use(
 
       const refreshToken = await secureStorage.getItem('refreshToken');
       if (refreshToken?.trim()) {
-        const ok = await tryRefreshAccessToken();
+        let ok = await tryRefreshAccessToken();
+        // Réseau mobile instable: un second essai court évite un logout brutal.
+        if (!ok) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          ok = await tryRefreshAccessToken();
+        }
         if (ok) {
           const accessToken = await secureStorage.getItem('accessToken');
           originalRequest.headers.Authorization = `Bearer ${accessToken || ''}`;

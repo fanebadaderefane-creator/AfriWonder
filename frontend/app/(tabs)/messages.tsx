@@ -19,6 +19,7 @@ import { toAbsoluteMediaUrl } from '../../src/utils/absoluteMediaUrl';
 import socketService from '../../src/services/socketService';
 import { useAppTheme } from '../../src/theme/ThemeContext';
 import type { AppPalette } from '../../src/theme/themePalettes';
+import { safeRouterPush } from '../../src/utils/safeRouter';
 
 /**
  * Inbox = écran d'entrée de l'onglet « Inbox » (accents alignés marque AfriWonder / orange).
@@ -175,11 +176,11 @@ function buildNavigation(api: ApiNotification): () => void {
 
   return () => {
     if (refType === 'video' && refId) {
-      router.push({ pathname: '/watch/[id]', params: { id: refId } });
+      safeRouterPush({ pathname: '/watch/[id]', params: { id: refId } });
       return;
     }
     if ((refType === 'conversation' || refType === 'message') && refId) {
-      router.push({ pathname: '/messages/[id]', params: { id: refId } });
+      safeRouterPush({ pathname: '/messages/[id]', params: { id: refId } });
       return;
     }
     /** Notifs d'appel : l'id de conversation ≠ userId — résoudre le fil via l'API comme depuis un profil. */
@@ -191,7 +192,7 @@ function buildNavigation(api: ApiNotification): () => void {
             const pkg = res.data?.data ?? res.data;
             const convId = pkg?.id;
             if (convId) {
-              router.push({
+              safeRouterPush({
                 pathname: '/messages/[id]',
                 params: { id: String(convId), otherUserId: String(fromUser) },
               });
@@ -200,28 +201,28 @@ function buildNavigation(api: ApiNotification): () => void {
           } catch {
             /* ignore */
           }
-          router.push('/messages' as never);
+          safeRouterPush('/messages');
         })();
         return;
       }
-      router.push('/messages' as never);
+      safeRouterPush('/messages');
       return;
     }
     if (refType === 'user' && refId) {
-      router.push({ pathname: '/user/[id]', params: { id: refId } });
+      safeRouterPush({ pathname: '/user/[id]', params: { id: refId } });
       return;
     }
     if (refType === 'order' && refId) {
-      router.push({ pathname: '/orders' as never });
+      safeRouterPush('/orders');
       return;
     }
     if (refType === 'live' && refId) {
-      router.push({ pathname: '/live/[id]', params: { id: refId } } as never);
+      safeRouterPush({ pathname: '/live/[id]', params: { id: refId } });
       return;
     }
     /** Fallback ultime : profil de l'expéditeur si on l'a, sinon page Inbox courante. */
     if (fromUser) {
-      router.push({ pathname: '/user/[id]', params: { id: String(fromUser) } });
+      safeRouterPush({ pathname: '/user/[id]', params: { id: String(fromUser) } });
       return;
     }
   };

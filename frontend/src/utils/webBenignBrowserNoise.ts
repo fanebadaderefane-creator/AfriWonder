@@ -64,7 +64,20 @@ export function isBenignMediaResourceAbort(raw: unknown): boolean {
   );
 }
 
+/** Erreur d'invocation JS quand `play()` est détaché de l'élément vidéo (`this` invalide). */
+export function isBenignMediaIllegalInvocation(raw: unknown): boolean {
+  const text = normalizeWebErrorText(messageFromUnknown(raw)).toLowerCase();
+  return (
+    text.includes("failed to execute 'play' on 'htmlmediaelement'") &&
+    text.includes('illegal invocation')
+  );
+}
+
 /** Réduit le bruit console / LogBox pour erreurs média attendues en dev web. */
 export function isBenignMediaConsoleNoise(raw: unknown): boolean {
-  return isBenignMediaResourceAbort(raw) || isBenignMediaNotSuitable(raw);
+  return (
+    isBenignMediaResourceAbort(raw) ||
+    isBenignMediaNotSuitable(raw) ||
+    isBenignMediaIllegalInvocation(raw)
+  );
 }

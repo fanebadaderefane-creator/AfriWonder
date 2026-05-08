@@ -122,13 +122,39 @@ function GoogleOAuthBlock({
   });
   const handledUrl = useRef<string | null>(null);
   const lastGoogleOAuthErrorKey = useRef<string | null>(null);
+  const googlePromptInFlight = useRef(false);
+  const googlePromptWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearGooglePromptWatchdog = () => {
+    if (!googlePromptWatchdogRef.current) return;
+    clearTimeout(googlePromptWatchdogRef.current);
+    googlePromptWatchdogRef.current = null;
+  };
+
+  const armGooglePromptWatchdog = () => {
+    clearGooglePromptWatchdog();
+    googlePromptWatchdogRef.current = setTimeout(() => {
+      googlePromptInFlight.current = false;
+      onBusy(false);
+      alertInfo(
+        'Google',
+        'La connexion Google a expiré (aucune réponse). Vérifiez le réseau puis réessayez.'
+      );
+    }, 30000);
+  };
 
   useEffect(() => {
     if (googleResponse?.type !== 'success' || !('url' in googleResponse)) return;
+    clearGooglePromptWatchdog();
     const url = googleResponse.url;
     if (handledUrl.current === url) return;
     const { accessToken, idToken } = extractGoogleOAuthTokens(googleResponse);
-    if (!accessToken && !idToken) return;
+    if (!accessToken && !idToken) {
+      googlePromptInFlight.current = false;
+      onBusy(false);
+      alertInfo('Google', 'Aucun jeton OAuth reçu. Réessayez la connexion Google.');
+      return;
+    }
     handledUrl.current = url;
     onBusy(true);
     void (async () => {
@@ -144,13 +170,25 @@ function GoogleOAuthBlock({
         alertInfo('Google', msg);
         handledUrl.current = null;
       } finally {
+        googlePromptInFlight.current = false;
         onBusy(false);
       }
     })();
   }, [googleResponse, onBusy, onDone, setAuth]);
 
   useEffect(() => {
+    if (!googleResponse) return;
+    if (googleResponse.type === 'cancel' || googleResponse.type === 'dismiss') {
+      googlePromptInFlight.current = false;
+      onBusy(false);
+    }
+  }, [googleResponse, onBusy]);
+
+  useEffect(() => {
     if (!googleResponse || googleResponse.type !== 'error') return;
+    clearGooglePromptWatchdog();
+    googlePromptInFlight.current = false;
+    onBusy(false);
     const errObj = googleResponse as {
       error?: string | { message?: string; code?: string };
       params?: { error_description?: string };
@@ -182,13 +220,34 @@ function GoogleOAuthBlock({
     alertInfo('Google', `${rawMsg}${primaryBlock}${hint}${consentHint}${redirectHint}`);
   }, [googleResponse, googleRedirectUri]);
 
+  useEffect(() => {
+    return () => {
+      clearGooglePromptWatchdog();
+    };
+  }, []);
+
   return (
     <TouchableOpacity
       style={[styles.providerBtn, styles.googleBtn]}
       onPress={() => {
+        if (googlePromptInFlight.current) return;
+        googlePromptInFlight.current = true;
         lastGoogleOAuthErrorKey.current = null;
-        void googlePrompt();
+        onBusy(true);
+        armGooglePromptWatchdog();
+        void googlePrompt().then((result) => {
+          clearGooglePromptWatchdog();
+          if (result.type === 'cancel' || result.type === 'dismiss') {
+            googlePromptInFlight.current = false;
+            onBusy(false);
+          }
+        }).catch(() => {
+          clearGooglePromptWatchdog();
+          googlePromptInFlight.current = false;
+          onBusy(false);
+        });
       }}
+      disabled={googlePromptInFlight.current}
       activeOpacity={0.85}
     >
       <Ionicons name="logo-google" size={22} color="#1a1a1a" />
@@ -211,13 +270,19 @@ function FacebookOAuthBlock({
   });
   const handledUrl = useRef<string | null>(null);
   const lastFacebookOAuthErrorKey = useRef<string | null>(null);
+  const facebookPromptInFlight = useRef(false);
 
   useEffect(() => {
     if (fbResponse?.type !== 'success' || !('url' in fbResponse)) return;
     const url = fbResponse.url;
     if (handledUrl.current === url) return;
     const token = extractOAuthAccessToken(fbResponse);
-    if (!token) return;
+    if (!token) {
+      facebookPromptInFlight.current = false;
+      onBusy(false);
+      alertInfo('Facebook', 'Aucun jeton OAuth reçu. Réessayez la connexion Facebook.');
+      return;
+    }
     handledUrl.current = url;
     onBusy(true);
     void (async () => {
@@ -240,13 +305,24 @@ function FacebookOAuthBlock({
         alertInfo('Facebook', `${msg}${redirectHint}${schemeHint}`);
         handledUrl.current = null;
       } finally {
+        facebookPromptInFlight.current = false;
         onBusy(false);
       }
     })();
   }, [fbResponse, onBusy, onDone, setAuth, appId]);
 
   useEffect(() => {
+    if (!fbResponse) return;
+    if (fbResponse.type === 'cancel' || fbResponse.type === 'dismiss') {
+      facebookPromptInFlight.current = false;
+      onBusy(false);
+    }
+  }, [fbResponse, onBusy]);
+
+  useEffect(() => {
     if (!fbResponse || fbResponse.type !== 'error') return;
+    facebookPromptInFlight.current = false;
+    onBusy(false);
     const errObj = fbResponse as {
       error?: string | { message?: string; code?: string };
       params?: { error_description?: string };
@@ -273,9 +349,21 @@ function FacebookOAuthBlock({
     <TouchableOpacity
       style={[styles.providerBtn, styles.facebookBtn]}
       onPress={() => {
+        if (facebookPromptInFlight.current) return;
+        facebookPromptInFlight.current = true;
         lastFacebookOAuthErrorKey.current = null;
-        void fbPrompt();
+        onBusy(true);
+        void fbPrompt().then((result) => {
+          if (result.type === 'cancel' || result.type === 'dismiss') {
+            facebookPromptInFlight.current = false;
+            onBusy(false);
+          }
+        }).catch(() => {
+          facebookPromptInFlight.current = false;
+          onBusy(false);
+        });
       }}
+      disabled={facebookPromptInFlight.current}
       activeOpacity={0.85}
     >
       <Ionicons name="logo-facebook" size={22} color="#fff" />

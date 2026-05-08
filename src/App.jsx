@@ -50,6 +50,7 @@ const AuthenticatedApp = () => {
   const tokensWhenUnauthRef = useRef(undefined);
   const hadAuthenticatedRef = useRef(false);
   const [guestExplore, setGuestExploreSnapshot] = useState(() => readGuestExplore());
+  const guestAccessEnabled = guestExplore || !isAuthenticated;
 
   useEffect(() => {
     const sync = () => setGuestExploreSnapshot(readGuestExplore());
@@ -109,13 +110,13 @@ const AuthenticatedApp = () => {
           const isPublicPath =
             publicPaths.includes(path) ||
             path.toLowerCase().startsWith('/verify-certificate/');
-          if (!guestExplore && !isPublicPath) {
+          if (!guestAccessEnabled && !isPublicPath) {
             navigate('/Landing', { replace: true });
           }
         }
       }
     })();
-  }, [isLoadingAuth, isAuthenticated, guestExplore, navigate, location.pathname]);
+  }, [isLoadingAuth, isAuthenticated, guestAccessEnabled, navigate, location.pathname]);
 
   const renderPublicRoute = (PageComp) => {
     if (!PageComp) return <div>Page non trouvée</div>;
@@ -140,7 +141,7 @@ const AuthenticatedApp = () => {
 
   // Invité : accès au même shell que l'app (feed, navigation) — aligné audit guest / onboarding minimal.
   // Sans flag invité : Landing + pages publiques uniquement.
-  if (!isAuthenticated && !guestExplore) {
+  if (!isAuthenticated && !guestAccessEnabled) {
     const LandingPage = Pages['Landing'];
     const PrivacyPolicyPage = Pages['PrivacyPolicy'];
     const DataProtectionPage = Pages['DataProtection'];

@@ -230,6 +230,7 @@ export default function WatchVideoScreen() {
   const [trimEndSec, setTrimEndSec] = useState<number | null>(null);
   const [mediaType, setMediaType] = useState<'video' | 'photo'>('video');
   const [photoUrl, setPhotoUrl] = useState('');
+  const viewRecordedRef = useRef<string | null>(null);
 
   const { isDownloaded, progress, download, remove } = useVideoDownload(videoId);
 
@@ -385,6 +386,23 @@ export default function WatchVideoScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!videoId || loading || error || isLiveSource) return;
+    if (viewRecordedRef.current === videoId) return;
+    const tid = setTimeout(() => {
+      if (viewRecordedRef.current === videoId) return;
+      viewRecordedRef.current = videoId;
+      void apiClient.post(`/videos/${encodeURIComponent(videoId)}/view`, {
+        // Même seuil que le feed vertical pour un comptage cohérent.
+        watchSeconds: 3,
+        watchPercent: 25,
+        scrollSlow: true,
+        interactionDetected: true,
+      }).catch(() => {});
+    }, 3200);
+    return () => clearTimeout(tid);
+  }, [videoId, loading, error, isLiveSource]);
 
   const startOfflineDownload = useCallback(async () => {
     if (!videoId || !downloadUrl) return;

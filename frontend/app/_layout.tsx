@@ -1,8 +1,8 @@
 import '../src/polyfills';
-import { initMobileSentry } from '../src/lib/sentryMobile';
+import { captureSentryException, initMobileSentry } from '../src/lib/sentryMobile';
 import { installMobileRuntimeGuards } from '../src/lib/mobileRuntimeGuards';
 import { AppRootErrorBoundary } from '../src/components/common/AppRootErrorBoundary';
-import { Stack, router } from 'expo-router';
+import { Stack } from 'expo-router';
 import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -10,7 +10,7 @@ import { useFonts } from 'expo-font';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import { useAuthStore } from '../src/store/authStore';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OfflineBanner } from '../src/components/common/OfflineBanner';
@@ -29,11 +29,14 @@ import notificationService from '../src/services/notificationService';
 import { resolveMobileDeepLink } from '../src/services/mobileApiService';
 import { normalizeIncomingMobileUrl, toAfriwonderResolveUrl } from '../src/utils/mobileDeepLink';
 import offlineActionSyncService from '../src/services/offlineActionSyncService';
+import uploadRecoveryService from '../src/services/uploadRecoveryService';
 import { RouteErrorFallback } from '../src/components/common/RouteErrorFallback';
 import { DataSaverProvider } from '../src/dataSaver/DataSaverContext';
 import { navigateFromStarBookingNotification } from '../src/utils/starBookingPushNavigation';
 import { navigateToIncomingCallFromPush } from '../src/call/incomingCallPushNavigation';
 import { isExpoGoApp } from '../src/config/expoRuntime';
+import { devLog } from '../src/utils/devLog';
+import { safeRouterPush } from '../src/utils/safeRouter';
 
 initMobileSentry();
 installMobileRuntimeGuards();
@@ -42,7 +45,35 @@ void SplashScreen.preventAutoHideAsync().catch(() => {
   /* Expo Go / OEM : keep-awake parfois indisponible — éviter promesse rejetée non gérée */
 });
 
+const reportRuntimeError = (source: string, err: unknown) => {
+  const asError = err instanceof Error ? err : new Error(String(err ?? 'unknown error'));
+  captureSentryException(asError, { source });
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    devLog(`[${source}]`, asError.message);
+  }
+};
+
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error, query) => {
+      reportRuntimeError('react-query.query', error);
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        const key = Array.isArray(query.queryKey) ? query.queryKey.join(':') : String(query.queryKey ?? '');
+        devLog('[react-query.query.key]', key);
+      }
+    },
+  }),
+  mutationCache: new MutationCache({
+    onError: (error, _variables, _context, mutation) => {
+      reportRuntimeError('react-query.mutation', error);
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        const key = Array.isArray(mutation.options.mutationKey)
+          ? mutation.options.mutationKey.join(':')
+          : String(mutation.options.mutationKey ?? '');
+        if (key) devLog('[react-query.mutation.key]', key);
+      }
+    },
+  }),
   defaultOptions: {
     queries: {
       retry: 2,
@@ -139,7 +170,7 @@ function RootLayoutContent() {
       const r = String(route || '').trim();
       const qIdx = r.indexOf('?');
       if (qIdx === -1) {
-        router.push(r as Parameters<typeof router.push>[0]);
+        safeRouterPush(r);
         return;
       }
       const pathname = r.slice(0, qIdx);
@@ -150,9 +181,9 @@ function RootLayoutContent() {
         search.forEach((v, k) => {
           params[k] = v;
         });
-        router.push({ pathname, params } as Parameters<typeof router.push>[0]);
+        safeRouterPush({ pathname, params });
       } catch {
-        router.push(pathname as Parameters<typeof router.push>[0]);
+        safeRouterPush(pathname);
       }
     };
 
@@ -176,6 +207,7 @@ function RootLayoutContent() {
 
     void notificationService.initialize();
     const offlineSyncCleanup = offlineActionSyncService.initAutoFlush();
+    uploadRecoveryService.start();
     void Linking.getInitialURL().then((url) => handleIncomingUrl(url));
 
     let subscription: { remove: () => void } | null = null;
@@ -211,11 +243,11 @@ function RootLayoutContent() {
           return;
         }
         if (data?.type === 'message' && data?.conversationId) {
-          router.push({ pathname: '/messages/[id]', params: { id: data.conversationId } });
+          safeRouterPush({ pathname: '/messages/[id]', params: { id: data.conversationId } });
         } else if (data?.type === 'mention' && data?.videoId) {
-          router.push({ pathname: '/watch/[id]', params: { id: data.videoId } });
+          safeRouterPush({ pathname: '/watch/[id]', params: { id: data.videoId } });
         } else if (data?.type === 'like' || data?.type === 'follow' || data?.type === 'comment') {
-          router.push('/notifications');
+          safeRouterPush('/notifications');
         }
       })
       .then((sub) => {
@@ -229,6 +261,7 @@ function RootLayoutContent() {
       subscription?.remove();
       urlSubscription.remove();
       offlineSyncCleanup?.();
+      uploadRecoveryService.stop();
     };
   }, [loadStoredAuth, tryOpenIncomingCallFromPush]);
 
