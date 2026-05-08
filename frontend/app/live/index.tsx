@@ -23,6 +23,27 @@ const showReplayCleanup =
   (typeof __DEV__ !== 'undefined' && __DEV__) ||
   process.env.EXPO_PUBLIC_SHOW_LIVE_REPLAY_CLEANUP === '1';
 
+function parseLiveDateMs(input: string | null | undefined): number | null {
+  if (!input) return null;
+  const ms = Date.parse(String(input));
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function isStrictActiveLive(stream: any): boolean {
+  if (!stream?.id) return false;
+  const status = String(stream.status || '').toLowerCase();
+  if (status && status !== 'live') return false;
+  if (stream.ended_at) return false;
+  if (String(stream.replay_url || '').trim().length > 0) return false;
+  const viewers = Number(stream.viewers_count) || 0;
+  const updatedAtMs = parseLiveDateMs(stream.updated_at as string | null | undefined);
+  const startedAtMs = parseLiveDateMs(stream.started_at as string | null | undefined);
+  const now = Date.now();
+  if (viewers <= 0 && updatedAtMs != null && now - updatedAtMs > 3 * 60 * 1000) return false;
+  if (viewers <= 0 && startedAtMs != null && now - startedAtMs > 6 * 60 * 60 * 1000) return false;
+  return true;
+}
+
 export default function LiveHubScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
@@ -70,7 +91,7 @@ export default function LiveHubScreen() {
         rReplay.status === 'fulfilled' ? rReplay.value.data?.data || rReplay.value.data : null;
       const schedInner =
         rSched.status === 'fulfilled' ? rSched.value.data?.data || rSched.value.data : null;
-      const liveStreams = liveInner?.streams || [];
+      const liveStreams = Array.isArray(liveInner?.streams) ? liveInner.streams.filter(isStrictActiveLive) : [];
       const endedStreams = replayInner?.streams || [];
       const schedStreams = schedInner?.streams || [];
       const thumbOf = (s: any) =>

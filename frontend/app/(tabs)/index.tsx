@@ -180,6 +180,33 @@ interface Comment {
   isReply?: boolean;
 }
 
+type LiveHintStream = {
+  id?: string;
+  status?: string | null;
+  ended_at?: string | null;
+  replay_url?: string | null;
+  viewers_count?: number | null;
+  updated_at?: string | null;
+};
+
+function parseLiveHintDateMs(input: string | null | undefined): number | null {
+  if (!input) return null;
+  const ms = Date.parse(String(input));
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function isActiveLiveHintStream(stream: LiveHintStream | null | undefined): boolean {
+  if (!stream?.id) return false;
+  const status = String(stream.status || '').toLowerCase();
+  if (status && status !== 'live') return false;
+  if (stream.ended_at) return false;
+  if (String(stream.replay_url || '').trim().length > 0) return false;
+  const viewers = Number(stream.viewers_count) || 0;
+  const updatedAtMs = parseLiveHintDateMs(stream.updated_at);
+  if (viewers <= 0 && updatedAtMs != null && Date.now() - updatedAtMs > 3 * 60 * 1000) return false;
+  return true;
+}
+
 async function appendCommentVoiceToFormData(formData: FormData, uri: string) {
   if (Platform.OS === 'web') {
     const res = await fetch(uri);
@@ -2568,10 +2595,10 @@ export default function FeedScreen(props?: {
   const refreshLiveHubHint = useCallback(async () => {
     if (amisStandalone) return;
     try {
-      const res = await apiClient.get('/live/recommendations', { params: { limit: 1 } });
+      const res = await apiClient.get('/live', { params: { status: 'live', limit: 6, sortBy: 'viewers' } });
       const raw = res.data?.data ?? res.data;
-      const list = Array.isArray(raw) ? raw : [];
-      setLiveHubHasStreams(list.some((x: { id?: string }) => Boolean(x?.id)));
+      const list = Array.isArray(raw?.streams) ? (raw.streams as LiveHintStream[]) : [];
+      setLiveHubHasStreams(list.some((x) => isActiveLiveHintStream(x)));
     } catch {
       setLiveHubHasStreams(false);
     }

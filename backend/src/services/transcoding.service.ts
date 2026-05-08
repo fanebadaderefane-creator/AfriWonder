@@ -20,13 +20,14 @@ import {
 } from './editorMetadata/ffmpegEffectsBuilder.js';
 
 const QUALITIES = [
-  { name: '360p', width: 640, height: 360, bitrate: '800k' },
-  { name: '480p', width: 842, height: 480, bitrate: '1400k' },
-  { name: '720p', width: 1280, height: 720, bitrate: '2800k' },
+  { name: '240p', width: 426, height: 240, bitrate: '380k' },
+  { name: '360p', width: 640, height: 360, bitrate: '700k' },
+  { name: '480p', width: 842, height: 480, bitrate: '1200k' },
+  { name: '720p', width: 1280, height: 720, bitrate: '2200k' },
 ];
 
 const HLS_TIME = 4;
-const AUDIO_BITRATE = '128k';
+const AUDIO_BITRATE = '96k';
 
 // Watermark configuration (logo + @username gravés dans la vidéo)
 const WATERMARK_LOGO_PATH = process.env.TRANSCODE_WATERMARK_LOGO_PATH || '';
@@ -143,16 +144,18 @@ function buildFfmpegArgs(
       `text='${safeText}':fontsize=28:fontcolor=white:` +
       `borderw=2:bordercolor=black@0.6:x=20:y=H-80[txt];` +
       `[txt][1:v]overlay=20:20:format=auto:alpha=0.9[base];` +
-      `[base]split=3[v1][v2][v3];` +
-      `[v1]scale=640:360[v1o];` +
-      `[v2]scale=842:480[v2o];` +
-      `[v3]scale=1280:720[v3o]`;
+      `[base]split=4[v1][v2][v3][v4];` +
+      `[v1]scale=426:240[v1o];` +
+      `[v2]scale=640:360[v2o];` +
+      `[v3]scale=842:480[v3o];` +
+      `[v4]scale=1280:720[v4o]`;
   } else {
     filter +=
-      `${editedLabel}split=3[v1][v2][v3];` +
-      '[v1]scale=640:360[v1o];' +
-      '[v2]scale=842:480[v2o];' +
-      '[v3]scale=1280:720[v3o]';
+      `${editedLabel}split=4[v1][v2][v3][v4];` +
+      '[v1]scale=426:240[v1o];' +
+      '[v2]scale=640:360[v2o];' +
+      '[v3]scale=842:480[v3o];' +
+      '[v4]scale=1280:720[v4o]';
   }
 
   const args: string[] = ['-y', '-i', inputPath];
@@ -168,15 +171,19 @@ function buildFfmpegArgs(
     '-map',
     '[v1o]',
     '-b:v:0',
-    '800k',
+    '380k',
     '-map',
     '[v2o]',
     '-b:v:1',
-    '1400k',
+    '700k',
     '-map',
     '[v3o]',
     '-b:v:2',
-    '2800k',
+    '1200k',
+    '-map',
+    '[v4o]',
+    '-b:v:3',
+    '2200k',
     // Audio
     '-map',
     'a:0?',
@@ -197,7 +204,7 @@ function buildFfmpegArgs(
     '-master_pl_name',
     'master.m3u8',
     '-var_stream_map',
-    'v:0 v:1 v:2',
+    'v:0 v:1 v:2 v:3',
     outPattern,
   );
 

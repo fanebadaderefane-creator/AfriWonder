@@ -106,8 +106,13 @@ async function getOrCreateWallet(userId: string) {
 }
 
 async function syncViewersCount(streamId: string) {
+  const cutoff = new Date(Date.now() - VIEWER_INACTIVE_SEC * 1000);
+  await prisma.liveViewer.updateMany({
+    where: { live_id: streamId, is_active: true, last_seen_at: { lt: cutoff } },
+    data: { is_active: false, left_at: new Date() },
+  });
   const activeCount = await prisma.liveViewer.count({
-    where: { live_id: streamId, is_active: true },
+    where: { live_id: streamId, is_active: true, last_seen_at: { gte: cutoff } },
   });
   const stream = await prisma.liveStream.findUnique({
     where: { id: streamId },
@@ -794,6 +799,18 @@ class LiveService {
     if (filters?.status) {
       where.status = filters.status;
       if (filters.status === 'live') {
+        await this.closeStaleLiveStreamsForPublicListing();
+        const seed = await prisma.liveStream.findMany({
+          where: { status: 'live', ended_at: null },
+          select: { id: true },
+          take: Math.min(Math.max(limit * 3, 12), 60),
+          orderBy: [{ viewers_count: 'desc' }, { started_at: 'desc' }],
+        });
+        await Promise.all(
+          seed.map((row) =>
+            this.cleanupInactiveViewers(row.id).catch(() => 0)
+          )
+        );
         await this.closeStaleLiveStreamsForPublicListing();
         where.ended_at = null;
       }

@@ -213,7 +213,39 @@ type LiveStripItem = {
   title?: string | null;
   viewers_count?: number | null;
   thumbnail_url?: string | null;
+  status?: string | null;
+  ended_at?: string | null;
+  replay_url?: string | null;
+  updated_at?: string | null;
+  started_at?: string | null;
 };
+
+function parseDateMs(input: string | null | undefined): number | null {
+  if (!input) return null;
+  const ms = Date.parse(String(input));
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function isActiveLiveStream(item: LiveStripItem | null | undefined): item is LiveStripItem {
+  if (!item || !item.id) return false;
+  const status = String(item.status || '').toLowerCase();
+  if (status && status !== 'live') return false;
+  if (item.ended_at) return false;
+  // Si un replay existe déjà, le live est généralement terminé (évite les "lives fantômes").
+  if (String(item.replay_url || '').trim().length > 0) return false;
+
+  const now = Date.now();
+  const updatedAtMs = parseDateMs(item.updated_at);
+  const startedAtMs = parseDateMs(item.started_at);
+  const viewers = Number(item.viewers_count) || 0;
+
+  // Garde-fou anti-stale: aucun spectateur + aucune activité récente => masquer.
+  if (viewers <= 0 && updatedAtMs != null && now - updatedAtMs > 3 * 60 * 1000) return false;
+  // Un "live" qui dure anormalement sans activité est presque toujours un état bloqué.
+  if (viewers <= 0 && startedAtMs != null && now - startedAtMs > 6 * 60 * 60 * 1000) return false;
+
+  return true;
+}
 
 /**
  * Écran « Découvrir » — tendances du moment.
@@ -239,6 +271,37 @@ export default function DiscoverScreen() {
 
   const tileSize = Math.floor((screenWidth - GRID_GAP * 2) / 3);
   const tileHeight = Math.floor(tileSize * 1.35);
+
+  const refreshLiveStrip = useCallback(async () => {
+    try {
+      const liveRes = await apiClient.get('/live', {
+        params: { status: 'live', limit: 12, sortBy: 'viewers' },
+      });
+      const ld = liveRes.data?.data ?? liveRes.data;
+      const streams = Array.isArray(ld?.streams) ? (ld.streams as LiveStripItem[]) : [];
+      const prelim = streams.filter(isActiveLiveStream);
+      if (prelim.length === 0) {
+        setLiveStrip([]);
+        return;
+      }
+
+      // Vérification stricte anti-stale: un live affiché dans Discover doit encore être "live" sur son endpoint détail.
+      const checks = await Promise.all(
+        prelim.map(async (stream) => {
+          try {
+            const detailRes = await apiClient.get(`/live/${encodeURIComponent(stream.id)}`);
+            const detail = (detailRes.data?.data ?? detailRes.data) as LiveStripItem | null | undefined;
+            return isActiveLiveStream(detail) ? stream : null;
+          } catch {
+            return null;
+          }
+        })
+      );
+      setLiveStrip(checks.filter((s): s is LiveStripItem => Boolean(s)));
+    } catch {
+      setLiveStrip([]);
+    }
+  }, []);
 
   const loadRealCreatorsAsStories = useCallback(async () => {
     try {
@@ -403,18 +466,7 @@ export default function DiscoverScreen() {
       }
       setExploreItems(transformed);
       /** Ne pas await le « live » : l’appel pouvait bloquer 1s+ avant `isLoading: false` → onglet figé. */
-      void (async () => {
-        try {
-          const liveRes = await apiClient.get('/live', {
-            params: { status: 'live', limit: 12, sortBy: 'viewers' },
-          });
-          const ld = liveRes.data?.data ?? liveRes.data;
-          const streams = Array.isArray(ld?.streams) ? (ld.streams as LiveStripItem[]) : [];
-          setLiveStrip(streams);
-        } catch {
-          setLiveStrip([]);
-        }
-      })();
+      void refreshLiveStrip();
     } catch {
       setExploreItems([]);
       setLiveStrip([]);
@@ -422,7 +474,7 @@ export default function DiscoverScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [activeCategory]);
+  }, [activeCategory, refreshLiveStrip]);
 
   const loadTrendingHashtags = useCallback(async () => {
     try {
@@ -444,6 +496,14 @@ export default function DiscoverScreen() {
     }, 400);
     return () => clearTimeout(t);
   }, [loadTrendingHashtags]);
+
+  useEffect(() => {
+    void refreshLiveStrip();
+    const id = setInterval(() => {
+      void refreshLiveStrip();
+    }, 15000);
+    return () => clearInterval(id);
+  }, [refreshLiveStrip]);
 
   useEffect(() => {
     let cancelled = false;

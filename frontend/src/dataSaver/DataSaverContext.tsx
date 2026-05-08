@@ -6,6 +6,7 @@ import { useAuthStore } from '../store/authStore';
 import { dataUsage, formatDataEstimateBytes, useDataUsage } from './dataUsageStore';
 
 const STORAGE_REDUCE_ANIM = 'afw_reduce_animations_v1';
+const AFRICA_DEFAULT_CELLULAR_DATA_SAVER = true;
 
 export { formatDataEstimateBytes };
 
@@ -67,7 +68,14 @@ export function DataSaverProvider({ children }: { children: React.ReactNode }) {
        * On active aussi le mode économe quand la connexion cellulaire est marquée
        * "expensive" pour favoriser les flux plus légers et un démarrage vidéo plus rapide.
        */
-      const slow = state.type === 'cellular' && (cg === '2g' || cg === '3g' || expensive);
+      const slow =
+        state.type === 'cellular' &&
+        (
+          AFRICA_DEFAULT_CELLULAR_DATA_SAVER ||
+          cg === '2g' ||
+          cg === '3g' ||
+          expensive
+        );
       setAutoSlowNetwork(slow);
     };
     void NetInfo.fetch().then(apply);

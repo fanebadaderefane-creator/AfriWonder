@@ -30,9 +30,11 @@ const LOW_Q_DELAY_MS = Math.max(5000, Number(process.env.VIDEO_LOW_QUALITY_DELAY
 const inFlight = new Set<string>();
 
 function buildLowBandwidthFilter(): string {
-  const zoomW = Math.round(480 * 1.08);
-  const zoomH = Math.round(854 * 1.08);
-  return `[0:v]scale=480:854:force_original_aspect_ratio=increase,crop=480:854,scale=${zoomW}:${zoomH},crop=480:854,format=yuv420p[v]`;
+  const baseW = 360;
+  const baseH = 640;
+  const zoomW = Math.round(baseW * 1.08);
+  const zoomH = Math.round(baseH * 1.08);
+  return `[0:v]scale=${baseW}:${baseH}:force_original_aspect_ratio=increase,crop=${baseW}:${baseH},scale=${zoomW}:${zoomH},crop=${baseW}:${baseH},format=yuv420p[v]`;
 }
 
 function runFfmpegLowQualityUrlToFile(inputUrl: string, outputPath: string): Promise<void> {
@@ -71,7 +73,7 @@ function runFfmpegLowQualityUrlToFile(inputUrl: string, outputPath: string): Pro
     '-c:a',
     'aac',
     '-b:a',
-    '96k',
+    '64k',
     '-ac',
     '2',
     '-movflags',
