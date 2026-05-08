@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { Image as ExpoImage } from 'expo-image';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Image, TextInput, Modal, KeyboardAvoidingView, Platform, Pressable, ScrollView, Animated, AppState, Alert, PanResponder, RefreshControl, FlatList, StatusBar, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, type ViewToken } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Image, TextInput, Modal, KeyboardAvoidingView, Platform, Pressable, ScrollView, Animated, AppState, Alert, PanResponder, RefreshControl, FlatList, StatusBar, Keyboard, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, type ViewToken } from 'react-native';
 import { FlashList as ShopifyFlashList, type FlashListRef } from '@shopify/flash-list';
 import { useEventListener } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -1295,6 +1295,8 @@ const CommentsModal: React.FC<{
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [reportCommentId, setReportCommentId] = useState<string | null>(null);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+  const commentsScrollRef = useRef<ScrollView | null>(null);
   const recordingRef = useRef<Awaited<ReturnType<typeof Audio.Recording.createAsync>>['recording'] | null>(null);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
@@ -1409,6 +1411,35 @@ const CommentsModal: React.FC<{
   useEffect(() => {
     if (visible) void loadComments();
   }, [visible, videoId, loadComments]);
+
+  const scrollCommentsToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      commentsScrollRef.current?.scrollToEnd({ animated: true });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!visible || Platform.OS === 'web') return;
+    const onShow = (e: any) => {
+      const h = Math.max(0, Number(e?.endCoordinates?.height || 0));
+      setKeyboardInset(h);
+      scrollCommentsToBottom();
+    };
+    const onHide = () => setKeyboardInset(0);
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      onShow,
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      onHide,
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+      setKeyboardInset(0);
+    };
+  }, [visible, insets.bottom, scrollCommentsToBottom]);
 
   useEffect(() => {
     if (!visible) {
@@ -2068,7 +2099,15 @@ const CommentsModal: React.FC<{
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.commentsContainer, { paddingBottom: insets.bottom }]}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 8 : 0}
+          style={[
+            styles.commentsContainer,
+            { paddingBottom: Math.max(insets.bottom, 8) },
+            Platform.OS === 'android' && keyboardInset > 0 ? { marginBottom: keyboardInset } : null,
+          ]}
+        >
           <View style={styles.commentsHeader} {...dragClosePan.panHandlers}>
             <View style={styles.shareHandle} accessibilityLabel="Fermer en glissant vers le bas" />
             <Text style={styles.commentsTitle}>{totalComments} commentaires</Text>
@@ -2103,7 +2142,9 @@ const CommentsModal: React.FC<{
           ) : null}
           {loading ? <ActivityIndicator size="large" color={Colors.primary} style={{ padding: 40 }} /> : (
             <ScrollView
+              ref={commentsScrollRef}
               style={styles.commentsList}
+              contentContainerStyle={{ paddingBottom: Spacing.xxl + (Platform.OS === 'android' ? keyboardInset : 0) }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="always"
               nestedScrollEnabled
@@ -2246,7 +2287,12 @@ const CommentsModal: React.FC<{
               ))}
             </ScrollView>
           )}
-          <View style={[styles.commentInput, commentsDisabled && { opacity: 0.55 }]}>
+          <View
+            style={[
+              styles.commentInput,
+              commentsDisabled && { opacity: 0.55 },
+            ]}
+          >
             <Image source={{ uri: userAvatar }} style={styles.commentInputAvatar} />
             {voicePreviewUri ? (
               <View style={styles.commentVoicePreviewBar}>
@@ -2273,6 +2319,7 @@ const CommentsModal: React.FC<{
                   placeholderTextColor={Colors.textMuted}
                   value={newComment}
                   onChangeText={setNewComment}
+                  onFocus={scrollCommentsToBottom}
                   multiline
                   editable={!sendingVoice && !commentsDisabled}
                 />
@@ -2297,6 +2344,7 @@ const CommentsModal: React.FC<{
                 placeholderTextColor={Colors.textMuted}
                 value={newComment}
                 onChangeText={setNewComment}
+                onFocus={scrollCommentsToBottom}
                 multiline
                 editable={!sendingVoice && !commentsDisabled}
               />

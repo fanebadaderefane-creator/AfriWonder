@@ -8,7 +8,6 @@ import {
   Image,
   Pressable,
 } from 'react-native';
-import { router, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,6 +15,7 @@ import { Colors, FontSizes, Spacing, BorderRadius } from '../src/theme/colors';
 import { useAuthStore } from '../src/store/authStore';
 import { goBackOrFallback } from '../src/utils/goBack';
 import { featureFlags } from '../src/config/featureFlags';
+import { safeRouterPush } from '../src/utils/safeRouter';
 
 const SUPER_ADMIN_EMAIL = (
   process.env.EXPO_PUBLIC_SUPER_ADMIN_EMAIL || 'fanebadaderefane@gmail.com'
@@ -212,7 +212,7 @@ export default function MenuPlusScreen() {
           <TouchableOpacity
             style={styles.settingsHero}
             activeOpacity={0.82}
-            onPress={() => router.push('/settings' as Href)}
+            onPress={() => safeRouterPush('/settings')}
             accessibilityLabel="Paramètres du compte"
             accessibilityRole="button"
           >
@@ -237,7 +237,7 @@ export default function MenuPlusScreen() {
                 key={`${section.title}-${item.label}`}
                 style={styles.row}
                 activeOpacity={0.75}
-                onPress={() => router.push(item.href as Href)}
+                onPress={() => safeRouterPush(item.href)}
               >
                 <Ionicons name={item.icon} size={22} color={Colors.primary} />
                 <Text style={styles.rowLabel}>{item.label}</Text>

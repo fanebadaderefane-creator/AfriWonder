@@ -9,6 +9,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import * as Clipboard from 'expo-clipboard';
 import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Location from 'expo-location';
 import * as Contacts from 'expo-contacts';
@@ -19,6 +20,7 @@ import { devLog } from '../../src/utils/devLog';
 import { profileAvatarUri } from '../../src/utils/avatarFallback';
 import { getAlertMessageForCaughtError } from '../../src/utils/userFacingError';
 import { appendBlobOrFileField, formatContactShareLine, openMaps } from '../../src/screens/messages/messageAttachmentUtils';
+import { safeRouterPush } from '../../src/utils/safeRouter';
 
 const { width } = Dimensions.get('window');
 
@@ -27,7 +29,7 @@ interface Message {
   text: string;
   isMine: boolean;
   time: string;
-  status: 'sent' | 'delivered' | 'read';
+  status: 'sent' | 'delivered' | 'read' | 'failed';
   type: 'text' | 'image' | 'voice' | 'document' | 'audio' | 'video' | 'location' | 'contact' | 'file';
   imageUri?: string;
   thumbnailUri?: string;
@@ -36,6 +38,13 @@ interface Message {
   locationLng?: number;
   locationLabel?: string;
   contactShareLine?: string;
+  retryMeta?: {
+    kind: 'voice' | 'audio' | 'image' | 'video' | 'document';
+    localUri: string;
+    fileName?: string;
+    mimeType?: string;
+    durationSec?: number;
+  };
   replyTo?: { id: string; name: string; text: string };
   date?: string;
   reactions?: { emoji: string; count: number; myReaction: boolean }[];
@@ -47,6 +56,16 @@ interface Message {
 }
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+const FAILED_MESSAGE_SILENT_RETRY_DELAY_MS = 900;
+
+async function runWithSingleSilentRetry<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (_firstError) {
+    await new Promise((resolve) => setTimeout(resolve, FAILED_MESSAGE_SILENT_RETRY_DELAY_MS));
+    return await operation();
+  }
+}
 
 async function appendUploadFile(
   formData: globalThis.FormData,
@@ -60,7 +79,7 @@ async function appendUploadFile(
     const blob = await res.blob();
     let mime = String(blob.type || '').toLowerCase().trim();
     if (!mime || mime === 'application/octet-stream') {
-      mime = kind === 'video' ? 'video/mp4' : kind === 'audio' ? 'audio/m4a' : 'image/jpeg';
+      mime = kind === 'video' ? 'video/mp4' : kind === 'audio' ? 'audio/mp4' : 'image/jpeg';
     }
     const ext = mime.includes('png') ? 'png' : mime.includes('webm') ? 'webm' : mime.includes('m4a') ? 'm4a' : kind === 'video' ? 'mp4' : kind === 'audio' ? 'm4a' : 'jpg';
     formData.append('file', new File([blob], `upload_${index}.${ext}`, { type: mime }));
@@ -77,7 +96,7 @@ async function appendUploadFile(
 
   if (!mimeType) {
     if (kind === 'video') mimeType = ext === 'webm' ? 'video/webm' : ext === 'mov' ? 'video/quicktime' : 'video/mp4';
-    else if (kind === 'audio') mimeType = ext === 'wav' ? 'audio/wav' : ext === 'mp3' ? 'audio/mpeg' : 'audio/m4a';
+    else if (kind === 'audio') mimeType = ext === 'wav' ? 'audio/wav' : ext === 'mp3' ? 'audio/mpeg' : 'audio/mp4';
     else mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
   }
 
@@ -110,14 +129,14 @@ function resolvePickerMediaTypes(): any {
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const { id, name: paramName, avatar: paramAvatar, otherUserId: paramOtherUserId } = useLocalSearchParams();
-  const conversationId = id as string;
+  const conversationId = Array.isArray(id) ? String(id[0] || '') : String(id || '');
   const { user, accessToken, isAuthenticated } = useAuthStore();
   const currentUserId = user?.id || '';
   const ensureAuthenticated = useCallback((action: string): boolean => {
     if (isAuthenticated) return true;
     Alert.alert('Connexion', `Connectez-vous pour ${action}.`, [
       { text: 'Annuler', style: 'cancel' },
-      { text: 'Se connecter', onPress: () => router.push('/(auth)/login') },
+      { text: 'Se connecter', onPress: () => safeRouterPush('/(auth)/login') },
     ]);
     return false;
   }, [isAuthenticated]);
@@ -618,9 +637,15 @@ export default function ChatScreen() {
           isMine: true,
           time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
           status: 'sent',
-          type: 'voice',
+          type: 'audio',
           voiceDuration: formatDuration(duration),
           imageUri: uri,
+          retryMeta: {
+            kind: 'voice',
+            localUri: uri,
+            mimeType: 'audio/m4a',
+            durationSec: duration,
+          },
         };
         setMessages(prev => [...prev, voiceMsg]);
 
@@ -631,38 +656,38 @@ export default function ChatScreen() {
             setMessages(prev => prev.filter(m => m.id !== tempId));
             return;
           }
-          const formData = new FormData();
-          await appendUploadFile(formData, uri, 0, 'audio', { mimeType: 'audio/m4a' });
-          const uploadRes = await apiClient.post('/upload/audio', formData, { timeout: 120000, maxBodyLength: Infinity, maxContentLength: Infinity });
-          const ud = uploadRes.data?.data;
-          const mediaUrl = ud?.file_url || ud?.url || '';
-          if (!mediaUrl) {
-            setMessages(prev => prev.filter(m => m.id !== tempId));
-            return;
-          }
-          const sendVoiceRes = await apiClient.post('/messages/send', {
-            recipientId: rid,
-            content: `Vocal ${formatDuration(duration)}`,
-            type: 'voice',
-            media_url: mediaUrl,
-            ...(conversationId ? { conversationId } : {}),
+          const sentVoice = await runWithSingleSilentRetry(async () => {
+            const formData = new FormData();
+            await appendUploadFile(formData, uri, 0, 'audio');
+            const uploadRes = await apiClient.post('/upload/audio', formData, { timeout: 120000, maxBodyLength: Infinity, maxContentLength: Infinity });
+            const ud = uploadRes.data?.data;
+            const mediaUrl = ud?.file_url || ud?.url || '';
+            if (!mediaUrl) throw new Error('VOICE_UPLOAD_EMPTY_URL');
+            const sendVoiceRes = await apiClient.post('/messages/send', {
+              recipientId: rid,
+              content: `Vocal ${formatDuration(duration)}`,
+              type: 'audio',
+              media_url: mediaUrl,
+              ...(conversationId ? { conversationId } : {}),
+            });
+            return { payload: sendVoiceRes.data?.data, mediaUrl };
           });
-          const sentVoice = sendVoiceRes.data?.data;
           setMessages(prev =>
             prev.map((m) =>
               m.id === tempId
                 ? {
                     ...m,
-                    id: sentVoice?.id || tempId,
+                    id: sentVoice?.payload?.id || tempId,
                     status: 'delivered',
-                    imageUri: mediaUrl,
+                    type: 'audio',
+                    imageUri: sentVoice.mediaUrl,
                   }
                 : m,
             ),
           );
-        } catch {
-          setMessages(prev => prev.filter(m => m.id !== tempId));
-          Alert.alert('Erreur', "Impossible d'envoyer le vocal.");
+        } catch (err) {
+          setMessages(prev => prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)));
+          Alert.alert('Erreur', getAlertMessageForCaughtError(err) || "Impossible d'envoyer le vocal.");
         }
       }
     } catch (err) {
@@ -721,6 +746,7 @@ export default function ChatScreen() {
   // ===== IMAGE/VIDEO PICKER =====
 
   const pickImage = useCallback(async (useCamera: boolean = false) => {
+    if (!ensureAuthenticated('envoyer une image')) return;
     setShowAttach(false);
     try {
       let result;
@@ -742,8 +768,28 @@ export default function ChatScreen() {
         });
       }
       if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        const isVideo = asset.type === 'video';
+        const pickedAsset = result.assets[0];
+        const isVideo = pickedAsset.type === 'video';
+        let mediaUri = pickedAsset.uri;
+        let mediaMimeType = pickedAsset.mimeType ?? null;
+        let mediaFileName = pickedAsset.fileName ?? null;
+
+        // Standardiser les images en JPEG pour limiter les rejets MIME/signature côté backend.
+        if (!isVideo) {
+          try {
+            const transformed = await ImageManipulator.manipulateAsync(
+              pickedAsset.uri,
+              [],
+              { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG },
+            );
+            mediaUri = transformed.uri;
+            mediaMimeType = 'image/jpeg';
+            mediaFileName = mediaFileName || `photo_${Date.now()}.jpg`;
+          } catch {
+            // fallback sur le fichier d'origine si la conversion échoue
+          }
+        }
+
         const rid = await ensureRecipientUserId();
         if (!rid) {
           Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
@@ -757,49 +803,54 @@ export default function ChatScreen() {
           time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
           status: 'sent',
           type: isVideo ? 'video' : 'image',
-          imageUri: asset.uri,
+          imageUri: mediaUri,
+          retryMeta: {
+            kind: isVideo ? 'video' : 'image',
+            localUri: mediaUri,
+            fileName: mediaFileName || undefined,
+            mimeType: mediaMimeType || undefined,
+          },
         };
         setMessages(prev => [...prev, mediaMsg]);
 
         try {
-          const formData = new FormData();
-          await appendUploadFile(formData, asset.uri, 0, isVideo ? 'video' : 'image', {
-            mimeType: asset.mimeType ?? null,
-            fileName: asset.fileName ?? null,
+          const sentMedia = await runWithSingleSilentRetry(async () => {
+            const formData = new FormData();
+            await appendUploadFile(formData, mediaUri, 0, isVideo ? 'video' : 'image', {
+              mimeType: mediaMimeType,
+              fileName: mediaFileName,
+            });
+            const path = isVideo ? '/upload/video' : '/upload/image';
+            const uploadRes = await apiClient.post(path, formData, { timeout: 300000, maxBodyLength: Infinity, maxContentLength: Infinity });
+            const ud = uploadRes.data?.data;
+            const mediaUrl = ud?.file_url || ud?.url || '';
+            if (!mediaUrl) throw new Error('MEDIA_UPLOAD_EMPTY_URL');
+            const sendMediaRes = await apiClient.post('/messages/send', {
+              recipientId: rid,
+              content: isVideo ? 'Video' : 'Photo',
+              type: isVideo ? 'video' : 'image',
+              media_url: mediaUrl,
+              thumbnail_url: ud?.thumbnail_url,
+              ...(conversationId ? { conversationId } : {}),
+            });
+            return { payload: sendMediaRes.data?.data, mediaUrl, thumbnailUrl: ud?.thumbnail_url };
           });
-          const path = isVideo ? '/upload/video' : '/upload/image';
-          const uploadRes = await apiClient.post(path, formData, { timeout: 300000, maxBodyLength: Infinity, maxContentLength: Infinity });
-          const ud = uploadRes.data?.data;
-          const mediaUrl = ud?.file_url || ud?.url || '';
-          if (!mediaUrl) {
-            setMessages(prev => prev.filter(m => m.id !== tempId));
-            return;
-          }
-          const sendMediaRes = await apiClient.post('/messages/send', {
-            recipientId: rid,
-            content: isVideo ? 'Video' : 'Photo',
-            type: isVideo ? 'video' : 'image',
-            media_url: mediaUrl,
-            thumbnail_url: ud?.thumbnail_url,
-            ...(conversationId ? { conversationId } : {}),
-          });
-          const sentMedia = sendMediaRes.data?.data;
           setMessages((prev) =>
             prev.map((m) =>
               m.id === tempId
                 ? {
                     ...m,
-                    id: sentMedia?.id || tempId,
+                    id: sentMedia?.payload?.id || tempId,
                     status: 'delivered',
-                    imageUri: mediaUrl,
-                    thumbnailUri: ud?.thumbnail_url || m.thumbnailUri,
+                    imageUri: sentMedia.mediaUrl,
+                    thumbnailUri: sentMedia.thumbnailUrl || m.thumbnailUri,
                     type: isVideo ? 'video' : 'image',
                   }
                 : m,
             ),
           );
         } catch (err: unknown) {
-          setMessages(prev => prev.filter(m => m.id !== tempId));
+          setMessages(prev => prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)));
           Alert.alert(
             'Erreur',
             getAlertMessageForCaughtError(err) || `Impossible d'envoyer ${isVideo ? 'la vidéo' : "l'image"}.`,
@@ -813,9 +864,10 @@ export default function ChatScreen() {
         "Impossible d'ouvrir la caméra/galerie sur cet appareil.";
       Alert.alert('Erreur', String(msg));
     }
-  }, [ensureRecipientUserId, conversationId]);
+  }, [ensureRecipientUserId, conversationId, ensureAuthenticated]);
 
   const pickDocumentAttachment = useCallback(async () => {
+    if (!ensureAuthenticated('envoyer un document')) return;
     setShowAttach(false);
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -839,46 +891,50 @@ export default function ChatScreen() {
         status: 'sent',
         type: 'file',
         imageUri: asset.uri,
+        retryMeta: {
+          kind: 'document',
+          localUri: asset.uri,
+          fileName: asset.name || 'document.pdf',
+          mimeType: asset.mimeType || 'application/pdf',
+        },
       };
       setMessages((prev) => [...prev, optimistic]);
       try {
-        const formData = new FormData();
-        await appendBlobOrFileField(formData, asset.uri, asset.name, asset.mimeType || 'application/pdf', 'document');
-        const uploadRes = await apiClient.post('/upload/document', formData, {
-          timeout: 300000,
-          maxBodyLength: Infinity,
-          maxContentLength: Infinity,
+        const sentFile = await runWithSingleSilentRetry(async () => {
+          const formData = new FormData();
+          await appendBlobOrFileField(formData, asset.uri, asset.name, asset.mimeType || 'application/pdf', 'document');
+          const uploadRes = await apiClient.post('/upload/document', formData, {
+            timeout: 300000,
+            maxBodyLength: Infinity,
+            maxContentLength: Infinity,
+          });
+          const ud = uploadRes.data?.data;
+          const mediaUrl = ud?.file_url || ud?.url || '';
+          if (!mediaUrl) throw new Error('DOCUMENT_UPLOAD_EMPTY_URL');
+          const sendFileRes = await apiClient.post('/messages/send', {
+            recipientId: rid,
+            content: label.slice(0, 500),
+            type: 'file',
+            media_url: mediaUrl,
+            ...(conversationId ? { conversationId } : {}),
+          });
+          return { payload: sendFileRes.data?.data, mediaUrl };
         });
-        const ud = uploadRes.data?.data;
-        const mediaUrl = ud?.file_url || ud?.url || '';
-        if (!mediaUrl) {
-          setMessages((prev) => prev.filter((m) => m.id !== tempId));
-          Alert.alert('Erreur', 'Upload du document impossible.');
-          return;
-        }
-        const sendFileRes = await apiClient.post('/messages/send', {
-          recipientId: rid,
-          content: label.slice(0, 500),
-          type: 'file',
-          media_url: mediaUrl,
-          ...(conversationId ? { conversationId } : {}),
-        });
-        const sentFile = sendFileRes.data?.data;
         setMessages((prev) =>
           prev.map((m) =>
             m.id === tempId
-              ? { ...m, id: sentFile?.id || tempId, status: 'delivered', imageUri: mediaUrl }
+              ? { ...m, id: sentFile?.payload?.id || tempId, status: 'delivered', imageUri: sentFile.mediaUrl }
               : m,
           ),
         );
-      } catch {
-        setMessages((prev) => prev.filter((m) => m.id !== tempId));
-        Alert.alert('Erreur', "Impossible d'envoyer le document.");
+      } catch (err) {
+        setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)));
+        Alert.alert('Erreur', getAlertMessageForCaughtError(err) || "Impossible d'envoyer le document.");
       }
     } catch {
       Alert.alert('Erreur', 'Sélection du document annulée ou impossible.');
     }
-  }, [ensureRecipientUserId, conversationId]);
+  }, [ensureRecipientUserId, conversationId, ensureAuthenticated]);
 
   const shareLocationAttachment = useCallback(async () => {
     setShowAttach(false);
@@ -1016,6 +1072,7 @@ export default function ChatScreen() {
   );
 
   const pickAudioFileAttachment = useCallback(async () => {
+    if (!ensureAuthenticated('envoyer un audio')) return;
     setShowAttach(false);
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -1039,57 +1096,181 @@ export default function ChatScreen() {
         status: 'sent',
         type: 'audio',
         imageUri: asset.uri,
+        retryMeta: {
+          kind: 'audio',
+          localUri: asset.uri,
+          fileName: asset.name || 'audio.m4a',
+          mimeType: asset.mimeType || 'audio/mpeg',
+        },
       };
       setMessages((prev) => [...prev, optimistic]);
       try {
+        const sentAudio = await runWithSingleSilentRetry(async () => {
+          const formData = new FormData();
+          await appendBlobOrFileField(
+            formData,
+            asset.uri,
+            asset.name,
+            asset.mimeType || 'audio/mpeg',
+            'audio',
+          );
+          const uploadRes = await apiClient.post('/upload/audio', formData, {
+            timeout: 120000,
+            maxBodyLength: Infinity,
+            maxContentLength: Infinity,
+          });
+          const ud = uploadRes.data?.data;
+          const mediaUrl = ud?.file_url || ud?.url || '';
+          if (!mediaUrl) throw new Error('AUDIO_UPLOAD_EMPTY_URL');
+          const sendAudioRes = await apiClient.post('/messages/send', {
+            recipientId: rid,
+            content: label.slice(0, 500),
+            type: 'audio',
+            media_url: mediaUrl,
+            ...(conversationId ? { conversationId } : {}),
+          });
+          return { payload: sendAudioRes.data?.data, mediaUrl };
+        });
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempId
+              ? { ...m, id: sentAudio?.payload?.id || tempId, status: 'delivered', imageUri: sentAudio.mediaUrl }
+              : m,
+          ),
+        );
+      } catch (err) {
+        setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)));
+        Alert.alert('Erreur', getAlertMessageForCaughtError(err) || "Impossible d'envoyer le fichier audio.");
+      }
+    } catch {
+      Alert.alert('Erreur', 'Sélection audio annulée ou impossible.');
+    }
+  }, [ensureRecipientUserId, conversationId, ensureAuthenticated]);
+
+  const retryFailedMessage = useCallback(async (msg: Message) => {
+    if (!ensureAuthenticated("renvoyer le message")) return;
+    if (msg.status !== 'failed') return;
+    const localUri = msg.retryMeta?.localUri || (msg.imageUri && !String(msg.imageUri).startsWith('http') ? msg.imageUri : '');
+    if (!localUri) {
+      Alert.alert('Réessayer', "Fichier local introuvable. Veuillez sélectionner à nouveau.");
+      return;
+    }
+    const rid = await ensureRecipientUserId();
+    if (!rid) {
+      Alert.alert('Erreur', 'Destinataire introuvable pour cette conversation.');
+      return;
+    }
+
+    setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, status: 'sent' } : m)));
+    try {
+      const kind = msg.retryMeta?.kind || (msg.type === 'file' ? 'document' : msg.type === 'video' ? 'video' : msg.type === 'image' ? 'image' : 'audio');
+      if (kind === 'document') {
         const formData = new FormData();
         await appendBlobOrFileField(
           formData,
-          asset.uri,
-          asset.name,
-          asset.mimeType || 'audio/mpeg',
-          'audio',
+          localUri,
+          msg.retryMeta?.fileName || msg.text || 'document.pdf',
+          msg.retryMeta?.mimeType || 'application/pdf',
+          'document',
         );
-        const uploadRes = await apiClient.post('/upload/audio', formData, {
-          timeout: 120000,
+        const uploadRes = await apiClient.post('/upload/document', formData, {
+          timeout: 300000,
           maxBodyLength: Infinity,
           maxContentLength: Infinity,
         });
         const ud = uploadRes.data?.data;
         const mediaUrl = ud?.file_url || ud?.url || '';
-        if (!mediaUrl) {
-          setMessages((prev) => prev.filter((m) => m.id !== tempId));
-          Alert.alert('Erreur', 'Upload audio impossible.');
-          return;
-        }
-        const sendAudioRes = await apiClient.post('/messages/send', {
+        if (!mediaUrl) throw new Error('DOCUMENT_UPLOAD_EMPTY_URL');
+        const sendRes = await apiClient.post('/messages/send', {
           recipientId: rid,
-          content: label.slice(0, 500),
-          type: 'audio',
+          content: (msg.text || 'Document').slice(0, 500),
+          type: 'file',
           media_url: mediaUrl,
           ...(conversationId ? { conversationId } : {}),
         });
-        const sentAudio = sendAudioRes.data?.data;
+        const sent = sendRes.data?.data;
+        setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, id: sent?.id || msg.id, status: 'delivered', imageUri: mediaUrl } : m)));
+        return;
+      }
+
+      if (kind === 'image' || kind === 'video') {
+        const isVideo = kind === 'video';
+        const formData = new FormData();
+        await appendUploadFile(formData, localUri, 0, isVideo ? 'video' : 'image', {
+          mimeType: msg.retryMeta?.mimeType || null,
+          fileName: msg.retryMeta?.fileName || null,
+        });
+        const uploadRes = await apiClient.post(isVideo ? '/upload/video' : '/upload/image', formData, {
+          timeout: 300000,
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+        });
+        const ud = uploadRes.data?.data;
+        const mediaUrl = ud?.file_url || ud?.url || '';
+        if (!mediaUrl) throw new Error('MEDIA_UPLOAD_EMPTY_URL');
+        const sendRes = await apiClient.post('/messages/send', {
+          recipientId: rid,
+          content: isVideo ? 'Video' : 'Photo',
+          type: isVideo ? 'video' : 'image',
+          media_url: mediaUrl,
+          thumbnail_url: ud?.thumbnail_url,
+          ...(conversationId ? { conversationId } : {}),
+        });
+        const sent = sendRes.data?.data;
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === tempId
-              ? { ...m, id: sentAudio?.id || tempId, status: 'delivered', imageUri: mediaUrl }
+            m.id === msg.id
+              ? {
+                  ...m,
+                  id: sent?.id || msg.id,
+                  status: 'delivered',
+                  imageUri: mediaUrl,
+                  thumbnailUri: ud?.thumbnail_url || m.thumbnailUri,
+                }
               : m,
           ),
         );
-      } catch {
-        setMessages((prev) => prev.filter((m) => m.id !== tempId));
-        Alert.alert('Erreur', "Impossible d'envoyer le fichier audio.");
+        return;
       }
-    } catch {
-      Alert.alert('Erreur', 'Sélection audio annulée ou impossible.');
+
+      const formData = new FormData();
+      await appendUploadFile(formData, localUri, 0, 'audio', {
+        mimeType: msg.retryMeta?.mimeType || null,
+        fileName: msg.retryMeta?.fileName || null,
+      });
+      const uploadRes = await apiClient.post('/upload/audio', formData, {
+        timeout: 120000,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      });
+      const ud = uploadRes.data?.data;
+      const mediaUrl = ud?.file_url || ud?.url || '';
+      if (!mediaUrl) throw new Error('AUDIO_UPLOAD_EMPTY_URL');
+      const sendRes = await apiClient.post('/messages/send', {
+        recipientId: rid,
+        content: msg.text || 'Audio',
+        type: 'audio',
+        media_url: mediaUrl,
+        ...(conversationId ? { conversationId } : {}),
+      });
+      const sent = sendRes.data?.data;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msg.id
+            ? { ...m, id: sent?.id || msg.id, status: 'delivered', imageUri: mediaUrl, type: 'audio' }
+            : m,
+        ),
+      );
+    } catch (err) {
+      setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, status: 'failed' } : m)));
+      Alert.alert('Réessayer', getAlertMessageForCaughtError(err) || "Impossible de renvoyer ce message.");
     }
-  }, [ensureRecipientUserId, conversationId]);
+  }, [ensureAuthenticated, ensureRecipientUserId, conversationId]);
 
   const openCallScreen = useCallback(
     (type: 'audio' | 'video') => {
       if (!contact.otherUserId) return;
-      router.push({
+      safeRouterPush({
         pathname: '/messages/call' as any,
         params: {
           name: contact.name,
@@ -1254,6 +1435,7 @@ export default function ChatScreen() {
       case 'sent': return <Ionicons name="checkmark" size={14} color="rgba(255,255,255,0.5)" />;
       case 'delivered': return <Ionicons name="checkmark-done" size={14} color="rgba(255,255,255,0.5)" />;
       case 'read': return <Ionicons name="checkmark-done" size={14} color="#53BDEB" />;
+      case 'failed': return <Ionicons name="alert-circle" size={14} color="#FF8A80" />;
       default: return null;
     }
   };
@@ -1405,6 +1587,18 @@ export default function ChatScreen() {
           )}
 
           {/* Time + status + extras */}
+          {item.isMine && item.status === 'failed' && (
+            <TouchableOpacity
+              style={styles.retryBtn}
+              onPress={() => {
+                void retryFailedMessage(item);
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="refresh" size={14} color="#FFF" />
+              <Text style={styles.retryBtnText}>Réessayer</Text>
+            </TouchableOpacity>
+          )}
           <View style={styles.msgTimeRow}>
             {item.starred && <Ionicons name="star" size={11} color="#FFD700" style={{ marginRight: 3 }} />}
             {item.edited && <Text style={styles.editedLabel}>modifie</Text>}
@@ -1599,8 +1793,14 @@ export default function ChatScreen() {
                 onChangeText={(text) => {
                   setNewMessage(text);
                   setShowAttach(false);
-                  if (text.length > 0) socketService.startTyping(conversationId);
-                  else socketService.stopTyping(conversationId);
+                  try {
+                    if (conversationId) {
+                      if (text.length > 0) socketService.startTyping(conversationId);
+                      else socketService.stopTyping(conversationId);
+                    }
+                  } catch {
+                    // no-op: typing indicator must never crash chat input
+                  }
                 }}
                 multiline
                 maxLength={2000}
@@ -1838,6 +2038,18 @@ const styles = StyleSheet.create({
   msgTimeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 3, marginTop: 2, marginBottom: 2 },
   msgTimeText: { color: 'rgba(255,255,255,0.45)', fontSize: 11 },
   msgTimeTextMine: { color: 'rgba(255,255,255,0.45)' },
+  retryBtn: {
+    marginTop: 8,
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,107,0,0.9)',
+  },
+  retryBtnText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
   editedLabel: { color: 'rgba(255,255,255,0.35)', fontSize: 10, fontStyle: 'italic', marginRight: 3 },
   // Forwarded
   forwardedRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },

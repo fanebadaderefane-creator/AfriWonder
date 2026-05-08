@@ -61,12 +61,12 @@ const LEGACY_SCROLL_OPTIONS: {
   { id: 'whatsapp', name: 'WhatsApp', icon: 'logo-whatsapp', iconSet: 'ion', color: '#25D366' },
   { id: 'facebook', name: 'Facebook', icon: 'logo-facebook', iconSet: 'ion', color: '#1877F2' },
   { id: 'twitter', name: 'X', icon: 'logo-twitter', iconSet: 'ion', color: '#FFFFFF' },
-  { id: 'telegram', name: 'Telegram', icon: 'telegram', iconSet: 'mci', color: '#2AABEE' },
+  { id: 'telegram', name: 'Telegram', icon: 'logo-telegram', iconSet: 'ion', color: '#2AABEE' },
   { id: 'instagram', name: 'Instagram', icon: 'logo-instagram', iconSet: 'ion', color: '#E4405F' },
   { id: 'youtube', name: 'YouTube', icon: 'logo-youtube', iconSet: 'ion', color: '#FF0000' },
   { id: 'linkedin', name: 'LinkedIn', icon: 'logo-linkedin', iconSet: 'ion', color: '#0A66C2' },
   { id: 'tiktok', name: 'TikTok', icon: 'music-note', iconSet: 'mci', color: '#FFFFFF' },
-  { id: 'snapchat', name: 'Snapchat', icon: 'snapchat', iconSet: 'mci', color: '#000000' },
+  { id: 'snapchat', name: 'Snapchat', icon: 'logo-snapchat', iconSet: 'ion', color: '#000000' },
   { id: 'copy', name: 'Copier', icon: 'link', iconSet: 'ion', color: '#6B7280' },
   { id: 'more', name: 'Plus', icon: 'share-social-outline', iconSet: 'ion', color: Colors.primary },
 ];
@@ -82,7 +82,7 @@ const VIDEO_EXTRA_SOCIAL: {
   { id: 'instagram', name: 'Instagram', icon: 'logo-instagram', iconSet: 'ion', color: '#E4405F' },
   { id: 'youtube', name: 'YouTube', icon: 'logo-youtube', iconSet: 'ion', color: '#FF0000' },
   { id: 'linkedin', name: 'LinkedIn', icon: 'logo-linkedin', iconSet: 'ion', color: '#0A66C2' },
-  { id: 'snapchat', name: 'Snapchat', icon: 'snapchat', iconSet: 'mci', color: '#FFFC00' },
+  { id: 'snapchat', name: 'Snapchat', icon: 'logo-snapchat', iconSet: 'ion', color: '#FFFC00' },
   { id: 'system_share', name: 'Autres', icon: 'share-outline', iconSet: 'ion', color: '#94A3B8' },
 ];
 

@@ -46,6 +46,7 @@ interface Conversation {
   name: string;
   avatar: string;
   lastMessage: string;
+  lastMessageAt?: string | null;
   time: string;
   unread: number;
   online: boolean;
@@ -57,6 +58,24 @@ interface Conversation {
   groupMembers?: number;
   voiceDuration?: string;
   otherUserId?: string;
+}
+
+function sortConversationsByRecency(list: Conversation[]): Conversation[] {
+  return [...list].sort((a, b) => {
+    const ta = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+    const tb = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+    return tb - ta;
+  });
+}
+
+function bumpConversationToTop(list: Conversation[], conversationId: string): Conversation[] {
+  const idx = list.findIndex((c) => c.id === conversationId);
+  if (idx <= 0) return list;
+  const next = [...list];
+  const [picked] = next.splice(idx, 1);
+  if (!picked) return list;
+  next.unshift(picked);
+  return next;
 }
 
 /** Petit wrapper pour pouvoir scroller la liste de statuts en dessous de la carte « Mon statut ». */
@@ -162,6 +181,7 @@ export default function MessagesListScreen() {
           name: displayName,
           avatar,
           lastMessage: c.last_message_text || '',
+          lastMessageAt: c.last_message_at || null,
           time: timeStr,
           unread: c.unread_count || 0,
           online: Boolean(other.is_online ?? other.presence?.is_online ?? false),
@@ -173,7 +193,7 @@ export default function MessagesListScreen() {
           otherUserId: c.is_group ? undefined : other.id,
         };
       });
-      setConversations(transformed);
+      setConversations(sortConversationsByRecency(transformed));
 
       /** Récupère la présence en parallèle pour tous les peers 1-1 (best effort). */
       const peerIds = transformed
@@ -237,9 +257,14 @@ export default function MessagesListScreen() {
     const offUnread = socketService.on('message:unread', (data: { conversationId?: string; unread?: number }) => {
       if (!data?.conversationId) return;
       const n = Math.max(0, Number(data.unread) || 0);
-      setConversations((prev) =>
-        prev.map((c) => (c.id === data.conversationId ? { ...c, unread: n, isRead: n === 0 } : c)),
-      );
+      setConversations((prev) => {
+        const updated = prev.map((c) =>
+          c.id === data.conversationId
+            ? { ...c, unread: n, isRead: n === 0, lastMessageAt: new Date().toISOString() }
+            : c,
+        );
+        return bumpConversationToTop(updated, data.conversationId!);
+      });
     });
     const offRead = socketService.on('message:read', (data: { conversationId?: string }) => {
       if (!data?.conversationId) return;

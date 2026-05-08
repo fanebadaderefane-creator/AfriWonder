@@ -118,6 +118,7 @@ type SignalPayload =
   | { kind: 'ice'; candidate: RTCIceCandidateInit | null };
 
 const CALL_RING_MS = 30_000;
+const CALL_CONNECTING_WATCHDOG_MS = 15_000;
 const isWebRuntime = Platform.OS === 'web';
 
 /** Calques semi-transparents sur le PiP local (aperçu selfie) — même logique Web / natif. */
@@ -185,6 +186,7 @@ export default function CallScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectionWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** Refs PeerConnection + flux média (web et natif lorsque l’appel démarre). */
   const pcRef = useRef<any>(null);
@@ -247,6 +249,7 @@ export default function CallScreen() {
       setCallState('ended');
       if (timerRef.current) clearInterval(timerRef.current);
       if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+      if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
       stopAllMedia();
       if (otherUserId && myUserId) {
         void socketService.ensureConnectedEmit('call:end', {
@@ -347,12 +350,55 @@ export default function CallScreen() {
     };
 
     const sendSignal = (signal: SignalPayload) => {
-      socketService.emit('call:signal', {
+      const payload = {
         callId: callIdRef.current,
         fromUserId: myUserId,
         toUserId: otherUserId,
         signal,
-      });
+      };
+      // SDP est critique : garantir l'émission même pendant une reconnexion socket.
+      if (signal.kind === 'sdp') {
+        void socketService.ensureConnectedEmit('call:signal', payload, 12_000).then((ok) => {
+          if (!ok && !cancelled) {
+            setErrorMsg('Connexion instable. Nouvelle tentative…');
+          }
+        });
+        return;
+      }
+      socketService.emit('call:signal', payload);
+    };
+
+    let restartAttempted = false;
+    const armConnectionWatchdog = () => {
+      if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
+      connectionWatchdogRef.current = setTimeout(async () => {
+        if (cancelled) return;
+        const pc = pcRef.current as RTCPeerConnection | null;
+        if (!pc) return;
+        const state = String(pc.connectionState || '');
+        if (state === 'connected' || state === 'closed') return;
+
+        // 1ère passe : relance ICE (caller) pour sortir d'un blocage "préparation en cours".
+        if (!restartAttempted && role === 'caller') {
+          restartAttempted = true;
+          try {
+            const restartOffer = await pc.createOffer({
+              offerToReceiveAudio: true,
+              offerToReceiveVideo: isVideo,
+              iceRestart: true,
+            });
+            await pc.setLocalDescription(restartOffer);
+            sendSignal({ kind: 'sdp', sdp: { type: restartOffer.type, sdp: restartOffer.sdp } });
+            armConnectionWatchdog();
+            return;
+          } catch {
+            // fallback vers fin d'appel ci-dessous
+          }
+        }
+
+        setErrorMsg('Connexion instable. Réessayez l’appel.');
+        finishCall('failed');
+      }, CALL_CONNECTING_WATCHDOG_MS);
     };
 
     const flushPendingIce = async () => {
@@ -477,6 +523,7 @@ export default function CallScreen() {
           if (s === 'connected') {
             setCallState('connected');
             if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+            if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
             if (isWebRuntime && remoteAudioElRef.current) {
               try {
                 remoteAudioElRef.current.muted = false;
@@ -570,6 +617,7 @@ export default function CallScreen() {
           }
           setCallState('connecting');
         }
+        armConnectionWatchdog();
       } catch (e: any) {
         devWarn('[Call] setup failed', e);
         const msg = String(e?.message || '').toLowerCase();
@@ -592,6 +640,7 @@ export default function CallScreen() {
       offDecline();
       stopAllMedia();
       if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+      if (connectionWatchdogRef.current) clearTimeout(connectionWatchdogRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [otherUserId, myUserId, isVideo, role]);

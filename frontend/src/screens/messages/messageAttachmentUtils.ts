@@ -35,9 +35,37 @@ export async function appendBlobOrFileField(
   const safe =
     fileName.replace(/[^\w.\- \u00C0-\u024F]+/g, '_').slice(0, 180) ||
     (mode === 'document' ? 'document.pdf' : 'audio.m4a');
-  const fallbackMime =
-    mode === 'document' ? 'application/pdf' : 'audio/mpeg';
-  const ct = (mime || '').trim() || fallbackMime;
+  const fallbackMime = mode === 'document' ? 'application/pdf' : 'audio/mpeg';
+  const ext = (safe.split('.').pop() || '').toLowerCase();
+
+  const inferMimeFromExt = (): string => {
+    if (mode === 'audio') {
+      if (ext === 'm4a' || ext === 'mp4' || ext === 'aac') return 'audio/mp4';
+      if (ext === 'mp3') return 'audio/mpeg';
+      if (ext === 'wav') return 'audio/wav';
+      if (ext === 'ogg' || ext === 'oga') return 'audio/ogg';
+      return 'audio/mpeg';
+    }
+    if (ext === 'pdf') return 'application/pdf';
+    if (ext === 'doc') return 'application/msword';
+    if (ext === 'docx') return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (ext === 'xls') return 'application/vnd.ms-excel';
+    if (ext === 'xlsx') return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    if (ext === 'ppt') return 'application/vnd.ms-powerpoint';
+    if (ext === 'pptx') return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    if (ext === 'txt') return 'text/plain';
+    return 'application/pdf';
+  };
+
+  let ct = (mime || '').trim().toLowerCase();
+  if (!ct || ct === 'application/octet-stream') {
+    ct = inferMimeFromExt();
+  }
+  if (mode === 'audio' && ct === 'audio/m4a') {
+    // Backend whitelist accepte audio/mp4 (conteneur m4a)
+    ct = 'audio/mp4';
+  }
+  if (!ct) ct = fallbackMime;
 
   if (Platform.OS === 'web') {
     const res = await fetch(uri);
