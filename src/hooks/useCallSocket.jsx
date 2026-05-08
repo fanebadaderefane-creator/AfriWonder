@@ -14,6 +14,7 @@ export function useCallSocket({
   onGroupCallEnded,
 } = {}) {
   const socketRef = useRef(null);
+  const pendingEmitsRef = useRef([]);
   const inviteRef = useRef(onInvite);
   const acceptRef = useRef(onAccept);
   const declineRef = useRef(onDecline);
@@ -40,6 +41,13 @@ export function useCallSocket({
 
     socket.on('connect', () => {
       socket.emit('user:join', userId);
+      if (pendingEmitsRef.current.length > 0) {
+        const queued = [...pendingEmitsRef.current];
+        pendingEmitsRef.current = [];
+        queued.forEach(({ eventName, payload }) => {
+          socket.emit(eventName, payload);
+        });
+      }
     });
     socket.on('call:invite', (payload) => inviteRef.current?.(payload));
     socket.on('call:accept', (payload) => acceptRef.current?.(payload));
@@ -58,9 +66,14 @@ export function useCallSocket({
   }, [userId]);
 
   const emit = (eventName, payload) => {
-    if (socketRef.current?.connected) {
-      socketRef.current.emit(eventName, payload);
+    const socket = socketRef.current;
+    if (!socket) return;
+    if (socket.connected) {
+      socket.emit(eventName, payload);
+      return;
     }
+    // Queue important call events until socket is connected.
+    pendingEmitsRef.current.push({ eventName, payload });
   };
 
   return { emit, socket: socketRef.current };

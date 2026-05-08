@@ -86,6 +86,7 @@ const ALLOWED_MEDIA_MIME = new Set([
   'video/3gpp2',
   'audio/webm',
   'audio/x-m4a',
+  'audio/m4a',
   'audio/mpeg',
   'audio/mp4',
   'audio/aac',

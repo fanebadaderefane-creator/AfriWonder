@@ -66,6 +66,11 @@ function parseMobilePushEndpoint(endpoint: string): { platform: string; token: s
   return { platform: rest.slice(0, i), token: rest.slice(i + 1) };
 }
 
+function isExpoPushToken(token: string): boolean {
+  const t = String(token || '').trim();
+  return t.startsWith('ExponentPushToken[') || t.startsWith('ExpoPushToken[');
+}
+
 /** Expo attend des valeurs string dans `data`. */
 function expoStringData(data: Record<string, unknown>): Record<string, string> {
   const out: Record<string, string> = {};
@@ -445,7 +450,7 @@ class NotificationService {
     for (const sub of mobilePushSubscriptions) {
       const parsed = parseMobilePushEndpoint(sub.endpoint);
       if (!parsed?.token) continue;
-      if (parsed.token.startsWith('ExponentPushToken')) {
+      if (isExpoPushToken(parsed.token)) {
         expoMessages.push({
           to: parsed.token,
           title,
@@ -469,7 +474,7 @@ class NotificationService {
       if (!this.warnedMissingPushConfig) {
         this.warnedMissingPushConfig = true;
         logger.warn(
-          'Push désactivé : définir VAPID (web), ou tokens Expo (aucun ExponentPushToken en base), ' +
+          'Push désactivé : définir VAPID (web), ou tokens Expo (aucun ExponentPushToken/ExpoPushToken en base), ' +
             'ou EXPO_ACCESS_TOKEN + enregistrement mobile, ou PUSH_WEBHOOK_URL, ou FIREBASE_SERVER_KEY (FCM legacy device tokens).',
         );
       }

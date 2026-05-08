@@ -397,9 +397,8 @@ export default function DirectCallPage() {
       callId,
       type: callType,
     });
-    setCallStatus('active');
-    if (!callStartTime) setCallStartTime(Date.now());
-  }, [autoAccept, mode, user?.id, targetUserId, callId, emit, callType, callStartTime]);
+    setLinkStatusLabel('Connexion en cours…');
+  }, [autoAccept, mode, user?.id, targetUserId, callId, emit, callType]);
 
   useEffect(() => {
     const loadUsers = async () => {

@@ -88,15 +88,9 @@ export default function IncomingCallListener({ user }) {
   };
 
   const handleAccept = () => {
-    emit('call:accept', {
-      toUserId: incomingCall.fromUserId,
-      fromUserId: user.id,
-      callId,
-      type: callType,
-    });
     setIncomingCall(null);
     navigate(
-      `${createPageUrl('DirectCall')}?mode=incoming&callerId=${incomingCall.fromUserId}&type=${callType}&callId=${callId}`
+      `${createPageUrl('DirectCall')}?mode=incoming&callerId=${incomingCall.fromUserId}&type=${callType}&callId=${callId}&autoAccept=1`
     );
   };
 
