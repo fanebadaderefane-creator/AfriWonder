@@ -13,48 +13,54 @@ Demande utilisateur :
 - `/app/frontend/` → Expo React Native SDK 54 (mobile uniquement)
 - `/app/backend/` → 2 backends coexistent :
   - `backend/src/` → TypeScript Express + Prisma + Supabase → déployé sur **Render prod** (`afriwonder.onrender.com`)
-  - `backend/server.py` → FastAPI Python (complément mobile : messaging local, wallet, lives) → port 8001 supervisor
+  - `backend/server.py` → FastAPI Python (complément mobile) → port 8001 supervisor
 - `/app/src/` → PWA Vite (non utilisé pour mobile clients)
 
-## What's Been Implemented (Sessions cumulées)
+## What's Been Implemented
 
-### Session 1 (2026-05-23) — Connexion repo
+### Session 1 — Connexion repo
 - Repo cloné dans `/app`, `.git` et `.emergent` préservés
 - Frontend `.env` : `EXPO_PUBLIC_BACKEND_URL=https://afriwonder.onrender.com`
 - Backend Python `.env` + dépendances installées
 - Supervisor : backend uvicorn :8001, frontend `yarn start` → `expo start --web --tunnel --port 3000`
-- Tunnel ngrok actif pour Expo Go (URL change à chaque restart Metro)
+- Tunnel ngrok actif pour Expo Go
 - Backend Python `/api/health` → 200 OK
-- Frontend Metro bundling OK (2599 modules)
+- Frontend Metro bundling OK
 
-### Session 2 (2026-05-23) — Lot 1 Messagerie (partiel)
-**Fichiers modifiés** : 
+### Session 2 — Lot 1 Messagerie (transcription + historique appels)
+**Fichiers modifiés** :
 - `frontend/app/messages/[id].tsx` (+120 lignes)
 - `frontend/app/messages/index.tsx` (+205 lignes)
 
-**Fonctionnalités ajoutées** :
-1. ✅ **Transcription IA des notes vocales (Whisper)**
-   - Long-press sur message vocal → "Transcrire (IA)" dans context menu
-   - Appel `POST /messages/message/:id/transcribe` (backend existant)
-   - Affichage texte transcrit sous bulle vocale (icône ✨ orange)
-   - Indicateur loading "Transcription en cours..."
-   - Bouton "Voir la transcription" si déjà transcrit
-2. ✅ **Onglet Appels — Historique réel**
-   - `GET /me/call-history` (DM + groupes)
-   - Liste avec avatar, nom, flèche in/out, badge missed rouge
-   - Format temps : "il y a Xh · 14:32 · 2min 15s"
-   - Tap row ou bouton callback pour rappeler (audio/vidéo)
-   - Refresh control
-3. ✅ **FAB Appels** → ouvre picker contact pour nouveau call (au lieu d'alert)
+**Fonctionnalités** :
+1. ✅ Transcription IA Whisper sur vocaux (UI + appel backend)
+2. ✅ Onglet Appels = historique réel `/me/call-history`
+3. ✅ FAB Appels → picker contact
 
-## What's NOT yet implemented (Lots restants)
+### Session 3 — Traduction GPT-5.2 multi-langue
+**Fichiers créés/modifiés** :
+- `backend/src/utils/openaiTranslate.ts` (NEW) — utilitaire OpenAI Chat API
+- `backend/src/routes/messages.routes.ts` — ajout 2 routes :
+  - `GET /api/messages/translation/languages` (liste langues)
+  - `POST /api/messages/message/:id/translate` (transcrit puis traduit)
+- `frontend/app/messages/[id].tsx` — UI chips drapeaux 🇫🇷🇬🇧🇲🇱🇸🇳 sous transcription
+
+**Détails traduction** :
+- Modèle : `gpt-5.2` (OpenAI) via `OPENAI_API_KEY`
+- Langues : Français (fr), Anglais (en), Bambara (bm), Wolof (wo)
+- Prompt système optimisé pour low-resource languages (Bambara/Wolof orthographe latine)
+- Conserve noms propres, ton, registre
+- Cap 4000 chars en entrée, 8000 en sortie
+- Affichage : zone violette sous transcription orange (couleurs distinctes)
+
+## What's NOT yet implemented
 
 ### Lot 1 Messagerie — finition restante
-- [ ] Vérifier le mode ephemeral (disparition auto) UI complète
-- [ ] Tester E2E avec compte réel (besoin identifiants)
 - [ ] Audit `requests.tsx` (DM Requests)
 - [ ] Audit `new-group.tsx` (création groupes)
+- [ ] Audit groupes : `app/messages/[id].tsx` route group → mêmes features
 - [ ] Push notifications messagerie
+- [ ] Tests E2E avec compte réel (besoin identifiants)
 
 ### Lot 2 — Appels Audio/Vidéo WebRTC
 - [ ] Audit `app/messages/call.tsx` (1444 lignes existantes)
@@ -62,32 +68,32 @@ Demande utilisateur :
 - [ ] CallKit iOS / Notifee FCM Android pour incoming calls
 - [ ] Tests E2E 2 devices
 
-### Lot 3 — Live Streaming Agora (TikTok-like)
-- [ ] Audit 9 écrans `app/live/*` + 30 utilitaires `src/live/*`
+### Lot 3 — Live Streaming Agora
+- [ ] Audit 9 écrans `app/live/*`
 - [ ] Config `AGORA_APP_ID` + `AGORA_APP_CERTIFICATE` sur Render
 - [ ] Tests broadcast + viewing
 
 ### Lot 4 — Live Cadeaux / Multi-host / Replay
-- [ ] Gifts catalog UI (déjà codé `src/live/extendedGiftCatalog.ts`)
-- [ ] Raise-hand → multi-host approval
-- [ ] Replay avec chat synchronisé
+- [ ] Gifts catalog UI complète
+- [ ] Multi-host approval flow
+- [ ] Replay chat sync
 - [ ] Analytics créateur
 
 ## Configuration Render prod requise (action utilisateur)
-- ⚠️ `OPENAI_API_KEY` → pour transcription Whisper
-- ⚠️ `AGORA_APP_ID` + `AGORA_APP_CERTIFICATE` → pour Live
-- ⚠️ TURN server creds (`TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL`) → pour appels WebRTC
+- ⚠️ **`OPENAI_API_KEY`** → pour Whisper transcription ET GPT-5.2 traduction
+- ⚠️ `AGORA_APP_ID` + `AGORA_APP_CERTIFICATE` → pour Live (Lot 3)
+- ⚠️ TURN server creds (`TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL`) → pour appels (Lot 2)
 
 ## Tests requis (besoin de l'utilisateur)
 - Identifiants test sur `afriwonder.onrender.com` (2 comptes pour tester chat/calls 1-1)
-- OU autoriser la création de comptes test via `/api/proxy/auth/register`
 
 ## Notes critiques
 - `react-native-agora`, `react-native-webrtc`, `react-native-vision-camera` **ne fonctionnent PAS sur Expo Go**
-- Test en natif obligatoire = EAS Build dev-client
-- Pour deployer les changements mobile : "Save to GitHub" → trigger Render redeploy (uniquement si backend modifié) + nouveau EAS Build pour APK
+- Test natif obligatoire = EAS Build dev-client
+- Pour déployer : "Save to GitHub" → Render auto-redeploy + nouveau EAS Build
 
 ## Next Action Items
-1. Utilisateur configure `OPENAI_API_KEY` sur Render
-2. Utilisateur fournit identifiants test ou autorise création test accounts
-3. Continuer Lot 2 (Appels WebRTC) puis Lot 3 (Live Agora)
+1. Utilisateur push to GitHub → Render redeploy (pour activer endpoints translate)
+2. Utilisateur configure `OPENAI_API_KEY` sur Render
+3. Utilisateur fournit identifiants test
+4. Continuer Lot 2 (Appels WebRTC) puis Lot 3 (Live Agora)

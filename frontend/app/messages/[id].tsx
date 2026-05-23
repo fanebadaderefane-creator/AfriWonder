@@ -55,10 +55,20 @@ interface Message {
   deleted?: boolean;
   transcription?: string;
   transcribing?: boolean;
+  translation?: { targetLang: string; text: string };
+  translating?: boolean;
 }
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 const FAILED_MESSAGE_SILENT_RETRY_DELAY_MS = 900;
+
+/** Langues supportées par GPT-5.2 pour la traduction des transcriptions vocales. */
+const TRANSLATION_LANGUAGES: { code: 'fr' | 'en' | 'bm' | 'wo'; label: string; flag: string }[] = [
+  { code: 'fr', label: 'FR', flag: '🇫🇷' },
+  { code: 'en', label: 'EN', flag: '🇬🇧' },
+  { code: 'bm', label: 'BM', flag: '🇲🇱' },
+  { code: 'wo', label: 'WO', flag: '🇸🇳' },
+];
 
 async function runWithSingleSilentRetry<T>(operation: () => Promise<T>): Promise<T> {
   try {
@@ -1437,6 +1447,41 @@ export default function ChatScreen() {
     }
   };
 
+  const handleTranslateMessage = useCallback(
+    async (messageId: string, targetLang: 'fr' | 'en' | 'bm' | 'wo') => {
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, translating: true } : m)));
+      try {
+        const res = await apiClient.post(
+          `/messages/message/${encodeURIComponent(messageId)}/translate`,
+          { target_lang: targetLang },
+        );
+        const data = res?.data?.data ?? res?.data ?? {};
+        const text = String(data.translation || '').trim();
+        const transcribedText = String(data.transcription || '').trim();
+        if (!text) throw new Error('Traduction vide');
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  translating: false,
+                  transcription: m.transcription || transcribedText || undefined,
+                  translation: { targetLang, text },
+                }
+              : m,
+          ),
+        );
+      } catch (e) {
+        setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, translating: false } : m)));
+        Alert.alert(
+          'Traduction impossible',
+          getAlertMessageForCaughtError(e, 'Verifiez votre connexion ou reessayez plus tard.'),
+        );
+      }
+    },
+    [],
+  );
+
   const doForward = async (targetConvId: string) => {
     if (!selectedMessage) return;
     setForwardModalVisible(false);
@@ -1598,6 +1643,53 @@ export default function ChatScreen() {
                     <Text style={styles.transcriptionLabel}>Transcription IA</Text>
                   </View>
                   <Text style={styles.transcriptionText}>{item.transcription}</Text>
+                  {/* Boutons traduction (GPT-5.2) */}
+                  <View style={styles.translateRow}>
+                    <Text style={styles.translateRowLabel}>Traduire :</Text>
+                    {TRANSLATION_LANGUAGES.map((lang) => {
+                      const active = item.translation?.targetLang === lang.code;
+                      return (
+                        <TouchableOpacity
+                          key={lang.code}
+                          testID={`translate-${item.id}-${lang.code}`}
+                          style={[styles.translateChip, active && styles.translateChipActive]}
+                          disabled={item.translating}
+                          onPress={() => handleTranslateMessage(item.id, lang.code)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.translateChipFlag}>{lang.flag}</Text>
+                          <Text
+                            style={[
+                              styles.translateChipLabel,
+                              active && styles.translateChipLabelActive,
+                            ]}
+                          >
+                            {lang.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  {item.translating ? (
+                    <View style={styles.transcriptionRow}>
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                      <Text style={styles.transcriptionPending}>Traduction en cours...</Text>
+                    </View>
+                  ) : item.translation ? (
+                    <View style={styles.translationBox}>
+                      <View style={styles.transcriptionHeader}>
+                        <Ionicons name="language" size={12} color="#9C27B0" />
+                        <Text style={[styles.transcriptionLabel, { color: '#9C27B0' }]}>
+                          {(TRANSLATION_LANGUAGES.find((l) => l.code === item.translation?.targetLang)
+                            ?.flag ?? '') +
+                            ' ' +
+                            (TRANSLATION_LANGUAGES.find((l) => l.code === item.translation?.targetLang)
+                              ?.label ?? '')}
+                        </Text>
+                      </View>
+                      <Text style={styles.transcriptionText}>{item.translation.text}</Text>
+                    </View>
+                  ) : null}
                 </View>
               ) : null}
             </View>
@@ -2220,6 +2312,47 @@ const styles = StyleSheet.create({
   transcriptionHeader: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
   transcriptionLabel: { color: Colors.primary, fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
   transcriptionText: { color: Colors.text, fontSize: 13, lineHeight: 18 },
+  translateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginTop: 8,
+    gap: 6,
+  },
+  translateRowLabel: {
+    color: Colors.textSecondary,
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    marginRight: 2,
+  },
+  translateChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    gap: 4,
+  },
+  translateChipActive: {
+    backgroundColor: 'rgba(156,39,176,0.18)',
+    borderColor: '#9C27B0',
+  },
+  translateChipFlag: { fontSize: 11 },
+  translateChipLabel: { color: Colors.text, fontSize: 10, fontWeight: '700' },
+  translateChipLabelActive: { color: '#9C27B0' },
+  translationBox: {
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(156,39,176,0.08)',
+    borderLeftWidth: 3,
+    borderLeftColor: '#9C27B0',
+    borderRadius: 6,
+  },
   voiceMicBadge: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   // Image bubble
   imageBubble: { marginBottom: 2, position: 'relative', overflow: 'hidden', borderRadius: 8 },
