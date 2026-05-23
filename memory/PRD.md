@@ -4,116 +4,104 @@
 Repo: https://github.com/fanebadaderefane-creator/AfriWonder
 Clients : Mobile Android/iOS — Mali, Sénégal, Côte d'Ivoire, etc.
 
-## Architecture
-- `/app/frontend/` → Expo React Native SDK 54
-- `/app/backend/src/` → TypeScript Express + Prisma + Supabase → Render prod
-- `/app/backend/server.py` → FastAPI Python (port 8001)
+## What's Been Implemented (Sessions 1-9)
 
-## What's Been Implemented
+1. **Session 1** — Connexion repo ✅
+2. **Session 2** — Messagerie : transcription Whisper + historique appels ✅
+3. **Session 3** — Traduction GPT-5.2 (FR/EN/BM/WO) ✅
+4. **Session 4** — Appels WebRTC optimisés Afrique ✅
+5. **Session 5** — CallKit iOS + Notifee Android ✅
+6. **Session 6** — VoIP Push iOS + FCM hooks ✅
+7. **Session 7** — Live floating hearts TikTok ✅
+8. **Session 8** — Notif "ami en live" + Swipe-feed + Live Shopping ✅
 
-### Session 1 — Connexion repo ✅
-### Session 2 — Messagerie : transcription Whisper + historique appels ✅
-### Session 3 — Traduction GPT-5.2 (FR/EN/BM/WO) ✅
-### Session 4 — Appels WebRTC optimisés Afrique ✅
-### Session 5 — CallKit iOS + Notifee Android ✅
-### Session 6 — VoIP Push iOS + FCM hooks ✅
-### Session 7 — Lot 3 Live floating hearts TikTok ✅
+### Session 9 — Catalogue cadeaux étendu + audit Mobile Money ✅
 
-### Session 8 — Lot 4 propositions ✅
+**Catalogue gifts étendu : 56 → 86 cadeaux**
+- `backend/prisma/liveGiftsSeedData.ts` réécrit
+- **13 catégories** (vs 9 avant) : ajout `culture`, `vip`
+- **5 rarities** (vs 4 avant) : ajout `mythic` (>10000 coins)
+- **Cadeaux culturels Afrique de l'Ouest** :
+  - 🇲🇱🇸🇳🇨🇮 Drapeaux Mali, Sénégal, Côte d'Ivoire
+  - Thiéboudienne, Bissap, Boubou, Mangue, Tabaski (mouton)
+  - Tombouctou, Mansa Musa (empire), Caravane Sahara
+  - Empire africain, Trône royal, Légende vivante (VIP)
+  - Cheval blanc, Djembé, Kora, Balafon, Masque Dogon, Baobab
+- **Tier VIP/Mythic** (whales) : 12000-50000 coins / 60000-250000 FCFA
+  - Lamborghini, Galaxie, Empire, Trône, Légende, Univers
 
-**1. Notif "ami en live"** :
-- `frontend/src/services/liveStartedNotifService.ts` (NEW, 130 lignes)
-  - Écoute socket `live:started` (déjà émis par backend)
-  - Si app foreground : toast in-app (via listener) ; sinon Notifee local
-  - Channel Android dédié "Amis en live"
-  - Filter sur créateurs avec bell active (cache local)
-  - Tap notif → ouvre `/live/[id]`
-- `frontend/app/_layout.tsx` : init au démarrage
+**Coin Packages étendus : 4 → 10 packs**
+- `backend/prisma/seed.ts` updated
+- Tiers complets avec bonus % progressif (TikTok-style) :
+  - Découverte 50 coins → Légende 50000 coins
+  - Bonus de 0% (starter) à 18% (whale)
 
-**2. Swipe-to-next-live (Reels-style)** :
-- `frontend/app/live/feed.tsx` (NEW, 260 lignes)
-  - FlatList vertical paginé, snap full-screen
-  - Lazy player (seul l'item actif joue, mute par défaut)
-  - Préchargement min (windowSize: 3) — économie data Afrique
-  - Header back overlay
-  - Empty state "démarrer un live"
-  - Pull-to-refresh
-  - Préfetch via `/api/live/discovery`
+**UI gifts.tsx améliorée**
+- Ajout state `activeCategory` avec filtre
+- 14 onglets catégories horizontaux (avec icône + count)
+- Tab "Tous" pour voir tout
+- Tab actif highlighté orange (Colors.primary)
+- Filtrage `filteredCatalog` mémoïsé
+- Tri par prix croissant dans chaque catégorie
+- Empty state si catégorie vide
 
-**3. Live Shopping** :
-- `frontend/src/live/LiveShoppingStrip.tsx` (NEW, 290 lignes)
-  - Mini-bandeau bas du live avec produit "featured"
-  - Auto-rotation 8s entre produits
-  - Polling 30s (refresh produits)
-  - Badge discount %
-  - Compteur "1/5"
-  - Tap → bottomsheet liste complète
-  - Tap produit → router `/shop/product/:id`
-  - Formatage prix FCFA (Mali/Sénégal/CI) + EUR + USD
-  - Backend déjà OK : `GET /api/live/:id/products`
-- Intégré dans `app/live/[id].tsx`
+**Guide complet créé : `memory/GUIDE_MOBILE_MONEY_GIFTS.md`**
+- Tarification (1 coin = 5 FCFA, 70% créateur)
+- 10 packs tableau complet
+- 86 cadeaux × 13 catégories tableau complet
+- Flow vente A à Z (utilisateur + créateur)
+- Variables env Render (Orange Money + Wave)
+- 5 tests E2E avec curl
+- Estimation revenu (1000 users → ~410 EUR/mois plateforme)
+- 6 idées pour maximiser revenu (daily login, combos, tiers fan, quêtes, saisons)
 
-**4. Live Battle 1v1** :
-- **Differé** (énorme scope ~17h)
-- Plan complet documenté : `memory/PLAN_LIVE_BATTLE.md`
-- Architecture Agora PK Channel Media Relay
-- Modèle Prisma + endpoints REST + sockets
-- Split-screen UI + score bar + gift side-picker
-- Punishment system + replay
+## Configuration Render prod requise (CRITIQUE pour activer revenue)
 
-## Files créés cette session
-- `frontend/src/services/liveStartedNotifService.ts`
-- `frontend/app/live/feed.tsx`
-- `frontend/src/live/LiveShoppingStrip.tsx`
-- `memory/PLAN_LIVE_BATTLE.md`
+```env
+# Coins
+LIVE_COIN_RATE_XOF=5
+LIVE_GIFT_CREATOR_SHARE=0.7
 
-## Configuration Render prod requise (cumulé)
-- `OPENAI_API_KEY` → Whisper + GPT-5.2
-- `TURN_URL` + `TURN_SHARED_SECRET` + `TURN_REALM` → appels WebRTC
-- `AGORA_APP_ID` + `AGORA_APP_CERTIFICATE` → Live
-- Optionnel : APNs VoIP cert pour iOS PushKit
-- Optionnel : Cert/Setup Agora PK Media Relay pour battles (futur Lot 4 complet)
+# Orange Money (https://developer.orange.com/apis/om-webpay)
+ORANGE_MONEY_API_URL=https://api.orange.com/orange-money-webpay/dev/v1
+ORANGE_MONEY_CLIENT_ID=...
+ORANGE_MONEY_CLIENT_SECRET=...
+ORANGE_MONEY_MERCHANT_KEY=...
+ORANGE_MONEY_RETURN_URL=...
+ORANGE_MONEY_NOTIF_URL=...
 
-## Cumul total sessions 1-8
-- **18 fichiers modifiés / 11 fichiers créés**
-- **~1800 lignes ajoutées**
-- **8 fonctionnalités majeures** :
-  1. Transcription IA Whisper
-  2. Traduction GPT-5.2 (FR/EN/BM/WO)
-  3. Appels WebRTC optimisés Afrique
-  4. CallKit iOS + Notifee Android
-  5. VoIP Push iOS + FCM hooks
-  6. Live TikTok-like floating hearts
-  7. Notif "ami en live" temps réel
-  8. Swipe-to-next-live (Reels-style)
-  9. Live Shopping mobile UI
+# Wave (https://docs.wave.com/business)
+WAVE_API_KEY=...
+WAVE_API_URL=https://api.wave.com/v1
+WAVE_WEBHOOK_SECRET=...
+WAVE_RETURN_URL=...
+```
+
+## Cumul total sessions 1-9
+- **20+ fichiers modifiés / 13+ fichiers créés**
+- **~2200 lignes ajoutées**
+- **9+ fonctionnalités majeures**
+- **7 guides détaillés dans `/app/memory/`**
 
 ## Files in /app/memory
-- `PRD.md` (ce fichier)
-- `PLAN_LOTS.md` — plan général
-- `GUIDE_TURN_SERVER.md` — config TURN (4 options)
-- `GUIDE_TEST_APK.md` — 7 scenarios de test sur APK
-- `GUIDE_LIVE_AGORA.md` — audit Live + config Agora
-- `PLAN_LIVE_BATTLE.md` — roadmap battle 1v1 (futur)
+- `PRD.md`
+- `PLAN_LOTS.md`
+- `GUIDE_TURN_SERVER.md`
+- `GUIDE_TEST_APK.md`
+- `GUIDE_LIVE_AGORA.md`
+- `PLAN_LIVE_BATTLE.md`
+- `GUIDE_MOBILE_MONEY_GIFTS.md` ⭐ NEW
 
 ## Next Action Items
-1. **User** : Save to GitHub → Render redeploy auto
-2. **User** : Configure les env vars Render (OPENAI, TURN, AGORA)
-3. **User** : `eas build --platform android --profile development` → APK
-4. **User** : Installer APK sur 2 devices Android (idéalement 1 au Mali)
-5. **User** : Tester scenarios :
-   - Messagerie : transcription + traduction
-   - Appels : audio/vidéo + cross-NAT + background incoming
-   - Live : broadcaster + viewer + hearts + shopping + swipe feed
-   - Notif : démarrer un live avec compte A, voir notif côté compte B
-6. **User** : Reporter bugs / OK
-7. **Agent** : Fix bugs OU implémenter Lot 4 Live Battle si tout est validé
+1. **User** : Save to GitHub → Render redeploy
+2. **User** : Lancer `npx prisma db seed` sur Render Shell pour appliquer le catalogue étendu
+3. **User** : Configurer env vars Orange Money + Wave (critique)
+4. **User** : Tester flow paiement complet (test 1-5 dans GUIDE_MOBILE_MONEY_GIFTS.md)
+5. **User** : EAS Build + tester sur APK
+6. **User** : Valider revenu réel avec 5-10 vrais utilisateurs avant scale
 
-## Routes ajoutées (à wirer dans nav app)
-- `/live/feed` — feed swipe TikTok (à ajouter en lien depuis `/live/index.tsx` ou tab principal)
-
-## Suggestion business (récap)
-- **Top 1** : Cadeaux Mobile Money (Orange Money/Wave) — votre #1 levier revenue, déjà partiellement codé
-- **Top 2** : Live Battle 1v1 (gains ARPU ×3-5 prouvés sur TikTok Live)
-- **Top 3** : Live Shopping (la feature qu'on vient d'ajouter — il faut maintenant que les créateurs aient leur catalogue produits)
-- **Top 4** : Notif "ami en live" (ajout cette session — boost engagement +30-50%)
+## Suggestion business
+**Pour démarrer revenu rapidement** :
+- Lancer une promo "1er achat coins = +50% bonus" pendant 7 jours
+- Identifier 3-5 créateurs ambassadeurs (Mali/Sénégal/CI) → leur faire des lives "tests" avec gifts virtuels offerts par AfriWonder
+- Une fois 3-5 lives par jour actifs → activer les notifs "ami en live" → boost organique
